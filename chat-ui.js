@@ -848,7 +848,7 @@
     return out;
   }
   const isPhone = () => matchMedia('(max-width: 760px)').matches;
-  function closePick() { const b = $c('cPick'); if (b && !b.hidden) { b.hidden = true; Pick.src = null; document.body.classList.remove('sheet-open'); } }
+  function closePick() { const b = $c('cPick'); if (b && !b.hidden) { b.hidden = true; Pick.src = null; document.body.classList.remove('sheet-open'); } const bk = $c('pickBack'); if (bk) bk.hidden = true; }
   async function openPick(src) {
     Pick.src = src;
     if (src === 'comp' && (!C.comp || C.comp.ended)) { renderPick(); try { await ensureCompanion(); } catch (err) { closePick(); throw err; } }
@@ -887,6 +887,7 @@
     const wasHidden = box.hidden;
     box.hidden = false;
     document.body.classList.toggle('sheet-open', isPhone());
+    $c('pickBack').hidden = !isPhone();   // on a phone, a tap on the dimmed area closes it (and goes no further)
     if (wasHidden) box.scrollTop = 0;
   }
   async function pickModel(src, change) {
@@ -1565,7 +1566,8 @@
       if (!typing && e.key === 'End') { e.preventDefault(); jumpLatest(); }
     });
     document.addEventListener('mousedown', e => { if (!$c('cPick').hidden && !(e.target.closest && e.target.closest('#cPick, [data-crew]'))) closePick(); });
-    document.addEventListener('touchstart', e => { if (!$c('cPick').hidden && !(e.target.closest && e.target.closest('#cPick, [data-crew]'))) closePick(); }, { passive: true });
+    $c('pickBack').addEventListener('pointerdown', e => e.preventDefault());
+    $c('pickBack').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closePick(); });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && !$c('cLight').hidden) { $c('cLight').hidden = true; e.stopPropagation(); return; }
       if ($c('chat').hidden) return;

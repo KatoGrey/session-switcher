@@ -1365,19 +1365,24 @@ function closeDrawer() {
 }
 
 /* ---------- menus ---------- */
-let menuAnchor = null;
+let menuAnchor = null, menuReturn = null;
 // anchor: the button it belongs to, or { x, y } for a right-click menu at the pointer.
 function showMenu(anchor, items) {
   const m = $('menu');
   closeMenu();
   items = items.filter((it, i, all) => it !== '-' || (i > 0 && i < all.length - 1 && all[i - 1] !== '-'));
-  m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${it.glyph ? `<span class="m-g" aria-hidden="true">${esc(it.glyph)}</span>` : ''}<span class="m-l">${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</span>${it.keys ? `<kbd class="m-k">${esc(it.keys)}</kbd>` : ''}`}</button>`)).join('');
+  // Labels line up whether or not an item has an icon.
+  const glyphs = items.some(it => it !== '-' && it.glyph);
+  m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${it.glyph || glyphs ? `<span class="m-g" aria-hidden="true">${esc(it.glyph || '')}</span>` : ''}<span class="m-l">${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</span>${it.keys ? `<kbd class="m-k">${esc(it.keys)}</kbd>` : ''}`}</button>`)).join('');
+  menuReturn = document.activeElement;
+  $('menuBack').hidden = false;
   m.hidden = false;
   placeAt(m, anchor);
+  m.classList.remove('pop'); void m.offsetWidth; m.classList.add('pop');
   menuAnchor = anchor instanceof Element ? anchor : null;
   if (menuAnchor) menuAnchor.setAttribute('aria-expanded', 'true');
   m.onclick = e => { const b = e.target.closest('button[data-i]'); if (!b || b.disabled) return; const it = items[+b.dataset.i]; closeMenu(true); wrap(it.run)(); };
-  m.querySelector('button:not(:disabled)')?.focus();
+  m.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
 }
 // Puts a popup under (or above) its anchor. Works in screen pixels, then divides by the interface
 // size, since the page is scaled by it.
@@ -1389,24 +1394,60 @@ function placeAt(m, anchor, align = 'start') {
   const w = m.offsetWidth * z, h = m.offsetHeight * z;
   let left = align === 'end' || r.left + w > W - 8 ? r.right - w : r.left;
   left = Math.max(8, Math.min(W - w - 8, left));
-  const top = r.bottom + h + 8 > H ? Math.max(8, r.top - h - 6) : r.bottom + 6;
+  const up = r.bottom + h + 8 > H;
+  const top = up ? Math.max(8, r.top - h - 6) : r.bottom + 6;
   m.style.left = `${left / z}px`; m.style.top = `${top / z}px`;
+  // Grows out of the point it was opened from.
+  m.style.transformOrigin = `${Math.max(0, Math.min(w, r.left - left)) / z}px ${up ? '100%' : '0'}`;
 }
 function closeMenu(refocus) {
   const m = $('menu'); if (m.hidden) return;
   m.hidden = true;
-  if (menuAnchor) { menuAnchor.setAttribute('aria-expanded', 'false'); if (refocus && document.contains(menuAnchor)) menuAnchor.focus(); }
-  menuAnchor = null;
+  $('menuBack').hidden = true;
+  if (menuAnchor) menuAnchor.setAttribute('aria-expanded', 'false');
+  if (refocus) {
+    const back = menuAnchor && document.contains(menuAnchor) ? menuAnchor : menuReturn && document.contains(menuReturn) ? menuReturn : null;
+    if (back && back.focus) back.focus({ preventScroll: true });
+  }
+  menuAnchor = null; menuReturn = null;
 }
 $('menu').addEventListener('keydown', e => {
   const btns = [...$('menu').querySelectorAll('button:not(:disabled)')];
   const i = btns.indexOf(document.activeElement);
-  if (e.key === 'ArrowDown') { btns[(i + 1) % btns.length]?.focus(); e.preventDefault(); }
-  if (e.key === 'ArrowUp') { btns[(i - 1 + btns.length) % btns.length]?.focus(); e.preventDefault(); }
-  if (e.key === 'Escape' || e.key === 'Tab') { closeMenu(true); e.preventDefault(); }
+  const go = j => { btns[(j + btns.length) % btns.length]?.focus({ preventScroll: true }); e.preventDefault(); };
+  if (e.key === 'ArrowDown') return go(i + 1);
+  if (e.key === 'ArrowUp') return go(i - 1);
+  if (e.key === 'Home') return go(0);
+  if (e.key === 'End') return go(btns.length - 1);
+  if (e.key === 'Escape' || e.key === 'Tab') { closeMenu(true); e.preventDefault(); return undefined; }
+  // Type a letter to jump to the next item that starts with it.
+  if (e.key.length === 1 && /\S/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const k = e.key.toLowerCase();
+    const label = b => (b.querySelector('.m-l') || b).textContent.trim().toLowerCase();
+    const next = [...btns.slice(i + 1), ...btns.slice(0, i + 1)].find(b => label(b).startsWith(k));
+    if (next) { next.focus({ preventScroll: true }); e.preventDefault(); }
+  }
+  return undefined;
 });
-document.addEventListener('mousedown', e => { if (!$('menu').hidden && !e.target.closest('#menu') && e.target.closest('[aria-haspopup]') !== menuAnchor) closeMenu(); });
+// The pointer and the keyboard highlight the same row.
+$('menu').addEventListener('pointermove', e => { const b = e.target.closest('button:not(:disabled)'); if (b && document.activeElement !== b) b.focus({ preventScroll: true }); });
+// Outside the menu: a click or tap closes it (and isn't passed to what's underneath); a right-click
+// opens the right menu there instead; the wheel closes it.
+// (Closing on the whole click, not the press, so the release can't land on what's underneath.)
+$('menuBack').addEventListener('pointerdown', e => e.preventDefault());
+$('menuBack').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closeMenu(); });
+$('menuBack').addEventListener('contextmenu', e => {
+  e.preventDefault();
+  closeMenu();
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  if (el) el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY, shiftKey: e.shiftKey }));
+});
+$('menuBack').addEventListener('wheel', () => closeMenu(), { passive: true });
+$('menu').addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('menu').hidden && !$('menu').contains(document.activeElement)) { closeMenu(true); e.stopPropagation(); } }, true);
 window.addEventListener('resize', () => closeMenu());
+window.addEventListener('blur', () => closeMenu());
+document.addEventListener('scroll', e => { if (!$('menu').hidden && !(e.target instanceof Element && $('menu').contains(e.target))) closeMenu(); }, true);
 
 function codexChatItems(s) {
   const ok = codexReady(), why = 'Sign in to Codex first';
@@ -2428,7 +2469,8 @@ document.addEventListener('contextmenu', e => {
   const coarse = matchMedia('(pointer: coarse)').matches;
   // On a phone, a long press on text is for selecting it; only cards, pictures and controls get a menu.
   if (coarse && !t.closest('[data-row], [data-k], [data-world], .world, .gen, .thumb, .crew, .ri, .af-file, .umsg, .turn .who, .tool > summary, .nav-i')) return;
-  Ctx.at = { x: e.clientX, y: e.clientY };
+  if (e.button !== 2 && !e.clientX && !e.clientY) { const r = t.getBoundingClientRect(); Ctx.at = { x: r.left + Math.min(24, r.width / 2), y: r.top + Math.min(r.height, 28) }; }
+  else Ctx.at = { x: e.clientX, y: e.clientY };
   const items = contextItems(t);
   if (items === null) return;
   e.preventDefault();

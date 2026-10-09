@@ -1612,3 +1612,16 @@ button.nav-h.fold[aria-expanded="false"] .fold-c{transform:rotate(-90deg)}
 @media (max-width:760px){.livepill .lp-bell{display:none}.livepill{padding:6px}}
 .att.pending{display:grid;place-items:center;width:64px;height:64px;border:1px dashed var(--seam-2);border-radius:5px}
 .nav-chat .nc-t{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Menus: a click-catcher behind them (dim on phones), and a quick grow from where they opened */
+.menu-back{position:fixed;inset:0;z-index:59;background:transparent}
+.motion .menu.pop{animation:menu-in .13s cubic-bezier(.2,.8,.2,1)}
+@keyframes menu-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.menu button:focus-visible,.menu button:focus{outline:none}
+.menu .m-g:empty{visibility:hidden}
+.pick-back{position:fixed;inset:0;z-index:69;background:rgb(var(--c-000000) / .55)}
+@media (max-width:760px){
+  .menu-back{background:rgb(var(--c-000000) / .55)}
+  .menu,.c-pick{box-shadow:0 -20px 60px -20px rgb(var(--c-000000))}
+  .motion .menu.pop{animation:sheet-up .2s cubic-bezier(.2,.8,.2,1)}
+}
