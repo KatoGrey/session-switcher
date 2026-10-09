@@ -198,9 +198,9 @@ function codexAll() {
   for (const x of want) {
     const home = codexHomes.homeFor(x.id);
     const cur = codexExtra.get(x.id);
-    if (cur && cur.ACCOUNT.name === x.name && cur.ACCOUNT.kind === (x.kind || 'chatgpt')) continue;
+    if (cur && cur.ACCOUNT.name === x.name && cur.ACCOUNT.kind === (x.kind || 'chatgpt') && cur.ACCOUNT.authFile === (x.authFile || null)) continue;
     if (cur) cur.stop();
-    codexExtra.set(x.id, makeCodex({ id: x.id, name: x.name, home, kind: x.kind || 'chatgpt', provider: 'codex' }));
+    codexExtra.set(x.id, makeCodex({ id: x.id, name: x.name, home, kind: x.kind || 'chatgpt', provider: 'codex', authFile: x.authFile || null }));
   }
   return [codex, ...codexExtra.values()];
 }
