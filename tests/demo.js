@@ -53,6 +53,21 @@ const projects = projectsSpec.map(sp => ({
 for (const p of projects) p.updated = Math.max(...p.sessions.map(s => s.updated));
 projects.sort((a, b) => b.updated - a.updated);
 
+// OpenClaw agents' sessions (with the openclaw option): one in a project folder, one in the agent's own.
+const ocSessions = [
+  { id: 'agent:main:discord:channel:42', provider: 'openclaw', sessionId: 'oc-1', agent: 'main', agentName: 'Nova', title: 'Nova · #tavern-dev', autoTitle: 'Nova · #tavern-dev', preview: 'Stored session', updated: min(6), cwd: P('Starfall Tavern'), folderExists: true, status: 'idle', channel: 'discord' },
+  { id: 'agent:scout:cron:nightly', provider: 'openclaw', sessionId: 'oc-2', agent: 'scout', agentName: 'Scout', title: 'Scout · Cron run', autoTitle: 'Scout · Cron run', preview: 'Running right now', updated: min(1), cwd: 'C:\\Users\\alex\\clawd', folderExists: true, status: 'running', channel: 'cron' },
+];
+const withOpenClaw = list => {
+  const out = list.map(p => ({ ...p, sessions: [...p.sessions, ...ocSessions.filter(x => x.cwd === p.cwd)].sort((a, b) => b.updated - a.updated) }));
+  out.push({ cwd: ocSessions[1].cwd, name: 'clawd', exists: true, notes: 0, updated: ocSessions[1].updated, sessions: [ocSessions[1]] });
+  return out;
+};
+const ocHistory = [
+  { kind: 'user', text: 'Which quests still need dialogue?', at: iso(min(8)) },
+  { kind: 'assistant', mid: 'oc:2', blocks: [{ type: 'text', text: 'Three: **The Lost Lute**, **Cellar Rats** and **Harvest Moon**.' }], at: iso(min(7)) },
+];
+
 const spark = seed => Array.from({ length: 36 }, (_, i) => Math.max(0, Math.round(3 + 3 * Math.sin(i / 3 + seed) + (i > 26 ? 4 : 0) + (i % 5 === 0 ? 2 : 0))));
 const activity = [
   { source: 'app', provider: 'claude', key: 'k-nutrient', sessionId: ID['s-nutrient'], title: 'Hydroponics sim: fix nutrient drift', folder: 'Orbital Garden', cwd: P('Orbital Garden'), accountId: 'studio', accountName: 'Studio', state: 'waiting', permissionMode: 'default', phase: 'waiting', tool: 'Bash', detail: 'Run the nutrient tests', lastText: 'I found the drift: the pH correction runs twice per tick. I’ve patched it and want to run the tests.', lastPrompt: 'The nutrient levels drift after an hour of sim time. Find out why.', turnStartedAt: min(4), lastEventAt: min(0.3), finishedAt: null, ok: true, steps: 11, pending: [{ requestId: 'r1', toolName: 'Bash', summary: 'Run the nutrient tests', detail: 'npm test -- --grep nutrient', question: false, canAlways: true }], spark: spark(1) },
@@ -128,9 +143,9 @@ const artFor = p => {
 const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`).join('');
 
 // Options: state (the chat's state), seen(path, url, body) for every API call, context (how
-// full the chat is), events (more chat events sent after it connects), noHistory (the history
+// full the chat is), events (more chat events sent after it connects), openclaw (OpenClaw sessions in the list), noHistory (the history
 // isn't there yet, as for a brand-new chat).
-async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [] } = {}) {
+async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false } = {}) {
   const info = { ...chatInfo, ...(context ? { context } : {}) };
   let reviews = 0;
   // Rules and tools: the project's CLAUDE.md and AGENTS.md differ; one tool on each side, and Codex's own.
@@ -162,7 +177,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (seen) seen(p, url, body);
     if (p === '/api/reopen') { const out = { reopened: body.action === 'reopen' ? reopen.map(c => c.sessionId) : [], failed: [] }; reopen = []; return { body: out }; }
     if (p === '/api/state') return { body: { reopen, accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '5.3.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
-    if (p === '/api/sessions') return { body: { projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
+    if (p === '/api/sessions') return { body: { projects: openclaw ? withOpenClaw(projects) : projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
     if (p === '/api/activity') return { body: { list: activity, at: NOW } };
     if (p === '/api/usage') return { body: { usage } };
     if (p === '/api/prompts') return null;
@@ -172,6 +187,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/chat/open') return { body: info };
     if (p === '/api/chat/attach') return { body: compInfo };
     if (p === '/api/chat/history' && noHistory) return { status: 404, body: { error: 'That chat wasn’t found. It may have been deleted; refresh the list.' } };
+    if (p === '/api/chat/history' && q.get('provider') === 'openclaw') return { body: { items: ocHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history') return { body: { items: q.get('provider') === 'codex' || q.get('id') === 't-bard-codex' ? codexHistory : claudeHistory, start: 0, cursor: null } };
     if (p === '/api/chat/events') {
       const comp = (q.get('key') || '').includes('cx');

@@ -691,6 +691,37 @@ module.exports = [
     },
   },
   {
+    name: 'openclaw',
+    // OpenClaw agents' sessions: listed with the rest, read here, never started or written to.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ openclaw: true, seen: (p, u) => calls.push([p, u]) });
+      const nav = await b.eval(`const h = document.querySelector('.nav-h.openclaw'); return h && h.textContent.replace(/\\s+/g, ' ').trim()`);
+      t.check('the sidebar has an OpenClaw group', nav && /^OpenClaw ?2/.test(nav), nav);
+      await b.eval(`go('folder', ${JSON.stringify('C:\\Projects\\Starfall Tavern')}); return 1`); await sleep(900);
+      const row = await b.eval(`const r = document.querySelector('[data-row="agent:main:discord:channel:42"]'); return r && { tag: r.querySelector('.tag.openclaw')?.textContent, btn: r.querySelector('[data-chat]')?.textContent, sub: r.querySelector('.r-sub')?.textContent }`);
+      t.check('its session sits in the project, tagged with the agent', row && row.tag === 'OpenClaw · Nova' && row.btn === 'Read' && row.sub === 'Stored session', row);
+      const seg = await b.eval(`return [...document.querySelectorAll('[data-wprov]')].map(x => x.textContent.replace(/\\s+/g, ' ').trim())`);
+      t.check('and the project can show just those', seg.includes('OpenClaw 1'), seg);
+      await t.shot(b, 'folder');
+      await b.clickOn('[data-row="agent:main:discord:channel:42"] [data-chat]'); await sleep(1500);
+      const v = await b.eval(`return { open: ChatUI.isOpen(), box: document.getElementById('cCompose').hidden, note: document.getElementById('cWatch').textContent, who: [...document.querySelectorAll('#cFeed .turn .who-n')].map(x => x.textContent), text: document.getElementById('cFeed').textContent, acct: document.getElementById('cAcct').textContent }`);
+      t.check('it opens to read, with no message box', v.open && v.box && /Read-only\. An OpenClaw agent’s session/.test(v.note), v);
+      t.check('showing the conversation, in the agent’s name', v.who.includes('Nova') && /Which quests still need dialogue\?/.test(v.text) && /Cellar Rats/.test(v.text) && /OpenClaw · Nova/.test(v.acct), v);
+      t.check('read from OpenClaw’s store', calls.some(([p, u]) => p === '/api/chat/history' && /provider=openclaw/.test(u)));
+      t.check('and never started as a chat', !calls.some(([p]) => p === '/api/chat/open' || p === '/api/open'));
+      await b.clickOn('#chat [data-c="more"]'); await sleep(300);
+      const menu = await b.eval(`return [...document.querySelectorAll('[role="menuitem"]')].filter(x => x.offsetParent).map(x => x.textContent.trim())`);
+      t.check('its menu offers nothing that would change it', menu.length && !menu.some(x => /Open a copy|terminal command|Rename/.test(x)), menu);
+      await b.key('Escape');
+      await t.shot(b, 'viewer');
+      const p = await t.open({ openclaw: true, width: 412, height: 880, mobile: true });
+      await p.eval(`ChatUI.open({ sessionId: 'agent:scout:cron:nightly' }); return 1`); await sleep(1500);
+      const ph = await p.eval(`return { open: ChatUI.isOpen(), box: document.getElementById('cCompose').hidden, wide: document.scrollingElement.scrollWidth <= innerWidth + 1 }`);
+      t.check('on a phone too', ph.open && ph.box && ph.wide, ph);
+    },
+  },
+  {
     name: 'looks',
     async run(t) {
       const b = await t.open();

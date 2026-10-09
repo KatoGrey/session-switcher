@@ -17,6 +17,7 @@ const chatLib = require('./lib/chat');
 const usageLib = require('./lib/usage');
 const filesLib = require('./lib/files');
 const codexLib = require('./lib/codex');
+const openclawLib = require('./lib/openclaw');
 const codexHomes = require('./lib/codexhomes');
 const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
@@ -72,6 +73,8 @@ function save() {
 const sessions = createSessionStore({ root: path.join(config().mainConfigDir, 'projects'), dataDir: DATA_DIR, log });
 const projectInfo = projectsLib.createProjects({ dataDir: DATA_DIR, log });
 const chatPrefs = prefsLib.createChatPrefs({ dataDir: DATA_DIR, log });
+const openclaw = openclawLib.createOpenClaw({ log, run: sys.runCapture, found: async () => (await sys.whereIs('openclaw')).length > 0 });
+openclaw.onSessionsChanged(() => { forgetMerged(); broadcast('sessions'); });
 
 // ---------- live updates ----------
 
@@ -189,8 +192,10 @@ function codexSessions(maxAgeMs = 20000) {
   }).catch(() => {});
   return codex.cached(sessions.lastOpened);
 }
+// OpenClaw agents' sessions (read-only); refreshes in the background and tells the page when they change.
+const openclawSessions = (maxAgeMs = 25000) => openclaw.sessions(maxAgeMs);
 const normCwd = p => { const x = String(p || '').replace(/[\\/]+$/, ''); return process.platform === 'win32' ? x.toLowerCase() : x; };
-// Claude Code's folders plus Codex chats, merged by folder, plus folders created or added here
+// Claude Code's folders plus Codex chats and OpenClaw sessions, merged by folder, plus folders created or added here
 // that don't have any chats yet.
 // Reused for a second: banner, picture and media requests each look a project up in it.
 let mergedMemo = null;
@@ -206,11 +211,12 @@ function sessionsWithCodex() {
 function mergeSessions() {
   const base = sessions.scan();
   const cx = codexSessions();
+  const oc = openclawSessions();
   const extra = projectInfo.added();
-  if (!cx.length && !extra.length) return base;
+  if (!cx.length && !oc.length && !extra.length) return base;
   const projects = base.projects.map(p => ({ ...p, sessions: p.sessions.slice() }));
   const byCwd = new Map(projects.map(p => [normCwd(p.cwd), p]));
-  for (const t of cx) {
+  for (const t of [...cx, ...oc]) {
     if (!t.cwd) continue;
     let p = byCwd.get(normCwd(t.cwd));
     if (!p) {
@@ -654,6 +660,7 @@ function startWatching() {
   setInterval(() => { if (clients.size) pollAccounts(); }, 90000);
   setInterval(() => { if (clients.size) { refreshAllUsage(4 * 60 * 1000); if (config().codex.enabled) refreshAllCodexUsage(); } }, 5 * 60 * 1000);
   setInterval(() => { if (clients.size && config().codex.enabled) codexSessions(15000); }, 20000);
+  setInterval(() => { if (clients.size) openclawSessions(15000); }, 30000);
   setInterval(() => { if (clients.size && chats.summaries().some(s => s.state !== 'ended')) scheduleActivity(); }, 5000); // keeps elapsed times honest
 }
 
@@ -725,6 +732,8 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/chat/history') {
     const id = url.searchParams.get('id'), q = url.searchParams;
     const running = chats.bySession(id);
+    // An OpenClaw agent's session: read from its own store.
+    if (q.get('provider') === 'openclaw') return send(res, 200, openclaw.history(id));
     // Codex: by its id, or because the page says so (a brand-new thread isn't in Codex's list yet).
     if (isCodexId(id) || q.get('provider') === 'codex' || (running && running.provider === 'codex')) return send(res, 200, await codex.history(id, q.get('cursor'), q.get('until') || null));
     let file;

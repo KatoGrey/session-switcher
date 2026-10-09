@@ -47,16 +47,17 @@ function renderNav() {
   const total = S.projects.reduce((n, p) => n + p.sessions.length, 0);
   // Folders, split by which assistant the chats belong to. Pinned folders come first in each.
   // In the order they first appeared this session (most recent first, then), not reshuffled as chats work.
-  const group = prov => keepOrder(`nav-${prov}`, S.projects.map(p => ({ p, list: p.sessions.filter(x => (prov === 'codex') === isCodex(x)) })).filter(x => x.list.length), x => [x.p.cwd.toLowerCase()]);
+  const group = prov => keepOrder(`nav-${prov}`, S.projects.map(p => ({ p, list: p.sessions.filter(x => provOf(x) === prov) })).filter(x => x.list.length), x => [x.p.cwd.toLowerCase()]);
   const item = (x, prov) => {
     const live = x.list.some(c => isRunning(c.id) || liveOf(c.id));
-    const firstProv = S.projects.find(q => q.cwd === x.p.cwd)?.sessions.some(c => !isCodex(c)) ? 'claude' : 'codex';
+    const here = S.projects.find(q => q.cwd === x.p.cwd)?.sessions || [];
+    const firstProv = ['claude', 'codex', 'openclaw'].find(v => here.some(c => provOf(c) === v)) || 'claude';
     const cur = S.view === 'folder' && S.folder === x.p.cwd && (S.prov ? S.prov === prov : !S.pins.has(x.p.cwd) && prov === firstProv);
     return `<button class="nav-i ${prov}" data-view="folder" data-cwd="${esc(x.p.cwd)}" data-prov="${prov}" aria-current="${cur}">
       <span class="glyph" aria-hidden="true">${glyphFor(x.p.name)}</span><span class="ni-t">${esc(x.p.name)}</span>
       ${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}<span class="count">${x.list.length}</span></button>`;
   };
-  const claude = group('claude'), codexF = group('codex');
+  const claude = group('claude'), codexF = group('codex'), ocF = group('openclaw');
   // Pinned: projects and favorite chats, at the top.
   const pinnedP = [...S.pins].map(cwd => S.projects.find(p => p.cwd === cwd)).filter(Boolean);
   const pinnedC = [...S.favs].map(id => sessionById(id)).filter(([s2]) => s2);
@@ -64,8 +65,8 @@ function renderNav() {
   const fold = (id, label, count, cls = '') => `<button class="nav-h prov ${cls} fold" data-fold="${id}" aria-expanded="${!S.navFold.has(id)}"><span class="pmark" aria-hidden="true"></span>${label}<span class="count">${count}</span><span class="fold-c" aria-hidden="true">▾</span></button>`;
   const pinnedHtml = pinnedP.length || pinnedC.length ? `${fold('pinned', 'Pinned', pinnedP.length + pinnedC.length, 'pinned')}
     ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd && !S.prov}"><span class="glyph" aria-hidden="true">★</span><span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
-      + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${isCodex(c) ? 'codex' : ''}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
-  const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0);
+      + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${provOf(c) === 'claude' ? '' : provOf(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : isOpenClaw(c) ? ' · OpenClaw' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
+  const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0), nOc = ocF.reduce((n, x) => n + x.list.length, 0);
   const showCodex = S.codex && S.codex.enabled;
   const fresh = S.projects.filter(p => !p.sessions.length);
   const blocked = a && (a.pinnedOrg || a.expectEmail) && !a.lock.ok;
@@ -86,6 +87,8 @@ function renderNav() {
     ${S.navFold.has('claude') ? '' : claude.length ? claude.map(x => item(x, 'claude')).join('') : '<p class="nav-empty">No Claude Code chats yet.</p>'}
     ${showCodex ? `${fold('codex', 'Codex', nCodex, 'codex')}
     ${S.navFold.has('codex') ? '' : codexF.length ? codexF.map(x => item(x, 'codex')).join('') : `<p class="nav-empty">${codexReady() ? 'No Codex chats yet. Start one with “New Codex chat” on the Codex card.' : 'Sign in on the Codex card to use Codex here.'}</p>`}` : ''}
+    ${ocF.length ? `${fold('openclaw', 'OpenClaw', nOc, 'openclaw')}
+    ${S.navFold.has('openclaw') ? '' : ocF.map(x => item(x, 'openclaw')).join('')}` : ''}
     <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p>`;
   // Only when something would look different (it's asked for several times a second while chats work).
   if ($('nav')._h === html) return;
@@ -132,7 +135,7 @@ function heroHtml() {
     else if (a.signedIn) say += 'Checking its usage…';
   }
   const first = A[0];
-  const latest = allSessions().sort((x, y) => y[0].updated - x[0].updated)[0];
+  const latest = allSessions().filter(([x]) => !isOpenClaw(x)).sort((x, y) => y[0].updated - x[0].updated)[0];
   const better = headroomPick();
   const acts = [];
   if (first) acts.push(`<button class="btn gilt" data-hero="first">${NEEDS.has(statusOf(first)) ? 'Answer the first one' : 'Read the latest reply'}</button>`);
@@ -444,15 +447,16 @@ function codexMenu(anchor) {
 }
 
 function rowHtml(s, folderName, hit) {
-  const a = current(); const cx = isCodex(s);
-  const ok = cx ? codexReady() : canLaunch(a);
+  const a = current(); const cx = isCodex(s), oc = isOpenClaw(s);
+  const ok = oc || (cx ? codexReady() : canLaunch(a));
   const why = cx ? (S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first') : !a.signedIn ? `Sign in to ${a.name} first` : !a.lock.ok ? (a.lockMessage || 'Not on its locked account') : '';
-  const sub = s.lastPrompt ? `You last asked: ${s.lastPrompt}` : (s.title !== s.firstPrompt ? `Started with: ${s.firstPrompt}` : '');
+  const sub = oc ? s.preview || '' : s.lastPrompt ? `You last asked: ${s.lastPrompt}` : (s.title !== s.firstPrompt ? `Started with: ${s.firstPrompt}` : '');
   const live = liveOf(s.id);
   const run = !live && isRunning(s.id);
-  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
+  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (oc ? `<span class="tag openclaw" title="An OpenClaw agent’s session, read-only here">OpenClaw · ${esc(s.agentName || 'Agent')}</span>` : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
     : run ? '<span class="tag violet">In a terminal</span>' : (s.active ? '<span class="tag ghost">Just updated</span>' : ''));
-  const primary = live ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Go back to this chat">Return</button>`
+  const primary = oc ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Read this session here (read-only)">Read</button>`
+    : live ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Go back to this chat">Return</button>`
     : run ? `<button class="btn sm" data-watch="${esc(s.id)}" title="Read it live here while it runs in its terminal">Watch</button>`
     : inApp() ? `<button class="btn sm" data-chat="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Open</button>`
     : `<button class="btn sm" data-open="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Resume</button>`;
@@ -593,8 +597,8 @@ function worldArt(p, w, cls = '', lazy = true) {
 }
 function worldCard(p, i) {
   const w = S.worlds[p.cwd];
-  const nClaude = p.sessions.filter(x => !isCodex(x)).length, nCodex = p.sessions.length - nClaude;
-  const latest = p.sessions[0];
+  const nClaude = p.sessions.filter(x => provOf(x) === 'claude').length, nCodex = p.sessions.filter(isCodex).length, nOc = p.sessions.filter(isOpenClaw).length;
+  const latest = p.sessions[0], resumable = p.sessions.find(x => !isOpenClaw(x));
   const today = midnight();
   const chatsToday = p.sessions.filter(x => x.updated >= today).length;
   const live = p.sessions.some(x => isRunning(x.id) || liveOf(x.id));
@@ -606,9 +610,9 @@ function worldCard(p, i) {
       <p class="w-today ${bits.length ? 'on' : ''}">${bits.length ? `<span class="glyph" aria-hidden="true">✦</span>Today: ${esc(bits.join(', '))}` : p.sessions.length ? 'Quiet today' : 'New project'}</p>
       ${latest ? `<p class="w-last"><button class="linkish" data-preview="${esc(latest.id)}" title="${esc(latest.title)}">${esc(latest.title)}</button><span>${esc(agoL(latest.updated))}</span></p>` : `<p class="w-last quiet">No chats yet${p.added && p.updated ? `. Added ${esc(agoL(p.updated))}` : ''}.</p>`}
       <div class="w-act">
-        ${latest && p.exists ? `<button class="btn sm" data-continue="${esc(latest.id)}">Continue</button>` : ''}
+        ${resumable && p.exists ? `<button class="btn sm" data-continue="${esc(resumable.id)}" title="${esc(resumable.title)}">Continue</button>` : ''}
         <button class="btn quiet sm" data-act="world-new" data-cwd="${esc(p.cwd)}" aria-haspopup="menu" aria-expanded="false" ${p.exists ? '' : 'disabled'}>New chat</button>
-        ${p.sessions.length ? `<span class="w-counts" title="${nClaude} Claude Code chats${nCodex ? `, ${nCodex} Codex chats` : ''}">${nClaude ? `<span class="pc claude">${nClaude}</span>` : ''}${nCodex ? `<span class="pc codex">${nCodex}</span>` : ''}</span>` : ''}
+        ${p.sessions.length ? `<span class="w-counts" title="${nClaude} Claude Code chats${nCodex ? `, ${nCodex} Codex chats` : ''}${nOc ? `, ${nOc} OpenClaw sessions` : ''}">${nClaude ? `<span class="pc claude">${nClaude}</span>` : ''}${nCodex ? `<span class="pc codex">${nCodex}</span>` : ''}${nOc ? `<span class="pc openclaw">${nOc}</span>` : ''}</span>` : ''}
       </div>
     </div>
   </article>`;

@@ -120,6 +120,7 @@ function reset() {
   $c('cText').value = ''; C.attachments = []; C.files = []; C.converting = 0; renderAttachments(); grow();
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
+  $c('chat').classList.remove('openclaw');
   Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.undoNotes = { main: [], comp: [] };
   Review.loop = null;
@@ -188,6 +189,8 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
 async function open({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '' } = {}) {
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
   const [known] = sessionId ? findSession(sessionId) : [null];
+  // An OpenClaw agent's session is read here; it carries on in OpenClaw.
+  if (known && known.provider === 'openclaw') return watch({ sessionId: known.id, source: 'openclaw' });
   const prov = provider || (known && known.provider) || 'claude';
   // A new Claude chat about to open as an account that's out of usage: offer the one with room.
   if (mode === 'new' && prov === 'claude' && !accountId && a) {
@@ -226,16 +229,20 @@ async function watch({ sessionId, source = 'terminal' }) {
   reset();
   C.watch = { sessionId, source }; C.sessionId = sessionId;
   const [s, p] = findSession(sessionId);
-  C.provider = s && s.provider === 'codex' ? 'codex' : 'claude';
+  C.provider = s && (s.provider === 'codex' || s.provider === 'openclaw') ? s.provider : 'claude';
+  const oc = C.provider === 'openclaw';
+  if (oc) PROV_NAME.openclaw = s.agentName || 'OpenClaw';
+  $c('chat').classList.toggle('openclaw', oc);
   C.title = s ? s.title : 'Chat'; C.folder = p ? p.name : '';
   C.info = { cwd: p ? p.cwd : null, accountId: s && s.lastOpened ? s.lastOpened.account : null, accountName: s && s.lastOpened ? s.lastOpened.accountName : '' };
   $c('cTitle').textContent = C.title; $c('cFolder').textContent = C.folder;
-  headerAccount(C.info.accountId, C.info.accountId ? C.info.accountName : (source === 'terminal' ? 'In a terminal' : 'In another app'));
+  headerAccount(C.info.accountId, C.info.accountId ? C.info.accountName : (oc ? `OpenClaw · ${PROV_NAME.openclaw}` : source === 'terminal' ? 'In a terminal' : 'In another app'));
   setState(source === 'terminal' ? 'watching' : 'readonly');
   $c('cMode').hidden = true;
   $c('cCompose').hidden = true;
   $c('cWatch').hidden = false;
-  $c('cWatch').innerHTML = source === 'terminal'
+  $c('cWatch').innerHTML = oc ? '<p><b>Read-only.</b> An OpenClaw agent’s session. It carries on in OpenClaw; new messages appear here by themselves.</p>'
+    : source === 'terminal'
     ? '<p><b>Watching live.</b> This chat is running in a terminal, so you can read along here and reply in its terminal window. New messages appear by themselves.</p><button type="button" class="btn" data-c="fork">Open a copy here</button>'
     : '<p><b>Read-only.</b> This chat was last used in another app, like the desktop app. Continue it here if it’s closed there.</p><button type="button" class="btn prime" data-c="takeover">Continue it here</button><button type="button" class="btn quiet" data-c="fork">Open a copy</button>';
   show();
@@ -256,7 +263,7 @@ async function refreshWatch() {
   const id = C.watch.sessionId, gen = C.gen;
   watchBusy = true;
   try {
-    const h = await api(`/api/chat/history?${new URLSearchParams({ id })}`);
+    const h = await api(`/api/chat/history?${new URLSearchParams({ id, provider: C.provider })}`);
     if (gen !== C.gen || !C.watch || C.watch.sessionId !== id || sigOf(h) === C.watchSig) return;
     // Reading further up? Don't move the page; count it, and catch up when you come back down.
     if (!nearBottom()) { C.watchPending = true; if (!unseen) { unseen = 1; syncJump(); } return; }
@@ -354,7 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return open({ sessionId: id, mode: 'resume', accountId: provider === 'codex' ? null : accountId, provider }); }
       case 'fork': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'fork' }); }
       case 'takeover': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'resume' }); }
-      case 'more': return showMenu(c, C.watch ? [
+      case 'more': return showMenu(c, C.watch && C.provider === 'openclaw' ? chatHeadItems() : C.watch ? [
         { glyph: '⧉', label: 'Open a copy here', hint: 'keeps the original', run: () => open({ sessionId: C.watch.sessionId, mode: 'fork' }) },
         '-',
         ...chatHeadItems(),

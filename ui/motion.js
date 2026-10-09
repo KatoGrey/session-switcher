@@ -38,13 +38,14 @@ function renderLive(force) {
 
 function renderRecent() {
   const every = allSessions().sort((x, y) => y[0].updated - x[0].updated);
-  const hasCodex = every.some(([x]) => isCodex(x));
-  const f = hasCodex ? (S.recentProv || 'all') : 'all';
-  const all = f === 'all' ? every : every.filter(([x]) => (f === 'codex') === isCodex(x));
+  const n = { claude: 0, codex: 0, openclaw: 0 }; for (const [x] of every) n[provOf(x)]++;
+  const kinds = Object.keys(n).filter(k => n[k]);
+  const f = kinds.length > 1 && kinds.includes(S.recentProv) ? S.recentProv : 'all';
+  const all = f === 'all' ? every : every.filter(([x]) => provOf(x) === f);
   const tab = (v, label, n) => `<button class="${f === v ? 'on' : ''}" data-recent="${v}" aria-pressed="${f === v}">${label} <span class="count">${n}</span></button>`;
   $('page').innerHTML = `<div id="guardSlot">${guardHtml()}</div>
-    <header class="f-head"><div><p class="eyebrow">✧ Every folder</p><h1>Recent chats</h1><p class="f-meta">Your latest chats${f === 'codex' ? ' in Codex' : f === 'claude' ? ` in Claude Code, ready to open as ${esc(current().name)}` : ''}.</p></div>
-      ${hasCodex ? `<div class="seg provseg" role="group" aria-label="Show">${tab('all', 'All', every.length)}${tab('claude', 'Claude Code', every.filter(([x]) => !isCodex(x)).length)}${tab('codex', 'Codex', every.filter(([x]) => isCodex(x)).length)}</div>` : ''}</header>
+    <header class="f-head"><div><p class="eyebrow">✧ Every folder</p><h1>Recent chats</h1><p class="f-meta">Your latest chats${f === 'codex' ? ' in Codex' : f === 'claude' ? ` in Claude Code, ready to open as ${esc(current().name)}` : f === 'openclaw' ? ' from OpenClaw agents, to read here' : ''}.</p></div>
+      ${kinds.length > 1 ? `<div class="seg provseg" role="group" aria-label="Show">${tab('all', 'All', every.length)}${kinds.map(k => tab(k, PROV_TITLE[k], n[k])).join('')}</div>` : ''}</header>
     ${all.length ? `<ul class="rows sec-gap">${all.slice(0, 60).map(([x, p]) => rowHtml(x, p.name)).join('')}</ul>` : '<p class="empty-line">Nothing here yet.</p>'}`;
 }
 // A project: its banner, then its chats, documents and pictures.
@@ -55,13 +56,15 @@ function renderFolder() {
   if (p.exists && worldStale(p.cwd)) loadWorld(p.cwd).then(() => { if (S.view === 'folder' && S.folder === p.cwd) renderFolder(); }).catch(() => {});
   const pinned = S.pins.has(p.cwd);
   const prov = S.prov;
-  const list = prov ? p.sessions.filter(x => (prov === 'codex') === isCodex(x)) : p.sessions;
-  const other = prov ? p.sessions.length - list.length : 0;
-  const otherName = prov === 'codex' ? 'Claude Code' : 'Codex';
+  const list = prov ? p.sessions.filter(x => provOf(x) === prov) : p.sessions;
+  // Looking at one kind of chat: a link to the others here (Claude Code's first).
+  const otherProv = prov ? ['claude', 'codex', 'openclaw'].find(v => v !== prov && p.sessions.some(x => provOf(x) === v)) : null;
+  const other = otherProv ? p.sessions.filter(x => provOf(x) === otherProv).length : 0;
+  const otherName = otherProv ? PROV_TITLE[otherProv] : '', otherWord = otherProv === 'openclaw' ? 'session' : 'chat';
   const today = midnight();
   const bits = [plural(p.sessions.filter(x => x.updated >= today).length, 'chat'), w && w.today.docs ? plural(w.today.docs, 'document') : '', w && w.today.images ? plural(w.today.images, 'image') : ''];
   const todayLine = bits.slice(1).some(Boolean) || p.sessions.some(x => x.updated >= today) ? ` Today: ${bits.filter(Boolean).join(', ')}.` : '';
-  const meta = [plural(list.length, prov === 'codex' ? 'Codex chat' : prov === 'claude' ? 'Claude Code chat' : 'chat'), p.notes && prov !== 'codex' ? plural(p.notes, 'saved note') : null, `last used ${agoL(list.length ? list[0].updated : p.updated)}`].filter(Boolean).join(', ');
+  const meta = [plural(list.length, prov === 'codex' ? 'Codex chat' : prov === 'claude' ? 'Claude Code chat' : prov === 'openclaw' ? 'OpenClaw session' : 'chat'), p.notes && prov !== 'codex' ? plural(p.notes, 'saved note') : null, `last used ${agoL(list.length ? list[0].updated : p.updated)}`].filter(Boolean).join(', ');
   const hasArt = !!(w && w.banner);
   const art = coverPrompt();
   const hint = p.exists && w && !hasArt
@@ -69,9 +72,9 @@ function renderFolder() {
       : art && codexReady() ? `<button class="wp-hint" data-prompt="${esc(art.id)}">Make a cover image with Codex</button>` : '')
     : '';
   const heroH = `<div class="wp-art" style="view-transition-name:world-banner">${worldArt(p, w, '', false)}</div><span class="wp-shade" aria-hidden="true"></span>
-    <div class="wp-in"><p class="eyebrow ${prov || ''}">${prov === 'codex' ? 'Codex chats in this project' : prov === 'claude' ? 'Claude Code chats in this project' : 'Project'}</p><h1>${esc(p.name)}</h1></div>${hint}`;
+    <div class="wp-in"><p class="eyebrow ${prov || ''}">${prov === 'codex' ? 'Codex chats in this project' : prov === 'claude' ? 'Claude Code chats in this project' : prov === 'openclaw' ? 'OpenClaw sessions in this project' : 'Project'}</p><h1>${esc(p.name)}</h1></div>${hint}`;
   const subH = `<div class="wp-where"><p class="f-path">${esc(p.cwd)}${p.exists ? '' : ' (this folder no longer exists)'}</p>
-      <p class="f-meta">${esc(meta[0].toUpperCase() + meta.slice(1))}.${esc(todayLine)}${other ? ` <button class="linkish" data-view="folder" data-cwd="${esc(p.cwd)}" data-prov="${prov === 'codex' ? 'claude' : 'codex'}">${other === 1 ? `1 ${otherName} chat` : `${other} ${otherName} chats`} here too</button>` : ''}</p></div>
+      <p class="f-meta">${esc(meta[0].toUpperCase() + meta.slice(1))}.${esc(todayLine)}${other ? ` <button class="linkish" data-view="folder" data-cwd="${esc(p.cwd)}" data-prov="${otherProv}">${other === 1 ? `1 ${otherName} ${otherWord}` : `${other} ${otherName} ${otherWord}s`} here too</button>` : ''}</p></div>
     <div class="wp-tools"><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin' : 'Pin to top'}</button></div>`;
   const off = !canLaunch(a) || !p.exists;
   const cxOff = !codexReady() || !p.exists;
@@ -106,9 +109,10 @@ function renderWorldBody() {
   const set = h => { if (fresh || box._h !== h) { box.innerHTML = h; box._h = h; } };
   if (S.worldTab === 'chats') {
     const prov = S.prov;
-    const nCodex = p.sessions.filter(isCodex).length, nClaude = p.sessions.length - nCodex;
-    const list = prov ? p.sessions.filter(x => (prov === 'codex') === isCodex(x)) : p.sessions;
-    const seg = nCodex && nClaude ? `<div class="seg provseg" role="group" aria-label="Show">${[['all', 'All', p.sessions.length], ['claude', 'Claude Code', nClaude], ['codex', 'Codex', nCodex]].map(([v, l, n]) => `<button class="${(prov || 'all') === v ? 'on' : ''}" data-wprov="${v}" aria-pressed="${(prov || 'all') === v}">${l} <span class="count">${n}</span></button>`).join('')}</div>` : '';
+    const n = { claude: 0, codex: 0, openclaw: 0 }; for (const x of p.sessions) n[provOf(x)]++;
+    const kinds = Object.keys(n).filter(k => n[k]);
+    const list = prov ? p.sessions.filter(x => provOf(x) === prov) : p.sessions;
+    const seg = kinds.length > 1 ? `<div class="seg provseg" role="group" aria-label="Show">${[['all', 'All', p.sessions.length], ...kinds.map(k => [k, PROV_TITLE[k], n[k]])].map(([v, l, n]) => `<button class="${(prov || 'all') === v ? 'on' : ''}" data-wprov="${v}" aria-pressed="${(prov || 'all') === v}">${l} <span class="count">${n}</span></button>`).join('')}</div>` : '';
     if (fresh || !$('wbList')) { box.innerHTML = '<div class="wb-top" id="wbTop"></div><div id="wbList"></div>'; box._h = null; }
     if ($('wbTop')._h !== seg) { $('wbTop').innerHTML = seg; $('wbTop')._h = seg; $('wbTop').hidden = !seg; }
     const lb = $('wbList');

@@ -144,6 +144,10 @@ const ringById = id => { if (codexAcct(id)) return codexRing(id); const a = S.ac
 const acctById = id => (codexAcct(id) ? (x => ({ id: x.id, name: x.name, email: x.email, plan: x.plan, signedIn: x.signedIn, codex: true }))(codexAcct(id)) : S.accounts.find(x => x.id === id) || null);
 const codexReady = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
 const isCodex = s => !!(s && s.provider === 'codex');
+// An OpenClaw agent's session (a Discord channel, a cron run…): listed with the rest, read-only here.
+const isOpenClaw = s => !!(s && s.provider === 'openclaw');
+const provOf = s => (isCodex(s) ? 'codex' : isOpenClaw(s) ? 'openclaw' : 'claude');
+const PROV_TITLE = { claude: 'Claude Code', codex: 'Codex', openclaw: 'OpenClaw' };
 const canLaunch = a => !!a && a.signedIn && a.lock.ok;
 const isRunning = id => !!S.running[String(id).toLowerCase()];
 function highlight(text, q) {

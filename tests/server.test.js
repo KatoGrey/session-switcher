@@ -72,6 +72,20 @@ test('history: a chat that isn’t anywhere is still “not found” (only runni
   } finally { await s.stop(); }
 });
 
+test('openclaw: without OpenClaw the list still loads, and an unknown session reads as empty', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-home-'));
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')), { home });
+  try {
+    const list = await s.call('/api/sessions');
+    assert.equal(list.status, 200);
+    assert.ok(!list.json.projects.some(p => p.sessions.some(x => x.provider === 'openclaw')));
+    const r = await s.call('/api/chat/history?id=agent%3Amain%3Adirect%3Ax&provider=openclaw');
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.items, []);
+    assert.equal(r.json.error, 'unknown-session');
+  } finally { await s.stop(); }
+});
+
 test('rules: saved to CLAUDE.md and AGENTS.md for every project (in a throwaway home)', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-home-'));
   const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')), { home });

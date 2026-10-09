@@ -12,7 +12,7 @@ const C = {
   // Files put back with Undo, for each one's next catch-up.
   undoNotes: { main: [], comp: [] },
 };
-const PROV_NAME = { claude: 'Claude', codex: 'Codex' };
+const PROV_NAME = { claude: 'Claude', codex: 'Codex', openclaw: 'OpenClaw' };
 const codexOK = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
 const duo = () => !C.watch && C.provider === 'claude' && (codexOK() || !!C.comp);
 const provFor = src => (src === 'comp' ? 'codex' : C.provider);
@@ -217,7 +217,7 @@ function renderLedger() {
   let html = '';
   html += sec('This chat', 0, `${a ? `<div class="lg-use">${miniDial(id, 34)}<span class="lu-t"><b>${esc(a.name)}</b><small class="${b && hot(b.left) ? 'hot' : ''}">${esc(usageLine(id) || (a.plan || ''))}</small></span></div>` : ''}
       <dl class="lg-about">
-        ${C.watch ? `<dt>Running</dt><dd>${C.watch.source === 'terminal' ? 'In a terminal' : 'In another app'}</dd>` : ''}
+        ${C.watch ? `<dt>Running</dt><dd>${C.watch.source === 'terminal' ? 'In a terminal' : C.watch.source === 'openclaw' ? 'In OpenClaw' : 'In another app'}</dd>` : ''}
         ${C.model ? `<dt>Model</dt><dd>${esc(C.model)}${C.mi.main && C.mi.main.effort ? ` · ${esc(C.mi.main.effort)} effort` : ''}</dd>` : ''}
         ${C.ctx.main ? `<dt>Context</dt><dd>${esc(ctxLine('main'))}</dd>` : ''}
         ${C.comp && C.mi.comp ? `<dt>Codex helper</dt><dd>${esc(modelLabel(C.mi.comp))}${C.mi.comp.effort ? ` · ${esc(C.mi.comp.effort)}` : ''}</dd>` : ''}

@@ -239,6 +239,15 @@ Codex works with more than one ChatGPT account, and with Ollama:
 - Each account has its own usage dial, in a Codex shade of its own.
 - The Ollama account's settings are a copy of `~/.codex/ollama-launch.config.toml` (what `ollama launch codex` writes), in `~/.codex-ollama/config.toml`. Edit that copy to change its default model, or delete it and Session Switcher makes a fresh copy the next time it starts Codex for Ollama.
 
+## OpenClaw agents (read-only)
+
+If [OpenClaw](https://openclaw.ai) is installed, its agents' sessions (Discord channels, cron runs, subagents, voice rooms and direct chats) are listed with your other chats:
+
+- **Where they show up:** in an **OpenClaw** group in the sidebar, and inside the project that is the agent's workspace (from `~/.openclaw/openclaw.json`). Each one is tagged with its agent's name. Sessions of an agent without a workspace folder are left out.
+- **Reading one:** **Read** opens it in the chat window, read-only: your messages and the agent's replies, with no message box. A session that's running keeps updating by itself. Nothing is ever sent to a session from here, and nothing is changed or deleted.
+- **Where it comes from:** the list from `openclaw sessions --json --all-agents`, refreshed every 30 seconds while the app is open; a transcript from the agent's own session store, opened read-only for each read. Reading transcripts needs Node.js 22.13 or newer (compressed messages need 22.15 or newer).
+- **Without OpenClaw** nothing changes: the list is empty, and the app checks for it again every ten minutes.
+
 ## Claude and Codex in one chat
 
 Inside any Claude chat you can bring in Codex as a helper, for example to make images for a project while Claude does the main work. You don't need a second window.
@@ -499,6 +508,7 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `usage.js`: plan usage per account.
   - `codex.js`: Codex chats, sign-in and usage.
   - `codexhomes.js`: extra Codex accounts and Ollama (their own homes, linked to `~/.codex`).
+  - `openclaw.js`: OpenClaw agents' sessions (the list, and transcripts read from their store).
   - `projects.js`: each project's documents, pictures and banner, new and added projects, and the prompts.
   - `sharecopy.js`: **Make a copy to share**.
   - `chatprefs.js`: remembered modes, models and effort, and each Claude chat's Codex helper.

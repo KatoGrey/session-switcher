@@ -4,6 +4,8 @@
 /* ---------- drawer ---------- */
 let drawerSeq = 0;
 async function openDrawer(id, quiet) {
+  // An OpenClaw session has no details page: it opens to read.
+  if (isOpenClaw(sessionById(id)[0])) { if (!quiet) await ChatUI.open({ sessionId: id }); return; }
   const seq = ++drawerSeq;
   const d = $('drawer');
   S.drawerId = id;
@@ -166,6 +168,7 @@ function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items &
 function chatItems(id) {
   const [s] = sessionById(id); if (!s) return [];
   if (isCodex(s)) return codexChatItems(s);
+  if (isOpenClaw(s)) return [{ glyph: '❝', label: 'Read it here', hint: 'read-only; it carries on in OpenClaw', run: () => ChatUI.open({ sessionId: id }) }];
   const a = current(); const ok = canLaunch(a);
   const why = !a.signedIn ? `Sign in to ${a.name} first` : (a.lockMessage || '');
   const live = liveOf(id), run = isRunning(id);
@@ -250,6 +253,7 @@ async function refreshUsage(id) {
 async function resume(id, mode = 'resume', force = false) {
   const a = current();
   const [s] = sessionById(id);
+  if (isOpenClaw(s)) return ChatUI.open({ sessionId: id });
   if (mode === 'resume' && !force && s && s.active && !isRunning(id) &&
       !(await appConfirm('This chat changed in the last few minutes, so it may still be open somewhere, like the desktop app. Opening it twice can mix up its history.\n\nResume anyway?', { ok: 'Resume anyway' }))) return;
   try {
