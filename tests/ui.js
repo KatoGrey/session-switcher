@@ -870,7 +870,12 @@ module.exports = [
     async run(t) {
       const b = await t.open({ width: 412, height: 880, mobile: true });
       t.check('nothing scrolls sideways', await b.eval(`return document.scrollingElement.scrollWidth <= innerWidth + 1`));
+      // Closed, the menu sits just off the left edge; its shadow mustn't spill onto the page (a grey band in light mode).
+      await b.eval(`Look.set({ mode: 'light' }); return 1`); await sleep(300);
+      t.check('the closed menu casts no shadow onto the page', await b.eval(`return getComputedStyle(document.querySelector('.nav')).boxShadow === 'none'`));
+      await b.eval(`Look.reset(); return 1`);
       await b.eval(`document.getElementById('navToggle').click(); return 1`); await sleep(400);
+      t.check('the open menu does', await b.eval(`return getComputedStyle(document.querySelector('.nav')).boxShadow !== 'none'`));
       const n = await b.eval(`const s = getComputedStyle(document.querySelector('.nav')); return { open: document.body.classList.contains('nav-open'), back: getComputedStyle(navBack).display, solid: /gradient/.test(s.backgroundImage) || !/rgba\\(.*, 0(\\.\\d+)?\\)$/.test(s.backgroundColor) }`);
       t.check('the menu opens over a backdrop, on a solid background', n.open && n.back !== 'none' && n.solid, n);
       await t.shot(b, 'phone-nav');
@@ -879,6 +884,7 @@ module.exports = [
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
       const c = await b.eval(`return { bar: getComputedStyle(document.querySelector('.bar')).display, top: document.querySelector('.chat').getBoundingClientRect().top, wide: document.scrollingElement.scrollWidth <= innerWidth + 1 }`);
       t.check('a chat uses the whole screen', c.bar === 'none' && c.top < 2 && c.wide, c);
+      t.check('the closed chat list casts no shadow either', await b.eval(`return getComputedStyle(document.getElementById('cRail')).boxShadow === 'none'`));
       await t.shot(b, 'phone-chat');
     },
   },
@@ -888,7 +894,8 @@ module.exports = [
     async run(t) {
       const b = await t.open({ demo: false });
       t.check('the hub loads', await b.eval(`return !!document.querySelector('.nav-i') && !!document.getElementById('page').children.length`));
-      await b.eval(`openSetup(); return 1`); await sleep(2500);
+      // The checks run real commands on this machine, after the app's own start-up work: wait for them, not a set time.
+      await b.eval(`openSetup(); const t0 = Date.now(); while (!document.querySelector('.checks li') && Date.now() - t0 < 20000) await new Promise(r => setTimeout(r, 200)); return Date.now() - t0`);
       const st = await b.eval(`const ids = [...document.querySelectorAll('.setup-toc a')].map(a => a.getAttribute('href')); return { ids, missing: ids.filter(h => !document.querySelector(h)), checks: document.querySelectorAll('.checks li').length, quit: document.querySelector('[data-fix="quit"]')?.className || '' }`);
       t.check('Setup runs its checks', st.checks >= 3, st);
       t.check('Setup quick links all lead somewhere', st.ids.length >= 5 && !st.missing.length, st);

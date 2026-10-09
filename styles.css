@@ -1103,12 +1103,13 @@ dialog.np-dlg{width:min(600px,calc(100vw - 32px));padding:0}
   :root{--nav-w:0px}
   .shell{grid-template-columns:minmax(0,1fr)}
   .navtoggle{display:inline-grid}
-  .nav{position:fixed;top:var(--bar-h);left:0;bottom:0;width:282px;height:auto;z-index:26;transform:translateX(-102%);transition:transform .22s cubic-bezier(.2,.7,.2,1);box-shadow:30px 0 60px -20px rgb(var(--c-000000))}
-  body.nav-open .nav{transform:none}
+  /* the shadow only while it's open: closed, it would spill past the screen's left edge (a grey band in light mode) */
+  .nav{position:fixed;top:var(--bar-h);left:0;bottom:0;width:282px;height:auto;z-index:26;transform:translateX(-102%);transition:transform .22s cubic-bezier(.2,.7,.2,1),box-shadow .22s}
+  body.nav-open .nav{transform:none;box-shadow:30px 0 60px -20px rgb(var(--c-000000))}
   .wordmark small{display:none}
   .chat,.chat.no-ledger{grid-template-columns:minmax(0,1fr)}
-  .chat .rail{position:fixed;top:var(--bar-h);left:0;bottom:0;width:280px;z-index:22;transform:translateX(-102%);transition:transform .22s;box-shadow:30px 0 60px -20px rgb(var(--c-000000))}
-  .chat.show-rail .rail{transform:none}
+  .chat .rail{position:fixed;top:var(--bar-h);left:0;bottom:0;width:280px;z-index:22;transform:translateX(-102%);transition:transform .22s,box-shadow .22s}
+  .chat.show-rail .rail{transform:none;box-shadow:30px 0 60px -20px rgb(var(--c-000000))}
   .c-head .icon.c-backm{display:inline-grid}
   .toc{grid-template-columns:1fr}
   .toc-col + .toc-col{border-left:0;padding-left:0;margin-left:0}
