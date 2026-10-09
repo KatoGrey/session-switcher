@@ -282,6 +282,29 @@ function sparkSvg(spark) {
   return `<svg class="spark" width="${spark.length * 4}" height="22" viewBox="0 0 ${spark.length * 4} 22" aria-hidden="true">${spark.map((v, i) => { const h = v ? Math.max(2, Math.round(20 * Math.min(1, v / max))) : 1; return `<rect x="${i * 4}" y="${22 - h}" width="2.6" height="${h}" rx="1"/>`; }).join('')}</svg>`;
 }
 const keyOf = x => x.key || `s:${x.sessionId}`;
+// Lists that keep their order: each row gets its place the first time it shows up and keeps it, so
+// a list doesn't reshuffle every time a chat in it does something (and you can click what you aimed
+// at). New rows join at the end; a row that disappears keeps its place for two minutes, in case it's
+// back (a chat restarting, say). idsOf gives a row's names (a running chat: its key and its session).
+const PLACES = new Map();
+function keepOrder(name, list, idsOf) {
+  let places = PLACES.get(name);
+  if (!places) PLACES.set(name, places = new Map());
+  const now = Date.now(), seen = new Set();
+  let next = 0;
+  for (const p of places.values()) next = Math.max(next, p.n);
+  const placeOf = x => {
+    const ids = idsOf(x).filter(Boolean);
+    const p = ids.map(id => places.get(id)).find(Boolean) || { n: ++next, gone: 0 };
+    p.gone = 0;
+    for (const id of ids) { places.set(id, p); seen.add(id); }
+    return p.n;
+  };
+  const out = list.map(x => [placeOf(x), x]).sort((a, b) => a[0] - b[0]).map(([, x]) => x);
+  for (const [id, p] of places) if (!seen.has(id)) { if (!p.gone) p.gone = now; else if (now - p.gone > 120000) places.delete(id); }
+  return out;
+}
+const activityIds = x => [x.key, x.sessionId && `s:${String(x.sessionId).toLowerCase()}`];
 const findActivity = k => S.activity.find(x => keyOf(x) === k) || null;
 function openActivity(x) {
   if (!x) return;
@@ -302,7 +325,7 @@ async function loadSessions() {
   S.projects = j.projects; S.root = j.root; S.running = j.running || {}; S.live = j.live || {};
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
-async function loadActivity() { const j = await api('/api/activity'); S.activity = j.list || []; }
+async function loadActivity() { const j = await api('/api/activity'); S.activity = keepOrder('running', j.list || [], activityIds); }
 async function loadUsage() { const j = await api('/api/usage'); S.usage = j.usage || {}; }
 async function reload() {
   await loadState();

@@ -445,10 +445,17 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/state') return send(res, 200, stateFor());
   if (route === 'GET /api/sessions') return send(res, 200, { ...sessionsWithCodex(), running, live: chats.live() });
   if (route === 'GET /api/chat/history') {
-    // A Codex helper's thread may be too new for the Codex chat list, so the page can say it's Codex.
-    if (isCodexId(url.searchParams.get('id')) || (url.searchParams.get('provider') === 'codex' && chatPrefs.parentOf(url.searchParams.get('id')))) return send(res, 200, await codex.history(url.searchParams.get('id'), url.searchParams.get('cursor'), url.searchParams.get('until') || null));
-    const file = sessions.fileFor(url.searchParams.get('id'));
-    return send(res, 200, await chatLib.readHistory(file, { until: url.searchParams.get('until') || null, cursor: url.searchParams.get('cursor'), limit: 60 }));
+    const id = url.searchParams.get('id'), q = url.searchParams;
+    const running = chats.bySession(id);
+    // Codex: by its id, or because the page says so (a brand-new thread isn't in Codex's list yet).
+    if (isCodexId(id) || q.get('provider') === 'codex' || (running && running.provider === 'codex')) return send(res, 200, await codex.history(id, q.get('cursor'), q.get('until') || null));
+    let file;
+    try { file = sessions.fileFor(id); } catch (err) {
+      // A chat running here that hasn't written any history yet (it's new): nothing earlier to show.
+      if (err.status === 404 && running) return send(res, 200, { items: [], start: 0, cursor: null });
+      throw err;
+    }
+    return send(res, 200, await chatLib.readHistory(file, { until: q.get('until') || null, cursor: q.get('cursor'), limit: 60 }));
   }
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });

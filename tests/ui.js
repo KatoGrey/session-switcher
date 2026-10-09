@@ -318,6 +318,47 @@ module.exports = [
     },
   },
   {
+    name: 'lists',
+    // The lists on the left keep their order while chats work, so you can click what you aimed at.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const rail = () => b.eval(`return [...document.querySelectorAll('#cRailList .ri-n')].map(x => x.textContent.trim().slice(0, 24))`);
+      const push = list => b.eval(`es.dispatchEvent(new MessageEvent('activity', { data: JSON.stringify({ list: ${JSON.stringify(list)} }) })); await new Promise(r => setTimeout(r, 300)); return 1`);
+      const now = await b.eval(`return S.activity.map(x => ({ ...x }))`);
+      const before = await rail();
+      t.check('the running chats are listed', before.length >= 3, before);
+      // The server sends the busiest first, and that changes with every step a chat takes.
+      await push(now.slice().reverse().map((x, i) => ({ ...x, lastEventAt: Date.now() - i * 1000 })));
+      t.check('a reordered update leaves the list where it was', JSON.stringify(await rail()) === JSON.stringify(before), await rail());
+      const fresh = { ...now[0], key: 'k-new', sessionId: 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb', title: 'Fresh chat about maps', parentKey: null };
+      await push([fresh, ...now]);
+      const added = await rail();
+      t.check('a new chat joins at the end', added.length === before.length + 1 && /Fresh chat/.test(added.at(-1)) && JSON.stringify(added.slice(0, -1)) === JSON.stringify(before), added);
+      await push(now.slice(1));
+      await push(now.slice().reverse());
+      t.check('a chat that drops out for a moment comes back to its place', JSON.stringify(await rail()) === JSON.stringify(before), await rail());
+
+      const nav = () => b.eval(`return [...document.querySelectorAll('.nav-i[data-prov="claude"]')].map(x => x.dataset.cwd)`);
+      await b.eval(`ChatUI.close ? ChatUI.close() : null; go('hub'); return 1`).catch(() => {}); await sleep(800);
+      const n0 = await nav();
+      await b.eval(`S.projects = S.projects.slice().reverse(); renderNav(); return 1`); await sleep(200);
+      t.check('the sidebar’s projects don’t swap places either', n0.length >= 3 && JSON.stringify(await nav()) === JSON.stringify(n0), [n0, await nav()]);
+    },
+  },
+  {
+    name: 'new chat',
+    async run(t) {
+      // A chat that's running but hasn't saved any history yet (a new one): no "couldn't load" message.
+      const b = await t.open({ noHistory: true });
+      await b.eval(`window._toasts = []; new MutationObserver(() => _toasts.push(document.getElementById('toast').textContent)).observe(document.getElementById('toast'), { childList: true, characterData: true, subtree: true }); return 1`);
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const toasts = await b.eval(`return _toasts`);
+      t.check('opening it shows no “couldn’t load earlier messages”', !toasts.some(x => /Couldn’t load earlier/.test(x)), toasts);
+      t.check('and the chat opens normally', await b.eval(`return ChatUI.isOpen() && !document.querySelector('.c-skel')`));
+    },
+  },
+  {
     name: 'looks',
     async run(t) {
       const b = await t.open();

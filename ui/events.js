@@ -225,7 +225,7 @@ function connectLive() {
   es.addEventListener('accounts', wrap(async () => { await loadState(); renderNav(); if (S.view === 'hub') renderLive(); else renderPage(); codexLoginProgress(); if (window.ChatUI && ChatUI.refreshCrew) ChatUI.refreshCrew(); }));
   es.addEventListener('running', e => { try { S.running = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); renderNav(); });
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
-  es.addEventListener('activity', e => { try { S.activity = JSON.parse(e.data).list || []; } catch { return; } watchActivity(); renderLive(); renderNav(); });
+  es.addEventListener('activity', e => { try { S.activity = keepOrder('running', JSON.parse(e.data).list || [], activityIds); } catch { return; } watchActivity(); renderLive(); renderNav(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);

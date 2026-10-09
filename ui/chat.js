@@ -46,7 +46,7 @@ function findSession(id) { const want = String(id || '').toLowerCase(); for (con
 async function loadHistory(before) {
   if (!C.sessionId) return null;
   const gen = C.gen;
-  const params = new URLSearchParams({ id: C.sessionId });
+  const params = new URLSearchParams({ id: C.sessionId, provider: C.provider });
   // Up to where the open chat's live replay begins, so nothing shows twice or goes missing.
   const until = C.info && !C.watch ? C.info.bufferFrom || C.info.startedAt : null;
   if (until) params.set('until', until);
@@ -168,7 +168,10 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   if (mode !== 'new' && C.sessionId) {
     // A quiet placeholder while the conversation loads, instead of an empty window.
     $c('cFeed').insertAdjacentHTML('beforeend', '<div class="c-skel" aria-hidden="true"><i class="u"></i><i></i><i class="s"></i><i class="u"></i><i></i></div>');
-    try { await loadHistory(); } catch (err) { toast(`Couldn’t load earlier messages: ${err.message}`); }
+    try { await loadHistory(); } catch (err) {
+      // A chat that's running but hasn't saved any history yet (a new one) simply has nothing earlier.
+      if (!(err.status === 404 && C.key && C.state !== 'ended')) toast(`Couldn’t load earlier messages: ${err.message}`);
+    }
     if (gen !== C.gen) return;
     $c('cFeed').querySelector('.c-skel')?.remove();
   }

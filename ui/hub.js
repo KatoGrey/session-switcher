@@ -46,7 +46,8 @@ function renderNav() {
   const A = awaiting().length, W = atWork().length;
   const total = S.projects.reduce((n, p) => n + p.sessions.length, 0);
   // Folders, split by which assistant the chats belong to. Pinned folders come first in each.
-  const group = prov => S.projects.map(p => ({ p, list: p.sessions.filter(x => (prov === 'codex') === isCodex(x)) })).filter(x => x.list.length);
+  // In the order they first appeared this session (most recent first, then), not reshuffled as chats work.
+  const group = prov => keepOrder(`nav-${prov}`, S.projects.map(p => ({ p, list: p.sessions.filter(x => (prov === 'codex') === isCodex(x)) })).filter(x => x.list.length), x => [x.p.cwd.toLowerCase()]);
   const item = (x, prov) => {
     const live = x.list.some(c => isRunning(c.id) || liveOf(c.id));
     const firstProv = S.projects.find(q => q.cwd === x.p.cwd)?.sessions.some(c => !isCodex(c)) ? 'claude' : 'codex';
