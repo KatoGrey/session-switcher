@@ -475,14 +475,20 @@ body.no-petals .petals{display:none}
 .chat.no-ledger .ledger{display:none}
 body.chat-open{overflow:hidden}
 
-/* rail of running chats */
+/* rail of open chats: pinned ones, then what's active now */
 .rail{border-right:1px solid var(--seam);background:linear-gradient(180deg,rgb(var(--c-121015)),rgb(var(--c-0d0b0f)));display:flex;flex-direction:column;min-height:0}
 .rail-top{padding:12px 12px 6px;display:flex;flex-direction:column;gap:8px}
 .rail-back{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;border:1px solid var(--seam);background:none;color:var(--parch-2);font:400 15px var(--f-body);text-align:left}
 .rail-back:hover{border-color:var(--seam-2);color:var(--parch);background:var(--vellum)}
 .rail-back .glyph{color:var(--crimson)}
 .rail .nav-h{margin:14px 14px 8px}
-.rail-list{list-style:none;margin:0;padding:0 8px 16px;overflow-y:auto;flex:1}
+.rail-scroll{flex:1;min-height:0;overflow-y:auto;padding-bottom:16px}
+.rail-list{list-style:none;margin:0;padding:0 8px}
+.ri.closed .ri-n{color:var(--ash)}
+.ri.closed:hover .ri-n{color:var(--parch-2)}
+.rail-list li.dragging{position:relative;z-index:2}
+.rail-list li.dragging .ri{background:var(--vellum);border-color:var(--seam-2);box-shadow:0 10px 24px -10px rgb(var(--c-000000));cursor:grabbing}
+body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing}
 .ri{display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:10px 10px 10px 11px;margin-bottom:4px;border-radius:6px;border:1px solid transparent;background:none;color:var(--parch-2);position:relative}
 .ri:hover{background:var(--vellum);border-color:var(--seam)}
 .ri[aria-current="true"]{background:linear-gradient(90deg,rgb(var(--c-8c3a34) / .25),rgb(var(--c-8c3a34) / .05));border-color:rgb(var(--c-a5463f) / .35);color:var(--parch)}

@@ -55,7 +55,7 @@ function palItems(q) {
   ] : [];
   if (!q) {
     add('This chat', chatActs);
-    add('Running now', run);
+    add('Active now', run);
     if (here) add(`Start ${here.name} with a prompt`, prompts.slice(0, S.prompts.length));
     add('Recent chats', chats.slice(0, 6));
     add('Projects', folders.slice(0, 6));
@@ -63,7 +63,7 @@ function palItems(q) {
     return out;
   }
   const rank = list => list.map(x => ({ x, s: score(x.text, q) })).filter(r => r.s >= 0).sort((a, b) => b.s - a.s).map(r => r.x);
-  add('Running now', rank(run).slice(0, 5));
+  add('Active now', rank(run).slice(0, 5));
   add('Chats', rank(chats).slice(0, 8));
   add('Projects', rank(folders).slice(0, 5));
   add('Documents', rank(docs).slice(0, 5));

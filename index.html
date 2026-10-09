@@ -58,15 +58,19 @@
 <div id="menu" class="menu" role="menu" hidden></div>
 
 <section id="chat" class="chat" hidden aria-labelledby="cTitle">
-  <aside class="rail" id="cRail" aria-label="Running chats">
+  <aside class="rail" id="cRail" aria-label="Open chats">
     <div class="rail-top"><button type="button" class="rail-back" data-c="back"><span class="glyph" aria-hidden="true">✦</span>All chats</button></div>
-    <div class="nav-h">Running now <span class="count" id="cRailCount"></span></div>
-    <ul class="rail-list" id="cRailList"></ul>
-    <div class="rail-keys">Alt+↑ and Alt+↓ switch chats<br>Ctrl+K jumps anywhere</div>
+    <div class="rail-scroll">
+      <div class="nav-h" id="cPinH" hidden>Pinned <span class="count" id="cPinCount"></span></div>
+      <ul class="rail-list" id="cPinList"></ul>
+      <div class="nav-h" id="cActH">Active now <span class="count" id="cRailCount"></span></div>
+      <ul class="rail-list" id="cRailList"></ul>
+    </div>
+    <div class="rail-keys">Alt+↑ and Alt+↓ switch chats<br>Drag to reorder them<br>Right-click to pin or close<br>Ctrl+K jumps anywhere</div>
   </aside>
   <div class="c-main">
     <header class="c-head">
-      <button type="button" class="icon c-backm" data-c="rail" aria-label="Show running chats"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+      <button type="button" class="icon c-backm" data-c="rail" aria-label="Show open chats"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       <div class="c-titles"><p class="eyebrow c-folder" id="cFolder"></p><h1 class="c-title" id="cTitle"></h1></div>
       <div class="c-meta">
         <span class="c-acct" id="cAcct"></span>

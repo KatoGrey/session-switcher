@@ -347,6 +347,85 @@ module.exports = [
     },
   },
   {
+    name: 'rail',
+    // The chat window's list on the left: what's open now, chats pinned there, drag to reorder, right-click to close.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, url, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const names = list => b.eval(`return [...document.querySelectorAll('#${list} .ri-n')].map(x => x.textContent.trim().slice(0, 18))`);
+      const push = list => b.eval(`es.dispatchEvent(new MessageEvent('activity', { data: JSON.stringify({ list: ${JSON.stringify(list)} }) })); await new Promise(r => setTimeout(r, 300)); return 1`);
+      const at = (list, i) => b.eval(`const q = document.querySelectorAll('#${list} .ri')[${i}].getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]`);
+      const find = async (list, re) => at(list, (await names(list)).findIndex(n => re.test(n)));
+      const menu = () => b.eval(`return [...document.querySelectorAll('#menu .m-l')].map(x => x.firstChild.textContent.trim())`);
+      const pick = label => b.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => x.querySelector('.m-l')?.firstChild.textContent.trim() === ${JSON.stringify(label)}).click(); await new Promise(r => setTimeout(r, 400)); return 1`);
+      const viewing = () => b.eval(`return ChatUI.isOpen() ? String(ChatUI.sessionId() || '').toLowerCase() : 'closed'`);
+      const now = await b.eval(`return S.activity.map(x => ({ ...x }))`);
+
+      t.check('the list is called Active now', /^Active now/.test(await b.eval(`return document.getElementById('cActH').textContent.trim()`)));
+      const before = await names('cRailList');
+      t.check('every open chat is in it', before.length === 4, before);
+
+      // Drag the last one to the top.
+      const from = await at('cRailList', before.length - 1), to = await at('cRailList', 0);
+      const mouse = (type, x, y, buttons) => b.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons, clickCount: 1 });
+      await mouse('mouseMoved', from[0], from[1], 0); await mouse('mousePressed', from[0], from[1], 1);
+      for (let i = 1; i <= 10; i++) { await mouse('mouseMoved', from[0], from[1] + (to[1] - 14 - from[1]) * i / 10, 1); await sleep(30); }
+      await mouse('mouseReleased', from[0], to[1] - 14, 0); await sleep(400);
+      const dragged = await names('cRailList');
+      t.check('dragging moves a chat', dragged.length === before.length && dragged[0] === before.at(-1), dragged);
+      t.check('and doesn’t open it', (await viewing()) === demo.ID['s-bard'].toLowerCase());
+      await push(now.slice().reverse().map((x, i) => ({ ...x, lastEventAt: Date.now() - i * 1000 })));
+      t.check('the order you chose stays while chats work', JSON.stringify(await names('cRailList')) === JSON.stringify(dragged), await names('cRailList'));
+      t.check('and is remembered', (JSON.parse(await b.eval(`return localStorage.getItem('railOrder')`)) || []).length >= 4);
+      await b.eval(`document.getElementById('cText').blur(); return 1`);
+      await b.key('ArrowUp', 'ArrowUp', 38, 1 | 8); await sleep(200);
+      const moved = await names('cRailList'), was = dragged.findIndex(n => /^Balance pass/.test(n));
+      t.check('Alt+Shift+↑ moves the chat you’re in up one', was > 0 && moved.findIndex(n => /^Balance pass/.test(n)) === was - 1, [dragged, moved]);
+
+      // Right-click: pin one, and it stays even after it stops.
+      let p = await find('cRailList', /^Tavern brawl/);
+      await b.click(p[0], p[1], 'right');
+      const items = await menu();
+      t.check('right-click offers Pin and Close', items.includes('Pin to the sidebar') && items.includes('Close'), items);
+      await pick('Pin to the sidebar');
+      t.check('a pinned chat moves up to Pinned', (await names('cPinList')).some(n => /^Tavern brawl/.test(n)) && !(await names('cRailList')).some(n => /^Tavern brawl/.test(n)), [await names('cPinList'), await names('cRailList')]);
+      t.check('Pinned has its own heading', await b.eval(`return !document.getElementById('cPinH').hidden`));
+      await t.shot(b, 'pinned');
+      await push(now.filter(x => x.key !== 'k-brawl'));
+      const pin = () => b.eval(`const el = document.querySelector('#cPinList .ri'); return el && { n: el.querySelector('.ri-n').textContent, s: el.querySelector('.ri-s').textContent }`);
+      const p1 = await pin();
+      t.check('and stays there when it’s no longer running', !!p1 && /^Tavern brawl/.test(p1.n) && /^Closed/.test(p1.s), p1);
+
+      // Close: a chat in a terminal leaves the list (it keeps running there) until it does something new.
+      await push(now);
+      p = await find('cRailList', /^Route-finding/);
+      await b.click(p[0], p[1], 'right'); await pick('Close');
+      t.check('Close takes a chat off the list', !(await names('cRailList')).some(n => /^Route-finding/.test(n)), await names('cRailList'));
+      await push(now);
+      t.check('it stays off while nothing new happens in it', !(await names('cRailList')).some(n => /^Route-finding/.test(n)));
+      await push(now.map(x => (x.sessionId === demo.ID['s-route'] ? { ...x, lastEventAt: Date.now() + 5000 } : x)));
+      t.check('and comes back when something does', (await names('cRailList')).some(n => /^Route-finding/.test(n)));
+
+      // Closing a chat this app runs stops it; a pinned one stays pinned, closed.
+      p = await at('cPinList', 0);
+      await b.click(p[0], p[1], 'right'); await pick('Close');
+      t.check('closing a chat stops it', calls.some(([q, body]) => q === '/api/chat/stop' && body.key === 'k-brawl'), calls.filter(([q]) => /stop/.test(q)));
+      const p2 = await pin();
+      t.check('a pinned chat stays in the list, closed', !!p2 && /^Closed/.test(p2.s), p2);
+      p = await at('cPinList', 0);
+      await b.click(p[0], p[1], 'right'); await pick('Unpin from the sidebar');
+      t.check('unpinned and closed, it’s gone', (await names('cPinList')).length === 0 && await b.eval(`return document.getElementById('cPinH').hidden`));
+
+      // Closing the chat you're in moves you to the next one.
+      await push(now.map(x => (x.key === 'k-bard' ? { ...x, phase: 'idle', state: 'ready', finishedAt: Date.now() } : x)));
+      p = await find('cRailList', /^Balance pass/);
+      await b.click(p[0], p[1], 'right'); await pick('Close'); await sleep(1200);
+      t.check('closing the chat you’re in moves on to another', calls.some(([q, body]) => q === '/api/chat/stop' && body.key === 'k-bard') && (await viewing()) !== demo.ID['s-bard'].toLowerCase(), await viewing());
+      await t.shot(b, 'rail');
+    },
+  },
+  {
     name: 'limits',
     // An account runs out mid-chat: carry on as another account, hand it to Codex, or wait.
     async run(t) {
@@ -675,7 +754,7 @@ module.exports = [
       await b.clickOn('[data-act="reopen"]'); await sleep(600);
       t.check('one click reopens them', calls.some(([p, body]) => p === '/api/reopen' && body.action === 'reopen'));
       t.check('and the offer goes away', !(await b.eval(`return !!document.querySelector('.reopen')`)));
-      t.check('saying where they are', /Reopened 2 chats; they’re in Running now\./.test(await b.eval(`return document.getElementById('toast').textContent`)));
+      t.check('saying where they are', /Reopened 2 chats; they’re in Active now\./.test(await b.eval(`return document.getElementById('toast').textContent`)));
     },
   },
   {

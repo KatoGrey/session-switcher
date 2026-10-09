@@ -44,7 +44,7 @@ function toggleFav(id) {
   const k = String(id).toLowerCase(), on = !S.favs.has(k);
   if (on) S.favs.add(k); else S.favs.delete(k);
   store('favChats', JSON.stringify([...S.favs]));
-  renderNav(); if (window.ChatUI && ChatUI.refreshFav) ChatUI.refreshFav();
+  renderNav(); if (window.ChatUI && ChatUI.refreshFav) { ChatUI.refreshFav(); ChatUI.renderRail(); }
   toast(on ? 'Pinned the chat to the sidebar.' : 'Unpinned the chat.', 4000, { label: 'Undo', run: () => toggleFav(id) });
 }
 const isFav = id => !!id && S.favs.has(String(id).toLowerCase());
@@ -321,6 +321,23 @@ function keepOrder(name, list, idsOf) {
 }
 const activityIds = x => [x.key, x.sessionId && `s:${String(x.sessionId).toLowerCase()}`];
 const findActivity = k => S.activity.find(x => keyOf(x) === k) || null;
+// Chats you closed stay off the lists: one this app ran for good (that run is over; opening it again
+// starts a new one), one in a terminal or another app until it does something new.
+S.closed = new Map();
+const closedKey = x => x.key || `s:${String(x.sessionId).toLowerCase()}`;
+function isClosed(x) {
+  if (x.parentKey && S.closed.has(x.parentKey)) return true;
+  const t = S.closed.get(closedKey(x));
+  return t !== undefined && !(!x.key && (x.lastEventAt || 0) > t);
+}
+const openOnly = list => list.filter(x => !isClosed(x));
+function closeOff(x) {
+  const now = Date.now();
+  for (const [k, t] of S.closed) if (now - t > 864e5) S.closed.delete(k);
+  S.closed.set(closedKey(x), now);
+  S.activity = openOnly(S.activity);
+  renderLive(); renderNav();
+}
 function openActivity(x) {
   if (!x) return;
   markSeen(x);
@@ -340,7 +357,7 @@ async function loadSessions() {
   S.projects = j.projects; S.root = j.root; S.running = j.running || {}; S.live = j.live || {};
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
-async function loadActivity() { const j = await api('/api/activity'); S.activity = keepOrder('running', j.list || [], activityIds); }
+async function loadActivity() { const j = await api('/api/activity'); S.activity = keepOrder('running', openOnly(j.list || []), activityIds); }
 async function loadUsage() { const j = await api('/api/usage'); S.usage = j.usage || {}; }
 async function reload() {
   await loadState();

@@ -493,7 +493,7 @@ async function reopenChats(yes) {
   if (!yes) return;
   await loadSessions().catch(() => {});
   const n = r.reopened.length;
-  toast(`${n ? `Reopened ${n} chat${n === 1 ? '' : 's'}; ${n === 1 ? 'it’s' : 'they’re'} in Running now.` : ''}${r.failed.length ? ` ${r.failed.length} couldn’t open: ${r.failed.map(f => `${f.title || 'a chat'} (${f.error})`).join('; ')}` : ''}`.trim(), r.failed.length ? 10000 : 5000);
+  toast(`${n ? `Reopened ${n} chat${n === 1 ? '' : 's'}; ${n === 1 ? 'it’s' : 'they’re'} in Active now.` : ''}${r.failed.length ? ` ${r.failed.length} couldn’t open: ${r.failed.map(f => `${f.title || 'a chat'} (${f.error})`).join('; ')}` : ''}`.trim(), r.failed.length ? 10000 : 5000);
 }
 
 function renderHub() {

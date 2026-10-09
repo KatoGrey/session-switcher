@@ -230,7 +230,7 @@ function connectLive() {
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
   es.addEventListener('races', () => { loadRaces().catch(() => {}); });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
-  es.addEventListener('activity', e => { try { S.activity = keepOrder('running', JSON.parse(e.data).list || [], activityIds); } catch { return; } watchActivity(); renderLive(); renderNav(); });
+  es.addEventListener('activity', e => { try { S.activity = keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds); } catch { return; } watchActivity(); renderLive(); renderNav(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
@@ -300,10 +300,21 @@ function activityItems(x) {
   return [
     { glyph: '❝', label: x.source === 'app' ? 'Open the chat' : x.source === 'terminal' ? 'Watch it live' : 'Read it here', run: () => { markSeen(x); return openActivity(x); } },
     ...(st === 'reply' ? [{ glyph: '✓', label: 'Mark as read', run: () => { markSeen(x); renderLive(true); renderNav(); } }] : []),
-    ...(x.source === 'app' && x.key && x.phase !== 'ended' ? [{ label: 'Stop this chat', danger: true, run: () => api('/api/chat/stop', { key: x.key }) }] : []),
+    { glyph: '✕', label: 'Close', hint: x.source === 'terminal' ? 'it keeps running in its terminal' : x.source === 'elsewhere' ? 'it stays in the other app' : x.phase === 'ended' ? '' : 'open it again any time', run: () => closeActivity(x) },
     ...(x.sessionId && !x.parentKey ? ['-', favItem(x.sessionId), ...chatItems(x.sessionId).filter(i => i === '-' || !/^(Return|Open in the chat window)/.test(i.label))] : []),
     ...(x.sessionId ? ['-', { label: 'Copy chat ID', run: () => copyText(x.sessionId) }] : []),
   ];
+}
+// Takes a chat off the lists. One this app runs is stopped (open it again and it picks up where it
+// left off); one in a terminal or another app keeps running there. Closing the chat you're in moves
+// you to the next one.
+async function closeActivity(x) {
+  const st = statusOf(x), app = x.source === 'app' && !!x.key && x.phase !== 'ended';
+  if (app && (st === 'working' || NEEDS.has(st)) && !(await appConfirm(`Close this chat?\n\n${x.provider === 'codex' ? 'Codex' : 'Claude'} is in the middle of it; closing stops it now. The conversation is kept, and you can open it again.`, { ok: 'Stop and close', danger: true }))) return;
+  const next = window.ChatUI && !x.parentKey && ChatUI.isViewing(x) ? ChatUI.neighbor(x) : undefined;
+  closeOff(x);
+  if (next) openActivity(next); else if (next === null) ChatUI.close();
+  if (app) await api('/api/chat/stop', { key: x.key });
 }
 function appItems() {
   const light = Look.isLight();
@@ -336,7 +347,7 @@ function contextItems(t) {
   const nc = t.closest('[data-navchat]'); if (nc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(nc.dataset.navchat) }, ...withFav(nc.dataset.navchat)];
   const row = t.closest('[data-row]'); if (row) return withFav(row.dataset.row);
   const pv = t.closest('[data-preview], [data-continue]'); if (pv) return withFav(pv.dataset.preview || pv.dataset.continue);
-  const card = t.closest('#awaitList > [data-k], #board > [data-k], #quietList > [data-k], #cRailList > [data-k]');
+  const card = t.closest('#awaitList > [data-k], #board > [data-k], #quietList > [data-k], #cPinList > [data-k], #cRailList > [data-k]');
   if (card) { const x = findActivity(card.dataset.k); if (x) return activityItems(x); }
   const world = t.closest('#atlas > [data-k], [data-world], .nav-i[data-cwd]');
   if (world) { const cwd = world.dataset.world || world.dataset.cwd || (world.dataset.k !== '+new' ? world.dataset.k : null); if (cwd) return projectItems(cwd); }
@@ -369,7 +380,7 @@ function openShortcuts() {
     document.body.insertAdjacentHTML('beforeend', `<dialog id="keysDlg" class="keys-dlg" aria-labelledby="keysTitle"><div class="setup-head"><h3 id="keysTitle">Keyboard shortcuts</h3><button class="icon" data-keys-close aria-label="Close">✕</button></div>
       <div class="keys-body">${[
         ['Anywhere', [['Ctrl K', 'Search chats, projects, documents, prompts and actions'], ['?', 'This list'], ['Right-click', 'Options for whatever you clicked (Shift for the browser’s menu)'], ['Esc', 'Close what’s open']]],
-        ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['Ctrl F', 'Find in this chat'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between running chats'], ['End', 'Jump to the latest message']]],
+        ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['Ctrl F', 'Find in this chat'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between open chats'], ['Alt Shift ↑ ↓', 'Move the chat you’re in up or down the list'], ['End', 'Jump to the latest message']]],
         ['Pictures', [['← →', 'Step through a project’s pictures']]],
       ].map(([h, rows]) => `<section><p class="d-h">${esc(h)}</p><dl>${rows.map(([k, v]) => `<dt><kbd class="kbd">${esc(k)}</kbd></dt><dd>${esc(v)}</dd>`).join('')}</dl></section>`).join('')}</div></dialog>`);
     d = $('keysDlg');

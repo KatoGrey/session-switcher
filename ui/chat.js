@@ -21,23 +21,100 @@ function isViewing(x) {
   return !!(sid && x.sessionId && x.sessionId.toLowerCase() === String(sid).toLowerCase());
 }
 function railItem(x) {
+  // A pinned chat that isn't running: it stays listed, and a click opens it again.
+  if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}"><span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
   const st = statusOf(x);
   const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (x.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
   const doing = x.phase === 'tool' && (x.detail || x.tool) ? `${VERB_NOW[x.tool] || 'Using'} ${x.detail || x.tool}` : x.phase === 'writing' ? 'Writing…' : x.phase === 'starting' ? 'Starting…' : 'Thinking…';
   const sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
   return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}" aria-current="${isViewing(x)}"><span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
 }
+// The rail: chats you pinned (they stay, running or not), then the rest of what's open, each list in
+// the order you dragged it into. Chats it hasn't placed yet keep their places after those.
+let railOrder = []; try { railOrder = JSON.parse(store('railOrder') || '[]'); } catch { /* none yet */ }
+const railId = x => (x.sessionId ? `s:${String(x.sessionId).toLowerCase()}` : x.key);
+const railKey = x => (x.pinnedOnly ? `pin:${railId(x)}` : keyOf(x));
+function inRailOrder(list) {
+  const pos = new Map(railOrder.map((id, i) => [id, i]));
+  const at = x => { for (const id of activityIds(x)) if (id && pos.has(id)) return pos.get(id); return Infinity; };
+  return list.map((x, i) => [at(x), i, x]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(r => r[2]);
+}
+function railRows() {
+  const open = S.activity.filter(x => !x.parentKey);
+  const pinned = open.filter(x => isFav(x.sessionId)), active = open.filter(x => !isFav(x.sessionId));
+  for (const id of S.favs) {
+    if (pinned.some(x => String(x.sessionId).toLowerCase() === id)) continue;
+    const [s, p] = sessionById(id);
+    if (s) pinned.push({ pinnedOnly: true, sessionId: s.id, title: s.title, folder: p.name });
+  }
+  return { pinned: inRailOrder(pinned), active: inRailOrder(active) };
+}
+const railOpen = () => { const { pinned, active } = railRows(); return [...pinned, ...active].filter(x => !x.pinnedOnly); };
 function renderRail() {
-  if ($c('chat').hidden) return;
-  const list = S.activity.filter(x => !x.parentKey);
-  $c('cRailCount').textContent = list.length ? String(list.length) : '';
-  patch($c('cRailList'), list, keyOf, railItem, '<li class="ri-empty">Only this chat is open.</li>');
+  if ($c('chat').hidden || (Rail.drag && Rail.drag.on)) return;
+  const { pinned, active } = railRows();
+  $c('cPinH').hidden = !pinned.length;
+  $c('cPinCount').textContent = pinned.length ? String(pinned.length) : '';
+  $c('cRailCount').textContent = active.length ? String(active.length) : '';
+  patch($c('cPinList'), pinned, railKey, railItem);
+  patch($c('cRailList'), active, railKey, railItem, `<li class="ri-empty">${pinned.length ? 'Nothing else is open.' : 'Only this chat is open.'}</li>`);
 }
 function switchRail(step) {
-  const list = S.activity.filter(x => !x.parentKey); if (!list.length) return;
+  const list = railOpen(); if (!list.length) return;
   const i = list.findIndex(isViewing);
   const next = list[(i + step + list.length) % list.length];
   if (next && !isViewing(next)) openActivity(next);
+}
+// Where to go when the chat you're in is closed: the next open one down the list, else the one above.
+function railNeighbor(x) {
+  const list = railOpen(), i = list.findIndex(y => keyOf(y) === keyOf(x));
+  return list[i + 1] || list[i - 1] || null;
+}
+// Remembers the order the lists are in now, after a drag or Alt+Shift+↑/↓.
+function saveRailOrder() {
+  const ids = [...$c('cPinList').children, ...$c('cRailList').children].map(li => li.dataset.k).filter(Boolean)
+    .map(k => { if (k.startsWith('pin:')) return k.slice(4); const x = findActivity(k); return x ? railId(x) : null; }).filter(Boolean);
+  railOrder = [...ids, ...railOrder.filter(id => !ids.includes(id))].slice(0, 200);
+  store('railOrder', JSON.stringify(railOrder));
+  $c('cPinList')._sig = $c('cRailList')._sig = '';
+  renderRail();
+}
+// Alt+Shift+↑/↓: the chat you're in moves up or down its list.
+function moveInRail(step) {
+  const li = [...$c('cPinList').children, ...$c('cRailList').children].find(el => el.querySelector('.ri[aria-current="true"]'));
+  const sib = li && (step < 0 ? li.previousElementSibling : li.nextElementSibling);
+  if (!sib || !sib.dataset.k) return;
+  if (step < 0) sib.before(li); else sib.after(li);
+  saveRailOrder();
+}
+// Drag a chat up or down its list (with a mouse or pen; on a touch screen a drag scrolls).
+const Rail = { drag: null, dropped: 0 };
+function railDown(e) {
+  const ri = e.target.closest('#cPinList .ri, #cRailList .ri');
+  if (!ri || e.button !== 0 || e.pointerType === 'touch') return;
+  const li = ri.closest('li');
+  Rail.drag = { li, list: li.parentElement, y0: e.clientY, id: e.pointerId, on: false };
+}
+function railMove(e) {
+  const d = Rail.drag; if (!d || e.pointerId !== d.id) return;
+  if (!d.on) {
+    if (Math.abs(e.clientY - d.y0) < 6) return;
+    d.on = true; d.li.classList.add('dragging'); document.body.classList.add('rail-dragging');
+    try { d.li.setPointerCapture(e.pointerId); } catch { /* fine without */ }
+  }
+  e.preventDefault();
+  // It takes the place of whichever chat the pointer has passed the middle of.
+  const after = [...d.list.children].filter(el => el !== d.li && el.dataset.k).find(el => { const r = el.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+  if (after) { if (d.li.nextElementSibling !== after) after.before(d.li); } else if (d.list.lastElementChild !== d.li) d.list.append(d.li);
+}
+function railUp(e) {
+  const d = Rail.drag; if (!d || e.pointerId !== d.id) return;
+  Rail.drag = null;
+  if (!d.on) return;
+  d.li.classList.remove('dragging'); document.body.classList.remove('rail-dragging');
+  Rail.dropped = Date.now();
+  if (e.type === 'pointerup') saveRailOrder();
+  else { $c('cPinList')._sig = $c('cRailList')._sig = ''; renderRail(); }
 }
 
 /* ---------- open / close ---------- */
@@ -298,6 +375,12 @@ function openFile(p) { return Viewer.open({ path: p, key: C.key, session: C.sess
 
 document.addEventListener('DOMContentLoaded', () => {
   const chat = $c('chat');
+  $c('cRail').addEventListener('pointerdown', railDown);
+  document.addEventListener('pointermove', railMove);
+  document.addEventListener('pointerup', railUp);
+  document.addEventListener('pointercancel', railUp);
+  // The click at the end of a drag doesn't open the chat that was dragged.
+  $c('cRail').addEventListener('click', e => { if (Date.now() - Rail.dropped < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
   chat.addEventListener('click', wrap(async e => {
     const t = e.target;
     const fl = t.closest('.flink[data-path], [data-file]');
@@ -307,6 +390,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const cp = t.closest('[data-copy]');
     if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copy); toast('Copied.', 1500); } catch { prompt('Copy this:', cp.dataset.copy); } return; }
     const ri = t.closest('.ri');
+    if (ri && ri.dataset.navchat) {
+      // A pinned chat that's closed: open it again, in this window (or watch it, if it's in a terminal).
+      const id = ri.dataset.navchat;
+      chat.classList.remove('show-rail'); S.closed.delete(`s:${id.toLowerCase()}`);
+      if (isViewing({ sessionId: id })) return;
+      return isRunning(id) ? watch({ sessionId: id, source: 'terminal' }) : open({ sessionId: id });
+    }
     if (ri) { const li = ri.closest('li'); const x = li && findActivity(li.dataset.k); chat.classList.remove('show-rail'); if (x && !isViewing(x)) return openActivity(x); return; }
     const thumb = t.closest('.thumb'); if (thumb) return lightbox(thumb.dataset.full);
     const cc = t.closest('.code-copy');
@@ -452,7 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !$c('cLight').hidden) { $c('cLight').hidden = true; e.stopPropagation(); return; }
     if ($c('chat').hidden) return;
-    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); switchRail(e.key === 'ArrowDown' ? 1 : -1); }
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); (e.shiftKey ? moveInRail : switchRail)(e.key === 'ArrowDown' ? 1 : -1); }
   }, true);
 });
 
@@ -608,7 +698,7 @@ function chatContextItems(t, at) {
 }
 
 window.ChatUI = {
-  open, openKey, watch, close, md, renderRail, refreshUsage: refreshChatUsage, isViewing,
+  open, openKey, watch, close, md, renderRail, refreshUsage: refreshChatUsage, isViewing, neighbor: railNeighbor,
   accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
   showLedger: () => { const chat = $c('chat'); if (matchMedia('(max-width: 1320px)').matches) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
   sessionsChanged: () => { if (C.watch) refreshWatch(); },

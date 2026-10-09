@@ -82,7 +82,7 @@ The top bar is visible everywhere:
 
 The window title shows the count too, for example "(2) Session Switcher".
 
-The lists stay put while chats work: the sidebar's folders and the chat window's **Running now** keep their order, and a new one joins at the top, so nothing moves out from under your mouse.
+The lists stay put while chats work: the sidebar's folders and the chat window's **Active now** keep their order, and a new one joins at the end, so nothing moves out from under your mouse.
 
 The first time it opens, a short tour points out the main parts. **Take the tour** in Setup or `Ctrl+K` shows it again.
 
@@ -179,7 +179,10 @@ Sign-ins never live in the app's folder. Each Claude account signs in through it
 
 Click **Open** on any chat, or **New chat** in a folder. The chat runs in Session Switcher's own window, as the account you picked.
 
-- **Running now (left):** every running chat, for one-click switching. `Alt+↑` and `Alt+↓` move between them.
+- **Active now (left):** every open chat, for one-click switching: working, waiting for you, or ready for your next message. `Alt+↑` and `Alt+↓` move between them.
+  - **Drag** a chat up or down to put the list in your order (or `Alt+Shift+↑` / `Alt+Shift+↓` for the chat you're in). The order is remembered.
+  - **Right-click → Pin to the sidebar** keeps a chat at the top of the list, under **Pinned**, even after it stops; click it to open it again.
+  - **Right-click → Close** takes a chat off the list. One running here stops (open it again and it picks up where it left off; it asks first if the chat is mid-reply). One in a terminal or another app keeps running there, and comes back to the list if it does something new. Closing the chat you're in moves you to the next one.
 - **The conversation:**
   - Replies are formatted, with tables and copyable code.
   - Tool steps are compact rows that open to show the command, the edit or the output. Once a reply is done, its steps fold into one line ("Edited songs.lua · ran 2 commands · looked at 4 files"); click it to see them.
@@ -429,7 +432,8 @@ Turn **Animations** off in Setup to keep everything still. It's also off automat
 | `Ctrl+K` or `/` | Jump to any chat, project, document, prompt or action, or search inside every message |
 | `/` in the message box | Pick a saved prompt |
 | `←` / `→` | Step through a project's pictures in the full-size view |
-| `Alt+↑` / `Alt+↓` | Switch between running chats in the chat window |
+| `Alt+↑` / `Alt+↓` | Switch between open chats in the chat window |
+| `Alt+Shift+↑` / `Alt+Shift+↓` | Move the chat you're in up or down that list |
 | `Enter` | Send. Use `Shift+Enter` for a new line |
 | `Esc` | Close what's open. While Claude or Codex is replying, press it twice to stop |
 | `Ctrl+F` | Find in this chat |
@@ -446,7 +450,7 @@ Right-click almost anything for what you can do with it. Shift+right-click still
 
 Menus get out of the way: a click anywhere else closes the menu (without also pressing whatever you clicked), and so do Esc, scrolling and switching windows. With one menu open, a click on another ⋯ or menu button opens that one straight away, and a right-click elsewhere opens the menu for that spot. From the keyboard, the Menu key opens the menu for whatever has focus; the arrows, Home and End move, and typing a letter jumps to the item that starts with it.
 
-- **A chat** (in a list, on a hub card, or pinned in the sidebar): open it, open a copy, resume in a terminal, rename, pin to the sidebar, copy its ID or terminal command, show its transcript.
+- **A chat** (in a list, on a hub card, or pinned in the sidebar): open it, close it (an open chat), open a copy, resume in a terminal, rename, pin to the sidebar, copy its ID or terminal command, show its transcript.
 - **A project** (its card, or its name in the sidebar): open it, pin it, continue the latest chat, start a new Claude or Codex chat, start with a prompt, show it in Explorer, browse its files, copy its path.
 - **An account card:** sign-in checks, usage, rename, sign out.
 - **Inside a chat:**
@@ -465,7 +469,7 @@ On a phone, a long press does the same on cards, pictures and controls.
 
 ## Pinned and favorites
 
-- Pin projects and chats to the top of the sidebar: right-click them and choose **Pin to the sidebar**, or click the ☆ in a chat's header.
+- Pin projects and chats to the top of the sidebar: right-click them and choose **Pin to the sidebar**, or click the ☆ in a chat's header. Pinned chats also stay at the top of the chat window's list, running or not.
 - Pinned chats show a gold dot when they're waiting for you and a pulsing one while they work. Pinned chats also get a ★ in lists.
 - Click a sidebar heading (**Pinned**, **Claude Code**, **Codex**) to fold it away. It stays folded.
 
