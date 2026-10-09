@@ -490,6 +490,7 @@ function chatHeadItems() {
     '-',
     { glyph: '❧', label: 'Export as Markdown', hint: window.Android ? 'copies it' : 'saves a .md file', run: exportChat },
     { label: 'Copy the whole chat as Markdown', run: () => copyOut(chatMarkdown(), 'Copied the chat as Markdown.') },
+    ...(window.Android ? [] : [{ glyph: '❦', label: 'Save as a web page', hint: 'to read or send anywhere', run: savePage }]),
     ...(C.ctx.main && !C.watch && C.state !== 'ended' ? [{ glyph: '⇲', label: 'Summarize the conversation now', hint: ctxLine('main'), disabled: C.state !== 'ready', why: 'Wait for the reply to finish', run: () => compactNow('main') }] : []),
     ...(id && !C.watch ? [{ label: 'Rename chat', run: async () => { await renameChat(id); const [s] = findSession(id); if (s) { C.title = s.title; $c('cTitle').textContent = s.title; } } }] : []),
     ...(id ? [{ label: 'Copy chat ID', run: () => copyOut(id) }] : []),

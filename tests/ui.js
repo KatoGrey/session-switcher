@@ -423,6 +423,32 @@ module.exports = [
     },
   },
   {
+    name: 'share',
+    // A chat as a web page of its own; prompt sets as a file to pass around.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      await b.clickOn('[data-c="more"]'); await sleep(300);
+      t.check('the chat’s ⋯ menu can save it as a web page', /Save as a web page/.test(await b.eval(`return document.getElementById('menu').textContent`)));
+      await b.esc();
+      const page = await b.eval(`window._blobs = []; URL.createObjectURL = x => { _blobs.push(x); return 'blob:test'; }; savePage(); return await _blobs[0].text()`);
+      t.check('it’s a page of its own', /^<!doctype html>/.test(page) && /<title>Balance pass on the bard’s songs<\/title>/.test(page) && /<style>/.test(page));
+      t.check('with who said what', /<p class="who">You<\/p>/.test(page) && /<section class="m claude"><p class="who">Claude<\/p>/.test(page) && /<section class="m codex"><p class="who">Codex<\/p>/.test(page));
+      t.check('replies formatted, code in color, steps in a line', /<table>/.test(page) && /class="tk-/.test(page) && /<p class="steps">Looked at 3 files<\/p>/.test(page));
+      t.check('and nothing to click that wouldn’t work there', !/<button/.test(page));
+      t.check('light or dark, as the reader likes', /prefers-color-scheme:dark/.test(page));
+
+      await b.eval(`ChatUI.close(); openPromptEditor(); return 1`).catch(() => {}); await sleep(400);
+      const exp = await b.eval(`_blobs = []; exportPrompts(); return JSON.parse(await _blobs[0].text())`);
+      t.check('prompts export as a file to share', exp.app === 'session-switcher' && exp.kind === 'prompts' && exp.prompts.length >= 3 && exp.prompts.every(p => p.title && p.text && p.provider), exp.prompts.length);
+      const n0 = await b.eval(`return document.querySelectorAll('#pdList .pd-item').length`);
+      await b.eval(`addPromptsFrom(JSON.stringify({ app: 'session-switcher', kind: 'prompts', prompts: [{ title: 'Write a bard ballad', text: 'Write a ballad for {project}.', provider: 'claude' }, { title: ${JSON.stringify(exp.prompts[0].title)}, text: 'a duplicate', provider: 'claude' }] })); return 1`); await sleep(200);
+      t.check('importing adds theirs, skipping names you already have', (await b.eval(`return document.querySelectorAll('#pdList .pd-item').length`)) === n0 + 1 && /Added 1 prompt \(1 with a name you already have was skipped\)\. Press Save to keep them\./.test(await b.eval(`return document.getElementById('toast').textContent`)));
+      await b.eval(`addPromptsFrom('not json'); return 1`);
+      t.check('and says plainly when a file isn’t a prompt file', /isn’t a prompt file/.test(await b.eval(`return document.getElementById('toast').textContent`)));
+    },
+  },
+  {
     name: 'race',
     // Claude and Codex on the same task, each in its own copy; keep the better one.
     async run(t) {

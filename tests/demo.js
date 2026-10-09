@@ -97,7 +97,7 @@ const claudeHistory = [
     tool('t1', 'Read', 'scripts/bard/songs.lua', '{ "file_path": "scripts/bard/songs.lua" }', 'json', 'songs.lua (212 lines)'),
     tool('t2', 'Grep', 'rally_bonus in scripts/', '{ "pattern": "rally_bonus" }', 'json', '3 matches'),
     tool('t3', 'Read', 'data/balance/party.json', '{ "file_path": "data/balance/party.json" }', 'json', 'party.json (88 lines)'),
-    { type: 'text', text: 'Rally **stacks with itself**, so four bards in co-op give +60% attack. Here’s the balance pass I’d make:\n\n| Song | Now | Proposed |\n|---|---|---|\n| Rally | +15% attack, stacks | +15% attack, no stacking |\n| Lullaby | 4 s sleep | 3 s sleep |\n| Ballad of Embers | 12 fire damage | 14 fire damage |\n\nShould I make the change in `scripts/bard/songs.lua`?' },
+    { type: 'text', text: 'Rally **stacks with itself**, so four bards in co-op give +60% attack. Here’s the balance pass I’d make:\n\n| Song | Now | Proposed |\n|---|---|---|\n| Rally | +15% attack, stacks | +15% attack, no stacking |\n| Lullaby | 4 s sleep | 3 s sleep |\n| Ballad of Embers | 12 fire damage | 14 fire damage |\n\nThe fix is one line:\n\n```lua\nrally.stacks = false  -- one Rally per party\n```\n\nShould I make the change in `scripts/bard/songs.lua`?' },
   ] },
   { kind: 'user', at: iso(min(22)), text: 'Yes, do it. And we need new key art for the Harvest Festival update.', images: [] },
   { kind: 'assistant', mid: 'm2', at: iso(min(21)), model: 'claude-opus-5-5', blocks: [

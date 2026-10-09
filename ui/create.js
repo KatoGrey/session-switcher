@@ -19,13 +19,15 @@ function openPromptEditor() {
     document.body.insertAdjacentHTML('beforeend', `<dialog id="promptDlg" class="wide prompt-dlg" aria-labelledby="pdTitle">
       <div class="setup-head"><h3 id="pdTitle">Prompts</h3><button class="icon" data-pd="close" aria-label="Close">✕</button></div>
       <div class="setup-body"><p class="pd-hint">Reusable starts for the jobs you repeat. <code>{project}</code> becomes the project’s folder name and <code>{date}</code> today’s date. Anything else in braces, like <code>{describe it}</code>, is a blank: the message box selects it so you can type over it. Type <code>/</code> in an empty message box to pick a prompt.</p><div id="pdList"></div>
-      <div class="d-row pd-row"><button class="btn quiet" data-pd="sets" aria-haspopup="menu" aria-expanded="false">Add a starter set</button><button class="btn quiet" data-pd="reset">Restore the starter prompts</button><span class="spacer"></span><button class="btn" data-pd="add">Add a prompt</button><button class="btn prime" data-pd="save">Save</button></div></div></dialog>`);
+      <div class="d-row pd-row"><button class="btn quiet" data-pd="sets" aria-haspopup="menu" aria-expanded="false">Add a starter set</button><button class="btn quiet" data-pd="reset">Restore the starter prompts</button><button class="btn quiet" data-pd="export" title="Save your prompts as a file to share">Export…</button><button class="btn quiet" data-pd="import" title="Add prompts from a file someone shared">Import…</button><span class="spacer"></span><button class="btn" data-pd="add">Add a prompt</button><button class="btn prime" data-pd="save">Save</button></div></div></dialog>`);
     $('promptDlg').addEventListener('click', wrap(async e => {
       const b = e.target.closest('[data-pd]'); if (!b) return;
       const act = b.dataset.pd;
       if (act === 'close') return closePromptEditor();
       if (act === 'add') { $('promptDlg').dataset.dirty = '1'; $('pdList').insertAdjacentHTML('beforeend', promptRow({ id: '', title: '', text: '' })); $('pdList').lastElementChild.querySelector('input').focus(); return; }
       if (act === 'remove') { $('promptDlg').dataset.dirty = '1'; return b.closest('.pd-item').remove(); }
+      if (act === 'export') return exportPrompts();
+      if (act === 'import') return importPrompts();
       if (act === 'reset') { if (!(await appConfirm('Put back the starter prompts?\n\nYour own prompts will be replaced.', { ok: 'Put them back', danger: true }))) return; S.prompts = (await api('/api/prompts', { reset: true })).prompts; return renderPromptEditor(); }
       if (act === 'sets') {
         return showMenu(b, (S.promptSets || []).map(st => ({ label: st.title, hint: `${plural(st.count, 'prompt')}, added to yours`, run: async () => { const n0 = S.prompts.length; S.prompts = (await api('/api/prompts', { addSet: st.id })).prompts; renderPromptEditor(); toast(S.prompts.length > n0 ? `Added ${plural(S.prompts.length - n0, 'prompt')} from ${st.title}.` : `You already have every prompt in ${st.title}.`, 3000); } })));
@@ -51,6 +53,44 @@ function openPromptEditor() {
   }
   renderPromptEditor();
   $('promptDlg').showModal();
+}
+// Prompt sets to share: your prompts as a file, and prompts from someone else's file added to yours.
+function exportPrompts() {
+  const rows = [...$('pdList').querySelectorAll('.pd-item')].map(el => ({ title: el.querySelector('.pd-t').value.trim(), text: el.querySelector('.pd-x').value, provider: el.querySelector('.pd-p').value === 'codex' ? 'codex' : 'claude' })).filter(p => p.title && p.text.trim());
+  if (!rows.length) { toast('There are no prompts to export yet.'); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ app: 'session-switcher', kind: 'prompts', prompts: rows }, null, 2)], { type: 'application/json' }));
+  a.download = 'prompts.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast(`Saved ${plural(rows.length, 'prompt')} as prompts.json in your Downloads, to share.`, 4000);
+}
+function importPrompts() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json,application/json';
+  input.onchange = wrap(async () => {
+    const f = input.files && input.files[0]; if (!f) return;
+    if (f.size > 2 * 1024 * 1024) { toast('That file is too big for a prompt set.'); return; }
+    addPromptsFrom(await f.text());
+  });
+  input.click();
+}
+// Adds the prompts in an exported file's text to the editor (to keep with Save).
+function addPromptsFrom(textOfFile) {
+  let j;
+  try { j = JSON.parse(textOfFile); } catch { toast('That isn’t a prompt file (it should be the prompts.json someone exported).'); return; }
+  const list = (Array.isArray(j) ? j : j && Array.isArray(j.prompts) ? j.prompts : []).filter(p => p && typeof p.title === 'string' && typeof p.text === 'string' && p.title.trim() && p.text.trim()).slice(0, 200);
+  if (!list.length) { toast('No prompts in that file.'); return; }
+  const have = new Set([...$('pdList').querySelectorAll('.pd-t')].map(x => x.value.trim().toLowerCase()));
+  let added = 0, same = 0;
+  for (const p of list) {
+    if (have.has(p.title.trim().toLowerCase())) { same++; continue; }
+    have.add(p.title.trim().toLowerCase());
+    $('pdList').insertAdjacentHTML('beforeend', promptRow({ id: '', title: p.title.trim().slice(0, 80), text: p.text.slice(0, 20000), provider: p.provider === 'codex' ? 'codex' : 'claude' }));
+    added++;
+  }
+  if (added) $('promptDlg').dataset.dirty = '1';
+  toast(added ? `Added ${plural(added, 'prompt')}${same ? ` (${same} with a name you already have ${same === 1 ? 'was' : 'were'} skipped)` : ''}. Press Save to keep them.` : 'You already have all of those (by name).', 6000);
 }
 async function closePromptEditor() {
   const d = $('promptDlg');

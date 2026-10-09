@@ -543,6 +543,63 @@ function chatMarkdown() {
   }
   return out.join('\n').replace(/\n{3,}/g, '\n\n');
 }
+// The whole conversation as one web page (formatted, code in color, light or dark as the reader likes),
+// to keep or to send to someone who doesn't have Session Switcher.
+const EXPORT_CSS = `:root{color-scheme:light dark;--bg:#fbf8f3;--ink:#2a2420;--soft:#6b625b;--line:#e4ddd3;--you:#f2ece3;--claude:#a5463f;--codex:#46679f;--code:#f4efe8;--k:#a5463f;--s:#8a6d1c;--n:#3c5a96;--c:#8b8178}
+@media (prefers-color-scheme:dark){:root{--bg:#121014;--ink:#ede6d9;--soft:#9a928a;--line:#2c2632;--you:#1d1920;--claude:#d68a7c;--codex:#7fa3dc;--code:#0b0a0d;--k:#cf8274;--s:#d9bf74;--n:#7fa3dc;--c:#7d766e}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.65 Georgia,'Times New Roman',serif}
+main{max-width:820px;margin:0 auto;padding:40px 22px 60px}header{margin-bottom:28px;border-bottom:1px solid var(--line);padding-bottom:18px}
+.eyebrow{margin:0;font:600 11px/1 ui-monospace,Consolas,monospace;letter-spacing:.2em;text-transform:uppercase;color:var(--claude)}
+h1{margin:8px 0 6px;font-size:30px;line-height:1.2}.meta{margin:0;color:var(--soft);font-size:14px}
+.m{margin:0 0 22px}.who{margin:0 0 6px;font:600 11px/1 ui-monospace,Consolas,monospace;letter-spacing:.18em;text-transform:uppercase}
+.m.claude .who{color:var(--claude)}.m.codex .who{color:var(--codex)}.m.you .who{color:var(--soft)}
+.m.you .body{background:var(--you);border:1px solid var(--line);border-radius:10px;padding:12px 16px;white-space:pre-wrap}
+.m.codex{border-left:2px solid var(--codex);padding-left:16px}.steps{margin:0 0 8px;color:var(--soft);font-size:14px;font-style:italic}
+pre{overflow:auto;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font:13.5px/1.5 ui-monospace,Consolas,monospace}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.9em}p code,li code{background:var(--code);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.code-h{font:11px ui-monospace,Consolas,monospace;color:var(--soft);margin-bottom:-6px}
+table{border-collapse:collapse;margin:10px 0}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left}
+blockquote{margin:10px 0;padding-left:14px;border-left:3px solid var(--line);color:var(--soft)}img{max-width:100%}
+.tk-k{color:var(--k)}.tk-s{color:var(--s)}.tk-n{color:var(--n)}.tk-c{color:var(--c);font-style:italic}
+footer{margin-top:40px;color:var(--soft);font-size:13px;border-top:1px solid var(--line);padding-top:14px}`;
+// Rendered for a page of its own: no buttons; file links and the like become plain code.
+function pageHtml(markdown) {
+  const div = document.createElement('div');
+  div.innerHTML = md(markdown);
+  div.querySelectorAll('button').forEach(b => { if (b.classList.contains('code-copy')) b.remove(); else { const c = document.createElement('code'); c.textContent = b.textContent; b.replaceWith(c); } });
+  return div.innerHTML;
+}
+function chatPage() {
+  const parts = [];
+  for (const el of $c('cFeed').children) {
+    if (el.classList.contains('umsg')) {
+      const to = el.classList.contains('to-both') ? ' → Claude & Codex' : el.classList.contains('to-codex') ? ' → Codex' : '';
+      const text = RAW.get(el) || el.innerText.trim();
+      parts.push(`<section class="m you"><p class="who">You${esc(to)}</p><div class="body">${esc(text)}${el.querySelector('img') ? '\n(with a picture)' : ''}</div></section>`);
+    } else if (el.classList.contains('turn')) {
+      const prov = el.dataset.prov || C.provider;
+      const text = turnMarkdown(el);
+      const steps = [...el.querySelectorAll('.tools')].map(g => (g.querySelectorAll('.tool').length ? stepsSummary(g).text : '')).filter(Boolean);
+      if (!text && !steps.length) continue;
+      parts.push(`<section class="m ${prov === 'codex' ? 'codex' : 'claude'}"><p class="who">${esc(PROV_NAME[prov] || 'Claude')}</p>${steps.length ? `<p class="steps">${esc(steps.join('; '))}</p>` : ''}${text ? pageHtml(text) : ''}</section>`);
+    } else if (el.classList.contains('cnotice')) parts.push(`<blockquote>${esc(el.innerText.trim())}</blockquote>`);
+  }
+  const title = C.title || 'Chat';
+  const meta = [C.model, new Date().toLocaleString()].filter(Boolean).join(' · ');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${EXPORT_CSS}</style></head>
+<body><main><header>${C.folder ? `<p class="eyebrow">${esc(C.folder)}</p>` : ''}<h1>${esc(title)}</h1><p class="meta">${esc(meta)}</p></header>
+${parts.join('\n')}
+<footer>Saved from Session Switcher.</footer></main></body></html>`;
+}
+function savePage() {
+  const name = `${String(C.title || 'chat').replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'chat'}.html`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([chatPage()], { type: 'text/html' }));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast(`Saved ${name} to your Downloads. It opens in any browser.`, 4000);
+}
 function exportChat() {
   const text = chatMarkdown();
   const name = `${String(C.title || 'chat').replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'chat'}.md`;
