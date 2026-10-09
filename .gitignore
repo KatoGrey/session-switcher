@@ -8,6 +8,8 @@ banners.json
 worlds.json
 prompts.json
 chat-prefs.json
+organize.json
+commander/
 pairs.json
 devices.json
 switcher.log

@@ -294,6 +294,147 @@ function openActivity(x) {
   return ChatUI.watch({ sessionId: x.sessionId, source: x.source });
 }
 
+/* ---------- groups and sub-sessions ---------- */
+// Groups you made, sub-sessions (chats started from another chat) and the Commander. Kept on the
+// PC (organize.json) so the phone sees the same.
+S.org = { groups: [], parents: {}, commander: {} };
+const lowId = s => String(s || '').toLowerCase();
+async function loadOrganize() { try { S.org = await api('/api/organize'); } catch { /* keep */ } }
+const actOf = id => S.activity.find(y => y.sessionId && lowId(y.sessionId) === lowId(id)) || null;
+// 'await' (needs you or replied), 'work' (at work) or null.
+function chatMood(id) { const x = actOf(id); if (!x) return null; const st = statusOf(x); return NEEDS.has(st) || st === 'reply' ? 'await' : st === 'working' ? 'work' : null; }
+const moodDot = id => { const m = chatMood(id); return m === 'await' ? '<span class="gilt-dot nav-dot" title="Waiting for you"></span>' : m === 'work' ? '<span class="ember-dot nav-dot" title="At work"></span>' : ''; };
+const groupOfChat = id => S.org.groups.find(g => g.chats.some(c => lowId(c) === lowId(id))) || null;
+const parentOfChat = id => S.org.parents[lowId(id)] || null;
+const kidsOf = id => Object.keys(S.org.parents).filter(k => lowId(S.org.parents[k]) === lowId(id));
+const isCommander = id => !!id && !!S.org.commander && lowId(S.org.commander.sessionId) === lowId(id);
+function groupCounts(g) {
+  let work = 0, wait = 0;
+  for (const id of g.chats) { const m = chatMood(id); if (m === 'work') work++; else if (m === 'await') wait++; }
+  return { work, wait };
+}
+const countsHtml = ({ work, wait }) => `${wait ? `<span class="g-n wait" title="${wait} awaiting you"><span class="gilt-dot" aria-hidden="true"></span>${wait}</span>` : ''}${work ? `<span class="g-n work" title="${work} at work"><span class="ember-dot" aria-hidden="true"></span>${work}</span>` : ''}`;
+const countsWords = ({ work, wait }) => [wait ? `${wait} awaiting you` : '', work ? `${work} at work` : ''].filter(Boolean).join(', ') || 'all quiet';
+// Chats in tree order: each chat followed by its sub-sessions (only those in the same list).
+function treeOrder(ids) {
+  const set = new Set(ids.map(lowId)), out = [], seen = new Set();
+  const walk = (id, d) => { if (seen.has(lowId(id)) || d > 6) return; seen.add(lowId(id)); out.push([id, d]); for (const k of kidsOf(id)) if (set.has(k)) walk(ids.find(x => lowId(x) === k) || k, d + 1); };
+  for (const id of ids) { const p = parentOfChat(id); if (!p || !set.has(lowId(p))) walk(id, 0); }
+  for (const id of ids) walk(id, 0); // anything left (a loop that shouldn't happen)
+  return out;
+}
+function navChatHtml(id, depth = 0) {
+  const [c, p] = sessionById(id); if (!c) return '';
+  const cur = !!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && lowId(ChatUI.sessionId()) === lowId(c.id));
+  return `<button class="nav-i nav-chat ${isCodex(c) ? 'codex' : ''} ${depth ? 'nav-sub' : ''}" style="--depth:${depth}" data-navchat="${esc(c.id)}" draggable="true" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${cur}"><span class="glyph" aria-hidden="true">${depth ? '↳' : '❝'}</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : ''}</small></span>${moodDot(c.id)}</button>`;
+}
+function navGroupsHtml() {
+  const G = S.org.groups || [];
+  const head = `<div class="nav-h prov groups"><span class="pmark" aria-hidden="true"></span>Groups<button class="nav-add" data-gact="new" title="New group" aria-label="New group">+</button></div>`;
+  if (!G.length) return `${head}<p class="nav-empty">Right-click a chat and choose “Move to group”, or drag it onto a group.</p>`;
+  return head + G.map(g => {
+    const n = g.chats.filter(id => sessionById(id)[0]).length;
+    return `<button class="nav-g" data-group="${esc(g.id)}" draggable="true" aria-expanded="${!g.collapsed}" title="${esc(g.name)}: ${esc(countsWords(groupCounts(g)))}"><span class="fold-c" aria-hidden="true">▾</span><span class="ni-t">${esc(g.name)}</span>${countsHtml(groupCounts(g))}<span class="count">${n}</span></button>
+      ${g.collapsed ? '' : n ? treeOrder(g.chats).map(([id, d]) => navChatHtml(id, d)).join('') : '<p class="nav-empty g-empty">Empty. Drag chats here.</p>'}`;
+  }).join('');
+}
+// Sub-sessions that aren't in a group, as trees under the chat they came from.
+function navFamiliesHtml() {
+  const ids = new Set();
+  for (const [k, v] of Object.entries(S.org.parents || {})) for (const id of [k, v]) if (!groupOfChat(id) && !isCommander(id) && sessionById(id)[0]) ids.add(sessionById(id)[0].id);
+  if (!ids.size) return '';
+  const rows = treeOrder([...ids]);
+  return `<button class="nav-h prov subs fold" data-fold="subs" aria-expanded="${!S.navFold.has('subs')}"><span class="pmark" aria-hidden="true"></span>Sub-sessions<span class="count">${rows.length}</span><span class="fold-c" aria-hidden="true">▾</span></button>
+    ${S.navFold.has('subs') ? '' : rows.map(([id, d]) => navChatHtml(id, d)).join('')}`;
+}
+
+// The hub's "Your groups": one card per group with its chats and how they're doing.
+function groupCard(g) {
+  const c = groupCounts(g);
+  const rows = treeOrder(g.chats).filter(([id]) => sessionById(id)[0]);
+  const item = ([id, d]) => {
+    const [s, p] = sessionById(id); const m = chatMood(id); const x = actOf(id);
+    const word = m === 'await' ? (x && NEEDS.has(statusOf(x)) ? 'needs you' : 'replied') : m === 'work' ? 'at work' : liveOf(id) ? 'open' : agoL(s.updated);
+    return `<li style="--depth:${d}"><button class="gc-chat ${m || ''}" draggable="true" data-gchat="${esc(s.id)}" title="${esc(s.title)} · ${esc(p.name)}"><span class="${m === 'await' ? 'gilt-dot' : m === 'work' ? 'ember-dot' : liveOf(id) ? 'ready-dot' : 'ash-dot'}" aria-hidden="true"></span>${d ? '<span class="gc-sub" aria-hidden="true">↳</span>' : ''}<span class="gc-t">${esc(s.title)}</span><span class="gc-s">${esc(word)}</span></button></li>`;
+  };
+  return `<article class="gcard ${c.wait ? 'needs' : c.work ? 'working' : ''}" data-gcard="${esc(g.id)}">
+    <header class="gc-top"><h3 class="gc-name">${esc(g.name)}</h3><span class="gc-live">${countsHtml(c)}</span><button class="icon" data-gmore="${esc(g.id)}" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${esc(g.name)}">${ICON.more}</button></header>
+    <p class="gc-sum">${esc(plural(rows.length, 'chat'))} · ${esc(countsWords(c))}</p>
+    ${rows.length ? `<ul class="gc-list">${rows.slice(0, 8).map(item).join('')}</ul>${rows.length > 8 ? `<p class="gc-more">and ${rows.length - 8} more in the sidebar</p>` : ''}` : '<p class="gc-empty">No chats yet. Right-click a chat and choose “Move to group”.</p>'}
+  </article>`;
+}
+
+async function orgDo(body) { const r = await api('/api/organize', body); S.org = { groups: r.groups, parents: r.parents, commander: r.commander }; renderNav(); renderLive(); return r; }
+async function newGroup(chatId) {
+  const name = await ask('New group', chatId ? 'Name the group. This chat moves into it, with its sub-sessions.' : 'Name the group. Then move chats into it from their right-click menu, or drag them onto it in the sidebar.', '', 'Create group');
+  if (!name) return;
+  await orgDo({ action: 'create', name, chat: chatId || undefined });
+  toast(`Made the group “${name}”.`, 2500);
+}
+// "Move to group…": every group, a new one, or out of its group.
+function moveToGroupItems(id) {
+  const cur = groupOfChat(id);
+  return [
+    ...S.org.groups.map(g => ({ checked: !!cur && cur.id === g.id, label: g.name, run: async () => { await orgDo({ action: 'move', chat: id, id: g.id }); toast(`Moved to ${g.name}.`, 3000, cur ? { label: 'Undo', run: () => orgDo({ action: 'move', chat: id, id: cur.id }) } : { label: 'Undo', run: () => orgDo({ action: 'move', chat: id, id: null }) }); } })),
+    ...(S.org.groups.length ? ['-'] : []),
+    { glyph: '+', label: 'New group…', run: () => newGroup(id) },
+    ...(cur ? [{ label: `Take out of ${cur.name}`, run: () => orgDo({ action: 'move', chat: id, id: null }) }] : []),
+  ];
+}
+function groupItems(gid) {
+  const g = S.org.groups.find(x => x.id === gid); if (!g) return [];
+  const i = S.org.groups.indexOf(g);
+  return [
+    { label: g.collapsed ? 'Expand in the sidebar' : 'Collapse in the sidebar', run: () => orgDo({ action: 'collapse', id: g.id, collapsed: !g.collapsed }) },
+    { label: 'Rename…', run: async () => { const n = await ask('Rename group', 'Only changes the name shown here.', g.name, 'Rename'); if (n && n !== g.name) await orgDo({ action: 'rename', id: g.id, name: n }); } },
+    { label: 'Move up', disabled: i === 0, run: () => orgDo({ action: 'reorder', id: g.id, step: -1 }) },
+    { label: 'Move down', disabled: i === S.org.groups.length - 1, run: () => orgDo({ action: 'reorder', id: g.id, step: 1 }) },
+    { glyph: '+', label: 'New group…', run: () => newGroup() },
+    '-',
+    { label: 'Remove the group', hint: 'its chats stay', danger: true, run: async () => { if (!(await appConfirm(`Remove the group “${g.name}”?\n\nIts chats aren’t touched; they just aren’t grouped any more.`, { ok: 'Remove group', danger: true }))) return; await orgDo({ action: 'remove', id: g.id }); } },
+  ];
+}
+window.moveToGroupItems = moveToGroupItems;
+
+// Dragging: a chat (from the sidebar, a list or a hub card) onto a group moves it there; a group
+// onto another group puts it in that place.
+const Drag = { chat: null, group: null };
+document.addEventListener('dragstart', e => {
+  const t = e.target instanceof Element ? e.target : null; if (!t) return;
+  const g = t.closest('[data-group]');
+  const c = t.closest('[data-navchat], [data-row], [data-gchat]');
+  Drag.group = g && !c ? g.dataset.group : null;
+  Drag.chat = c ? (c.dataset.navchat || c.dataset.row || c.dataset.gchat) : null;
+  if (!Drag.group && !Drag.chat) return;
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', Drag.chat || Drag.group); } catch { /* fine */ }
+  document.body.classList.add('dragging');
+});
+document.addEventListener('dragend', () => { Drag.chat = Drag.group = null; document.body.classList.remove('dragging'); for (const el of document.querySelectorAll('.drop-on')) el.classList.remove('drop-on'); });
+const dropTarget = e => (e.target instanceof Element ? e.target.closest('[data-group], [data-gcard], [data-gact="new"]') : null);
+document.addEventListener('dragover', e => {
+  if (!Drag.chat && !Drag.group) return;
+  const t = dropTarget(e); if (!t || (Drag.group && !t.dataset.group)) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  for (const el of document.querySelectorAll('.drop-on')) if (el !== t) el.classList.remove('drop-on');
+  t.classList.add('drop-on');
+});
+document.addEventListener('dragleave', e => { const t = dropTarget(e); if (t && !t.contains(e.relatedTarget)) t.classList.remove('drop-on'); });
+document.addEventListener('drop', e => {
+  const t = dropTarget(e); if (!t || (!Drag.chat && !Drag.group)) return;
+  e.preventDefault();
+  const chat = Drag.chat, grp = Drag.group, to = t.dataset.group || t.dataset.gcard;
+  wrap(async () => {
+    if (t.dataset.gact === 'new') return chat ? newGroup(chat) : undefined;
+    if (grp) { if (grp !== to) await orgDo({ action: 'reorder', id: grp, to: S.org.groups.findIndex(x => x.id === to) }); return undefined; }
+    const g = S.org.groups.find(x => x.id === to); if (!g) return undefined;
+    const was = groupOfChat(chat);
+    if (was && was.id === g.id) return undefined;
+    await orgDo({ action: 'move', chat, id: g.id });
+    return toast(`Moved to ${g.name}.`, 3000, { label: 'Undo', run: () => orgDo({ action: 'move', chat, id: was ? was.id : null }) });
+  })();
+});
+
 /* ---------- data ---------- */
 async function loadState() {
   const j = await api('/api/state');
@@ -310,7 +451,7 @@ async function loadActivity() { const j = await api('/api/activity'); S.activity
 async function loadUsage() { const j = await api('/api/usage'); S.usage = j.usage || {}; }
 async function reload() {
   await loadState();
-  await Promise.all([loadSessions(), loadActivity().catch(() => {}), loadUsage().catch(() => {})]);
+  await Promise.all([loadSessions(), loadActivity().catch(() => {}), loadUsage().catch(() => {}), loadOrganize()]);
   renderAll();
   if (S.drawerId) openDrawer(S.drawerId, true);
 }
@@ -433,6 +574,8 @@ function renderNav() {
     <button class="nav-i nav-new" data-view="newproject"><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New project</span></button>
     ${fresh.length ? `<div class="nav-h prov fresh"><span class="pmark" aria-hidden="true"></span>No chats yet<span class="count">${fresh.length}</span></div>${fresh.map(p => `<button class="nav-i" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}"><span class="glyph" aria-hidden="true">${glyphFor(p.name)}</span><span class="ni-t">${esc(p.name)}</span><span class="tag ghost">New</span></button>`).join('')}` : ''}
     ${pinnedHtml}
+    ${navGroupsHtml()}
+    ${navFamiliesHtml()}
     ${fold('claude', 'Claude Code', nClaude, 'claude')}
     ${S.navFold.has('claude') ? '' : claude.length ? claude.map(x => item(x, 'claude')).join('') : '<p class="nav-empty">No Claude Code chats yet.</p>'}
     ${showCodex ? `${fold('codex', 'Codex', nCodex, 'codex')}
@@ -442,7 +585,7 @@ function renderNav() {
   if ($('nav')._h === html) return;
   $('nav')._h = html;
   const focused = document.activeElement && $('nav').contains(document.activeElement) ? document.activeElement : null;
-  const keep = focused && (focused.dataset.cwd ? `[data-cwd="${CSS.escape(focused.dataset.cwd)}"][data-view="${focused.dataset.view || ''}"]` : focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : focused.dataset.navchat ? `[data-navchat="${CSS.escape(focused.dataset.navchat)}"]` : focused.dataset.fold ? `[data-fold="${focused.dataset.fold}"]` : focused.id ? `#${focused.id}` : null);
+  const keep = focused && (focused.dataset.cwd ? `[data-cwd="${CSS.escape(focused.dataset.cwd)}"][data-view="${focused.dataset.view || ''}"]` : focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : focused.dataset.navchat ? `[data-navchat="${CSS.escape(focused.dataset.navchat)}"]` : focused.dataset.fold ? `[data-fold="${focused.dataset.fold}"]` : focused.dataset.group ? `[data-group="${CSS.escape(focused.dataset.group)}"]` : focused.id ? `#${focused.id}` : null);
   $('nav').innerHTML = html;
   if (keep) $('nav').querySelector(keep)?.focus({ preventScroll: true });
 }
@@ -808,7 +951,7 @@ function rowHtml(s, folderName, hit) {
     : inApp() ? `<button class="btn sm" data-chat="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Open</button>`
     : `<button class="btn sm" data-open="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Resume</button>`;
   const opened = s.lastOpened ? `<span class="r-as" style="--ring:${ringById(s.lastOpened.account)}" title="Last opened from here as ${esc(s.lastOpened.accountName)}, ${esc(agoL(s.lastOpened.at))}"><i></i>as ${esc(s.lastOpened.accountName)}</span>` : '';
-  return `<li class="row ${S.drawerId === s.id ? 'current' : ''}" data-row="${esc(s.id)}">
+  return `<li class="row ${S.drawerId === s.id ? 'current' : ''}" data-row="${esc(s.id)}" draggable="true">
     <div class="r-when"><span class="r-ago">${esc(ago(s.updated))}</span><span class="r-date">${esc(stamp(s.updated))}</span>${opened}</div>
     <div class="r-what">
       <button class="r-title" data-preview="${esc(s.id)}" title="Details and latest messages">${hit ? highlight(s.title, S.q) : esc(s.title)}</button>${flags ? `<span class="r-flags">${flags}</span>` : ''}
@@ -837,6 +980,10 @@ function renderHub() {
       ${secHead('Right now', 'At work')}
       <div class="board" id="board"></div>
       <div class="quietrow" id="quietList"></div>
+    </section>
+    <section class="sec" id="secGroups" ${S.org.groups.length ? '' : 'hidden'}>
+      ${secHead('Together', 'Your groups', '<button class="btn quiet sm" data-gact="new">New group</button>')}
+      <div class="gcards" id="gcards"></div>
     </section>
     <section class="sec" id="secWorlds">${secHead('By folder', 'Your projects', '<button class="btn sm" data-act="project-new">New project</button>')}<div class="atlas ${S.atlasEntered ? '' : 'enter'}" id="atlas"></div></section>
     <section class="sec">
@@ -1213,6 +1360,7 @@ function renderLive(force) {
   patch($('awaitList'), A, keyOf, awaitCard, '<p class="empty-line">Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.</p>');
   patch($('board'), W, keyOf, workCard, `<p class="empty-line">${A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.'}</p>`);
   patch($('quietList'), Q, keyOf, quietChip, '');
+  if ($('secGroups')) { $('secGroups').hidden = !S.org.groups.length; patch($('gcards'), S.org.groups, g => g.id, groupCard, ''); }
   $('quietList').classList.toggle('has', Q.length > 0);
   const dials = S.accounts.map(a => ({ a }));
   if (S.codex && S.codex.enabled) for (const cx of codexAccts()) dials.push({ cx });
@@ -1575,6 +1723,7 @@ function chatItems(id) {
   ];
 }
 function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id)]); }
+const groupItem = id => ({ glyph: '▤', label: groupOfChat(id) ? `Move to another group…` : 'Move to group…', hint: groupOfChat(id) ? `in ${groupOfChat(id).name}` : '', run: () => showMenu(Ctx.at || { x: innerWidth / 2, y: innerHeight / 3 }, moveToGroupItems(id)) });
 const favItem = id => ({ glyph: isFav(id) ? '☆' : '★', label: isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => toggleFav(id) });
 
 function sealMenu(anchor) {
@@ -2339,6 +2488,8 @@ $('nav').addEventListener('click', wrap(async e => {
   const f = e.target.closest('[data-fold]');
   if (f) { const id = f.dataset.fold; if (S.navFold.has(id)) S.navFold.delete(id); else S.navFold.add(id); store('navFold', JSON.stringify([...S.navFold])); return renderNav(); }
   const nc = e.target.closest('[data-navchat]'); if (nc) { document.body.classList.remove('nav-open'); return openChatFromNav(nc.dataset.navchat); }
+  if (e.target.closest('[data-gact="new"]')) return newGroup();
+  const ng = e.target.closest('[data-group]'); if (ng) { const g = S.org.groups.find(x => x.id === ng.dataset.group); if (g) return orgDo({ action: 'collapse', id: g.id, collapsed: !g.collapsed }); return; }
   const b = e.target.closest('[data-view]'); if (!b) return;
   if (b.dataset.view === 'palette') { document.body.classList.remove('nav-open'); return openPalette(); }
   if (b.dataset.view === 'newproject') { document.body.classList.remove('nav-open'); return openNewProject(); }
@@ -2436,6 +2587,9 @@ const pageClicks = wrap(async e => {
       default: return;
     }
   }
+  const gch = t.closest('[data-gchat]'); if (gch) return openChatFromNav(gch.dataset.gchat);
+  const gm = t.closest('[data-gmore]'); if (gm) return gm.getAttribute('aria-expanded') === 'true' ? closeMenu() : showMenu(gm, groupItems(gm.dataset.gmore));
+  if (t.closest('[data-gact="new"]')) return newGroup();
   const wd = t.closest('.w-art[data-world]'); if (wd) return openWorld(wd.dataset.world, wd);
   const ct = t.closest('[data-continue]'); if (ct) { const [cs] = sessionById(ct.dataset.continue); if (cs && isRunning(cs.id) && !liveOf(cs.id)) return ChatUI.watch({ sessionId: cs.id, source: 'terminal' }); return ChatUI.open({ sessionId: ct.dataset.continue }); }
   const dc = t.closest('[data-doc]'); if (dc) return Viewer.open({ path: dc.dataset.doc, cwd: S.folder });
@@ -2558,6 +2712,7 @@ function connectLive() {
   es.addEventListener('running', e => { try { S.running = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); renderNav(); });
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
   es.addEventListener('activity', e => { try { S.activity = JSON.parse(e.data).list || []; } catch { return; } watchActivity(); renderLive(); renderNav(); });
+  es.addEventListener('organize', e => { try { S.org = JSON.parse(e.data); } catch { return; } renderNav(); renderLive(); if (window.ChatUI && ChatUI.refreshCrumb) ChatUI.refreshCrumb(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
@@ -2625,7 +2780,7 @@ function activityItems(x) {
     { glyph: '❝', label: x.source === 'app' ? 'Open the chat' : x.source === 'terminal' ? 'Watch it live' : 'Read it here', run: () => { markSeen(x); return openActivity(x); } },
     ...(st === 'reply' ? [{ glyph: '✓', label: 'Mark as read', run: () => { markSeen(x); renderLive(true); renderNav(); } }] : []),
     ...(x.source === 'app' && x.key && x.phase !== 'ended' ? [{ label: 'Stop this chat', danger: true, run: () => api('/api/chat/stop', { key: x.key }) }] : []),
-    ...(x.sessionId && !x.parentKey ? ['-', favItem(x.sessionId), ...chatItems(x.sessionId).filter(i => i === '-' || !/^(Return|Open in the chat window)/.test(i.label))] : []),
+    ...(x.sessionId && !x.parentKey ? ['-', favItem(x.sessionId), groupItem(x.sessionId), ...chatItems(x.sessionId).filter(i => i === '-' || !/^(Return|Open in the chat window)/.test(i.label))] : []),
     ...(x.sessionId ? ['-', { label: 'Copy chat ID', run: () => copyText(x.sessionId) }] : []),
   ];
 }
@@ -2656,7 +2811,9 @@ const Ctx = { at: null };
 function contextItems(t) {
   // The chat window knows its own pieces (replies, code, pictures, files, the crew).
   if (window.ChatUI && ChatUI.isOpen() && t.closest('#chat')) { const it = ChatUI.contextItems(t, Ctx.at); if (it) return it; }
-  const withFav = id => [favItem(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
+  const withFav = id => [favItem(id), groupItem(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
+  const gh = t.closest('[data-group], [data-gcard]'); if (gh && !t.closest('[data-gchat]')) return groupItems(gh.dataset.group || gh.dataset.gcard);
+  const gc = t.closest('[data-gchat]'); if (gc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(gc.dataset.gchat) }, ...withFav(gc.dataset.gchat)];
   const nc = t.closest('[data-navchat]'); if (nc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(nc.dataset.navchat) }, ...withFav(nc.dataset.navchat)];
   const row = t.closest('[data-row]'); if (row) return withFav(row.dataset.row);
   const pv = t.closest('[data-preview], [data-continue]'); if (pv) return withFav(pv.dataset.preview || pv.dataset.continue);
@@ -2677,7 +2834,7 @@ document.addEventListener('contextmenu', e => {
   if (!(t instanceof Element) || t.closest('input, textarea, select, [contenteditable="true"]')) return;
   const coarse = matchMedia('(pointer: coarse)').matches;
   // On a phone, a long press on text is for selecting it; only cards, pictures and controls get a menu.
-  if (coarse && !t.closest('[data-row], [data-k], [data-world], .world, .gen, .thumb, .crew, .ri, .af-file, .umsg, .turn .who, .tool > summary, .nav-i')) return;
+  if (coarse && !t.closest('[data-row], [data-k], [data-world], [data-gchat], [data-gcard], [data-group], .world, .gen, .thumb, .crew, .ri, .af-file, .umsg, .turn .who, .tool > summary, .nav-i')) return;
   if (e.button !== 2 && !e.clientX && !e.clientY) { const r = t.getBoundingClientRect(); Ctx.at = { x: r.left + Math.min(24, r.width / 2), y: r.top + Math.min(r.height, 28) }; }
   else Ctx.at = { x: e.clientX, y: e.clientY };
   const items = contextItems(t);

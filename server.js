@@ -22,6 +22,7 @@ const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
+const organizeLib = require('./lib/organize');
 
 const APP_VERSION = '5.4.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -62,6 +63,7 @@ function save() {
 const sessions = createSessionStore({ root: path.join(config().mainConfigDir, 'projects'), dataDir: APP_DIR, log });
 const projectInfo = projectsLib.createProjects({ dataDir: APP_DIR, log });
 const chatPrefs = prefsLib.createChatPrefs({ dataDir: APP_DIR, log });
+const organize = organizeLib.createOrganize({ dataDir: APP_DIR, log });
 
 // ---------- live updates ----------
 
@@ -432,6 +434,7 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
   if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
+  if (route === 'GET /api/organize') return send(res, 200, organize.view());
   if (route === 'GET /api/file') {
     const q = Object.fromEntries(url.searchParams);
     return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
@@ -808,6 +811,21 @@ async function handleApi(req, res, url, remote = false) {
       broadcast('sessions');
       return send(res, 200, { title });
     }
+    case '/api/organize': {
+      // Groups you made: create, rename, reorder, collapse, remove, and moving chats between them.
+      const a = String(body.action || '');
+      let made = null;
+      if (a === 'create') { made = organize.create(body.name); if (body.chat) organize.move(body.chat, made.id); }
+      else if (a === 'rename') organize.rename(body.id, body.name);
+      else if (a === 'remove') organize.remove(body.id);
+      else if (a === 'collapse') organize.collapse(body.id, body.collapsed);
+      else if (a === 'reorder') organize.reorder(body.id, { step: body.step || 0, to: body.to });
+      else if (a === 'move') organize.move(body.chat, body.id || null);
+      else if (a === 'unlink') organize.unlink(body.chat);
+      else throw fail(400, 'Unknown change.');
+      broadcast('organize', organize.view());
+      return send(res, 200, { ...organize.view(), made });
+    }
     case '/api/prefs': {
       const p = c.prefs;
       if (body.terminal !== undefined) { if (!acc.TERMINALS.includes(body.terminal)) throw fail(400, 'Unknown terminal choice.'); p.terminal = body.terminal; }
@@ -864,7 +882,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/quit': {
       send(res, 200, { ok: true });
       log('Quit from the app.');
-      chatPrefs.flush();
+      chatPrefs.flush(); organize.flush();
       phone.stop();
       chats.stopAll();
       for (const x of codexAll()) x.stop();
@@ -1188,7 +1206,7 @@ server.on('error', err => {
 });
 process.on('uncaughtException', err => log(`Unexpected error: ${err.stack || err.message}`));
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { chats.stopAll(); setTimeout(() => process.exit(0), 300); });
-process.on('exit', () => { chats.stopAll(); try { chatPrefs.flush(); } catch { /* best effort */ } });
+process.on('exit', () => { chats.stopAll(); try { chatPrefs.flush(); organize.flush(); } catch { /* best effort */ } });
 process.on('unhandledRejection', err => log(`Unexpected error: ${err && (err.stack || err.message)}`));
 
 server.listen(PORT, '127.0.0.1', () => {
