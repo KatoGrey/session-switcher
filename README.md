@@ -148,7 +148,12 @@ Session Switcher has nothing personal built in, so you can give it to anyone:
    - It saves a zip on your Desktop with the app only.
    - None of your accounts, sign-ins, chats, chat names, projects or banners go in it.
    - Tick **Include my prompts** if you want them to start with yours.
+   - If you've built the Android app, it's included as `SessionSwitcher.apk`.
 2. Send them the zip. They unzip it, double-click **Claude Switcher.vbs**, and follow **First-time account setup** above with their own accounts.
+
+### On GitHub
+
+The repository is safe to publish as it is. Everything personal the app writes (`accounts.json`, `history.json`, `chat-names.json`, `projects.json`, `banners.json`, `prompts.json`, `chat-prefs.json`, `devices.json`, `switcher.log`) is listed in `.gitignore`, so it can't be committed by accident. Co-workers clone the repository, double-click **Claude Switcher.vbs**, and set up their own accounts. To give them the Android app too, attach `SessionSwitcher.apk` to a GitHub Release, or let the Actions workflow build it.
 
 Sign-ins never live in the app's folder. Each Claude account signs in through its own folder in your user profile: `.claude`, or `.claude-<name>` for extra accounts. Codex uses `.codex`. So even a plain copy of the app's folder carries no sign-ins. The zip is still the tidy way, because it also leaves out your account list, settings and history.
 
@@ -207,6 +212,54 @@ If you have Codex, the OpenAI coding agent, and a ChatGPT plan, Session Switcher
 
 Turn Codex off, or set the path to it, in Setup.
 
+## Claude and Codex in one chat
+
+Inside any Claude chat you can bring in Codex as a helper, for example to make images for a project while Claude does the main work. You don't need a second window.
+
+- **The crew, under the message box:** two pills, **Claude** and **Codex**. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex).
+  - Click the other pill, or press `Ctrl+.`, to choose who your next message goes to. The box turns blue when you're writing to Codex.
+  - Or start a message with `@codex` (or `@claude`) to send just that one message.
+- **One feed:** Codex's replies appear in the same conversation, under its own name in blue. Messages you sent it are tagged **to Codex**. Pictures it makes appear as it makes them.
+- **Hand-offs:**
+  - **Ask Codex** on any Claude reply quotes it to Codex, for example Claude's description of a cover image.
+  - **Send to Claude** on a Codex reply quotes it back.
+  - **Give to Claude** on a picture Codex made attaches it to your next message to Claude, with where it's saved.
+- **It's remembered:** the helper is tied to the chat. Reopen the chat later and Codex's earlier messages appear in place, and your next message to Codex continues the same Codex conversation.
+- **What Codex is told:** that it works alongside Claude in the same folder, should keep replies short, and should save a copy of any image it makes inside the project folder.
+- **Approvals:** Codex's approval cards are blue and say "Codex wants to…", so you always know who's asking. Esc stops whichever one you're writing to.
+- The helper uses your Codex sign-in and its usage, and shows in the ledger and on the hub as "Codex · *chat name*". **Stop this chat** stops both.
+
+## Models, effort and modes
+
+- **Switch models any time:** click the highlighted pill under the message box. It lists every model that chat's tool offers (Claude Code's or Codex's), with an **Effort** row (low to max). The change applies from your next message, without restarting the chat.
+  - Or type `/model sonnet`, `/model opus`, `/model luna` or `/effort high` in the message box and press Enter. Nothing is sent to the chat.
+  - Or press `Ctrl+K` in a chat and type a model's name.
+- **Remembered:** the mode (what it may do without asking), the model and the effort are remembered:
+  - for the chat, so reopening it brings them back
+  - as the project's default for new chats, separately for Claude and Codex
+
+  When a chat opens with a remembered mode, a short note says so.
+- Claude Code sometimes answers with a different model than the one you picked. For example, in **Plan only** mode it plans with Sonnet even when you picked Haiku. Each reply is labeled with the model that actually wrote it, and the model picker points out the difference.
+
+## Phone access and the Android app
+
+Use Session Switcher from your Android phone: read your chats, reply to Claude or Codex, approve steps, switch models. Everything still runs on your PC; the phone is a remote.
+
+1. On the PC, open **Setup → Phone access** and turn on **Let my phone use Session Switcher**. Windows may ask to let Node.js through the firewall; allow it on private networks.
+2. **Get the app:** on your phone's browser, open the `http://<your PC>:4788/get` address shown in Setup and install `SessionSwitcher.apk`. Android will ask you to allow installs from your browser.
+3. Open the app and enter the PC address shown in Setup.
+4. Click **Show a pairing code** in Setup, and type the 8-character code into the app. The code works once, for 10 minutes.
+
+How it stays safe:
+
+- Phone access is off until you turn it on. It uses its own port (4788), and the PC's own window keeps using `127.0.0.1` only.
+- Only paired phones get in. Each phone gets a long random key; only its hash is stored, in `devices.json`. **Remove** a phone in Setup and its key stops working at once.
+- A phone can't quit the app, manage phone access, or open folder pickers on the PC.
+- It's plain http on your own network. To use it away from home, install [Tailscale](https://tailscale.com) on both devices; Setup then shows the Tailscale address too, and the connection is encrypted.
+- A paired phone can do everything you can do in Session Switcher, including letting Claude run commands on your PC. Pair only your own phones.
+
+To build the app yourself, run `mobile/android/build.cmd` (details in `mobile/android/README.md`). It needs no Android Studio: the first run downloads a JDK and the Android build tools (about 560 MB) into `%LOCALAPPDATA%\SessionSwitcherBuild`. A GitHub Actions workflow (`.github/workflows/android.yml`) builds it in the cloud too.
+
 ## Regular Claude chats
 
 Your claude.ai conversations live on Anthropic's servers, not on this PC, so they can't be listed inside this app.
@@ -247,6 +300,9 @@ Turn **Animations** off in Setup to keep everything still. It's also off automat
 | `Alt+↑` / `Alt+↓` | Switch between running chats in the chat window |
 | `Enter` | Send. Use `Shift+Enter` for a new line |
 | `Esc` | Stop Claude, or close what's open |
+| `Ctrl+.` | In a Claude chat, switch between writing to Claude and to Codex |
+| `@codex` … | Send one message to Codex from a Claude chat |
+| `/model <name>` · `/effort <level>` | Switch the chat's model or effort without sending anything |
 
 ## Everyday use
 
@@ -311,6 +367,8 @@ Fixes are one click: update Claude Code, sign in, merge and share, or set the `c
   - `codex.js`: Codex chats, sign-in and usage.
   - `projects.js`: each project's documents, pictures and banner, new and added projects, and the prompts.
   - `sharecopy.js`: **Make a copy to share**.
+  - `chatprefs.js`: remembered modes, models and effort, and each Claude chat's Codex helper.
+  - `remote.js`: phone access (pairing, paired phones).
   - `files.js`: the file viewer.
   - `system.js`: terminals and processes.
   - `health.js`: the Setup checks.
@@ -318,6 +376,7 @@ Fixes are one click: update Claude Code, sign in, merge and share, or set the `c
 - `index.html`, `styles.css`, `app.js`: the hub.
 - `chat-ui.js`: the chat window.
 - `fonts/`: the bundled typefaces (SIL Open Font License).
+- `mobile/android/`: the Android app (a small WebView remote) and its build script.
 - Created as you use it:
   - `accounts.json`: your accounts and preferences.
   - `history.json`: which account last opened each chat.
@@ -325,6 +384,8 @@ Fixes are one click: update Claude Code, sign in, merge and share, or set the `c
   - `projects.json`: projects you created or added here.
   - `banners.json`: the banners you picked.
   - `prompts.json`: your prompts, once you edit them.
+  - `chat-prefs.json`: the modes, models and effort you chose, and which Codex helper goes with which chat.
+  - `devices.json`: phones you paired (hashed keys only).
   - `switcher.log`: the app's log.
 
 Session Switcher never edits your chat files.

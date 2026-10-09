@@ -8,7 +8,7 @@
 <link rel="preload" href="/fonts/spectral-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/playfair.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/styles.css">
-<script>window.TOKEN = '__TOKEN__';</script>
+<script>window.TOKEN = '__TOKEN__'; window.REMOTE = __REMOTE__;</script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -74,22 +74,24 @@
       <div class="c-pending" id="cPending" aria-live="polite"></div>
       <form class="c-compose" id="cCompose">
         <div class="c-slash" id="cSlash" role="listbox" aria-label="Saved prompts" hidden></div>
+        <div class="c-pick" id="cPick" role="dialog" aria-label="Model and effort" hidden></div>
         <div class="c-box">
           <div class="c-att" id="cAtt" hidden></div>
           <textarea id="cText" rows="1" placeholder="Write to Claude…" aria-label="Message Claude"></textarea>
           <div class="c-row">
-            <button type="button" class="btn quiet sm" data-c="attach" title="Attach images. You can also paste or drop them.">Attach image</button>
-            <button type="button" class="btn quiet sm" data-c="prompts" aria-haspopup="menu" aria-expanded="false" title="Insert a saved prompt. You can also type / in an empty message box.">Prompts</button>
+            <div class="c-crew" id="cCrew" role="group" aria-label="Who your message goes to"></div>
+            <button type="button" class="btn quiet sm c-ib" data-c="attach" title="Attach images. You can also paste or drop them." aria-label="Attach images"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="5.5" cy="6.3" r="1.2" fill="currentColor"/><path d="M2.5 12l3.6-3.4 2.4 2.2 2.2-1.9 3 2.7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span>Image</span></button>
+            <button type="button" class="btn quiet sm c-ib" data-c="prompts" aria-haspopup="menu" aria-expanded="false" title="Insert a saved prompt. You can also type / in an empty message box." aria-label="Prompts"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10M3 8h10M3 12.5h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span>Prompts</span></button>
             <input type="file" id="cFile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
             <span class="typing" id="cTyping" hidden aria-hidden="true"><i></i><i></i><i></i></span>
             <span class="c-status" id="cStatus" aria-live="polite"></span>
             <span class="spacer"></span>
-            <span class="c-model" id="cModel"></span>
+            <span class="c-model" id="cModel" hidden></span>
             <button type="button" class="btn sm" id="cStop" data-c="stop" hidden title="Stop Claude (Esc)">Stop</button>
             <button type="submit" class="btn prime sm" id="cSend">Send</button>
           </div>
         </div>
-        <p class="c-hint">Enter sends · Shift+Enter for a new line · / picks a saved prompt · Esc stops Claude · paste or drop images to attach them</p>
+        <p class="c-hint" id="cHint">Enter sends · Shift+Enter new line · / prompts · <b>/model</b> switches model · <b>@codex</b> or <b>Ctrl+.</b> talks to Codex · Esc stops</p>
       </form>
       <div class="watchbar" id="cWatch" hidden></div>
     </div>

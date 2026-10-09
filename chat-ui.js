@@ -8,7 +8,14 @@
   const C = {
     key: null, info: null, sessionId: null, es: null, lastSeq: 0, state: null, watch: null, watchSig: '',
     attachments: [], historyStart: 0, historyCursor: null, liveText: {}, liveTimer: null, interruptedAt: 0, title: '', folder: '', model: '', provider: 'claude',
+    // The Codex helper working inside a Claude chat, which one your next message goes to, and each one's model.
+    comp: null, compThread: null, target: 'main', mi: { main: null, comp: null },
   };
+  const PROV_NAME = { claude: 'Claude', codex: 'Codex' };
+  const codexOK = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
+  const duo = () => !C.watch && C.provider === 'claude' && (codexOK() || !!C.comp);
+  const provFor = src => (src === 'comp' ? 'codex' : C.provider);
+  const keyFor = src => (src === 'comp' ? C.comp && C.comp.key : C.key);
   const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Skip all checks', dontAsk: 'Never ask' };
   const STATE_LABELS = { starting: 'Starting', ready: 'Ready', busy: 'Working', waiting: 'Needs your OK', ended: 'Stopped', watching: 'Watching live', readonly: 'Read-only' };
   const ARTIFACT_RE = /https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+/g;
@@ -176,7 +183,8 @@
     html += sec('This chat', 0, `${a ? `<div class="lg-use">${miniDial(id, 34)}<span class="lu-t"><b>${esc(a.name)}</b><small class="${b && hot(b.left) ? 'hot' : ''}">${esc(usageLine(id) || (a.plan || ''))}</small></span></div>` : ''}
       <dl class="lg-about">
         ${C.watch ? `<dt>Running</dt><dd>${C.watch.source === 'terminal' ? 'In a terminal' : 'In another app'}</dd>` : ''}
-        ${C.model ? `<dt>Model</dt><dd>${esc(C.model)}</dd>` : ''}
+        ${C.model ? `<dt>Model</dt><dd>${esc(C.model)}${C.mi.main && C.mi.main.effort ? ` · ${esc(C.mi.main.effort)} effort` : ''}</dd>` : ''}
+        ${C.comp && C.mi.comp ? `<dt>Codex helper</dt><dd>${esc(modelLabel(C.mi.comp))}${C.mi.comp.effort ? ` · ${esc(C.mi.comp.effort)}` : ''}</dd>` : ''}
         ${C.info && C.info.permissionMode ? `<dt>Mode</dt><dd>${esc(($c('cMode').selectedOptions[0] || {}).textContent || $c('cMode').value)}</dd>` : ''}
         ${C.info && C.info.cwd ? `<dt>Folder</dt><dd><button class="linkish" data-file="." title="${esc(C.info.cwd)}">${esc(C.info.cwd)}</button></dd>` : ''}
         ${C.sessionId ? `<dt>Chat ID</dt><dd><button class="linkish" data-copy="${esc(C.sessionId)}" title="Copy the chat ID">${esc(C.sessionId.slice(0, 8))}…</button></dd>` : ''}
@@ -204,10 +212,18 @@
   const artTitles = {};
   function modelName(m) {
     if (!m) return '';
+    const big = /\[1m\]$/i.test(m); if (big) return `${modelName(String(m).replace(/\[1m\]$/i, ''))} · 1M`;
     if (/^(gpt|o\d)/i.test(m)) return String(m).replace(/^gpt/i, 'GPT').replace(/-(\d)/, '-$1');
     const parts = String(m).replace(/^claude-/, '').replace(/-\d{8}$/, '').split('-');
     const words = parts.filter(x => !/^\d+$/.test(x)).map(w => w[0].toUpperCase() + w.slice(1));
     return `${words.join(' ')} ${parts.filter(x => /^\d+$/.test(x)).join('.')}`.trim();
+  }
+  // The model a chat is on, as its picker names it ("Sonnet 5.5"), else from the model's id.
+  function modelLabel(mi) {
+    if (!mi) return '';
+    const m = (mi.models || []).find(x => x.value === mi.model);
+    if (m && m.value !== 'default') return m.label;
+    return modelName(mi.resolvedModel || mi.model) || (m ? m.label : '');
   }
   function learnArtifact(view, result) {
     const urls = String(result && result.text || '').match(ARTIFACT_RE) || [];
@@ -287,20 +303,30 @@
   /* ---------- feed rendering ---------- */
   // True while a live event is being drawn, so only new messages fade in (not history).
   let liveRender = false;
+  // Which of the two is being drawn (Claude, or the Codex helper), so each reply sits under its own name.
+  let curProv = null;
+  const provNow = () => curProv || C.provider;
   function lastTurn(root, make) {
+    const prov = provNow();
     const last = root.lastElementChild;
-    if (last && last.classList.contains('turn')) return last;
+    if (last && last.classList.contains('turn') && (last.dataset.prov || C.provider) === prov) return last;
     if (!make) return null;
     const t = document.createElement('div');
     t.className = liveRender ? 'turn fresh' : 'turn';
-    t.innerHTML = `<div class="who">${C.provider === 'codex' ? 'Codex' : 'Claude'}</div>`;
+    t.dataset.prov = prov;
+    const relay = C.provider === 'claude' && (codexOK() || C.compThread || C.comp);
+    t.innerHTML = `<div class="who"><span class="who-n">${PROV_NAME[prov]}</span><span class="who-m"></span><span class="turn-act">
+      <button type="button" class="ta" data-c="copyturn" title="Copy this reply">Copy</button>
+      ${relay ? `<button type="button" class="ta relay" data-c="relay" title="${prov === 'codex' ? 'Quote this to Claude' : 'Quote this to Codex, for an image, a test or a second opinion'}">${prov === 'codex' ? 'Send to Claude' : 'Ask Codex'}</button>` : ''}</span></div>`;
     root.appendChild(t);
     return t;
   }
-  function part(root, mid) {
+  function part(root, mid, model) {
+    let p = mid ? root.querySelector(`.part[data-mid="${CSS.escape(mid)}"]`) : null;
+    if (p) return p;
     const had = !!lastTurn(root, false);
     const turn = lastTurn(root, true);
-    let p = mid ? turn.querySelector(`.part[data-mid="${CSS.escape(mid)}"]`) : null;
+    if (model) { const wm = turn.querySelector('.who-m'); if (wm && !wm.textContent) wm.textContent = modelName(model); }
     if (!p) {
       p = document.createElement('div');
       p.className = liveRender && had ? 'part fresh' : 'part';
@@ -316,7 +342,8 @@
     const frame = src ? `<button type="button" class="thumb gen-img" data-full="${esc(src)}"><img src="${esc(src)}" alt="${esc(b.prompt || 'Generated image')}"></button>`
       : b.status === 'failed' ? `<div class="gen-wait failed">${esc(b.failure || 'The image couldn’t be made.')}</div>`
       : '<div class="gen-wait"><span class="gen-spin" aria-hidden="true"></span>Drawing the image…</div>';
-    const acts = b.path ? `<div class="gen-act"><button type="button" class="btn quiet sm" data-file="${esc(b.path)}">Open</button><button type="button" class="btn quiet sm" data-reveal="${esc(b.path)}">Show in folder</button><button type="button" class="btn quiet sm" data-copy="${esc(b.path)}">Copy path</button></div>` : '';
+    const give = b.path && C.provider === 'claude' ? `<button type="button" class="btn sm codexbtn" data-giveimg="${esc(b.path)}" title="Attach this picture to your next message to Claude">Give to Claude</button>` : '';
+    const acts = b.path ? `<div class="gen-act">${give}<button type="button" class="btn quiet sm" data-file="${esc(b.path)}">Open</button><button type="button" class="btn quiet sm" data-reveal="${esc(b.path)}">Show in folder</button><button type="button" class="btn quiet sm" data-copy="${esc(b.path)}">Copy path</button></div>` : '';
     return `<figure class="gen ${b.status || ''} ${develop && src ? 'develop' : ''}" data-gid="${esc(b.id || '')}"><div class="gen-frame">${frame}</div>${b.prompt ? `<figcaption>${esc(b.prompt)}</figcaption>` : ''}${acts}</figure>`;
   }
   function addBlock(p, b, live) {
@@ -354,11 +381,16 @@
   function renderItem(root, it, live) {
     if (it.kind === 'user') {
       const d = document.createElement('div');
-      d.className = liveRender ? 'umsg fresh' : 'umsg';
-      d.innerHTML = `<div class="ububble">${it.text ? `<div class="utext">${plain(it.text)}</div>` : ''}${images(it.images)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
+      const toCodex = provNow() === 'codex' && C.provider !== 'codex';
+      d.className = `${liveRender ? 'umsg fresh' : 'umsg'}${toCodex ? ' to-codex' : ''}`;
+      d.innerHTML = `${toCodex ? '<span class="to-tag">to Codex</span>' : ''}<div class="ububble">${it.text ? `<div class="utext">${plain(it.text)}</div>` : ''}${images(it.images)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
       root.appendChild(d);
     } else if (it.kind === 'assistant') {
-      const p = part(root, it.mid);
+      const mi = C.mi[provNow() === 'codex' && C.provider !== 'codex' ? 'comp' : 'main'];
+      const model = it.model || (live && mi ? mi.replyModel || mi.resolvedModel || mi.model : null);
+      const p = part(root, it.mid, model);
+      const wm = p.closest('.turn').querySelector('.who-m');
+      if (wm && model && model !== '<synthetic>' && !wm.textContent) wm.textContent = modelName(model);
       for (const b of it.blocks) addBlock(p, b, live);
       if (it.aborted) p.querySelector('.final').insertAdjacentHTML('beforeend', '<p class="aborted">Stopped before finishing.</p>');
     } else if (it.kind === 'notice') {
@@ -385,34 +417,62 @@
     const pill = $c('cState');
     pill.textContent = STATE_LABELS[s] || s;
     pill.className = `c-state ${s}`;
-    $c('cStop').hidden = !(s === 'busy' || s === 'waiting');
+    syncSend();
+  }
+  // Stop, the typing dots and Send/Queue follow whichever one your next message goes to.
+  function syncSend() {
+    const comp = C.target === 'comp' && duo();
+    const s = comp ? (C.comp ? C.comp.state : 'ready') : C.state;
+    const busy = s === 'busy' || s === 'waiting';
+    const name = PROV_NAME[comp ? 'codex' : C.provider];
+    $c('cStop').hidden = !busy;
+    $c('cStop').title = `Stop ${name} (Esc)`;
     $c('cTyping').hidden = s !== 'busy';
-    $c('cSend').textContent = s === 'busy' || s === 'waiting' ? 'Queue' : 'Send';
-    $c('cSend').title = s === 'busy' || s === 'waiting' ? 'Claude is working; this will be sent when it’s ready' : '';
+    $c('cTyping').classList.toggle('codex', comp || C.provider === 'codex');
+    $c('cSend').textContent = busy ? 'Queue' : 'Send';
+    $c('cSend').title = busy ? `${name} is working; this will be sent when it’s ready` : `Send to ${name}`;
+    $c('chat').classList.toggle('to-codex', comp);
   }
-  function handle(ev) {
-    if (ev.seq) { if (ev.seq <= C.lastSeq) return; C.lastSeq = ev.seq; }
-    liveRender = true;
-    try { handleEvent(ev); } finally { liveRender = false; }
+  function setStatus(src, t) {
+    if (src === 'comp') { if (C.comp) { C.comp.status = t; renderCrewSoon(); } return; }
+    $c('cStatus').textContent = t;
   }
-  function handleEvent(ev) {
+  function handle(ev, src = 'main') {
+    const box = src === 'comp' ? C.comp : C;
+    if (!box) return;
+    if (ev.seq) { if (ev.seq <= box.lastSeq) return; box.lastSeq = ev.seq; }
+    liveRender = true; curProv = provFor(src);
+    try { handleEvent(ev, src); } finally { liveRender = false; curProv = null; }
+  }
+  function handleEvent(ev, src) {
     const feed = $c('cFeed');
+    const comp = src === 'comp';
     switch (ev.kind) {
-      case 'state': setState(ev.state); if (ev.state !== 'busy') { $c('cStatus').textContent = ''; } break;
+      case 'state':
+        if (comp) { C.comp.state = ev.state; if (ev.state !== 'busy') C.comp.status = ''; renderCrew(); syncSend(); break; }
+        setState(ev.state); if (ev.state !== 'busy') { $c('cStatus').textContent = ''; } renderCrew(); break;
+      case 'model': {
+        C.mi[src] = ev;
+        if (!comp) { C.model = modelLabel(ev); $c('cModel').textContent = C.model; }
+        renderCrew(); renderLedgerSoon();
+        if (Pick.src === src && !$c('cPick').hidden) renderPick();
+        break;
+      }
       case 'init':
+        if (comp) { C.comp.sessionId = ev.sessionId; break; }
         C.sessionId = ev.sessionId || C.sessionId;
         if (ev.permissionMode) setMode(ev.permissionMode);
         C.model = modelName(ev.model);
         $c('cModel').textContent = C.model;
         renderLedgerSoon();
         break;
-      case 'status': if (ev.permissionMode) setMode(ev.permissionMode); if (ev.status === 'compacting') $c('cStatus').textContent = 'Summarizing the conversation…'; if (ev.text) $c('cStatus').textContent = ev.text; break;
+      case 'status': if (ev.permissionMode && !comp) setMode(ev.permissionMode); if (ev.status === 'compacting') setStatus(src, 'Summarizing the conversation…'); if (ev.text) setStatus(src, ev.text); break;
       case 'plan': L.todos = ev.steps || []; renderLedgerSoon(); break;
       case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
       case 'stream_start': withStick(() => part(feed, ev.mid)); break;
       case 'delta':
-        if (ev.thinking) { $c('cStatus').textContent = 'Thinking…'; break; }
-        $c('cStatus').textContent = '';
+        if (ev.thinking) { setStatus(src, 'Thinking…'); break; }
+        setStatus(src, comp ? 'Writing…' : '');
         part(feed, ev.mid);
         C.liveText[ev.mid] = (C.liveText[ev.mid] || '') + ev.text;
         if (!C.liveTimer) C.liveTimer = setTimeout(flushLive, 90);
@@ -426,24 +486,32 @@
         });
         break;
       }
-      case 'tool_start': $c('cStatus').textContent = `Using ${ev.name}…`; break;
+      case 'tool_start': setStatus(src, `Using ${ev.name}…`); break;
       case 'tool_progress': {
         const tool = lastTool(feed, ev.toolUseId);
         if (tool) tool.querySelector('.t-time').textContent = `${ev.seconds}s`;
-        $c('cStatus').textContent = `${ev.name || 'Tool'} running, ${ev.seconds}s`;
+        setStatus(src, `${ev.name || 'Tool'} running, ${ev.seconds}s`);
         break;
       }
       case 'tool_result': withStick(() => setToolResult(feed, ev.toolUseId, ev.result)); break;
       case 'notice': withStick(() => renderItem(feed, ev, true)); break;
-      case 'permission': addPermission(ev); break;
-      case 'permission_cancel': case 'permission_done': removePermission(ev.requestId); break;
+      case 'permission': addPermission(ev, src); break;
+      case 'permission_cancel': case 'permission_done': removePermission(ev.requestId, src); break;
       case 'result':
-        $c('cStatus').textContent = '';
+        setStatus(src, '');
         if (!ev.ok && Date.now() - C.interruptedAt > 8000 && (ev.errors.length || ev.text)) {
-          withStick(() => renderItem(feed, { kind: 'notice', level: 'warning', text: ev.text || ev.errors.join('\n') || 'Claude stopped with an error.' }));
+          withStick(() => renderItem(feed, { kind: 'notice', level: 'warning', text: ev.text || ev.errors.join('\n') || `${PROV_NAME[provFor(src)]} stopped with an error.` }));
         }
         break;
       case 'ended': {
+        if (comp) {
+          // The helper stopping doesn't end the Claude chat; your next message to Codex starts it again.
+          C.comp.ended = true; C.comp.state = 'ended'; if (C.comp.es) C.comp.es.close();
+          for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src === 'comp') card.remove();
+          if (!ev.stopped) withStick(() => renderItem(feed, { kind: 'notice', level: 'info', text: 'The Codex helper stopped. Your next message to Codex starts it again.' }));
+          renderCrew(); syncSend();
+          break;
+        }
         setState('ended');
         clearPermissions();
         const why = ev.stopped ? 'This chat was stopped.' : ev.code ? 'Claude Code stopped unexpectedly.' : 'Claude Code finished and closed this chat.';
@@ -466,28 +534,30 @@
       default: return `use ${p.toolName}`;
     }
   }
-  function addPermission(p) {
+  function addPermission(p, src = 'main') {
     const box = $c('cPending');
-    if (box.querySelector(`[data-req="${CSS.escape(p.requestId)}"]`)) return;
+    if (box.querySelector(`[data-req="${CSS.escape(`${src}:${p.requestId}`)}"]`)) return;
     const card = document.createElement('div');
-    card.className = 'perm';
-    card.dataset.req = p.requestId;
+    const name = PROV_NAME[provFor(src)];
+    card.className = `perm ${provFor(src) === 'codex' ? 'codex' : ''}`;
+    card.dataset.req = `${src}:${p.requestId}`;
+    card._src = src;
     if (p.questions && p.questions.length) {
       card.classList.add('ask');
-      card.innerHTML = `<p class="perm-h">Claude has <b>${p.questions.length === 1 ? 'a question' : `${p.questions.length} questions`}</b></p>
+      card.innerHTML = `<p class="perm-h">${name} has <b>${p.questions.length === 1 ? 'a question' : `${p.questions.length} questions`}</b></p>
         ${p.questions.map((q, qi) => `<fieldset class="q" data-qi="${qi}"><legend>${q.header ? `<span class="q-h">${esc(q.header)}</span>` : ''}${esc(q.question)}</legend>
           ${q.options.map((o, oi) => `<label class="opt"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="q${esc(p.requestId)}-${qi}" value="${oi}"><span><b>${esc(o.label)}</b>${o.description ? `<small>${esc(o.description)}</small>` : ''}</span></label>`).join('')}
           <label class="opt other"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="q${esc(p.requestId)}-${qi}" value="other"><span><b>Other</b><input type="text" class="other-t" placeholder="Type your own answer" aria-label="Your own answer"></span></label></fieldset>`).join('')}
         <div class="perm-b"><button type="button" class="btn gilt" data-p="answer">Send answers</button><button type="button" class="btn" data-p="deny">Skip</button></div>`;
     } else {
       const v = p.view || {};
-      card.innerHTML = `<p class="perm-h">Claude wants to <b>${esc(verbFor(p))}</b>${v.summary && p.toolName !== 'Bash' ? `: <span class="perm-sum">${esc(v.summary)}</span>` : ''}</p>
+      card.innerHTML = `<p class="perm-h">${name} wants to <b>${esc(verbFor(p))}</b>${v.summary && p.toolName !== 'Bash' ? `: <span class="perm-sum">${esc(v.summary)}</span>` : ''}</p>
         ${p.title && p.title !== p.toolName ? `<p class="perm-r">${esc(p.title)}</p>` : ''}
         ${p.description ? `<p class="perm-r">${esc(p.description)}</p>` : ''}
         ${p.reason ? `<p class="perm-r">Why it’s asking: ${esc(p.reason)}</p>` : ''}
         ${p.blockedPath ? `<p class="perm-r">Outside your project: ${esc(p.blockedPath)}</p>` : ''}
         <div class="perm-d">${toolDetail(v)}</div>
-        <div class="perm-why" hidden><input type="text" class="why-t" placeholder="Optional: tell Claude what to do instead" aria-label="What to do instead"></div>
+        <div class="perm-why" hidden><input type="text" class="why-t" placeholder="Optional: tell ${name} what to do instead" aria-label="What to do instead"></div>
         <div class="perm-b">
           <button type="button" class="btn ${p.defaultToNo ? '' : 'gilt'}" data-p="allow">Allow</button>
           ${p.canAlways ? '<button type="button" class="btn" data-p="always" title="Don’t ask again for this kind of action in this project">Always allow</button>' : ''}
@@ -501,15 +571,15 @@
     toBottom();
     (card.querySelector('.btn.gilt') || card.querySelector('button')).focus({ preventScroll: true });
   }
-  function removePermission(id) {
-    const c = $c('cPending').querySelector(`[data-req="${CSS.escape(id)}"]`);
+  function removePermission(id, src = 'main') {
+    const c = $c('cPending').querySelector(`[data-req="${CSS.escape(`${src}:${id}`)}"]`);
     if (c) c.remove();
   }
   function clearPermissions() { $c('cPending').innerHTML = ''; }
 
   async function answer(card, decision) {
     const p = card._p;
-    const body = { key: C.key, requestId: p.requestId, decision };
+    const body = { key: keyFor(card._src), requestId: p.requestId, decision };
     if (decision === 'deny' && !p.questions) {
       // First click asks what Claude should do instead; the second click (or Enter) sends the denial.
       if (!card._denyArmed) {
@@ -535,6 +605,130 @@
     card.querySelectorAll('button').forEach(b => { b.disabled = true; });
     try { await api('/api/chat/permission', body); }
     catch (err) { card.querySelectorAll('button').forEach(b => { b.disabled = false; }); throw err; }
+  }
+
+  /* ---------- the crew: who your next message goes to, what each is doing, and each one's model ---------- */
+  let crewTimer = null;
+  function renderCrewSoon() { if (!crewTimer) crewTimer = setTimeout(() => { crewTimer = null; renderCrew(); }, 120); }
+  function crewPill(src) {
+    const prov = provFor(src);
+    const mi = C.mi[src];
+    const st = src === 'comp' ? (C.comp && !C.comp.ended ? C.comp.state : 'off') : C.state;
+    const busy = st === 'busy' || st === 'starting' || st === 'waiting';
+    const status = src === 'comp' ? C.comp && C.comp.status : '';
+    const label = mi ? `${modelLabel(mi)}${mi.effort ? ` · ${mi.effort}` : ''}` : src === 'comp' && st === 'off' ? 'ready when you are' : '…';
+    const on = duo() ? C.target === src : true;
+    const sub = st === 'waiting' ? 'needs your OK' : busy && status ? status : label;
+    const tip = on ? `${PROV_NAME[prov]}: choose its model and effort` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`;
+    return `<button type="button" class="crew ${prov}${on ? ' on' : ''}${busy ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}" data-crew="${src}" aria-pressed="${on}" title="${esc(tip)}">
+      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
+  }
+  function renderCrew() {
+    const box = $c('cCrew'); if (!box) return;
+    if (C.watch || !C.key) { box.innerHTML = ''; return; }
+    const two = duo();
+    box.innerHTML = crewPill('main') + (two ? crewPill('comp') : '');
+    box.classList.toggle('duo', two);
+    $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b> switches model${two ? ' · <b>@codex</b> or <b>Ctrl+.</b> talks to Codex' : ''} · Esc stops`;
+    if (!two && C.target === 'comp') setTarget('main');
+  }
+  function setTarget(t, focus = true) {
+    C.target = t === 'comp' && duo() ? 'comp' : 'main';
+    const name = PROV_NAME[provFor(C.target)];
+    $c('cText').placeholder = C.target === 'comp' ? 'Ask Codex… an image, a quick test, a second opinion' : `Write to ${name}…`;
+    $c('cText').setAttribute('aria-label', `Message ${name}`);
+    renderCrew(); syncSend(); closePick();
+    if (focus) $c('cText').focus();
+  }
+
+  // The model picker: every model the chat's tool offers, and its effort levels.
+  const Pick = { src: null };
+  function closePick() { const b = $c('cPick'); if (b && !b.hidden) { b.hidden = true; Pick.src = null; } }
+  async function openPick(src) {
+    Pick.src = src;
+    if (src === 'comp' && (!C.comp || C.comp.ended)) { renderPick(); await ensureCompanion(); }
+    renderPick();
+  }
+  function renderPick() {
+    const box = $c('cPick'); const src = Pick.src; if (!src) return;
+    const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
+    if (!mi || !mi.models || !mi.models.length) box.innerHTML = `<p class="mp-load"><span class="gen-spin" aria-hidden="true"></span>Asking ${name} which models it has…</p>`;
+    else {
+      const cur = mi.models.find(m => m.value === mi.model);
+      const efforts = (cur && cur.efforts && cur.efforts.length ? cur.efforts : mi.efforts) || [];
+      // Claude Code lists its current lineup by alias ("sonnet"); dated and older models fold away.
+      const older = m => provFor(src) === 'claude' && /^claude-/.test(m.value);
+      const row = m => `<button type="button" role="radio" aria-checked="${m.value === mi.model}" data-model="${esc(m.value)}"><b>${esc(m.label)}</b>${m.description ? `<small>${esc(m.description)}</small>` : ''}</button>`;
+      const late = mi.models.filter(older);
+      box.innerHTML = `<p class="mp-h"><span class="mp-t"><b>${name}</b> model</span><span>takes effect from your next message</span></p>
+        <div class="mp-list" role="radiogroup" aria-label="${name} model">${mi.models.filter(m => !older(m)).map(row).join('')}
+        ${late.length ? `<details class="mp-more" ${late.some(m => m.value === mi.model) ? 'open' : ''}><summary>Earlier models (${late.length})</summary>${late.map(row).join('')}</details>` : ''}</div>
+        ${efforts.length ? `<p class="mp-h"><span class="mp-t">Effort</span><span>how hard it thinks</span></p><div class="mp-eff" role="radiogroup" aria-label="Effort">${efforts.map(e => `<button type="button" role="radio" aria-checked="${e === mi.effort}" data-effort="${esc(e)}">${esc(e)}</button>`).join('')}</div>` : ''}
+        ${mi.replyModel && mi.resolvedModel && mi.replyModel !== mi.resolvedModel && provFor(src) === 'claude' ? `<p class="mp-note">The last reply came from <b>${esc(modelName(mi.replyModel))}</b>.${$c('cMode').value === 'plan' ? ' In Plan only mode, Claude Code plans with a stronger model than Haiku.' : ''}</p>` : ''}
+        <p class="mp-f">Remembered for this chat, and for new ${name} chats in ${esc(C.folder || 'this project')}. Shortcut: <kbd class="kbd">/model ${provFor(src) === 'codex' ? 'luna' : 'sonnet'}</kbd></p>`;
+    }
+    box.classList.toggle('codex', provFor(src) === 'codex');
+    box.hidden = false;
+    box.querySelector('[aria-checked="true"]')?.scrollIntoView({ block: 'nearest' });
+  }
+  async function pickModel(src, change) {
+    const key = keyFor(src); if (!key) return;
+    const r = await api('/api/chat/model', { key, ...change });
+    C.mi[src] = { ...(C.mi[src] || {}), ...r };
+    renderCrew(); renderPick(); renderLedgerSoon();
+    if (src === 'main') { C.model = modelLabel(C.mi.main); $c('cModel').textContent = C.model; }
+    toast(`${PROV_NAME[provFor(src)]}: ${modelLabel(C.mi[src])}${C.mi[src].effort ? `, ${C.mi[src].effort} effort` : ''}.`, 2200);
+  }
+  // "/model sonnet" or "/effort high" in the message box: switches without sending anything.
+  async function quickSwitch(kind, value) {
+    const src = C.target === 'comp' && duo() ? 'comp' : 'main';
+    if (src === 'comp') await ensureCompanion();
+    const mi = C.mi[src];
+    const v = value.toLowerCase();
+    if (kind === 'effort') return pickModel(src, { effort: v });
+    const list = (mi && mi.models) || [];
+    const hit = list.find(m => m.value.toLowerCase() === v) || list.find(m => m.label.toLowerCase() === v)
+      || list.find(m => m.label.toLowerCase().replace(/\s+/g, '').includes(v.replace(/\s+/g, ''))) || list.find(m => m.value.toLowerCase().includes(v));
+    if (!hit && list.length) { toast(`${PROV_NAME[provFor(src)]} has no model called “${value}”. Click its name under the message box to see them all.`, 6000); return undefined; }
+    return pickModel(src, { model: hit ? hit.value : value });
+  }
+
+  // Starts (or reconnects to) the Codex helper for this Claude chat.
+  async function ensureCompanion() {
+    if (C.comp && !C.comp.ended) return C.comp;
+    const info = await api('/api/chat/companion', { key: C.key });
+    attachComp(info);
+    return C.comp;
+  }
+  function attachComp(info) {
+    if (C.comp && C.comp.es) C.comp.es.close();
+    C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: false };
+    if (info.models && info.models.length) C.mi.comp = info;
+    const key = info.key;
+    const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=0`);
+    es.addEventListener('chat', e => { if (!C.comp || C.comp.key !== key) return; try { handle(JSON.parse(e.data), 'comp'); } catch (err) { console.error(err); } });
+    es.onerror = () => { if (C.comp && C.comp.key === key && C.comp.ended) es.close(); };
+    C.comp.es = es;
+    renderCrew(); renderLedgerSoon();
+  }
+
+  // Quotes a reply to the other one: Claude's plan to Codex for an image, Codex's answer back to Claude.
+  function relay(turn) {
+    const from = turn.dataset.prov || C.provider;
+    const text = [...turn.querySelectorAll('.final > .md')].map(x => x.innerText.trim()).filter(Boolean).join('\n\n').slice(0, 6000);
+    if (!text) { toast('There’s no text in that reply to pass on.'); return; }
+    setTarget(from === 'codex' ? 'main' : 'comp', false);
+    placeText(`${PROV_NAME[from]} said:\n\n${text.split('\n').map(l => `> ${l}`).join('\n')}\n\n`, false);
+  }
+  async function giveImage(p) {
+    const blob = await (await fetch(imageUrl(p))).blob();
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(blob.type)) { toast('That picture’s format can’t be attached.'); return; }
+    if (blob.size > 5 * 1024 * 1024) { toast('That picture is over 5 MB, so it can’t be attached. Point Claude to its path instead.', 7000); return; }
+    const data = await new Promise(res => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(blob); });
+    C.attachments.push({ mediaType: blob.type, data: data.slice(data.indexOf(',') + 1) });
+    renderAttachments();
+    setTarget('main', false);
+    placeText(`Here’s the picture Codex made (saved at \`${p}\`). `, false);
   }
 
   /* ---------- composer ---------- */
@@ -602,14 +796,23 @@
       ${chips ? `<p class="cw-h">Start from a prompt, or just write. Type <kbd class="kbd">/</kbd> to search them.</p><div class="chips">${chips}</div>` : ''}</div></div>`);
   }
   async function sendMessage() {
-    const text = $c('cText').value;
+    let text = $c('cText').value;
     if (!text.trim() && !C.attachments.length) return;
-    if (C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
+    const clear = () => { $c('cText').value = ''; C.attachments = []; renderAttachments(); grow(); };
+    // /model and /effort switch without sending.
+    const sw = text.trim().match(/^\/(model|effort)\s+(.{1,60})$/i);
+    if (sw && !C.attachments.length) { clear(); await quickSwitch(sw[1].toLowerCase(), sw[2].trim()); return; }
+    // "@codex …" or "@claude …" sends just this message to that one.
+    let target = C.target === 'comp' && duo() ? 'comp' : 'main';
+    const at = duo() && text.match(/^\s*@(codex|claude)\b[:,]?\s*/i);
+    if (at) { target = at[1].toLowerCase() === 'codex' ? 'comp' : 'main'; text = text.slice(at[0].length); }
+    if (target === 'main' && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
     const images = C.attachments.slice();
     $c('cSend').disabled = true;
     try {
-      await api('/api/chat/send', { key: C.key, text, images });
-      $c('cText').value = ''; C.attachments = []; renderAttachments(); grow();
+      const key = target === 'comp' ? (await ensureCompanion()).key : C.key;
+      await api('/api/chat/send', { key, text, images });
+      clear();
     } finally { $c('cSend').disabled = false; $c('cText').focus(); }
   }
   function modeOptions(list) {
@@ -639,7 +842,7 @@
   function refreshUsage() { if (!$c('chat').hidden) { headerAccount(C.info ? C.info.accountId : null, C.info ? C.info.accountName : ''); renderLedgerSoon(); } }
   function isViewing(x) {
     if (!x || $c('chat').hidden) return false;
-    if (C.key && x.key) return x.key === C.key;
+    if (C.key && x.key) return x.key === C.key || !!(C.comp && x.key === C.comp.key);
     const sid = C.watch ? C.watch.sessionId : C.sessionId;
     return !!(sid && x.sessionId && x.sessionId.toLowerCase() === String(sid).toLowerCase());
   }
@@ -652,12 +855,12 @@
   }
   function renderRail() {
     if ($c('chat').hidden) return;
-    const list = S.activity;
+    const list = S.activity.filter(x => !x.parentKey);
     $c('cRailCount').textContent = list.length ? String(list.length) : '';
     patch($c('cRailList'), list, keyOf, railItem, '<li class="ri-empty">Only this chat is open.</li>');
   }
   function switchRail(step) {
-    const list = S.activity; if (!list.length) return;
+    const list = S.activity.filter(x => !x.parentKey); if (!list.length) return;
     const i = list.findIndex(isViewing);
     const next = list[(i + step + list.length) % list.length];
     if (next && !isViewing(next)) openActivity(next);
@@ -674,8 +877,13 @@
     const h = await api(`/api/chat/history?${params}`);
     C.historyStart = h.start;
     C.historyCursor = h.cursor || null;
+    let rows = h.items.map(it => ({ it, prov: C.provider }));
+    // A Claude chat's Codex helper: its earlier messages slot in among Claude's by time.
+    if (before === undefined && C.compThread && C.provider === 'claude') {
+      try { rows = mergeHelper(rows, (await api(`/api/chat/history?${new URLSearchParams({ id: C.compThread, provider: 'codex' })}`)).items); } catch { /* shown without them */ }
+    }
     const tmp = document.createElement('div');
-    for (const it of h.items) renderItem(tmp, it, false);
+    for (const r of rows) { curProv = r.prov; try { renderItem(tmp, r.it, false); } finally { curProv = null; } }
     const feed = $c('cFeed');
     if (before === undefined) { feed.prepend(...tmp.childNodes); feed.prepend($c('cEarlier')); }
     else {
@@ -686,6 +894,26 @@
     $c('cEarlier').hidden = h.start <= 0;
     $c('cEarlier').textContent = C.historyCursor ? 'Show earlier messages' : `Show earlier messages (${h.start} more)`;
     return h;
+  }
+
+  function mergeHelper(rows, items) {
+    // The helper's turns, each starting at your message; ones from a helper still running come live.
+    const cutoff = C.comp && C.comp.startedAt ? Date.parse(C.comp.startedAt) : Infinity;
+    const groups = [];
+    for (const it of items) {
+      if (it.kind === 'user' || !groups.length) groups.push({ t: it.at ? Date.parse(it.at) : -Infinity, items: [] });
+      groups[groups.length - 1].items.push(it);
+    }
+    const keep = groups.filter(g => !(g.t >= cutoff));
+    const out = [];
+    let gi = 0, last = -Infinity;
+    for (const r of rows) {
+      const t = r.it.at ? Date.parse(r.it.at) : last; last = t;
+      while (gi < keep.length && keep[gi].t <= t) out.push(...keep[gi++].items.map(it => ({ it, prov: 'codex' })));
+      out.push(r);
+    }
+    while (gi < keep.length) out.push(...keep[gi++].items.map(it => ({ it, prov: 'codex' })));
+    return out;
   }
 
   function connect() {
@@ -700,7 +928,9 @@
   function reset() {
     if (C.es) { C.es.close(); C.es = null; }
     clearTimeout(C.liveTimer);
-    Object.assign(C, { key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude' });
+    if (C.comp && C.comp.es) C.comp.es.close();
+    Object.assign(C, { key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+    closePick();
     $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
     clearPermissions();
     ledgerReset();
@@ -727,7 +957,10 @@
     C.key = info.key; C.info = info; C.sessionId = info.sessionId || sessionId;
     C.provider = info.provider || 'claude';
     if (info.modes) modeOptions(info.modes);
-    $c('cText').placeholder = C.provider === 'codex' ? 'Write to Codex…' : 'Write to Claude…';
+    if (info.models && info.models.length) C.mi.main = info;
+    C.compThread = info.companionThread || null;
+    if (info.companionKey && C.provider === 'claude') { try { attachComp(await api('/api/chat/attach', { key: info.companionKey })); } catch { /* the helper has stopped */ } }
+    setTarget('main', false);
     $c('chat').classList.toggle('codex', C.provider === 'codex');
     const [s, p] = findSession(C.sessionId);
     C.title = info.title && info.title !== 'New chat' ? info.title : mode === 'new' ? 'New chat' : mode === 'fork' ? `${s ? s.title : 'Chat'} (copy)` : (s ? s.title : info.title || 'Chat');
@@ -762,6 +995,10 @@
       throw err;
     }
     if (prov !== 'codex' && info.attached && info.accountId !== a.id) toast(`This chat was already open here as ${info.accountName}, so it continues as ${info.accountName}.`, 7000);
+    else if (info.remembered && info.permissionMode) {
+      const label = ((info.modes || []).find(m => m.value === info.permissionMode) || {}).label || MODE_LABELS[info.permissionMode] || info.permissionMode;
+      toast(`Opened in “${label}”, as you left it${mode === 'new' ? ' in this project' : ''}.`, 3500);
+    }
     await begin(info, { mode, sessionId, cwd });
     // Started from a prompt: it waits in the message box so you can adjust it before sending.
     if (initialText) placeText(initialText, true);
@@ -821,6 +1058,8 @@
 
   function close(silent) {
     if (C.es) { C.es.close(); C.es = null; }
+    if (C.comp && C.comp.es) { C.comp.es.close(); C.comp.es = null; }
+    closePick();
     clearInterval(C.watchTimer);
     $c('chat').hidden = true;
     document.body.classList.remove('chat-open');
@@ -852,6 +1091,11 @@
       const rm = t.closest('[data-rm]'); if (rm) { C.attachments.splice(+rm.dataset.rm, 1); renderAttachments(); return; }
       if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
       const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
+      const crew = t.closest('[data-crew]');
+      if (crew) { const src = crew.dataset.crew; if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
+      const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });
+      const pe = t.closest('#cPick [data-effort]'); if (pe) return pickModel(Pick.src, { effort: pe.dataset.effort });
+      const gi = t.closest('[data-giveimg]'); if (gi) return giveImage(gi.dataset.giveimg);
       const c = t.closest('[data-c]'); if (!c) return;
       switch (c.dataset.c) {
         case 'back': return close();
@@ -866,7 +1110,14 @@
         case 'attach': return $c('cFile').click();
         case 'prompts': return c.getAttribute('aria-expanded') === 'true' ? closeMenu() : promptsMenu(c);
         case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
-        case 'stop': C.interruptedAt = Date.now(); return api('/api/chat/interrupt', { key: C.key });
+        case 'stop': C.interruptedAt = Date.now(); return api('/api/chat/interrupt', { key: C.target === 'comp' && C.comp ? C.comp.key : C.key });
+        case 'relay': return relay(c.closest('.turn'));
+        case 'copyturn': {
+          const turn = c.closest('.turn');
+          const text = [...turn.querySelectorAll('.final > .md')].map(x => x.innerText.trim()).filter(Boolean).join('\n\n');
+          try { await navigator.clipboard.writeText(text); toast('Copied.', 1500); } catch { toast('Couldn’t copy.'); }
+          return undefined;
+        }
         case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return open({ sessionId: id, mode: 'resume', accountId: provider === 'codex' ? null : accountId, provider }); }
         case 'fork': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'fork' }); }
         case 'takeover': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'resume' }); }
@@ -891,7 +1142,7 @@
     chat.addEventListener('keydown', e => {
       if (e.key === 'Enter' && e.target.matches('code.flink')) { e.preventDefault(); wrap(openFile)(e.target.dataset.path); }
     });
-    $c('cMode').addEventListener('change', wrap(async e => { await api('/api/chat/mode', { key: C.key, mode: e.target.value }); toast(`Mode: ${MODE_LABELS[e.target.value]}.`, 2000); renderLedgerSoon(); }));
+    $c('cMode').addEventListener('change', wrap(async e => { await api('/api/chat/mode', { key: C.key, mode: e.target.value }); toast(`Mode: ${(e.target.selectedOptions[0] || {}).textContent || e.target.value}. Remembered for this chat and new ones in ${C.folder || 'this project'}.`, 3000); renderLedgerSoon(); }));
     $c('cCompose').addEventListener('submit', e => { e.preventDefault(); wrap(sendMessage)(); });
     $c('cText').addEventListener('input', () => { grow(); Slash.moved = false; renderSlash(); });
     $c('cText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $c('cText')) closeSlash(); }, 120));
@@ -907,7 +1158,11 @@
         if (e.key === 'Enter') closeSlash();
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); wrap(sendMessage)(); }
-      if (e.key === 'Escape' && (C.state === 'busy' || C.state === 'waiting')) { e.preventDefault(); C.interruptedAt = Date.now(); wrap(() => api('/api/chat/interrupt', { key: C.key }))(); }
+      if (e.key === '.' && e.ctrlKey && duo()) { e.preventDefault(); setTarget(C.target === 'comp' ? 'main' : 'comp'); return; }
+      const tgt = C.target === 'comp' && C.comp ? C.comp : null;
+      const tstate = tgt ? tgt.state : C.state;
+      if (e.key === 'Escape' && !$c('cPick').hidden) { e.preventDefault(); closePick(); return; }
+      if (e.key === 'Escape' && (tstate === 'busy' || tstate === 'waiting')) { e.preventDefault(); C.interruptedAt = Date.now(); wrap(() => api('/api/chat/interrupt', { key: tgt ? tgt.key : C.key }))(); }
     });
     $c('cText').addEventListener('paste', e => {
       const files = [...(e.clipboardData && e.clipboardData.files || [])].filter(f => f.type.startsWith('image/'));
@@ -918,6 +1173,7 @@
     chat.addEventListener('dragleave', e => { if (e.target === chat || !chat.contains(e.relatedTarget)) chat.classList.remove('drop'); });
     chat.addEventListener('drop', e => { e.preventDefault(); chat.classList.remove('drop'); if (!C.watch) addFiles([...e.dataTransfer.files]); });
     $c('cLight').addEventListener('click', () => { $c('cLight').hidden = true; });
+    document.addEventListener('mousedown', e => { if (!$c('cPick').hidden && !(e.target.closest && e.target.closest('#cPick, [data-crew]'))) closePick(); });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && !$c('cLight').hidden) { $c('cLight').hidden = true; e.stopPropagation(); return; }
       if ($c('chat').hidden) return;
@@ -930,6 +1186,21 @@
     accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
     showLedger: () => { const chat = $c('chat'); if (matchMedia('(max-width: 1320px)').matches) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
     sessionsChanged: () => { if (C.watch) refreshWatch(); },
+    refreshCrew: () => { if (!$c('chat').hidden) renderCrew(); },
+    // Ctrl+K: "Sonnet 5.5", "GPT-6-Luna"… for the chat you're in.
+    modelItems: () => {
+      if ($c('chat').hidden || C.watch) return [];
+      const out = [];
+      for (const src of duo() ? ['main', 'comp'] : ['main']) {
+        const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
+        if (src === 'comp' && (!mi || !mi.models)) { out.push({ glyph: '◆', t: `Choose Codex’s model…`, s: 'Codex helper', run: () => openPick('comp'), text: 'codex model switch effort' }); continue; }
+        for (const m of (mi && mi.models) || []) if (m.value !== mi.model) out.push({ glyph: src === 'comp' ? '◆' : '✦', t: `${name}: ${m.label}`, s: m.description, run: () => pickModel(src, { model: m.value }), text: `model switch ${name} ${m.label} ${m.value}` });
+        for (const e of (mi && (((mi.models || []).find(x => x.value === mi.model) || {}).efforts || mi.efforts)) || []) if (e !== mi.effort) out.push({ glyph: '◈', t: `${name}: ${e} effort`, run: () => pickModel(src, { effort: e }), text: `effort ${name} ${e} think` });
+      }
+      return out;
+    },
+    // For the phone's Back button: closes the picker, then the chat. True if it did something.
+    back: () => { if (!$c('cLight').hidden) { $c('cLight').hidden = true; return true; } if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { close(); return true; } return false; },
     isOpen: () => !$c('chat').hidden, key: () => C.key,
   };
 })();

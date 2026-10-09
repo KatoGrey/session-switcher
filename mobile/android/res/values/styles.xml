@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Session Switcher</string>
+
+    <color name="bg">#FF17100E</color>
+    <color name="accent">#FFA5463F</color>
+    <color name="icon_bg">#FF3D1A18</color>
+
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:colorPrimary">@color/bg</item>
+        <item name="android:colorPrimaryDark">@color/bg</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

@@ -1575,6 +1575,8 @@ function renderSetup(j) {
         <div class="row2"><input id="prefCodex" value="${esc(j.codex ? j.codex.command : 'codex')}" spellcheck="false"><button class="btn" id="saveCodex">Save</button></div>
         <small>Leave as “codex” unless Setup can’t find it; then paste the full path to codex.cmd.</small></div>
     </div>
+    ${window.REMOTE ? `<p class="d-h">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p>
+      ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
     <p class="d-h">App</p>
     <div class="app-actions">
       <button class="btn" data-fix="shortcut">Create desktop shortcut</button>
@@ -1584,13 +1586,45 @@ function renderSetup(j) {
     </div>
     <p class="ver">Session Switcher ${esc(j.appVersion)}. Your chats are read from your own .claude folder and never leave this PC.</p>`;
 }
+/* ---------- phone access: use this PC's Session Switcher from the Android app ---------- */
+let phoneTimer = null;
+async function loadPhone() {
+  if (window.REMOTE || !$('phoneBox')) return;
+  try { renderPhone(await api('/api/phone')); } catch (err) { $('phoneBox').innerHTML = `<p class="loading">${esc(err.message)}</p>`; }
+}
+function renderPhone(st) {
+  const box = $('phoneBox'); if (!box) return;
+  clearInterval(phoneTimer);
+  const host = a => `${a.address}:${st.port}`;
+  const lan = st.addresses.filter(a => !a.tailscale), ts = st.addresses.filter(a => a.tailscale);
+  const left = st.pairing ? Math.max(0, Math.round((st.pairing.expiresAt - Date.now()) / 1000)) : 0;
+  box.innerHTML = `
+    <label class="toggle"><input type="checkbox" data-phone="enabled" ${st.enabled ? 'checked' : ''}><span><b>Let my phone use Session Switcher</b><span>Your Android phone can see your chats, answer Claude and Codex, approve steps and switch models, over your Wi-Fi. Only phones you pair can connect. ${st.error ? `<b class="warn">${esc(st.error)}</b>` : ''}</span></span></label>
+    ${st.enabled ? `
+    <div class="ph-grid">
+      <div class="ph-step"><span class="ph-n">1</span><div><b>Get the app</b><p>${st.apk ? `On your phone’s browser, open <code>http://${esc(lan[0] ? host(lan[0]) : `this-pc:${st.port}`)}/get</code> and install it.` : 'Build it first: run <code>mobile\\android\\build.cmd</code>, then come back here.'}</p></div></div>
+      <div class="ph-step"><span class="ph-n">2</span><div><b>Enter this PC’s address</b><p>${lan.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ') || '<i>No network found.</i>'}${ts.length ? `<br><small>Away from home with Tailscale: ${ts.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ')}</small>` : ''}</p></div></div>
+      <div class="ph-step"><span class="ph-n">3</span><div><b>Pair it</b>${st.pairing ? `<p class="ph-code" aria-label="Pairing code">${esc(st.pairing.code.slice(0, 4))}<span>·</span>${esc(st.pairing.code.slice(4))}</p><p><small id="phLeft">Works once, for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}.</small> <button class="btn quiet sm" data-phone="cancel">Cancel</button></p>` : '<p><button class="btn prime sm" data-phone="pair">Show a pairing code</button></p>'}</div></div>
+    </div>
+    ${st.devices.length ? `<p class="ph-h">Paired phones</p><ul class="ph-dev">${st.devices.map(d => `<li><span class="glyph" aria-hidden="true">◈</span><span><b>${esc(d.name)}</b><small>paired ${esc(agoL(d.created))}${d.lastSeen ? ` · last used ${esc(agoL(d.lastSeen))}` : ''}</small></span><button class="btn quiet sm" data-phone="forget" data-id="${esc(d.id)}">Remove</button></li>`).join('')}</ul>` : ''}
+    <p class="ph-warn">A paired phone can do anything you can do here, including letting Claude run commands on this PC. Pair only your own phones, and remove one you lose. Windows may ask to let Node.js through the firewall; allow it on private networks.</p>` : ''}`;
+  if (st.pairing) phoneTimer = setInterval(() => {
+    const l = Math.max(0, Math.round((st.pairing.expiresAt - Date.now()) / 1000));
+    const el = $('phLeft'); if (!el || !$('setup').open) { clearInterval(phoneTimer); return; }
+    if (!l) { clearInterval(phoneTimer); loadPhone(); return; }
+    el.textContent = `Works once, for ${Math.floor(l / 60)}:${String(l % 60).padStart(2, '0')}.`;
+    if (l % 5 === 0) api('/api/phone').then(n => { if (!n.pairing && $('setup').open) renderPhone(n); }).catch(() => {});
+  }, 1000);
+}
 async function openSetup() {
   $('setupBody').innerHTML = '<p class="loading">Checking Claude Code, your accounts and shared data…</p>';
   $('setup').showModal();
-  try { await loadHealth(true); } catch (err) { $('setupBody').innerHTML = `<p class="loading">${esc(err.message)}</p>`; }
+  try { await loadHealth(true); loadPhone(); } catch (err) { $('setupBody').innerHTML = `<p class="loading">${esc(err.message)}</p>`; }
 }
 $('setupClose').addEventListener('click', () => $('setup').close());
 $('setupBody').addEventListener('change', wrap(async e => {
+  const ph = e.target.closest('[data-phone="enabled"]');
+  if (ph) { renderPhone(await api('/api/phone', { enabled: ph.checked })); toast(ph.checked ? 'Phone access is on.' : 'Phone access is off. Paired phones can’t connect until you turn it on again.', 3500); return; }
   const loc = e.target.closest('[data-local]');
   if (loc) return setLocal(loc.dataset.local, loc.checked);
   const cxp = e.target.closest('[data-codex]');
@@ -1601,6 +1635,14 @@ $('setupBody').addEventListener('change', wrap(async e => {
   S.prefs = r.prefs; toast('Saved.', 1500); renderPage();
 }));
 $('setupBody').addEventListener('click', wrap(async e => {
+  const ph = e.target.closest('button[data-phone]');
+  if (ph) {
+    const act = ph.dataset.phone;
+    if (act === 'pair') { const r = await api('/api/phone/pair', {}); return renderPhone(r.status); }
+    if (act === 'cancel') return renderPhone(await api('/api/phone/pair-cancel', {}));
+    if (act === 'forget') { if (!confirm('Remove this phone? It won’t be able to connect until you pair it again.')) return undefined; return renderPhone(await api('/api/phone/forget', { id: ph.dataset.id })); }
+  }
+  if (e.target.closest('[data-fix="phone-disconnect"]')) { if (confirm('Disconnect this phone from your PC? You can pair it again any time.')) window.Android.disconnect(); return undefined; }
   if (e.target.id === 'saveCodex') { await api('/api/codex/settings', { command: $('prefCodex').value }); toast('Saved. Checking again…'); return loadHealth(true); }
   if (e.target.id === 'saveClaude') { await api('/api/prefs', { claudeCommand: $('prefClaude').value }); toast('Saved. Checking again…'); return loadHealth(true); }
   const b = e.target.closest('[data-fix]'); if (!b) return;
@@ -1759,6 +1801,7 @@ function palItems(q) {
   const worldsFor = here ? [here, ...S.projects.filter(p => p !== here)] : S.projects;
   const prompts = worldsFor.filter(p => p.exists).flatMap(p => S.prompts.map(pr => ({ glyph: '❡', t: `${pr.title} in ${p.name}`, s: pr.provider === 'codex' ? 'Codex' : 'prompt', run: () => startWithPrompt(p.cwd, pr), text: `${pr.title} ${p.name} prompt start` })));
   const docs = Object.values(S.worlds).flatMap(w => { const p = S.projects.find(x => x.cwd === w.cwd); return p ? w.docs.slice(0, 60).map(d => ({ glyph: '❧', t: d.name, s: `${p.name} · ${agoL(d.mtime)}`, run: () => Viewer.open({ path: d.path, cwd: p.cwd }), text: `${d.rel} ${p.name}` })) : []; });
+  const models = window.ChatUI && ChatUI.modelItems ? ChatUI.modelItems() : [];
   if (!q) {
     add('Running now', run);
     if (here) add(`Start ${here.name} with a prompt`, prompts.slice(0, S.prompts.length));
@@ -1774,6 +1817,7 @@ function palItems(q) {
   add('Documents', rank(docs).slice(0, 5));
   add('Start with a prompt', rank(prompts).slice(0, 4));
   add('Actions', rank(acts).slice(0, 5));
+  add('Switch model in this chat', rank(models).slice(0, 6));
   add('Start a Codex chat', rank(cxNew).slice(0, 4));
   out.push({ g: 'Inside every message' }, { glyph: '❝', t: `Search every message for “${q}”`, s: 'full text', run: () => runSearch(q) });
   return out;
@@ -2083,7 +2127,7 @@ function connectLive() {
       if (S.drawerId) openDrawer(S.drawerId, true);
     }), 300);
   });
-  es.addEventListener('accounts', wrap(async () => { await loadState(); renderNav(); if (S.view === 'hub') renderLive(); else renderPage(); codexLoginProgress(); }));
+  es.addEventListener('accounts', wrap(async () => { await loadState(); renderNav(); if (S.view === 'hub') renderLive(); else renderPage(); codexLoginProgress(); if (window.ChatUI && ChatUI.refreshCrew) ChatUI.refreshCrew(); }));
   es.addEventListener('running', e => { try { S.running = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); renderNav(); });
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
   es.addEventListener('activity', e => { try { S.activity = JSON.parse(e.data).list || []; } catch { return; } watchActivity(); renderLive(); renderNav(); });
@@ -2091,6 +2135,22 @@ function connectLive() {
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
 window.addEventListener('focus', () => { watchActivity(); renderLive(); });
+
+// On a phone (through phone access), hide what only makes sense at the PC.
+if (window.REMOTE) document.body.classList.add('remote');
+if (window.Android || / SessionSwitcherAndroid\//.test(navigator.userAgent)) document.body.classList.add('android');
+// The Android app's Back button: close whatever is on top. Returns true if something closed.
+window.__mobileBack = () => {
+  if (!$('cLight')?.hidden) { $('cLight').hidden = true; return true; }
+  if (!$('menu').hidden) { closeMenu(); return true; }
+  if (!$('palette').hidden) { closePalette(); return true; }
+  for (const d of document.querySelectorAll('dialog[open]')) { d.close(); return true; }
+  if (!$('drawer').hidden) { closeDrawer(); return true; }
+  if (window.ChatUI && ChatUI.back()) return true;
+  if (document.body.classList.contains('nav-open')) { document.body.classList.remove('nav-open'); return true; }
+  if (S.view !== 'hub') { go('hub'); return true; }
+  return false;
+};
 
 applyMotion();
 petals();

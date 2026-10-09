@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#17100e">
+<title>Connect - Session Switcher</title>
+<style>
+  :root {
+    --bg: #17100e; --panel: #211714; --line: #3a2a25; --text: #ede6d9;
+    --muted: #b3a797; --accent: #a5463f; --accent-hi: #bd564e; --err: #e0857c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 16px/1.5 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh; display: flex; justify-content: center;
+    padding: 28px 20px 40px; -webkit-text-size-adjust: 100%;
+  }
+  main { width: 100%; max-width: 460px; }
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+  .brand svg { width: 44px; height: 44px; flex: none; }
+  h1 { font-family: Georgia, "Times New Roman", serif; font-weight: normal; font-size: 28px; margin: 0; letter-spacing: .2px; }
+  h2 { font-family: Georgia, "Times New Roman", serif; font-weight: normal; font-size: 19px; margin: 0 0 10px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+  ol { margin: 0; padding-left: 22px; color: var(--muted); }
+  ol li { margin: 4px 0; }
+  ol b { color: var(--text); font-weight: 600; }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 6px; }
+  input {
+    width: 100%; min-height: 52px; padding: 12px 14px; font-size: 18px; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px; outline: none;
+    -webkit-appearance: none; appearance: none;
+  }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(165, 70, 63, .25); }
+  input#code { font-family: ui-monospace, "Roboto Mono", Menlo, Consolas, monospace; letter-spacing: 3px; text-transform: uppercase; }
+  .hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  button {
+    width: 100%; min-height: 54px; margin-top: 18px; font-size: 17px; font-weight: 600;
+    color: var(--text); background: var(--accent); border: 0; border-radius: 12px; cursor: pointer;
+  }
+  button:active { background: var(--accent-hi); }
+  button[disabled] { opacity: .6; }
+  button.secondary { background: transparent; border: 1px solid var(--line); font-weight: 500; }
+  .error {
+    display: none; margin-top: 16px; padding: 14px; border-radius: 10px;
+    background: rgba(165, 70, 63, .15); border: 1px solid rgba(165, 70, 63, .5); color: var(--err);
+  }
+  .error.show { display: block; }
+  .error small { display: block; margin-top: 6px; color: var(--muted); word-break: break-word; }
+  .foot { text-align: center; font-size: 13px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">
+    <svg viewBox="0 0 40 40" aria-hidden="true">
+      <circle cx="20" cy="20" r="19.6" fill="#3d1a18"/>
+      <circle cx="20" cy="20" r="17.95" fill="none" stroke="#a5463f" stroke-width="1.5"/>
+      <path d="M20 4.5 L23.2 16.8 L35.5 20 L23.2 23.2 L20 35.5 L16.8 23.2 L4.5 20 L16.8 16.8 Z" fill="#ede6d9"/>
+      <circle cx="20" cy="20" r="2.8" fill="#a5463f"/>
+    </svg>
+    <h1>Session Switcher</h1>
+  </div>
+
+  <div class="card" id="retryCard" hidden>
+    <h2>Can't reach your PC</h2>
+    <p id="retryText"></p>
+    <button id="retry" type="button">Retry</button>
+  </div>
+
+  <div class="card">
+    <h2>Connect to your PC</h2>
+    <ol>
+      <li>Open <b>Session Switcher</b> on your PC.</li>
+      <li>Go to <b>Setup &rarr; Phone access</b> and turn it on.</li>
+      <li>Tap <b>Pair a phone</b> and enter the address and code it shows.</li>
+    </ol>
+  </div>
+
+  <form class="card" id="form" autocomplete="off" novalidate>
+    <label for="addr">PC address</label>
+    <input id="addr" name="addr" type="url" inputmode="url" placeholder="192.168.1.20:4788"
+           autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div class="hint">Use the same Wi-Fi as your PC, or its Tailscale name.</div>
+
+    <label for="code">Pairing code</label>
+    <input id="code" name="code" type="text" inputmode="text" placeholder="ABCD2345" maxlength="11"
+           autocapitalize="characters" autocorrect="off" spellcheck="false">
+    <div class="hint">8 characters. Leave empty if this phone is already paired.</div>
+
+    <button id="go" type="submit">Connect</button>
+    <div class="error" id="err" role="alert"></div>
+  </form>
+
+  <div class="foot">Session Switcher for Android 5.0.0</div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var A = window.Android || null;
+  var $ = function (id) { return document.getElementById(id); };
+  var params = new URLSearchParams(location.search);
+
+  function normAddr(raw) {
+    var s = String(raw || '').trim();
+    s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+    s = s.split('/')[0].split('?')[0].split('#')[0];
+    return s.toLowerCase();
+  }
+  function normCode(raw) {
+    return String(raw || '').replace(/[\s-]+/g, '').toUpperCase();
+  }
+  function showError(msg, detail) {
+    var el = $('err');
+    el.textContent = msg;
+    if (detail) { var sm = document.createElement('small'); sm.textContent = detail; el.appendChild(sm); }
+    el.classList.add('show');
+  }
+  function clearError() { var el = $('err'); el.textContent = ''; el.classList.remove('show'); }
+  function busy(on) { $('go').disabled = on; $('go').textContent = on ? 'Connecting…' : 'Connect'; }
+
+  // Prefill from the saved value (or from an error redirect).
+  var saved = '';
+  try { saved = A ? A.getServer() : ''; } catch (e) {}
+  var errServer = params.get('server') || '';
+  $('addr').value = saved || errServer || '';
+
+  // Error redirect from the app: "?error=<message>&server=<addr>"
+  if (params.has('error')) {
+    var at = errServer || saved;
+    $('retryText').textContent =
+      "Couldn't reach your PC" + (at ? ' at ' + at : '') +
+      '. Is Session Switcher running and Phone access on? Are you on the same Wi-Fi?';
+    var d = params.get('error');
+    if (d) { var sm = document.createElement('small'); sm.style.display = 'block'; sm.style.marginTop = '6px'; sm.textContent = d; $('retryText').appendChild(sm); }
+    $('retryCard').hidden = false;
+    $('retry').onclick = function () {
+      if (!at) return;
+      $('retry').disabled = true; $('retry').textContent = 'Retrying…';
+      location.href = 'http://' + at + '/';
+    };
+    if (!at) $('retry').hidden = true;
+  }
+
+  $('code').addEventListener('input', function () {
+    var el = this, v = el.value.toUpperCase();
+    if (v !== el.value) el.value = v;
+  });
+
+  function hello(addr) {
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var t = setTimeout(function () { if (ctrl) ctrl.abort(); }, 6000);
+    return fetch('http://' + addr + '/hello', { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { clearTimeout(t); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); },
+            function (e) { clearTimeout(t); throw e; });
+  }
+
+  function go(addr, code) {
+    try { if (A) A.saveServer(addr); } catch (e) {}
+    if (!code) { location.href = 'http://' + addr + '/'; return; }
+    var name = 'Android phone';
+    try { if (A) name = A.deviceName() || name; } catch (e) {}
+    location.href = 'http://' + addr + '/pair?code=' + encodeURIComponent(code) +
+      '&name=' + encodeURIComponent(name);
+  }
+
+  $('form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    clearError();
+    var addr = normAddr($('addr').value);
+    var code = normCode($('code').value);
+    $('addr').value = addr;
+    $('code').value = code;
+    if (!addr) { showError('Enter your PC address, e.g. 192.168.1.20:4788.'); $('addr').focus(); return; }
+    if (code && !/^[A-Z0-9]{8}$/.test(code)) {
+      showError('The pairing code is 8 letters/numbers. Check the code on your PC.'); $('code').focus(); return;
+    }
+    busy(true);
+    hello(addr).then(function (info) {
+      if (!info || info.app !== 'session-switcher') {
+        busy(false);
+        showError('Something answered at ' + addr + ", but it isn't Session Switcher. Check the address and port.");
+        return;
+      }
+      go(addr, code);
+    }, function (e) {
+      // A CORS / file:// quirk can make the probe fail even when the PC is fine, so just try
+      // navigating. If the PC really is unreachable the app brings us back here with an error.
+      go(addr, code);
+    });
+  });
+
+  if (!$('addr').value) $('addr').focus();
+})();
+</script>
+</body>
+</html>
