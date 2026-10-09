@@ -347,6 +347,39 @@ module.exports = [
     },
   },
   {
+    name: 'limits',
+    // An account runs out mid-chat: carry on as another account, hand it to Codex, or wait.
+    async run(t) {
+      const calls = [];
+      const resetsAt = new Date(Date.now() + 2 * 3600e3 + 12 * 60e3).toISOString();
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]), events: [{ kind: 'limit', which: 'five_hour', resetsAt }] });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const card = await b.eval(`const c = document.querySelector('.limit-card'); return c && { text: c.textContent.replace(/\\s+/g, ' ').trim(), buttons: [...c.querySelectorAll('button')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
+      t.check('out of usage: the chat says so, and when it’s back', card && /Studio is out of its 5-hour limit\. It’s back at .+ \(in 2 h 1[12] min\)/.test(card.text), card && card.text);
+      t.check('and offers your other account, with how much it has left', card && card.buttons.some(x => /^Continue as Personal \d+% left$/.test(x)), card && card.buttons);
+      t.check('or Codex, or a nudge when it’s back', card && card.buttons.includes('Hand it to Codex') && card.buttons.includes('Tell me when it’s back'), card && card.buttons);
+      await t.shot(b, 'card');
+
+      await b.clickOn('[data-c="limitcodex"]'); await sleep(300);
+      const cx = await b.eval(`return { target: C.target, box: document.getElementById('cText').value }`);
+      t.check('“Hand it to Codex” turns the message box to Codex', cx.target === 'comp' && /pick up the work where it left off/.test(cx.box), cx);
+      await b.eval(`setTarget('main', false); document.getElementById('cText').value = ''; clearDraft(); return 1`);
+
+      await b.clickOn('[data-c="limitas"]'); await sleep(3000);
+      const stop = calls.findIndex(([p, body]) => p === '/api/chat/stop' && body.key === 'k-bard');
+      const reopen = calls.findIndex(([p, body]) => p === '/api/chat/open' && body.account === 'personal' && body.mode === 'resume' && body.sessionId === demo.ID['s-bard']);
+      t.check('“Continue as Personal” stops this chat, then resumes the same one as Personal', stop >= 0 && reopen > stop, calls.map(([p, body]) => `${p} ${body.account || body.key || ''}`).slice(-4));
+      t.check('with your last message in the box to send again', /^Yes, do it\. And we need new key art/.test(await b.eval(`return document.getElementById('cText').value`)));
+
+      // A new chat as an account that's out: offered the one with room.
+      await b.eval(`ChatUI.close ? ChatUI.close() : null; S.acct = 'studio'; S.usage.studio = { at: Date.now(), data: { available: true, fiveHour: { used: 100, resetsAt: ${JSON.stringify(resetsAt)} }, week: { used: 60, resetsAt: null }, models: [] } }; window._open = ChatUI.open({ cwd: ${JSON.stringify(demo.projects[0].cwd)}, mode: 'new' }); return 1`); await sleep(500);
+      const ask = await b.eval(`return document.getElementById('confirmDlg')?.open && document.getElementById('cfQ').textContent + ' | ' + document.getElementById('cfYes').textContent`);
+      t.check('a new chat on an account that’s out offers one with room', /^Studio is out of usage until .+ \| Use Personal$/.test(ask || ''), ask);
+      await b.clickOn('#cfYes'); await sleep(800);
+      t.check('and opens as that one', calls.some(([p, body]) => p === '/api/chat/open' && body.mode === 'new' && body.account === 'personal'));
+    },
+  },
+  {
     name: 'new chat',
     async run(t) {
       // A chat that's running but hasn't saved any history yet (a new one): no "couldn't load" message.

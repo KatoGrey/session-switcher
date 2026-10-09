@@ -198,6 +198,22 @@ test('shared context: titles, previews and the board show only what you wrote', 
   assert.equal(meta.lastPrompt, 'Now write the notes.');
 });
 
+/* ---------- out of usage ---------- */
+const { translate } = require('../lib/chat');
+
+test('limits: running out becomes a notice and an offer to carry on; nearly out is just a notice', () => {
+  const resets = Math.floor(Date.parse('2026-10-09T15:36:00Z') / 1000);
+  const out = translate({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: resets } }, {});
+  assert.equal(out.length, 2);
+  assert.equal(out[0].kind, 'notice');
+  assert.match(out[0].text, /reached your 5-hour limit/);
+  assert.deepEqual(out[1], { kind: 'limit', which: 'five_hour', resetsAt: '2026-10-09T15:36:00.000Z' });
+  const warn = translate({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'seven_day', utilization: 0.91 } }, {});
+  assert.deepEqual(warn.map(x => x.kind), ['notice']);
+  assert.match(warn[0].text, /close to your weekly limit on this account \(91% used\)/);
+  assert.deepEqual(translate({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed' } }, {}), []);
+});
+
 /* ---------- what a review looks at ---------- */
 const { reviewTarget, EMPTY_TREE } = require('../lib/review');
 const { execFileSync } = require('child_process');

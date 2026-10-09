@@ -1770,3 +1770,11 @@ details.shared summary:hover{color:var(--parch-2)}
 details.shared[open] summary{margin-bottom:6px}
 .sh-body{max-height:260px;overflow:auto;padding:10px 12px;border:1px solid var(--seam);border-radius:7px;background:var(--vellum);white-space:pre-wrap;font-size:13px;line-height:1.5;color:var(--parch-2)}
 
+/* ---------- never stuck on a limit ---------- */
+.limit-card{margin:16px 0;padding:14px 16px;border:1px solid rgb(var(--c-d9bf74) / .45);border-left:3px solid var(--gilt);border-radius:8px;background:rgb(var(--c-d9bf74) / .06)}
+.lm-h{margin:0 0 4px;font-size:15px;color:var(--parch-2)}
+.lm-h b{color:var(--parch)}
+.lm-s{margin:0 0 10px;font-size:13.5px;color:var(--ash)}
+.lm-b{display:flex;flex-wrap:wrap;gap:8px}
+.lm-b small{margin-left:6px;font:400 11px var(--f-mono);opacity:.8}
+

@@ -127,6 +127,7 @@ function handleEvent(ev, src) {
     case 'plan': L.todos = ev.steps || []; renderLedgerSoon(); break;
     case 'context': setCtx(src, ev); break;
     case 'review': if (!comp) { reviewLoopStep(ev); renderReview(ev); } break;
+    case 'limit': if (!comp) renderLimit(ev); break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
     case 'stream_start': withStick(() => part(feed, ev.mid)); break;
     case 'delta':

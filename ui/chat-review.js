@@ -28,9 +28,10 @@ function fixText(ev, list) {
   const one = list.length === 1;
   return `Codex reviewed ${ev.what || 'the changes'} and found ${one ? 'this' : 'these'}:\n\n${list.map((f, i) => findingText(f, one ? 0 : i + 1)).join('\n\n')}\n\nPlease fix ${one ? 'it' : 'them'}. If you think a finding is wrong, say why instead of changing the code.`;
 }
-// Puts text in the message box for you to check and send (no fill-in blanks: findings quote code).
-function putInBox(text) {
-  setTarget('main', false);
+// Puts text in the message box, for Claude (or 'comp': Codex), for you to check and send. (No fill-in
+// blanks, unlike prompts: findings quote code.)
+function putInBox(text, to = 'main') {
+  setTarget(to, false);
   const ta = $c('cText');
   ta.value = ta.value.trim() ? `${ta.value.replace(/\s+$/, '')}\n\n${text}` : text;
   grow(); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.scrollTop = ta.scrollHeight;

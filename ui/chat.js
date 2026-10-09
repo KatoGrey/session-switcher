@@ -189,6 +189,11 @@ async function open({ sessionId = null, cwd = null, mode = 'resume', force = fal
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
   const [known] = sessionId ? findSession(sessionId) : [null];
   const prov = provider || (known && known.provider) || 'claude';
+  // A new Claude chat about to open as an account that's out of usage: offer the one with room.
+  if (mode === 'new' && prov === 'claude' && !accountId && a) {
+    const alt = await roomierAccount(a);
+    if (alt) return open({ sessionId, cwd, mode, force, accountId: alt.id, provider, initialText });
+  }
   let info;
   try {
     info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov });
@@ -330,6 +335,9 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'stop': C.interruptedAt = Date.now(); return Promise.all(targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting')).map(x => api('/api/chat/interrupt', { key: x.key })));
       case 'compact': return compactNow(c.dataset.src || 'main');
       case 'review': return startReview(c.dataset.base || null);
+      case 'limitas': return continueAs(c.dataset.acct);
+      case 'limitcodex': return handToCodex();
+      case 'limitwait': { const card = c.closest('.limit-card'); return card && card._ev ? waitForReset(card._ev) : undefined; }
       case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }

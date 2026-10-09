@@ -127,7 +127,7 @@ const artFor = p => {
 };
 const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`).join('');
 
-// Options: state (the chat's state), seen(path, url, body) for every other API call, context (how
+// Options: state (the chat's state), seen(path, url, body) for every API call, context (how
 // full the chat is), events (more chat events sent after it connects), noHistory (the history
 // isn't there yet, as for a brand-new chat).
 async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false } = {}) {
@@ -136,6 +136,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
     let body = {}; try { body = JSON.parse(postData || '{}'); } catch { /* not JSON */ }
+    if (seen) seen(p, url, body);
     if (p === '/api/state') return { body: { accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '5.3.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
     if (p === '/api/sessions') return { body: { projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
     if (p === '/api/activity') return { body: { list: activity, at: NOW } };
@@ -156,8 +157,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
     }
     if (p === '/api/chat/model') return { body: { ...info } };
-    if (p === '/api/chat/review') { if (seen) seen(p, url, body); return { body: { id: `rv${++reviews}`, what: 'your uncommitted changes', base: body.base || null } }; }
-    if (seen) seen(p, url, body);
+    if (p === '/api/chat/review') { return { body: { id: `rv${++reviews}`, what: 'your uncommitted changes', base: body.base || null } }; }
     return { body: {} };
   });
 }
