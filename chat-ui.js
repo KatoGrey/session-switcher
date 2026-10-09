@@ -1050,7 +1050,12 @@
       { label: 'Files', hint: 'PDFs, documents, anything', run: () => $c('cFile').click() },
     ]);
   }
-  function grow() { const t = $c('cText'); t.style.height = 'auto'; t.style.height = `${Math.min(t.scrollHeight, window.innerHeight * 0.4)}px`; }
+  function grow() {
+    const t = $c('cText');
+    // While the chat window is hidden there's nothing to measure: go back to the natural height.
+    if (!t.offsetParent) { t.style.height = ''; return; }
+    t.style.height = 'auto'; t.style.height = `${Math.min(t.scrollHeight, window.innerHeight * 0.4)}px`;
+  }
 
   /* ---------- prompts: the Prompts button, and / in an empty box ---------- */
   // Puts text in the message box and selects the first {blank} left to fill in, if any.

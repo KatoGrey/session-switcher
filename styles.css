@@ -1611,3 +1611,4 @@ button.nav-h.fold[aria-expanded="false"] .fold-c{transform:rotate(-90deg)}
 }
 @media (max-width:760px){.livepill .lp-bell{display:none}.livepill{padding:6px}}
 .att.pending{display:grid;place-items:center;width:64px;height:64px;border:1px dashed var(--seam-2);border-radius:5px}
+.nav-chat .nc-t{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
