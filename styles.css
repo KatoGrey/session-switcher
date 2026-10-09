@@ -1886,3 +1886,14 @@ body.solo .c-head .icon.c-backm{display:none}
   .c-crew .crew-ctx{grid-area:ring}
   .c-crew .crew-caret{grid-area:caret}
 }
+
+/* ---------- the first-run tour ---------- */
+.tour{position:fixed;inset:0;z-index:95}
+.tour-spot{position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgb(var(--c-000000) / .62),0 0 0 2px var(--gilt);transition:all .25s cubic-bezier(.2,.7,.2,1);pointer-events:none}
+.tour-card{position:fixed;width:min(400px,calc(100vw - 32px));box-sizing:border-box;padding:18px 20px 14px;border:1px solid rgb(var(--c-d9bf74) / .5);border-radius:12px;background:var(--vellum-2);box-shadow:0 24px 60px -18px rgb(var(--c-000000));transition:left .25s, top .25s}
+.tour-n{margin:0 0 4px;font:500 10.5px/1 var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--gilt)}
+.tour-card h3{margin:0 0 6px;font:600 22px/1.2 var(--f-display);color:var(--parch)}
+.tour-card p:not(.tour-n){margin:0 0 14px;font-size:15px;line-height:1.55;color:var(--parch-2)}
+.tour-b{display:flex;align-items:center;gap:8px}
+@media (prefers-reduced-motion:reduce){ .tour-spot,.tour-card{transition:none} }
+

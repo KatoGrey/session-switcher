@@ -58,6 +58,7 @@ function renderSetup(j) {
       <button class="btn" data-fix="shortcut">${S.platform === 'darwin' ? 'Add to Applications' : 'Create desktop shortcut'}</button>
       <button class="btn" data-fix="share-copy" title="A zip of the app for someone else, without your accounts, chats or settings">Make a copy to share</button>
       <button class="btn" data-fix="update-claude">Update Claude Code</button>
+      <button class="btn" data-fix="tour">Show the tour</button>
       <button class="btn danger" data-fix="quit">Quit Session Switcher</button>
     </div>
     <p class="ver">Session Switcher ${esc(j.appVersion)}. Your chats are read from your own .claude folder and never leave this PC.</p>`;
@@ -189,6 +190,7 @@ $('setupBody').addEventListener('click', wrap(async e => {
   if (what === 'signin') { $('setup').close(); S.acct = account; store('acct', account); renderAll(); return accountAction(current().expectEmail ? 'signin-direct' : 'signin', account); }
   if (what === 'set-claude-path') { $('prefClaude').focus(); return; }
   if (what === 'rules') { $('setup').close(); return openRules(null); }
+  if (what === 'tour') { $('setup').close(); return startTour(); }
   if (what === 'install-codex') return codexInstall();
   if (what === 'codex-signin') { $('setup').close(); return codexSignIn(); }
   if (what === 'fix-sharing') {

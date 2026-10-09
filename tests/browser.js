@@ -56,6 +56,7 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
   });
   const send = (method, params = {}) => new Promise(r => { const i = ++id; wait.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
   await send('Runtime.enable'); await send('Page.enable');
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { if (!sessionStorage.getItem('tour-test')) localStorage.setItem('toured', '1'); } catch (e) {}" });
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale || (mobile ? 2.6 : 1), mobile });
   if (mobile) await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
 

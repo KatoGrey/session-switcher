@@ -18,6 +18,7 @@ function palItems(q) {
     { glyph: '✦', t: 'Go to the hub', run: () => go('hub') },
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
     { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health' },
+    { glyph: '✧', t: 'Take the tour', s: 'a minute on what’s where', run: () => startTour(), alias: 'tour help guide intro getting started' },
     { glyph: '⏳', t: 'Queue a task', s: 'starts as a new chat when an account has room, or at a time', run: () => openTaskDialog(S.view === 'folder' ? S.folder : null), alias: 'queue later schedule task when limit resets' },
     { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, shared by Claude and Codex', run: () => openRules(S.view === 'folder' ? S.folder : null), alias: 'claude.md agents.md mcp servers tools rules instructions memory' },
     { glyph: '◐', t: 'Appearance', s: 'themes, light or dark, text and interface size', run: () => openSetup('look') },

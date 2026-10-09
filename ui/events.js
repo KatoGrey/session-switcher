@@ -409,4 +409,5 @@ wrap(async () => {
   await Promise.all([reload(), loadPrompts()]); connectLive(); watchActivity(); loadHealth(false).catch(() => {}); loadTasks().catch(() => {});
   // A popped-out window opens straight into its chat.
   if (PAGE_ARGS.get('chat')) await ChatUI.open({ sessionId: PAGE_ARGS.get('chat') });
+  else maybeTour();
 })();

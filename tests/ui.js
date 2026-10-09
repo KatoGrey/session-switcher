@@ -423,6 +423,33 @@ module.exports = [
     },
   },
   {
+    name: 'tour',
+    // The first time: a few cards, each pointing at part of the hub. Once skipped, never again.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`sessionStorage.setItem('tour-test', '1'); localStorage.removeItem('toured'); location.reload(); return 1`).catch(() => {});
+      await sleep(4500);
+      const step = () => b.eval(`const t = document.getElementById('tour'); if (!t || t.hidden) return null; const s = document.getElementById('tourSpot').getBoundingClientRect(); return { n: tourN.textContent, title: tourT.textContent, spot: [Math.round(s.left), Math.round(s.top), Math.round(s.width), Math.round(s.height)] }`);
+      const near = (sel, spot) => b.eval(`const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); const s = ${JSON.stringify(spot)}; return Math.abs(r.left - 6 - s[0]) < 3 && Math.abs(r.width + 12 - s[2]) < 3`);
+      let s = await step();
+      t.check('the first time, a tour starts', s && s.n === '1 of 5' && s.title === 'Every chat, in one place', s);
+      t.check('pointing at what it describes', s && await near('#heroSlot', s.spot), s);
+      await t.shot(b, 'first');
+      await b.clickOn('[data-tour="next"]'); await sleep(400);
+      s = await step();
+      t.check('Next moves on (to the account)', s && s.title === 'Your accounts' && await near('#seal', s.spot), s);
+      await t.shot(b, 'accounts');
+      await b.key('ArrowRight', 'ArrowRight', 39); await sleep(400);
+      t.check('→ moves on too', (await step()).title === 'Your projects');
+      await b.esc(); await sleep(200);
+      t.check('Esc ends it, and it’s remembered', !(await step()) && (await b.eval(`return localStorage.getItem('toured')`)) === '1');
+      await b.eval(`location.reload(); return 1`).catch(() => {}); await sleep(4500);
+      t.check('so it doesn’t come back', !(await step()));
+      await b.eval(`openPalette('tour'); return 1`); await sleep(400);
+      t.check('Ctrl+K can show it again', /Take the tour/.test(await b.eval(`return document.getElementById('palette').textContent`)));
+    },
+  },
+  {
     name: 'queue',
     // Tasks that start as new chats when their time comes and an account has room.
     async run(t) {
