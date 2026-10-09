@@ -29,6 +29,7 @@ const store = require('./lib/store');
 const { listFiles } = require('./lib/filelist');
 const tasksLib = require('./lib/tasks');
 const raceLib = require('./lib/race');
+const handover = require('./lib/handover');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -40,6 +41,8 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const CONFIG_FILE = path.join(DATA_DIR, 'accounts.json');
 const LOG_FILE = path.join(DATA_DIR, 'switcher.log');
 const TOKEN = crypto.randomBytes(24).toString('hex');
+// Which code this server is running, so a copy started later can tell if it's out of date.
+const BUILD = handover.buildId(APP_DIR);
 const ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
 const EMAIL_RE = /^[A-Za-z0-9._+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const DESKTOP_MIN = '2.1.285';
@@ -1500,6 +1503,8 @@ async function handleRequest(req, res, { remote = false } = {}) {
       pollRunning();
       return;
     }
+    // Asked by a copy that's starting up: is this the same app and the same code? Nothing private.
+    if (req.method === 'GET' && url.pathname === '/api/version') return send(res, 200, { app: 'session-switcher', version: APP_VERSION, build: BUILD, pid: process.pid });
     if (url.pathname.startsWith('/api/')) {
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
       const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media') && url.searchParams.get('token') === TOKEN;
@@ -1520,10 +1525,22 @@ const server = http.createServer((req, res) => { handleRequest(req, res); });
 const phone = remoteLib.createRemote({ dataDir: DATA_DIR, appDir: APP_DIR, version: APP_VERSION, log, getPrefs: () => config().prefs, handle: handleRequest });
 
 const appUrl = `http://127.0.0.1:${PORT}/`;
+const openRunning = () => { console.log(`Already running at ${appUrl}. Opening it.`); sys.openAppWindow(appUrl, config().prefs).finally(() => setTimeout(() => process.exit(0), 800)); };
+let handedOver = false;
 server.on('error', err => {
-  if (err.code === 'EADDRINUSE') {
-    console.log(`Already running at ${appUrl}. Opening it.`);
-    sys.openAppWindow(appUrl, config().prefs).finally(() => setTimeout(() => process.exit(0), 800));
+  if (err.code === 'EADDRINUSE' && !handedOver) {
+    // Something is on the port. If it's this same build, bring its window up. If it's an older
+    // copy, or one started before an update, replace it, so the window isn't stuck on old code.
+    handedOver = true;
+    handover.takeOver({ port: PORT, version: APP_VERSION, build: BUILD, appDir: APP_DIR, sys, log })
+      .then(next => {
+        if (next === 'start') return server.listen(PORT, '127.0.0.1');
+        if (next === 'busy') log(`Another program is using port ${PORT}. Close it, or set SWITCHER_PORT to start Session Switcher on a different port.`);
+        return openRunning();
+      })
+      .catch(e => { log(`Couldn’t check the copy that’s running: ${e.message}`); openRunning(); });
+  } else if (err.code === 'EADDRINUSE') {
+    openRunning();
   } else {
     log(`Server error: ${err.stack || err.message}`);
     process.exit(1);
@@ -1531,11 +1548,12 @@ server.on('error', err => {
 });
 process.on('uncaughtException', err => log(`Unexpected error: ${err.stack || err.message}`));
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); setTimeout(() => process.exit(0), 300); });
-process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } });
+process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
 process.on('unhandledRejection', err => log(`Unexpected error: ${err && (err.stack || err.message)}`));
 
 server.listen(PORT, '127.0.0.1', () => {
   log(`Session Switcher ${APP_VERSION} running at ${appUrl}${sys.DRY_RUN ? ' (preview mode: nothing is launched)' : ''}`);
+  handover.writeLock(PORT, { pid: process.pid, version: APP_VERSION, build: BUILD, dir: APP_DIR, token: TOKEN });
   console.log('Keep this window open while you use it, or use “Quit” in the app.');
   sys.cleanupLaunchScripts();
   for (const a of config().accounts) {

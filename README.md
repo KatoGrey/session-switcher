@@ -13,6 +13,7 @@ Session Switcher lists every Claude Code chat on this computer (Windows or Mac),
 
 1. Unzip this folder somewhere permanent, for example `C:\Users\<you>\Apps\Session Switcher`.
    - Updating? Unzip over the old copy. Your `accounts.json`, `history.json`, `chat-names.json`, `projects.json`, `banners.json` and `prompts.json` are kept.
+   - You don't need to quit first. When you start it again, it sees that the copy still running is out of date, closes that one, and opens the new one. Chats running in the old window stop; they pick up where they left off when you open them again.
 2. Double-click **Claude Switcher.vbs**. It opens as its own window, with no console.
 3. Open **Setup** (the gear, top right) and click **Create desktop shortcut**.
 
