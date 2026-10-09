@@ -384,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $c('cText').addEventListener('keydown', e => {
     if (Slash.open && !e.isComposing) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); Slash.moved = true; Slash.sel = (Slash.sel + (e.key === 'ArrowDown' ? 1 : -1) + Slash.items.length) % Slash.items.length; return renderSlash(); }
-      if (e.key === 'Tab' || (e.key === 'Enter' && Slash.moved && !e.shiftKey)) { e.preventDefault(); return pickSlash(Slash.sel); }
+      if (e.key === 'Tab' || (e.key === 'Enter' && (Slash.moved || Slash.kind === 'file') && !e.shiftKey)) { e.preventDefault(); return pickSlash(Slash.sel); }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); Slash.dismissed = $c('cText').value; return closeSlash(); }
       if (e.key === 'Enter') closeSlash();
     }

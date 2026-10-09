@@ -423,6 +423,40 @@ module.exports = [
     },
   },
   {
+    name: 'mentions',
+    // "@" and a few letters: the project's files, put in the message as a path.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const typeIn = async text => { await b.eval(`const ta = document.getElementById('cText'); ta.focus(); ta.value = ${JSON.stringify(text)}; ta.setSelectionRange(ta.value.length, ta.value.length); ta.dispatchEvent(new Event('input', { bubbles: true })); return 1`); await sleep(400); };
+      const pop = () => b.eval(`const box = document.getElementById('cSlash'); return box.hidden ? null : { head: box.querySelector('.cs-h')?.textContent, items: [...box.querySelectorAll('li .cs-x')].map(x => x.textContent) }`);
+      await typeIn('Look at @son');
+      let p = await pop();
+      t.check('“@son” lists matching files, best first', p && /Files in Starfall Tavern/.test(p.head) && p.items[0] === 'scripts/bard/songs.lua', p);
+      await t.shot(b, 'popup');
+      await b.key('Tab', 'Tab', 9);
+      t.check('Tab puts the path in, ready to keep typing', (await b.eval(`return document.getElementById('cText').value`)) === 'Look at @scripts/bard/songs.lua ');
+      t.check('and the list closes', !(await pop()));
+      await typeIn('Fix @enc');
+      await b.key('Enter', 'Enter', 13); await sleep(200);
+      t.check('Enter picks too (instead of sending)', (await b.eval(`return document.getElementById('cText').value`)) === 'Fix @scripts/bard/encore.lua ');
+      await typeIn('see @song li');
+      await typeIn('see @songli');
+      p = await pop();
+      t.check('letters in order find a file anywhere in its path', p && p.items.includes('docs/Song list.md'), p);
+      await b.key('ArrowDown', 'ArrowDown', 40); await b.key('ArrowUp', 'ArrowUp', 38);
+      await b.key('Tab', 'Tab', 9);
+      t.check('a path with spaces goes in quotes', (await b.eval(`return document.getElementById('cText').value`)) === 'see @"docs/Song list.md" ');
+      await typeIn('@codex');
+      t.check('@codex still picks who it goes to (no file list)', !(await pop()));
+      await typeIn('mail me at a@b');
+      t.check('an @ inside a word is left alone', !(await pop()));
+      await typeIn('Look at @rea');
+      await b.esc();
+      t.check('Esc closes the list and keeps your text', !(await pop()) && (await b.eval(`return document.getElementById('cText').value`)) === 'Look at @rea');
+    },
+  },
+  {
     name: 'reopen',
     // After a restart: the chats that were open in the app window, offered in one click.
     async run(t) {

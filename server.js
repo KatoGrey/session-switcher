@@ -25,6 +25,7 @@ const remoteLib = require('./lib/remote');
 const { reviewTarget } = require('./lib/review');
 const rulesLib = require('./lib/rules');
 const store = require('./lib/store');
+const { listFiles } = require('./lib/filelist');
 
 const APP_VERSION = '5.4.1';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -628,6 +629,12 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/file') {
     const q = Object.fromEntries(url.searchParams);
     return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
+  }
+  // A chat's (or project's) files, for @ mentions in the message box.
+  if (route === 'GET /api/files/list') {
+    const cwd = fileBase(Object.fromEntries(url.searchParams));
+    if (!cwd || !fs.existsSync(cwd)) throw fail(404, 'That folder isn’t available.');
+    return send(res, 200, { cwd, files: await listFiles(cwd) });
   }
   if (route === 'GET /api/rules') {
     const cwd = url.searchParams.get('cwd') || null;

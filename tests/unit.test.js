@@ -270,6 +270,24 @@ test('tools: what can be copied across, and why not', () => {
   if (process.platform === 'win32') assert.equal(rules.runnable('C:\\x\\claude.cmd'), false, 'a .cmd needs a shell');
 });
 
+/* ---------- @ mentions: a project's files ---------- */
+const { listFiles } = require('../lib/filelist');
+
+test('mentions: a git project lists what git knows about, new files too, never ignored ones', async () => {
+  const dir = repo();
+  put(dir, '.gitignore', 'secret.env\nbuild/\n');
+  put(dir, 'src/app.js'); put(dir, 'README.md'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  put(dir, 'src/new file.js'); put(dir, 'secret.env'); put(dir, 'build/out.js');
+  const files = await listFiles(dir);
+  assert.deepEqual([...files].sort(), ['.gitignore', 'README.md', 'src/app.js', 'src/new file.js']);
+});
+
+test('mentions: without git, a walk that skips package and build folders', async () => {
+  const dir = tmp();
+  put(dir, 'index.html'); put(dir, 'js/main.js'); put(dir, 'node_modules/x/index.js'); put(dir, 'dist/bundle.js'); put(dir, '.cache/x');
+  assert.deepEqual([...(await listFiles(dir))].sort(), ['index.html', 'js/main.js']);
+});
+
 /* ---------- what a review looks at ---------- */
 const { reviewTarget, EMPTY_TREE } = require('../lib/review');
 const { execFileSync } = require('child_process');

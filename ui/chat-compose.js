@@ -125,10 +125,14 @@ function promptsMenu(anchor) {
     { label: 'Edit prompts…', run: openPromptEditor },
   ]);
 }
-const Slash = { open: false, items: [], sel: 0, moved: false, dismissed: null };
+const Slash = { open: false, items: [], sel: 0, moved: false, dismissed: null, kind: 'prompt', at: null };
 const slashQuery = () => { const v = $c('cText').value; return /^\/[^\n]{0,40}$/.test(v) ? v.slice(1).trim().toLowerCase() : null; };
-function closeSlash() { Slash.open = false; Slash.moved = false; $c('cSlash').hidden = true; }
+function closeSlash() { Slash.open = false; Slash.moved = false; Slash.kind = 'prompt'; Slash.at = null; $c('cSlash').hidden = true; }
 function renderSlash() {
+  // "@" and a few letters: the project's files (unless it's @codex, @claude or @both).
+  const men = mentionAt();
+  if (men && $c('cText').value !== Slash.dismissed) return renderMention(men);
+  if (Slash.kind === 'file') { Slash.kind = 'prompt'; Slash.at = null; Slash.sel = 0; }
   const q = slashQuery();
   if (q === null || C.watch || !S.prompts.length || $c('cText').value === Slash.dismissed) return closeSlash();
   const words = t => t.toLowerCase().split(/[^\p{L}\p{N}]+/u);
@@ -141,7 +145,72 @@ function renderSlash() {
       <p class="cs-f">${Slash.moved ? '<kbd class="kbd">Enter</kbd> or <kbd class="kbd">Tab</kbd> inserts it' : '<kbd class="kbd">Tab</kbd> inserts · <kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> choose · <kbd class="kbd">Enter</kbd> sends what you typed'}</p>`;
   box.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
 }
-function pickSlash(i) { const pr = Slash.items[i]; closeSlash(); if (pr) insertPrompt(pr, true); }
+function pickSlash(i) {
+  if (Slash.kind === 'file') { const f = Slash.items[i], at = Slash.at; closeSlash(); if (f && at) insertMention(f, at); return; }
+  const pr = Slash.items[i]; closeSlash(); if (pr) insertPrompt(pr, true);
+}
+
+/* ---------- @ mentions: a project's files ---------- */
+const Mention = { cwd: null, files: null, loading: null };
+// The "@word" being typed at the cursor, if any.
+function mentionAt() {
+  const ta = $c('cText');
+  if (C.watch || ta.selectionStart !== ta.selectionEnd) return null;
+  const before = ta.value.slice(0, ta.selectionStart);
+  const m = before.match(/(^|[\s(“"'[])@([^\s@"]{0,80})$/);
+  if (!m || /^(codex|claude|both)$/i.test(m[2])) return null;
+  return { q: m[2], start: before.length - m[2].length - 1, end: before.length };
+}
+function mentionFiles() {
+  const cwd = C.info && C.info.cwd;
+  if (!cwd) return Promise.resolve([]);
+  if (Mention.cwd !== cwd) { Mention.cwd = cwd; Mention.files = null; Mention.loading = null; }
+  if (Mention.files) return Promise.resolve(Mention.files);
+  if (!Mention.loading) {
+    const q = C.key ? `key=${encodeURIComponent(C.key)}` : C.sessionId ? `session=${encodeURIComponent(C.sessionId)}` : `cwd=${encodeURIComponent(cwd)}`;
+    Mention.loading = api(`/api/files/list?${q}`).then(r => (Mention.files = r.files || [])).catch(() => (Mention.files = []));
+  }
+  return Mention.loading;
+}
+// Every typed letter in order; a file's name beats its folders, the start of a name beats the middle,
+// and then the shorter name (the closer match) comes first.
+function rankFiles(files, q) {
+  const ql = q.toLowerCase().replace(/\\/g, '/');
+  const scored = [];
+  for (const f of files) {
+    const fl = f.toLowerCase(), name = fl.slice(fl.lastIndexOf('/') + 1);
+    let score;
+    if (!ql) score = fl.split('/').length;
+    else if (name.startsWith(ql)) score = 0;
+    else if (name.includes(ql)) score = 1;
+    else if (fl.includes(ql)) score = 2;
+    else { let i = 0; for (const ch of fl) if (ch === ql[i]) i++; if (i < ql.length) continue; score = 3; }
+    scored.push([score, name.length, f.length, f]);
+  }
+  return scored.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]).slice(0, 8).map(x => x[3]);
+}
+async function renderMention(men) {
+  const files = await mentionFiles();
+  const now = mentionAt();
+  if (!now || now.q !== men.q || now.start !== men.start) return undefined;   // typed on meanwhile
+  const items = rankFiles(files, men.q);
+  if (!items.length) return closeSlash();
+  if (Slash.kind !== 'file' || Slash.at?.start !== men.start) Slash.sel = 0;
+  Object.assign(Slash, { kind: 'file', items, at: men, open: true, sel: Math.min(Slash.sel, items.length - 1) });
+  const box = $c('cSlash'); box.hidden = false;
+  box.innerHTML = `<p class="cs-h">Files in ${esc(C.folder || 'this project')}</p><ul>${items.map((f, i) => `<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}"><b>${esc(f.split('/').pop())}</b><span class="cs-x">${esc(f)}</span></li>`).join('')}</ul>
+    <p class="cs-f"><kbd class="kbd">Tab</kbd> or <kbd class="kbd">Enter</kbd> puts it in · <kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> choose · <kbd class="kbd">Esc</kbd> closes</p>`;
+  return undefined;
+}
+// Replaces "@wor" with "@path/to/file " (in quotes if the path has spaces).
+function insertMention(f, at) {
+  const ta = $c('cText');
+  const text = /\s/.test(f) ? `@"${f}" ` : `@${f} `;
+  ta.value = ta.value.slice(0, at.start) + text + ta.value.slice(at.end);
+  const pos = at.start + text.length;
+  ta.focus(); ta.setSelectionRange(pos, pos);
+  grow(); saveDraft();
+}
 // A new chat opens on its project: the banner, and your prompts one click away.
 function welcome(cwd) {
   const p = cwd && S.projects.find(x => x.cwd === cwd);

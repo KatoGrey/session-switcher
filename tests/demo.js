@@ -170,6 +170,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
     }
     if (p === '/api/chat/model') return { body: { ...info } };
+    if (p === '/api/files/list') return { body: { cwd: bard, files: ['README.md', 'PATCH-NOTES.md', 'scripts/bard/songs.lua', 'scripts/bard/encore.lua', 'scripts/party/rally.lua', 'data/balance/party.json', 'art/harvest-festival.png', 'docs/Song list.md'] } };
     if (p === '/api/rules' && method === 'GET') return { body: rulesOut() };
     if (p === '/api/rules') { for (const k of body.to || []) rules[k] = { ...rules[k], exists: true, text: body.text.endsWith('\n') ? body.text : `${body.text}\n` }; return { body: rulesOut() }; }
     if (p === '/api/tools') return { body: { servers, codexError: null, codexOn: true } };
