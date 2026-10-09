@@ -230,7 +230,7 @@ function connectLive() {
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
   es.addEventListener('races', () => { loadRaces().catch(() => {}); });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
-  es.addEventListener('activity', e => { try { S.activity = keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds); } catch { return; } watchActivity(); renderLive(); renderNav(); });
+  es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLive(); renderNav(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
@@ -254,7 +254,8 @@ document.addEventListener('keydown', e => {
 }, true);
 // A Cancel that isn't a form button, so Enter in a form never lands on it.
 document.addEventListener('click', e => { const b = e.target instanceof Element && e.target.closest('[data-close-dlg]'); if (b) b.closest('dialog').close('cancel'); });
-function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false } = {}) {
+// escape: what Esc answers (no, unless a question needs Esc to mean "neither").
+function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false, escape = false } = {}) {
   let d = $('confirmDlg');
   if (!d) {
     document.body.insertAdjacentHTML('beforeend', `<dialog id="confirmDlg" class="confirm-dlg"><form method="dialog"><h3 id="cfQ"></h3><p id="cfX"></p><div class="d-row"><button class="btn" value="cancel" id="cfNo"></button><button class="btn prime" value="ok" id="cfYes"></button></div></form></dialog>`);
@@ -263,12 +264,12 @@ function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false } = {})
     const answer = v => { const r = d._resolve; d._resolve = null; if (r) r(v); };
     d.querySelector('form').addEventListener('submit', e => answer(e.submitter?.value === 'ok'));
     // Esc answers this question only, never the dialog underneath it.
-    d.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); answer(false); d.close('cancel'); } });
+    d.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); answer(d._escape); d.close('cancel'); } });
     d.addEventListener('close', () => { if (!d.open) answer(d.returnValue === 'ok'); });
   }
   const [q, ...rest] = String(text).split(/\n\n/);
   $('cfQ').textContent = q; $('cfX').textContent = rest.join('\n\n'); $('cfX').hidden = !rest.length;
-  $('cfYes').textContent = ok; $('cfNo').textContent = cancel;
+  $('cfYes').textContent = ok; $('cfNo').textContent = cancel; d._escape = escape;
   $('cfYes').className = `btn ${danger ? 'danger-prime' : 'prime'}`;
   d.returnValue = '';
   if (d._resolve) d._resolve(false);
@@ -324,7 +325,9 @@ function activityItems(x) {
 // you to the next one.
 async function closeActivity(x) {
   const st = statusOf(x), app = x.source === 'app' && !!x.key && x.phase !== 'ended';
-  if (app && (st === 'working' || NEEDS.has(st)) && !(await appConfirm(`Close this chat?\n\n${x.provider === 'codex' ? 'Codex' : 'Claude'} is in the middle of it; closing stops it now. The conversation is kept, and you can open it again.`, { ok: 'Stop and close', danger: true }))) return;
+  // Busy (it, or its partner): say who, since closing stops both.
+  const who = PROV_NAME[(x.partner && ownStatus(x) !== st ? x.partner : x).provider || 'claude'];
+  if (app && (st === 'working' || NEEDS.has(st)) && !(await appConfirm(`Close this chat?\n\n${who} is in the middle of it; closing stops ${x.partner ? 'both of them' : 'it'} now. The conversation is kept, and you can open it again.`, { ok: 'Stop and close', danger: true }))) return;
   const next = window.ChatUI && !x.parentKey && ChatUI.isViewing(x) ? ChatUI.neighbor(x) : undefined;
   closeOff(x);
   if (next) openActivity(next); else if (next === null) ChatUI.close();

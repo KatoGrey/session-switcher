@@ -23,10 +23,12 @@ function isViewing(x) {
 function railItem(x) {
   // A pinned chat that isn't running: it stays listed, and a click opens it again.
   if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}"><span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
-  const st = statusOf(x);
-  const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (x.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
-  const doing = x.phase === 'tool' && (x.detail || x.tool) ? `${VERB_NOW[x.tool] || 'Using'} ${x.detail || x.tool}` : x.phase === 'writing' ? 'Writing…' : x.phase === 'starting' ? 'Starting…' : 'Thinking…';
-  const sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
+  const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;   // w: the one the status is about
+  const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (w.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
+  const doing = w.phase === 'tool' && (w.detail || w.tool) ? `${VERB_NOW[w.tool] || 'Using'} ${w.detail || w.tool}` : w.phase === 'writing' ? 'Writing…' : w.phase === 'starting' ? 'Starting…' : 'Thinking…';
+  let sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
+  if (w !== x) sub = `${PROV_NAME[w.provider || 'claude']}: ${sub}`;
+  else if (x.partner && (st === 'quiet' || st === 'reply')) sub += ` · with ${PROV_NAME[x.partner.provider || 'claude']}`;
   return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}" aria-current="${isViewing(x)}"><span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
 }
 // The rail: chats you pinned (they stay, running or not), then the rest of what's open, each list in
@@ -199,9 +201,9 @@ async function loadHistory(before) {
   C.historyStart = h.start;
   C.historyCursor = h.cursor || null;
   let rows = h.items.map(it => ({ it, prov: C.provider }));
-  // A Claude chat's Codex helper: its earlier messages slot in among Claude's by time.
-  if (before === undefined && C.compThread && C.provider === 'claude') {
-    try { rows = mergeHelper(rows, (await api(`/api/chat/history?${new URLSearchParams({ id: C.compThread, provider: 'codex' })}`)).items); } catch { /* shown without them */ }
+  // The partner's earlier messages (Codex in a Claude chat, or Claude in a Codex chat) slot in by time.
+  if (before === undefined && C.compThread) {
+    try { rows = mergeHelper(rows, (await api(`/api/chat/history?${new URLSearchParams({ id: C.compThread, provider: partnerProv() })}`)).items); } catch { /* shown without them */ }
     if (gen !== C.gen) return null;
   }
   const tmp = document.createElement('div');
@@ -236,10 +238,10 @@ function mergeHelper(rows, items) {
   let gi = 0, last = -Infinity;
   for (const r of rows) {
     const t = r.it.at ? Date.parse(r.it.at) : last; last = t;
-    while (gi < keep.length && keep[gi].t <= t) out.push(...keep[gi++].items.map(it => ({ it, prov: 'codex' })));
+    while (gi < keep.length && keep[gi].t <= t) out.push(...keep[gi++].items.map(it => ({ it, prov: partnerProv() })));
     out.push(r);
   }
-  while (gi < keep.length) out.push(...keep[gi++].items.map(it => ({ it, prov: 'codex' })));
+  while (gi < keep.length) out.push(...keep[gi++].items.map(it => ({ it, prov: partnerProv() })));
   return out;
 }
 
@@ -265,7 +267,7 @@ function reset() {
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
   Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
-  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.undoNotes = { main: [], comp: [] };
+  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null;
   Review.loop = null;
   closePick();
   $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
@@ -297,7 +299,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   if (info.modes) modeOptions(info.modes);
   if (info.models && info.models.length) C.mi.main = info;
   C.compThread = info.companionThread || null;
-  if (info.companionKey && C.provider === 'claude') { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { /* the helper has stopped */ } }
+  if (info.companionKey) { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { /* the helper has stopped */ } }
   if (gen !== C.gen) return;
   setTarget('main', false);
   $c('chat').classList.toggle('codex', C.provider === 'codex');
@@ -329,12 +331,28 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   $c('cText').focus();
 }
 
-async function open({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '' } = {}) {
+async function open({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false } = {}) {
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
   const [known] = sessionId ? findSession(sessionId) : [null];
   // An OpenClaw agent's session is read here; it carries on in OpenClaw.
   if (known && known.provider === 'openclaw') return watch({ sessionId: known.id, source: 'openclaw' });
   const prov = provider || (known && known.provider) || 'claude';
+  // One chat per project: a new Codex chat where a Claude chat is open (or the other way round) adds
+  // that one to the open chat instead, unless you'd rather have a separate chat. Esc does neither.
+  if (mode === 'new' && cwd && !separate) {
+    const same = d => String(d || '').replace(/[\\/]+$/, '').toLowerCase();
+    const here = S.activity.find(x => x.source === 'app' && !x.parentKey && x.phase !== 'ended' && same(x.cwd) === same(cwd) && (x.provider || 'claude') !== prov);
+    if (here) {
+      const name = PROV_NAME[prov];
+      const join = await window.appConfirm(`Add ${name} to “${here.title || 'the open chat'}”?\n\nThat chat is already open in this project. ${name} joins it and reads everything in it, so the work stays in one place.`, { ok: `Add ${name} to it`, cancel: `Start a separate ${name} chat`, escape: null });
+      if (join === null) return undefined;
+      if (!join) return open({ sessionId, cwd, mode, force, accountId, provider, initialText, separate: true });
+      await openKey(here.key);
+      setTarget('comp');
+      if (initialText) placeText(initialText, true);
+      return undefined;
+    }
+  }
   // A new Claude chat about to open as an account that's out of usage: offer the one with room.
   if (mode === 'new' && prov === 'claude' && !accountId && a) {
     const alt = await roomierAccount(a);
@@ -707,7 +725,7 @@ function chatContextItems(t, at) {
     return [
       { glyph: '⧉', label: 'Copy', keys: 'Ctrl C', run: () => copyOut(picked) },
       ...(!C.watch ? [{ glyph: '❝', label: 'Quote in my message', run: () => placeText(`${quote(picked)}\n\n`, false) }] : []),
-      ...(duo() ? [{ glyph: '◆', label: C.target === 'comp' ? 'Ask Claude about this' : 'Ask Codex about this', run: () => { setTarget(C.target === 'comp' ? 'main' : 'comp', false); placeText(`${quote(picked)}\n\n`, false); } }] : []),
+      ...(duo() ? [{ glyph: '◆', label: `Ask ${PROV_NAME[C.target === 'comp' ? C.provider : partnerProv()]} about this`, run: () => { setTarget(C.target === 'comp' ? 'main' : 'comp', false); placeText(`${quote(picked)}\n\n`, false); } }] : []),
       { glyph: '⌕', label: `Find “${short}” in this chat`, run: () => openFind(picked) },
       { glyph: '✦', label: `Search every chat for “${short}”`, run: () => openPalette(picked) },
     ];
@@ -762,7 +780,7 @@ function chatContextItems(t, at) {
     const text = RAW.get(um) || um.innerText;
     return [
       { glyph: '⧉', label: 'Copy message', run: () => copyOut(text) },
-      ...(!C.watch ? [{ glyph: '↺', label: 'Edit and send again', hint: 'puts it back in the message box', run: () => { if (um.classList.contains('to-codex')) setTarget('comp', false); placeText(text, true); } },
+      ...(!C.watch ? [{ glyph: '↺', label: 'Edit and send again', hint: 'puts it back in the message box', run: () => { if (um.classList.contains('to-partner')) setTarget('comp', false); placeText(text, true); } },
         { glyph: '❝', label: 'Quote it', run: () => placeText(`${quote(text)}\n\n`, false) }] : []),
     ];
   }
@@ -773,7 +791,7 @@ function chatContextItems(t, at) {
       ...(text ? [{ glyph: '⧉', label: 'Copy reply', run: () => copyOut(turn.querySelector('.final > .md') ? [...turn.querySelectorAll('.final > .md')].map(x => x.innerText.trim()).join('\n\n') : text) },
         { label: 'Copy as Markdown', run: () => copyOut(text) }] : []),
       ...(text && !C.watch ? [{ glyph: '❝', label: 'Quote in my message', run: () => placeText(`${quote(text)}\n\n`, false) }] : []),
-      ...(text && duo() ? [{ glyph: prov === 'codex' ? '✦' : '◆', label: prov === 'codex' ? 'Send to Claude' : 'Ask Codex about this', run: () => relay(turn) }] : []),
+      ...(text && duo() ? [{ glyph: prov === 'codex' ? '✦' : '◆', label: prov === C.provider ? `Ask ${PROV_NAME[partnerProv()]} about this` : `Send to ${PROV_NAME[C.provider]}`, run: () => relay(turn) }] : []),
       '-',
       ...chatHeadItems().filter(x => x !== '-' && /^(Find|Jump)/.test(x.label)),
     ];
@@ -785,7 +803,7 @@ function chatContextItems(t, at) {
     return [
       ...(duo() && C.target !== src ? [{ glyph: '➤', label: `Write to ${name}`, keys: 'Ctrl .', run: () => setTarget(src) }] : []),
       ...modelItems(src),
-      ...(src === 'comp' && C.comp && !C.comp.ended ? ['-', { label: 'Stop the Codex helper', hint: 'your next message to Codex starts it again', danger: true, run: () => api('/api/chat/stop', { key: C.comp.key }) }] : []),
+      ...(src === 'comp' && C.comp && !C.comp.ended ? ['-', { label: `Stop ${PROV_NAME[partnerProv()]} in this chat`, hint: `your next message to ${PROV_NAME[partnerProv()]} starts it again`, danger: true, run: () => api('/api/chat/stop', { key: C.comp.key }) }] : []),
     ];
   }
   if (t.closest('.c-head, #cFeed, .c-scroll')) return chatHeadItems();
@@ -809,7 +827,7 @@ window.ChatUI = {
     if (reviewAvailable() && C.state !== 'ended') out.push({ glyph: '◆', t: 'Have Codex review this chat’s changes', s: 'in a read-only sandbox', run: () => startReview(), text: 'review code codex check changes second opinion bugs' });
     for (const src of duo() ? ['main', 'comp'] : ['main']) {
       const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
-      if (src === 'comp' && (!mi || !mi.models)) { out.push({ glyph: '◆', t: `Choose Codex’s model…`, s: 'Codex helper', run: () => openPick('comp'), text: 'codex model switch effort' }); continue; }
+      if (src === 'comp' && (!mi || !mi.models)) { out.push({ glyph: '◆', t: `Choose ${name}’s model…`, s: `${name}, in this chat`, run: () => openPick('comp'), text: `${name.toLowerCase()} model switch effort` }); continue; }
       if (C.ctx[src]) out.push({ glyph: '⇲', t: `${name}: summarize the conversation now`, s: ctxLine(src), run: () => compactNow(src), text: `${name} summarize compact context full memory` });
       for (const m of (mi && mi.models) || []) if (m.value !== mi.model) out.push({ glyph: src === 'comp' ? '◆' : '✦', t: `${name}: ${m.label}`, s: m.description, run: () => pickModel(src, { model: m.value }), text: `model switch ${name} ${m.label} ${m.value}` });
       for (const e of (mi && (((mi.models || []).find(x => x.value === mi.model) || {}).efforts || mi.efforts)) || []) if (e !== mi.effort) out.push({ glyph: '◈', t: `${name}: ${e} effort`, run: () => pickModel(src, { effort: e }), text: `effort ${name} ${e} think` });

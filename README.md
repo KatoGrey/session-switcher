@@ -269,25 +269,29 @@ If [OpenClaw](https://openclaw.ai) is installed, its agents' sessions (Discord c
 
 ## Claude and Codex in one chat
 
-Inside any Claude chat you can bring in Codex as a helper, for example to make images for a project while Claude does the main work. You don't need a second window.
+Claude and Codex work in the same chat, either way round: bring Codex into a Claude chat (to make images for a project while Claude does the main work, say), or Claude into a Codex chat. One window, one conversation, both reading each other.
 
-- **The crew, under the message box:** two pills, **Claude** and **Codex**. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex).
-  - Click the other pill, or press `Ctrl+.`, to choose who your next message goes to. The box turns blue when you're writing to Codex.
-  - Or start a message with `@codex` (or `@claude`) to send just that one message.
-- **One feed:** Codex's replies appear in the same conversation, under its own name in blue. Messages you sent it are tagged **to Codex**. Pictures it makes appear as it makes them.
-- **One conversation:** whoever you write to first catches up on what it hasn't seen: what the other one said and changed, and what you said to it. In the feed that's a small fold-out ("Codex was caught up on 3 messages"), not text you wrote. So you can ask Claude for a plan, switch to Codex and say "do the second part", and Codex knows what that is.
-- **Both:** the **Both** pill (or `@both`) sends one message to each, and they both answer in the same feed.
+- **The crew, under the message box:** two pills, the chat's own assistant and its partner. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex).
+  - Click the other pill, or press `Ctrl+.`, to choose who your next message goes to. The box takes that one's color.
+  - Or start a message with `@codex` or `@claude` to send just that one message.
+- **One feed:** the partner's replies appear in the same conversation, under its own name and color. Messages you sent it are tagged **to Codex** (or **to Claude**). Pictures Codex makes appear as it makes them.
+- **They read each other:** before each message one of them gets, the app catches it up on what it hasn't seen: what the other one said and did (which files it changed, how many commands it ran), and what you said to the other. In the feed that's a small fold-out ("Codex was caught up on 3 messages"), not text you wrote. So you can ask Claude for a plan, switch to Codex and say "do the second part", and Codex knows what that is.
+  - The app works this out on the PC from the two conversations themselves, from the moment each one last caught up, so it's the same in every window and on your phone, and survives a reload or a restart. Nothing is told twice; a long stretch keeps the newest messages and says how many earlier ones it left out.
+  - Files you undo from a reply are mentioned to that one with your next message.
+- **Both: they take turns.** The **Both** pill (or `@both`) sends your message to the chat's own assistant first. When it has answered, the other one picks the same message up, already knowing that answer, and builds on it (checks it, adds what it missed, does its part) instead of starting over. Your message reads "to Claude, then Codex", the second one's pill says **up next** while it waits, and the feed marks where it **takes it from here**. They never edit files at the same time. Stopping the first one skips the hand-over.
+- **One chat per project:** starting a Codex chat in a project where a Claude chat is open (or the other way round) offers to add it to that chat instead, so the work stays in one place. **Start a separate chat** is still there if you want one.
+  - A partner's own conversation lives inside its chat: it isn't listed as a chat of its own, the chat's row says **with Codex**, and opening it (from search, a notification or a card) opens the chat it belongs to.
+  - On the hub and in the chat window's list, a chat reads as at work while its partner works, and as needing you when its partner does ("Codex: Needs your OK").
+- **Always there:** one partner per chat, never two processes on one conversation (a partner left running is picked up again, not started twice). It resumes its earlier conversation even before Codex's own list has caught up; if that conversation can't be picked up, it starts a new one, caught up on the chat, and says so. A partner never outlives its chat.
 - **Codex reviews Claude's work:** **Review with Codex** on a Claude reply (or **⋯** → **Have Codex review the changes**) has Codex look over the changes, read-only.
   - The findings appear as a card, each with its priority, file and lines. **All clear** when there are none.
   - **Ask Claude to fix this** on one finding, or **Fix and recheck until clean**: Claude fixes them all, then Codex reviews again, up to three rounds. **Stop after this** ends it early.
 - **Hand-offs:**
-  - **Ask Codex** on any Claude reply quotes it to Codex, for example Claude's description of a cover image.
-  - **Send to Claude** on a Codex reply quotes it back.
+  - **Ask Codex** on a reply quotes it to the partner (as Markdown), for example Claude's description of a cover image. **Send to Claude** on the partner's reply quotes it back.
   - **Give to Claude** on a picture Codex made attaches it to your next message to Claude, with where it's saved.
-- **It's remembered:** the helper is tied to the chat. Reopen the chat later and Codex's earlier messages appear in place, and your next message to Codex continues the same Codex conversation.
-- **What Codex is told:** that it works alongside Claude in the same folder, should keep replies short, and should save a copy of any image it makes inside the project folder.
-- **Approvals:** Codex's approval cards are blue and say "Codex wants to…", so you always know who's asking. Esc stops whichever one you're writing to.
-- The helper uses your Codex sign-in and its usage, and shows in the ledger and on the hub as "Codex · *chat name*". **Stop this chat** stops both.
+- **It's remembered:** the partner is tied to the chat. Reopen the chat later and the partner's earlier messages appear in place, and your next message to it continues the same conversation.
+- **Approvals:** each one's approval cards are in its own color and say who's asking ("Codex wants to…"). Esc stops whichever one you're writing to.
+- The partner uses its own sign-in and usage (Codex: your Codex account; Claude: the account you're working as) and shows in the ledger as **With Codex**. **Close** or **Stop this chat** stops both.
 
 ## Rules and tools
 

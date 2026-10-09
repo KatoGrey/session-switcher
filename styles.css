@@ -782,6 +782,9 @@ dialog.viewer[open]{display:block}
 .codex-card .dc-name::after{content:"";width:8px;height:8px;border-radius:50%;background:rgb(var(--c-6f97d8));box-shadow:0 0 8px rgb(var(--c-6f97d8) / .6)}
 .chat.codex .turn .who{color:rgb(var(--c-a9c3ef))}
 .chat.codex .turn .who::before{color:rgb(var(--c-6f97d8))}
+/* Claude as the partner in a Codex chat: its replies keep Claude's colors */
+.chat.codex .turn[data-prov="claude"] .who{color:var(--ember)}
+.chat.codex .turn[data-prov="claude"] .who::before{color:var(--crimson)}
 .gen{margin:4px 0 2px;display:flex;flex-direction:column;gap:8px;max-width:560px}
 .gen-frame{border:1px solid var(--seam-2);border-radius:8px;overflow:hidden;background:rgb(var(--c-0c0a0e));min-height:120px;display:grid;place-items:center}
 .gen-img{border:0;border-radius:0;display:block;width:100%}
@@ -1821,6 +1824,19 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .chat.to-both .c-box:focus-within{box-shadow:0 0 0 3px rgb(var(--c-6f97d8) / .1)}
 .chat.to-both #cSend{background:linear-gradient(90deg,rgb(var(--c-94423b)),rgb(var(--c-46679f)));border-color:rgb(var(--c-7fa3dc) / .6)}
 .umsg.to-both .to-tag{color:var(--parch-2);background:linear-gradient(90deg,rgb(var(--c-a5463f) / .25),rgb(var(--c-6f97d8) / .25))}
+/* Claude as the partner, in a Codex chat: your messages to it, and the message box while you write to it */
+.umsg.to-claude .ububble{background:linear-gradient(180deg,rgb(var(--c-8c3a34) / .2),rgb(var(--c-781412) / .16));border-color:rgb(var(--c-a5463f) / .4)}
+.umsg.to-claude .to-tag{color:var(--ember)}
+.umsg.to-claude .to-tag::before{content:"✦ ";color:var(--crimson)}
+.chat.to-claude .c-box{border-color:rgb(var(--c-a5463f) / .45)}
+.chat.to-claude .c-box:focus-within{border-color:rgb(var(--c-a5463f) / .7);box-shadow:0 0 0 3px rgb(var(--c-a5463f) / .12)}
+.chat.to-claude #cSend{background:linear-gradient(180deg,rgb(var(--c-8d3e37)),rgb(var(--c-6c2e29)));border-color:rgb(var(--c-a5564d))}
+/* "Both": where the second one picks your message up, after the first one's answer */
+.handover{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:2px 0 -4px;padding:6px 0 0;font:400 12.5px/1.4 var(--f-body);color:var(--ash)}
+.handover .ho-arrow{font-size:15px;line-height:1;color:var(--codex)}
+.handover[data-prov="claude"] .ho-arrow{color:var(--crimson)}
+.handover b{font-weight:600;color:var(--parch-2)}
+.handover details.shared{margin:0 0 0 auto}
 details.shared{margin:0 0 6px auto;max-width:min(560px,100%);font-size:12.5px;color:var(--ash)}
 details.shared summary{cursor:pointer;list-style:none;display:flex;justify-content:flex-end;align-items:center;gap:6px;font:400 11.5px/1.4 var(--f-mono);color:var(--ash)}
 details.shared summary::-webkit-details-marker{display:none}

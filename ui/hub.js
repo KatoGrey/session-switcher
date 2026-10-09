@@ -103,7 +103,7 @@ function renderNav() {
 function heroHtml() {
   const a = current();
   const A = awaiting(), W = atWork().length;
-  const N = A.filter(x => NEEDS.has(statusOf(x))).length, R = A.length - N;
+  const N = A.filter(x => NEEDS.has(ownStatus(x))).length, R = A.length - N;
   const Q = quietOpen().filter(x => x.source === 'app' && x.phase !== 'ended').length;
   let h, em;
   if (A.length) {
@@ -138,7 +138,7 @@ function heroHtml() {
   const latest = allSessions().filter(([x]) => !isOpenClaw(x)).sort((x, y) => y[0].updated - x[0].updated)[0];
   const better = headroomPick();
   const acts = [];
-  if (first) acts.push(`<button class="btn gilt" data-hero="first">${NEEDS.has(statusOf(first)) ? 'Answer the first one' : 'Read the latest reply'}</button>`);
+  if (first) acts.push(`<button class="btn gilt" data-hero="first">${NEEDS.has(ownStatus(first)) ? 'Answer the first one' : 'Read the latest reply'}</button>`);
   if (better) acts.push(`<button class="btn" data-hero="switch" data-acct="${esc(better.a.id)}">Work as ${esc(better.a.name)}</button>`);
   if (!first && latest && canLaunch(a)) acts.push(`<button class="btn" data-hero="latest" data-sid="${esc(latest[0].id)}" title="${esc(latest[0].title)}">Continue “${esc(latest[0].title.length > 34 ? `${latest[0].title.slice(0, 33)}…` : latest[0].title)}”</button>`);
   const today = new Date();
@@ -218,7 +218,7 @@ function guardHtml() {
 }
 
 function awaitCard(x) {
-  const st = statusOf(x), k = keyOf(x);
+  const st = ownStatus(x), k = keyOf(x);
   const p = (x.pending || [])[0];
   const label = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: asked(x) ? 'Your turn · asked you something' : x.ok === false ? 'Your turn · stopped early' : 'Your turn' }[st];
   const since = st === 'reply' ? `<span class="o-time" data-ago="${x.finishedAt}"></span>` : `<span class="o-time">waiting <span data-since="${x.lastEventAt || Date.now()}"></span></span>`;
@@ -252,11 +252,14 @@ function awaitCard(x) {
 
 function workCard(x) {
   const st = statusOf(x);
-  const label = x.phase === 'starting' ? 'Starting' : x.phase === 'thinking' ? 'Thinking' : x.phase === 'writing' ? 'Writing' : x.source === 'terminal' ? 'Working in a terminal' : 'Working';
-  const since = x.turnStartedAt || x.lastEventAt;
-  const step = x.phase === 'tool' && (x.tool || x.detail) ? `<div class="o-step"><span class="v">${esc(VERB_NOW[x.tool] || 'Using')}</span><code>${esc(x.detail || x.tool || '')}</code></div>` : '';
-  const said = plainMd(lastLine(x.lastText));
-  const line = said ? `<p class="o-line">${esc(said)}</p>` : x.lastPrompt ? `<p class="o-line dim">You asked: ${esc(x.lastPrompt)}</p>` : '';
+  // At work because its partner is: the card tells what the partner is doing.
+  const w = x.partner && ownStatus(x) !== 'working' && ownStatus(x.partner) === 'working' ? x.partner : x;
+  const who = w !== x ? `${PROV_NAME[w.provider || 'claude']}: ` : '';
+  const label = who + (w.phase === 'starting' ? 'Starting' : w.phase === 'thinking' ? 'Thinking' : w.phase === 'writing' ? 'Writing' : w.source === 'terminal' ? 'Working in a terminal' : 'Working');
+  const since = w.turnStartedAt || w.lastEventAt;
+  const step = w.phase === 'tool' && (w.tool || w.detail) ? `<div class="o-step"><span class="v">${esc(VERB_NOW[w.tool] || 'Using')}</span><code>${esc(w.detail || w.tool || '')}</code></div>` : '';
+  const said = plainMd(lastLine(w.lastText));
+  const line = said ? `<p class="o-line">${esc(said)}</p>` : w.lastPrompt ? `<p class="o-line dim">You asked: ${esc(w.lastPrompt)}</p>` : '';
   return `<article class="omen ${st === 'working' ? 'working' : st}"><div class="omen-in">
     <header class="o-top"><span class="${x.source === 'app' ? 'ember-dot' : 'violet-dot'}" aria-hidden="true"></span>${esc(label)}<span class="o-time" data-since="${since || ''}"></span></header>
     <h3 class="o-title"><button data-a="open">${esc(x.title || 'New chat')}</button></h3>
@@ -484,7 +487,7 @@ function rowHtml(s, folderName, hit) {
   const sub = oc ? s.preview || '' : s.lastPrompt ? `You last asked: ${s.lastPrompt}` : (s.title !== s.firstPrompt ? `Started with: ${s.firstPrompt}` : '');
   const live = liveOf(s.id);
   const run = !live && isRunning(s.id);
-  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (oc ? `<span class="tag openclaw" title="An OpenClaw agent’s session, read-only here">OpenClaw · ${esc(s.agentName || 'Agent')}</span>` : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
+  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (s.partner ? `<span class="tag line pair" title="${PROV_NAME[s.partner.provider]} works in this chat too">with ${PROV_NAME[s.partner.provider]}</span>` : '') + (oc ? `<span class="tag openclaw" title="An OpenClaw agent’s session, read-only here">OpenClaw · ${esc(s.agentName || 'Agent')}</span>` : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
     : run ? '<span class="tag violet">In a terminal</span>' : (s.active ? '<span class="tag ghost">Just updated</span>' : ''));
   const primary = oc ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Read this session here (read-only)">Read</button>`
     : live ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Go back to this chat">Return</button>`

@@ -309,8 +309,8 @@ function markSeen(x) {
   store('seen', JSON.stringify(S.seen));
   renderLive(); renderNav();
 }
-// approve | question | terminal-wait | reply | working | quiet | ended
-function statusOf(x) {
+// approve | question | terminal-wait | reply | working | quiet | ended: a chat on its own.
+function ownStatus(x) {
   if (x.phase === 'waiting') return (x.pending || []).some(p => p.question) ? 'question' : 'approve';
   if (x.phase === 'waiting-terminal') return 'terminal-wait';
   if (WORKING.has(x.phase)) return 'working';
@@ -318,11 +318,26 @@ function statusOf(x) {
   if (x.finishedAt && (x.source === 'app' || x.lastText) && !isSeen(x)) return 'reply';
   return 'quiet';
 }
+// A chat with its partner (Codex in it, or Claude): whichever of the two is further along the list
+// above, so a chat reads "at work" while its partner works, and "needs your OK" when its partner does.
+const STATUS_RANK = { approve: 0, question: 0, 'terminal-wait': 1, working: 2, reply: 3, quiet: 4, ended: 5 };
+function statusOf(x) {
+  const own = ownStatus(x), p = x.partner ? ownStatus(x.partner) : null;
+  return p && STATUS_RANK[p] < STATUS_RANK[own] ? p : own;
+}
+// Running chats get their partner attached (it stays a row of its own too, for the cards that ask you).
+function withPartners(list) {
+  for (const x of list) if (!x.parentKey) x.partner = (x.key && list.find(y => y.parentKey === x.key)) || null;
+  return list;
+}
 const NEEDS = new Set(['approve', 'question', 'terminal-wait']);
-const awaiting = () => S.activity.filter(x => NEEDS.has(statusOf(x)) || statusOf(x) === 'reply')
-  .sort((a, b) => (NEEDS.has(statusOf(b)) - NEEDS.has(statusOf(a))) || ((b.finishedAt || b.lastEventAt || 0) - (a.finishedAt || a.lastEventAt || 0)));
-const atWork = () => S.activity.filter(x => statusOf(x) === 'working');
-const quietOpen = () => S.activity.filter(x => statusOf(x) === 'quiet' || statusOf(x) === 'ended');
+const waitsOnYou = x => NEEDS.has(ownStatus(x)) || ownStatus(x) === 'reply';
+// Waiting on you: each one that asks (a partner too: its card has its question); at work and quiet:
+// each chat once, with its partner.
+const awaiting = () => S.activity.filter(waitsOnYou)
+  .sort((a, b) => (NEEDS.has(ownStatus(b)) - NEEDS.has(ownStatus(a))) || ((b.finishedAt || b.lastEventAt || 0) - (a.finishedAt || a.lastEventAt || 0)));
+const atWork = () => S.activity.filter(x => !x.parentKey && !waitsOnYou(x) && statusOf(x) === 'working');
+const quietOpen = () => S.activity.filter(x => !x.parentKey && !waitsOnYou(x) && (statusOf(x) === 'quiet' || statusOf(x) === 'ended'));
 const asked = x => /\?["”’)\]]*\s*$/.test(lastLine(x.lastText));
 const VERB_NOW = { Bash: 'Running', PowerShell: 'Running', Read: 'Reading', Write: 'Writing', Edit: 'Editing', MultiEdit: 'Editing', NotebookEdit: 'Editing', Glob: 'Finding', Grep: 'Searching', WebFetch: 'Fetching', WebSearch: 'Searching', Agent: 'Delegating', Task: 'Delegating', TodoWrite: 'Planning', TaskCreate: 'Planning', TaskUpdate: 'Planning', Artifact: 'Publishing', AskUserQuestion: 'Asking' };
 function wantsTo(p) {
@@ -390,7 +405,9 @@ function closeOff(x) {
 }
 function openActivity(x) {
   if (!x) return;
-  markSeen(x);
+  markSeen(x); if (x.partner) markSeen(x.partner);
+  // A partner opens inside the chat it works in.
+  if (x.source === 'app' && x.parentKey) return ChatUI.openKey(x.parentKey);
   if (x.source === 'app') return ChatUI.openKey(x.key);
   return ChatUI.watch({ sessionId: x.sessionId, source: x.source });
 }
@@ -407,7 +424,7 @@ async function loadSessions() {
   S.projects = j.projects; S.root = j.root; S.running = j.running || {}; S.live = j.live || {};
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
-async function loadActivity() { const j = await api('/api/activity'); S.activity = keepOrder('running', openOnly(j.list || []), activityIds); }
+async function loadActivity() { const j = await api('/api/activity'); S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }
 async function loadUsage() { const j = await api('/api/usage'); S.usage = j.usage || {}; }
 async function reload() {
   await loadState();

@@ -280,42 +280,42 @@ module.exports = [
       const sends = () => calls.filter(([p]) => p === '/api/chat/send').map(([, body]) => body);
       const type = async text => { await b.eval(`const ta = document.getElementById('cText'); ta.focus(); ta.value = ${JSON.stringify(text)}; ta.dispatchEvent(new Event('input', { bubbles: true })); return 1`); await b.key('Enter', 'Enter', 13); await sleep(500); };
 
-      // Codex made the key art since Claude last spoke: writing to Claude brings it along.
+      // Writing to Claude: your words, as you wrote them. The app itself catches Claude up (lib/pairs.js).
       await type('Thanks! Use that art in the patch notes.');
       let s = sends().at(-1);
-      t.check('Claude is caught up on what Codex did', s && s.key === 'k-bard' && /^<shared-context items="2">/.test(s.text) && /The user, to Codex:/.test(s.text) && /Codex:\nHere it is\./.test(s.text), s && s.text.slice(0, 300));
-      t.check('and what you wrote comes after it', s && s.text.endsWith('</shared-context>\n\nThanks! Use that art in the patch notes.'));
-      // As the chat shows it: only your words, with the catch-up folded away.
-      await b.eval(`handle({ kind: 'user', text: ${JSON.stringify(s.text)}, at: new Date().toISOString(), seq: 300 }); return 1`); await sleep(300);
+      t.check('a message to Claude goes as you wrote it', s && s.key === 'k-bard' && !s.to && s.text === 'Thanks! Use that art in the patch notes.', s);
+      // As the chat shows it once caught up: only your words, with the catch-up folded away.
+      const caught = '<shared-context items="2">\nYou and Codex share this chat; the user sees you both. Since you last caught up:\n\nThe user, to Codex:\nMake the key art.\n\nCodex:\nHere it is.\n</shared-context>\n\nThanks! Use that art in the patch notes.';
+      await b.eval(`handle({ kind: 'user', text: ${JSON.stringify(caught)}, at: new Date().toISOString(), seq: 300 }); return 1`); await sleep(300);
       const um = await b.eval(`const u = [...document.querySelectorAll('.umsg')].pop(); return { bubble: u.querySelector('.ububble').textContent.trim(), fold: u.querySelector('details.shared summary')?.textContent, raw: RAW.get(u) }`);
       t.check('the chat shows only your words', um.bubble === 'Thanks! Use that art in the patch notes.' && um.raw === 'Thanks! Use that art in the patch notes.', um);
       t.check('with a fold-out saying what was shared', um.fold === 'Claude was caught up on 2 messages', um.fold);
       await t.shot(b, 'caught-up');
 
-      // Claude suggests work for Codex; you switch to Codex and just say "do 2".
-      await b.eval(`handle({ kind: 'assistant', mid: 'm9', at: new Date().toISOString(), model: 'claude-opus-5-5', seq: 301, blocks: [
-        { type: 'tool', id: 't9', name: 'Edit', summary: 'notes/PATCH-1.4.md', meta: { path: 'notes/PATCH-1.4.md' }, detail: '', detailKind: 'text', result: { text: 'ok', isError: false, images: [] } },
-        { type: 'text', text: 'Codex could take two jobs: 1. a 512px icon of the bard, 2. a quick load test of songs.lua.' }] }); return 1`); await sleep(300);
+      // Switching to Codex: the message goes to this chat's partner (started if need be).
       await b.clickOn('[data-crew="comp"]'); await sleep(300);
       await type('Do number 2, please.');
       s = sends().at(-1);
-      t.check('Codex sees Claude’s suggestion (and what it changed)', s && s.key === 'k-bard-cx' && /Claude:\nCodex could take two jobs/.test(s.text) && /\(Claude changed notes\/PATCH-1\.4\.md\.\)/.test(s.text) && /The user, to Claude:\nThanks! Use that art/.test(s.text), s && s.text.slice(0, 400));
-      t.check('without repeating what Codex already said', s && !/Codex:\nHere it is/.test(s.text));
+      t.check('a message to Codex goes to this chat’s partner', s && s.key === 'k-bard' && s.to === 'partner' && s.text === 'Do number 2, please.', s);
+      await type('@claude what do you think?');
+      s = sends().at(-1);
+      t.check('@claude sends just that one to Claude', s && s.key === 'k-bard' && !s.to && s.text === 'what do you think?', s);
 
-      // Both: one message, each caught up on its own; drawn once.
-      await b.eval(`handle({ kind: 'user', text: ${JSON.stringify(s.text)}, at: new Date().toISOString(), seq: 302 }, 'comp'); handle({ kind: 'assistant', mid: 'cx9', at: new Date().toISOString(), seq: 303, blocks: [{ type: 'text', text: 'Load test done: 2,000 songs in 41 ms.' }] }, 'comp'); return 1`); await sleep(300);
+      // Both: they take turns. One message; Claude answers, then Codex picks it up and builds on it.
       await b.clickOn('[data-crew="both"]'); await sleep(300);
       const tgt = await b.eval(`return { target: C.target, ph: document.getElementById('cText').placeholder, on: [...document.querySelectorAll('.crew.on')].map(x => x.dataset.crew).join() }`);
-      t.check('“Both” writes to Claude and Codex', tgt.target === 'both' && /Claude and Codex/.test(tgt.ph) && tgt.on === 'main,comp,both', tgt);
+      t.check('“Both”: Claude answers, then Codex builds on it', tgt.target === 'both' && /Claude answers, then Codex builds on it/.test(tgt.ph) && tgt.on === 'main,comp,both', tgt);
       const n0 = sends().length;
       await type('Plan the 1.4 release together.');
-      const two = sends().slice(n0);
-      t.check('one message goes to each', two.length === 2 && two.some(x => x.key === 'k-bard') && two.some(x => x.key === 'k-bard-cx'), two.map(x => x.key));
-      const toClaude = two.find(x => x.key === 'k-bard'), toCodex = two.find(x => x.key === 'k-bard-cx');
-      t.check('each caught up on what it missed', /Codex:\nLoad test done/.test(toClaude.text) && !/Codex:\nLoad test done/.test(toCodex.text) && toCodex.text === 'Plan the 1.4 release together.', [toClaude.text.slice(0, 200), toCodex.text.slice(0, 200)]);
-      await b.eval(`const at = new Date().toISOString(); handle({ kind: 'user', text: ${JSON.stringify(toClaude.text)}, at, seq: 304 }); handle({ kind: 'user', text: ${JSON.stringify(toCodex.text)}, at, seq: 305 }, 'comp'); return 1`); await sleep(300);
-      const last = await b.eval(`const u = [...document.querySelectorAll('.umsg')].filter(x => /Plan the 1.4 release/.test(x.textContent)); return { n: u.length, tag: u[0] && u[0].querySelector('.to-tag')?.textContent, both: u[0] && u[0].classList.contains('to-both') }`);
-      t.check('and it shows once: “to Claude & Codex”', last.n === 1 && last.both && last.tag === 'to Claude & Codex', last);
+      const both = sends().slice(n0);
+      t.check('one message, sent once for them to take turns', both.length === 1 && both[0].to === 'both' && both[0].key === 'k-bard' && both[0].text === 'Plan the 1.4 release together.', both);
+      await b.eval(`handle({ kind: 'user', text: 'Plan the 1.4 release together.', at: new Date().toISOString(), seq: 301 }); handle({ kind: 'handoff', to: 'codex', state: 'waiting', seq: 302 }); return 1`); await sleep(300);
+      const wait = await b.eval(`const u = [...document.querySelectorAll('.umsg')].pop(); return { tag: u.querySelector('.to-tag')?.textContent, next: document.querySelector('[data-crew="comp"] .crew-m')?.textContent }`);
+      t.check('it says Claude first, then Codex, and Codex is up next', wait.tag === 'to Claude, then Codex' && /up next/.test(wait.next || ''), wait);
+      const relayed = '<shared-context items="1">\nYou and Claude share this chat; the user sees you both. Since you last caught up:\n\nClaude:\nShip on Friday.\n\nThe user sent the message below to both of you, and Claude answered it first (above). Build on that answer (check it, add what it missed, do your part) rather than repeating it.\n</shared-context>\n\nPlan the 1.4 release together.';
+      await b.eval(`handle({ kind: 'assistant', mid: 'm10', at: new Date().toISOString(), model: 'claude-opus-5-5', seq: 303, blocks: [{ type: 'text', text: 'Ship on Friday.' }] }); handle({ kind: 'handoff', to: 'codex', state: 'sent', seq: 304 }); handle({ kind: 'user', relay: true, text: ${JSON.stringify(relayed)}, at: new Date().toISOString(), seq: 305 }, 'comp'); return 1`); await sleep(300);
+      const ho = await b.eval(`return { handover: !!document.querySelector('.handover[data-prov="codex"]'), text: (document.querySelector('.handover')?.textContent || '').replace(/\\s+/g, ' ').trim(), dupes: [...document.querySelectorAll('.umsg')].filter(x => /Plan the 1.4 release/.test(x.textContent)).length, next: document.querySelector('[data-crew="comp"] .crew-m')?.textContent }`);
+      t.check('then “Codex takes it from here”, not your message again', ho.handover && /Codex takes it from here/.test(ho.text) && ho.dupes === 1 && !/up next/.test(ho.next || ''), ho);
       await t.shot(b, 'both');
 
       // Esc twice stops both.
@@ -445,9 +445,34 @@ module.exports = [
       // Closing the chat you're in moves you to the next one.
       await push(now.map(x => (x.key === 'k-bard' ? { ...x, phase: 'idle', state: 'ready', finishedAt: Date.now() } : x)));
       p = await find('cRailList', /^Balance pass/);
-      await b.click(p[0], p[1], 'right'); await pick('Close'); await sleep(1200);
+      await b.click(p[0], p[1], 'right'); await pick('Close'); await sleep(300);
+      // Its Codex partner is still at work, so it asks first, and says who.
+      const q = await b.eval(`return document.getElementById('confirmDlg')?.open ? cfX.textContent : ''`);
+      t.check('closing a chat whose partner is at work asks first, naming it', /^Codex is in the middle of it; closing stops both of them now\./.test(q), q);
+      await b.clickOn('#cfYes'); await sleep(1200);
       t.check('closing the chat you’re in moves on to another', calls.some(([q, body]) => q === '/api/chat/stop' && body.key === 'k-bard') && (await viewing()) !== demo.ID['s-bard'].toLowerCase(), await viewing());
       await t.shot(b, 'rail');
+    },
+  },
+  {
+    name: 'one chat per project',
+    // Starting Codex where a Claude chat is open adds Codex to that chat (unless you'd rather not).
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      const bard = demo.projects.find(p => p.name === 'Starfall Tavern').cwd;
+      const ask = async () => { await b.eval(`window._done = false; ChatUI.open({ cwd: ${JSON.stringify(bard)}, mode: 'new', provider: 'codex' }).then(() => { window._done = true; }); return 1`); await sleep(400); return b.eval(`return document.getElementById('confirmDlg')?.open ? cfQ.textContent + ' | ' + cfYes.textContent + ' | ' + cfNo.textContent : ''`); };
+      const q = await ask();
+      t.check('a new Codex chat where a Claude chat is open offers to join it', /^Add Codex to “(Tavern brawl|Balance pass)[^”]*”\? \| Add Codex to it \| Start a separate Codex chat$/.test(q), q);
+      await b.esc(); await sleep(400);
+      t.check('Esc does neither', !calls.some(([p]) => p === '/api/chat/open' || p === '/api/chat/attach') && !(await b.eval(`return ChatUI.isOpen()`)));
+      await ask(); await b.clickOn('#cfYes'); await sleep(1500);
+      const j = await b.eval(`return { open: ChatUI.isOpen(), target: C.target }`);
+      const joined = calls.find(([p]) => p === '/api/chat/attach');
+      t.check('joining opens that chat, writing to Codex', j.open && joined && ['k-brawl', 'k-bard'].includes(joined[1].key) && j.target === 'comp' && !calls.some(([p, body]) => p === '/api/chat/open' && body.mode === 'new'), [j, joined]);
+      await b.eval(`ChatUI.close(); return 1`); await sleep(400);
+      await ask(); await b.clickOn('#cfNo'); await sleep(1200);
+      t.check('or a separate Codex chat, if you’d rather', calls.some(([p, body]) => p === '/api/chat/open' && body.mode === 'new' && body.provider === 'codex'));
     },
   },
   {
@@ -773,10 +798,8 @@ module.exports = [
       await b.eval(`const ta = document.getElementById('cText'); ta.focus(); ta.value = 'Try a gentler fix.'; return 1`);
       await b.key('Enter', 'Enter', 13); await sleep(500);
       const sent = calls.filter(([p]) => p === '/api/chat/send').at(-1);
-      t.check('your next message tells Claude what was undone', sent && /^<shared-context items="\d+">/.test(sent[1].text) && /The user undid the file changes from your earlier reply: scripts\/bard\/songs\.lua, data\/balance\/party\.json, notes\/rally\.md are back as before it\./.test(sent[1].text) && sent[1].text.endsWith('Try a gentler fix.'), sent && sent[1].text.slice(0, 300));
-      await b.eval(`const ta = document.getElementById('cText'); ta.value = 'And another thing.'; return 1`);
-      await b.key('Enter', 'Enter', 13); await sleep(500);
-      t.check('only once', !/undid the file changes/.test(calls.filter(([p]) => p === '/api/chat/send').at(-1)[1].text));
+      // The app itself tells Claude what was undone, with this message (see the pairs tests).
+      t.check('your next message goes as you wrote it', sent && sent[1].text === 'Try a gentler fix.', sent && sent[1]);
     },
   },
   {
