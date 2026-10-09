@@ -1,0 +1,24 @@
+# Personal data the app creates as you use it. Never commit these.
+accounts.json
+accounts.json.bak
+history.json
+chat-names.json
+projects.json
+banners.json
+worlds.json
+prompts.json
+chat-prefs.json
+pairs.json
+devices.json
+switcher.log
+switcher.log.old
+*.corrupt-*
+*.tmp
+*.bak
+
+# Build output
+node_modules/
+mobile/android/build/
+mobile/android/*.keystore
+*.apk
+*.zip
