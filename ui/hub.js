@@ -453,7 +453,9 @@ function rowHtml(s, folderName, hit) {
   const sub = oc ? s.preview || '' : s.lastPrompt ? `You last asked: ${s.lastPrompt}` : (s.title !== s.firstPrompt ? `Started with: ${s.firstPrompt}` : '');
   const live = liveOf(s.id);
   const run = !live && isRunning(s.id);
+  const ocLive = oc && s.status === 'running' && !live;
   const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (oc ? `<span class="tag openclaw" title="An OpenClaw agent’s session, read-only here">OpenClaw · ${esc(s.agentName || 'Agent')}</span>` : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
+    : ocLive ? '<span class="tag line" title="This session is active in OpenClaw right now">Live now</span>'
     : run ? '<span class="tag violet">In a terminal</span>' : (s.active ? '<span class="tag ghost">Just updated</span>' : ''));
   const primary = oc ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Read this session here (read-only)">Read</button>`
     : live ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Go back to this chat">Return</button>`

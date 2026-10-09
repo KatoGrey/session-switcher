@@ -73,7 +73,7 @@ function save() {
 const sessions = createSessionStore({ root: path.join(config().mainConfigDir, 'projects'), dataDir: DATA_DIR, log });
 const projectInfo = projectsLib.createProjects({ dataDir: DATA_DIR, log });
 const chatPrefs = prefsLib.createChatPrefs({ dataDir: DATA_DIR, log });
-const openclaw = openclawLib.createOpenClaw({ log, run: sys.runCapture, found: async () => (await sys.whereIs('openclaw')).length > 0 });
+const openclaw = openclawLib.createOpenClaw({ log, run: sys.runCapture, found: async () => (await sys.whereIs('openclaw')).length > 0, dataDir: DATA_DIR });
 openclaw.onSessionsChanged(() => { forgetMerged(); broadcast('sessions'); });
 
 // ---------- live updates ----------
@@ -749,6 +749,12 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, { diff: await chats.get(q.get('key')).turnDiff(q.get('turn'), q.get('path')) });
   }
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
+  if (route === 'POST /api/openclaw/archive') {
+    const r = await openclaw.archive((Array.isArray(body.ids) && body.ids) || (body.id ? [body.id] : []));
+    if (!r.ok) throw fail(500, `OpenClaw couldn’t archive that: ${r.error}`);
+    sessionsChanged();
+    return send(res, 200, r);
+  }
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
   if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
   if (route === 'GET /api/file') {

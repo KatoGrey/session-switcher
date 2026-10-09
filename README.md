@@ -261,6 +261,9 @@ If [OpenClaw](https://openclaw.ai) is installed, its agents' sessions (Discord c
 - **Where they show up:** in an **OpenClaw** group in the sidebar, and inside the project that is the agent's workspace (from `~/.openclaw/openclaw.json`). Each one is tagged with its agent's name. Sessions of an agent without a workspace folder are left out.
 - **Reading one:** **Read** opens it in the chat window, read-only: your messages and the agent's replies, with no message box. A session that's running keeps updating by itself. Nothing is ever sent to a session from here, and nothing is changed or deleted.
 - **Where it comes from:** the list from `openclaw sessions --json --all-agents`, refreshed every 30 seconds while the app is open; a transcript from the agent's own session store, opened read-only for each read. Reading transcripts needs Node.js 22.13 or newer (compressed messages need 22.15 or newer).
+- **A running session:** rows show a **Live now** tag while the session is active (from the same list), and the read view follows along on its own, so you can read a conversation as it happens without touching it.
+- **What they're about:** rows are named from the session's own conversation (the channel's name, or how the conversation started — a cron session by the cron task, a voice turn by what was actually said), and the row shows the same under it. Kept in `openclaw-titles.json` so they stay right between runs.
+- **Archive:** the ⋯ menu on an OpenClaw row can **Archive in OpenClaw**, which runs `openclaw sessions archive` for that session after a confirming dialog. What's archived keeps its transcript; nothing is deleted here or there.
 - **Without OpenClaw** nothing changes: the list is empty, and the app checks for it again every ten minutes.
 
 ## Claude and Codex in one chat

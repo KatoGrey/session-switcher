@@ -110,3 +110,75 @@ test('openclaw: an agent id can’t point outside OpenClaw’s folder', async ()
   assert.equal(oc.cached().length, 1);
   assert.equal(oc.history('agent:..:direct:x').error, 'unknown-session');
 });
+
+test('openclaw: rows say what the session is about (channel name, first prompt, cron name)', async () => {
+  const { h, ws } = home();
+  const dir = path.join(h, '.openclaw', 'agents', 'main', 'agent');
+  fs.mkdirSync(dir, { recursive: true });
+  const db = new sqlite.DatabaseSync(path.join(dir, 'openclaw-agent.sqlite'));
+  db.exec('CREATE TABLE session_conversations (session_id TEXT, conversation_id TEXT)');
+  db.exec('CREATE TABLE conversations (conversation_id TEXT, label TEXT)');
+  db.exec('CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY, session_id TEXT, event_json TEXT, event_zstd BLOB)');
+  const add = db.prepare('INSERT INTO transcript_events (seq, session_id, event_json, event_zstd) VALUES (?, ?, ?, NULL)');
+  // sess-1: a Discord channel conversation whose first user turn carries injected context.
+  db.exec("INSERT INTO session_conversations VALUES ('sess-1','conv-1')");
+  db.exec("INSERT INTO conversations VALUES ('conv-1','discord:1470130712576393432#celeste-dev')");
+  add.run(1, 'sess-1', JSON.stringify({ message: { role: 'user', content: '<system>workspace context</system>Can you setup Felix and Evelyn as your subagents?' } }));
+  add.run(3, 'sess-1', JSON.stringify({ message: { role: 'user', content: '<realtime_delegation>\n  <input>Okay, you have a lovely voice</input>\n  <transcript_delta>user: Okay</transcript_delta>\n</realtime_delegation>' } }));
+  // sess-2: a cron run whose user event carries the cron's name and its task.
+  add.run(2, 'sess-2', JSON.stringify({ message: { role: 'user', content: '[cron:59256e63-14d4-4620 Linear Backlog Cleanup] run the confidence pass' } }));
+  db.close();
+  const dataDir = tmp();
+  const oc = createOpenClaw({ home: h, dataDir, run: async () => ({ code: 0, stdout: JSON.stringify({ sessions: SESSIONS }), stderr: '' }) });
+  oc.sessions(0); await settle();
+  const rows = oc.cached();
+  const ch = rows.find(r => r.sessionId === 'sess-1');
+  assert.equal(ch.title, 'Nova · #celeste-dev', 'a labeled conversation names the conversation');
+  assert.ok(ch.firstPrompt.startsWith('Can you setup Felix'), 'the first prompt is the human part');
+  const cr = rows.find(r => r.sessionId === 'sess-2');
+  assert.ok(cr.title.startsWith('Nova · Linear Backlog Cleanup'), 'a cron session is named by the cron');
+  assert.match(cr.firstPrompt, /run the confidence pass$/);
+  const disc = await oc.history('agent:main:discord:channel:123');
+  const texts = disc.items.filter(x => x.kind === 'user').map(x => x.text);
+  assert.ok(texts.some(t => t === 'Okay, you have a lovely voice'), 'voice turns read as their spoken words');
+  assert.ok(fs.existsSync(path.join(dataDir, 'openclaw-titles.json')), 'titles are kept between runs');
+  // A later instance still describes sessions whose store has gone away.
+  fs.rmSync(dir, { recursive: true, force: true });
+  const oc2 = createOpenClaw({ home: h, dataDir, run: async () => ({ code: 0, stdout: JSON.stringify({ sessions: SESSIONS }), stderr: '' }) });
+  oc2.sessions(0); await settle();
+  const again = oc2.cached().find(r => r.sessionId === 'sess-2');
+  assert.ok(again.title.startsWith('Nova · Linear Backlog Cleanup'), 'a session is described even after its store is gone');
+});
+
+test('openclaw: injected scaffolding never becomes a title or a transcript line', async () => {
+  const { h, ws } = home();
+  const dir = path.join(h, '.openclaw', 'agents', 'main', 'agent');
+  fs.mkdirSync(dir, { recursive: true });
+  const db = new sqlite.DatabaseSync(path.join(dir, 'openclaw-agent.sqlite'));
+  db.exec('CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY, session_id TEXT, event_json TEXT, event_zstd BLOB)');
+  const add = db.prepare('INSERT INTO transcript_events (seq, session_id, event_json, event_zstd) VALUES (?, ?, ?, NULL)');
+  add.run(1, 'sess-2', JSON.stringify({ message: { role: 'user', content: '<<openclaw-internal-context>> nothing to see' } }));
+  add.run(2, 'sess-2', JSON.stringify({ message: { role: 'user', content: 'Disable automatic completion turns with tools.exec.notifyOnExit=false; check per-agent overrides.' } }));
+  add.run(3, 'sess-2', JSON.stringify({ message: { role: 'user', content: 'This content was routed by OpenClaw from another session.' } }));
+  add.run(4, 'sess-2', JSON.stringify({ message: { role: 'user', content: 'Please file the expense report.' } }));
+  db.close();
+  let archived = null;
+  const oc = createOpenClaw({ home: h, run: async c => {
+    if (c.startsWith('openclaw sessions archive')) {
+      archived = c;
+      return { code: 0, stdout: JSON.stringify([{ key: 'agent:main:cron:nightly', archived: true }]), stderr: '' };
+    }
+    return { code: 0, stdout: JSON.stringify({ sessions: SESSIONS }), stderr: '' };
+  } });
+  oc.sessions(0); await settle();
+  const cr = oc.cached().find(r => r.sessionId === 'sess-2');
+  assert.equal(cr.firstPrompt, 'Please file the expense report.', 'only real conversation becomes the title');
+  const r = await oc.history('agent:main:cron:nightly');
+  assert.deepEqual(r.items.map(x => x.text), ['Please file the expense report.']);
+  // Archive goes through the CLI and reports per-key results.
+  const done = await oc.archive(['agent:main:cron:nightly']);
+  assert.ok(archived.includes("'agent:main:cron:nightly'"), 'the key reaches the CLI');
+  assert.deepEqual(done.results, [{ key: 'agent:main:cron:nightly', archived: true, error: null }]);
+  const bad = await oc.archive([]);
+  assert.equal(bad.ok, false);
+});
