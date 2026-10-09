@@ -24,6 +24,7 @@ const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
 const { reviewTarget } = require('./lib/review');
 const rulesLib = require('./lib/rules');
+const store = require('./lib/store');
 
 const APP_VERSION = '5.4.1';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -79,9 +80,36 @@ function broadcast(type, data = {}) {
 
 // Chats running inside the app's chat window.
 const finishedSeen = new Map();
+// Chats open in the app window, kept on disk as they come and go, so they can be reopened after a
+// restart (or a crash). Quitting keeps the list as it was; the next start offers to reopen them.
+const OPEN_FILE = path.join(DATA_DIR, 'open-chats.json');
+const REOPEN_FILE = path.join(DATA_DIR, 'reopen.json');
+let shuttingDown = false, openTimer = null;
+function saveOpenChats() {
+  if (shuttingDown) return;
+  clearTimeout(openTimer);
+  openTimer = setTimeout(() => {
+    if (shuttingDown) return;
+    const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId).map(c => ({
+      sessionId: c.sessionId, provider: c.provider || 'claude', accountId: c.accountId, accountName: c.accountName,
+      cwd: c.cwd, title: c.title || null, folder: c.folder || null,
+    }));
+    try { store.writeJsonAtomic(OPEN_FILE, { at: Date.now(), chats: list }); } catch (err) { log(`Couldn’t note the open chats: ${err.message}`); }
+  }, 1500);
+}
+// At start: last time's open chats become the ones to offer.
+try {
+  if (fs.existsSync(OPEN_FILE)) {
+    const was = store.loadOwnJson(OPEN_FILE, null, log);
+    if (was && Array.isArray(was.chats) && was.chats.length) fs.renameSync(OPEN_FILE, REOPEN_FILE); else fs.unlinkSync(OPEN_FILE);
+  }
+} catch { /* nothing to offer */ }
+const toReopen = () => { const j = store.loadOwnJson(REOPEN_FILE, null, () => {}); return (j && Array.isArray(j.chats) ? j.chats : []).filter(c => c && c.sessionId); };
+function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.stopAll(); }
+
 const chats = chatLib.createChatManager({
   log,
-  onChange: () => { broadcast('live', chats.live()); scheduleActivity(); },
+  onChange: () => { broadcast('live', chats.live()); scheduleActivity(); saveOpenChats(); },
   onSession: chat => {
     if (chat.provider !== 'codex') sessions.recordLaunch(chat.sessionId, chat.account, chat.fork ? 'fork' : 'app');
     // Choices made before the chat had an id, and a Codex helper paired before then, are kept now.
@@ -210,6 +238,73 @@ function codexFind(id) {
   return { thread: t, session: s, cwd: t.cwd, exists: !!t.cwd && fs.existsSync(t.cwd), folder: path.basename(String(t.cwd || '').replace(/[\\/]+$/, '')) };
 }
 const isCodexId = id => !!codexFind(id);
+// Opens a chat in the app window (or attaches to it if it's already running here), returning its info.
+async function openChat(c, body) {
+  if (body.provider === 'codex' || (body.mode !== 'new' && isCodexId(body.sessionId))) {
+    const inst = body.mode === 'new' ? (codexById(body.account) || codexActive()) : codexForThread(body.sessionId, body.account);
+    requireCodexSignedIn(inst);
+    const mode = ['resume', 'fork', 'new'].includes(body.mode) ? body.mode : 'resume';
+    let cwd, threadId = null, title = null;
+    if (mode !== 'new') {
+      const cx = codexFind(body.sessionId);
+      if (!cx) throw fail(404, 'That Codex chat isn’t in the list any more.');
+      if (!cx.exists) throw fail(400, `The folder ${cx.cwd} no longer exists, so this chat can’t run there.`);
+      cwd = cx.cwd; threadId = cx.thread.id; title = cx.session ? cx.session.title : null;
+      if (mode === 'resume') { const live = chats.bySession(threadId); if (live) return attachedInfo(live); }
+      if (mode === 'fork' && title) title = `${title} (copy)`;
+    } else {
+      const p = projectAt(body.cwd);
+      if (!p) throw fail(404, 'That folder isn’t in the list.');
+      if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
+      cwd = p.cwd;
+    }
+    const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
+    const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
+    const model = [body.model, pref.model].find(m => m && modelFits(inst, m)) || null;
+    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || 'New Codex chat', folder });
+    if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
+    log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
+    return { ...chat.info(), attached: false, remembered: !!pref.mode };
+  }
+  const a = acc.findAccount(c, body.account);
+  const mode = ['resume', 'fork', 'new'].includes(body.mode) ? body.mode : 'resume';
+  let cwd, sessionId = null;
+  if (mode !== 'new') {
+    const { project, session } = sessions.find(body.sessionId);
+    if (!project.exists) throw fail(400, `The folder ${project.cwd} no longer exists, so this chat can’t run there.`);
+    cwd = project.cwd; sessionId = session.id;
+    if (mode === 'resume') {
+      const live = chats.bySession(session.id);
+      if (live) return attachedInfo(live);
+      if (!body.force) {
+        const now = await sys.runningSessions().catch(() => ({}));
+        running = now;
+        const pids = now[session.id.toLowerCase()];
+        if (pids) throw fail(409, `This chat is already open in a terminal (process ${pids.join(', ')}). Opening it twice can mix up its history.`, 'running');
+      }
+    }
+  } else {
+    const p = projectAt(body.cwd);
+    if (!p) throw fail(404, 'That folder isn’t in the list.');
+    if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
+    cwd = p.cwd;
+  }
+  await guarded(a);
+  acc.prepareForLaunch(c, a);
+  // The mode, model and effort you last chose for this chat (or, for a new one, in this project).
+  const pref = chatPrefs.get({ sessionId, cwd, provider: 'claude' });
+  const permissionMode = chatLib.MODES.includes(body.permissionMode) ? body.permissionMode : chatLib.MODES.includes(pref.mode) ? pref.mode : null;
+  let title = null;
+  if (sessionId) { try { title = sessions.find(sessionId).session.title; } catch { /* untitled */ } }
+  if (mode === 'fork' && title) title = `${title} (copy)`;
+  const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder });
+  if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
+  log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
+  return { ...chat.info(), attached: false, remembered: !!pref.mode && !body.permissionMode, companionThread: sessionId && mode === 'resume' ? chatPrefs.companionOf(sessionId) : null };
+
+}
+
 // Rules and tools: CLAUDE.md and AGENTS.md (for a project, or for every project), and each one's MCP servers.
 function rulesPathsFor(cwd) {
   if (!cwd) return rulesLib.rulesPaths({ claudeDir: config().mainConfigDir, codexHome: codexHomes.MAIN_HOME() });
@@ -496,6 +591,7 @@ function stateFor() {
     dryRun: sys.DRY_RUN, appVersion: APP_VERSION, platform: process.platform,
     index: sessions.progress,
     codex: codexPublic(),
+    reopen: toReopen(),
   };
 }
 
@@ -588,6 +684,31 @@ async function handleApi(req, res, url, remote = false) {
   if (url.pathname.startsWith('/api/chat/') && url.pathname !== '/api/chat/rename') return handleChat(req, res, url, body, c);
 
   switch (url.pathname) {
+    // Last time's open chats: reopened (each started again, as the account it ran as) or set aside.
+    case '/api/reopen': {
+      const list = toReopen();
+      try { fs.unlinkSync(REOPEN_FILE); } catch { /* already gone */ }
+      if (body.action !== 'reopen') return send(res, 200, { reopened: [], failed: [] });
+      const reopened = [], failed = [];
+      for (const c of list.filter(x => !body.only || body.only.includes(x.sessionId))) {
+        try {
+          if (chats.bySession(c.sessionId)) { reopened.push(c.sessionId); continue; }
+          await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true });
+          reopened.push(c.sessionId);
+        } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
+      }
+      log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} from last time${failed.length ? `; ${failed.length} couldn’t` : ''}.`);
+      return send(res, 200, { reopened, failed });
+    }
+    case '/api/rules': {
+      const paths = rulesPathsFor(body.cwd || null);
+      const to = (Array.isArray(body.to) ? body.to : ['claude', 'codex']).filter(k => k === 'claude' || k === 'codex');
+      if (!to.length) throw fail(400, 'Save to CLAUDE.md, AGENTS.md or both.');
+      rulesLib.writeRules(paths, body.text, to);
+      log(`Rules: saved ${to.map(k => path.basename(paths[k])).join(' and ')} ${body.cwd ? `in ${body.cwd}` : 'for every project'}.`);
+      return send(res, 200, { scope: body.cwd ? 'project' : 'user', cwd: body.cwd || null, ...rulesLib.readRules(paths) });
+    }
+    case '/api/tools/copy': return send(res, 200, await copyTool(body.name, body.to, body.cwd || null));
     case '/api/web': {
       if (isCodexAccount(body.account)) {
         const ollama = codexById(body.account).ACCOUNT.kind === 'ollama';
@@ -968,7 +1089,7 @@ async function handleApi(req, res, url, remote = false) {
       log('Quit from the app.');
       chatPrefs.flush();
       phone.stop();
-      chats.stopAll();
+      stopForQuit();
       for (const x of codexAll()) x.stop();
       setTimeout(() => process.exit(0), 300);
       return;
@@ -1046,70 +1167,7 @@ function validImages(images) {
 
 async function handleChat(req, res, url, body, c) {
   switch (url.pathname) {
-    case '/api/chat/open': {
-      if (body.provider === 'codex' || (body.mode !== 'new' && isCodexId(body.sessionId))) {
-        const inst = body.mode === 'new' ? (codexById(body.account) || codexActive()) : codexForThread(body.sessionId, body.account);
-        requireCodexSignedIn(inst);
-        const mode = ['resume', 'fork', 'new'].includes(body.mode) ? body.mode : 'resume';
-        let cwd, threadId = null, title = null;
-        if (mode !== 'new') {
-          const cx = codexFind(body.sessionId);
-          if (!cx) throw fail(404, 'That Codex chat isn’t in the list any more.');
-          if (!cx.exists) throw fail(400, `The folder ${cx.cwd} no longer exists, so this chat can’t run there.`);
-          cwd = cx.cwd; threadId = cx.thread.id; title = cx.session ? cx.session.title : null;
-          if (mode === 'resume') { const live = chats.bySession(threadId); if (live) return send(res, 200, attachedInfo(live)); }
-          if (mode === 'fork' && title) title = `${title} (copy)`;
-        } else {
-          const p = projectAt(body.cwd);
-          if (!p) throw fail(404, 'That folder isn’t in the list.');
-          if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
-          cwd = p.cwd;
-        }
-        const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-        const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
-        const model = [body.model, pref.model].find(m => m && modelFits(inst, m)) || null;
-        const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || 'New Codex chat', folder });
-        if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
-        log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
-        return send(res, 200, { ...chat.info(), attached: false, remembered: !!pref.mode });
-      }
-      const a = acc.findAccount(c, body.account);
-      const mode = ['resume', 'fork', 'new'].includes(body.mode) ? body.mode : 'resume';
-      let cwd, sessionId = null;
-      if (mode !== 'new') {
-        const { project, session } = sessions.find(body.sessionId);
-        if (!project.exists) throw fail(400, `The folder ${project.cwd} no longer exists, so this chat can’t run there.`);
-        cwd = project.cwd; sessionId = session.id;
-        if (mode === 'resume') {
-          const live = chats.bySession(session.id);
-          if (live) return send(res, 200, attachedInfo(live));
-          if (!body.force) {
-            const now = await sys.runningSessions().catch(() => ({}));
-            running = now;
-            const pids = now[session.id.toLowerCase()];
-            if (pids) throw fail(409, `This chat is already open in a terminal (process ${pids.join(', ')}). Opening it twice can mix up its history.`, 'running');
-          }
-        }
-      } else {
-        const p = projectAt(body.cwd);
-        if (!p) throw fail(404, 'That folder isn’t in the list.');
-        if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
-        cwd = p.cwd;
-      }
-      await guarded(a);
-      acc.prepareForLaunch(c, a);
-      // The mode, model and effort you last chose for this chat (or, for a new one, in this project).
-      const pref = chatPrefs.get({ sessionId, cwd, provider: 'claude' });
-      const permissionMode = chatLib.MODES.includes(body.permissionMode) ? body.permissionMode : chatLib.MODES.includes(pref.mode) ? pref.mode : null;
-      let title = null;
-      if (sessionId) { try { title = sessions.find(sessionId).session.title; } catch { /* untitled */ } }
-      if (mode === 'fork' && title) title = `${title} (copy)`;
-      const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-      const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder });
-      if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
-      log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
-      return send(res, 200, { ...chat.info(), attached: false, remembered: !!pref.mode && !body.permissionMode, companionThread: sessionId && mode === 'resume' ? chatPrefs.companionOf(sessionId) : null });
-    }
+    case '/api/chat/open': return send(res, 200, await openChat(c, body));
     case '/api/chat/attach': return send(res, 200, attachedInfo(chats.get(body.key)));
     case '/api/chat/send': {
       const text = typeof body.text === 'string' ? body.text.slice(0, 200000) : '';
@@ -1133,15 +1191,6 @@ async function handleChat(req, res, url, body, c) {
     case '/api/chat/interrupt': await chats.get(body.key).interrupt(); return send(res, 200, { ok: true });
     case '/api/chat/compact': await chats.get(body.key).compact(); return send(res, 200, { ok: true });
     case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base));
-    case '/api/rules': {
-      const paths = rulesPathsFor(body.cwd || null);
-      const to = (Array.isArray(body.to) ? body.to : ['claude', 'codex']).filter(k => k === 'claude' || k === 'codex');
-      if (!to.length) throw fail(400, 'Save to CLAUDE.md, AGENTS.md or both.');
-      rulesLib.writeRules(paths, body.text, to);
-      log(`Rules: saved ${to.map(k => path.basename(paths[k])).join(' and ')} ${body.cwd ? `in ${body.cwd}` : 'for every project'}.`);
-      return send(res, 200, { scope: body.cwd ? 'project' : 'user', cwd: body.cwd || null, ...rulesLib.readRules(paths) });
-    }
-    case '/api/tools/copy': return send(res, 200, await copyTool(body.name, body.to, body.cwd || null));
     case '/api/chat/mode': {
       const chat = chats.get(body.key);
       await chat.setMode(body.mode);
@@ -1301,8 +1350,8 @@ server.on('error', err => {
   }
 });
 process.on('uncaughtException', err => log(`Unexpected error: ${err.stack || err.message}`));
-for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { chats.stopAll(); setTimeout(() => process.exit(0), 300); });
-process.on('exit', () => { chats.stopAll(); try { chatPrefs.flush(); } catch { /* best effort */ } });
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); setTimeout(() => process.exit(0), 300); });
+process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } });
 process.on('unhandledRejection', err => log(`Unexpected error: ${err && (err.stack || err.message)}`));
 
 server.listen(PORT, '127.0.0.1', () => {

@@ -130,7 +130,7 @@ const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}
 // Options: state (the chat's state), seen(path, url, body) for every API call, context (how
 // full the chat is), events (more chat events sent after it connects), noHistory (the history
 // isn't there yet, as for a brand-new chat).
-async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false } = {}) {
+async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [] } = {}) {
   const info = { ...chatInfo, ...(context ? { context } : {}) };
   let reviews = 0;
   // Rules and tools: the project's CLAUDE.md and AGENTS.md differ; one tool on each side, and Codex's own.
@@ -149,7 +149,8 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     const u = new URL(url), q = u.searchParams, p = u.pathname;
     let body = {}; try { body = JSON.parse(postData || '{}'); } catch { /* not JSON */ }
     if (seen) seen(p, url, body);
-    if (p === '/api/state') return { body: { accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '5.3.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
+    if (p === '/api/reopen') { const out = { reopened: body.action === 'reopen' ? reopen.map(c => c.sessionId) : [], failed: [] }; reopen = []; return { body: out }; }
+    if (p === '/api/state') return { body: { reopen, accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '5.3.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
     if (p === '/api/sessions') return { body: { projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
     if (p === '/api/activity') return { body: { list: activity, at: NOW } };
     if (p === '/api/usage') return { body: { usage } };

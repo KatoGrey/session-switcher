@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs every test: the logic checks (unit.test.js), then the browser suites (ui.js) against a
+// Runs every test: the logic and server checks (*.test.js), then the browser suites (ui.js) against a
 // separate copy of the app on a free port, with a throwaway data folder. Your own Session Switcher,
 // its accounts and its history are never touched.
 //
@@ -25,8 +25,9 @@ const freePort = () => new Promise((res, rej) => { const s = net.createServer();
 async function main() {
   let failed = 0;
   if (!only.length) {
-    console.log('— logic checks');
-    const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', path.join(__dirname, 'unit.test.js')], { stdio: 'inherit', cwd: APP });
+    console.log('— logic and server checks');
+    const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join(__dirname, f));
+    const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', ...files], { stdio: 'inherit', cwd: APP });
     if (r.status !== 0) failed++;
   }
 

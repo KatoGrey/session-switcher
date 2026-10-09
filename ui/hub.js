@@ -452,11 +452,32 @@ function secHead(eyebrow, title, extra = '') {
   return `<div class="sec-h"><p class="eyebrow">✦ ${esc(eyebrow)}</p><h2>${esc(title)}</h2>${extra ? `<div class="sec-x">${extra}</div>` : ''}</div>`;
 }
 
+// The chats that were open in the app window when it last closed: reopen them in one click.
+function reopenHtml() {
+  const list = S.reopen || [];
+  if (!list.length) return '';
+  const n = list.length;
+  return `<section class="reopen" aria-label="Chats from last time"><span class="glyph" aria-hidden="true">↻</span><div class="ro-in">
+    <p><b>Pick up where you left off.</b> When Session Switcher closed, ${n === 1 ? 'this chat was' : `these ${n} chats were`} open in its window:</p>
+    <ul>${list.slice(0, 8).map(c => `<li>${esc(c.title || 'A chat')}<small>${esc([c.folder, c.provider === 'codex' ? 'Codex' : c.accountName].filter(Boolean).join(' · '))}</small></li>`).join('')}${n > 8 ? `<li><small>and ${n - 8} more</small></li>` : ''}</ul>
+    <div class="ro-b"><button class="btn prime" data-act="reopen">Reopen ${n === 1 ? 'it' : 'them'}</button><button class="btn quiet" data-act="reopen-no">Not now</button></div></div></section>`;
+}
+async function reopenChats(yes) {
+  const r = await api('/api/reopen', { action: yes ? 'reopen' : 'dismiss' });
+  S.reopen = [];
+  if ($('reopenSlot')) $('reopenSlot').innerHTML = '';
+  if (!yes) return;
+  await loadSessions().catch(() => {});
+  const n = r.reopened.length;
+  toast(`${n ? `Reopened ${n} chat${n === 1 ? '' : 's'}; ${n === 1 ? 'it’s' : 'they’re'} in Running now.` : ''}${r.failed.length ? ` ${r.failed.length} couldn’t open: ${r.failed.map(f => `${f.title || 'a chat'} (${f.error})`).join('; ')}` : ''}`.trim(), r.failed.length ? 10000 : 5000);
+}
+
 function renderHub() {
   const better = headroomPick();
   const recent = allSessions().slice(0, 1);
   $('page').innerHTML = `
     <div id="heroSlot">${heroHtml()}</div>
+    <div id="reopenSlot">${reopenHtml()}</div>
     <div id="guardSlot">${guardHtml()}</div>
     <section class="sec" id="secAwait">
       ${secHead('Your move', 'Awaiting you')}

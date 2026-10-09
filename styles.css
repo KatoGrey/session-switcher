@@ -1805,3 +1805,14 @@ details.shared[open] summary{margin-bottom:6px}
 .rd-note{color:var(--ash);font-size:13px}
 @media (max-width:760px){ .rd-body{padding:4px 14px 14px} .rd-tools td:first-child small{max-width:160px} }
 
+/* ---------- pick up where you left off ---------- */
+.reopen{display:flex;gap:16px;margin:0 0 26px;padding:16px 20px;border:1px solid rgb(var(--c-d9bf74) / .4);border-radius:10px;background:linear-gradient(180deg,rgb(var(--c-d9bf74) / .07),transparent)}
+.reopen > .glyph{font-size:22px;color:var(--gilt);line-height:1.2}
+.ro-in{flex:1;min-width:0}
+.ro-in p{margin:0 0 8px;color:var(--parch-2);font-size:15px}
+.ro-in p b{color:var(--parch)}
+.ro-in ul{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:4px}
+.ro-in li{color:var(--parch);font-size:14.5px}
+.ro-in li small{margin-left:10px;font:400 11px var(--f-mono);color:var(--ash)}
+.ro-b{display:flex;gap:8px}
+

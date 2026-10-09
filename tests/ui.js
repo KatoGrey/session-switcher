@@ -423,6 +423,25 @@ module.exports = [
     },
   },
   {
+    name: 'reopen',
+    // After a restart: the chats that were open in the app window, offered in one click.
+    async run(t) {
+      const calls = [];
+      const reopen = [
+        { sessionId: demo.ID['s-bard'], provider: 'claude', accountId: 'studio', accountName: 'Studio', title: 'Balance pass on the bard’s songs', folder: 'Starfall Tavern' },
+        { sessionId: 't-bard-codex', provider: 'codex', accountId: 'codex', title: 'Glass dome shader', folder: 'Orbital Garden' },
+      ];
+      const b = await t.open({ reopen, seen: (p, u, body) => calls.push([p, body]) });
+      const card = await b.eval(`const c = document.querySelector('.reopen'); return c && c.textContent.replace(/\\s+/g, ' ').trim()`);
+      t.check('the hub offers last time’s chats', card && /Pick up where you left off\. When Session Switcher closed, these 2 chats were open in its window:/.test(card) && /Balance pass on the bard’s songs/.test(card) && /Glass dome shader ?Orbital Garden · Codex/.test(card), card);
+      await t.shot(b, 'card');
+      await b.clickOn('[data-act="reopen"]'); await sleep(600);
+      t.check('one click reopens them', calls.some(([p, body]) => p === '/api/reopen' && body.action === 'reopen'));
+      t.check('and the offer goes away', !(await b.eval(`return !!document.querySelector('.reopen')`)));
+      t.check('saying where they are', /Reopened 2 chats; they’re in Running now\./.test(await b.eval(`return document.getElementById('toast').textContent`)));
+    },
+  },
+  {
     name: 'new chat',
     async run(t) {
       // A chat that's running but hasn't saved any history yet (a new one): no "couldn't load" message.

@@ -1,0 +1,114 @@
+// The server itself, started on a free port with a throwaway data folder (your own app is never touched).
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { spawn } = require('child_process');
+const fs = require('fs');
+const net = require('net');
+const os = require('os');
+const path = require('path');
+
+const APP = path.join(__dirname, '..');
+const freePort = () => new Promise(res => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => res(port)); }); });
+
+// home: a throwaway home folder, for tests that write where Claude Code and Codex keep their own files.
+async function startServer(dataDir, { home = null } = {}) {
+  const port = await freePort();
+  const homeEnv = home ? { HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'), CLAUDE_CONFIG_DIR: '' } : {};
+  const proc = spawn(process.execPath, ['server.js'], {
+    cwd: APP, stdio: 'ignore',
+    env: { ...process.env, ...homeEnv, SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
+  });
+  const base = `http://127.0.0.1:${port}`;
+  let html = null;
+  for (let i = 0; i < 100 && !html; i++) { try { html = await (await fetch(`${base}/`)).text(); } catch { await new Promise(r => setTimeout(r, 150)); } }
+  if (!html) { proc.kill(); throw new Error('The server didn’t start.'); }
+  const token = html.match(/TOKEN = '([a-f0-9]+)'/)[1];
+  const call = async (p, body) => {
+    const r = await fetch(base + p, { method: body ? 'POST' : 'GET', headers: { 'x-switcher-token': token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    return { status: r.status, json: await r.json().catch(() => null) };
+  };
+  const stop = async () => { await call('/api/quit', {}).catch(() => {}); await new Promise(r => { proc.on('exit', r); setTimeout(() => { proc.kill(); r(); }, 3000); }); };
+  return { call, stop, base };
+}
+
+test('reopen: last time’s open chats are offered once, and set aside when answered', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  fs.writeFileSync(path.join(dataDir, 'open-chats.json'), JSON.stringify({ at: Date.now(), chats: [
+    { sessionId: '00000000-1111-4222-8333-444444444444', provider: 'claude', accountId: 'main', accountName: 'Main', cwd: 'C:\\Nowhere', title: 'A chat that’s gone', folder: 'Nowhere' },
+  ] }));
+  const s = await startServer(dataDir);
+  try {
+    const st = await s.call('/api/state');
+    assert.equal(st.status, 200);
+    assert.deepEqual(st.json.reopen.map(c => c.title), ['A chat that’s gone']);
+    assert.ok(fs.existsSync(path.join(dataDir, 'reopen.json')) && !fs.existsSync(path.join(dataDir, 'open-chats.json')), 'set aside at start');
+    const r = await s.call('/api/reopen', { action: 'reopen' });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.reopened, []);
+    assert.equal(r.json.failed.length, 1, 'a chat that can’t be found is reported, not thrown');
+    assert.equal(r.json.failed[0].title, 'A chat that’s gone');
+    assert.deepEqual((await s.call('/api/state')).json.reopen, [], 'offered once');
+  } finally { await s.stop(); }
+});
+
+test('reopen: “Not now” sets them aside without opening anything', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  fs.writeFileSync(path.join(dataDir, 'open-chats.json'), JSON.stringify({ at: Date.now(), chats: [{ sessionId: '00000000-1111-4222-8333-555555555555', provider: 'claude', accountId: 'main', title: 'Later' }] }));
+  const s = await startServer(dataDir);
+  try {
+    assert.equal((await s.call('/api/state')).json.reopen.length, 1);
+    const r = await s.call('/api/reopen', { action: 'dismiss' });
+    assert.deepEqual(r.json, { reopened: [], failed: [] });
+    assert.deepEqual((await s.call('/api/state')).json.reopen, []);
+  } finally { await s.stop(); }
+});
+
+test('history: a chat that isn’t anywhere is still “not found” (only running chats get an empty history)', async () => {
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
+  try {
+    const r = await s.call('/api/chat/history?id=00000000-1111-4222-8333-666666666666&provider=claude');
+    assert.equal(r.status, 404);
+    assert.match(r.json.error, /wasn’t found/);
+  } finally { await s.stop(); }
+});
+
+test('rules: saved to CLAUDE.md and AGENTS.md for every project (in a throwaway home)', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-home-'));
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')), { home });
+  try {
+    const before = await s.call('/api/rules');
+    assert.equal(before.status, 200);
+    assert.ok(before.json.claude.path.startsWith(home) && before.json.codex.path.startsWith(home), 'only the throwaway home is used');
+    const saved = await s.call('/api/rules', { text: '# Mine\n\nBe brief.', to: ['claude', 'codex'] });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.json.same, true);
+    assert.equal(fs.readFileSync(path.join(home, '.codex', 'AGENTS.md'), 'utf8'), '# Mine\n\nBe brief.\n');
+    assert.equal((await s.call('/api/rules', { text: 'x', to: [] })).status, 400, 'nowhere to save');
+    assert.equal((await s.call('/api/rules?cwd=C%3A%5CNot%5CA%5CProject')).status, 404, 'only known projects');
+  } finally { await s.stop(); }
+});
+
+test('tools: listed (each side may be missing), and copying checks the name first', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-home-'));
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')), { home });
+  try {
+    const t = await s.call('/api/tools');
+    assert.equal(t.status, 200);
+    assert.ok(Array.isArray(t.json.servers));
+    assert.equal((await s.call('/api/tools/copy', { name: 'bad name', to: 'codex' })).status, 400);
+    assert.equal((await s.call('/api/tools/copy', { name: 'Nope', to: 'codex' })).status, 404);
+  } finally { await s.stop(); }
+});
+
+test('page scripts are served from ui/, and nothing else is', async () => {
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
+  try {
+    const ok = await fetch(`${s.base}/ui/chat.js`);
+    assert.equal(ok.status, 200);
+    assert.match(ok.headers.get('content-type'), /javascript/);
+    for (const bad of ['/ui/../server.js', '/ui/..%2fserver.js', '/ui/x.json', '/lib/chat.js', '/accounts.json']) {
+      const r = await fetch(`${s.base}${bad}`);
+      assert.notEqual(r.status, 200, `${bad} must not be served`);
+    }
+  } finally { await s.stop(); }
+});

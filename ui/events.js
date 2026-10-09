@@ -155,6 +155,7 @@ const pageClicks = wrap(async e => {
   if (act === 'world-prompt') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : promptMenu(b, S.folder);
   if (act === 'project-new') return openNewProject();
   if (act === 'world-more') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : worldMenu(b);
+  if (act === 'reopen' || act === 'reopen-no') return reopenChats(act === 'reopen');
   if (act === 'reveal') { const r = await api('/api/reveal', { cwd: S.folder }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
   if (act === 'browse') return Viewer.open({ path: S.folder, cwd: S.folder });
   if (act === 'pin') { S.pins.has(S.folder) ? S.pins.delete(S.folder) : S.pins.add(S.folder); savePins(); renderNav(); renderPage(); }
