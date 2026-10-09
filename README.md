@@ -228,6 +228,16 @@ If you have Codex, the OpenAI coding agent, and a ChatGPT plan, Session Switcher
 
 Turn Codex off, or set the path to it, in Setup.
 
+### More Codex accounts, and Ollama
+
+Codex works with more than one ChatGPT account, and with Ollama:
+
+- **Add another Codex account:** the Codex card's **⋯** menu. Give it a name, then sign in with that ChatGPT account. If your browser is signed in to a different ChatGPT account, switch accounts there first or copy the link into a private window.
+- **Add Ollama:** the same menu. Codex then runs through the Ollama app on this computer, with cloud models from your ollama.com account, the way `ollama launch codex` does. It needs the Ollama app running (or `ollama serve`) and `ollama signin`; it has no ChatGPT sign-in. Its card shows your ollama.com plan and cloud models; ollama.com shows its usage limits.
+- **Which one new Codex chats use:** the top bar's account list has a row for each. Click one, or use any button on its card, and new Codex chats open as it (its card says **new Codex chats**). A chat you reopen continues as the account that last opened it.
+- **One chat list:** every Codex account sees the same chats, history, settings and skills. Each extra account has its own folder, `~/.codex-<name>`, holding only its sign-in and what a running Codex keeps for itself; everything else links to `~/.codex`. Removing an account keeps that folder, so adding it again later keeps its sign-in.
+- Each account has its own usage dial, in a Codex shade of its own.
+
 ## Claude and Codex in one chat
 
 Inside any Claude chat you can bring in Codex as a helper, for example to make images for a project while Claude does the main work. You don't need a second window.
@@ -467,6 +477,7 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `chat.js`: the chat window's engine and live activity.
   - `usage.js`: plan usage per account.
   - `codex.js`: Codex chats, sign-in and usage.
+  - `codexhomes.js`: extra Codex accounts and Ollama (their own homes, linked to `~/.codex`).
   - `projects.js`: each project's documents, pictures and banner, new and added projects, and the prompts.
   - `sharecopy.js`: **Make a copy to share**.
   - `chatprefs.js`: remembered modes, models and effort, and each Claude chat's Codex helper.

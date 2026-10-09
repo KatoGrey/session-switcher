@@ -17,6 +17,7 @@ const chatLib = require('./lib/chat');
 const usageLib = require('./lib/usage');
 const filesLib = require('./lib/files');
 const codexLib = require('./lib/codex');
+const codexHomes = require('./lib/codexhomes');
 const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
@@ -106,11 +107,41 @@ function linkCompanion(chat) {
 const usage = usageLib.createUsage({ log, chats, onChange: () => scheduleUsageBroadcast() });
 
 // Codex (OpenAI): its own sign-in, chats and usage, through `codex app-server`.
+// The main account uses the Codex home from Setup; extra ones (more ChatGPT accounts, or Ollama)
+// have homes of their own that share its chats (lib/codexhomes.js). `codex` is the main one: the
+// chat list, history and renames come from it, since every account shares them. Sign-in, usage
+// and new chats go to the active account (codexActive()), like "New chats open as" for Claude.
 let codexTimer = null;
-const codex = codexLib.createCodex({
-  getConfig: () => config(), log, usage, chats,
-  onChange: () => { if (codexTimer) return; codexTimer = setTimeout(() => { codexTimer = null; broadcast('accounts'); }, 300); },
-});
+const codexOnChange = () => { if (codexTimer) return; codexTimer = setTimeout(() => { codexTimer = null; broadcast('accounts'); }, 300); };
+const makeCodex = account => codexLib.createCodex({ getConfig: () => config(), log, usage, chats, onChange: codexOnChange, account });
+const codex = makeCodex(codexLib.ACCOUNT);
+const codexExtra = new Map(); // id -> instance, for config().codexAccounts
+function codexAll() {
+  const want = (config().codexAccounts || []).filter(x => x && /^codex-[a-z0-9-]{1,30}$/.test(x.id));
+  for (const [id, inst] of codexExtra) if (!want.some(x => x.id === id)) { inst.stop(); codexExtra.delete(id); }
+  for (const x of want) {
+    const home = codexHomes.homeFor(x.id);
+    const cur = codexExtra.get(x.id);
+    if (cur && cur.ACCOUNT.name === x.name && cur.ACCOUNT.kind === (x.kind || 'chatgpt')) continue;
+    if (cur) cur.stop();
+    codexExtra.set(x.id, makeCodex({ id: x.id, name: x.name, home, kind: x.kind || 'chatgpt', provider: 'codex' }));
+  }
+  return [codex, ...codexExtra.values()];
+}
+const codexById = id => (!id || id === 'codex' ? codex : (codexAll(), codexExtra.get(id)) || null);
+const isCodexAccount = id => id === 'codex' || (config().codexAccounts || []).some(x => x.id === id);
+const codexActive = () => codexById(config().codexActive) || codex;
+// The account a Codex chat should resume as: the one that last opened it, else the active one.
+function codexForThread(threadId, explicit) {
+  if (explicit) { const x = codexById(explicit); if (x) return x; }
+  const last = threadId && sessions.lastOpened(threadId);
+  return (last && isCodexAccount(last.account) && codexById(last.account)) || codexActive();
+}
+// What the page shows: the active account in the shape it always had, plus every Codex account.
+const codexPublic = () => ({ ...codexActive().publicState(), accounts: codexAll().map(x => x.publicState()) });
+const refreshAllCodexUsage = () => Promise.all(codexAll().filter(x => x.publicState().signedIn).map(x => x.refreshUsage().catch(() => null)));
+// A Codex model remembered from a ChatGPT account won't exist on Ollama, and the other way round.
+const modelFits = (inst, model) => !model || ((inst.ACCOUNT.kind === 'ollama') === /:/.test(model));
 let codexSig = '';
 // Codex chats as session rows; refreshes in the background and tells the page when the list changed.
 function codexSessions(maxAgeMs = 20000) {
@@ -173,11 +204,11 @@ function codexFind(id) {
   return { thread: t, session: s, cwd: t.cwd, exists: !!t.cwd && fs.existsSync(t.cwd), folder: path.basename(String(t.cwd || '').replace(/[\\/]+$/, '')) };
 }
 const isCodexId = id => !!codexFind(id);
-function requireCodexSignedIn() {
-  const st = codex.publicState();
+function requireCodexSignedIn(inst = codexActive()) {
+  const st = inst.publicState();
   if (!st.enabled) throw fail(409, 'Codex is turned off in Setup.');
   if (st.installed === false) throw fail(409, 'Codex isn’t installed on this PC yet. Open Setup to install it.', 'codex-missing');
-  if (!st.signedIn) throw fail(409, 'Sign in to Codex first: on the hub, under Accounts and usage, click “Sign in with ChatGPT” on the Codex card.', 'codex-signin');
+  if (!st.signedIn) throw fail(409, st.kind === 'ollama' ? (st.error || 'Start the Ollama app first.') : `Sign in to ${st.name} first: on the hub, under Accounts and usage, click “Sign in with ChatGPT” on its card.`, 'codex-signin');
 }
 let usageBroadcastTimer = null;
 function scheduleUsageBroadcast() {
@@ -323,7 +354,7 @@ function startWatching() {
   setInterval(() => { if (clients.size) sessionsChanged(); }, 8000);       // safety net if watching misses something
   setInterval(pollRunning, 10000);
   setInterval(() => { if (clients.size) pollAccounts(); }, 90000);
-  setInterval(() => { if (clients.size) { refreshAllUsage(4 * 60 * 1000); if (config().codex.enabled && codex.publicState().signedIn) codex.refreshUsage().catch(() => {}); } }, 5 * 60 * 1000);
+  setInterval(() => { if (clients.size) { refreshAllUsage(4 * 60 * 1000); if (config().codex.enabled) refreshAllCodexUsage(); } }, 5 * 60 * 1000);
   setInterval(() => { if (clients.size && config().codex.enabled) codexSessions(15000); }, 20000);
   setInterval(() => { if (clients.size && chats.summaries().some(s => s.state !== 'ended')) scheduleActivity(); }, 5000); // keeps elapsed times honest
 }
@@ -374,7 +405,7 @@ function stateFor() {
     prefs: c.prefs, claudeCommand: c.claudeCommand,
     dryRun: sys.DRY_RUN, appVersion: APP_VERSION, platform: process.platform,
     index: sessions.progress,
-    codex: codex.publicState(),
+    codex: codexPublic(),
   };
 }
 
@@ -438,7 +469,8 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/health') {
     const checks = await health.runChecks(c, sessions);
     if (c.codex.enabled) {
-      const st = await codex.refreshAccount().then(() => codex.publicState()).catch(() => codex.publicState());
+      await Promise.all(codexAll().filter(x => x !== codexActive()).map(x => x.refreshAccount().catch(() => null)));
+      const st = await codexActive().refreshAccount().then(() => codexActive().publicState()).catch(() => codexActive().publicState());
       if (st.installed === false) checks.push({ id: 'codex', label: 'Codex', state: 'warn', detail: 'Codex isn’t installed. Install it to use your ChatGPT plan’s Codex here too, or turn Codex off below.', fix: { action: 'install-codex', label: 'Install Codex' } });
       else if (st.error && !st.signedIn) checks.push({ id: 'codex', label: 'Codex', state: 'warn', detail: st.error, fix: { action: 'codex-signin', label: 'Sign in with ChatGPT' } });
       else if (!st.signedIn) checks.push({ id: 'codex', label: 'Codex', state: 'warn', detail: 'Installed, but not signed in.', fix: { action: 'codex-signin', label: 'Sign in with ChatGPT' } });
@@ -455,8 +487,9 @@ async function handleApi(req, res, url, remote = false) {
 
   switch (url.pathname) {
     case '/api/web': {
-      if (body.account === 'codex') {
-        const r = await sys.openWebProfile('https://chatgpt.com/', 'codex');
+      if (isCodexAccount(body.account)) {
+        const ollama = codexById(body.account).ACCOUNT.kind === 'ollama';
+        const r = await sys.openWebProfile(ollama ? 'https://ollama.com/settings' : 'https://chatgpt.com/', body.account);
         if (!r.ok && !r.dryRun) throw fail(500, r.error || 'Couldn’t open a browser window.');
         return send(res, 200, r);
       }
@@ -466,8 +499,8 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, r);
     }
     case '/api/usage/refresh': {
-      if (body.account === 'codex') { await codex.refreshUsage(); return send(res, 200, { usage: usage.snapshot() }); }
-      if (!body.account) codex.refreshUsage().catch(() => {});
+      if (isCodexAccount(body.account)) { const x = codexById(body.account); if (x) await x.refreshUsage(); return send(res, 200, { usage: usage.snapshot() }); }
+      if (!body.account) refreshAllCodexUsage();
       const list = body.account ? [acc.findAccount(c, body.account)] : c.accounts.filter(a => acc.signInInfo(a).signedIn);
       await Promise.all(list.map(a => usage.refresh(c, a, { maxAgeMs: 0 })));
       return send(res, 200, { usage: usage.snapshot() });
@@ -545,12 +578,68 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, { account: acc.publicAccount(c, a) });
     }
     case '/api/codex/login': {
-      const st = codex.publicState();
+      const inst = codexById(body.account) || codexActive();
+      const st = inst.publicState();
       if (st.installed === false) throw fail(409, 'Codex isn’t installed on this PC yet. Open Setup to install it.', 'codex-missing');
-      const r = await codex.login(body.method === 'code' ? 'code' : 'browser');
+      if (st.kind === 'ollama') {
+        // Ollama signs in with its own command; open it in a terminal.
+        const r = await sys.runInTerminal(c, os.homedir(), 'Ollama sign-in', sys.IS_WIN ? '@echo off\r\nollama signin\r\n' : '#!/bin/sh\nollama signin\n');
+        if (!r.ok && !r.dryRun) throw fail(500, `Couldn’t open a terminal: ${r.error}`);
+        return send(res, 200, { ollama: true, ...r });
+      }
+      const r = await inst.login(body.method === 'code' ? 'code' : 'browser');
       return send(res, 200, r);
     }
-    case '/api/codex/login-cancel': { await codex.cancelLogin(); return send(res, 200, { ok: true }); }
+    case '/api/codex/login-cancel': { await (codexById(body.account) || codexActive()).cancelLogin(); return send(res, 200, { ok: true }); }
+    case '/api/codex/accounts': {
+      // Adds a Codex account: another ChatGPT sign-in, or Ollama. Its home shares the main one's chats.
+      const name = String(body.name || '').trim();
+      const kind = body.kind === 'ollama' ? 'ollama' : 'chatgpt';
+      if (!/^[\w .'-]{1,40}$/.test(name)) throw fail(400, 'Use 1–40 letters, numbers, spaces, dots or dashes.');
+      const list = c.codexAccounts = (c.codexAccounts || []);
+      if ([codex.ACCOUNT.name, ...list.map(x => x.name)].some(n => n.toLowerCase() === name.toLowerCase())) throw fail(400, 'A Codex account with that name already exists.');
+      let id = `codex-${codexHomes.slug(name)}`;
+      // A home left from an account removed earlier is reused, sign-in and all.
+      for (let i = 2; list.some(x => x.id === id); i++) id = `codex-${codexHomes.slug(name)}-${i}`;
+      list.push({ id, name, kind });
+      c.codexActive = id;
+      save();
+      const inst = codexById(id);
+      const links = codexHomes.ensureHome(inst.ACCOUNT, (c.codex && c.codex.home) || codexHomes.MAIN_HOME());
+      log(`Added Codex account ${name} (${kind}) at ${inst.ACCOUNT.home}${links.errors.length ? `; couldn’t link ${links.errors.join('; ')}` : ''}`);
+      await inst.refreshAccount().catch(() => null);
+      broadcast('accounts');
+      return send(res, 200, { codex: codexPublic() });
+    }
+    case '/api/codex/accounts/remove': {
+      // Removes it from the list. Its home (and sign-in) stays on disk, like a removed Claude account.
+      const list = c.codexAccounts || [];
+      const x = list.find(a => a.id === body.id);
+      if (!x) throw fail(404, 'That Codex account isn’t in the list.');
+      if (chats.live().some(l => l.accountId === x.id && l.state !== 'ended')) throw fail(409, 'A chat is running as this account. Stop it first.');
+      c.codexAccounts = list.filter(a => a.id !== x.id);
+      if (c.codexActive === x.id) delete c.codexActive;
+      save(); codexAll(); usage.forget(x.id);
+      broadcast('accounts');
+      return send(res, 200, { codex: codexPublic() });
+    }
+    case '/api/codex/accounts/rename': {
+      const name = String(body.name || '').trim();
+      if (!/^[\w .'-]{1,40}$/.test(name)) throw fail(400, 'Use 1–40 letters, numbers, spaces, dots or dashes.');
+      const x = (c.codexAccounts || []).find(a => a.id === body.id);
+      if (!x) throw fail(404, 'Only added Codex accounts can be renamed.');
+      x.name = name; save(); codexAll(); broadcast('accounts');
+      return send(res, 200, { codex: codexPublic() });
+    }
+    case '/api/codex/active': {
+      const inst = codexById(body.id);
+      if (!inst) throw fail(404, 'That Codex account isn’t in the list.');
+      if (inst === codex) delete c.codexActive; else c.codexActive = inst.ACCOUNT.id;
+      save();
+      inst.refreshAccount().then(st => { if (st.signedIn) inst.refreshUsage(); }).catch(() => {});
+      broadcast('accounts');
+      return send(res, 200, { codex: codexPublic() });
+    }
     case '/api/project/banner': {
       const p = projectAt(body.cwd);
       if (!p || !p.exists) throw fail(404, 'That folder isn’t available.');
@@ -591,12 +680,12 @@ async function handleApi(req, res, url, remote = false) {
       if (body.reveal !== false) await sys.revealInExplorer(r.path, true).catch(() => {});
       return send(res, 200, r);
     }
-    case '/api/codex/logout': { await codex.logout(); return send(res, 200, { codex: codex.publicState() }); }
+    case '/api/codex/logout': { await (codexById(body.account) || codexActive()).logout(); return send(res, 200, { codex: codexPublic() }); }
     case '/api/codex/check': {
-      await codex.refreshAccount();
-      await codex.refreshUsage().catch(() => {});
+      await Promise.all(codexAll().map(x => x.refreshAccount().catch(() => null)));
+      await refreshAllCodexUsage();
       codexSessions(0);
-      return send(res, 200, { codex: codex.publicState(), usage: usage.snapshot() });
+      return send(res, 200, { codex: codexPublic(), usage: usage.snapshot() });
     }
     case '/api/codex/settings': {
       if (typeof body.enabled === 'boolean') c.codex.enabled = body.enabled;
@@ -606,8 +695,8 @@ async function handleApi(req, res, url, remote = false) {
         c.codex.command = cmd;
       }
       save();
-      codex.stop();
-      setTimeout(() => { if (config().codex.enabled) codex.refreshAccount().then(() => codex.refreshUsage()).catch(() => {}); broadcast('accounts'); broadcast('sessions'); }, 200);
+      for (const x of codexAll()) x.stop();
+      setTimeout(() => { if (config().codex.enabled) for (const x of codexAll()) x.refreshAccount().then(st => { if (st.signedIn) x.refreshUsage(); }).catch(() => {}); broadcast('accounts'); broadcast('sessions'); }, 200);
       return send(res, 200, { codex: c.codex });
     }
     case '/api/codex/install': {
@@ -618,15 +707,16 @@ async function handleApi(req, res, url, remote = false) {
     }
     case '/api/open': {
       if (body.provider === 'codex' || isCodexId(body.sessionId)) {
-        requireCodexSignedIn();
+        const inst = codexForThread(body.sessionId, body.account);
+        requireCodexSignedIn(inst);
         const mode = body.mode === 'fork' ? 'fork' : 'resume';
         const cx = codexFind(body.sessionId);
         if (!cx) throw fail(404, 'That Codex chat isn’t in the list any more.');
         if (!cx.exists) throw fail(400, `The folder ${cx.cwd} no longer exists, so this chat can’t be opened there.`);
         if (chats.bySession(cx.thread.id) && mode === 'resume') throw fail(409, 'This chat is open in Session Switcher’s chat window. Stop it there first.', 'live');
-        const r = await sys.openCodexTerminal(c, cx.cwd, `${mode} ${cx.thread.id}`, (cx.session && cx.session.title || '').slice(0, 32));
+        const r = await sys.openCodexTerminal(inst.config(), cx.cwd, `${mode} ${cx.thread.id}`, (cx.session && cx.session.title || '').slice(0, 32));
         if (!r.ok && !r.dryRun) throw fail(500, `Couldn’t open a terminal: ${r.error}`);
-        sessions.recordLaunch(cx.thread.id, codexLib.ACCOUNT, mode);
+        sessions.recordLaunch(cx.thread.id, inst.ACCOUNT, mode);
         return send(res, 200, r);
       }
       const a = acc.findAccount(c, body.account);
@@ -663,11 +753,12 @@ async function handleApi(req, res, url, remote = false) {
     }
     case '/api/new': {
       if (body.provider === 'codex') {
-        requireCodexSignedIn();
+        const inst = codexById(body.account) || codexActive();
+        requireCodexSignedIn(inst);
         const p = projectAt(body.cwd);
         if (!p) throw fail(404, 'That folder isn’t in the list.');
         if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
-        const r = await sys.openCodexTerminal(c, p.cwd, '', 'New chat');
+        const r = await sys.openCodexTerminal(inst.config(), p.cwd, '', 'New chat');
         if (!r.ok && !r.dryRun) throw fail(500, `Couldn’t open a terminal: ${r.error}`);
         return send(res, 200, r);
       }
@@ -776,7 +867,7 @@ async function handleApi(req, res, url, remote = false) {
       chatPrefs.flush();
       phone.stop();
       chats.stopAll();
-      codex.stop();
+      for (const x of codexAll()) x.stop();
       setTimeout(() => process.exit(0), 300);
       return;
     }
@@ -855,7 +946,8 @@ async function handleChat(req, res, url, body, c) {
   switch (url.pathname) {
     case '/api/chat/open': {
       if (body.provider === 'codex' || (body.mode !== 'new' && isCodexId(body.sessionId))) {
-        requireCodexSignedIn();
+        const inst = body.mode === 'new' ? (codexById(body.account) || codexActive()) : codexForThread(body.sessionId, body.account);
+        requireCodexSignedIn(inst);
         const mode = ['resume', 'fork', 'new'].includes(body.mode) ? body.mode : 'resume';
         let cwd, threadId = null, title = null;
         if (mode !== 'new') {
@@ -873,8 +965,9 @@ async function handleChat(req, res, url, body, c) {
         }
         const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
         const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
-        const chat = codex.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model: body.model || pref.model, effort: pref.effort, title: title || 'New Codex chat', folder });
-        if (threadId && mode === 'resume') sessions.recordLaunch(threadId, codexLib.ACCOUNT, 'app');
+        const model = [body.model, pref.model].find(m => m && modelFits(inst, m)) || null;
+        const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || 'New Codex chat', folder });
+        if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
         log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
         return send(res, 200, { ...chat.info(), attached: false, remembered: !!pref.mode });
       }
@@ -955,11 +1048,12 @@ async function handleChat(req, res, url, body, c) {
       const chat = chats.get(body.key);
       if (chat.provider === 'codex') throw fail(400, 'This is already a Codex chat.');
       if (chat.companionKey) { try { const h = chats.get(chat.companionKey); if (h.state !== 'ended') return send(res, 200, h.info()); } catch { /* start a new one */ } }
-      requireCodexSignedIn();
       const threadId = chat.sessionId ? chatPrefs.companionOf(chat.sessionId) : null;
       const known = threadId && codex.known(threadId);
+      const inst = codexForThread(known ? threadId : null);
+      requireCodexSignedIn(inst);
       const pref = chatPrefs.get({ sessionId: threadId, cwd: chat.cwd, provider: 'codex' });
-      const helper = codex.open({ cfg: c, cwd: chat.cwd, threadId: known ? threadId : null, mode: pref.mode, model: pref.model, effort: pref.effort, companion: true, title: `Codex · ${chat.title || 'New chat'}`, folder: chat.folder });
+      const helper = inst.open({ cfg: c, cwd: chat.cwd, threadId: known ? threadId : null, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, companion: true, title: `Codex · ${chat.title || 'New chat'}`, folder: chat.folder });
       helper.parentKey = chat.key; chat.companionKey = helper.key;
       log(`Codex helper for ${chat.sessionId || chat.key}: ${known ? `resume ${threadId}` : 'new'}`);
       broadcast('live', chats.live()); scheduleActivity();
@@ -979,9 +1073,10 @@ async function handleChat(req, res, url, body, c) {
       if (!id) throw fail(400, 'This chat hasn’t started yet, so there’s nothing to move. Send a message first.');
       if (chat.provider === 'codex') {
         await chat.stop();
-        const r = await sys.openCodexTerminal(c, chat.cwd, `resume ${id}`, String(chat.title || '').slice(0, 32));
+        const inst = codexById(chat.account && chat.account.id) || codexActive();
+        const r = await sys.openCodexTerminal(inst.config(), chat.cwd, `resume ${id}`, String(chat.title || '').slice(0, 32));
         if (!r.ok && !r.dryRun) throw fail(500, `Couldn’t open a terminal: ${r.error}`);
-        sessions.recordLaunch(id, codexLib.ACCOUNT, 'resume');
+        sessions.recordLaunch(id, inst.ACCOUNT, 'resume');
         return send(res, 200, r);
       }
       const { project, session } = sessions.find(id);
@@ -1109,7 +1204,10 @@ server.listen(PORT, '127.0.0.1', () => {
   sessionsSig = sessionsSignature();
   sessions.refreshIndex();
   pollAccounts(0).then(() => setTimeout(() => refreshAllUsage(0), 1500));
-  if (config().codex.enabled) setTimeout(() => codex.refreshAccount().then(st => { codexSessions(0); if (st.signedIn) codex.refreshUsage(); }).catch(() => {}), 2500);
+  if (config().codex.enabled) setTimeout(() => {
+    codex.refreshAccount().then(() => codexSessions(0)).catch(() => {});
+    for (const x of codexAll()) x.refreshAccount().then(st => { if (st.signedIn) x.refreshUsage(); }).catch(() => {});
+  }, 2500);
   startWatching();
   phone.sync().catch(err => log(`Phone access: ${err.message}`));
   sys.openAppWindow(appUrl, config().prefs);
