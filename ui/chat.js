@@ -226,11 +226,14 @@ async function settle() {
 }
 
 function mergeHelper(rows, items) {
-  // The helper's turns, each starting at your message; ones from a helper still running come live.
+  // The partner's turns, each starting at your message; ones from a partner still running come live.
+  // Codex keeps a turn's time to the second, so its turn counts from the end of that second (a turn
+  // handed over within a second of the other's reply still comes after it).
   const cutoff = C.comp && C.comp.startedAt ? Date.parse(C.comp.startedAt) : Infinity;
+  const late = partnerProv() === 'codex' ? 999 : 0;
   const groups = [];
   for (const it of items) {
-    if (it.kind === 'user' || !groups.length) groups.push({ t: it.at ? Date.parse(it.at) : -Infinity, items: [] });
+    if (it.kind === 'user' || !groups.length) groups.push({ t: it.at ? Date.parse(it.at) + late : -Infinity, items: [] });
     groups[groups.length - 1].items.push(it);
   }
   const keep = groups.filter(g => !(g.t >= cutoff));

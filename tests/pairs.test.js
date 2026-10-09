@@ -186,3 +186,51 @@ test('pairs: files you undid are mentioned with your next message, once', async 
   await pairs.send(lead, 'And another thing.');
   assert.equal(lead.sent[1].text, 'And another thing.');
 });
+
+test('pairs: only a chat’s current partner is its partner; an earlier one is a chat of its own again', () => {
+  const { prefs } = setup();
+  prefs.link('L', 'P1');
+  prefs.link('L', 'P2');   // it started a new conversation since
+  assert.equal(prefs.parentOf('P2'), 'L');
+  assert.equal(prefs.parentOf('P1'), null);
+  assert.deepEqual([...prefs.partners().keys()], ['p2']);
+});
+
+test('pairs: a Codex conversation that can’t be resumed is replaced before your message goes', async () => {
+  const all = new Map(), started = [];
+  const chats = { get: k => { const c = all.get(k); if (!c) throw new Error('gone'); return c; }, bySession: id => [...all.values()].find(c => c.state !== 'ended' && c.sessionId === id) || null };
+  const prefs = createChatPrefs({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'ss-pairs-')) });
+  prefs.link('L', 'GONE');
+  const pairs = createPairs({ chats, prefs, transcript: async () => [], startPartner: async (lead, { remembered }) => {
+    started.push(remembered);
+    const c = new FakeChat({ provider: 'codex', sessionId: remembered || 'NEW', state: 'starting' }); all.set(c.key, c);
+    if (remembered) setTimeout(() => c.end(), 20); else setTimeout(() => { c.state = 'ready'; c.buffer.push({ kind: 'init' }); }, 20);
+    return c;
+  } });
+  const lead = new FakeChat({ sessionId: 'L' }); all.set(lead.key, lead);
+  const partner = await pairs.ensure(lead);
+  assert.deepEqual(started, ['GONE', null]);
+  assert.equal(partner.sessionId, 'NEW'); assert.equal(lead.companionKey, partner.key);
+  await pairs.send(partner, 'Hello Codex.');
+  assert.ok(partner.sent[0].text.endsWith('Hello Codex.'));
+  assert.ok(lead.buffer.some(e => e.kind === 'notice' && /started a new one/.test(e.text)));
+});
+
+test('pairs: a Codex conversation still in use (an app that’s just quitting) is waited for, not replaced', async () => {
+  const all = new Map(), started = [];
+  const chats = { get: k => { const c = all.get(k); if (!c) throw new Error('gone'); return c; }, bySession: id => [...all.values()].find(c => c.state !== 'ended' && c.sessionId === id) || null };
+  const prefs = createChatPrefs({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'ss-pairs-')) });
+  prefs.link('L', 'P');
+  const pairs = createPairs({ chats, prefs, transcript: async () => [], startPartner: async (lead, { remembered }) => {
+    started.push(remembered);
+    const c = new FakeChat({ provider: 'codex', sessionId: remembered || 'NEW', state: 'starting' }); all.set(c.key, c);
+    if (started.length === 1) setTimeout(() => { c.buffer.push({ kind: 'notice', level: 'warning', text: 'Couldn’t start Codex: thread P already has an active writer' }); c.end(); }, 10);
+    else setTimeout(() => { c.state = 'ready'; c.buffer.push({ kind: 'init' }); }, 10);
+    return c;
+  } });
+  const lead = new FakeChat({ sessionId: 'L' }); all.set(lead.key, lead);
+  const partner = await pairs.ensure(lead);
+  assert.deepEqual(started, ['P', 'P'], 'tried again, the same conversation');
+  assert.equal(partner.sessionId, 'P');
+  assert.ok(!lead.buffer.some(e => e.kind === 'notice'), 'and nothing to tell you');
+});

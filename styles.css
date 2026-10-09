@@ -1185,6 +1185,14 @@ dialog.np-dlg{width:min(600px,calc(100vw - 32px));padding:0}
 .crew.on .crew-m{color:var(--parch-2)}
 .crew.waiting .crew-m{color:var(--gilt)}
 .c-crew.duo .crew:not(.on) .crew-m{max-width:110px}
+/* On a wide screen the row stays one line: the crew's labels shorten (…) before Send would wrap */
+@media (min-width:761px){
+  #cCompose .c-row{flex-wrap:nowrap}
+  .c-crew,.crew{flex:0 1 auto}
+  .crew-m{min-width:0}
+  .crew-n,.c-row .c-ib,#cSend,#cStop{flex:none}
+  .c-status{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
 .crew-caret{font-size:9px;color:var(--ash-2);margin-left:-2px}
 .c-ib{gap:6px}
 .c-ib svg{flex:none}

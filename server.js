@@ -171,8 +171,8 @@ const pairs = pairsLib.createPairs({
       const pref = chatPrefs.get({ sessionId, cwd: lead.cwd, provider: 'claude' });
       return chats.open({ cfg: c, account: a, cwd: lead.cwd, sessionId, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: `Claude · ${lead.title || 'New chat'}`, folder: lead.folder });
     }
-    let inst = codexForThread(remembered);
-    if (!inst.publicState().signedIn) inst = codexActive();
+    let inst = await codexChecked(codexForThread(remembered));
+    if (!inst.publicState().signedIn) inst = await codexChecked(codexActive());
     requireCodexSignedIn(inst);
     const pref = chatPrefs.get({ sessionId: remembered, cwd: lead.cwd, provider: 'codex' });
     return inst.open({ cfg: c, cwd: lead.cwd, threadId: remembered || null, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, companion: true, title: `Codex · ${lead.title || 'New chat'}`, folder: lead.folder });
@@ -438,7 +438,7 @@ async function openChatNow(c, body) {
 }
 async function openChatInner(c, body) {
   if (body.provider === 'codex' || (body.mode !== 'new' && isCodexId(body.sessionId))) {
-    const inst = body.mode === 'new' ? (codexById(body.account) || codexActive()) : codexForThread(body.sessionId, body.account);
+    const inst = await codexChecked(body.mode === 'new' ? (codexById(body.account) || codexActive()) : codexForThread(body.sessionId, body.account));
     requireCodexSignedIn(inst);
     const mode = ['resume', 'fork', 'new'].includes(body.mode) ? body.mode : 'resume';
     let cwd, threadId = null, title = null;
@@ -586,6 +586,11 @@ async function startReview(chat, files, base) {
   return { id, what: t.what, base: t.base };
 }
 
+// Right after the app starts, Codex's sign-in hasn't been checked yet; check it before saying it isn't.
+async function codexChecked(inst = codexActive()) {
+  if (!inst.publicState().checked) await inst.refreshAccount().catch(() => null);
+  return inst;
+}
 function requireCodexSignedIn(inst = codexActive()) {
   const st = inst.publicState();
   if (!st.enabled) throw fail(409, 'Codex is turned off in Setup.');
@@ -651,6 +656,8 @@ function activityList() {
     for (const s of p.sessions) {
       const id = s.id.toLowerCase();
       if (seen.has(id)) continue;
+      // A partner's conversation belongs to its chat; it isn't a chat of its own here either.
+      if (chatPrefs.parentOf(id)) continue;
       const pids = running[id] || null;
       const age = now - s.updated;
       // Chats elsewhere (like the desktop app) stay listed for a while after Claude replies, so a reply
@@ -1345,7 +1352,7 @@ async function handleApi(req, res, url, remote = false) {
       chatPrefs.flush();
       phone.stop();
       stopForQuit();
-      for (const x of codexAll()) x.stop();
+      for (const x of codexAll()) x.stop(true);
       setTimeout(() => process.exit(0), 300);
       return;
     }
@@ -1618,7 +1625,7 @@ server.on('error', err => {
   }
 });
 process.on('uncaughtException', err => log(`Unexpected error: ${err.stack || err.message}`));
-for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); setTimeout(() => process.exit(0), 300); });
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } } setTimeout(() => process.exit(0), 300); });
 process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
 process.on('unhandledRejection', err => log(`Unexpected error: ${err && (err.stack || err.message)}`));
 

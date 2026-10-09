@@ -628,5 +628,7 @@ Session Switcher never edits your chat files.
 - **Browser checks** (`tests/ui.js`): a headless browser clicks and types through menus, dialogs, the chat window, the model picker, every theme (light and dark, checking the text is readable) and the phone layout. They run against a made-up demo world (`tests/demo.js`), never your own chats.
 - The tests start their own copy of the app on a free port with a throwaway data folder, so they never touch the Session Switcher you're using.
 - `node tests/run.js chat menus` runs only the named browser checks; `SHOTS=folder` also saves screenshots.
+- **Claude and Codex together** (`tests/duo.test.js`, `tests/pairs.test.js`): what each one is told it missed, Both taking turns, one process per conversation, resuming after a restart, starting over when a conversation is gone, with stand-in chats.
+- **For real, by hand** (`node tests/real-duo.js`, not part of `npm test`): drives real Claude and Codex through the app, with your own sign-ins and a little of their usage (one-line replies, Claude on Haiku). Codex joins a Claude chat and reads it, Claude reads Codex back, Both takes turns, a restart picks up where it was, a Codex chat brings Claude in, a lost conversation starts over, and the window shows it all in one feed. It uses scratch projects in the temp folder and cleans up after itself, archiving its Codex conversations through Codex. `REAL_DUO_LOG=1` also prints the app's log.
 
 GitHub runs the same tests on Windows and on a Mac for every push and pull request.
