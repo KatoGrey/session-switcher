@@ -440,10 +440,14 @@ function renderItem(root, it, live) {
     const toCodex = provNow() === 'codex' && C.provider !== 'codex';
     d.className = `${liveRender ? 'umsg fresh' : 'umsg'}${toCodex ? ' to-codex' : ''}`;
     // "Attached file: `path` (info)" lines become players and file cards.
+    const sh = splitShared(it.text);
+    const at = it.at ? Date.parse(it.at) : Date.now();
+    if (C.provider === 'claude' && joinBoth(root, toCodex, sh.own, at)) return;
     const files = [];
-    const text = String(it.text || '').split('\n').filter(l => { const m = l.trim().match(ATTACH_LINE); if (m) files.push([m[1], m[2] || '']); return !m; }).join('\n').trim();
-    RAW.set(d, String(it.text || ''));
-    d.innerHTML = `${toCodex ? '<span class="to-tag">to Codex</span>' : ''}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
+    const text = sh.own.split('\n').filter(l => { const m = l.trim().match(ATTACH_LINE); if (m) files.push([m[1], m[2] || '']); return !m; }).join('\n').trim();
+    RAW.set(d, sh.own);
+    d._at = at;
+    d.innerHTML = `${toCodex ? '<span class="to-tag">to Codex</span>' : ''}${sh.context ? `<details class="shared"><summary>${toCodex ? 'Codex' : PROV_NAME[C.provider]} was caught up on ${sh.items ? `${sh.items} message${sh.items === 1 ? '' : 's'}` : 'the conversation'}</summary><div class="sh-body">${plain(sh.context)}</div></details>` : ''}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
     root.appendChild(d);
   } else if (it.kind === 'assistant') {
     const mi = C.mi[provNow() === 'codex' && C.provider !== 'codex' ? 'comp' : 'main'];

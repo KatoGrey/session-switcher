@@ -257,6 +257,67 @@ module.exports = [
     },
   },
   {
+    name: 'together',
+    // One conversation, two assistants: each is caught up on what it missed; "Both" asks both.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const sends = () => calls.filter(([p]) => p === '/api/chat/send').map(([, body]) => body);
+      const type = async text => { await b.eval(`const ta = document.getElementById('cText'); ta.focus(); ta.value = ${JSON.stringify(text)}; ta.dispatchEvent(new Event('input', { bubbles: true })); return 1`); await b.key('Enter', 'Enter', 13); await sleep(500); };
+
+      // Codex made the key art since Claude last spoke: writing to Claude brings it along.
+      await type('Thanks! Use that art in the patch notes.');
+      let s = sends().at(-1);
+      t.check('Claude is caught up on what Codex did', s && s.key === 'k-bard' && /^<shared-context items="2">/.test(s.text) && /The user, to Codex:/.test(s.text) && /Codex:\nHere it is\./.test(s.text), s && s.text.slice(0, 300));
+      t.check('and what you wrote comes after it', s && s.text.endsWith('</shared-context>\n\nThanks! Use that art in the patch notes.'));
+      // As the chat shows it: only your words, with the catch-up folded away.
+      await b.eval(`handle({ kind: 'user', text: ${JSON.stringify(s.text)}, at: new Date().toISOString(), seq: 300 }); return 1`); await sleep(300);
+      const um = await b.eval(`const u = [...document.querySelectorAll('.umsg')].pop(); return { bubble: u.querySelector('.ububble').textContent.trim(), fold: u.querySelector('details.shared summary')?.textContent, raw: RAW.get(u) }`);
+      t.check('the chat shows only your words', um.bubble === 'Thanks! Use that art in the patch notes.' && um.raw === 'Thanks! Use that art in the patch notes.', um);
+      t.check('with a fold-out saying what was shared', um.fold === 'Claude was caught up on 2 messages', um.fold);
+      await t.shot(b, 'caught-up');
+
+      // Claude suggests work for Codex; you switch to Codex and just say "do 2".
+      await b.eval(`handle({ kind: 'assistant', mid: 'm9', at: new Date().toISOString(), model: 'claude-opus-5-5', seq: 301, blocks: [
+        { type: 'tool', id: 't9', name: 'Edit', summary: 'notes/PATCH-1.4.md', meta: { path: 'notes/PATCH-1.4.md' }, detail: '', detailKind: 'text', result: { text: 'ok', isError: false, images: [] } },
+        { type: 'text', text: 'Codex could take two jobs: 1. a 512px icon of the bard, 2. a quick load test of songs.lua.' }] }); return 1`); await sleep(300);
+      await b.clickOn('[data-crew="comp"]'); await sleep(300);
+      await type('Do number 2, please.');
+      s = sends().at(-1);
+      t.check('Codex sees Claude’s suggestion (and what it changed)', s && s.key === 'k-bard-cx' && /Claude:\nCodex could take two jobs/.test(s.text) && /\(Claude changed notes\/PATCH-1\.4\.md\.\)/.test(s.text) && /The user, to Claude:\nThanks! Use that art/.test(s.text), s && s.text.slice(0, 400));
+      t.check('without repeating what Codex already said', s && !/Codex:\nHere it is/.test(s.text));
+
+      // Both: one message, each caught up on its own; drawn once.
+      await b.eval(`handle({ kind: 'user', text: ${JSON.stringify(s.text)}, at: new Date().toISOString(), seq: 302 }, 'comp'); handle({ kind: 'assistant', mid: 'cx9', at: new Date().toISOString(), seq: 303, blocks: [{ type: 'text', text: 'Load test done: 2,000 songs in 41 ms.' }] }, 'comp'); return 1`); await sleep(300);
+      await b.clickOn('[data-crew="both"]'); await sleep(300);
+      const tgt = await b.eval(`return { target: C.target, ph: document.getElementById('cText').placeholder, on: [...document.querySelectorAll('.crew.on')].map(x => x.dataset.crew).join() }`);
+      t.check('“Both” writes to Claude and Codex', tgt.target === 'both' && /Claude and Codex/.test(tgt.ph) && tgt.on === 'main,comp,both', tgt);
+      const n0 = sends().length;
+      await type('Plan the 1.4 release together.');
+      const two = sends().slice(n0);
+      t.check('one message goes to each', two.length === 2 && two.some(x => x.key === 'k-bard') && two.some(x => x.key === 'k-bard-cx'), two.map(x => x.key));
+      const toClaude = two.find(x => x.key === 'k-bard'), toCodex = two.find(x => x.key === 'k-bard-cx');
+      t.check('each caught up on what it missed', /Codex:\nLoad test done/.test(toClaude.text) && !/Codex:\nLoad test done/.test(toCodex.text) && toCodex.text === 'Plan the 1.4 release together.', [toClaude.text.slice(0, 200), toCodex.text.slice(0, 200)]);
+      await b.eval(`const at = new Date().toISOString(); handle({ kind: 'user', text: ${JSON.stringify(toClaude.text)}, at, seq: 304 }); handle({ kind: 'user', text: ${JSON.stringify(toCodex.text)}, at, seq: 305 }, 'comp'); return 1`); await sleep(300);
+      const last = await b.eval(`const u = [...document.querySelectorAll('.umsg')].filter(x => /Plan the 1.4 release/.test(x.textContent)); return { n: u.length, tag: u[0] && u[0].querySelector('.to-tag')?.textContent, both: u[0] && u[0].classList.contains('to-both') }`);
+      t.check('and it shows once: “to Claude & Codex”', last.n === 1 && last.both && last.tag === 'to Claude & Codex', last);
+      await t.shot(b, 'both');
+
+      // Esc twice stops both.
+      await b.eval(`handle({ kind: 'state', state: 'busy', seq: 306 }); handle({ kind: 'state', state: 'busy', seq: 307 }, 'comp'); document.getElementById('cText').focus(); return 1`); await sleep(200);
+      await b.esc(); await b.esc(); await sleep(300);
+      const stops = calls.filter(([p]) => p === '/api/chat/interrupt').map(([, body]) => body.key).sort();
+      t.check('Esc twice stops both', stops.join() === 'k-bard,k-bard-cx', stops);
+      await b.eval(`handle({ kind: 'state', state: 'ready', seq: 308 }); handle({ kind: 'state', state: 'ready', seq: 309 }, 'comp'); return 1`);
+
+      // Ctrl+. goes round: Claude, Codex, both.
+      const seq = [];
+      for (let i = 0; i < 3; i++) { await b.key('.', 'Period', 190, 2); seq.push(await b.eval(`return C.target`)); }
+      t.check('Ctrl+. goes Claude → Codex → both', seq.join() === 'main,comp,both', seq);
+    },
+  },
+  {
     name: 'looks',
     async run(t) {
       const b = await t.open();

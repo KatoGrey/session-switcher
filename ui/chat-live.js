@@ -77,17 +77,17 @@ function setState(s) {
 }
 // Stop, the typing dots and Send/Queue follow whichever one your next message goes to.
 function syncSend() {
-  const comp = C.target === 'comp' && duo();
-  const s = comp ? (C.comp ? C.comp.state : 'ready') : C.state;
-  const busy = s === 'busy' || s === 'waiting';
-  const name = PROV_NAME[comp ? 'codex' : C.provider];
+  const ts = targetsNow();
+  const busy = ts.some(x => x.state === 'busy' || x.state === 'waiting');
+  const name = ts.map(x => x.name).join(' and ');
   $c('cStop').hidden = !busy;
-  $c('cStop').title = `Stop ${name} (Esc)`;
-  $c('cTyping').hidden = s !== 'busy';
-  $c('cTyping').classList.toggle('codex', comp || C.provider === 'codex');
+  $c('cStop').title = `Stop ${ts.filter(x => x.state === 'busy' || x.state === 'waiting').map(x => x.name).join(' and ') || name} (Esc twice)`;
+  $c('cTyping').hidden = !ts.some(x => x.state === 'busy');
+  $c('cTyping').classList.toggle('codex', (C.target === 'comp' && duo()) || C.provider === 'codex');
   $c('cSend').textContent = busy ? 'Queue' : 'Send';
-  $c('cSend').title = busy ? `${name} is working; this will be sent when it’s ready` : `Send to ${name}`;
-  $c('chat').classList.toggle('to-codex', comp);
+  $c('cSend').title = busy ? `${name} ${ts.length > 1 ? 'are' : 'is'} working; this will be sent when ready` : `Send to ${name}`;
+  $c('chat').classList.toggle('to-codex', C.target === 'comp' && duo());
+  $c('chat').classList.toggle('to-both', C.target === 'both' && duo());
 }
 function setStatus(src, t) {
   if (src === 'comp') { if (C.comp) { C.comp.status = t; renderCrewSoon(); } return; }
@@ -316,7 +316,7 @@ function crewPill(src) {
   const busy = st === 'busy' || st === 'starting' || st === 'waiting';
   const status = src === 'comp' ? C.comp && C.comp.status : '';
   const label = mi ? `${modelLabel(mi)}${mi.effort ? ` · ${mi.effort}` : ''}` : src === 'comp' && st === 'off' ? 'ready when you are' : '…';
-  const on = duo() ? C.target === src : true;
+  const on = duo() ? C.target === src || C.target === 'both' : true;
   const sub = st === 'waiting' ? 'needs your OK' : busy && status ? status : label;
   const tip = (on ? `${PROV_NAME[prov]}: choose its model and effort` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`)
     + (C.ctx[src] ? `\nContext: ${ctxLine(src)}` : '');
@@ -329,15 +329,16 @@ function renderCrew() {
   const box = $c('cCrew'); if (!box) return;
   if (C.watch || !C.key) { box.innerHTML = ''; return; }
   const two = duo();
-  box.innerHTML = crewPill('main') + (two ? crewPill('comp') : '');
+  const both = C.target === 'both';
+  box.innerHTML = crewPill('main') + (two ? crewPill('comp') + `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? 'Back to writing to Claude only' : 'Send your next message to Claude and Codex at once'}"><span class="crew-n">Both</span></button>` : '');
   box.classList.toggle('duo', two);
-  $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b> switches model${two ? ' · <b>@codex</b> or <b>Ctrl+.</b> talks to Codex' : ''} · Esc stops`;
-  if (!two && C.target === 'comp') setTarget('main');
+  $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ' · <b>@codex</b> or <b>@both</b> · <b>Ctrl+.</b> switches' : ''} · Esc twice stops`;
+  if (!two && C.target !== 'main') setTarget('main');
 }
 function setTarget(t, focus = true) {
-  C.target = t === 'comp' && duo() ? 'comp' : 'main';
-  const name = PROV_NAME[provFor(C.target)];
-  $c('cText').placeholder = C.target === 'comp' ? 'Ask Codex… an image, a quick test, a second opinion' : `Write to ${name}…`;
+  C.target = duo() && (t === 'comp' || t === 'both') ? t : 'main';
+  const name = C.target === 'both' ? 'Claude and Codex' : PROV_NAME[provFor(C.target)];
+  $c('cText').placeholder = C.target === 'comp' ? 'Ask Codex… an image, a quick test, a second opinion' : C.target === 'both' ? 'Write to Claude and Codex: both reply here…' : `Write to ${name}…`;
   $c('cText').setAttribute('aria-label', `Message ${name}`);
   renderCrew(); syncSend(); closePick();
   if (focus) $c('cText').focus();

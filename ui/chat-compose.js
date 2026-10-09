@@ -189,16 +189,22 @@ async function sendMessage() {
   // /model and /effort switch without sending.
   const sw = text.trim().match(/^\/(model|effort)\s+(.{1,60})$/i);
   if (sw && !C.attachments.length) { clear(); await quickSwitch(sw[1].toLowerCase(), sw[2].trim()); return; }
-  // "@codex …" or "@claude …" sends just this message to that one.
-  let target = C.target === 'comp' && duo() ? 'comp' : 'main';
-  const at = duo() && text.match(/^\s*@(codex|claude)\b[:,]?\s*/i);
-  if (at) { target = at[1].toLowerCase() === 'codex' ? 'comp' : 'main'; text = text.slice(at[0].length); }
-  if (target === 'main' && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
+  // "@codex …", "@claude …" or "@both …" sends just this message to that one (or both).
+  let target = duo() && (C.target === 'comp' || C.target === 'both') ? C.target : 'main';
+  const at = duo() && text.match(/^\s*@(codex|claude|both)\b[:,]?\s*/i);
+  if (at) { const w = at[1].toLowerCase(); target = w === 'codex' ? 'comp' : w === 'both' ? 'both' : 'main'; text = text.slice(at[0].length); }
+  if (target !== 'comp' && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
   const images = C.attachments.slice();
   $c('cSend').disabled = true;
   try {
-    const key = target === 'comp' ? (await ensureCompanion()).key : C.key;
-    await api('/api/chat/send', { key, text, images });
+    // Each one is caught up on what it missed (worked out before either message goes).
+    const forMain = duo() && target !== 'comp' ? withCatchUp('main', text) : text;
+    const forComp = duo() && target !== 'main' ? withCatchUp('comp', text) : text;
+    if (target === 'both') {
+      const comp = await ensureCompanion();
+      await Promise.all([api('/api/chat/send', { key: C.key, text: forMain, images }), api('/api/chat/send', { key: comp.key, text: forComp, images })]);
+    } else if (target === 'comp') await api('/api/chat/send', { key: (await ensureCompanion()).key, text: forComp, images });
+    else await api('/api/chat/send', { key: C.key, text: forMain, images });
     clear();
   } finally { $c('cSend').disabled = false; $c('cText').focus(); }
 }

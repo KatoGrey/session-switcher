@@ -1752,3 +1752,21 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .rv-b .rv-loopnote{margin:0;flex:1 1 260px}
 .rv-loopnote.ok{color:rgb(var(--c-7fb79a))}
 
+/* ---------- one conversation, two assistants: catch-ups and "Both" ---------- */
+.crew.both{padding:5px 11px;color:var(--ash);border:1px dashed rgb(var(--c-9a928a) / .45)}
+.crew.both .crew-n{font:500 11px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase}
+.crew.both:hover{color:var(--parch);border-color:rgb(var(--c-9a928a) / .8)}
+.crew.both.on{color:var(--parch);border-style:solid;border-color:rgb(var(--c-6f97d8) / .7);background:linear-gradient(90deg,rgb(var(--c-a5463f) / .22),rgb(var(--c-6f97d8) / .22))}
+/* Writing to both: the message box takes both colors, Claude's on the left and Codex's on the right. */
+.chat.to-both .c-box{border-color:transparent;background:linear-gradient(rgb(var(--c-100e12)),rgb(var(--c-100e12))) padding-box,linear-gradient(90deg,rgb(var(--c-a5463f) / .7),rgb(var(--c-6f97d8) / .7)) border-box}
+.chat.to-both .c-box:focus-within{box-shadow:0 0 0 3px rgb(var(--c-6f97d8) / .1)}
+.chat.to-both #cSend{background:linear-gradient(90deg,rgb(var(--c-94423b)),rgb(var(--c-46679f)));border-color:rgb(var(--c-7fa3dc) / .6)}
+.umsg.to-both .to-tag{color:var(--parch-2);background:linear-gradient(90deg,rgb(var(--c-a5463f) / .25),rgb(var(--c-6f97d8) / .25))}
+details.shared{margin:0 0 6px auto;max-width:min(560px,100%);font-size:12.5px;color:var(--ash)}
+details.shared summary{cursor:pointer;list-style:none;display:flex;justify-content:flex-end;align-items:center;gap:6px;font:400 11.5px/1.4 var(--f-mono);color:var(--ash)}
+details.shared summary::-webkit-details-marker{display:none}
+details.shared summary::before{content:'⇄';color:rgb(var(--c-6f97d8))}
+details.shared summary:hover{color:var(--parch-2)}
+details.shared[open] summary{margin-bottom:6px}
+.sh-body{max-height:260px;overflow:auto;padding:10px 12px;border:1px solid var(--seam);border-radius:7px;background:var(--vellum);white-space:pre-wrap;font-size:13px;line-height:1.5;color:var(--parch-2)}
+

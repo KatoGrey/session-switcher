@@ -302,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
     const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
     const crew = t.closest('[data-crew]');
-    if (crew) { const src = crew.dataset.crew; if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
+    if (crew) { const src = crew.dataset.crew; if (src === 'both') return setTarget(C.target === 'both' ? 'main' : 'both'); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
     const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });
     const pp = t.closest('#cPick [data-preset]');
     if (pp) { const p = presetsFor(Pick.src).find(x => x.id === pp.dataset.preset); if (p) return pickModel(Pick.src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }); return undefined; }
@@ -324,7 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'attach': return attachMenu(c);
       case 'prompts': return c.getAttribute('aria-expanded') === 'true' ? closeMenu() : promptsMenu(c);
       case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
-      case 'stop': C.interruptedAt = Date.now(); return api('/api/chat/interrupt', { key: C.target === 'comp' && C.comp ? C.comp.key : C.key });
+      case 'stop': C.interruptedAt = Date.now(); return Promise.all(targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting')).map(x => api('/api/chat/interrupt', { key: x.key })));
       case 'compact': return compactNow(c.dataset.src || 'main');
       case 'review': return startReview(c.dataset.base || null);
       case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
@@ -378,15 +378,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Enter') closeSlash();
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); wrap(sendMessage)(); }
-    if (e.key === '.' && e.ctrlKey && duo()) { e.preventDefault(); setTarget(C.target === 'comp' ? 'main' : 'comp'); return; }
-    const tgt = C.target === 'comp' && C.comp ? C.comp : null;
-    const tstate = tgt ? tgt.state : C.state;
+    if (e.key === '.' && e.ctrlKey && duo()) { e.preventDefault(); setTarget(C.target === 'main' ? 'comp' : C.target === 'comp' ? 'both' : 'main'); return; }
     if (e.key === 'Escape' && !$c('cPick').hidden) { e.preventDefault(); closePick(); return; }
-    if (e.key === 'Escape' && (tstate === 'busy' || tstate === 'waiting')) {
+    // Esc twice stops whoever your next message goes to (both, when it goes to both).
+    const working = targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting'));
+    if (e.key === 'Escape' && working.length) {
       e.preventDefault();
-      if (Date.now() - (C.escArmed || 0) > 1600) { armEsc(PROV_NAME[tgt ? 'codex' : C.provider]); return; }
+      if (Date.now() - (C.escArmed || 0) > 1600) { armEsc(working.map(x => x.name).join(' and ')); return; }
       disarmEsc();
-      C.interruptedAt = Date.now(); wrap(() => api('/api/chat/interrupt', { key: tgt ? tgt.key : C.key }))();
+      C.interruptedAt = Date.now();
+      for (const x of working) wrap(() => api('/api/chat/interrupt', { key: x.key }))();
     }
   });
   $c('cText').addEventListener('paste', e => {
@@ -568,6 +569,7 @@ function chatContextItems(t, at) {
     ];
   }
   const crew = t.closest('[data-crew]');
+  if (crew && crew.dataset.crew === 'both') return [{ glyph: '⇄', label: C.target === 'both' ? 'Write to Claude only' : 'Write to Claude and Codex at once', keys: 'Ctrl .', run: () => setTarget(C.target === 'both' ? 'main' : 'both') }];
   if (crew) {
     const src = crew.dataset.crew, name = PROV_NAME[provFor(src)];
     return [

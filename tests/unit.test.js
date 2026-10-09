@@ -180,6 +180,24 @@ test('review: several findings, ranges, and findings without a place', () => {
   assert.deepEqual([r.findings[1].priority, r.findings[1].title, r.findings[1].file], ['P3', 'Prefer a named constant', null]);
 });
 
+/* ---------- one conversation, two assistants: titles show what you wrote ---------- */
+const { ownText } = require('../lib/shared');
+const { readMeta } = require('../lib/sessions');
+
+test('shared context: titles, previews and the board show only what you wrote', () => {
+  const shared = '<shared-context items="2">\nYou and Codex share this chat; the user sees you both. Since your last message:\n\nCodex:\nHere it is.\n</shared-context>\n\n';
+  assert.equal(ownText(`${shared}Use that art in the patch notes.`), 'Use that art in the patch notes.');
+  assert.equal(ownText('<shared-context items="3">\nClaude:\nA preview cut off in the mid'), '', 'a cut-off preview has nothing of yours');
+  assert.equal(ownText('Plain message, <shared-context> mentioned later.'), 'Plain message, <shared-context> mentioned later.');
+  const file = path.join(tmp(), 'chat.jsonl');
+  const line = (text, i) => JSON.stringify({ type: 'user', uuid: `u${i}`, cwd: 'C:\\Projects\\Demo', timestamp: new Date(Date.UTC(2026, 9, 9, 10, i)).toISOString(), message: { role: 'user', content: text } });
+  fs.writeFileSync(file, [line(`${shared}Plan the 1.4 release.`, 0), line(`${shared}Now write the notes.`, 1)].join('\n') + '\n');
+  const meta = readMeta(file, fs.statSync(file));
+  assert.equal(meta.firstPrompt, 'Plan the 1.4 release.');
+  assert.equal(meta.autoTitle, 'Plan the 1.4 release.');
+  assert.equal(meta.lastPrompt, 'Now write the notes.');
+});
+
 /* ---------- what a review looks at ---------- */
 const { reviewTarget, EMPTY_TREE } = require('../lib/review');
 const { execFileSync } = require('child_process');
