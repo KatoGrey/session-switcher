@@ -363,6 +363,7 @@ function lastTurn(root, make) {
   const relay = C.provider === 'claude' && (codexOK() || C.compThread || C.comp);
   t.innerHTML = `<div class="who"><span class="who-n">${PROV_NAME[prov]}</span><span class="who-m"></span><span class="turn-act">
       <button type="button" class="ta" data-c="copyturn" title="Copy this reply">Copy</button>
+      ${prov === 'claude' && C.provider === 'claude' && codexOK() ? '<button type="button" class="ta rv" data-c="review" title="Codex reviews the changes so far, in a read-only sandbox">Review with Codex</button>' : ''}
       ${relay ? `<button type="button" class="ta relay" data-c="relay" title="${prov === 'codex' ? 'Quote this to Claude' : 'Quote this to Codex, for an image, a test or a second opinion'}">${prov === 'codex' ? 'Send to Claude' : 'Ask Codex'}</button>` : ''}</span></div>`;
   root.appendChild(t);
   return t;
@@ -453,6 +454,7 @@ function renderItem(root, it, live) {
     const who = p.closest('.turn').querySelector('.who');
     if (it.at && who && !who.querySelector('.who-time')) who.querySelector('.who-m').insertAdjacentHTML('afterend', `<time class="who-time" datetime="${esc(it.at)}" title="${esc(stamp(Date.parse(it.at)))}">${esc(shortTime(Date.parse(it.at)))}</time>`);
     for (const b of it.blocks) addBlock(p, b, live);
+    markEdits(p, it.blocks);
     if (it.aborted) p.querySelector('.final').insertAdjacentHTML('beforeend', '<p class="aborted">Stopped before finishing.</p>');
   } else if (it.kind === 'notice') {
     root.insertAdjacentHTML('beforeend', `<div class="cnotice ${esc(it.level || 'info')}${liveRender ? ' fresh' : ''}" role="note"><span class="cn-dot" aria-hidden="true"></span><span>${plain(it.text)}</span></div>`);

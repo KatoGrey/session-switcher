@@ -131,6 +131,7 @@ const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}
 // full the chat is), events (more chat events sent after it connects).
 async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [] } = {}) {
   const info = { ...chatInfo, ...(context ? { context } : {}) };
+  let reviews = 0;
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
     let body = {}; try { body = JSON.parse(postData || '{}'); } catch { /* not JSON */ }
@@ -153,6 +154,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
     }
     if (p === '/api/chat/model') return { body: { ...info } };
+    if (p === '/api/chat/review') { if (seen) seen(p, url, body); return { body: { id: `rv${++reviews}`, what: 'your uncommitted changes', base: body.base || null } }; }
     if (seen) seen(p, url, body);
     return { body: {} };
   });

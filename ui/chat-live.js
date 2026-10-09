@@ -126,6 +126,7 @@ function handleEvent(ev, src) {
     case 'status': if (ev.permissionMode && !comp) setMode(ev.permissionMode); if (ev.status === 'compacting') setStatus(src, 'Summarizing the conversation…'); if (ev.text) setStatus(src, ev.text); break;
     case 'plan': L.todos = ev.steps || []; renderLedgerSoon(); break;
     case 'context': setCtx(src, ev); break;
+    case 'review': if (!comp) { reviewLoopStep(ev); renderReview(ev); } break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
     case 'stream_start': withStick(() => part(feed, ev.mid)); break;
     case 'delta':
@@ -157,6 +158,7 @@ function handleEvent(ev, src) {
     case 'permission_cancel': case 'permission_done': removePermission(ev.requestId, src); break;
     case 'result':
       setStatus(src, '');
+      if (!comp) reviewAfterTurn(ev);
       if (!ev.ok && Date.now() - C.interruptedAt > 8000 && (ev.errors.length || ev.text)) {
         withStick(() => renderItem(feed, { kind: 'notice', level: 'warning', text: ev.text || ev.errors.join('\n') || `${PROV_NAME[provFor(src)]} stopped with an error.` }));
       }

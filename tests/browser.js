@@ -100,8 +100,15 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
       for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x, y, button, clickCount: 1 });
       await sleep(250);
     },
+    // Clicks the middle of the first element matching sel. If it's off-screen or something covers it
+    // (a docked message box, say), it's scrolled into view first.
     clickOn: async sel => {
-      const r = await b.eval(`const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null; const q = el.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]`);
+      const r = await b.eval(`const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null;
+        const mid = () => { const q = el.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; };
+        const reachable = ([x, y]) => { const at = document.elementFromPoint(x, y); return !!at && (at === el || el.contains(at)); };
+        let p = mid();
+        if (!reachable(p)) { el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }); await new Promise(r => setTimeout(r, 150)); p = mid(); }
+        return p`);
       if (!r) throw new Error(`Nothing to click: ${sel}`);
       await b.click(r[0], r[1]);
     },

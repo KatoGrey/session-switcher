@@ -190,6 +190,73 @@ module.exports = [
     },
   },
   {
+    name: 'review',
+    async run(t) {
+      const calls = [];
+      const songs = 'C:\\Projects\\Starfall Tavern\\scripts\\bard\\songs.lua';
+      const findings = [
+        { priority: 'P1', title: 'Rally still stacks through the encore', file: songs, start: 12, end: 14, body: 'The encore path re-applies `rally.bonus` without checking `rally.stacks`, so two bards still get +30%.' },
+        { priority: 'P3', title: 'Name the bonus', file: null, start: null, end: null, body: 'Use a named constant instead of `0.15`.' },
+      ];
+      const what = 'your uncommitted changes';
+      const b = await t.open({
+        seen: (p, u, body) => calls.push([p, body]),
+        events: [
+          { kind: 'review', id: 'r1', what, state: 'running', progress: 'Running git diff' },
+          { kind: 'review', id: 'r1', what, base: 'abc0000000000000000000000000000000000def', state: 'done', overall: 'Rally mostly works, but the encore path slipped through.', findings },
+        ],
+      });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const btn = await b.eval(`return [...document.querySelectorAll('.turn')].map(tn => ({ edits: tn.classList.contains('edits'), shown: !!tn.querySelector('.ta.rv') && getComputedStyle(tn.querySelector('.ta.rv')).display !== 'none' }))`);
+      t.check('a Claude reply that changed files offers a Codex review', btn.some(x => x.edits && x.shown), btn);
+      t.check('replies that changed nothing don’t', btn.filter(x => !x.edits).every(x => !x.shown), btn);
+
+      const card = await b.eval(`const c = document.querySelectorAll('.review'); return { n: c.length, text: c[0] && c[0].textContent.replace(/\\s+/g, ' '), p: [...document.querySelectorAll('.rv-p')].map(x => x.textContent) }`);
+      t.check('progress and result land in one review card', card.n === 1, card);
+      t.check('it shows the summary, each finding and its place', /2 findings/.test(card.text) && /encore path slipped/.test(card.text) && /Rally still stacks through the encore/.test(card.text) && /songs\.lua:12–14/.test(card.text), card.text);
+      t.check('findings show their priority', card.p.join() === 'P1,P3', card.p);
+      await t.shot(b, 'card');
+
+      await b.eval(`[...document.querySelectorAll('.turn.edits .ta.rv')].pop().click(); return 1`); await sleep(400);
+      const req = calls.find(([p]) => p === '/api/chat/review');
+      t.check('Review with Codex starts a fresh review of this chat, with the files it changed', req && req[1].key === 'k-bard' && req[1].files.some(f => /songs\.lua/.test(f)) && !req[1].base, req && req[1]);
+
+      await b.clickOn('.rv-f [data-c="rvfix"]'); await sleep(300);
+      const box = await b.eval(`return document.getElementById('cText').value`);
+      t.check('“fix this” puts that finding in the message box, for you to check', /^Codex reviewed your uncommitted changes and found this:/.test(box) && /\[P1\] Rally still stacks through the encore \(C:\\Projects\\Starfall Tavern\\scripts\\bard\\songs\.lua:12-14\)/.test(box) && !/Name the bonus/.test(box), box);
+      t.check('nothing is sent until you press Enter', !calls.some(([p]) => p === '/api/chat/send'));
+      await b.eval(`document.getElementById('cText').value = ''; return 1`);
+      await b.clickOn('[data-c="rvfixall"]'); await sleep(300);
+      t.check('“fix all” lists every finding', /1\. \[P1\][\s\S]*2\. \[P3\] Name the bonus/.test(await b.eval(`return document.getElementById('cText').value`)));
+      await b.eval(`document.getElementById('cText').value = ''; return 1`);
+
+      // Fix and recheck until clean: sends now, rechecks when Claude's done, stops when it's clean.
+      await b.clickOn('[data-c="rvloop"]'); await sleep(400);
+      const sent = calls.filter(([p]) => p === '/api/chat/send');
+      t.check('“until clean” sends the findings to Claude right away', sent.length === 1 && /Name the bonus/.test(sent[0][1].text));
+      t.check('the card says which round it’s on', /Round 1 of 3/.test(await b.eval(`return document.querySelector('.review').textContent`)));
+      const before = calls.filter(([p]) => p === '/api/chat/review').length;
+      await b.eval(`handle({ kind: 'result', ok: true, errors: [], seq: 500 }); return 1`); await sleep(400);
+      const recheck = calls.filter(([p]) => p === '/api/chat/review');
+      t.check('when Claude finishes, Codex checks again', recheck.length === before + 1);
+      t.check('from the same starting point as the first review', recheck.at(-1)[1].base === 'abc0000000000000000000000000000000000def', recheck.at(-1)[1]);
+      const expect = await b.eval(`return Review.loop && Review.loop.expect`);
+      // Another review finishing meanwhile doesn't count.
+      await b.eval(`handle({ kind: 'review', id: 'stray', what: 'something else', state: 'done', overall: 'Fine.', findings: [], seq: 501 }); return 1`); await sleep(200);
+      t.check('only the review the loop asked for counts', !!(await b.eval(`return Review.loop && Review.loop.expect`)) && !/Clean after/.test(await b.eval(`return document.querySelector('.review[data-rid="stray"]').textContent`)));
+      await b.eval(`handle({ kind: 'review', id: ${JSON.stringify(expect)}, what: ${JSON.stringify(what)}, state: 'done', overall: 'The encore path is fixed.', findings: [], seq: 502 }); return 1`); await sleep(300);
+      const end = await b.eval(`const c = document.querySelector('.review[data-rid="${expect}"]'); return c && c.textContent.replace(/\\s+/g, ' ')`);
+      t.check('and once it’s clean, it says so and stops', /All clear/.test(end) && /Clean after 1 round of fixes/.test(end) && calls.filter(([p]) => p === '/api/chat/send').length === 1, end);
+      await t.shot(b, 'clean');
+
+      await b.clickOn('[data-c="more"]'); await sleep(300);
+      t.check('the ⋯ menu offers a review', /Have Codex review the changes/.test(await b.eval(`return document.getElementById('menu').textContent`)));
+      await b.esc();
+      await b.eval(`openPalette('review'); return 1`); await sleep(500);
+      t.check('and so does Ctrl+K', /Have Codex review this chat’s changes/.test(await b.eval(`return document.getElementById('palette').textContent`)));
+    },
+  },
+  {
     name: 'looks',
     async run(t) {
       const b = await t.open();

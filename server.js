@@ -22,6 +22,7 @@ const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
+const { reviewTarget } = require('./lib/review');
 
 const APP_VERSION = '5.4.1';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -208,6 +209,22 @@ function codexFind(id) {
   return { thread: t, session: s, cwd: t.cwd, exists: !!t.cwd && fs.existsSync(t.cwd), folder: path.basename(String(t.cwd || '').replace(/[\\/]+$/, '')) };
 }
 const isCodexId = id => !!codexFind(id);
+// Codex reviews a chat's work; progress and the result arrive in that chat as 'review' events.
+async function startReview(chat, files, base) {
+  requireCodexSignedIn();
+  const t = await reviewTarget(chat.cwd, files, base);
+  const id = crypto.randomBytes(6).toString('hex');
+  const ev = extra => chat.emit({ kind: 'review', id, what: t.what, base: t.base, ...extra });
+  ev({ state: 'running', progress: 'Starting…' });
+  let last = 0;
+  codexActive().review({
+    cwd: chat.cwd, target: t.target,
+    onProgress: p => { const now = Date.now(); if (now - last > 700) { last = now; ev({ state: 'running', progress: p }); } },
+  }).then(r => { ev({ state: 'done', overall: r.overall, findings: r.findings }); log(`Review of ${t.what} in ${chat.cwd}: ${r.findings.length} finding${r.findings.length === 1 ? '' : 's'}.`); })
+    .catch(err => { ev({ state: 'failed', error: err.message }); log(`Review failed: ${err.message}`); });
+  return { id, what: t.what, base: t.base };
+}
+
 function requireCodexSignedIn(inst = codexActive()) {
   const st = inst.publicState();
   if (!st.enabled) throw fail(409, 'Codex is turned off in Setup.');
@@ -1034,6 +1051,7 @@ async function handleChat(req, res, url, body, c) {
     }
     case '/api/chat/interrupt': await chats.get(body.key).interrupt(); return send(res, 200, { ok: true });
     case '/api/chat/compact': await chats.get(body.key).compact(); return send(res, 200, { ok: true });
+    case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base));
     case '/api/chat/mode': {
       const chat = chats.get(body.key);
       await chat.setMode(body.mode);

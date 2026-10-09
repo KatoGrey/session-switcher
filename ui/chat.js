@@ -122,6 +122,7 @@ function reset() {
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {};
+  Review.loop = null;
   closePick();
   $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
   clearPermissions();
@@ -325,6 +326,8 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
       case 'stop': C.interruptedAt = Date.now(); return api('/api/chat/interrupt', { key: C.target === 'comp' && C.comp ? C.comp.key : C.key });
       case 'compact': return compactNow(c.dataset.src || 'main');
+      case 'review': return startReview(c.dataset.base || null);
+      case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
       case 'copyturn': {
@@ -464,6 +467,7 @@ function chatHeadItems() {
   const id = C.sessionId;
   return [
     ...(id ? [{ glyph: window.isFav(id) ? '☆' : '★', label: window.isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => window.toggleFav(id) }, '-'] : []),
+    ...(reviewAvailable() ? [{ glyph: '◆', label: 'Have Codex review the changes', hint: 'read-only', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview() }, '-'] : []),
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
     { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },
     '-',
@@ -590,6 +594,7 @@ window.ChatUI = {
   modelItems: () => {
     if ($c('chat').hidden || C.watch) return [];
     const out = [];
+    if (reviewAvailable() && C.state !== 'ended') out.push({ glyph: '◆', t: 'Have Codex review this chat’s changes', s: 'in a read-only sandbox', run: () => startReview(), text: 'review code codex check changes second opinion bugs' });
     for (const src of duo() ? ['main', 'comp'] : ['main']) {
       const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
       if (src === 'comp' && (!mi || !mi.models)) { out.push({ glyph: '◆', t: `Choose Codex’s model…`, s: 'Codex helper', run: () => openPick('comp'), text: 'codex model switch effort' }); continue; }

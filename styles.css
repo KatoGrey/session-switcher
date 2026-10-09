@@ -1719,3 +1719,36 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .ctx-warn p b{color:var(--parch)}
 .ctx-warn.codex{border-color:rgb(var(--c-6f97d8) / .45);background:rgb(var(--c-6f97d8) / .06)}
 @media (max-width:760px){ .ctx-warn{flex-direction:column;align-items:stretch} }
+
+/* ---------- Codex reviews Claude's work ---------- */
+.turn:not(.edits) .ta.rv{display:none}
+.ta.rv{color:rgb(var(--c-6f97d8))}
+.review{margin:16px 0;padding:14px 16px 12px;border:1px solid rgb(var(--c-6f97d8) / .4);border-left:3px solid rgb(var(--c-6f97d8));border-radius:8px;background:rgb(var(--c-6f97d8) / .05)}
+.rv-h{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 9px;margin:0 0 8px;font-size:15px}
+.rv-g{color:rgb(var(--c-6f97d8))}
+.rv-h b{font:600 11px/1 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:rgb(var(--c-a9c3ef))}
+.rv-what{color:var(--parch-2);font-style:italic}
+.rv-st{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font:500 10.5px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:rgb(var(--c-a9c3ef))}
+.rv-st.found{color:var(--gilt)}
+.rv-st.clean{color:rgb(var(--c-7fb79a))}
+.rv-st.err{color:var(--ember)}
+.rv-prog{margin:0;font:400 12.5px/1.5 var(--f-mono);color:var(--parch-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv-note{margin:6px 0 0;font-size:13px;color:var(--ash)}
+.rv-err{margin:0 0 6px;color:var(--ember)}
+.rv-over{margin:0 0 10px;color:var(--parch-2)}
+.rv-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.rv-f{padding:10px 12px;border:1px solid var(--seam);border-radius:7px;background:var(--vellum)}
+.rv-ft{display:flex;align-items:baseline;gap:9px}
+.rv-ft b{font-weight:600;color:var(--parch)}
+.rv-p{flex:none;padding:2px 6px;border-radius:4px;font:600 10.5px/1.2 var(--f-mono);border:1px solid currentColor;color:var(--ash)}
+.rv-f.p0 .rv-p{color:var(--ember);background:rgb(var(--c-cf8274) / .12)}
+.rv-f.p1 .rv-p{color:var(--gilt);background:rgb(var(--c-d9bf74) / .1)}
+.rv-f.p0{border-color:rgb(var(--c-cf8274) / .45)}
+.rv-loc{display:inline-block;margin:4px 0 0;font:400 12px/1.4 var(--f-mono)}
+.rv-fb{margin-top:6px;font-size:14.5px;color:var(--parch-2)}
+.rv-fa{margin-top:8px}
+.rv-b{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.rv-loopnote{display:flex;align-items:center;gap:8px;margin:10px 0 0;font-size:13.5px;color:var(--parch-2)}
+.rv-b .rv-loopnote{margin:0;flex:1 1 260px}
+.rv-loopnote.ok{color:rgb(var(--c-7fb79a))}
+
