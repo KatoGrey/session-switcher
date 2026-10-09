@@ -11,16 +11,18 @@
   const ON_ACCENT = new Set(['f6ece2', 'f6efe3', 'ffffff', 'f1dfd6', 'f3e2d8', 'efdcd3']);
 
   /* ---------- the space saga themes ----------
-     Besides colors, a saga theme brings its own fonts, a background (sky) in place of the petals, an
-     emblem for the seal, sound cues (sounds/, Kenney CC0) and its own words. Its `copy` map is keyed by
+     Gritty, used, industrial: worn panels and stencilled labels rather than glow, and quiet enough to
+     work in. Besides colors, a saga theme brings its own fonts, a still background (sky) in place of
+     the petals, an emblem for the seal, sound cues (sounds/, Kenney CC0) and its own words. Its `copy` map is keyed by
      the app's own English text; anything it leaves out reads as usual. {n} is a number in words. */
   const HUD = '"Share Tech Mono", "JetBrains Mono", ui-monospace, monospace';
+  const BODY = '"Barlow", system-ui, -apple-system, sans-serif', COND = '"Barlow Condensed", "Barlow", system-ui, sans-serif';
   const SAGA = [
     {
-      id: 'vanguard', name: 'Vanguard', note: 'Starfighter cockpit: amber HUD, teal targeting, hyperspace.', family: 'saga', sky: 'hyperspace',
-      accent: 24, sat: 1.6, gold: 176, goldSat: 0.9, surface: 214, surfSat: 1.15, ink: 34, codex: 226,
-      fonts: { display: '"Orbitron", "Exo 2", system-ui, sans-serif', caps: '"Orbitron", "Exo 2", system-ui, sans-serif', body: '"Exo 2", system-ui, -apple-system, sans-serif', hud: HUD },
-      emblem: '<circle cx="20" cy="20" r="18.5" style="fill:rgb(var(--c-3d1a18));stroke:rgb(var(--c-a5463f))" stroke-width="1.6"/><circle cx="20" cy="20" r="13.5" fill="none" style="stroke:rgb(var(--c-d9bf74))" stroke-opacity=".55" stroke-width=".8" stroke-dasharray="5 3.5"/><path d="M20 1.5v5M20 33.5v5M1.5 20h5M33.5 20h5" style="stroke:rgb(var(--c-d9bf74))" stroke-width="1.3"/><path d="M20 8.5L29.5 29L20 24.2L10.5 29Z" style="fill:rgb(var(--c-f6efe3))"/><path d="M20 13.5L23.4 23.5L20 21.8L16.6 23.5Z" style="fill:rgb(var(--c-a5463f))"/>',
+      id: 'vanguard', name: 'Vanguard', note: 'A patched-up fighter hangar: gunmetal, flight-suit orange, green targeting readouts.', family: 'saga', sky: 'stars',
+      accent: 20, sat: 1.15, gold: 96, goldSat: 0.5, surface: 40, surfSat: 0.35, ink: 40, inkSat: 0.55, codex: 212,
+      fonts: { display: '"Saira Stencil One", "Barlow Condensed", system-ui, sans-serif', caps: COND, body: BODY, hud: HUD },
+      emblem: '<path d="M20 6L37 31H28.5L20 18.5L11.5 31H3Z" style="fill:rgb(var(--c-a5463f))"/><path d="M20 12.5L31 29H28.5L20 16.5L11.5 29H9Z" style="fill:rgb(var(--c-f6efe3))" fill-opacity=".9"/><path d="M13 35h14" style="stroke:rgb(var(--c-d9bf74))" stroke-width="2.4"/>',
       copy: {
         '@where': 'Calder Reach', 'Your move': 'Incoming', 'Awaiting you': 'Awaiting orders', 'Right now': 'In flight', 'At work': 'Squadrons engaged',
         'By folder': 'Sectors', 'Your projects': 'Star charts', 'Pick up where you left off': 'Flight log', 'Recent chats': 'Recent sorties',
@@ -29,13 +31,13 @@
         '{n} chat awaits you.': '{n} squadron awaits your orders.', '{n} chats await you.': '{n} squadrons await your orders.',
         '{n} chat at work.': '{n} squadron engaged.', '{n} chats at work.': '{n} squadrons engaged.', 'Working as': 'Flying as',
         'Claude & Codex, every chat and account in one place': 'Squadron command · every wing, every reserve', 'Search every chat…': 'Scan every channel…',
-        'Drifting petals': 'Starfield', 'A few slow petals behind the hub.': 'Stars and the odd hyperspace streak behind the hub.', 'Show the drifting petals': 'Show the starfield', 'Hide the drifting petals': 'Hide the starfield', 'Live': 'Comms',
+        'Drifting petals': 'Starfield', 'A few slow petals behind the hub.': 'A few faint stars behind the hub.', 'Show the drifting petals': 'Show the starfield', 'Hide the drifting petals': 'Hide the starfield', 'Live': 'Comms',
       },
     },
     {
-      id: 'dominion', name: 'Dominion', note: 'The admiral’s bridge: black, white and red, on a tactical grid.', family: 'saga', sky: 'grid',
-      accent: 358, sat: 1.75, gold: 205, goldSat: 0.16, surface: 220, surfSat: 0.12, ink: 210, inkSat: 0.25, codex: 188,
-      fonts: { display: '"Michroma", "Chakra Petch", system-ui, sans-serif', caps: '"Michroma", "Chakra Petch", system-ui, sans-serif', body: '"Chakra Petch", system-ui, -apple-system, sans-serif', hud: HUD },
+      id: 'dominion', name: 'Dominion', note: 'The admiral’s bridge: black steel, white light panels and warning red.', family: 'saga', sky: 'grid',
+      accent: 358, sat: 1.35, gold: 210, goldSat: 0.12, surface: 220, surfSat: 0.14, ink: 215, inkSat: 0.2, codex: 190,
+      fonts: { display: '"Michroma", "Barlow", system-ui, sans-serif', caps: '"Michroma", "Barlow", system-ui, sans-serif', body: BODY, hud: HUD },
       emblem: '<path d="M20 1.8L35.8 10.9V29.1L20 38.2L4.2 29.1V10.9Z" style="fill:rgb(var(--c-3d1a18));stroke:rgb(var(--c-a5463f))" stroke-width="1.6" stroke-linejoin="miter"/><path d="M20 6.5L31.7 13.25V26.75L20 33.5L8.3 26.75V13.25Z" fill="none" style="stroke:rgb(var(--c-d9bf74))" stroke-opacity=".45" stroke-width=".8"/><path d="M20 32L30.5 11.5L20 15.6L9.5 11.5Z" style="fill:rgb(var(--c-f6efe3))"/><path d="M20 15.6V32" style="stroke:rgb(var(--c-a5463f))" stroke-width="1.4"/>',
       copy: {
         '@where': 'Ostrava Line', 'Your move': 'Command required', 'Awaiting you': 'Awaiting orders', 'Right now': 'Deployed', 'At work': 'Fleet engaged',
@@ -45,14 +47,14 @@
         '{n} chat awaits you.': '{n} unit awaits your orders.', '{n} chats await you.': '{n} units await your orders.',
         '{n} chat at work.': '{n} unit deployed.', '{n} chats at work.': '{n} units deployed.', 'Working as': 'Commanding as',
         'Claude & Codex, every chat and account in one place': 'Fleet command · every unit, every reserve', 'Search every chat…': 'Query fleet records…',
-        'Drifting petals': 'Tactical grid', 'A few slow petals behind the hub.': 'A tactical grid and a slow sensor sweep behind the hub.', 'Show the drifting petals': 'Show the tactical grid', 'Hide the drifting petals': 'Hide the tactical grid', 'Live': 'Uplink',
+        'Drifting petals': 'Tactical grid', 'A few slow petals behind the hub.': 'A faint plotting grid behind the hub.', 'Show the drifting petals': 'Show the tactical grid', 'Hide the drifting petals': 'Hide the tactical grid', 'Live': 'Uplink',
       },
     },
     {
-      id: 'mirage', name: 'Mirage', note: 'A holo relay on a twin-sun dune world: blue light, sand and static.', family: 'saga', sky: 'holo',
-      accent: 196, sat: 1.35, gold: 36, goldSat: 0.8, surface: 24, surfSat: 1.05, ink: 38, codex: 302,
-      fonts: { display: '"Oxanium", "Exo 2", system-ui, sans-serif', caps: '"Oxanium", "Exo 2", system-ui, sans-serif', body: '"Exo 2", system-ui, -apple-system, sans-serif', hud: HUD },
-      emblem: '<circle cx="20" cy="20" r="18.5" style="fill:rgb(var(--c-3d1a18));stroke:rgb(var(--c-a5463f))" stroke-width="1.6"/><circle cx="15" cy="16.5" r="5" style="fill:rgb(var(--c-d9bf74))"/><circle cx="25.5" cy="19" r="3" style="fill:rgb(var(--c-f6efe3))" fill-opacity=".85"/><path d="M3 25.5C9 22 14 22.5 20 25S31 27.5 37 23.5V30C31 35 9 35 3 30Z" style="fill:rgb(var(--c-a5463f))" fill-opacity=".9"/><path d="M6 21.5h28" style="stroke:rgb(var(--c-f6efe3))" stroke-opacity=".35" stroke-width=".6"/>',
+      id: 'mirage', name: 'Mirage', note: 'A sandblasted relay outpost under twin suns: rust, dust and a faded blue holo.', family: 'saga', sky: 'dunes',
+      accent: 198, sat: 0.95, gold: 28, goldSat: 0.8, surface: 30, surfSat: 0.6, ink: 38, inkSat: 0.8, codex: 300,
+      fonts: { display: '"Barlow Semi Condensed", "Barlow", system-ui, sans-serif', caps: COND, body: BODY, hud: HUD },
+      emblem: '<rect x="2.5" y="5.5" width="35" height="29" rx="3" style="fill:rgb(var(--c-3d1a18));stroke:rgb(var(--c-a5463f))" stroke-width="1.6"/><circle cx="15" cy="17" r="5" style="fill:rgb(var(--c-d9bf74))"/><circle cx="25.5" cy="19.5" r="2.8" style="fill:rgb(var(--c-f6efe3))" fill-opacity=".85"/><path d="M4 27C10 23.5 15 24 21 26.5S31 28.5 36 25V33H4Z" style="fill:rgb(var(--c-a5463f))"/>',
       copy: {
         '@where': 'Sareth Flats', 'Your move': 'Incoming transmission', 'Awaiting you': 'Awaiting reply', 'Right now': 'Active signals', 'At work': 'Crews in the field',
         'By folder': 'Settlements', 'Your projects': 'Outposts', 'Pick up where you left off': 'Relay log', 'Recent chats': 'Recent transmissions',
@@ -61,14 +63,13 @@
         '{n} chat awaits you.': '{n} transmission awaits you.', '{n} chats await you.': '{n} transmissions await you.',
         '{n} chat at work.': '{n} crew in the field.', '{n} chats at work.': '{n} crews in the field.', 'Working as': 'Broadcasting as',
         'Claude & Codex, every chat and account in one place': 'Holo relay · every crew, every outpost', 'Search every chat…': 'Search the relay…',
-        'Drifting petals': 'Holo static and dunes', 'A few slow petals behind the hub.': 'Scanlines, drifting sand and twin suns behind the hub.', 'Show the drifting petals': 'Show the holo static', 'Hide the drifting petals': 'Hide the holo static', 'Live': 'Relay',
+        'Drifting petals': 'Dune horizon', 'A few slow petals behind the hub.': 'Twin suns low over the dunes, behind the hub.', 'Show the drifting petals': 'Show the dune horizon', 'Hide the drifting petals': 'Hide the dune horizon', 'Live': 'Relay',
       },
     },
   ];
-  const MARK = { vanguard: '▸', dominion: '◢', mirage: '◈' };
   for (const t of SAGA) {
     t.sfx = { needs: `/sounds/${t.id}-needs.mp3`, reply: `/sounds/${t.id}-reply.mp3`, engage: `/sounds/${t.id}-engage.mp3` };
-    Object.assign(t.copy, { '✦': MARK[t.id], 'Turned off automatically if Windows is set to reduce motion.': 'It holds still if your device is set to reduce motion.' });
+    Object.assign(t.copy, { '✦': '', 'Turned off automatically if Windows is set to reduce motion.': 'It never moves, so it stays on when your device is set to reduce motion.' });
   }
 
   // accent: hue for the main color · sat: its strength · gold: hue for highlights · surface: hue

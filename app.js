@@ -1899,8 +1899,8 @@ async function setLocal(k, on) {
 }
 function applyMotion() { document.body.classList.toggle('motion', motionOk()); }
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => { applyMotion(); petals(); });
-// Behind the hub: drifting petals, or a saga theme's sky (stars, a tactical grid, holo static and dunes).
-// A sky still shows when the device asks for less motion; it just holds still.
+// Behind the hub: drifting petals, or a saga theme's sky (faint stars, a plotting grid, a dune horizon).
+// A sky never moves, so it still shows when the device asks for less motion.
 function petals() {
   const box = $('petals'), sky = Look.theme().sky || '';
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1933,21 +1933,9 @@ function starTile(seed, size, n, big) {
   return `--tile:${size}px;background-image:${dots.join(',')};background-size:${size}px ${size}px`;
 }
 function skyHtml(kind) {
-  const rr = seeded(kind), r = () => rr();
-  const stars = `<div class="sky-stars s1" style="${starTile('a', 487, 26, 1)}"></div><div class="sky-stars s2" style="${starTile('b', 613, 16, 1.5)}"></div>`;
-  if (kind === 'hyperspace') {
-    let h = `${stars}<div class="sky-stars s3" style="${starTile('c', 797, 9, 2.4)}"></div><div class="sky-glow"></div>`;
-    for (let i = 0; i < 7; i++) h += `<i class="streak" style="--a:${Math.round(r('a', i) * 360)}deg;--w:${Math.round(120 + r('w', i) * 240)}px;--d:${(10 + r('d', i) * 14).toFixed(1)}s;--delay:-${(r('t', i) * 24).toFixed(1)}s"></i>`;
-    return h;
-  }
-  if (kind === 'grid') {
-    let h = `<div class="sky-stars s1" style="${starTile('g', 541, 22, 1)}"></div><div class="sky-grid"></div><div class="sky-sweep"></div>`;
-    for (let i = 0; i < 6; i++) h += `<i class="pip ${i % 3 === 0 ? 'foe' : ''}" style="--x:${Math.round(55 + r('x', i) * 40)}vw;--y:${Math.round(45 + r('y', i) * 48)}vh;--delay:-${(r('t', i) * 6).toFixed(1)}s"></i>`;
-    return h;
-  }
-  let h = `<div class="sky-stars s1" style="${starTile('h', 523, 20, 1)}"></div><div class="sky-suns"><i></i><i></i></div><div class="sky-dunes"></div>`;
-  for (let i = 0; i < 8; i++) h += `<i class="mote" style="--y:${Math.round(62 + r('y', i) * 34)}vh;--d:${(18 + r('d', i) * 22).toFixed(1)}s;--delay:-${(r('t', i) * 40).toFixed(1)}s;--s:${(1 + r('s', i) * 1.6).toFixed(1)}px"></i>`;
-  return `${h}<div class="sky-scan"></div><div class="sky-roll"></div>`;
+  if (kind === 'grid') return `<div class="sky-stars" style="${starTile('g', 541, 12, 0.8)}"></div><div class="sky-grid"></div>`;
+  if (kind === 'dunes') return `<div class="sky-stars" style="${starTile('h', 523, 12, 0.9)}"></div><div class="sky-suns"><i></i><i></i></div><div class="sky-dunes"></div>`;
+  return `<div class="sky-stars" style="${starTile('a', 487, 20, 1)}"></div><div class="sky-stars far" style="${starTile('b', 613, 12, 1.4)}"></div>`;
 }
 // Text written into the page itself (index.html) that a saga theme rewords.
 function sayStatic() {

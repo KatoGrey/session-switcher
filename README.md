@@ -315,23 +315,23 @@ Appearance is saved on each device, so your phone and your PC can look different
 
 ### Space saga themes
 
-Three more themes turn the hub into a fleet you command. Each one has a light and a dark version, and Codex keeps its own color in all of them.
+Three more themes give the hub the look of a worn, working starship: flat matte panels, stencilled labels and readout type, with no glow. They stay quiet so the work stays in front. Each has a light and a dark version, and Codex keeps its own color in all of them.
 
 | Theme | Feel | Lettering | Behind the hub |
 |---|---|---|---|
-| **Vanguard** | A starfighter cockpit: amber HUD, teal targeting reticles | Orbitron, Exo 2 | Stars streaming past, the odd jump streak |
-| **Dominion** | The admiral's bridge: black, white and red, hard angles and cut corners | Michroma, Chakra Petch | A tactical grid with a slow sensor sweep and contacts |
-| **Mirage** | A holo relay on a twin-sun dune world: flickering blue light, sand and static | Oxanium, Exo 2 | Scanlines, drifting sand, twin suns over the dunes |
+| **Vanguard** | A patched-up fighter hangar: gunmetal, flight-suit orange, green targeting readouts | Saira Stencil One headings, Barlow Condensed names, Barlow text | A few faint stars |
+| **Dominion** | The admiral's bridge: black steel, white light panels, warning red, square corners | Michroma headings and names, Barlow text | A faint plotting grid in one corner |
+| **Mirage** | A sandblasted relay outpost: rust, dust and a faded blue holo | Barlow Semi Condensed headings, Barlow Condensed names, Barlow text | Twin suns low over a dune horizon |
 
 Beyond colors, a saga theme brings:
 
-- **Its own lettering:** a display face for headings and a HUD mono for labels. **Modern** and **Clean** still swap the reading font (Clean the headings too).
-- **A sky in place of the petals.** The petals switch turns it off, and its label changes with the theme. When your device asks for less motion, or **Animations** is off, the sky stays but holds still.
-- **HUD framing:** corner brackets on the hero, cards, dials, messages and the message box, and an emblem in place of the seal.
+- **Its own lettering:** display fonts for the hero and section titles, a condensed face for names, Barlow for reading, and Share Tech Mono for labels and readouts. **Modern** and **Clean** still swap the reading font (Clean the headings too).
+- **Plain panels instead of the default theme's ornaments.** Cards get a status band along the top. The hero is a bolted plate with a short hazard stripe, and a project without a picture gets a bare hull plate with its bay letter. The fleurons, the turning seal, the dial numerals and the painted project art are left out, and pictures you chose for projects are toned down to match. Each theme has its own emblem in place of the seal.
+- **A still background in place of the petals.** It never moves. The petals switch turns it off, and the switch's label changes with the theme.
 - **Its own words,** for example "Awaiting you" becomes "Awaiting orders" and "Accounts and usage" becomes "Fleet reserves". Each theme keeps its words in one `copy` map in `theme.js`, keyed by the app's own text, so they're easy to change. The other themes keep the usual words.
 - **Short sound cues** in place of the bell when a chat needs you or replies, plus one when you pick the theme. They follow the chime setting.
 
-Screenshots are in [`docs/themes/`](docs/themes/). They use made-up chats, and the chat window is shown in its read-only watch view. The fonts are under the SIL Open Font License (`fonts/OFL.txt`). The sounds are from Kenney's CC0 packs; `sounds/LICENSE-kenney.txt` lists which pack and file each comes from.
+Screenshots are in [`docs/themes/`](docs/themes/). They use made-up chats and projects, and the chat window is shown in its read-only watch view. The fonts are under the SIL Open Font License (`fonts/OFL.txt`). The sounds are from Kenney's CC0 packs; `sounds/LICENSE-kenney.txt` lists which pack and file each comes from.
 
 ## Alerts
 
