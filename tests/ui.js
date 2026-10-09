@@ -423,6 +423,44 @@ module.exports = [
     },
   },
   {
+    name: 'undo',
+    // What a reply changed: a bar under it, the changes, and Undo (which the assistant then hears about).
+    async run(t) {
+      const calls = [];
+      const files = [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 1, del: 1 }, { path: 'data/balance/party.json', status: 'changed', add: 2, del: 0 }, { path: 'notes/rally.md', status: 'added', add: 4, del: 0 }];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]), events: [{ kind: 'changes', turn: 0, files, more: 0 }] });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const bar = await b.eval(`const c = document.querySelector('.chg'); return c && { text: c.textContent.replace(/\\s+/g, ' ').trim(), under: c.closest('.turn')?.dataset.prov }`);
+      t.check('a reply that changed files says which, under it', bar && bar.under === 'claude' && /^Changed 3 files songs\.lua \+1 −1 · party\.json \+2 −0 · rally\.md new See the changes ?Undo$/.test(bar.text), bar);
+      await t.shot(b, 'bar');
+      await b.clickOn('.chg [data-c="chgview"]'); await sleep(800);
+      const dlg = await b.eval(`return { open: document.getElementById('chgDlg').open, title: chgTitle.textContent, add: [...document.querySelectorAll('.chg-diff .dl.add')].map(x => x.textContent)[0], del: [...document.querySelectorAll('.chg-diff .dl.del')].map(x => x.textContent)[0] }`);
+      t.check('“See the changes” shows each file’s changes', dlg.open && /What Claude changed \(3 files\)/.test(dlg.title) && /rally\.stacks = false/.test(dlg.add) && /rally\.stacks = true/.test(dlg.del), dlg);
+      await t.shot(b, 'diff');
+      await b.eval(`document.getElementById('chgDlg').close(); return 1`);
+
+      await b.clickOn('.chg [data-c="chgundo"]'); await sleep(300);
+      t.check('Undo asks first', /^Undo the changes from this reply\?/.test(await b.eval(`return cfQ.textContent`)));
+      await b.clickOn('#cfYes'); await sleep(500);
+      t.check('then puts the files back', calls.some(([p, body]) => p === '/api/chat/undo' && body.key === 'k-bard' && body.turn === 0 && !body.force));
+      const ask = await b.eval(`return document.getElementById('confirmDlg').open ? cfQ.textContent + ' | ' + cfX.textContent : ''`);
+      t.check('a file changed since is left alone, and you’re asked about it', /^party\.json has changed since this reply, so it was left as it is\. \| Undo it anyway\? Whatever changed since is lost: party\.json\.$/.test(ask), ask);
+      await b.clickOn('#cfYes'); await sleep(500);
+      t.check('“Undo anyway” forces it', calls.some(([p, body]) => p === '/api/chat/undo' && body.force === true));
+      await b.eval(`handle({ kind: 'undone', turn: 0, restored: ['scripts/bard/songs.lua', 'data/balance/party.json', 'notes/rally.md'], skipped: [], seq: 400 }); return 1`); await sleep(200);
+      t.check('the bar says it’s undone', /Undone: 3 files put back/.test(await b.eval(`return document.querySelector('.chg').textContent`)) && !(await b.eval(`return !!document.querySelector('.chg [data-c="chgundo"]')`)));
+
+      // Claude hears about it with your next message (even in a chat without Codex).
+      await b.eval(`const ta = document.getElementById('cText'); ta.focus(); ta.value = 'Try a gentler fix.'; return 1`);
+      await b.key('Enter', 'Enter', 13); await sleep(500);
+      const sent = calls.filter(([p]) => p === '/api/chat/send').at(-1);
+      t.check('your next message tells Claude what was undone', sent && /^<shared-context items="\d+">/.test(sent[1].text) && /The user undid the file changes from your earlier reply: scripts\/bard\/songs\.lua, data\/balance\/party\.json, notes\/rally\.md are back as before it\./.test(sent[1].text) && sent[1].text.endsWith('Try a gentler fix.'), sent && sent[1].text.slice(0, 300));
+      await b.eval(`const ta = document.getElementById('cText'); ta.value = 'And another thing.'; return 1`);
+      await b.key('Enter', 'Enter', 13); await sleep(500);
+      t.check('only once', !/undid the file changes/.test(calls.filter(([p]) => p === '/api/chat/send').at(-1)[1].text));
+    },
+  },
+  {
     name: 'mentions',
     // "@" and a few letters: the project's files, put in the message as a path.
     async run(t) {

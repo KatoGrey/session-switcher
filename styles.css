@@ -1816,3 +1816,24 @@ details.shared[open] summary{margin-bottom:6px}
 .ro-in li small{margin-left:10px;font:400 11px var(--f-mono);color:var(--ash)}
 .ro-b{display:flex;gap:8px}
 
+/* ---------- what each reply changed, and undo ---------- */
+.chg{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin:10px 0 2px;padding:8px 12px;border:1px solid var(--seam);border-radius:7px;background:var(--vellum);font-size:13.5px}
+.chg-h{font:500 10.5px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--parch-2)}
+.chg-f{flex:1 1 240px;min-width:0;color:var(--ash);font:400 12px/1.5 var(--f-mono)}
+.chg-f small{opacity:.9}
+.chg-b{display:flex;gap:4px}
+.chg.undone{opacity:.75}
+.chg.undone .chg-h{color:rgb(var(--c-7fb79a))}
+.d-add{font-style:normal;color:rgb(var(--c-7fb79a))}
+.d-del{font-style:normal;color:var(--ember)}
+.chg-dlg{width:min(980px,calc(100vw - 32px))}
+.chg-body{padding:6px 22px 20px;max-height:calc(100vh - 150px);overflow:auto}
+.chg-file{margin:0 0 16px}
+.chg-fh{margin:0 0 6px;font:400 13px var(--f-mono);color:var(--parch)}
+.chg-fh small{margin-left:8px;color:var(--ash)}
+.chg-diff{margin:0;padding:8px 0;max-height:420px;overflow:auto;border:1px solid var(--seam);border-radius:7px;background:rgb(var(--c-100e12));font:400 12.5px/1.5 var(--f-mono)}
+.chg-diff .dl{display:block;padding:0 12px;white-space:pre;color:var(--parch-2)}
+.chg-diff .dl.add{background:rgb(var(--c-7fb79a) / .12);color:rgb(var(--c-c9e8d6))}
+.chg-diff .dl.del{background:rgb(var(--c-cf8274) / .12);color:rgb(var(--c-e7b2a8))}
+.chg-diff .dl.hunk{color:rgb(var(--c-7fa3dc));margin-top:6px}
+

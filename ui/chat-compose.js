@@ -267,8 +267,8 @@ async function sendMessage() {
   $c('cSend').disabled = true;
   try {
     // Each one is caught up on what it missed (worked out before either message goes).
-    const forMain = duo() && target !== 'comp' ? withCatchUp('main', text) : text;
-    const forComp = duo() && target !== 'main' ? withCatchUp('comp', text) : text;
+    const forMain = (duo() || C.undoNotes.main.length) && target !== 'comp' ? withCatchUp('main', text) : text;
+    const forComp = (duo() || C.undoNotes.comp.length) && target !== 'main' ? withCatchUp('comp', text) : text;
     if (target === 'both') {
       const comp = await ensureCompanion();
       await Promise.all([api('/api/chat/send', { key: C.key, text: forMain, images }), api('/api/chat/send', { key: comp.key, text: forComp, images })]);

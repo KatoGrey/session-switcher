@@ -623,6 +623,10 @@ async function handleApi(req, res, url, remote = false) {
     }
     return send(res, 200, await chatLib.readHistory(file, { until: q.get('until') || null, cursor: q.get('cursor'), limit: 60 }));
   }
+  if (route === 'GET /api/chat/diff') {
+    const q = url.searchParams;
+    return send(res, 200, { diff: await chats.get(q.get('key')).turnDiff(q.get('turn'), q.get('path')) });
+  }
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
   if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
@@ -1180,7 +1184,9 @@ async function handleChat(req, res, url, body, c) {
       const text = typeof body.text === 'string' ? body.text.slice(0, 200000) : '';
       const images = validImages(body.images);
       if (!text.trim() && !images.length) throw fail(400, 'Type a message or attach an image.');
-      chats.get(body.key).send(text, images);
+      const chat = chats.get(body.key);
+      await chat.beforeTurn();   // a snapshot first, so its reply's changes can be shown and undone
+      chat.send(text, images);
       return send(res, 200, { ok: true });
     }
     case '/api/chat/permission': {
@@ -1197,6 +1203,7 @@ async function handleChat(req, res, url, body, c) {
     }
     case '/api/chat/interrupt': await chats.get(body.key).interrupt(); return send(res, 200, { ok: true });
     case '/api/chat/compact': await chats.get(body.key).compact(); return send(res, 200, { ok: true });
+    case '/api/chat/undo': return send(res, 200, await chats.get(body.key).undoTurn(body.turn, !!body.force));
     case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base));
     case '/api/chat/mode': {
       const chat = chats.get(body.key);

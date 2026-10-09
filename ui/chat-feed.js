@@ -9,6 +9,8 @@ const C = {
   comp: null, compThread: null, target: 'main', mi: { main: null, comp: null },
   // How full each one's context window is (see setCtx), and whether we've offered to summarize.
   ctx: { main: null, comp: null }, ctxWarned: {},
+  // Files put back with Undo, for each one's next catch-up.
+  undoNotes: { main: [], comp: [] },
 };
 const PROV_NAME = { claude: 'Claude', codex: 'Codex' };
 const codexOK = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);

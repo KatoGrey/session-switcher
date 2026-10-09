@@ -121,7 +121,7 @@ function reset() {
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
-  C.ctx = { main: null, comp: null }; C.ctxWarned = {};
+  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.undoNotes = { main: [], comp: [] };
   Review.loop = null;
   closePick();
   $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
@@ -334,6 +334,8 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
       case 'stop': C.interruptedAt = Date.now(); return Promise.all(targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting')).map(x => api('/api/chat/interrupt', { key: x.key })));
       case 'compact': return compactNow(c.dataset.src || 'main');
+      case 'chgview': return viewChanges(c.closest('.chg'));
+      case 'chgundo': return undoChanges(c.closest('.chg'));
       case 'review': return startReview(c.dataset.base || null);
       case 'limitas': return continueAs(c.dataset.acct);
       case 'limitcodex': return handToCodex();

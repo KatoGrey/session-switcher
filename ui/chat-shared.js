@@ -19,7 +19,8 @@ const clipMiddle = (s, n) => (s.length <= n ? s : `${s.slice(0, Math.round(n * 0
 // Who has heard a message in the feed: the one who wrote it, or the one(s) it was sent to.
 function heardBy(el) {
   if (el.classList.contains('umsg')) return el.classList.contains('to-both') ? ['main', 'comp'] : el.classList.contains('to-codex') ? ['comp'] : ['main'];
-  if (el.classList.contains('turn')) return [(el.dataset.prov || C.provider) === 'codex' ? 'comp' : 'main'];
+  // A reply: the chat's own assistant is 'main' (Claude, or Codex in a Codex chat); the helper is 'comp'.
+  if (el.classList.contains('turn')) return [(el.dataset.prov || C.provider) === C.provider ? 'main' : 'comp'];
   return null;
 }
 // "edited cart.js, README.md; ran 3 commands", from a reply's steps.
@@ -44,6 +45,11 @@ function catchUp(to) {
     els.unshift(el);
   }
   const entries = [];
+  const undone = (C.undoNotes && C.undoNotes[to]) || [];
+  if (undone.length) {
+    const files = [...new Set(undone.flat())];
+    entries.push(`The user undid the file changes from your earlier reply: ${files.join(', ')} ${files.length === 1 ? 'is' : 'are'} back as before it. Check ${files.length === 1 ? 'it' : 'them'} again before building on that work.`);
+  }
   for (const el of els) {
     if (el.classList.contains('umsg')) {
       const own = (RAW.get(el) || '').trim(); if (!own) continue;
@@ -59,11 +65,13 @@ function catchUp(to) {
   for (let i = entries.length - 1, total = 0; i >= 0; i--) { total += entries[i].length; if (total > SHARE_MAX && keep.length) break; keep.unshift(entries[i]); }
   if (!keep.length) return null;
   const other = to === 'comp' ? 'Claude' : 'Codex';
-  return { items: keep.length, text: `You and ${other} share this chat; the user sees you both. Since your last message:\n\n${keep.join('\n\n')}` };
+  const shared = duo() ? `You and ${other} share this chat; the user sees you both. ` : '';
+  return { items: keep.length, text: `${shared}Since your last message:\n\n${keep.join('\n\n')}` };
 }
 // The message as sent to `to`: what it missed, then what you wrote.
 function withCatchUp(to, text) {
   const c = catchUp(to);
+  if (C.undoNotes) C.undoNotes[to] = [];
   return c ? `<shared-context items="${c.items}">\n${c.text}\n</shared-context>\n\n${text}` : text;
 }
 

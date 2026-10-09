@@ -128,6 +128,8 @@ function handleEvent(ev, src) {
     case 'context': setCtx(src, ev); break;
     case 'review': if (!comp) { reviewLoopStep(ev); renderReview(ev); } break;
     case 'limit': if (!comp) renderLimit(ev); break;
+    case 'changes': renderChanges(ev, src); break;
+    case 'undone': renderUndone(ev, src); break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
     case 'stream_start': withStick(() => part(feed, ev.mid)); break;
     case 'delta':

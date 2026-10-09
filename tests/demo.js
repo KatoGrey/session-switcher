@@ -170,6 +170,9 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
     }
     if (p === '/api/chat/model') return { body: { ...info } };
+    if (p === '/api/chat/diff') return { body: { diff: `diff --git a/${q.get('path')} b/${q.get('path')}\nindex 1..2 100644\n--- a/${q.get('path')}\n+++ b/${q.get('path')}\n@@ -12,3 +12,3 @@ function rally(party)\n   local bonus = 0.15\n-  rally.stacks = true\n+  rally.stacks = false  -- one Rally per party\n   return bonus\n` } };
+    // Undo: the first time, one file changed since is left alone; forced, it goes too.
+    if (p === '/api/chat/undo') return { body: body.force ? { restored: ['data/balance/party.json'], skipped: [] } : { restored: ['scripts/bard/songs.lua'], skipped: [{ path: 'data/balance/party.json', why: 'changed since' }] } };
     if (p === '/api/files/list') return { body: { cwd: bard, files: ['README.md', 'PATCH-NOTES.md', 'scripts/bard/songs.lua', 'scripts/bard/encore.lua', 'scripts/party/rally.lua', 'data/balance/party.json', 'art/harvest-festival.png', 'docs/Song list.md'] } };
     if (p === '/api/rules' && method === 'GET') return { body: rulesOut() };
     if (p === '/api/rules') { for (const k of body.to || []) rules[k] = { ...rules[k], exists: true, text: body.text.endsWith('\n') ? body.text : `${body.text}\n` }; return { body: rulesOut() }; }

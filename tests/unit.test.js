@@ -288,6 +288,83 @@ test('mentions: without git, a walk that skips package and build folders', async
   assert.deepEqual([...(await listFiles(dir))].sort(), ['index.html', 'js/main.js']);
 });
 
+/* ---------- what a reply changed, and undoing it ---------- */
+const snaps = require('../lib/snapshots');
+
+test('snapshots: see what changed between two moments, without touching git’s own state', async () => {
+  const dir = repo();
+  put(dir, '.gitignore', 'secret.env\n');
+  put(dir, 'a.js', 'one\n'); put(dir, 'b.js', 'keep\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  put(dir, 'staged.js', 'mine\n'); gitIn(dir, 'add', 'staged.js');           // you've staged something
+  const top = await snaps.topOf(dir);
+  assert.equal(path.resolve(top).toLowerCase(), path.resolve(dir).toLowerCase());
+  const headBefore = gitIn(dir, 'rev-parse', 'HEAD'), indexBefore = gitIn(dir, 'diff', '--cached', '--name-only');
+  const before = await snaps.snapshot(top);
+  // "The reply": edits a.js, adds c.js, deletes b.js, writes an ignored file.
+  put(dir, 'a.js', 'one\ntwo\n'); put(dir, 'c.js', 'new\n'); fs.rmSync(path.join(dir, 'b.js')); put(dir, 'secret.env', 'TOKEN=x');
+  const after = await snaps.snapshot(top);
+  const ch = await snaps.changes(top, before, after);
+  assert.deepEqual(ch.map(c => `${c.status}:${c.path}:${c.add}:${c.del}`).sort(), ['added:c.js:1:0', 'changed:a.js:1:0', 'deleted:b.js:0:1']);
+  assert.match(await snaps.diff(top, before, after, 'a.js'), /^\+two$/m);
+  assert.equal(gitIn(dir, 'rev-parse', 'HEAD'), headBefore, 'no commits made');
+  assert.equal(gitIn(dir, 'diff', '--cached', '--name-only'), indexBefore, 'what you staged is as it was');
+  assert.equal(await snaps.topOf(tmp()), null, 'not a git project');
+});
+
+// (Compared without line endings: a restored file comes back the way git checks files out on this
+// machine, which with core.autocrlf on Windows means CRLF.)
+const readLF = p => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+test('snapshots: undo puts back exactly what the reply changed; later edits are kept unless you insist', async () => {
+  const dir = repo();
+  put(dir, 'a.js', 'one\n'); put(dir, 'b.js', 'keep\n'); put(dir, 'd.js', 'd\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  const top = await snaps.topOf(dir);
+  const before = await snaps.snapshot(top);
+  put(dir, 'a.js', 'one\ntwo\n'); put(dir, 'c.js', 'new\n'); fs.rmSync(path.join(dir, 'b.js')); put(dir, 'd.js', 'd2\n');
+  const after = await snaps.snapshot(top);
+  put(dir, 'd.js', 'd3 (you edited it after)\n');
+  const files = (await snaps.changes(top, before, after)).map(c => c.path);
+  const r = await snaps.restore(top, before, after, files);
+  assert.deepEqual(r.restored.sort(), ['a.js', 'b.js', 'c.js']);
+  assert.deepEqual(r.skipped, [{ path: 'd.js', why: 'changed since' }]);
+  assert.equal(readLF(path.join(dir, 'a.js')), 'one\n');
+  assert.equal(readLF(path.join(dir, 'b.js')), 'keep\n', 'a deleted file comes back');
+  assert.ok(!fs.existsSync(path.join(dir, 'c.js')), 'an added file goes');
+  assert.equal(readLF(path.join(dir, 'd.js')), 'd3 (you edited it after)\n');
+  const forced = await snaps.restore(top, before, after, ['d.js'], { force: true });
+  assert.deepEqual(forced.restored, ['d.js']);
+  assert.equal(readLF(path.join(dir, 'd.js')), 'd\n');
+  assert.deepEqual((await snaps.restore(top, before, after, ['../outside.js'])).skipped, [{ path: '../outside.js', why: 'outside the project' }]);
+});
+
+test('a chat: snapshot before your message, its changes when the reply ends, and undo', async () => {
+  const { LiveChat } = require('../lib/chat');
+  const dir = repo();
+  put(dir, 'game.lua', 'rally = 0.15\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  // A chat that never starts Claude Code: just its bookkeeping.
+  const chat = new LiveChat({ cfg: {}, account: { id: 'main', name: 'Main' }, cwd: dir, log: () => {} });
+  chat.state = 'ready';
+  await chat.beforeTurn();
+  assert.ok(chat.snap.pending && chat.snap.top, 'a snapshot is taken');
+  put(dir, 'game.lua', 'rally = 0.10\n'); put(dir, 'notes.md', 'Rally no longer stacks.\n');
+  await chat.afterTurn();
+  const ev = chat.buffer.find(e => e.kind === 'changes');
+  assert.deepEqual(ev.files.map(f => `${f.status}:${f.path}`).sort(), ['added:notes.md', 'changed:game.lua']);
+  assert.match(await chat.turnDiff(ev.turn, 'game.lua'), /^-rally = 0\.15$/m);
+  await assert.rejects(chat.turnDiff(ev.turn, 'other.lua'), /wasn’t changed by this reply/);
+  const r = await chat.undoTurn(ev.turn);
+  assert.deepEqual(r.restored.sort(), ['game.lua', 'notes.md']);
+  assert.equal(readLF(path.join(dir, 'game.lua')), 'rally = 0.15\n');
+  assert.ok(!fs.existsSync(path.join(dir, 'notes.md')));
+  assert.ok(chat.buffer.some(e => e.kind === 'undone' && e.turn === ev.turn));
+  // A reply that changes nothing says nothing; a chat outside git never snapshots.
+  await chat.beforeTurn(); await chat.afterTurn();
+  assert.equal(chat.buffer.filter(e => e.kind === 'changes').length, 1);
+  const plain = new LiveChat({ cfg: {}, account: { id: 'main', name: 'Main' }, cwd: tmp(), log: () => {} });
+  plain.state = 'ready';
+  await plain.beforeTurn();
+  assert.equal(plain.snap.pending, null);
+});
+
 /* ---------- what a review looks at ---------- */
 const { reviewTarget, EMPTY_TREE } = require('../lib/review');
 const { execFileSync } = require('child_process');
