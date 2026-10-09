@@ -237,6 +237,7 @@ Codex works with more than one ChatGPT account, and with Ollama:
 - **Which one new Codex chats use:** the top bar's account list has a row for each. Click one, or use any button on its card, and new Codex chats open as it (its card says **new Codex chats**). A chat you reopen continues as the account that last opened it.
 - **One chat list:** every Codex account sees the same chats, history, settings and skills. Each extra account has its own folder, `~/.codex-<name>`, holding only its sign-in and what a running Codex keeps for itself; everything else links to `~/.codex`. Removing an account keeps that folder, so adding it again later keeps its sign-in.
 - Each account has its own usage dial, in a Codex shade of its own.
+- The Ollama account's settings are a copy of `~/.codex/ollama-launch.config.toml` (what `ollama launch codex` writes), in `~/.codex-ollama/config.toml`. Edit that copy to change its default model, or delete it and Session Switcher makes a fresh copy the next time it starts Codex for Ollama.
 
 ## Claude and Codex in one chat
 
