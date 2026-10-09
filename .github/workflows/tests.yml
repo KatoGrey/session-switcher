@@ -1,0 +1,37 @@
+name: Tests
+
+# Every push and pull request runs the whole test suite on Windows and on a Mac.
+on:
+  push:
+    paths-ignore:
+      - 'mobile/**'
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - 'mobile/**'
+      - '**.md'
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run the tests
+        run: node tests/run.js
+        env:
+          SHOTS: shots
+      - name: Keep the screenshots if something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ matrix.os }}
+          path: shots

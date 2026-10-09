@@ -26,8 +26,12 @@ const remoteLib = require('./lib/remote');
 const APP_VERSION = '5.4.1';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
 const APP_DIR = __dirname;
-const CONFIG_FILE = path.join(APP_DIR, 'accounts.json');
-const LOG_FILE = path.join(APP_DIR, 'switcher.log');
+// Your accounts, history and settings live next to the app, unless SWITCHER_DATA_DIR points
+// elsewhere (the tests use a throwaway folder, so they never touch your real data).
+const DATA_DIR = process.env.SWITCHER_DATA_DIR ? path.resolve(process.env.SWITCHER_DATA_DIR) : APP_DIR;
+fs.mkdirSync(DATA_DIR, { recursive: true });
+const CONFIG_FILE = path.join(DATA_DIR, 'accounts.json');
+const LOG_FILE = path.join(DATA_DIR, 'switcher.log');
 const TOKEN = crypto.randomBytes(24).toString('hex');
 const ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
 const EMAIL_RE = /^[A-Za-z0-9._+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
@@ -59,9 +63,9 @@ function save() {
   try { cfgMtime = fs.statSync(CONFIG_FILE).mtimeMs; } catch { /* ignore */ }
 }
 
-const sessions = createSessionStore({ root: path.join(config().mainConfigDir, 'projects'), dataDir: APP_DIR, log });
-const projectInfo = projectsLib.createProjects({ dataDir: APP_DIR, log });
-const chatPrefs = prefsLib.createChatPrefs({ dataDir: APP_DIR, log });
+const sessions = createSessionStore({ root: path.join(config().mainConfigDir, 'projects'), dataDir: DATA_DIR, log });
+const projectInfo = projectsLib.createProjects({ dataDir: DATA_DIR, log });
+const chatPrefs = prefsLib.createChatPrefs({ dataDir: DATA_DIR, log });
 
 // ---------- live updates ----------
 
@@ -1174,7 +1178,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
 const server = http.createServer((req, res) => { handleRequest(req, res); });
 
 // Phone access: off unless turned on in Setup.
-const phone = remoteLib.createRemote({ dataDir: APP_DIR, appDir: APP_DIR, version: APP_VERSION, log, getPrefs: () => config().prefs, handle: handleRequest });
+const phone = remoteLib.createRemote({ dataDir: DATA_DIR, appDir: APP_DIR, version: APP_VERSION, log, getPrefs: () => config().prefs, handle: handleRequest });
 
 const appUrl = `http://127.0.0.1:${PORT}/`;
 server.on('error', err => {

@@ -494,7 +494,8 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
 - `mobile/android/`: the Android app (a small WebView remote) and its build script.
 - `mobile/ios/`: the iPhone app (a small WebView remote), as an XcodeGen project.
 - `Session Switcher.command`, `macos/`: the Mac launcher and the icon for the app it makes in Applications.
-- Created as you use it:
+- `tests/`: the tests (see **Testing changes** below).
+- Created as you use it (next to the app, or in the folder `SWITCHER_DATA_DIR` names):
   - `accounts.json`: your accounts and preferences.
   - `history.json`: which account last opened each chat.
   - `chat-names.json`: your chat renames.
@@ -506,3 +507,14 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `switcher.log`: the app's log.
 
 Session Switcher never edits your chat files.
+
+## Testing changes
+
+`npm test` (or `node tests/run.js`) checks everything, with no packages to install. It needs Node.js 22 or newer and Edge or Chrome.
+
+- **Logic checks** (`tests/unit.test.js`): "Make a copy to share" never takes anything personal, the file viewer never opens sign-in files or keys, phone pairing codes work once, and long chats page back without gaps or repeats.
+- **Browser checks** (`tests/ui.js`): a headless browser clicks and types through menus, dialogs, the chat window, the model picker, every theme (light and dark, checking the text is readable) and the phone layout. They run against a made-up demo world (`tests/demo.js`), never your own chats.
+- The tests start their own copy of the app on a free port with a throwaway data folder, so they never touch the Session Switcher you're using.
+- `node tests/run.js chat menus` runs only the named browser checks; `SHOTS=folder` also saves screenshots.
+
+GitHub runs the same tests on Windows and on a Mac for every push and pull request.

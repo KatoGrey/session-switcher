@@ -1,0 +1,9 @@
+{
+  "name": "session-switcher",
+  "private": true,
+  "description": "Every Claude Code and Codex chat on this computer, in one place, as whichever account you choose.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/run.js"
+  }
+}
