@@ -451,7 +451,7 @@ function codexNewMenu(anchor) {
   showMenu(anchor, folders.map(p => ({ label: p.name, hint: p.cwd, run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: 'codex' }) })));
 }
 async function addCodexAccount(kind) {
-  const name = (prompt(kind === 'ollama' ? 'Name for the Ollama account:' : 'Name for this Codex account (for example “Work” or “Personal”):', kind === 'ollama' ? 'Ollama' : '') || '').trim();
+  const name = ((await ask(kind === 'ollama' ? 'Add an Ollama account' : 'Add a Codex account', kind === 'ollama' ? 'A name for it, as it shows on its card.' : 'A name for it, as it shows on its card, for example “Work” or “Personal”.', kind === 'ollama' ? 'Ollama' : '', 'Add account')) || '').trim();
   if (!name) return;
   const r = await api('/api/codex/accounts', { name, kind });
   S.codex = r.codex; renderAll();
@@ -469,7 +469,7 @@ function codexMenu(anchor) {
     { label: 'Add another Codex account', hint: 'a second ChatGPT sign-in; chats stay shared', run: () => addCodexAccount('chatgpt') },
     ...(codexAccts().some(x => x.kind === 'ollama') ? [] : [{ label: 'Add Ollama', hint: 'Codex with ollama.com cloud models', run: () => addCodexAccount('ollama') }]),
     ...(extra ? [
-      { label: 'Rename…', run: async () => { const n = (prompt('New name:', c.name) || '').trim(); if (!n || n === c.name) return; const r = await api('/api/codex/accounts/rename', { id: c.id, name: n }); S.codex = r.codex; renderAll(); } },
+      { label: 'Rename…', run: async () => { const n = ((await ask('Rename this account', 'Only changes the name shown here.', c.name, 'Rename')) || '').trim(); if (!n || n === c.name) return; const r = await api('/api/codex/accounts/rename', { id: c.id, name: n }); S.codex = r.codex; renderAll(); } },
       { label: 'Remove from the list', hint: 'its sign-in folder stays', run: async () => { if (!(await appConfirm(`Remove ${c.name} from Session Switcher?\n\nIts chats stay. Its sign-in stays in ~/.${c.id} if you add it again.`, { ok: 'Remove', danger: true }))) return; const r = await api('/api/codex/accounts/remove', { id: c.id }); S.codex = r.codex; renderAll(); } },
     ] : []),
     '-',

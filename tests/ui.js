@@ -49,6 +49,20 @@ module.exports = [
       await b.eval(`window._r = 'pending'; appConfirm('Go?', { ok: 'Go' }).then(v => window._r = v); return 1`); await sleep(150);
       await b.clickOn('#cfYes');
       t.check('confirm: OK answers yes', (await b.eval(`return window._r`)) === true);
+      // Enter confirms: an ordinary question, and a box asking for a name (it used to land on Cancel).
+      const enter = async () => { await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' }); await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); await sleep(200); };
+      await b.eval(`window._r = 'pending'; appConfirm('Go on?', { ok: 'Go on' }).then(v => window._r = v); return 1`); await sleep(150);
+      await enter();
+      t.check('confirm: Enter answers yes', (await b.eval(`return window._r`)) === true);
+      await b.eval(`window._r = 'pending'; ask('Rename chat', 'A new name.', 'Old name', 'Rename', { maxLength: 120 }).then(v => window._r = v); return 1`); await sleep(150);
+      await b.send('Input.insertText', { text: 'New name' }); await sleep(50);
+      await enter();
+      t.check('rename: Enter renames', (await b.eval(`return window._r`)) === 'New name', await b.eval(`return window._r`));
+      await b.eval(`window._r = 'pending'; ask('Rename chat', 'A new name.', '', 'Rename').then(v => window._r = v); return 1`); await sleep(150);
+      await enter();
+      t.check('rename: Enter on an empty name keeps asking', (await b.eval(`return window._r === 'pending' && document.getElementById('dlg').open`)));
+      await b.clickOn('#dlg [data-close-dlg]'); await sleep(200);
+      t.check('rename: Cancel still cancels', (await b.eval(`return window._r === null && !document.getElementById('dlg').open`)));
     },
   },
   {
@@ -371,13 +385,24 @@ module.exports = [
       const mouse = (type, x, y, buttons) => b.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons, clickCount: 1 });
       await mouse('mouseMoved', from[0], from[1], 0); await mouse('mousePressed', from[0], from[1], 1);
       for (let i = 1; i <= 10; i++) { await mouse('mouseMoved', from[0], from[1] + (to[1] - 14 - from[1]) * i / 10, 1); await sleep(30); }
-      await mouse('mouseReleased', from[0], to[1] - 14, 0); await sleep(400);
+      await sleep(250);
+      const mid = await b.eval(`const lis = [...document.querySelectorAll('#cRailList > li')]; return { order: lis.map(li => li.querySelector('.ri-n').textContent.trim().slice(0, 18)), lifted: lis.some(li => li.classList.contains('dragging') && /translateY/.test(li.style.transform)), room: lis.filter(li => !li.classList.contains('dragging') && /translateY/.test(li.style.transform)).length }`);
+      t.check('while dragging, the chat follows the pointer and the others make room', JSON.stringify(mid.order) === JSON.stringify(before) && mid.lifted && mid.room === before.length - 1, mid);
+      await t.shot(b, 'dragging');
+      await mouse('mouseReleased', from[0], to[1] - 14, 0); await sleep(700);
       const dragged = await names('cRailList');
       t.check('dragging moves a chat', dragged.length === before.length && dragged[0] === before.at(-1), dragged);
       t.check('and doesn’t open it', (await viewing()) === demo.ID['s-bard'].toLowerCase());
       await push(now.slice().reverse().map((x, i) => ({ ...x, lastEventAt: Date.now() - i * 1000 })));
       t.check('the order you chose stays while chats work', JSON.stringify(await names('cRailList')) === JSON.stringify(dragged), await names('cRailList'));
       t.check('and is remembered', (JSON.parse(await b.eval(`return localStorage.getItem('railOrder')`)) || []).length >= 4);
+      // Esc while dragging puts the chat back where it was.
+      const e0 = await names('cRailList'), p0 = await at('cRailList', 0);
+      await mouse('mouseMoved', p0[0], p0[1], 0); await mouse('mousePressed', p0[0], p0[1], 1);
+      for (let i = 1; i <= 6; i++) { await mouse('mouseMoved', p0[0], p0[1] + i * 20, 1); await sleep(30); }
+      await b.key('Escape', 'Escape', 27); await sleep(150);
+      await mouse('mouseReleased', p0[0], p0[1], 0); await sleep(500);
+      t.check('Esc puts a dragged chat back', JSON.stringify(await names('cRailList')) === JSON.stringify(e0) && (await viewing()) === demo.ID['s-bard'].toLowerCase(), await names('cRailList'));
       await b.eval(`document.getElementById('cText').blur(); return 1`);
       await b.key('ArrowUp', 'ArrowUp', 38, 1 | 8); await sleep(200);
       const moved = await names('cRailList'), was = dragged.findIndex(n => /^Balance pass/.test(n));

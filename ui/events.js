@@ -238,6 +238,22 @@ window.addEventListener('focus', () => { watchActivity(); renderLive(); });
 
 /* ---------- confirmations ---------- */
 // Asks before something that's hard to undo. The first paragraph is the question; the rest explains.
+// Enter does a dialog's main thing wherever the cursor is: in a name box, on a checkbox, or nowhere in
+// particular (and Ctrl+Enter from a box where Enter starts a new line). Buttons and links keep their own
+// Enter, so Enter on Cancel still cancels. A dialog with more than one main button (Setup) is left be.
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing || e.shiftKey || e.altKey || e.defaultPrevented) return;
+  const t = e.target, d = t instanceof Element ? t.closest('dialog[open]') : null;
+  if (!d || t.closest('button, a[href], summary, select, [contenteditable="true"], [role="menu"], input[type="range"], input[type="file"]')) return;
+  if (t.matches('textarea') && !(e.ctrlKey || e.metaKey)) return;
+  const scope = t.closest('form') || d;
+  const go = [...scope.querySelectorAll('.btn.prime, .btn.danger-prime, [data-primary]')].filter(b => !b.disabled && b.offsetParent && b.closest('dialog') === d);
+  if (go.length !== 1) return;
+  e.preventDefault();
+  go[0].click();
+}, true);
+// A Cancel that isn't a form button, so Enter in a form never lands on it.
+document.addEventListener('click', e => { const b = e.target instanceof Element && e.target.closest('[data-close-dlg]'); if (b) b.closest('dialog').close('cancel'); });
 function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false } = {}) {
   let d = $('confirmDlg');
   if (!d) {
@@ -259,6 +275,7 @@ function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false } = {})
   return new Promise(resolve => {
     d._resolve = resolve;
     if (!d.open) d.showModal();
+    // Enter answers yes, except where yes can't be taken back: those start on Cancel.
     $(danger ? 'cfNo' : 'cfYes').focus();
   });
 }

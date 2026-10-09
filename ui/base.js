@@ -453,3 +453,37 @@ function patch(container, items, keyFn, htmlFn, emptyHtml = '') {
   }
   for (const el of old.values()) el.remove();
 }
+// Animates a change to keyed lists (patch's data-k): what stays glides from where it was to where it is
+// now, even into another of the lists; what's new fades in; what's gone fades out where it stood. With
+// less motion asked for, the change just happens.
+const EASE = 'cubic-bezier(.2,.8,.2,1)';
+function flip(lists, mutate) {
+  lists = lists.filter(Boolean);
+  if (typeof motionOk !== 'function' || !motionOk() || document.hidden) return mutate();
+  const was = new Map();
+  for (const l of lists) for (const el of l.children) if (el.dataset && el.dataset.k) was.set(el.dataset.k, { el, r: el.getBoundingClientRect(), list: l });
+  mutate();
+  const now = new Set();
+  for (const l of lists) {
+    for (const el of l.children) {
+      if (!el.dataset || !el.dataset.k || el.classList.contains('flip-ghost')) continue;
+      now.add(el.dataset.k);
+      // One still gliding from an earlier change starts this one from where it appears to be now.
+      for (const a of el.getAnimations()) if (a.id === 'flip') a.cancel();
+      const w = was.get(el.dataset.k), r = el.getBoundingClientRect();
+      if (!w) { el.animate([{ opacity: 0, transform: 'translateY(-6px) scale(.97)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE, id: 'flip' }); continue; }
+      const dx = w.r.left - r.left, dy = w.r.top - r.top;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) el.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], { duration: 280, easing: EASE, id: 'flip' });
+    }
+  }
+  for (const [k, w] of was) {
+    if (now.has(k) || !w.r.height || !w.list.isConnected) continue;
+    // A stand-in where it was, fading out (the real one is gone already).
+    const g = w.el.cloneNode(true), box = w.list.getBoundingClientRect();
+    if (getComputedStyle(w.list).position === 'static') w.list.style.position = 'relative';
+    g.classList.add('flip-ghost'); g.removeAttribute('data-k'); g.setAttribute('aria-hidden', 'true');
+    Object.assign(g.style, { position: 'absolute', left: `${w.r.left - box.left + w.list.scrollLeft}px`, top: `${w.r.top - box.top + w.list.scrollTop}px`, width: `${w.r.width}px`, height: `${w.r.height}px`, margin: '0', pointerEvents: 'none' });
+    w.list.appendChild(g);
+    g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 200, easing: 'ease-in' }).finished.then(() => g.remove(), () => g.remove());
+  }
+}

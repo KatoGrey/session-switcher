@@ -26,9 +26,12 @@ function renderLive(force) {
   const A = awaiting(), W = atWork(), Q = quietOpen();
   const heroNow = heroHtml();
   if (force || $('heroSlot')._h !== heroNow) { $('heroSlot').innerHTML = heroNow; $('heroSlot')._h = heroNow; }
-  patch($('awaitList'), A, keyOf, awaitCard, '<p class="empty-line">Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.</p>');
-  patch($('board'), W, keyOf, workCard, `<p class="empty-line">${A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.'}</p>`);
-  patch($('quietList'), Q, keyOf, quietChip, '');
+  // A chat moving between the boards (it finished, or wants you) glides across; new ones fade in.
+  flip([$('awaitList'), $('board'), $('quietList')], () => {
+    patch($('awaitList'), A, keyOf, awaitCard, '<p class="empty-line">Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.</p>');
+    patch($('board'), W, keyOf, workCard, `<p class="empty-line">${A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.'}</p>`);
+    patch($('quietList'), Q, keyOf, quietChip, '');
+  });
   $('quietList').classList.toggle('has', Q.length > 0);
   const dials = S.accounts.map(a => ({ a }));
   if (S.codex && S.codex.enabled) for (const cx of codexAccts()) dials.push({ cx });

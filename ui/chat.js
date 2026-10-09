@@ -56,8 +56,11 @@ function renderRail() {
   $c('cPinH').hidden = !pinned.length;
   $c('cPinCount').textContent = pinned.length ? String(pinned.length) : '';
   $c('cRailCount').textContent = active.length ? String(active.length) : '';
-  patch($c('cPinList'), pinned, railKey, railItem);
-  patch($c('cRailList'), active, railKey, railItem, `<li class="ri-empty">${pinned.length ? 'Nothing else is open.' : 'Only this chat is open.'}</li>`);
+  // Changes glide: a pinned chat rises into Pinned, a closed one fades where it stood, a new one fades in.
+  flip([$c('cPinList'), $c('cRailList')], () => {
+    patch($c('cPinList'), pinned, railKey, railItem);
+    patch($c('cRailList'), active, railKey, railItem, `<li class="ri-empty">${pinned.length ? 'Nothing else is open.' : 'Only this chat is open.'}</li>`);
+  });
 }
 function switchRail(step) {
   const list = railOpen(); if (!list.length) return;
@@ -79,42 +82,105 @@ function saveRailOrder() {
   $c('cPinList')._sig = $c('cRailList')._sig = '';
   renderRail();
 }
-// Alt+Shift+↑/↓: the chat you're in moves up or down its list.
+// Alt+Shift+↑/↓: the chat you're in trades places with its neighbor, both gliding.
 function moveInRail(step) {
   const li = [...$c('cPinList').children, ...$c('cRailList').children].find(el => el.querySelector('.ri[aria-current="true"]'));
   const sib = li && (step < 0 ? li.previousElementSibling : li.nextElementSibling);
   if (!sib || !sib.dataset.k) return;
-  if (step < 0) sib.before(li); else sib.after(li);
+  flip([li.parentElement], () => { if (step < 0) sib.before(li); else sib.after(li); });
   saveRailOrder();
 }
-// Drag a chat up or down its list (with a mouse or pen; on a touch screen a drag scrolls).
+// Drag a chat up or down its list (with a mouse or pen; on a touch screen a drag scrolls). Nothing in
+// the list moves until you let go: the chat lifts and follows the pointer, the others slide aside to
+// open its new place, and on release it settles into it. Esc puts it back. Near the list's top or
+// bottom edge, the list scrolls.
 const Rail = { drag: null, dropped: 0 };
 function railDown(e) {
   const ri = e.target.closest('#cPinList .ri, #cRailList .ri');
-  if (!ri || e.button !== 0 || e.pointerType === 'touch') return;
+  if (!ri || e.button !== 0 || e.pointerType === 'touch' || Rail.drag) return;
   const li = ri.closest('li');
-  Rail.drag = { li, list: li.parentElement, y0: e.clientY, id: e.pointerId, on: false };
+  Rail.drag = { li, list: li.parentElement, x0: e.clientX, y0: e.clientY, y: e.clientY, id: e.pointerId, on: false };
+}
+function railStart(d) {
+  d.items = [...d.list.children].filter(el => el.dataset.k && !el.classList.contains('flip-ghost'));
+  for (const el of d.items) for (const a of el.getAnimations()) a.finish();
+  d.from = d.to = d.items.indexOf(d.li);
+  d.scroller = d.list.closest('.rail-scroll');
+  d.s0 = d.scroller ? d.scroller.scrollTop : 0;
+  // Where each chat sits in the list (these don't change as the list scrolls).
+  d.tops = d.items.map(el => el.offsetTop); d.hs = d.items.map(el => el.offsetHeight);
+  const n = d.items.length;
+  d.step = n < 2 ? d.hs[d.from] : d.from < n - 1 ? d.tops[d.from + 1] - d.tops[d.from] : d.tops[d.from] - d.tops[d.from - 1];
+  d.on = true;
+  d.li.classList.add('dragging');
+  for (const el of d.items) if (el !== d.li) el.classList.add('making-room');
+  document.body.classList.add('rail-dragging');
+  try { d.li.setPointerCapture(d.id); } catch { /* fine without */ }
+  d.raf = requestAnimationFrame(() => railScroll(d));
+}
+function railPlace(d) {
+  const scrolled = d.scroller ? d.scroller.scrollTop - d.s0 : 0, last = d.tops.length - 1;
+  // It follows the pointer, though not far past either end of its list.
+  const dy = Math.max(d.tops[0] - d.tops[d.from] - 10, Math.min(d.tops[last] - d.tops[d.from] + 10, d.y - d.y0 + scrolled));
+  d.li.style.transform = `translateY(${dy}px) scale(1.02)`;
+  // Its new place: past the middle of each chat it has crossed.
+  const mid = d.tops[d.from] + dy + d.hs[d.from] / 2;
+  let to = 0;
+  d.items.forEach((el, i) => { if (i !== d.from && d.tops[i] + d.hs[i] / 2 < mid) to++; });
+  if (to === d.to) return;
+  d.to = to;
+  d.items.forEach((el, i) => {
+    if (i === d.from) return;
+    const shift = d.from < to && i > d.from && i <= to ? -d.step : to < d.from && i >= to && i < d.from ? d.step : 0;
+    el.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
 }
 function railMove(e) {
-  const d = Rail.drag; if (!d || e.pointerId !== d.id) return;
-  if (!d.on) {
-    if (Math.abs(e.clientY - d.y0) < 6) return;
-    d.on = true; d.li.classList.add('dragging'); document.body.classList.add('rail-dragging');
-    try { d.li.setPointerCapture(e.pointerId); } catch { /* fine without */ }
-  }
+  const d = Rail.drag; if (!d || e.pointerId !== d.id || d.settling) return;
+  d.y = e.clientY;
+  if (!d.on) { if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 5) return; railStart(d); }
   e.preventDefault();
-  // It takes the place of whichever chat the pointer has passed the middle of.
-  const after = [...d.list.children].filter(el => el !== d.li && el.dataset.k).find(el => { const r = el.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
-  if (after) { if (d.li.nextElementSibling !== after) after.before(d.li); } else if (d.list.lastElementChild !== d.li) d.list.append(d.li);
+  railPlace(d);
+}
+function railScroll(d) {
+  if (Rail.drag !== d || d.settling) return;
+  const s = d.scroller;
+  if (s && s.scrollHeight > s.clientHeight) {
+    const r = s.getBoundingClientRect(), edge = 40;
+    const v = d.y < r.top + edge ? -Math.ceil((r.top + edge - d.y) / 5) : d.y > r.bottom - edge ? Math.ceil((d.y - r.bottom + edge) / 5) : 0;
+    if (v) { const was = s.scrollTop; s.scrollTop += v; if (s.scrollTop !== was) railPlace(d); }
+  }
+  d.raf = requestAnimationFrame(() => railScroll(d));
 }
 function railUp(e) {
-  const d = Rail.drag; if (!d || e.pointerId !== d.id) return;
-  Rail.drag = null;
-  if (!d.on) return;
-  d.li.classList.remove('dragging'); document.body.classList.remove('rail-dragging');
+  const d = Rail.drag; if (!d || e.pointerId !== d.id || d.settling) return;
+  if (!d.on) { Rail.drag = null; return; }
   Rail.dropped = Date.now();
-  if (e.type === 'pointerup') saveRailOrder();
-  else { $c('cPinList')._sig = $c('cRailList')._sig = ''; renderRail(); }
+  railSettle(d, e.type === 'pointerup');
+}
+// Letting go: the chat settles into its new place (or back into its old one), and only then does the
+// list really change, to just where everything already appears to be.
+function railSettle(d, keep) {
+  d.settling = true;
+  cancelAnimationFrame(d.raf);
+  try { d.li.releasePointerCapture(d.id); } catch { /* not captured */ }
+  const to = keep ? d.to : d.from, li = d.li;
+  const end = to > d.from ? d.tops[to] + d.hs[to] - d.tops[d.from] - d.hs[d.from] : d.tops[to] - d.tops[d.from];
+  li.classList.add('settling');
+  li.style.transform = `translateY(${end}px)`;
+  if (!keep) for (const el of d.items) if (el !== li) el.style.transform = '';
+  const done = () => {
+    if (d.finished) return;
+    d.finished = true;
+    for (const el of d.items) { el.classList.remove('making-room', 'dragging', 'settling'); el.style.transform = ''; }
+    const moved = keep && to !== d.from;
+    if (moved) { const others = d.items.filter(el => el !== li); if (to < others.length) others[to].before(li); else others[others.length - 1].after(li); }
+    document.body.classList.remove('rail-dragging');
+    Rail.drag = null;
+    if (moved) saveRailOrder(); else { $c('cPinList')._sig = $c('cRailList')._sig = ''; renderRail(); }
+  };
+  li.addEventListener('transitionend', e => { if (e.target === li && e.propertyName === 'transform') done(); });
+  setTimeout(done, 380);
 }
 
 /* ---------- open / close ---------- */
@@ -561,6 +627,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $c('pickBack').addEventListener('pointerdown', e => e.preventDefault());
   $c('pickBack').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closePick(); });
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && Rail.drag && Rail.drag.on && !Rail.drag.settling) { e.preventDefault(); e.stopPropagation(); Rail.dropped = Date.now(); railSettle(Rail.drag, false); return; }
     if (e.key === 'Escape' && !$c('cLight').hidden) { $c('cLight').hidden = true; e.stopPropagation(); return; }
     if ($c('chat').hidden) return;
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); (e.shiftKey ? moveInRail : switchRail)(e.key === 'ArrowDown' ? 1 : -1); }

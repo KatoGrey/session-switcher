@@ -490,9 +490,21 @@ body.chat-open{overflow:hidden}
 .rail-list{list-style:none;margin:0;padding:0 8px}
 .ri.closed .ri-n{color:var(--ash)}
 .ri.closed:hover .ri-n{color:var(--parch-2)}
-.rail-list li.dragging{position:relative;z-index:2}
-.rail-list li.dragging .ri{background:var(--vellum);border-color:var(--seam-2);box-shadow:0 10px 24px -10px rgb(var(--c-000000));cursor:grabbing}
-body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing}
+/* dragging: the chat lifts and follows the pointer, the others slide aside, and it settles on release */
+.rail-list li.making-room{transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+.rail-list li.dragging{position:relative;z-index:3;transition:none}
+.rail-list li.settling{transition:transform .26s cubic-bezier(.2,.9,.25,1.12)}
+.rail-list li .ri{transition:background .18s,border-color .18s,box-shadow .22s}
+.rail-list li.dragging .ri{background:var(--vellum-2);border-color:var(--seam-2);box-shadow:0 18px 34px -14px rgb(var(--c-000000) / .75),0 0 0 1px rgb(var(--c-a5463f) / .3)}
+.rail-list li.settling .ri{box-shadow:0 6px 14px -10px rgb(var(--c-000000) / .5)}
+body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !important}
+/* a grip shows a chat can be dragged */
+@media (hover:hover) and (pointer:fine){
+  .rail-list .ri{padding-right:20px}
+  .rail-list .ri::after{content:"";position:absolute;right:7px;top:50%;width:6px;height:14px;margin-top:-7px;opacity:0;transition:opacity .15s;
+    background:radial-gradient(circle,var(--ash) 1.1px,transparent 1.5px) 0 0/3px 4.7px}
+  .rail-list .ri:hover::after,.rail-list li.dragging .ri::after{opacity:.75}
+}
 .ri{display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:10px 10px 10px 11px;margin-bottom:4px;border-radius:6px;border:1px solid transparent;background:none;color:var(--parch-2);position:relative}
 .ri:hover{background:var(--vellum);border-color:var(--seam)}
 .ri[aria-current="true"]{background:linear-gradient(90deg,rgb(var(--c-8c3a34) / .25),rgb(var(--c-8c3a34) / .05));border-color:rgb(var(--c-a5463f) / .35);color:var(--parch)}
