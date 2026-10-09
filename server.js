@@ -613,7 +613,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/codex/install': {
       const r = await sys.runInTerminal(c, os.homedir(), 'Install Codex', sys.IS_WIN
         ? '@echo off\r\ntitle Install Codex\r\necho Installing Codex (OpenAI)...\r\ncall npm install -g @openai/codex\r\necho.\r\necho Done. Close this window and click Check again in Session Switcher.\r\n'
-        : '#!/bin/sh\nnpm install -g @openai/codex\n');
+        : '#!/bin/sh\necho "Installing Codex (OpenAI)..."\nnpm install -g @openai/codex\necho\necho "Done. Close this window and click Check again in Session Switcher."\n');
       return send(res, 200, r);
     }
     case '/api/open': {
@@ -724,7 +724,7 @@ async function handleApi(req, res, url, remote = false) {
       if (body.openIn !== undefined) { if (!['app', 'terminal'].includes(body.openIn)) throw fail(400, 'Unknown choice.'); p.openIn = body.openIn; }
       if (body.claudeCommand !== undefined) {
         const cmd = String(body.claudeCommand).trim();
-        if (!cmd || /["\r\n%&|<>^]/.test(cmd)) throw fail(400, 'Enter the full path to claude.exe (or just “claude”).');
+        if (!cmd || /["\r\n%&|<>^]/.test(cmd)) throw fail(400, `Enter the full path to ${sys.IS_WIN ? 'claude.exe' : 'claude'} (or just “claude”).`);
         c.claudeCommand = cmd;
         sys.forget(`version:${cmd}`);
       }
@@ -1029,7 +1029,7 @@ const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 's
 async function handleRequest(req, res, { remote = false } = {}) {
   const host = req.headers.host || '';
   if (!remote && host !== `127.0.0.1:${PORT}` && host !== `localhost:${PORT}`) { res.writeHead(403); return res.end('Forbidden'); }
-  if (req.headers.origin && (remote ? req.headers.origin !== `http://${host}` : !ORIGINS.has(req.headers.origin))) { res.writeHead(403); return res.end('Forbidden'); }
+  if (req.headers.origin && (remote ? (req.headers.origin !== `http://${host}` && req.headers.origin !== `https://${host}`) : !ORIGINS.has(req.headers.origin))) { res.writeHead(403); return res.end('Forbidden'); }
   const url = new URL(req.url, `http://${host}`);
   try {
     if (req.method === 'GET' && url.pathname === '/') {

@@ -1,11 +1,11 @@
 # Session Switcher
 
-Session Switcher lists every Claude Code chat on this PC, and your Codex chats too. You can resume any Claude chat as whichever of your Claude accounts you choose, and each account is locked to the email and plan it should use. The hub shows which chats are working, which are waiting on you, and how much of each plan's usage is left.
+Session Switcher lists every Claude Code chat on this computer (Windows or Mac), and your Codex chats too. You can resume any Claude chat as whichever of your Claude accounts you choose, and each account is locked to the email and plan it should use. The hub shows which chats are working, which are waiting on you, and how much of each plan's usage is left.
 
 ## What you need
 
-- Windows 10 or 11.
-- Node.js (LTS), from https://nodejs.org.
+- Windows 10 or 11, or macOS.
+- Node.js (LTS), from https://nodejs.org (on a Mac, `brew install node` works too).
 - Claude Code, signed in at least once. Setup can install or update it for you.
 - Optional: Codex (OpenAI's coding agent) and a ChatGPT plan. Setup can install it too.
 
@@ -17,6 +17,14 @@ Session Switcher lists every Claude Code chat on this PC, and your Codex chats t
 3. Open **Setup** (the gear, top right) and click **Create desktop shortcut**.
 
 `Start Claude Switcher.bat` does the same with a visible log window, which is useful if something goes wrong.
+
+### On a Mac
+
+1. Clone or unzip the folder somewhere permanent, for example `~/Apps/session-switcher`.
+2. Double-click **Session Switcher.command**. It opens Session Switcher as its own Chrome window (or in your default browser without Chrome), and its Terminal window shows the log. If macOS says it can't verify the file, right-click it and choose **Open** once.
+3. Open **Setup** (the gear) → **App** and click **Add to Applications**. That puts **Session Switcher** in `~/Applications`, so Spotlight and Launchpad find it, and it starts without a Terminal window.
+
+Everything else works as on Windows: terminal chats open in Terminal (or iTerm, chosen in Setup), **Show in Finder** reveals files, and **Browse…** opens the Mac's own folder window. Claude Code keeps Mac sign-ins in the Keychain rather than in a file, and Session Switcher reads them through `claude auth status`, so each account's lock and plan work the same.
 
 ## First-time account setup
 
@@ -253,14 +261,16 @@ Inside any Claude chat you can bring in Codex as a helper, for example to make i
   When a chat opens with a remembered mode, a short note says so.
 - Claude Code sometimes answers with a different model than the one you picked. For example, in **Plan only** mode it plans with Sonnet even when you picked Haiku. Each reply is labeled with the model that actually wrote it, and the model picker points out the difference.
 
-## Phone access and the Android app
+## Phone access: iPhone and Android
 
-Use Session Switcher from your Android phone: read your chats, reply to Claude or Codex, approve steps, switch models. Everything still runs on your PC; the phone is a remote.
+Use Session Switcher from your phone: read your chats, reply to Claude or Codex, approve steps, switch models. Everything still runs on your PC; the phone is a remote.
 
 1. On the PC, open **Setup → Phone access** and turn on **Let my phone use Session Switcher**. Windows may ask to let Node.js through the firewall; allow it on private networks.
-2. **Get the app:** on your phone's browser, open the `http://<your PC>:4788/get` address shown in Setup and install `SessionSwitcher.apk`. Android will ask you to allow installs from your browser.
-3. Open the app and enter the PC address shown in Setup.
-4. Click **Show a pairing code** in Setup, and type the 8-character code into the app. The code works once, for 10 minutes.
+2. **Get the app:**
+   - **iPhone, no install:** in Safari, open the `http://<your computer>:4788/` address shown in Setup, tap Share → **Add to Home Screen**, and open **Switcher** from the Home Screen. Pair from there, not from Safari: the Home Screen app keeps its own sign-in.
+   - **iPhone app:** build `mobile/ios` with Xcode (see `mobile/ios/README.md`), open it, and enter the address shown in Setup.
+   - **Android:** on your phone's browser, open the `http://<your PC>:4788/get` address shown in Setup and install `SessionSwitcher.apk`. Android will ask you to allow installs from your browser. Open the app and enter the address shown in Setup.
+3. Click **Show a pairing code** in Setup, and type the 8-character code on the phone. The code works once, for 10 minutes.
 
 On the phone:
 
@@ -470,6 +480,8 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
 - `chat-ui.js`: the chat window.
 - `fonts/`: the bundled typefaces (SIL Open Font License).
 - `mobile/android/`: the Android app (a small WebView remote) and its build script.
+- `mobile/ios/`: the iPhone app (a small WebView remote), as an XcodeGen project.
+- `Session Switcher.command`, `macos/`: the Mac launcher and the icon for the app it makes in Applications.
 - Created as you use it:
   - `accounts.json`: your accounts and preferences.
   - `history.json`: which account last opened each chat.

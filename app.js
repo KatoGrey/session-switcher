@@ -284,7 +284,7 @@ function openActivity(x) {
 /* ---------- data ---------- */
 async function loadState() {
   const j = await api('/api/state');
-  S.accounts = j.accounts; S.dryRun = j.dryRun; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null;
+  S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null;
   const saved = store('acct');
   if (!S.accounts.some(a => a.id === S.acct)) S.acct = S.accounts.some(a => a.id === saved) ? saved : S.accounts[0].id;
 }
@@ -787,7 +787,7 @@ function renderHub() {
       ${better ? `<div class="headroom"><span><b>${esc(better.a.name)}</b> has the most room right now: ${better.r}% left. ${esc(current().name)} has ${binding(usageOf(current().id)).left}%.</span><button class="btn sm" data-act="use" data-acct="${esc(better.a.id)}">Work as ${esc(better.a.name)}</button></div>` : ''}
       <div class="dials" id="dials"></div>
     </section>
-    ${S.dryRun ? '<p class="note">Preview mode: this computer isn’t Windows, so terminal buttons show what would run instead of opening one.</p>' : ''}`;
+    ${S.dryRun ? '<p class="note">Preview mode: terminal buttons show what would run instead of opening one.</p>' : ''}`;
   renderHubLists();
   renderLive(true);
   if (!dialsDrawn && !renderHub.timer) renderHub.timer = setTimeout(() => { dialsDrawn = true; }, 2600);
@@ -1004,7 +1004,7 @@ async function openNewProject() {
         b.disabled = true;
         try {
           const r = await api('/api/project/pick', { start: input.value || (NP.places && NP.places.suggested) || '', title: b.dataset.np === 'browse' ? 'Choose where the new project’s folder goes' : 'Choose the project’s folder' });
-          if (r.unsupported) toast('The folder window only opens on Windows. Type the path instead.', 4000);
+          if (r.unsupported) toast('The folder window only opens on Windows and macOS. Type the path instead.', 4000);
           else if (r.path) { input.value = r.path; npRefresh(); }
         } finally { b.disabled = false; input.focus(); }
         return;
@@ -1685,7 +1685,7 @@ function renderSetup(j) {
     <p class="d-h" id="st-alerts">Alerts and looks</p>
     <div class="prefs">
       ${t('sound', 'Chime when a chat needs you or replies', 'A soft bell. It doesn’t play for the chat you’re looking at.', true)}
-      ${t('notify', 'Desktop notifications', 'Shows a Windows notification when a chat needs you or replies while this window is in the background.', true)}
+      ${t('notify', 'Desktop notifications', `Shows a ${S.platform === 'darwin' ? 'macOS' : 'Windows'} notification when a chat needs you or replies while this window is in the background.`, true)}
       ${t('petals', 'Drifting petals', 'A few slow petals behind the hub. Turned off automatically if Windows is set to reduce motion.', true)}
       ${t('motion', 'Animations', 'World banners that open into their pages, cards that rise in, dials that draw themselves. Turned off automatically if Windows is set to reduce motion.', true)}
     </div>
@@ -1698,15 +1698,15 @@ function renderSetup(j) {
         </select></div>
       <div class="field"><label for="prefTerminal">Terminal chats open in</label>
         <select id="prefTerminal" data-pref="terminal">
-          ${[['auto', 'Windows Terminal tab when available, otherwise a console window'], ['wt-tab', 'Windows Terminal, new tab'], ['wt-window', 'Windows Terminal, new window'], ['console', 'Classic console window']].map(([v, l]) => `<option value="${v}" ${p.terminal === v ? 'selected' : ''}>${l}</option>`).join('')}
+          ${(S.platform === 'darwin' ? [['auto', 'Terminal'], ['iterm', 'iTerm']] : [['auto', 'Windows Terminal tab when available, otherwise a console window'], ['wt-tab', 'Windows Terminal, new tab'], ['wt-window', 'Windows Terminal, new window'], ['console', 'Classic console window']]).map(([v, l]) => `<option value="${v}" ${p.terminal === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select></div>
       ${t('syncSettings', 'Keep extra accounts’ settings in step', 'Copies your main settings.json, CLAUDE.md and keybindings to extra accounts whenever the main copy is newer.')}
       ${t('syncState', 'Carry over MCP servers and folder trust', 'Before a chat opens with an extra account, adds any MCP servers, approved tools and trusted folders from your main account that it doesn’t have yet.')}
       ${t('cleanEnv', 'Use only account sign-ins', 'Ignores ANTHROPIC_API_KEY and similar settings on this PC, so the account you pick is always the one used.')}
-      ${t('appWindow', 'Open as its own window', 'Uses Chrome or Edge to show Session Switcher without browser tabs or an address bar.')}
+      ${t('appWindow', 'Open as its own window', `Uses ${S.platform === 'darwin' ? 'Chrome (or Edge or Brave)' : 'Chrome or Edge'} to show Session Switcher without browser tabs or an address bar.`)}
       <div class="field"><label for="prefClaude">Claude Code command</label>
         <div class="row2"><input id="prefClaude" value="${esc(j.claudeCommand)}" spellcheck="false"><button class="btn" id="saveClaude">Save</button></div>
-        <small>Leave as “claude” unless Setup can’t find Claude Code; then paste the full path to claude.exe.</small></div>
+        <small>Leave as “claude” unless Setup can’t find Claude Code; then paste the full path to ${S.platform === 'darwin' ? 'claude (try <code>which claude</code> in Terminal)' : 'claude.exe'}.</small></div>
     </div>
     <p class="d-h" id="st-codex">Codex</p>
     <div class="prefs">
@@ -1719,7 +1719,7 @@ function renderSetup(j) {
       ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h" id="st-phone">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
     <p class="d-h" id="st-app">App</p>
     <div class="app-actions">
-      <button class="btn" data-fix="shortcut">Create desktop shortcut</button>
+      <button class="btn" data-fix="shortcut">${S.platform === 'darwin' ? 'Add to Applications' : 'Create desktop shortcut'}</button>
       <button class="btn" data-fix="share-copy" title="A zip of the app for someone else, without your accounts, chats or settings">Make a copy to share</button>
       <button class="btn" data-fix="update-claude">Update Claude Code</button>
       <button class="btn danger" data-fix="quit">Quit Session Switcher</button>
@@ -1739,15 +1739,15 @@ function renderPhone(st) {
   const lan = st.addresses.filter(a => !a.tailscale), ts = st.addresses.filter(a => a.tailscale);
   const left = st.pairing ? Math.max(0, Math.round((st.pairing.expiresAt - Date.now()) / 1000)) : 0;
   box.innerHTML = `
-    <label class="toggle"><input type="checkbox" data-phone="enabled" ${st.enabled ? 'checked' : ''}><span><b>Let my phone use Session Switcher</b><span>Your Android phone can see your chats, answer Claude and Codex, approve steps and switch models, over your Wi-Fi. Only phones you pair can connect. ${st.error ? `<b class="warn">${esc(st.error)}</b>` : ''}</span></span></label>
+    <label class="toggle"><input type="checkbox" data-phone="enabled" ${st.enabled ? 'checked' : ''}><span><b>Let my phone use Session Switcher</b><span>Your phone (iPhone or Android) can see your chats, answer Claude and Codex, approve steps and switch models, over your Wi-Fi. Only phones you pair can connect. ${st.error ? `<b class="warn">${esc(st.error)}</b>` : ''}</span></span></label>
     ${st.enabled ? `
     <div class="ph-grid">
-      <div class="ph-step"><span class="ph-n">1</span><div><b>Get the app</b><p>${st.apk ? `On your phone’s browser, open <code>http://${esc(lan[0] ? host(lan[0]) : `this-pc:${st.port}`)}/get</code> and install it.` : 'Build it first: run <code>mobile\\android\\build.cmd</code>, then come back here.'}</p></div></div>
-      <div class="ph-step"><span class="ph-n">2</span><div><b>Enter this PC’s address</b><p>${lan.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ') || '<i>No network found.</i>'}${ts.length ? `<br><small>Away from home with Tailscale: ${ts.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ')}</small>` : ''}</p></div></div>
+      <div class="ph-step"><span class="ph-n">1</span><div><b>Get the app</b><p><b>iPhone:</b> in Safari, open <code>http://${esc(lan[0] ? host(lan[0]) : `this-pc:${st.port}`)}/</code>, tap Share → <b>Add to Home Screen</b>, then open it from the Home Screen.<br><b>Android:</b> ${st.apk ? `open <code>http://${esc(lan[0] ? host(lan[0]) : `this-pc:${st.port}`)}/get</code> and install it.` : 'build it first with <code>mobile/android/build.cmd</code>.'}</p></div></div>
+      <div class="ph-step"><span class="ph-n">2</span><div><b>This computer’s address</b><p>${lan.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ') || '<i>No network found.</i>'}${ts.length ? `<br><small>Away from home with Tailscale: ${ts.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ')}</small>` : ''}</p></div></div>
       <div class="ph-step"><span class="ph-n">3</span><div><b>Pair it</b>${st.pairing ? `<p class="ph-code" aria-label="Pairing code">${esc(st.pairing.code.slice(0, 4))}<span>·</span>${esc(st.pairing.code.slice(4))}</p><p><small id="phLeft">Works once, for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}.</small> <button class="btn quiet sm" data-phone="cancel">Cancel</button></p>` : '<p><button class="btn prime sm" data-phone="pair">Show a pairing code</button></p>'}</div></div>
     </div>
     ${st.devices.length ? `<p class="ph-h">Paired phones</p><ul class="ph-dev">${st.devices.map(d => `<li><span class="glyph" aria-hidden="true">◈</span><span><b>${esc(d.name)}</b><small>paired ${esc(agoL(d.created))}${d.lastSeen ? ` · last used ${esc(agoL(d.lastSeen))}` : ''}</small></span><button class="btn quiet sm" data-phone="forget" data-id="${esc(d.id)}">Remove</button></li>`).join('')}</ul>` : ''}
-    <p class="ph-warn">A paired phone can do anything you can do here, including letting Claude run commands on this PC. Pair only your own phones, and remove one you lose. Windows may ask to let Node.js through the firewall; allow it on private networks.</p>` : ''}`;
+    <p class="ph-warn">A paired phone can do anything you can do here, including letting Claude run commands on this PC. Pair only your own phones, and remove one you lose. ${S.platform === 'darwin' ? 'macOS may ask to let Node accept incoming connections; allow it.' : 'Windows may ask to let Node.js through the firewall; allow it on private networks.'}</p>` : ''}`;
   if (st.pairing) phoneTimer = setInterval(() => {
     const l = Math.max(0, Math.round((st.pairing.expiresAt - Date.now()) / 1000));
     const el = $('phLeft'); if (!el || !$('setup').open) { clearInterval(phoneTimer); return; }
@@ -1861,7 +1861,7 @@ $('setupBody').addEventListener('click', wrap(async e => {
   }
   if (what === 'update-claude') { const r = await api('/api/update-claude', {}); return r.dryRun ? reportLaunch(r) : toast(`Updating Claude Code in a ${r.how}. Close it when it finishes, then reopen Setup.`, 8000); }
   if (what === 'share-copy') return shareCopy();
-  if (what === 'shortcut') { const r = await api('/api/shortcut', {}); return toast(r.dryRun ? 'Would create a desktop shortcut.' : 'Added “Claude Session Switcher” to your desktop.'); }
+  if (what === 'shortcut') { const r = await api('/api/shortcut', {}); return toast(r.dryRun ? 'Would create a desktop shortcut.' : S.platform === 'darwin' ? 'Added “Session Switcher” to Applications in your home folder. Find it with Spotlight or Launchpad.' : 'Added “Claude Session Switcher” to your desktop.'); }
   if (what === 'quit') return quitApp();
 }));
 
@@ -2485,7 +2485,7 @@ function projectItems(cwd) {
     ...(S.codex && S.codex.enabled ? [{ glyph: '◆', label: 'New Codex chat', disabled: !codexReady() || !p.exists, why: 'Sign in to Codex first', run: () => ChatUI.open({ cwd, mode: 'new', provider: 'codex' }) }] : []),
     ...(S.prompts.length ? [{ glyph: '❡', label: 'Start with a prompt…', disabled: !p.exists, run: () => showMenu(Ctx.at, worldNewItems(cwd).filter(x => x !== '-' && /^Start with|Edit prompts/.test(x.label || ''))) }] : []),
     '-',
-    { label: 'Show in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
+    { label: S.platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
     { label: 'Browse files', disabled: !p.exists, run: () => Viewer.open({ path: cwd, cwd }) },
     { label: 'Copy folder path', run: () => copyText(cwd) },
     ...(p.added && !p.sessions.length ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd }); await loadSessions(); renderAll(); } }] : []),
@@ -2584,6 +2584,8 @@ document.addEventListener('keydown', e => {
 // On a phone (through phone access), hide what only makes sense at the PC.
 if (window.REMOTE) document.body.classList.add('remote');
 if (window.Android || / SessionSwitcherAndroid\//.test(navigator.userAgent)) document.body.classList.add('android');
+// iPhone and iPad (Safari or the Home Screen app): same touch tweaks as the Android app.
+if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) document.body.classList.add('android', 'ios');
 // The Android app's Back button: close whatever is on top. Returns true if something closed.
 window.__mobileBack = () => {
   if (!$('cLight')?.hidden) { $('cLight').hidden = true; return true; }
