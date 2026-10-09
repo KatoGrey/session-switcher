@@ -308,7 +308,7 @@ mark{background:rgb(var(--c-d9bf74) / .26);color:var(--parch);border-radius:2px;
 .r-flags{display:inline-flex;gap:6px;margin-left:10px;vertical-align:2px}
 .r-sub{margin:4px 0 0;font:italic 14.5px/1.45 var(--f-body);color:var(--ash);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .r-snip{margin:5px 0 0;font-size:14.5px;line-height:1.5;color:var(--parch-2)}
-.r-chip{display:inline-block;margin-top:7px;font:500 10.5px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ember)}
+.r-chip{font:500 10.5px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ember)}
 .r-go{display:flex;gap:6px;align-items:center}
 
 /* ---------- index: folders as a table of contents ---------- */
@@ -362,7 +362,7 @@ mark{background:rgb(var(--c-d9bf74) / .26);color:var(--parch);border-radius:2px;
 
 /* ---------- menu ---------- */
 .menu{position:fixed;z-index:60;min-width:250px;max-width:360px;padding:6px;border:1px solid var(--seam-2);border-radius:8px;background:rgb(var(--c-18141b));box-shadow:0 24px 60px -16px rgb(var(--c-000000)), 0 0 0 1px rgb(var(--c-000000) / .5)}
-.menu button{display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;background:none;border:0;border-radius:5px;padding:8px 11px;color:var(--parch-2);font:400 15px/1.3 var(--f-body)}
+.menu button{display:flex;width:100%;text-align:left;background:none;border:0;border-radius:5px;padding:8px 11px;color:var(--parch-2);font:400 15px/1.3 var(--f-body)}
 .menu button:hover:not(:disabled),.menu button:focus-visible{background:var(--vellum-3);color:var(--parch);outline:none}
 .menu button:disabled{opacity:.4}
 .menu button.danger{color:var(--ember-soft)}
@@ -530,7 +530,7 @@ body.chat-open{overflow:hidden}
 .md li{margin:3px 0}
 .md li::marker{color:var(--crimson)}
 .md ol li::marker{font:italic 700 15px var(--f-display)}
-.md strong{font-weight:600;color:rgb(var(--c-f6efe3))}
+.md strong{font-weight:600}
 .md em{font-style:italic}
 .md del{color:var(--ash)}
 .md a{color:var(--ember-soft);text-decoration-color:rgb(var(--c-e2a596) / .4);text-underline-offset:3px}
@@ -848,7 +848,7 @@ dialog.cxdlg{width:min(520px,calc(100vw - 32px))}
 @keyframes world-settle{from{transform:scale(1.14);filter:brightness(.4) saturate(.5)}}
 
 /* ---------- a world's own page ---------- */
-.wp-hero{position:relative;height:clamp(230px,30vw,380px);border-radius:10px;overflow:hidden;border:1px solid var(--seam-2);background:rgb(var(--c-0c0a0e));box-shadow:0 34px 70px -40px rgb(var(--c-000000));isolation:isolate}
+.wp-hero{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--seam-2);background:rgb(var(--c-0c0a0e));box-shadow:0 34px 70px -40px rgb(var(--c-000000));isolation:isolate}
 .wp-art{position:absolute;inset:0;overflow:hidden;border-radius:inherit}
 .motion .wp-hero.has-art .wp-art img{animation:wp-drift 70s ease-in-out infinite alternate}
 @keyframes wp-drift{from{transform:scale(1.02)}to{transform:scale(1.09) translate(-1.6%,-1.2%)}}
@@ -1038,7 +1038,7 @@ dialog.np-dlg{width:min(600px,calc(100vw - 32px));padding:0}
 ::view-transition-new(world-banner){animation:none}
 @media (max-width:760px){
   .atlas{grid-template-columns:1fr}
-  .wp-hero{height:220px}
+  
   .wtabs{gap:20px}
   .wt{font-size:17px}
   .wp-act{width:100%}
@@ -1089,7 +1089,7 @@ dialog.np-dlg{width:min(600px,calc(100vw - 32px));padding:0}
 }
 @media (max-width:760px){
   :root{--bar-h:58px}
-  .bar{gap:8px;padding:0 10px}
+  .bar{padding:0 10px}
   .wordmark,.pulse .p-label,.ac-who,.ac-sep,.ac-win + .ac-win{display:none}
   .seek{width:auto;flex:none;padding:0 12px}
   .seek .s-t,.seek .kbd{display:none}
@@ -1102,14 +1102,14 @@ dialog.np-dlg{width:min(600px,calc(100vw - 32px));padding:0}
   .r-what{padding-left:6px}
   .dial-card{grid-template-columns:1fr;justify-items:stretch}
   .dial-wrap{justify-self:center}
-  .board,.summons-grid{grid-template-columns:1fr}
+  
   .v-body{padding:16px}
   .v-dir button{grid-template-columns:18px minmax(0,1fr) auto}
   .vd-m{display:none}
   .c-feed{padding:18px 16px 30px}
   .c-compose,.c-pending,.watchbar{padding-left:14px;padding-right:14px}
-  .c-head{padding:10px 10px 10px 8px;gap:6px 8px;align-items:start}
-  .c-head .c-backm{align-self:start}
+  
+  
   .c-acct,.c-mode{max-width:100%}
   .umsg{max-width:94%}
   .drawer{left:10px;width:auto}
@@ -1121,10 +1121,10 @@ dialog.np-dlg{width:min(600px,calc(100vw - 32px));padding:0}
   .petals{display:none}
 }
 
-/* ---------- 5.0: the crew (Claude + Codex in one chat), model picker, hand-offs ---------- */
+/* ---------- the crew (Claude + Codex in one chat), model picker, hand-offs ---------- */
 :root{--codex:rgb(var(--c-6f97d8));--codex-ink:rgb(var(--c-a9c3ef));--codex-soft:rgb(var(--c-6f97d8) / .16)}
 @keyframes tide{0%{box-shadow:0 0 0 0 rgb(var(--c-6f97d8) / .7)}70%{box-shadow:0 0 0 7px rgb(var(--c-6f97d8) / 0)}100%{box-shadow:0 0 0 0 rgb(var(--c-6f97d8) / 0)}}
-.c-row{flex-wrap:nowrap;min-width:0}
+.c-row{min-width:0}
 .c-crew{display:inline-flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--seam);border-radius:999px;background:rgb(var(--c-0b0a0d));flex:none;max-width:100%;min-width:0}
 .crew{display:inline-flex;align-items:center;gap:7px;border:0;background:transparent;border-radius:999px;padding:5px 10px 5px 9px;color:var(--ash);cursor:pointer;min-width:0;transition:background .18s, color .18s, box-shadow .18s}
 .crew:hover{color:var(--parch);background:rgb(var(--c-ede6d9) / .04)}
@@ -1203,18 +1203,18 @@ dialog.np-dlg{width:min(600px,calc(100vw - 32px));padding:0}
 
 /* Phones and narrow windows */
 @media (max-width:760px){
-  .c-pick{left:14px;width:calc(100% - 28px)}
+  
   .c-hint{display:none}
   .c-ib span{display:none}
   .c-ib{padding:6px 8px}
   .crew{padding:6px 9px}
   .crew-m{max-width:96px}
-  .c-crew.duo .crew:not(.on) .crew-m{display:none}
+  
   .c-row{gap:6px}
   .c-status{display:none}
   .c-compose{padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
   .turn-act .ta{padding:5px 10px}
-  .c-title{font-size:19px}
+  
 }
 
 /* Setup → Phone access */
@@ -1257,10 +1257,10 @@ body.android .c-hint,body.android .rail-keys,body.android .seek .kbd{display:non
   .c-crew .crew{flex:1 1 0;justify-content:flex-start}
   .c-crew .crew-m{max-width:none;flex:1;min-width:0}
   .c-crew.duo .crew:not(.on) .crew-m{display:inline}
-  .c-head{grid-template-columns:auto minmax(0,1fr) auto}
-  .c-meta{gap:6px}
-  .c-mode{padding:5px 7px;font-size:13.5px}
-  .usechip{min-width:0;overflow:hidden}
+  
+  
+  
+  .usechip{overflow:hidden}
 }
 @media (max-width:760px){
   html,body{overflow-x:clip}
@@ -1272,7 +1272,7 @@ body.android .c-hint,body.android .rail-keys,body.android .seek .kbd{display:non
   .o-step code,.o-line{overflow:hidden;text-overflow:ellipsis}
 }
 
-/* ---------- 5.1: appearance (theme.js), a roomier top bar, the account dropdown, attachments ---------- */
+/* ---------- appearance (theme.js), a roomier top bar, the account dropdown, attachments ---------- */
 /* Interface size scales everything; text size scales what you read and write. */
 body{zoom:var(--look-ui,1)}
 .c-feed,.c-pending,.v-body,.c-box textarea,.c-att{zoom:var(--look-text,1)}
@@ -1415,7 +1415,7 @@ body{zoom:var(--look-ui,1)}
 @media (max-width:1600px){.look-ui-big .pulse .p-label{display:none}}
 .wordmark b{overflow:hidden;text-overflow:ellipsis}
 
-/* ---------- 5.2: phones and foldables ---------- */
+/* ---------- phones and foldables ---------- */
 @media (max-width:760px){
   /* Chat header: two slim rows instead of a quarter of the screen */
   .c-head{grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:'back titles icons' 'meta meta meta';padding:7px 8px 8px 4px;gap:4px 6px;min-height:0;align-items:center}
@@ -1492,8 +1492,8 @@ body{zoom:var(--look-ui,1)}
   .c-pick{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-height:84vh;border-radius:18px 18px 0 0;border-bottom:0;z-index:70;
     padding:8px 12px calc(14px + env(safe-area-inset-bottom));box-shadow:0 0 0 100vmax rgb(var(--c-000000) / .55), 0 -20px 60px -20px rgb(var(--c-000000))}
   .motion .c-pick:not([hidden]){animation:sheet-up .22s cubic-bezier(.2,.8,.2,1)}
-  .mp-top{position:sticky;top:-8px;z-index:2;flex-wrap:wrap;margin:-8px -12px 8px;padding:6px 12px 10px;background:linear-gradient(180deg,var(--vellum-2),var(--vellum-2) 85%,transparent)}
-  .mp-grab{display:block;flex-basis:100%;height:5px;margin:2px auto 6px;max-width:44px;border-radius:3px;background:var(--seam-2)}
+  .mp-top{position:sticky;top:-8px;z-index:2;margin:-8px -12px 8px;padding:6px 12px 10px;background:linear-gradient(180deg,var(--vellum-2),var(--vellum-2) 85%,transparent)}
+  .mp-grab{display:block;flex-basis:100%;height:5px;max-width:44px;border-radius:3px;background:var(--seam-2)}
   .mp-done{display:inline-block}
   .mp-tabs button{padding:9px 12px}
   .mp-tabs button{font-size:14px}
@@ -1521,7 +1521,7 @@ body{zoom:var(--look-ui,1)}
 }
 @media (max-width:980px){ body.chat-open .navtoggle{display:none} }
 
-/* ---------- 5.3: right-click menus, find, jump to latest, code colors, shortcuts ---------- */
+/* ---------- right-click menus, find, jump to latest, code colors, shortcuts ---------- */
 .menu button{flex-direction:row;align-items:center;gap:10px}
 .menu .m-g{flex:none;width:16px;text-align:center;color:var(--ash);font-size:13px}
 .menu .m-l{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -1565,7 +1565,7 @@ body{zoom:var(--look-ui,1)}
 /* Keyboard shortcuts */
 dialog.keys-dlg{width:min(640px,calc(100vw - 32px))}
 .keys-body{padding:4px 22px 22px;max-height:70vh;overflow-y:auto}
-.keys-body dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 18px;margin:0 0 6px;align-items:center}
+.keys-body dl{display:grid;gap:8px 18px;margin:0 0 6px;align-items:center}
 .keys-body dt{white-space:nowrap}
 .keys-body dd{margin:0;color:var(--parch-2);font-size:15px}
 @media (max-width:760px){ .c-find{margin-right:10px;width:calc(100% - 20px)} }
@@ -1626,7 +1626,7 @@ button.nav-h.fold[aria-expanded="false"] .fold-c{transform:rotate(-90deg)}
   .motion .menu.pop{animation:sheet-up .2s cubic-bezier(.2,.8,.2,1)}
 }
 
-/* ---------- 5.4: fixes and polish from a UI/UX review ---------- */
+/* ---------- later fixes: dialogs, menus, the live pill, toasts, phone chat, Setup links ---------- */
 /* Bold text in replies uses the theme's text color (it was cream, invisible on light themes) */
 .md strong{color:var(--parch)}
 /* Code blocks: no box around every line */
