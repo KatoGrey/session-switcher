@@ -174,8 +174,8 @@ function dialSvg(u) {
 // A small two-ring dial: inner is the five-hour window, outer is the week.
 function miniDial(id, size = 22) {
   const u = usageOf(id), d = u && u.data && u.data.available ? u.data : null;
-  const ring = (r, frac, color, width) => { const c = 2 * Math.PI * r; const f = Math.max(0, Math.min(1, frac || 0)); return `<circle cx="20" cy="20" r="${r}" fill="none" stroke="#2a242e" stroke-width="${width}"/>${f > 0 ? `<circle cx="20" cy="20" r="${r}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - f)).toFixed(2)}" transform="rotate(-90 20 20)"/>` : ''}`; };
-  return `<svg width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true">${ring(16.5, d && d.week ? d.week.used / 100 : 0, '#7a3530', 4.5)}${ring(9.5, d && d.fiveHour ? d.fiveHour.used / 100 : 0, '#d08072', 5)}</svg>`;
+  const ring = (r, frac, color, width) => { const c = 2 * Math.PI * r; const f = Math.max(0, Math.min(1, frac || 0)); return `<circle cx="20" cy="20" r="${r}" fill="none" style="stroke:rgb(var(--c-2a242e))" stroke-width="${width}"/>${f > 0 ? `<circle cx="20" cy="20" r="${r}" fill="none" style="stroke:${color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - f)).toFixed(2)}" transform="rotate(-90 20 20)"/>` : ''}`; };
+  return `<svg width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true">${ring(16.5, d && d.week ? d.week.used / 100 : 0, 'rgb(var(--c-7a3530))', 4.5)}${ring(9.5, d && d.fiveHour ? d.fiveHour.used / 100 : 0, 'rgb(var(--c-d08072))', 5)}</svg>`;
 }
 // One line for headers: "36% left of the five-hour window, resets 6:12 PM".
 function usageLine(id, { short = false } = {}) {
@@ -335,7 +335,8 @@ function renderBar() {
     <span class="ac-who"><small>${inChat ? 'This chat runs as' : 'New chats open as'}</small><b>${esc(a.name)}</b></span>
     ${d ? `<span class="ac-sep" aria-hidden="true"></span>${cell('5-hour window', d.fiveHour)}${cell('This week', d.week)}`
       : a.signedIn ? `<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Usage</small><b>${u && u.error ? 'Unavailable' : 'Checking…'}</b></span>` : '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Account</small><b>Not signed in</b></span>'}`;
-  chip.title = `${inChat ? 'This chat runs as' : 'New chats open as'} ${a.name}${a.email ? ` (${a.email})` : ''}. ${usageLine(a.id) || ''}`;
+  chip.insertAdjacentHTML('beforeend', '<span class="ac-caret" aria-hidden="true">▾</span>');
+  chip.title = `${inChat ? 'This chat runs as' : 'New chats open as'} ${a.name}${a.email ? ` (${a.email})` : ''}. ${usageLine(a.id) || ''} Click to see all your accounts.`;
 }
 function updateTitle() {
   const n = awaiting().length;
@@ -1315,14 +1316,22 @@ function showMenu(anchor, items) {
   closeMenu();
   m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}`}</button>`)).join('');
   m.hidden = false;
-  const r = anchor.getBoundingClientRect();
-  const w = m.offsetWidth, h = m.offsetHeight;
-  const left = r.left + w > window.innerWidth - 8 ? r.right - w : r.left;
-  m.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, left))}px`;
-  m.style.top = `${r.bottom + h + 8 > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6}px`;
+  placeAt(m, anchor);
   menuAnchor = anchor; anchor.setAttribute('aria-expanded', 'true');
   m.onclick = e => { const b = e.target.closest('button[data-i]'); if (!b || b.disabled) return; const it = items[+b.dataset.i]; closeMenu(true); wrap(it.run)(); };
   m.querySelector('button:not(:disabled)')?.focus();
+}
+// Puts a popup under (or above) its anchor. Works in screen pixels, then divides by the interface
+// size, since the page is scaled by it.
+const uiScale = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--look-ui')) || 1;
+function placeAt(m, anchor, align = 'start') {
+  const z = uiScale(), r = anchor.getBoundingClientRect();
+  const W = window.innerWidth, H = window.innerHeight;
+  const w = m.offsetWidth * z, h = m.offsetHeight * z;
+  let left = align === 'end' || r.left + w > W - 8 ? r.right - w : r.left;
+  left = Math.max(8, Math.min(W - w - 8, left));
+  const top = r.bottom + h + 8 > H ? Math.max(8, r.top - h - 6) : r.bottom + 6;
+  m.style.left = `${left / z}px`; m.style.top = `${top / z}px`;
 }
 function closeMenu(refocus) {
   const m = $('menu'); if (m.hidden) return;
@@ -1616,11 +1625,67 @@ function renderPhone(st) {
     if (l % 5 === 0) api('/api/phone').then(n => { if (!n.pairing && $('setup').open) renderPhone(n); }).catch(() => {});
   }, 1000);
 }
-async function openSetup() {
+async function openSetup(tab = 'health') {
+  setupTab(tab);
+  if (!$('setup').open) $('setup').showModal();
+  if (tab === 'look') return renderLook();
   $('setupBody').innerHTML = '<p class="loading">Checking Claude Code, your accounts and shared data…</p>';
-  $('setup').showModal();
   try { await loadHealth(true); loadPhone(); } catch (err) { $('setupBody').innerHTML = `<p class="loading">${esc(err.message)}</p>`; }
+  return undefined;
 }
+function setupTab(tab) {
+  S.setupTab = tab;
+  for (const b of document.querySelectorAll('[data-stab]')) b.setAttribute('aria-selected', String(b.dataset.stab === tab));
+  $('setup').classList.toggle('look-tab', tab === 'look');
+}
+document.querySelector('.stabs').addEventListener('click', e => { const b = e.target.closest('[data-stab]'); if (b && b.dataset.stab !== S.setupTab) openSetup(b.dataset.stab); });
+
+/* ---------- Appearance: themes, light/dark, text and interface size, font ---------- */
+function renderLook() {
+  const o = Look.get(), light = Look.isLight();
+  const seg = (k, opts) => `<div class="lk-seg" role="radiogroup">${opts.map(([v, l, sub]) => `<button type="button" role="radio" aria-checked="${String(o[k]) === String(v)}" data-look="${k}" data-v="${v}">${l}${sub ? `<small>${sub}</small>` : ''}</button>`).join('')}</div>`;
+  const card = t => {
+    const c = Look.swatch(t.id, light);
+    return `<button type="button" class="lk-theme" role="radio" aria-checked="${o.theme === t.id}" data-look="theme" data-v="${t.id}" style="--sw-bg:${c.bg};--sw-card:${c.card};--sw-line:${c.line};--sw-ink:${c.ink};--sw-ash:${c.ash};--sw-acc:${c.accent};--sw-emb:${c.ember};--sw-gold:${c.gold};--sw-cx:${c.codex}">
+      <span class="sw" aria-hidden="true"><span class="sw-bar"><i></i><i></i><i></i></span><span class="sw-card"><b></b><em></em><em class="s"></em><span class="sw-btn"></span><span class="sw-dot"></span></span></span>
+      <span class="lk-tn"><b>${esc(t.name)}</b><small>${esc(t.note)}</small></span></button>`;
+  };
+  $('setupBody').innerHTML = `
+    <p class="d-h">Light or dark</p>
+    ${seg('mode', [['dark', '☾ Dark'], ['light', '☀ Light'], ['system', '◐ Match device']])}
+    <p class="d-h">Theme</p>
+    <div class="lk-themes" role="radiogroup" aria-label="Theme">${Look.THEMES.map(card).join('')}</div>
+    <p class="d-h">Text</p>
+    <div class="lk-row"><label for="lkText"><b>Text size</b><small>Messages, documents and the message box</small></label>
+      <div class="lk-range"><span class="a-sm" aria-hidden="true">A</span><input type="range" id="lkText" min="80" max="150" step="5" value="${o.text}" data-look="text"><span class="a-lg" aria-hidden="true">A</span><output id="lkTextV">${o.text}%</output></div></div>
+    <div class="lk-row"><span><b>Reading font</b><small>Classic is the bookish serif; Modern and Clean are easier on small screens</small></span>
+      ${seg('font', [['classic', '<span class="fs-classic">Aa</span> Classic'], ['modern', '<span class="fs-modern">Aa</span> Modern'], ['clean', '<span class="fs-modern">Aa</span> Clean', 'sans headings too']])}</div>
+    <label class="toggle"><input type="checkbox" data-look="bold" ${o.bold ? 'checked' : ''}><span><b>Bold text</b><span>Heavier letters everywhere, easier to read at a glance.</span></span></label>
+    <label class="toggle"><input type="checkbox" data-look="contrast" ${o.contrast ? 'checked' : ''}><span><b>Higher contrast</b><span>Brighter text and stronger accents.</span></span></label>
+    <p class="d-h">Interface</p>
+    <div class="lk-row"><label for="lkUi"><b>Interface size</b><small>Scales everything: bars, buttons, cards and text</small></label>
+      <div class="lk-range"><span class="a-sm" aria-hidden="true">▢</span><input type="range" id="lkUi" min="80" max="130" step="5" value="${o.ui}" data-look="ui"><span class="a-lg" aria-hidden="true">▢</span><output id="lkUiV">${o.ui}%</output></div></div>
+    <div class="lk-preview" aria-hidden="true">
+      <div class="turn" data-prov="claude"><div class="who"><span class="who-n">Claude</span><span class="who-m">Preview</span></div><div class="part"><div class="final"><div class="md"><p>This is how replies read. <strong>Bold words</strong>, <code>code</code> and <a href="#">links</a> follow your theme.</p></div></div></div></div>
+      <div class="umsg"><div class="ububble"><div class="utext">And this is how your messages look.</div></div></div>
+    </div>
+    <div class="app-actions"><button class="btn" data-look-reset>Back to the original look</button></div>
+    <p class="ver">Appearance is saved on this device, so your phone and your PC can each look their own way.</p>`;
+}
+$('setupBody').addEventListener('input', e => {
+  const r = e.target.closest('input[type="range"][data-look]'); if (!r) return;
+  Look.set({ [r.dataset.look]: Number(r.value) });
+  const out = $(r.id === 'lkText' ? 'lkTextV' : 'lkUiV'); if (out) out.textContent = `${r.value}%`;
+});
+$('setupBody').addEventListener('click', e => {
+  const b = e.target.closest('button[data-look]');
+  if (b) { Look.set({ [b.dataset.look]: b.dataset.v }); renderLook(); return; }
+  if (e.target.closest('[data-look-reset]')) { Look.reset(); renderLook(); toast('Back to the original look.', 2000); }
+});
+$('setupBody').addEventListener('change', e => {
+  const c = e.target.closest('input[type="checkbox"][data-look]');
+  if (c) { Look.set({ [c.dataset.look]: c.checked }); e.stopImmediatePropagation(); }
+}, true);
 $('setupClose').addEventListener('click', () => $('setup').close());
 $('setupBody').addEventListener('change', wrap(async e => {
   const ph = e.target.closest('[data-phone="enabled"]');
@@ -1786,6 +1851,9 @@ function palItems(q) {
     { glyph: '✦', t: 'Go to the hub', run: () => go('hub') },
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
     { glyph: '⚙', t: 'Setup and health', run: openSetup },
+    { glyph: '◐', t: 'Appearance', s: 'themes, light or dark, text and interface size', run: () => openSetup('look') },
+    { glyph: '◐', t: Look.isLight() ? 'Switch to dark mode' : 'Switch to light mode', run: () => Look.set({ mode: Look.isLight() ? 'dark' : 'light' }) },
+    ...Look.THEMES.filter(t => t.id !== Look.get().theme).map(t => ({ glyph: '◉', t: `Theme: ${t.name}`, s: t.note, run: () => Look.set({ theme: t.id }) })),
     { glyph: '◈', t: 'Check usage for every account', run: () => refreshUsage() },
     ...S.accounts.filter(a => a.id !== S.acct).map(a => ({ glyph: '◆', t: `Work as ${a.name}`, s: usageLine(a.id, { short: true }), run: () => useAccount(a.id) })),
     ...S.accounts.map(a => ({ glyph: '❖', t: `Open claude.ai as ${a.name}`, s: 'regular Claude chats', run: () => openWeb(a.id) })),
@@ -1902,7 +1970,7 @@ const Viewer = (() => {
   }
   function render() {
     const f = V.cur;
-    const kind = f.kind === 'dir' ? 'Folder' : f.kind === 'image' ? 'Image' : f.kind === 'text' ? (f.lang || 'text') : 'File';
+    const kind = f.kind === 'dir' ? 'Folder' : f.kind === 'image' ? 'Image' : f.kind === 'text' ? (f.lang || 'text') : f.kind === 'video' ? 'Video' : f.kind === 'audio' ? 'Sound' : f.kind === 'pdf' ? 'PDF' : 'File';
     const meta = [kind, f.kind === 'dir' ? plural(f.entries.length, 'item') : sizeOf(f.size), f.mtime ? `changed ${agoL(f.mtime)}` : ''].filter(Boolean).join(' · ');
     $('vHead').innerHTML = `
       <div class="v-t">
@@ -1923,11 +1991,19 @@ const Viewer = (() => {
     if (f.kind === 'dir') {
       body = f.entries.length ? `<ul class="v-dir">${f.entries.map(e => `<li><button data-v="open" data-name="${esc(e.name)}"><span class="glyph" aria-hidden="true">${e.dir ? '❖' : '✧'}</span><span class="vd-n">${esc(e.name)}${e.dir ? '/' : ''}</span><span class="vd-s">${e.dir ? '' : esc(sizeOf(e.size))}</span><span class="vd-m">${e.mtime ? esc(agoL(e.mtime)) : ''}</span></button></li>`).join('')}</ul>${f.more ? '<p class="v-note">Showing the first 1,000 items.</p>' : ''}` : '<p class="v-note">This folder is empty.</p>';
     } else if (f.kind === 'image') body = `<div class="v-img"><img src="${esc(f.src)}" alt="${esc(f.name)}"></div>`;
+    else if (f.kind === 'video') body = `<div class="v-media"><video controls autoplay preload="metadata" src="${esc(mediaSrc(f.path))}"></video></div>`;
+    else if (f.kind === 'audio') body = `<div class="v-media audio"><audio controls preload="metadata" src="${esc(mediaSrc(f.path))}"></audio></div>`;
+    else if (f.kind === 'pdf') body = `<iframe class="v-pdf" title="${esc(f.name)}" src="${esc(mediaSrc(f.path))}"></iframe>`;
     else if (f.kind === 'text') {
       body = (f.markdown && !V.raw ? `<article class="md v-md">${ChatUI.md(f.text)}</article>` : `<pre class="v-raw">${esc(f.text)}</pre>`) + (f.truncated ? '<p class="v-note">Only the first 2 MB are shown.</p>' : '');
     } else body = `<p class="v-note">${esc(f.note || 'This file can’t be shown here.')}</p>`;
     $('vBody').innerHTML = body;
     $('vBody').scrollTop = 0;
+  }
+  function mediaSrc(p) {
+    const q = new URLSearchParams({ token: TOKEN, path: p });
+    for (const k of ['key', 'session', 'cwd']) if (V.ctx[k]) q.set(k, V.ctx[k]);
+    return `/api/media?${q}`;
   }
   async function load(pathArg, { push = true } = {}) {
     const params = new URLSearchParams({ path: pathArg });
@@ -1992,10 +2068,65 @@ $('nav').addEventListener('click', wrap(async e => {
 }));
 $('brand').addEventListener('click', () => go('hub'));
 $('pulse').addEventListener('click', () => hubTo(awaiting().length ? 'secAwait' : 'secWork'));
-$('usechip').addEventListener('click', () => {
-  if (ChatUI.isOpen()) return ChatUI.showLedger();
+$('usechip').addEventListener('click', e => { e.stopPropagation(); return $('acctPop').hidden ? openAcctPop() : closeAcctPop(); });
+
+/* ---------- the account dropdown (top bar) ---------- */
+function acctBars(id) {
+  const u = usageOf(id), d = u && u.data && u.data.available ? u.data : null;
+  if (!d) return `<span class="ap-none">${u && u.error ? 'Usage unavailable' : u && u.checking ? 'Checking…' : 'No usage yet'}</span>`;
+  const bar = (label, w) => { if (!w) return ''; const l = leftOf(w); return `<span class="ap-bar ${hot(l) ? 'hot' : ''}" title="${esc(label)}: ${l}% left${w.resetsAt ? `, resets ${esc(when(w.resetsAt))}` : ''}"><small>${label}</small><i><b style="width:${l}%"></b></i><em>${l}%</em></span>`; };
+  return bar('5h', d.fiveHour) + bar('Week', d.week);
+}
+function openAcctPop() {
+  const pop = $('acctPop');
+  const inChat = !!(window.ChatUI && ChatUI.isOpen());
+  const chatAcct = inChat && ChatUI.accountId ? ChatUI.accountId() : null;
+  const row = a => {
+    const on = a.id === S.acct;
+    const runs = chatAcct === a.id;
+    const status = !a.signedIn ? 'Not signed in' : a.lock && !a.lock.ok ? 'Locked to another plan' : `${a.email || 'Signed in'}${a.plan ? ` · ${a.plan}` : ''}`;
+    return `<button type="button" class="ap-row ${on ? 'on' : ''}" data-ap="${esc(a.id)}" style="--ring:${ringById(a.id)}" ${a.signedIn ? '' : 'aria-disabled="true"'}>
+      <span class="ap-dial">${miniDial(a.id, 34)}</span>
+      <span class="ap-t"><b>${esc(a.name)}${runs ? ' <span class="tag">this chat</span>' : ''}${on ? ' <span class="tag gold">new chats</span>' : ''}</b><small>${esc(status)}</small><span class="ap-bars">${acctBars(a.id)}</span></span></button>`;
+  };
+  const cx = S.codex && S.codex.enabled ? `<p class="ap-h">Codex</p><button type="button" class="ap-row codex" data-ap="codex" style="--ring:${CODEX_RING}">
+      <span class="ap-dial">${miniDial('codex', 34)}</span>
+      <span class="ap-t"><b>Codex${chatAcct === 'codex' ? ' <span class="tag codex">this chat</span>' : ''}</b><small>${esc(S.codex.signedIn ? `${S.codex.email || 'Signed in'}${S.codex.plan ? ` · ${S.codex.plan}` : ''}` : 'Not signed in')}</small><span class="ap-bars">${S.codex.signedIn ? acctBars('codex') : ''}</span></span></button>` : '';
+  pop.innerHTML = `<p class="ap-h">${inChat && chatAcct ? 'Pick the account new chats open as. This chat keeps its own.' : 'New chats open as'}</p>
+    <div class="ap-list">${S.accounts.map(row).join('')}</div>${cx}
+    <div class="ap-act">
+      <button type="button" class="btn sm" data-apx="add">Add an account</button>
+      <button type="button" class="btn quiet sm" data-apx="usage">Check usage</button>
+      <button type="button" class="btn quiet sm" data-apx="web">Open claude.ai</button>
+      <button type="button" class="btn quiet sm" data-apx="hub">All accounts on the hub</button>
+    </div>`;
+  pop.hidden = false;
+  placeAt(pop, $('usechip'));
+  $('usechip').setAttribute('aria-expanded', 'true');
+  pop.querySelector('.ap-row.on, .ap-row')?.focus();
+}
+function closeAcctPop() { if ($('acctPop').hidden) return; $('acctPop').hidden = true; $('usechip').setAttribute('aria-expanded', 'false'); }
+$('acctPop').addEventListener('click', wrap(async e => {
+  const r = e.target.closest('[data-ap]');
+  if (r) {
+    const id = r.dataset.ap;
+    closeAcctPop();
+    if (id === 'codex') return S.codex.signedIn ? hubTo('secAccounts') : codexSignIn();
+    const a = S.accounts.find(x => x.id === id);
+    if (a && !a.signedIn) { S.acct = id; store('acct', id); renderAll(); return accountAction(a.expectEmail ? 'signin-direct' : 'signin', id); }
+    return useAccount(id);
+  }
+  const x = e.target.closest('[data-apx]'); if (!x) return undefined;
+  closeAcctPop();
+  if (x.dataset.apx === 'add') return addAccount();
+  if (x.dataset.apx === 'usage') { toast('Checking usage for every account…', 2500); return refreshUsage(); }
+  if (x.dataset.apx === 'web') return openWeb(current().id);
+  if (ChatUI.isOpen()) ChatUI.close();
   return hubTo('secAccounts');
-});
+}));
+document.addEventListener('mousedown', e => { if (!$('acctPop').hidden && !(e.target.closest && e.target.closest('#acctPop, #usechip'))) closeAcctPop(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('acctPop').hidden) { closeAcctPop(); $('usechip').focus(); e.stopPropagation(); } }, true);
+window.addEventListener('resize', closeAcctPop);
 $('seek').addEventListener('click', () => openPalette());
 $('setupBtn').addEventListener('click', openSetup);
 $('navToggle').addEventListener('click', () => { const on = !document.body.classList.contains('nav-open'); document.body.classList.toggle('nav-open', on); $('navToggle').setAttribute('aria-expanded', String(on)); });
@@ -2143,6 +2274,7 @@ if (window.Android || / SessionSwitcherAndroid\//.test(navigator.userAgent)) doc
 window.__mobileBack = () => {
   if (!$('cLight')?.hidden) { $('cLight').hidden = true; return true; }
   if (!$('menu').hidden) { closeMenu(); return true; }
+  if (!$('acctPop').hidden) { closeAcctPop(); return true; }
   if (!$('palette').hidden) { closePalette(); return true; }
   for (const d of document.querySelectorAll('dialog[open]')) { d.close(); return true; }
   if (!$('drawer').hidden) { closeDrawer(); return true; }

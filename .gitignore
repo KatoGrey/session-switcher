@@ -22,3 +22,6 @@ mobile/android/build/
 mobile/android/*.keystore
 *.apk
 *.zip
+
+# Files attached in chats run inside this folder
+attachments/

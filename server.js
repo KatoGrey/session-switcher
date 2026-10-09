@@ -22,7 +22,7 @@ const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
 
-const APP_VERSION = '5.0.0';
+const APP_VERSION = '5.1.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
 const APP_DIR = __dirname;
 const CONFIG_FILE = path.join(APP_DIR, 'accounts.json');
@@ -422,6 +422,7 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, { checks, prefs: c.prefs, claudeCommand: c.claudeCommand, codex: c.codex, appVersion: APP_VERSION });
   }
 
+  if (route === 'POST /api/chat/upload') return uploadFile(req, res, url);
   if (req.method !== 'POST') throw fail(404, 'Not found.');
   const body = await readBody(req, url.pathname === '/api/chat/send' ? 40 * 1024 * 1024 : 65536);
 
@@ -758,6 +759,59 @@ async function handleApi(req, res, url, remote = false) {
 
 // ---------- chat window ----------
 
+// "Attach file": anything that isn't an inline image (videos, PDFs, sound, documents) is saved in
+// the chat's project folder under attachments/<date>/, so Claude or Codex can open it by path.
+const UPLOAD_MAX = 2 * 1024 * 1024 * 1024;
+function uploadFile(req, res, url) {
+  const chat = chats.get(url.searchParams.get('key'));
+  const raw = String(url.searchParams.get('name') || 'file').split(/[\\/]/).pop();
+  const name = raw.replace(/[<>:"|?*\x00-\x1f]/g, '_').replace(/^\.+/, '').slice(-120) || 'file';
+  const size = Number(req.headers['content-length'] || 0);
+  if (!size) throw fail(400, 'That file is empty.');
+  if (size > UPLOAD_MAX) throw fail(413, 'Files up to 2 GB can be attached.');
+  const day = new Date().toISOString().slice(0, 10);
+  const dir = path.join(chat.cwd, 'attachments', day);
+  fs.mkdirSync(dir, { recursive: true });
+  const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
+  let dest = path.join(dir, name);
+  for (let i = 2; fs.existsSync(dest); i++) dest = path.join(dir, `${stem} (${i})${ext}`);
+  const tmp = `${dest}.part`;
+  return new Promise((resolve, reject) => {
+    const out = fs.createWriteStream(tmp);
+    let got = 0;
+    req.on('data', c => { got += c.length; if (got > UPLOAD_MAX) { req.destroy(); out.destroy(); fs.unlink(tmp, () => {}); reject(fail(413, 'Files up to 2 GB can be attached.')); } });
+    req.on('aborted', () => { out.destroy(); fs.unlink(tmp, () => {}); });
+    out.on('error', err => { fs.unlink(tmp, () => {}); reject(fail(500, `Couldn’t save that file: ${err.message}`)); });
+    out.on('finish', () => {
+      try { fs.renameSync(tmp, dest); } catch (err) { return reject(fail(500, `Couldn’t save that file: ${err.message}`)); }
+      log(`Attached ${path.relative(chat.cwd, dest)} (${Math.round(got / 1024)} KB)`);
+      send(res, 200, { path: dest, rel: path.relative(chat.cwd, dest).replace(/\\/g, '/'), name: path.basename(dest), size: got });
+      resolve();
+    });
+    req.pipe(out);
+  });
+}
+
+// Videos, sound and PDFs, streamed (with byte ranges, so players can seek). Same rules as the viewer.
+function sendMedia(req, res, url) {
+  const q = Object.fromEntries(url.searchParams);
+  const f = filesLib.locate(fileBase(q), q.path);
+  const mime = filesLib.MEDIA_TYPES[path.extname(f.path).toLowerCase()];
+  if (!f.isFile || !mime) throw fail(400, 'That file can’t be played here.');
+  const size = fs.statSync(f.path).size;
+  const head = { 'Content-Type': mime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' };
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (m && (m[1] || m[2])) {
+    let start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+    let end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+    if (start >= size || start > end) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }); return res.end(); }
+    res.writeHead(206, { ...head, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1 });
+    return fs.createReadStream(f.path, { start, end }).pipe(res);
+  }
+  res.writeHead(200, { ...head, 'Content-Length': size });
+  return fs.createReadStream(f.path).pipe(res);
+}
+
 function validImages(images) {
   if (images === undefined) return [];
   if (!Array.isArray(images) || images.length > 10) throw fail(400, 'Attach at most 10 images at a time.');
@@ -960,7 +1014,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': 'font/woff2', 'Cache-Control': 'max-age=604800', 'X-Content-Type-Options': 'nosniff' });
       return res.end(data);
     }
-    const STATIC = { '/chat-ui.js': 'text/javascript', '/app.js': 'text/javascript', '/styles.css': 'text/css' };
+    const STATIC = { '/chat-ui.js': 'text/javascript', '/app.js': 'text/javascript', '/theme.js': 'text/javascript', '/styles.css': 'text/css' };
     if (req.method === 'GET' && STATIC[url.pathname]) {
       res.writeHead(200, { 'Content-Type': `${STATIC[url.pathname]}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       return res.end(fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1)), 'utf8'));
@@ -981,7 +1035,8 @@ async function handleRequest(req, res, { remote = false } = {}) {
     }
     if (url.pathname.startsWith('/api/')) {
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
-      const imageGet = req.method === 'GET' && url.pathname === '/api/image' && url.searchParams.get('token') === TOKEN;
+      const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media') && url.searchParams.get('token') === TOKEN;
+      if (imageGet && url.pathname === '/api/media') return sendMedia(req, res, url);
       if (req.headers['x-switcher-token'] !== TOKEN && !imageGet) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
       return await handleApi(req, res, url, remote);
     }

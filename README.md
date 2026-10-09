@@ -66,6 +66,7 @@ The top bar is visible everywhere:
 
 - It shows how many chats are at work and how many await you.
 - It names the account in plain words: "New chats open as" on the hub, "This chat runs as" inside a chat.
+- **Click it** to open a list of every account you have, Codex included. Each shows its sign-in, its plan, and bars for how much of the 5-hour window and the week is left. Click an account to make new chats open as it (one that isn't signed in starts its sign-in). The bottom row has **Add an account**, **Check usage**, **Open claude.ai** and **All accounts on the hub**.
 - It shows that account's 5-hour window and week separately, each with its reset time.
 
 The window title shows the count too, for example "(2) Session Switcher".
@@ -165,7 +166,12 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
 - **The conversation:**
   - Replies are formatted, with tables and copyable code.
   - Tool steps are compact rows that open to show the command, the edit or the output.
-  - Artifacts appear as cards, and images can be pasted, dropped or attached.
+  - Artifacts appear as cards.
+  - **Attach** (or paste or drop) any file:
+    - Pictures go straight into the message, as before.
+    - Videos, PDFs, sound files and documents (up to 2 GB) are saved in the project folder under `attachments/<date>/`, and the message tells Claude or Codex where they are, so they can open them. Claude and Codex can't watch a video directly, but they can work with the file, for example with a tool like ffmpeg.
+    - In the conversation, videos and sound play right in the message, and other files show as cards that open in the viewer.
+  - The file viewer plays videos and sound, and shows PDFs.
   - Notices are slim banners.
 - **Permission requests:** a card above the message box with **Allow**, **Always allow** and **Deny**. Claude's multiple-choice questions show as clickable options.
 - **Links to files:** file names Claude mentions, like `PATCH-NOTES.md` or `fb5-playtest/`, are clickable.
@@ -268,6 +274,20 @@ Instead, every account card has a **claude.ai** button. It opens claude.ai in a 
 
 The Codex card does the same for **chatgpt.com**.
 
+## Appearance
+
+Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in `Ctrl+K`):
+
+- **Light or dark:** Dark, Light, or Match device (it follows Windows or Android).
+- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite. Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
+- **Text size** (80–150%): messages, documents and the message box.
+- **Reading font:** Classic (the serif), Modern (a clean sans for reading), or Clean (sans headings too).
+- **Bold text** and **Higher contrast**.
+- **Interface size** (80–130%): scales everything at once. On smaller windows the top bar tucks away its smaller labels so nothing overlaps.
+- A live preview shows a reply and a message in your choices; **Back to the original look** undoes everything.
+
+Appearance is saved on each device, so your phone and your PC can look different.
+
 ## Alerts
 
 When a chat needs you or replies, Session Switcher can:
@@ -300,6 +320,7 @@ Turn **Animations** off in Setup to keep everything still. It's also off automat
 | `Alt+↑` / `Alt+↓` | Switch between running chats in the chat window |
 | `Enter` | Send. Use `Shift+Enter` for a new line |
 | `Esc` | Stop Claude, or close what's open |
+| `Ctrl+K`, then "light mode" or a theme name | Switch light/dark or theme |
 | `Ctrl+.` | In a Claude chat, switch between writing to Claude and to Codex |
 | `@codex` … | Send one message to Codex from a Claude chat |
 | `/model <name>` · `/effort <level>` | Switch the chat's model or effort without sending anything |
@@ -369,11 +390,12 @@ Fixes are one click: update Claude Code, sign in, merge and share, or set the `c
   - `sharecopy.js`: **Make a copy to share**.
   - `chatprefs.js`: remembered modes, models and effort, and each Claude chat's Codex helper.
   - `remote.js`: phone access (pairing, paired phones).
-  - `files.js`: the file viewer.
+  - `files.js`: the file viewer (text, pictures, videos, sound, PDFs).
   - `system.js`: terminals and processes.
   - `health.js`: the Setup checks.
   - `store.js`: safe file writes.
 - `index.html`, `styles.css`, `app.js`: the hub.
+- `theme.js`: themes, light and dark, text and interface size. Every color in `styles.css` is a variable named after its original value (`--c-a5463f`), and each theme recolors them all from a few seed colors.
 - `chat-ui.js`: the chat window.
 - `fonts/`: the bundled typefaces (SIL Open Font License).
 - `mobile/android/`: the Android app (a small WebView remote) and its build script.

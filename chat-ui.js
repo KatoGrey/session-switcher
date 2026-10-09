@@ -19,9 +19,9 @@
   const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Skip all checks', dontAsk: 'Never ask' };
   const STATE_LABELS = { starting: 'Starting', ready: 'Ready', busy: 'Working', waiting: 'Needs your OK', ended: 'Stopped', watching: 'Watching live', readonly: 'Read-only' };
   const ARTIFACT_RE = /https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+/g;
-  const FILE_EXT = 'md|markdown|mdx|txt|json|jsonl|csv|tsv|log|html?|css|js|mjs|cjs|ts|tsx|jsx|py|ya?ml|toml|xml|sh|ps1|bat|cmd|lua|luau|cs|java|go|rs|sql|ini|png|jpe?g|gif|webp|svg';
+  const FILE_EXT = 'md|markdown|mdx|txt|json|jsonl|csv|tsv|log|html?|css|js|mjs|cjs|ts|tsx|jsx|py|ya?ml|toml|xml|sh|ps1|bat|cmd|lua|luau|cs|java|go|rs|sql|ini|png|jpe?g|gif|webp|svg|mp4|m4v|webm|mov|mkv|mp3|wav|ogg|m4a|flac|pdf';
   const PATHY = new RegExp(`^(?:[A-Za-z]:[\\\\/]|\\.{1,2}[\\\\/]|~[\\\\/]|/)?[^\\s<>"|?*]*?(?:\\.(?:${FILE_EXT})|[\\\\/])$`, 'i');
-  const BARE = /(^|[\s(“"'[])((?:[A-Za-z]:[\\/]|\.{1,2}[\\/]|~[\\/]|\/)?[\w.-]+(?:[\\/][\w.-]+)*\.(?:md|markdown|txt|json|jsonl|csv|log|html|ya?ml|toml|png|jpe?g|webp|svg))(?=$|[\s),.;:!?”"'\]])/gi;
+  const BARE = /(^|[\s(“"'[])((?:[A-Za-z]:[\\/]|\.{1,2}[\\/]|~[\\/]|\/)?[\w.-]+(?:[\\/][\w.-]+)*\.(?:md|markdown|txt|json|jsonl|csv|log|html|ya?ml|toml|png|jpe?g|webp|svg|mp4|webm|mov|mp3|wav|pdf))(?=$|[\s),.;:!?”"'\]])/gi;
 
   /* ---------- markdown (safe: everything is escaped first) ---------- */
   function link(url, inner) { return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${inner}</a>`; }
@@ -247,6 +247,18 @@
     if (sid) q.set('session', sid);
     return `/api/image?${q}`;
   }
+  // Videos, sound and PDFs on disk, streamed through the app (same folders as the file viewer).
+  function mediaUrl(p) { return imageUrl(p).replace('/api/image?', '/api/media?'); }
+  const VIDEO_RE = /\.(mp4|m4v|webm|mov|ogv|mkv)$/i, AUDIO_RE = /\.(mp3|wav|ogg|oga|m4a|flac|aac)$/i;
+  // Files attached to a message (saved under attachments/), shown as players or file cards.
+  const ATTACH_LINE = /^Attached file: `([^`\n]+)`(?: \(([^)\n]*)\))?$/;
+  function attachedFiles(list) {
+    if (!list.length) return '';
+    return `<div class="afiles">${list.map(([p, info]) => (VIDEO_RE.test(p) ? `<figure class="af-media"><video controls preload="metadata" src="${esc(mediaUrl(p))}"></video><figcaption><button type="button" class="linkish" data-file="${esc(p)}">${esc(base(p))}</button>${info ? ` · ${esc(info)}` : ''}</figcaption></figure>`
+      : AUDIO_RE.test(p) ? `<figure class="af-media audio"><audio controls preload="metadata" src="${esc(mediaUrl(p))}"></audio><figcaption><button type="button" class="linkish" data-file="${esc(p)}">${esc(base(p))}</button>${info ? ` · ${esc(info)}` : ''}</figcaption></figure>`
+      : `<button type="button" class="af-file" data-file="${esc(p)}"><span class="af-ico" aria-hidden="true">${fileGlyph(p)}</span><span class="af-t"><b>${esc(base(p))}</b>${info ? `<small>${esc(info)}</small>` : ''}</span></button>`)).join('')}</div>`;
+  }
+  const fileGlyph = p => (/\.pdf$/i.test(p) ? 'PDF' : VIDEO_RE.test(p) ? '▶' : AUDIO_RE.test(p) ? '♪' : (String(p).split('.').pop() || 'file').slice(0, 4).toUpperCase());
   function images(list) {
     if (!list || !list.length) return '';
     return `<div class="imgs">${list.map(im => (im.path ? `<button type="button" class="thumb" data-full="${esc(imageUrl(im.path))}"><img src="${esc(imageUrl(im.path))}" alt="Image" loading="lazy"></button>`
@@ -383,7 +395,10 @@
       const d = document.createElement('div');
       const toCodex = provNow() === 'codex' && C.provider !== 'codex';
       d.className = `${liveRender ? 'umsg fresh' : 'umsg'}${toCodex ? ' to-codex' : ''}`;
-      d.innerHTML = `${toCodex ? '<span class="to-tag">to Codex</span>' : ''}<div class="ububble">${it.text ? `<div class="utext">${plain(it.text)}</div>` : ''}${images(it.images)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
+      // "Attached file: `path` (info)" lines become players and file cards.
+      const files = [];
+      const text = String(it.text || '').split('\n').filter(l => { const m = l.trim().match(ATTACH_LINE); if (m) files.push([m[1], m[2] || '']); return !m; }).join('\n').trim();
+      d.innerHTML = `${toCodex ? '<span class="to-tag">to Codex</span>' : ''}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
       root.appendChild(d);
     } else if (it.kind === 'assistant') {
       const mi = C.mi[provNow() === 'codex' && C.provider !== 'codex' ? 'comp' : 'main'];
@@ -732,18 +747,44 @@
   }
 
   /* ---------- composer ---------- */
+  const sizeText = n => (n >= 1024 * 1024 * 1024 ? `${(n / 1024 / 1024 / 1024).toFixed(1)} GB` : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+  const kindOf = f => (/^video\//.test(f.type) || VIDEO_RE.test(f.name) ? 'video' : /^audio\//.test(f.type) || AUDIO_RE.test(f.name) ? 'audio' : /pdf$/.test(f.type) || /\.pdf$/i.test(f.name) ? 'PDF' : 'file');
   function renderAttachments() {
-    $c('cAtt').innerHTML = C.attachments.map((a, i) => `<span class="att"><img src="data:${esc(a.mediaType)};base64,${a.data}" alt=""><button type="button" data-rm="${i}" aria-label="Remove image">✕</button></span>`).join('');
-    $c('cAtt').hidden = !C.attachments.length;
+    const imgs = C.attachments.map((a, i) => `<span class="att"><img src="data:${esc(a.mediaType)};base64,${a.data}" alt=""><button type="button" data-rm="${i}" aria-label="Remove image">✕</button></span>`);
+    const files = (C.files || []).map((f, i) => `<span class="att file ${f.error ? 'err' : f.rel ? 'done' : 'up'}" title="${esc(f.error || f.rel || 'Uploading…')}">
+      <span class="af-ico" aria-hidden="true">${esc(fileGlyph(f.name))}</span><span class="af-t"><b>${esc(f.name)}</b><small>${esc(f.error ? 'Couldn’t attach' : f.rel ? `${f.kind}, ${sizeText(f.size)}` : `Uploading ${Math.round((f.progress || 0) * 100)}%`)}</small></span>
+      ${!f.rel && !f.error ? `<i class="af-bar" style="width:${Math.round((f.progress || 0) * 100)}%"></i>` : ''}<button type="button" data-rmf="${i}" aria-label="Remove file">✕</button></span>`);
+    $c('cAtt').innerHTML = imgs.join('') + files.join('');
+    $c('cAtt').hidden = !imgs.length && !files.length;
   }
+  // Pictures go to the chat itself; anything else (videos, PDFs, sound, documents) is saved in the
+  // project's attachments folder and the message says where, so Claude or Codex can open it.
   function addFiles(files) {
     for (const f of files) {
-      if (!/^image\/(png|jpeg|gif|webp)$/.test(f.type)) { toast('Only PNG, JPEG, GIF and WebP images can be attached.'); continue; }
-      if (f.size > 5 * 1024 * 1024) { toast(`${f.name || 'That image'} is over 5 MB.`); continue; }
-      if (C.attachments.length >= 10) { toast('You can attach up to 10 images per message.'); break; }
-      const r = new FileReader();
-      r.onload = () => { const s = String(r.result); C.attachments.push({ mediaType: f.type, data: s.slice(s.indexOf(',') + 1) }); renderAttachments(); };
-      r.readAsDataURL(f);
+      if (/^image\/(png|jpeg|gif|webp)$/.test(f.type) && f.size <= 5 * 1024 * 1024 && C.attachments.length < 10) {
+        const r = new FileReader();
+        r.onload = () => { const s = String(r.result); C.attachments.push({ mediaType: f.type, data: s.slice(s.indexOf(',') + 1) }); renderAttachments(); };
+        r.readAsDataURL(f);
+        continue;
+      }
+      if (!C.key) { toast('Start the chat first, then attach files.'); return; }
+      if (f.size > 2 * 1024 * 1024 * 1024) { toast(`${f.name} is over 2 GB.`); continue; }
+      const item = { name: f.name || 'file', size: f.size, type: f.type, kind: kindOf(f), progress: 0, rel: null, error: null };
+      (C.files || (C.files = [])).push(item);
+      const x = new XMLHttpRequest();
+      item.xhr = x;
+      x.open('POST', `/api/chat/upload?${new URLSearchParams({ key: C.key, name: item.name })}`);
+      x.setRequestHeader('X-Switcher-Token', TOKEN);
+      x.upload.onprogress = e => { if (e.lengthComputable) { item.progress = e.loaded / e.total; renderAttachments(); } };
+      x.onload = () => {
+        let j = {}; try { j = JSON.parse(x.responseText); } catch { /* not JSON */ }
+        if (x.status === 200) { item.rel = j.rel; item.path = j.path; item.size = j.size; } else item.error = j.error || `Upload failed (${x.status}).`;
+        if (item.error) toast(`${item.name}: ${item.error}`, 7000);
+        renderAttachments();
+      };
+      x.onerror = () => { item.error = 'The upload was interrupted.'; renderAttachments(); };
+      x.send(f);
+      renderAttachments();
     }
   }
   function grow() { const t = $c('cText'); t.style.height = 'auto'; t.style.height = `${Math.min(t.scrollHeight, window.innerHeight * 0.4)}px`; }
@@ -797,8 +838,13 @@
   }
   async function sendMessage() {
     let text = $c('cText').value;
-    if (!text.trim() && !C.attachments.length) return;
-    const clear = () => { $c('cText').value = ''; C.attachments = []; renderAttachments(); grow(); };
+    if (!text.trim() && !C.attachments.length && !(C.files || []).length) return;
+    const clear = () => { $c('cText').value = ''; C.attachments = []; C.files = []; renderAttachments(); grow(); };
+    const files = C.files || [];
+    if (files.some(f => !f.rel && !f.error)) { toast('Still uploading. It sends once your files are attached; try again in a moment.'); return; }
+    const ready = files.filter(f => f.rel);
+    if (!text.trim() && !C.attachments.length && !ready.length) return;
+    if (ready.length) text = `${text.replace(/\s+$/, '')}${text.trim() ? '\n\n' : ''}${ready.map(f => `Attached file: \`${f.rel}\` (${f.kind}, ${sizeText(f.size)})`).join('\n')}`;
     // /model and /effort switch without sending.
     const sw = text.trim().match(/^\/(model|effort)\s+(.{1,60})$/i);
     if (sw && !C.attachments.length) { clear(); await quickSwitch(sw[1].toLowerCase(), sw[2].trim()); return; }
@@ -929,6 +975,7 @@
     if (C.es) { C.es.close(); C.es = null; }
     clearTimeout(C.liveTimer);
     if (C.comp && C.comp.es) C.comp.es.close();
+    C.files = [];
     Object.assign(C, { key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
     closePick();
     $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
@@ -1089,6 +1136,7 @@
       if (cc) { try { await navigator.clipboard.writeText(cc.closest('.code').querySelector('code').textContent); cc.textContent = 'Copied'; setTimeout(() => { cc.textContent = 'Copy'; }, 1500); } catch { toast('Couldn’t copy.'); } return; }
       const more = t.closest('.tg-more'); if (more) { const g = more.closest('.tools'); g.classList.toggle('open'); updateGroup(g); return; }
       const rm = t.closest('[data-rm]'); if (rm) { C.attachments.splice(+rm.dataset.rm, 1); renderAttachments(); return; }
+      const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
       if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
       const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
       const crew = t.closest('[data-crew]');
@@ -1165,7 +1213,7 @@
       if (e.key === 'Escape' && (tstate === 'busy' || tstate === 'waiting')) { e.preventDefault(); C.interruptedAt = Date.now(); wrap(() => api('/api/chat/interrupt', { key: tgt ? tgt.key : C.key }))(); }
     });
     $c('cText').addEventListener('paste', e => {
-      const files = [...(e.clipboardData && e.clipboardData.files || [])].filter(f => f.type.startsWith('image/'));
+      const files = [...(e.clipboardData && e.clipboardData.files || [])];
       if (files.length) { e.preventDefault(); addFiles(files); }
     });
     $c('cFile').addEventListener('change', e => { addFiles([...e.target.files]); e.target.value = ''; });
