@@ -59,6 +59,8 @@ The hub is the main screen. Its sections, from the top:
   - the step it's on and its latest line
   - how long the current turn has taken
   - a small activity graph
+- **Pick up where you left off:** after Session Switcher restarts, the chats that were open in its window, with **Reopen them** or **Not now**.
+- **Races** and **Queued:** Claude and Codex racing on the same task, and tasks waiting to start (see **Race Claude and Codex** and **Queued tasks** below).
 - **Accounts and usage:** one card per account with a usage dial.
   - The inner ring is the five-hour window; the outer ring is the week.
   - The gold dots show how much of each window has passed. If the ring is ahead of the dot, you're using it faster than time passes.
@@ -78,6 +80,10 @@ The top bar is visible everywhere:
 - It shows that account's 5-hour window and week separately, each with its reset time.
 
 The window title shows the count too, for example "(2) Session Switcher".
+
+The lists stay put while chats work: the sidebar's folders and the chat window's **Running now** keep their order, and a new one joins at the top, so nothing moves out from under your mouse.
+
+The first time it opens, a short tour points out the main parts. **Take the tour** in Setup or `Ctrl+K` shows it again.
 
 Each account has its own color: a ring on its usage dial, the edge of the top bar's account panel, and a line across the top of any chat running as it.
 
@@ -146,6 +152,7 @@ To change them, choose **Edit prompts…** from any of those menus. You can rena
 
 - **Add a starter set** adds a ready-made set to yours. **Interactive fiction and games** has a balance pass, playtest and review, patch notes, new NPC, new story start, lore check, faction reputation tiers and key art.
 - **Restore the starter prompts** puts the originals back.
+- **Export…** saves your prompts as a file to give to someone; **Import…** adds the prompts from such a file to yours (one with the same name as one of yours is skipped).
 - Closing the editor with unsaved changes (Esc, ✕ or a click outside it) asks first.
 
 A new chat opens on its project: its banner, its name, and your prompts one click away.
@@ -163,7 +170,7 @@ Session Switcher has nothing personal built in, so you can give it to anyone:
 
 ### On GitHub
 
-The repository is safe to publish as it is. Everything personal the app writes (`accounts.json`, `history.json`, `chat-names.json`, `projects.json`, `banners.json`, `prompts.json`, `chat-prefs.json`, `devices.json`, `switcher.log`) is listed in `.gitignore`, so it can't be committed by accident. Co-workers clone the repository, double-click **Claude Switcher.vbs**, and set up their own accounts. To give them the Android app too, attach `SessionSwitcher.apk` to a GitHub Release, or let the Actions workflow build it.
+The repository is safe to publish as it is. Everything personal the app writes (`accounts.json`, `history.json`, `chat-names.json`, `projects.json`, `banners.json`, `prompts.json`, `chat-prefs.json`, `devices.json`, `tasks.json`, `races.json`, `open-chats.json`, `reopen.json`, `switcher.log`) is listed in `.gitignore`, so it can't be committed by accident. Co-workers clone the repository, double-click **Claude Switcher.vbs**, and set up their own accounts. To give them the Android app too, attach `SessionSwitcher.apk` to a GitHub Release, or let the Actions workflow build it.
 
 Sign-ins never live in the app's folder. Each Claude account signs in through its own folder in your user profile: `.claude`, or `.claude-<name>` for extra accounts. Codex uses `.codex`. So even a plain copy of the app's folder carries no sign-ins. The zip is still the tidy way, because it also leaves out your account list, settings and history.
 
@@ -174,7 +181,10 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
 - **Running now (left):** every running chat, for one-click switching. `Alt+↑` and `Alt+↓` move between them.
 - **The conversation:**
   - Replies are formatted, with tables and copyable code.
-  - Tool steps are compact rows that open to show the command, the edit or the output.
+  - Tool steps are compact rows that open to show the command, the edit or the output. Once a reply is done, its steps fold into one line ("Edited songs.lua · ran 2 commands · looked at 4 files"); click it to see them.
+  - **What each reply changed** (in a git project): a bar under the reply, like "Changed 3 files".
+    - **See the changes** shows them, file by file.
+    - **Undo** puts those files back as they were before that reply. A file that's changed since is left alone, and it tells you which. Whoever made the changes hears about the undo with your next message, so it doesn't build on them.
   - Artifacts appear as cards.
   - **Attach** (or paste or drop) any file:
     - Pictures go straight into the message, as before.
@@ -182,6 +192,9 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
     - In the conversation, videos and sound play right in the message, and other files show as cards that open in the viewer.
   - The file viewer plays videos and sound, and shows PDFs.
   - Notices are slim banners.
+- **@ mentions:** type `@` and a few letters in the message box to pick a file from the project. It goes in as its path, so Claude or Codex reads exactly that file.
+- **How full the chat is:** each pill under the message box has a thin meter, and the ledger says how full (for example "62% full · 98k of 160k tokens"). Near the end, the chat suggests **Summarize now**: a chat that's full summarizes itself, maybe in the middle of a task, so summarizing between tasks keeps what matters. **⋯** has **Summarize the conversation now** any time.
+- **Never stuck on a limit:** if the account runs out of usage in the middle of a chat, the chat offers **Continue as** another of your accounts (the same conversation), **Hand it to Codex** (Codex is caught up on the conversation first), or **Tell me when it's back**. A new chat skips an account that's out and offers one with room.
 - **Permission requests:** a card above the message box with **Allow**, **Always allow** and **Deny**. Claude's multiple-choice questions show as clickable options.
 - **Links to files:** file names Claude mentions, like `PATCH-NOTES.md` or `fb5-playtest/`, are clickable.
   - They open in a viewer inside the app, with the full path, **Copy markdown**, **Copy path** and **Show in folder**.
@@ -198,6 +211,8 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
 - **Controls:**
   - The selector in the header sets what Claude may do without asking.
   - **Stop**, or **Esc twice**, interrupts Claude. The first Esc only shows "Esc again stops Claude" under the message box, so a stray key never cuts a reply short. You can type while it works to queue your next message.
+  - **Open in a new window** (in **⋯** and the chat's right-click menu) puts a chat in a window of its own, so two chats can sit side by side.
+  - **Save as a web page** makes one `.html` file of the conversation, formatted and readable anywhere, with nothing else needed.
   - **⋯** holds everything the chat's right-click menu has, plus **Move to a terminal** (continues the chat in a terminal as the same account) and **Stop this chat**, which asks first only if Claude is in the middle of a reply.
   - The **Claude** and **Codex** pills open the model picker. It works from the keyboard too: the arrows move, Enter picks, Esc closes.
 
@@ -256,6 +271,11 @@ Inside any Claude chat you can bring in Codex as a helper, for example to make i
   - Click the other pill, or press `Ctrl+.`, to choose who your next message goes to. The box turns blue when you're writing to Codex.
   - Or start a message with `@codex` (or `@claude`) to send just that one message.
 - **One feed:** Codex's replies appear in the same conversation, under its own name in blue. Messages you sent it are tagged **to Codex**. Pictures it makes appear as it makes them.
+- **One conversation:** whoever you write to first catches up on what it hasn't seen: what the other one said and changed, and what you said to it. In the feed that's a small fold-out ("Codex was caught up on 3 messages"), not text you wrote. So you can ask Claude for a plan, switch to Codex and say "do the second part", and Codex knows what that is.
+- **Both:** the **Both** pill (or `@both`) sends one message to each, and they both answer in the same feed.
+- **Codex reviews Claude's work:** **Review with Codex** on a Claude reply (or **⋯** → **Have Codex review the changes**) has Codex look over the changes, read-only.
+  - The findings appear as a card, each with its priority, file and lines. **All clear** when there are none.
+  - **Ask Claude to fix this** on one finding, or **Fix and recheck until clean**: Claude fixes them all, then Codex reviews again, up to three rounds. **Stop after this** ends it early.
 - **Hand-offs:**
   - **Ask Codex** on any Claude reply quotes it to Codex, for example Claude's description of a cover image.
   - **Send to Claude** on a Codex reply quotes it back.
@@ -264,6 +284,31 @@ Inside any Claude chat you can bring in Codex as a helper, for example to make i
 - **What Codex is told:** that it works alongside Claude in the same folder, should keep replies short, and should save a copy of any image it makes inside the project folder.
 - **Approvals:** Codex's approval cards are blue and say "Codex wants to…", so you always know who's asking. Esc stops whichever one you're writing to.
 - The helper uses your Codex sign-in and its usage, and shows in the ledger and on the hub as "Codex · *chat name*". **Stop this chat** stops both.
+
+## Rules and tools
+
+One set of rules for both assistants. Claude Code reads `CLAUDE.md` and Codex reads `AGENTS.md`, so **Rules and tools** writes the rules once and **Save to both** saves both files. Open it from a project's right-click menu, a chat's **⋯**, Setup, or `Ctrl+K`:
+
+- **Rules:** for this project, or for **Every project** (`CLAUDE.md` in your Claude folder and `AGENTS.md` in your Codex folder). If the two files differ, it says so and you pick which to start from.
+- **Tools:** each assistant's MCP servers side by side. A server only one of them has can be added to the other in one click (**Add to Codex**, **Add to Claude**).
+
+## Queued tasks
+
+**Queue a task** (on the hub's **At work** heading, a project's right-click menu, or `Ctrl+K`) saves a prompt for a project, for Claude or Codex, to start as a new chat later:
+
+- **When an account has room:** for example when every account is out of usage. It starts as soon as one is back, as whichever account has room.
+- **At a time** you pick.
+- **Start now** and **Cancel** are on its card under **Queued**. A started task goes to **At work** like any chat.
+
+Queued tasks start only while Session Switcher is running.
+
+## Race Claude and Codex
+
+Give Claude and Codex the same task and keep the better result. **Race Claude and Codex** is in a project's right-click menu and `Ctrl+K` (it needs a git project and Codex signed in):
+
+1. Each one works in its own copy of the project (a git worktree in your temp folder, with your uncommitted work; ignored folders like `node_modules` aren't copied), so neither touches your project or the other's work.
+2. The race's card, under **Races** on the hub, shows what each has changed. **See changes** shows the diff; **Open chat** shows how it got there.
+3. **Keep Claude's** or **Keep Codex's** brings that one's changes into your project, all or nothing. **Discard both** throws both away. Either way both copies are deleted.
 
 ## Models, effort and modes
 
@@ -297,6 +342,7 @@ On the phone:
 - **Attach** offers **Photos & videos** (Android's photo picker), **Take a photo**, **Record a video** and **Files**.
 - Big photos are shrunk to a sharp JPEG so they reach Claude as a picture. Videos and other files are saved in the project's `attachments` folder.
 - Menus and the model picker open as sheets from the bottom of the screen. Back closes whatever is open.
+- The **Claude** and **Codex** pills under the message box show each one's model, side by side, so you can see who you're writing to and switch with one tap.
 - On a foldable, the cover screen gets a one-column layout, and the inner screen shows two columns of projects.
 
 To update the phone app, open the same `http://<your PC>:4788/get` page and install again. Your pairing is kept.

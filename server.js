@@ -30,7 +30,7 @@ const { listFiles } = require('./lib/filelist');
 const tasksLib = require('./lib/tasks');
 const raceLib = require('./lib/race');
 
-const APP_VERSION = '5.4.1';
+const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
 const APP_DIR = __dirname;
 // Your accounts, history and settings live next to the app, unless SWITCHER_DATA_DIR points

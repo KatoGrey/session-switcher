@@ -10,6 +10,10 @@ prompts.json
 chat-prefs.json
 pairs.json
 devices.json
+tasks.json
+races.json
+open-chats.json
+reopen.json
 switcher.log
 switcher.log.old
 *.corrupt-*

@@ -13,7 +13,7 @@ const put = (dir, rel, text = 'x') => { const p = path.join(dir, rel); fs.mkdirS
 /* ---------- "Make a copy to share" never takes anything personal ---------- */
 const { appFiles, zip } = require('../lib/sharecopy');
 const PERSONAL = ['accounts.json', 'accounts.json.bak', 'history.json', 'chat-names.json', 'projects.json', 'banners.json', 'prompts.json',
-  'chat-prefs.json', 'devices.json', 'switcher.log', 'attachments/2026-10-09/clip.mp4', 'mobile/android/debug.keystore', '.claude/settings.local.json'];
+  'chat-prefs.json', 'devices.json', 'tasks.json', 'races.json', 'open-chats.json', 'reopen.json', 'switcher.log', 'attachments/2026-10-09/clip.mp4', 'mobile/android/debug.keystore', '.claude/settings.local.json'];
 
 test('share copy: personal files stay out', () => {
   const dir = tmp();
