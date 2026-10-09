@@ -22,7 +22,7 @@ const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
 
-const APP_VERSION = '5.4.0';
+const APP_VERSION = '5.4.1';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
 const APP_DIR = __dirname;
 const CONFIG_FILE = path.join(APP_DIR, 'accounts.json');
@@ -1022,7 +1022,7 @@ function chatEvents(req, res, url) {
 
 // ---------- http ----------
 
-const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src 'self' data:; connect-src 'self'; frame-ancestors 'none'";
+const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
 
 // Serves the app. Phone access (lib/remote.js) checks the phone's pairing first, then calls this
 // with remote = true; the PC's own window only ever comes through 127.0.0.1.
