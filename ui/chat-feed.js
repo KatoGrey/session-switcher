@@ -7,6 +7,8 @@ const C = {
   attachments: [], historyStart: 0, historyCursor: null, liveText: {}, liveTimer: null, interruptedAt: 0, title: '', folder: '', model: '', provider: 'claude',
   // The Codex helper working inside a Claude chat, which one your next message goes to, and each one's model.
   comp: null, compThread: null, target: 'main', mi: { main: null, comp: null },
+  // How full each one's context window is (see setCtx), and whether we've offered to summarize.
+  ctx: { main: null, comp: null }, ctxWarned: {},
 };
 const PROV_NAME = { claude: 'Claude', codex: 'Codex' };
 const codexOK = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
@@ -215,6 +217,7 @@ function renderLedger() {
       <dl class="lg-about">
         ${C.watch ? `<dt>Running</dt><dd>${C.watch.source === 'terminal' ? 'In a terminal' : 'In another app'}</dd>` : ''}
         ${C.model ? `<dt>Model</dt><dd>${esc(C.model)}${C.mi.main && C.mi.main.effort ? ` · ${esc(C.mi.main.effort)} effort` : ''}</dd>` : ''}
+        ${C.ctx.main ? `<dt>Context</dt><dd>${esc(ctxLine('main'))}</dd>` : ''}
         ${C.comp && C.mi.comp ? `<dt>Codex helper</dt><dd>${esc(modelLabel(C.mi.comp))}${C.mi.comp.effort ? ` · ${esc(C.mi.comp.effort)}` : ''}</dd>` : ''}
         ${C.info && C.info.permissionMode ? `<dt>Mode</dt><dd>${esc(($c('cMode').selectedOptions[0] || {}).textContent || $c('cMode').value)}</dd>` : ''}
         ${C.info && C.info.cwd ? `<dt>Folder</dt><dd><button class="linkish" data-file="." title="${esc(C.info.cwd)}">${esc(C.info.cwd)}</button></dd>` : ''}

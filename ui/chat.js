@@ -104,7 +104,7 @@ function connect() {
   if (C.es) C.es.close();
   const key = C.key;
   C.es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=${C.lastSeq}`);
-  C.es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); C.info = { ...C.info, ...info }; C.sessionId = info.sessionId || C.sessionId; headerAccount(info.accountId, info.accountName); if (info.permissionMode) setMode(info.permissionMode); } catch { /* ignore */ } });
+  C.es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); C.info = { ...C.info, ...info }; C.sessionId = info.sessionId || C.sessionId; headerAccount(info.accountId, info.accountName); if (info.permissionMode) setMode(info.permissionMode); if (info.context) setCtx('main', info.context); } catch { /* ignore */ } });
   C.es.addEventListener('chat', e => { if (C.key !== key) return; try { handle(JSON.parse(e.data)); } catch (err) { console.error(err); } });
   C.es.onerror = () => { if (C.state === 'ended' && C.es) { C.es.close(); C.es = null; } };
 }
@@ -121,6 +121,7 @@ function reset() {
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+  C.ctx = { main: null, comp: null }; C.ctxWarned = {};
   closePick();
   $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
   clearPermissions();
@@ -323,6 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'prompts': return c.getAttribute('aria-expanded') === 'true' ? closeMenu() : promptsMenu(c);
       case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
       case 'stop': C.interruptedAt = Date.now(); return api('/api/chat/interrupt', { key: C.target === 'comp' && C.comp ? C.comp.key : C.key });
+      case 'compact': return compactNow(c.dataset.src || 'main');
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
       case 'copyturn': {
@@ -467,6 +469,7 @@ function chatHeadItems() {
     '-',
     { glyph: '❧', label: 'Export as Markdown', hint: window.Android ? 'copies it' : 'saves a .md file', run: exportChat },
     { label: 'Copy the whole chat as Markdown', run: () => copyOut(chatMarkdown(), 'Copied the chat as Markdown.') },
+    ...(C.ctx.main && !C.watch && C.state !== 'ended' ? [{ glyph: '⇲', label: 'Summarize the conversation now', hint: ctxLine('main'), disabled: C.state !== 'ready', why: 'Wait for the reply to finish', run: () => compactNow('main') }] : []),
     ...(id && !C.watch ? [{ label: 'Rename chat', run: async () => { await renameChat(id); const [s] = findSession(id); if (s) { C.title = s.title; $c('cTitle').textContent = s.title; } } }] : []),
     ...(id ? [{ label: 'Copy chat ID', run: () => copyOut(id) }] : []),
     { label: 'Browse this chat’s folder', run: () => openFile('.') },
@@ -590,6 +593,7 @@ window.ChatUI = {
     for (const src of duo() ? ['main', 'comp'] : ['main']) {
       const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
       if (src === 'comp' && (!mi || !mi.models)) { out.push({ glyph: '◆', t: `Choose Codex’s model…`, s: 'Codex helper', run: () => openPick('comp'), text: 'codex model switch effort' }); continue; }
+      if (C.ctx[src]) out.push({ glyph: '⇲', t: `${name}: summarize the conversation now`, s: ctxLine(src), run: () => compactNow(src), text: `${name} summarize compact context full memory` });
       for (const m of (mi && mi.models) || []) if (m.value !== mi.model) out.push({ glyph: src === 'comp' ? '◆' : '✦', t: `${name}: ${m.label}`, s: m.description, run: () => pickModel(src, { model: m.value }), text: `model switch ${name} ${m.label} ${m.value}` });
       for (const e of (mi && (((mi.models || []).find(x => x.value === mi.model) || {}).efforts || mi.efforts)) || []) if (e !== mi.effort) out.push({ glyph: '◈', t: `${name}: ${e} effort`, run: () => pickModel(src, { effort: e }), text: `effort ${name} ${e} think` });
     }

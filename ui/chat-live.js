@@ -125,6 +125,7 @@ function handleEvent(ev, src) {
       break;
     case 'status': if (ev.permissionMode && !comp) setMode(ev.permissionMode); if (ev.status === 'compacting') setStatus(src, 'Summarizing the conversation…'); if (ev.text) setStatus(src, ev.text); break;
     case 'plan': L.todos = ev.steps || []; renderLedgerSoon(); break;
+    case 'context': setCtx(src, ev); break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
     case 'stream_start': withStick(() => part(feed, ev.mid)); break;
     case 'delta':
@@ -267,6 +268,42 @@ async function answer(card, decision) {
   catch (err) { card.querySelectorAll('button').forEach(b => { b.disabled = false; }); throw err; }
 }
 
+/* ---------- context: how full each one's context window is ---------- */
+// 0 to 1: how close the chat is to summarizing itself (Claude Code does it at autoAt; Codex when it's full).
+const ctxFill = c => (c && c.max ? Math.min(1, c.used / (c.autoAt || c.max)) : null);
+const ctxClass = f => (f >= 0.85 ? 'full' : f >= 0.6 ? 'warm' : '');
+const kTok = n => (n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+function ctxLine(src) {
+  const c = C.ctx[src]; if (!c) return '';
+  return `${Math.round(ctxFill(c) * 100)}% full · ${kTok(c.used)} of ${kTok(c.autoAt || c.max)} tokens`;
+}
+function setCtx(src, c) {
+  C.ctx[src] = c;
+  renderCrewSoon(); renderLedgerSoon();
+  if (Pick.src === src && !$c('cPick').hidden) renderPick();
+  if (ctxFill(c) >= 0.85) ctxWarn(src);
+  else $c('cFeed').querySelectorAll(`.ctx-warn[data-src="${src}"]`).forEach(x => x.remove());
+}
+// Once per chat, as it gets close: summarizing at a good moment beats it happening mid-task.
+function ctxWarn(src) {
+  if (C.ctxWarned[src] || C.watch) return;
+  C.ctxWarned[src] = true;
+  const name = PROV_NAME[provFor(src)];
+  withStick(() => $c('cFeed').insertAdjacentHTML('beforeend', `<div class="ctx-warn ${provFor(src)}" data-src="${src}" role="status">
+    <p><b>${src === 'comp' ? 'Codex’s side of this chat' : 'This chat'} is getting full</b> (${esc(ctxLine(src))}). ${name} will summarize the conversation by itself soon, maybe in the middle of a task. Summarizing now, between tasks, keeps what matters.</p>
+    <button type="button" class="btn" data-c="compact" data-src="${src}">Summarize now</button></div>`));
+  if (nearBottom()) toBottom(); else noteUnseen();
+}
+async function compactNow(src) {
+  const key = keyFor(src); if (!key) return;
+  const st = src === 'comp' ? C.comp && C.comp.state : C.state;
+  if (st !== 'ready') { toast(`${PROV_NAME[provFor(src)]} is busy. Summarize once it’s done.`); return; }
+  closePick();
+  await api('/api/chat/compact', { key });
+  $c('cFeed').querySelectorAll(`.ctx-warn[data-src="${src}"]`).forEach(x => x.remove());
+  C.ctxWarned[src] = false;
+}
+
 /* ---------- the crew: who your next message goes to, what each is doing, and each one's model ---------- */
 let crewTimer = null;
 function renderCrewSoon() { if (!crewTimer) crewTimer = setTimeout(() => { crewTimer = null; renderCrew(); }, 120); }
@@ -279,9 +316,12 @@ function crewPill(src) {
   const label = mi ? `${modelLabel(mi)}${mi.effort ? ` · ${mi.effort}` : ''}` : src === 'comp' && st === 'off' ? 'ready when you are' : '…';
   const on = duo() ? C.target === src : true;
   const sub = st === 'waiting' ? 'needs your OK' : busy && status ? status : label;
-  const tip = on ? `${PROV_NAME[prov]}: choose its model and effort` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`;
+  const tip = (on ? `${PROV_NAME[prov]}: choose its model and effort` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`)
+    + (C.ctx[src] ? `\nContext: ${ctxLine(src)}` : '');
+  const f = ctxFill(C.ctx[src]);
+  const ring = f === null ? '' : `<span class="crew-ctx ${ctxClass(f)}" style="--p:${Math.round(f * 100)}" aria-hidden="true"></span>`;
   return `<button type="button" class="crew ${prov}${on ? ' on' : ''}${busy ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}" data-crew="${src}" aria-pressed="${on}" title="${esc(tip)}">
-      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
+      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${ring}${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
 }
 function renderCrew() {
   const box = $c('cCrew'); if (!box) return;
@@ -368,7 +408,13 @@ function renderPick() {
   // With the Codex helper available, one picker sets either: tabs at the top.
   const tabs = duo() ? `<div class="mp-tabs" role="tablist">${['main', 'comp'].map(t => `<button type="button" role="tab" class="${provFor(t)}" aria-selected="${t === src}" data-picksrc="${t}">${PROV_NAME[provFor(t)]}<small>${esc(C.mi[t] ? `${modelLabel(C.mi[t])}${C.mi[t].effort ? ` · ${C.mi[t].effort}` : ''}` : t === 'comp' ? 'not started' : '…')}</small></button>`).join('')}</div>` : '';
   const top = `<div class="mp-top"><span class="mp-grab" aria-hidden="true"></span>${tabs || `<p class="mp-title">${name}’s model</p>`}<button type="button" class="mp-done" data-pickdone>Done</button></div>`;
-  if (!mi || !mi.models || !mi.models.length) box.innerHTML = `${top}<p class="mp-load"><span class="gen-spin" aria-hidden="true"></span>Asking ${name} which models it has…</p>`;
+  const cx = C.ctx[src], cf = ctxFill(cx);
+  const busyNow = (src === 'comp' ? C.comp && C.comp.state : C.state) !== 'ready';
+  const ctxRow = cx ? `<div class="mp-ctx"><p class="mp-h"><span class="mp-t">Context</span><span>${esc(ctxLine(src))}</span></p>
+      <div class="mp-ctxbar ${ctxClass(cf)}" role="meter" aria-label="How full the context is" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(cf * 100)}"><i style="width:${Math.round(cf * 100)}%"></i></div>
+      <div class="mp-ctxrow">${cx.parts && cx.parts.length ? `<p class="mp-ctxparts">${cx.parts.map(p => `${esc(p.name)} ${kTok(p.tokens)}`).join(' · ')}</p>` : '<p class="mp-ctxparts">Summarizing keeps the gist and frees room.</p>'}
+      <button type="button" class="btn sm" data-c="compact" data-src="${src}" ${busyNow ? 'disabled title="Wait for the reply to finish"' : ''}>Summarize now</button></div></div>` : '';
+  if (!mi || !mi.models || !mi.models.length) box.innerHTML = `${top}${ctxRow}<p class="mp-load"><span class="gen-spin" aria-hidden="true"></span>Asking ${name} which models it has…</p>`;
   else {
     const cur = mi.models.find(m => m.value === mi.model);
     const efforts = (cur && cur.efforts && cur.efforts.length ? cur.efforts : mi.efforts) || [];
@@ -383,7 +429,7 @@ function renderPick() {
           <span class="mpp-g" aria-hidden="true">${p.glyph}</span><b>${esc(p.name)}</b><small>${esc(p.label)}${p.effort ? ` · ${esc(p.effort)}` : ''}</small><em>${esc(p.note)}</em></button>`).join('')}</div>` : '';
     // On a phone the full list folds away under the quick picks, unless the model in use is only there.
     const listOpen = !isPhone() || !onPreset;
-    box.innerHTML = `${top}${picks}
+    box.innerHTML = `${top}${ctxRow}${picks}
         <details class="mp-all" ${listOpen ? 'open' : ''}><summary class="mp-h"><span class="mp-t"><b>${name}</b> · every model</span><span>takes effect from your next message</span></summary>
         <div class="mp-list" role="radiogroup" aria-label="${name} model">${mi.models.filter(m => !older(m)).map(row).join('')}
         ${late.length ? `<details class="mp-more" ${late.some(m => m.value === mi.model) ? 'open' : ''}><summary>Earlier models (${late.length})</summary>${late.map(row).join('')}</details>` : ''}</div></details>
@@ -434,6 +480,7 @@ function attachComp(info) {
   if (C.comp && C.comp.es) C.comp.es.close();
   C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: false };
   if (info.models && info.models.length) C.mi.comp = info;
+  if (info.context) C.ctx.comp = info.context;
   const key = info.key;
   const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=0`);
   es.addEventListener('chat', e => { if (!C.comp || C.comp.key !== key) return; try { handle(JSON.parse(e.data), 'comp'); } catch (err) { console.error(err); } });

@@ -1033,6 +1033,7 @@ async function handleChat(req, res, url, body, c) {
       return send(res, 200, { ok: true });
     }
     case '/api/chat/interrupt': await chats.get(body.key).interrupt(); return send(res, 200, { ok: true });
+    case '/api/chat/compact': await chats.get(body.key).compact(); return send(res, 200, { ok: true });
     case '/api/chat/mode': {
       const chat = chats.get(body.key);
       await chat.setMode(body.mode);

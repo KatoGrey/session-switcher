@@ -127,9 +127,13 @@ const artFor = p => {
 };
 const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`).join('');
 
-async function install(b, { live = true, state = 'ready', seen = null } = {}) {
-  await b.intercept('*/api/*', async (url) => {
+// Options: state (the chat's state), seen(path, url, body) for every other API call, context (how
+// full the chat is), events (more chat events sent after it connects).
+async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [] } = {}) {
+  const info = { ...chatInfo, ...(context ? { context } : {}) };
+  await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
+    let body = {}; try { body = JSON.parse(postData || '{}'); } catch { /* not JSON */ }
     if (p === '/api/state') return { body: { accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '5.3.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
     if (p === '/api/sessions') return { body: { projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
     if (p === '/api/activity') return { body: { list: activity, at: NOW } };
@@ -138,18 +142,18 @@ async function install(b, { live = true, state = 'ready', seen = null } = {}) {
     if (p === '/api/project/info') return { body: projInfo(q.get('cwd')) };
     if (p === '/api/image') { const f = artFor(q.get('path') || ''); return f && fs.existsSync(path.join(ART, f)) ? { type: 'image/png', body: fs.readFileSync(path.join(ART, f)) } : { status: 404, body: {} }; }
     if (p === '/api/events') return { type: 'text/event-stream', body: 'retry: 600000\n\n' };
-    if (p === '/api/chat/open') return { body: chatInfo };
-    if (p === '/api/chat/attach') return { body: (url.includes('k-bard-cx') || true) ? compInfo : chatInfo };
+    if (p === '/api/chat/open') return { body: info };
+    if (p === '/api/chat/attach') return { body: compInfo };
     if (p === '/api/chat/history') return { body: { items: q.get('provider') === 'codex' || q.get('id') === 't-bard-codex' ? codexHistory : claudeHistory, start: 0, cursor: null } };
     if (p === '/api/chat/events') {
       const comp = (q.get('key') || '').includes('cx');
-      const info = comp ? compInfo : chatInfo;
-      const evs = [['hello', info]];
+      const evs = [['hello', comp ? compInfo : info]];
       if (live && !comp) evs.push(['chat', { kind: 'state', state, seq: 1 }, 1]);
+      if (live && !comp) events.forEach((ev, i) => evs.push(['chat', { ...ev, seq: i + 2 }, i + 2]));
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
     }
-    if (p === '/api/chat/model') return { body: { ...chatInfo } };
-    if (seen) seen(p, url);
+    if (p === '/api/chat/model') return { body: { ...info } };
+    if (seen) seen(p, url, body);
     return { body: {} };
   });
 }

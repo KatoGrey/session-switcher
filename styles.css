@@ -1701,3 +1701,21 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .confirm-dlg p{margin:0 0 18px;color:var(--parch-2);white-space:pre-line}
 .confirm-dlg .d-row{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .btn.danger-prime{background:linear-gradient(180deg,rgb(var(--c-9a4038)),rgb(var(--c-6e2a25)));border-color:rgb(var(--c-cf8274) / .7);color:rgb(var(--c-f6ece2))}
+
+/* ---------- context: how full each chat is, and summarizing at a good moment ---------- */
+.crew-ctx{--p:0;flex:none;width:13px;height:13px;margin-left:1px;border-radius:50%;color:var(--ash);background:conic-gradient(currentColor calc(var(--p) * 1%),rgb(var(--c-9a928a) / .25) 0);-webkit-mask:radial-gradient(circle,transparent 3.5px,#000 4px);mask:radial-gradient(circle,transparent 3.5px,#000 4px)}
+.crew-ctx.warm{color:var(--gilt)}
+.crew-ctx.full{color:var(--ember)}
+.mp-ctx{margin:2px 0 12px;padding:2px 0 12px;border-bottom:1px solid var(--seam)}
+.mp-ctx .mp-h span:last-child{letter-spacing:.04em;text-transform:none}
+.mp-ctxbar{height:6px;margin:0 6px;border-radius:999px;background:rgb(var(--c-9a928a) / .2);overflow:hidden}
+.mp-ctxbar i{display:block;height:100%;border-radius:inherit;background:var(--ash)}
+.mp-ctxbar.warm i{background:var(--gilt)}
+.mp-ctxbar.full i{background:var(--ember)}
+.mp-ctxrow{display:flex;align-items:center;gap:12px;margin:9px 6px 0}
+.mp-ctxparts{flex:1;min-width:0;margin:0;font:400 11px/1.45 var(--f-mono);color:var(--ash-2)}
+.ctx-warn{display:flex;align-items:center;gap:16px;margin:14px 0;padding:12px 15px;border:1px solid rgb(var(--c-d9bf74) / .45);border-radius:8px;background:rgb(var(--c-d9bf74) / .06)}
+.ctx-warn p{flex:1;margin:0;font-size:14px;line-height:1.5;color:var(--parch-2)}
+.ctx-warn p b{color:var(--parch)}
+.ctx-warn.codex{border-color:rgb(var(--c-6f97d8) / .45);background:rgb(var(--c-6f97d8) / .06)}
+@media (max-width:760px){ .ctx-warn{flex-direction:column;align-items:stretch} }

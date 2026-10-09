@@ -146,6 +146,50 @@ module.exports = [
     },
   },
   {
+    name: 'context',
+    async run(t) {
+      const calls = [];
+      const parts = [{ name: 'System prompt', tokens: 2400 }, { name: 'System tools', tokens: 11300 }, { name: 'Messages', tokens: 96000 }];
+      // 110k of the 167k where Claude Code would summarize by itself: getting there (gold).
+      const b = await t.open({ context: { used: 110000, max: 200000, percent: 55, autoAt: 167000, parts }, seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const ring = await b.eval(`const r = document.querySelector('[data-crew="main"] .crew-ctx'); return r && { cls: r.className, p: r.style.getPropertyValue('--p'), tip: r.closest('.crew').title }`);
+      t.check('the Claude button shows how full the chat is', ring && ring.p === '66' && /warm/.test(ring.cls), ring);
+      t.check('its tooltip says it in words', ring && /Context: 66% full · 110k of 167k tokens/.test(ring.tip), ring && ring.tip);
+      t.check('no warning yet', !(await b.eval(`return !!document.querySelector('.ctx-warn')`)));
+      await sleep(600);
+      const about = await b.eval(`return document.querySelector('.lg-about')?.textContent.replace(/\\s+/g, ' ') || ''`);
+      t.check('the This chat panel lists it', /Context ?66% full · 110k of 167k tokens/.test(about), about);
+
+      await b.clickOn('[data-crew="main"]'); await sleep(600);
+      const row = await b.eval(`const r = document.querySelector('#cPick .mp-ctx'); return r && { text: r.textContent.replace(/\\s+/g, ' '), meter: r.querySelector('[role=meter]').getAttribute('aria-valuenow') }`);
+      t.check('the model picker shows the context, and what fills it', row && row.meter === '66' && /Messages 96k/.test(row.text) && /Summarize now/.test(row.text), row);
+      await t.shot(b, 'picker');
+      await b.clickOn('#cPick [data-c="compact"]'); await sleep(400);
+      t.check('Summarize now summarizes this chat', calls.some(([p, body]) => p === '/api/chat/compact' && body.key === 'k-bard'));
+      t.check('and closes the picker', await b.eval(`return document.getElementById('cPick').hidden`));
+
+      // It gets fuller: a one-time offer to summarize between tasks.
+      await b.eval(`ChatUI.close(); return 1`).catch(() => {});
+      b.close();
+      const calls2 = [];
+      const b2 = await t.open({ context: { used: 150000, max: 200000, percent: 75, autoAt: 167000, parts }, events: [{ kind: 'context', used: 152000, max: 200000, percent: 76, autoAt: 167000, parts }], seen: (p, u, body) => calls2.push([p, body]) });
+      await b2.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      t.check('nearly full: the ring turns red', /full/.test(await b2.eval(`return document.querySelector('[data-crew="main"] .crew-ctx').className`)));
+      t.check('and the chat offers to summarize, once', (await b2.eval(`return document.querySelectorAll('.ctx-warn').length`)) === 1);
+      await t.shot(b2, 'warning');
+      await b2.clickOn('[data-crew="main"]'); await sleep(300); await b2.esc();
+      await b2.clickOn('[data-c="more"]'); await sleep(300);
+      t.check('the ⋯ menu can summarize too', /Summarize the conversation now/.test(await b2.eval(`return document.getElementById('menu').textContent`)));
+      await b2.esc();
+      await b2.eval(`openPalette('summarize'); return 1`); await sleep(500);
+      t.check('and so can Ctrl+K', /summarize the conversation now/i.test(await b2.eval(`return document.getElementById('palette').textContent`)));
+      await b2.eval(`closePalette(); return 1`);
+      await b2.clickOn('.ctx-warn [data-c="compact"]'); await sleep(400);
+      t.check('the offer’s button summarizes, and the offer goes away', calls2.some(([p]) => p === '/api/chat/compact') && !(await b2.eval(`return !!document.querySelector('.ctx-warn')`)));
+    },
+  },
+  {
     name: 'looks',
     async run(t) {
       const b = await t.open();
