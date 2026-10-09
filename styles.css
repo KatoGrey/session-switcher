@@ -1869,7 +1869,7 @@ body:not(.motion) .petals[data-kind] *{animation:none !important}
     radial-gradient(70% 58% at 30% 100%,rgb(var(--c-0f0d11)) 0 69.4%,rgb(var(--c-d9bf74) / .22) 69.8%,transparent 70.4%),
     radial-gradient(90% 66% at 62% 100%,rgb(var(--c-121014)) 0 69.4%,rgb(var(--c-d9bf74) / .16) 69.8%,transparent 70.4%),
     linear-gradient(0deg,rgb(var(--c-d9bf74) / .1),transparent 75%)}
-.mote{position:absolute;left:0;top:var(--y);width:var(--s);height:var(--s);border-radius:50%;background:rgb(var(--c-e6d3a0) / .5);
+.mote{position:absolute;left:0;top:var(--y);width:var(--s);height:var(--s);border-radius:50%;background:rgb(var(--c-e6d3a0) / .5);transform:translate3d(105vw,0,0);
   animation:mote var(--d) linear var(--delay) infinite}
 @keyframes mote{from{transform:translate3d(105vw,0,0)}to{transform:translate3d(-5vw,-6vh,0)}}
 .sky-scan{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgb(var(--c-a5463f) / .05) 0 1px,transparent 1px 4px)}

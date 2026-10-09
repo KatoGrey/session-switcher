@@ -304,7 +304,7 @@ The Codex card does the same for **chatgpt.com**.
 Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in `Ctrl+K`):
 
 - **Light or dark:** Dark, Light, or Match device (it follows Windows or Android).
-- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite. Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
+- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus three space saga themes (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
 - **Text size** (80–150%): messages, documents and the message box.
 - **Reading font:** Classic (the serif), Modern (a clean sans for reading), or Clean (sans headings too).
 - **Bold text** and **Higher contrast**. Light themes keep small grey text (dates, hints, labels) dark enough to read.
@@ -312,6 +312,26 @@ Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in 
 - A live preview shows a reply and a message in your choices; **Back to the original look** undoes everything.
 
 Appearance is saved on each device, so your phone and your PC can look different.
+
+### Space saga themes
+
+Three more themes turn the hub into a fleet you command. Each one has a light and a dark version, and Codex keeps its own color in all of them.
+
+| Theme | Feel | Lettering | Behind the hub |
+|---|---|---|---|
+| **Vanguard** | A starfighter cockpit: amber HUD, teal targeting reticles | Orbitron, Exo 2 | Stars streaming past, the odd jump streak |
+| **Dominion** | The admiral's bridge: black, white and red, hard angles and cut corners | Michroma, Chakra Petch | A tactical grid with a slow sensor sweep and contacts |
+| **Mirage** | A holo relay on a twin-sun dune world: flickering blue light, sand and static | Oxanium, Exo 2 | Scanlines, drifting sand, twin suns over the dunes |
+
+Beyond colors, a saga theme brings:
+
+- **Its own lettering:** a display face for headings and a HUD mono for labels. **Modern** and **Clean** still swap the reading font (Clean the headings too).
+- **A sky in place of the petals.** The petals switch turns it off, and its label changes with the theme. When your device asks for less motion, or **Animations** is off, the sky stays but holds still.
+- **HUD framing:** corner brackets on the hero, cards, dials, messages and the message box, and an emblem in place of the seal.
+- **Its own words,** for example "Awaiting you" becomes "Awaiting orders" and "Accounts and usage" becomes "Fleet reserves". Each theme keeps its words in one `copy` map in `theme.js`, keyed by the app's own text, so they're easy to change. The other themes keep the usual words.
+- **Short sound cues** in place of the bell when a chat needs you or replies, plus one when you pick the theme. They follow the chime setting.
+
+Screenshots are in [`docs/themes/`](docs/themes/). They use made-up chats, and the chat window is shown in its read-only watch view. The fonts are under the SIL Open Font License (`fonts/OFL.txt`). The sounds are from Kenney's CC0 packs; `sounds/LICENSE-kenney.txt` lists which pack and file each comes from.
 
 ## Alerts
 
