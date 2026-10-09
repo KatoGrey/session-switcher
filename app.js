@@ -272,9 +272,12 @@ function wantsTo(p) {
     case 'Write': return 'Wants to write a file';
     case 'WebFetch': return 'Wants to open a web page';
     case 'WebSearch': return 'Wants to search the web';
-    default: return `Wants to use ${p.toolName}`;
+    default: return CMDR_TOOLS[p.toolName] ? `Wants to ${CMDR_TOOLS[p.toolName]}` : `Wants to use ${p.toolName}`;
   }
 }
+// The Commander's tools, in words.
+const CMDR_TOOLS = { mcp__switcher__send_message: 'nudge another chat', mcp__switcher__answer_permission: 'answer another chat’s permission request', mcp__switcher__start_sub_session: 'start a sub-session', mcp__switcher__create_routine: 'set up a routine', mcp__switcher__list_sessions: 'look over your chats', mcp__switcher__read_session: 'read a chat' };
+window.CMDR_TOOLS = CMDR_TOOLS;
 function whereOf(x) {
   const as = x.accountId ? `<span class="ring" style="--ring:${ringById(x.accountId)}"></span>as ${esc(x.accountName || '')}` : '';
   const place = x.source === 'terminal' ? 'in a terminal' : x.source === 'elsewhere' ? 'in another app' : '';
@@ -425,7 +428,7 @@ function subItems(id) {
     ...(ps ? [{ glyph: '↑', label: 'Open the chat it came from', hint: ps.title, run: () => openChatFromNav(ps.id) }, { label: 'Unlink from that chat', hint: 'it stops being a sub-session', run: () => orgDo({ action: 'unlink', chat: id }) }] : []),
   ];
 }
-const orgItems = id => [groupItem(id), ...subItems(id)];
+const orgItems = id => (isCommander(id) ? [{ glyph: '✪', label: 'Commander settings…', run: commanderSetup }] : [groupItem(id), ...subItems(id)]);
 window.orgItems = orgItems;
 // The chat window's breadcrumb: its group, then the chats it came from, then its sub-sessions.
 function crumbHtml(id, pendingParent) {
@@ -443,6 +446,59 @@ function crumbHtml(id, pendingParent) {
   return out;
 }
 window.crumbHtml = crumbHtml;
+
+// The Commander: one chat that sees and steers the others (list, read, nudge, sub-sessions, and
+// permission answers only if you allow it). Pinned at the top of the sidebar.
+const cmdrSet = () => S.org.commander || {};
+const cmdrReady = () => !!cmdrSet().accountId;
+const cmdrMood = () => { const id = cmdrSet().sessionId; if (!id) return null; return chatMood(id); };
+function navCommanderHtml() {
+  const set = cmdrSet(), m = cmdrMood();
+  const live = set.sessionId && liveOf(set.sessionId);
+  const cur = !!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && set.sessionId && lowId(ChatUI.sessionId()) === lowId(set.sessionId));
+  return `<button class="nav-i nav-cmdr" data-cmdr="open" aria-current="${cur}" title="${cmdrReady() ? 'The Commander: a chat that watches your other chats and nudges them along' : 'Set up the Commander: a chat that watches your other chats and nudges them along'}"><span class="glyph" aria-hidden="true">✪</span><span class="ni-t">Commander</span>${m ? moodDot(set.sessionId) : live ? '<span class="ready-dot nav-dot" title="Running"></span>' : ''}${cmdrReady() ? '' : '<span class="tag ghost">Set up</span>'}</button>`;
+}
+async function openCommander({ fresh = false } = {}) {
+  if (!cmdrReady()) return commanderSetup();
+  const set = cmdrSet();
+  if (!(set.sessionId && liveOf(set.sessionId))) toast('Starting the Commander…', 3000);
+  const info = await api('/api/commander/open', { fresh });
+  document.body.classList.remove('nav-open');
+  const isNew = fresh || !set.sessionId || !info.sessionId;
+  return ChatUI.openKey(info.key, isNew ? { initialText: 'Look over my chats. Tell me which ones need me, and nudge any that are stuck or waiting for a simple “carry on”.' } : {});
+}
+function commanderSetup() {
+  let d = $('cmdrDlg');
+  if (!d) {
+    document.body.insertAdjacentHTML('beforeend', '<dialog id="cmdrDlg" class="cmdr-dlg" aria-labelledby="cmdrTitle"><form method="dialog" id="cmdrForm"></form></dialog>');
+    d = $('cmdrDlg');
+    d.addEventListener('click', e => { if (e.target === d) d.close(); });
+    $('cmdrForm').addEventListener('submit', wrap(async e => {
+      const v = e.submitter && e.submitter.value;
+      if (v !== 'start' && v !== 'save' && v !== 'fresh') return;
+      const accountId = (d.querySelector('input[name="cmdrAcct"]:checked') || {}).value;
+      const allowApprove = $('cmdrApprove').checked;
+      if (allowApprove && !cmdrSet().allowApprove && !(await appConfirm('Let the Commander answer permission requests?\n\nIt could allow commands and edits in your other chats without asking you first. Each answer shows in that chat as a note from the Commander. You can turn this off any time.', { ok: 'Let it answer', danger: true }))) { $('cmdrApprove').checked = false; return; }
+      const r = await api('/api/commander/settings', { accountId, allowApprove });
+      S.org.commander = { ...S.org.commander, ...r };
+      renderNav();
+      if (v === 'save') return toast(allowApprove ? 'Saved. The Commander may answer permission requests.' : 'Saved.', 3000);
+      return openCommander({ fresh: v === 'fresh' });
+    }));
+  }
+  const set = cmdrSet();
+  const choices = S.accounts.map(a => `<label class="cmdr-acct ${canLaunch(a) ? '' : 'off'}"><input type="radio" name="cmdrAcct" value="${esc(a.id)}" ${(set.accountId || S.acct) === a.id ? 'checked' : ''} ${canLaunch(a) ? '' : 'disabled'}><span class="ring" style="--ring:${ringOf(a)}"></span><b>${esc(a.name)}</b><small>${esc(a.signedIn ? `${a.email || 'Signed in'}${a.plan ? `, ${a.plan}` : ''}` : 'Not signed in')}</small></label>`).join('');
+  const running = !!(set.sessionId && liveOf(set.sessionId));
+  $('cmdrForm').innerHTML = `<h3 id="cmdrTitle">The Commander</h3>
+    <p>One chat that keeps an eye on your others. Ask it what needs you, and it can:</p>
+    <ul class="cmdr-can"><li>list your chats and what each is doing</li><li>read a chat’s latest messages</li><li>nudge a chat with a message (it asks you first, unless you let it)</li><li>start a sub-session from a chat</li></ul>
+    <p class="cmdr-note">Whatever it sends shows in that chat, marked “from Commander”, so you can always see what was nudged.</p>
+    <p class="d-h">Runs as</p><div class="cmdr-accts">${choices}</div>
+    <label class="cmdr-check"><input type="checkbox" id="cmdrApprove" ${set.allowApprove ? 'checked' : ''}><span><b>Let it answer permission requests</b><small>Allow or Deny a waiting command or edit in another chat. Off: it tells you what’s waiting instead.</small></span></label>
+    ${running ? '<p class="cmdr-note">A new account takes effect the next time the Commander starts.</p>' : ''}
+    <div class="d-row">${set.sessionId ? '<button class="btn quiet" value="fresh" formnovalidate title="Starts a new Commander chat; the old one stays in your chats">Start a fresh one</button><span class="spacer"></span>' : ''}<button class="btn" value="cancel" formnovalidate>Cancel</button>${cmdrReady() ? '<button class="btn" value="save">Save</button>' : ''}<button class="btn prime" value="start">${running ? 'Open the Commander' : cmdrReady() ? 'Save and open' : 'Start the Commander'}</button></div>`;
+  d.showModal();
+}
 document.addEventListener('click', wrap(async e => {
   const t = e.target instanceof Element ? e.target : null; if (!t) return undefined;
   const cr = t.closest('[data-crumb]'); if (cr) return openChatFromNav(cr.dataset.crumb);
@@ -594,7 +650,7 @@ function renderNav() {
   const A = awaiting().length, W = atWork().length;
   const total = S.projects.reduce((n, p) => n + p.sessions.length, 0);
   // Folders, split by which assistant the chats belong to. Pinned folders come first in each.
-  const group = prov => S.projects.map(p => ({ p, list: p.sessions.filter(x => (prov === 'codex') === isCodex(x)) })).filter(x => x.list.length);
+  const group = prov => S.projects.filter(p => p.cwd !== cmdrSet().cwd).map(p => ({ p, list: p.sessions.filter(x => (prov === 'codex') === isCodex(x)) })).filter(x => x.list.length);
   const item = (x, prov) => {
     const live = x.list.some(c => isRunning(c.id) || liveOf(c.id));
     const firstProv = S.projects.find(q => q.cwd === x.p.cwd)?.sessions.some(c => !isCodex(c)) ? 'claude' : 'codex';
@@ -614,7 +670,7 @@ function renderNav() {
       + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${isCodex(c) ? 'codex' : ''}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
   const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0);
   const showCodex = S.codex && S.codex.enabled;
-  const fresh = S.projects.filter(p => !p.sessions.length);
+  const fresh = S.projects.filter(p => !p.sessions.length && p.cwd !== cmdrSet().cwd);
   const blocked = a && (a.pinnedOrg || a.expectEmail) && !a.lock.ok;
   const html = `
     <button class="seal ${blocked ? 'blocked' : ''}" id="seal" aria-haspopup="menu" aria-expanded="false" title="Choose which account new chats open as">
@@ -624,6 +680,7 @@ function renderNav() {
     </button>
     <div class="nav-h">${esc(voice('Begin'))}</div>
     <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">${esc(voice('The hub'))}</span>${A ? `<span class="tag gilt">${A}</span>` : W ? `<span class="tag">${W}</span>` : ''}</button>
+    ${navCommanderHtml()}
     <button class="nav-i" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">${esc(voice('Recent chats'))}</span><span class="count">${total}</span></button>
     <button class="nav-i" data-view="palette" aria-current="${S.view === 'search'}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t">${esc(voice('Search every chat'))}</span><span class="count">Ctrl K</span></button>
     <button class="nav-i nav-new" data-view="newproject"><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New project</span></button>
@@ -640,7 +697,7 @@ function renderNav() {
   if ($('nav')._h === html) return;
   $('nav')._h = html;
   const focused = document.activeElement && $('nav').contains(document.activeElement) ? document.activeElement : null;
-  const keep = focused && (focused.dataset.cwd ? `[data-cwd="${CSS.escape(focused.dataset.cwd)}"][data-view="${focused.dataset.view || ''}"]` : focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : focused.dataset.navchat ? `[data-navchat="${CSS.escape(focused.dataset.navchat)}"]` : focused.dataset.fold ? `[data-fold="${focused.dataset.fold}"]` : focused.dataset.group ? `[data-group="${CSS.escape(focused.dataset.group)}"]` : focused.id ? `#${focused.id}` : null);
+  const keep = focused && (focused.dataset.cwd ? `[data-cwd="${CSS.escape(focused.dataset.cwd)}"][data-view="${focused.dataset.view || ''}"]` : focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : focused.dataset.navchat ? `[data-navchat="${CSS.escape(focused.dataset.navchat)}"]` : focused.dataset.fold ? `[data-fold="${focused.dataset.fold}"]` : focused.dataset.group ? `[data-group="${CSS.escape(focused.dataset.group)}"]` : focused.dataset.cmdr ? '[data-cmdr]' : focused.id ? `#${focused.id}` : null);
   $('nav').innerHTML = html;
   if (keep) $('nav').querySelector(keep)?.focus({ preventScroll: true });
 }
@@ -686,6 +743,7 @@ function heroHtml() {
   const acts = [];
   if (first) acts.push(`<button class="btn gilt" data-hero="first">${NEEDS.has(statusOf(first)) ? 'Answer the first one' : 'Read the latest reply'}</button>`);
   if (better) acts.push(`<button class="btn" data-hero="switch" data-acct="${esc(better.a.id)}">Work as ${esc(better.a.name)}</button>`);
+  if (cmdrReady() && (A.length || W)) acts.push('<button class="btn" data-cmdr="open" title="Ask the Commander to look over your chats">Ask the Commander</button>');
   if (!first && latest && canLaunch(a)) acts.push(`<button class="btn" data-hero="latest" data-sid="${esc(latest[0].id)}" title="${esc(latest[0].title)}">Continue “${esc(latest[0].title.length > 34 ? `${latest[0].title.slice(0, 33)}…` : latest[0].title)}”</button>`);
   const today = new Date();
   return `<section class="hero" aria-label="Right now">
@@ -1102,7 +1160,7 @@ function ensureWorlds() {
     for (let i = 0; i < want.length; i += 3) await Promise.all(want.slice(i, i + 3).map(c => loadWorld(c).catch(() => null)));
   })().finally(() => { worldsLoading = null; if (S.view === 'hub' && $('atlas')) patch($('atlas'), atlasItems(), x => (x.add ? '+new' : x.p.cwd), x => (x.add ? newProjectTile(x.i) : worldCard(x.p, x.i))); });
 }
-const atlasItems = () => [...S.projects.map((p, i) => ({ p, i })), { add: true, i: S.projects.length }];
+const atlasItems = () => { const list = S.projects.filter(p => p.cwd !== cmdrSet().cwd); return [...list.map((p, i) => ({ p, i })), { add: true, i: list.length }]; };
 function newProjectTile(i) {
   return `<button class="world world-new" data-act="project-new" style="--i:${Math.min(i, 12)}"><span class="wn-plus" aria-hidden="true"></span><b>New project</b><span>Make a folder and start a chat in it, as any of your accounts.</span></button>`;
 }
@@ -2543,6 +2601,7 @@ $('nav').addEventListener('click', wrap(async e => {
   const f = e.target.closest('[data-fold]');
   if (f) { const id = f.dataset.fold; if (S.navFold.has(id)) S.navFold.delete(id); else S.navFold.add(id); store('navFold', JSON.stringify([...S.navFold])); return renderNav(); }
   const nc = e.target.closest('[data-navchat]'); if (nc) { document.body.classList.remove('nav-open'); return openChatFromNav(nc.dataset.navchat); }
+  if (e.target.closest('[data-cmdr]')) return openCommander();
   if (e.target.closest('[data-gact="new"]')) return newGroup();
   const ng = e.target.closest('[data-group]'); if (ng) { const g = S.org.groups.find(x => x.id === ng.dataset.group); if (g) return orgDo({ action: 'collapse', id: g.id, collapsed: !g.collapsed }); return; }
   const b = e.target.closest('[data-view]'); if (!b) return;
@@ -2642,6 +2701,7 @@ const pageClicks = wrap(async e => {
       default: return;
     }
   }
+  if (t.closest('[data-cmdr]')) return openCommander();
   const gch = t.closest('[data-gchat]'); if (gch) return openChatFromNav(gch.dataset.gchat);
   const gm = t.closest('[data-gmore]'); if (gm) return gm.getAttribute('aria-expanded') === 'true' ? closeMenu() : showMenu(gm, groupItems(gm.dataset.gmore));
   if (t.closest('[data-gact="new"]')) return newGroup();
@@ -2869,6 +2929,7 @@ function contextItems(t) {
   const withFav = id => [favItem(id), ...orgItems(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
   const gh = t.closest('[data-group], [data-gcard]'); if (gh && !t.closest('[data-gchat]')) return groupItems(gh.dataset.group || gh.dataset.gcard);
   const gc = t.closest('[data-gchat]'); if (gc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(gc.dataset.gchat) }, ...withFav(gc.dataset.gchat)];
+  if (t.closest('[data-cmdr]')) return [{ glyph: '✪', label: 'Open the Commander', run: () => openCommander() }, { label: 'Commander settings…', run: commanderSetup }, ...(cmdrSet().sessionId ? [{ label: 'Start a fresh Commander chat', run: () => openCommander({ fresh: true }) }] : [])];
   const nc = t.closest('[data-navchat]'); if (nc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(nc.dataset.navchat) }, ...withFav(nc.dataset.navchat)];
   const row = t.closest('[data-row]'); if (row) return withFav(row.dataset.row);
   const pv = t.closest('[data-preview], [data-continue]'); if (pv) return withFav(pv.dataset.preview || pv.dataset.continue);

@@ -437,12 +437,15 @@
     if (it.kind === 'user') {
       const d = document.createElement('div');
       const toCodex = provNow() === 'codex' && C.provider !== 'codex';
-      d.className = `${liveRender ? 'umsg fresh' : 'umsg'}${toCodex ? ' to-codex' : ''}`;
+      // A nudge from the Commander arrives as "From Commander: …"; it's marked, not shown as yours.
+      const cmdr = /^From Commander:\s*/.test(String(it.text || ''));
+      if (cmdr) it = { ...it, text: String(it.text).replace(/^From Commander:\s*/, '') };
+      d.className = `${liveRender ? 'umsg fresh' : 'umsg'}${toCodex ? ' to-codex' : ''}${cmdr ? ' from-cmdr' : ''}`;
       // "Attached file: `path` (info)" lines become players and file cards.
       const files = [];
       const text = String(it.text || '').split('\n').filter(l => { const m = l.trim().match(ATTACH_LINE); if (m) files.push([m[1], m[2] || '']); return !m; }).join('\n').trim();
       RAW.set(d, String(it.text || ''));
-      d.innerHTML = `${toCodex ? '<span class="to-tag">to Codex</span>' : ''}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
+      d.innerHTML = `${toCodex ? '<span class="to-tag">to Codex</span>' : ''}${cmdr ? '<span class="to-tag cmdr-tag">from Commander</span>' : ''}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
       root.appendChild(d);
     } else if (it.kind === 'assistant') {
       const mi = C.mi[provNow() === 'codex' && C.provider !== 'codex' ? 'comp' : 'main'];
@@ -694,7 +697,7 @@
       case 'Write': return 'create or overwrite a file';
       case 'WebFetch': return 'open a web page';
       case 'WebSearch': return 'search the web';
-      default: return `use ${p.toolName}`;
+      default: return (window.CMDR_TOOLS && window.CMDR_TOOLS[p.toolName]) || `use ${p.toolName}`;
     }
   }
   function addPermission(p, src = 'main') {
@@ -1360,7 +1363,7 @@
       if (gen !== C.gen) return;
       $c('cFeed').querySelector('.c-skel')?.remove();
     }
-    if (mode === 'new') welcome(info.cwd || cwd);
+    if (mode === 'new' && !(S.org && S.org.commander && (info.cwd || cwd) === S.org.commander.cwd)) welcome(info.cwd || cwd);
     restoreDraft();
     toBottom();
     connect();
@@ -1396,9 +1399,10 @@
     return undefined;
   }
 
-  async function openKey(key) {
+  async function openKey(key, { initialText = '' } = {}) {
     const info = await api('/api/chat/attach', { key });
-    return begin(info, { mode: 'resume', sessionId: info.sessionId });
+    await begin(info, { mode: info.sessionId ? 'resume' : 'new', sessionId: info.sessionId, cwd: info.cwd });
+    if (initialText && !$c('cText').value.trim()) placeText(initialText, true);
   }
 
   // Read-only, live view of a chat running somewhere else (a terminal, the desktop app).
