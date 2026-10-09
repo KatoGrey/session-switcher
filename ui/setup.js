@@ -129,6 +129,9 @@ function renderLook() {
     <p class="d-h">Glam</p>
     <p class="lk-saga-note">Sunshine, sparkles and a little pink. Brings its own lettering, sparkles behind the hub, sweet chimes and a few words of its own.</p>
     <div class="lk-themes" role="radiogroup" aria-label="Glam themes">${Look.THEMES.filter(t => t.family === 'glam').map(card).join('')}</div>
+    <p class="d-h">Anime</p>
+    <p class="lk-saga-note">Step into another world. Made for dark mode: each brings its own lettering, a living sky behind the hub, a scene that reads your chats, chimes and a few words of its own.</p>
+    <div class="lk-themes" role="radiogroup" aria-label="Anime themes">${Look.THEMES.filter(t => t.family === 'anime').map(card).join('')}</div>
     <p class="d-h">Text</p>
     <div class="lk-row"><label for="lkText"><b>Text size</b><small>Messages, documents and the message box</small></label>
       <div class="lk-range"><span class="a-sm" aria-hidden="true">A</span><input type="range" id="lkText" min="80" max="150" step="5" value="${o.text}" data-look="text"><span class="a-lg" aria-hidden="true">A</span><output id="lkTextV">${o.text}%</output></div></div>
@@ -155,7 +158,14 @@ $('setupBody').addEventListener('click', e => {
   const b = e.target.closest('button[data-look]');
   if (b) {
     const engage = b.dataset.look === 'theme' && b.dataset.v !== Look.get().theme;
-    Look.set({ [b.dataset.look]: b.dataset.v }); renderLook();
+    const change = () => { Look.set({ [b.dataset.look]: b.dataset.v }); renderLook(); };
+    // A new theme, or light and dark, fades in over the old look instead of snapping.
+    if ((b.dataset.look === 'theme' || b.dataset.look === 'mode') && b.dataset.v !== String(Look.get()[b.dataset.look]) && document.startViewTransition && motionOk()) {
+      const root = document.documentElement;
+      root.classList.add('look-fade');
+      const t = document.startViewTransition(change);
+      t.finished.catch(() => {}).finally(() => root.classList.remove('look-fade'));
+    } else change();
     if (engage && Local.sound) chime('engage');
     return;
   }
@@ -239,8 +249,8 @@ async function setLocal(k, on) {
 }
 function applyMotion() { document.body.classList.toggle('motion', motionOk()); }
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => { applyMotion(); petals(); });
-// Behind the hub: drifting petals, or a saga theme's sky (a few still stars).
-// A sky never moves, so it still shows when the device asks for less motion.
+// Behind the hub: drifting petals, or a theme's own sky (still stars, sparkles, motes, fireflies, embers).
+// A sky only moves when motion is on, so it still shows (holding still) when the device asks for less.
 function petals() {
   const box = $('petals'), sky = Look.theme().sky || '';
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -273,8 +283,24 @@ function starTile(seed, size, n, big) {
   return `--tile:${size}px;background-image:${dots.join(',')};background-size:${size}px ${size}px`;
 }
 function skyHtml(kind) {
+  // The anime skies drift: mana motes and embers rise (each layer is one tile taller than the page and
+  // slides up by exactly a tile, so it loops without a seam); fireflies wander and blink.
+  const layer = (cls, id, size, n, tints, r, dur) => `<svg class="sky-layer ${cls}" style="--tile:${size}px;--dur:${dur}s" width="100%" aria-hidden="true"><defs>${glowTile(id, size, n, tints, r)}</defs><rect width="100%" height="100%" fill="url(#${id})"/></svg>`;
+  if (kind === 'motes') return `<div class="sky-glow motes">${layer('rise a', 'ieSkyA', 560, 18, ['c', 'c', 'c', 'p', 'g'], [0.8, 1.8], 70)}${layer('rise b', 'ieSkyB', 760, 12, ['c', 'p', 'v'], [1.2, 2.4], 110)}</div>`;
+  if (kind === 'fireflies') return `<div class="sky-glow fireflies">${layer('drift a', 'hfSkyA', 520, 14, ['f', 'f', 'g'], [0.9, 1.7], 0)}${layer('drift b', 'hfSkyB', 700, 10, ['f', 'g'], [1.2, 2.2], 0)}</div>`;
+  if (kind === 'embers') return `<div class="sky-glow embers">${layer('rise a', 'dgSkyA', 480, 16, ['e', 'e', 'o', 'g'], [0.7, 1.5], 42)}${layer('rise b', 'dgSkyB', 640, 10, ['e', 'o'], [1, 1.9], 64)}</div>`;
   if (kind === 'sparkles') return `<svg class="sky-sparkles" width="100%" height="100%" aria-hidden="true"><defs>${sparkleTile('mbSkyA', 520, 16)}${sparkleTile('mbSkyB', 700, 11)}</defs><rect class="a" width="100%" height="100%" fill="url(#mbSkyA)"/><rect class="b" width="100%" height="100%" fill="url(#mbSkyB)"/></svg>`;
   return `<div class="sky-stars" style="${starTile('a', 487, 18, 1)}"></div><div class="sky-stars far" style="${starTile('b', 613, 10, 1.4)}"></div>`;
+}
+// A tile of glowing specks (a soft halo and a bright core each), tinted by class.
+function glowTile(id, size, n, tints, [r0, r1]) {
+  const r = seeded(id);
+  let dots = '';
+  for (let i = 0; i < n; i++) {
+    const x = (r() * size).toFixed(1), y = (r() * size).toFixed(1), cls = tints[Math.floor(r() * tints.length)], d = r0 + r() * (r1 - r0);
+    dots += `<circle class="${cls} h" cx="${x}" cy="${y}" r="${(d * 3.2).toFixed(2)}"/><circle class="${cls}" cx="${x}" cy="${y}" r="${d.toFixed(2)}"/>`;
+  }
+  return `<pattern id="${id}" width="${size}" height="${size}" patternUnits="userSpaceOnUse">${dots}</pattern>`;
 }
 // Malibu's sky: four-point sparkles and the odd heart, in pink, sunshine and pool blue, as one tile.
 function sparkleTile(id, size, n) {

@@ -964,6 +964,71 @@ module.exports = [
     },
   },
   {
+    name: 'anime',
+    // Isekai, High Fantasy and Dungeon: their lettering, words, skies, logos and chimes, and hub scenes
+    // that read the same counts as the headline.
+    async run(t) {
+      const b = await t.open();
+      const LOOKS = {
+        isekai: { fonts: ['20px Orbitron', '16px "M PLUS Rounded 1c"'], home: 'Guild hall', word: /another world/, sky: 'motes', emblem: 'an-glow' },
+        highfantasy: { fonts: ['700 20px "Cinzel Decorative"', '16px "EB Garamond"'], home: 'The great hall', word: /scribes of the realm/, sky: 'fireflies', emblem: 'M20.0 5.5' },
+        dungeon: { fonts: ['20px "Pirata One"', '16px Alegreya', '16px "Alegreya SC"'], home: 'Camp', word: /deep below/, sky: 'embers', emblem: 'an-iron' },
+      };
+      for (const [id, want] of Object.entries(LOOKS)) {
+        await b.eval(`Look.set({ theme: ${JSON.stringify(id)}, mode: 'dark' }); return 1`); await sleep(1500);
+        const h = await b.eval(`await document.fonts.ready; const dot = getComputedStyle(document.querySelector('.gilt-dot, .ember-dot')); return {
+          fonts: ${JSON.stringify(want.fonts)}.every(f => document.fonts.check(f)),
+          home: [...document.querySelectorAll('.nav-i .ni-t')].some(x => x.textContent === ${JSON.stringify(want.home)}),
+          word: document.querySelector('.wordmark small').textContent,
+          sky: !!document.querySelector('#petals .sky-glow.${want.sky}'),
+          dot: /svg/.test(dot.maskImage || dot.webkitMaskImage || '') || dot.transform !== 'none',
+          emblem: document.getElementById('sigil').innerHTML.includes(${JSON.stringify(want.emblem)}),
+          tones: Array.isArray(Look.theme().tones.needs) && Array.isArray(Look.theme().tones.engage) && !Look.theme().sfx,
+          clockless: !/data-clock>[^<]/.test(document.getElementById('heroSlot')._h || '') }`);
+        t.check(`${id}: its lettering loads`, h.fonts, h);
+        t.check(`${id}: it speaks its own words`, h.home && want.word.test(h.word), h);
+        t.check(`${id}: its sky drifts behind the hub`, h.sky, h);
+        t.check(`${id}: status dots take its shape`, h.dot, h);
+        t.check(`${id}: the logo is its emblem`, h.emblem, h);
+        t.check(`${id}: it chimes with its own notes (choosing it too)`, h.tones, h);
+        t.check(`${id}: a new minute alone doesn’t redraw the hero`, h.clockless, h);
+        await t.shot(b, `${id}-hub`);
+      }
+      // The scenes read the counts: Isekai's crystals and magic circle, High Fantasy's windows and
+      // beacons, the Dungeon's torches, eyes and chests.
+      await b.eval(`Look.set({ theme: 'isekai' }); return 1`); await sleep(600);
+      const ie = await b.eval(`const n = [...document.querySelectorAll('.ie-sk b')].map(x => +x.textContent), hp = document.querySelector('.ie-bar.hp');
+        return { n, crystals: document.querySelectorAll('.ie-crystal').length, on: !!document.querySelector('.ie-circle.on'), hp: hp.querySelector('em').textContent, width: hp.querySelector('i b').style.width, lv: +document.querySelector('.ie-lv b').textContent }`);
+      t.check('isekai: a crystal floats up for each chat waiting on you', ie.n.length === 3 && ie.crystals === Math.min(ie.n[0], 6), ie);
+      t.check('isekai: the magic circle glows while chats are at work', ie.on === ie.n[1] > 0, ie);
+      t.check('isekai: HP is the five-hour window left', /^\d+%$/.test(ie.hp) && ie.width === ie.hp && ie.lv >= 1, ie);
+      await b.eval(`Look.set({ theme: 'highfantasy' }); return 1`); await sleep(600);
+      const hf = await b.eval(`return { n: [...document.querySelectorAll('.citadel .ha-read b')].map(x => +x.textContent), lit: document.querySelectorAll('.hf-win.lit').length, beacons: document.querySelectorAll('.hf-beacon').length, dragon: !!document.querySelector('.hf-dragon') }`);
+      t.check('high fantasy: a window lights for each chat at work, a beacon for each one waiting', hf.n.length === 3 && hf.lit === Math.min(hf.n[1], 9) && hf.beacons === Math.min(hf.n[0], 6) && hf.dragon, hf);
+      await b.eval(`Look.set({ theme: 'dungeon' }); return 1`); await sleep(600);
+      const dg = await b.eval(`return { n: [...document.querySelectorAll('.delve .ha-read b')].map(x => +x.textContent), torches: document.querySelectorAll('.dg-torch.lit').length, eyes: document.querySelectorAll('.dg-eyes').length, chests: document.querySelectorAll('.dg-chest').length }`);
+      t.check('dungeon: a torch for each chat at work, eyes for each one waiting, a chest for each one idle', dg.n.length === 3 && dg.torches === Math.min(dg.n[1], 4) && dg.eyes === Math.min(dg.n[0], 6) && dg.chests === Math.min(dg.n[2], 2), dg);
+      await b.eval(`openSetup('look'); return 1`); await sleep(800);
+      t.check('Setup lists them under Anime', await b.eval(`return [...document.querySelectorAll('[aria-label="Anime themes"] .lk-theme')].map(x => x.dataset.v).join() === 'isekai,highfantasy,dungeon'`));
+      await t.shot(b, 'setup');
+      // While a reply is being written, light runs along the top of the message box.
+      await b.eval(`document.getElementById('setup').close(); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2000);
+      const band = await b.eval(`const was = C.state; setState('busy'); const on = document.getElementById('chat').classList.contains('is-working'); setState('ready'); const off = !document.getElementById('chat').classList.contains('is-working'); setState(was); return { on, off }`);
+      t.check('a band of light runs along the message box while it writes', band.on && band.off, band);
+      await t.shot(b, 'dungeon-chat');
+      await b.eval(`ChatUI.close(); return 1`);
+      const p = await t.open({ width: 412, height: 880, mobile: true });
+      for (const id of Object.keys(LOOKS)) {
+        await p.eval(`Look.set({ theme: ${JSON.stringify(id)}, mode: 'dark' }); return 1`); await sleep(900);
+        t.check(`${id}: on a phone, nothing scrolls sideways`, await p.eval(`return document.scrollingElement.scrollWidth <= innerWidth + 1`));
+        const fits = await p.eval(`const w = document.querySelector('.ie-win, .hero-art .ha-read'), a = document.querySelector('.hero-art'); const r = w.getBoundingClientRect(), q = a.getBoundingClientRect(); return r.right <= q.right + 1 && w.scrollWidth <= w.clientWidth + 1`);
+        t.check(`${id}: on a phone, the scene's readout fits`, fits);
+      }
+      await t.shot(p, 'phone');
+      await b.eval(`Look.reset(); return 1`); await p.eval(`Look.reset(); return 1`);
+    },
+  },
+  {
     name: 'phone',
     async run(t) {
       const b = await t.open({ width: 412, height: 880, mobile: true });

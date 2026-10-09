@@ -381,7 +381,7 @@ The Codex card does the same for **chatgpt.com**.
 Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in `Ctrl+K`):
 
 - **Light or dark:** Dark, Light, or Match device (it follows Windows or Android).
-- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus two space saga themes and Malibu (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
+- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus two space saga themes, Malibu and three anime themes (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
 - **Text size** (80–150%): messages, documents and the message box.
 - **Reading font:** Classic (the serif), Modern (a clean sans for reading), or Clean (sans headings too).
 - **Bold text** and **Higher contrast**. Light themes keep small grey text (dates, hints, labels) dark enough to read.
@@ -423,6 +423,28 @@ Hot pink and pool blue at a beach house in the sun. Made for light mode; in dark
 - **Sweet chimes,** made on the spot rather than played from files: a rising twinkle when a chat needs you, three bright notes when one replies. They follow the chime setting.
 
 Screenshots: [`malibu-hub-light.jpg`](docs/themes/malibu-hub-light.jpg), [`malibu-hub-dark.jpg`](docs/themes/malibu-hub-dark.jpg), [`malibu-chat-light.jpg`](docs/themes/malibu-chat-light.jpg) and [`malibu-phone-light.jpg`](docs/themes/malibu-phone-light.jpg). Its words are in the theme's `copy` map in `theme.js`, its look in the Malibu section of `styles.css`.
+
+### Anime themes: Isekai, High Fantasy and Dungeon
+
+Three worlds drawn like an anime's: glowing magic, gradient skies, rim light and drifting particles. Made for dark mode (each has a light version too), under **Anime** in **Setup → Appearance**.
+
+| Theme | Feel | Lettering | In the hero |
+|---|---|---|---|
+| **Isekai** | Summoned to another world: indigo glass, a cyan magic glow, sakura pink and gold | Orbitron for the big words, M PLUS Rounded for reading | Floating islands under two moons over a sea of clouds. A crystal floats up for each chat waiting on you (gold when it needs your OK), and the magic circle glows and turns while chats are at work. A **status window** reads the account you work as: HP is what's left of its five-hour window, MP what's left of its week, its level is how many chats you've had, its class comes from its plan |
+| **High Fantasy** | Emerald and gold under a great moon | Cinzel Decorative and Cinzel for titles and names, EB Garamond for reading | A citadel on a cliff with snow on the peaks behind. A window lights for each chat at work and a beacon burns for each one waiting on you (the castle's braziers first, then the peaks); a dragon crosses the moon now and then |
+| **Dungeon** | Torchlit stone deep below: iron, rust and ember light | Pirata One for the big words, Alegreya SC for names and labels, Alegreya for reading | An archway into the dark: a torch burns for each chat at work, eyes open in the dark for each one waiting on you (gold when it needs your OK), and a chest sits ready for each one open and idle. It stays dark in light mode too, as a window underground |
+
+Each one also brings:
+
+- **A living sky** behind the hub in place of the petals: mana motes rising (Isekai), fireflies wandering and blinking (High Fantasy) or embers rising (Dungeon).
+- **Status dots in its own shape:** glowing diamonds, four-pointed stars that glimmer while a chat works, or little flames that flicker.
+- **Its own panels:** system-window corner brackets (Isekai), gilded hairlines and a gilded drop cap opening each reply (High Fantasy), an iron-bound frame with rivets (Dungeon). The logo becomes a magic circle, a compass star or a keyhole; the circle and the star turn while chats work, and the keyhole glows.
+- **Its own words,** for example "Awaiting you" becomes "Awaiting your command", "At your word" or "Answer the dark", and the hub is the "Guild hall", "The great hall" or "Camp".
+- **Chimes made on the spot:** a quick bright arpeggio, harp notes, or a low bell, plus a short flourish when you pick the theme. They follow the chime setting.
+
+Everything that moves holds still when **Animations** is off or your device asks for less motion. Small print (dates, paths, commands) stays in a plain reading face or monospace, never in the display lettering. Screenshots: [`isekai-hub-dark.jpg`](docs/themes/isekai-hub-dark.jpg), [`isekai-chat-dark.jpg`](docs/themes/isekai-chat-dark.jpg), [`highfantasy-hub-dark.jpg`](docs/themes/highfantasy-hub-dark.jpg), [`highfantasy-chat-dark.jpg`](docs/themes/highfantasy-chat-dark.jpg), [`dungeon-hub-dark.jpg`](docs/themes/dungeon-hub-dark.jpg), [`dungeon-chat-dark.jpg`](docs/themes/dungeon-chat-dark.jpg) and [`anime-phones-dark.jpg`](docs/themes/anime-phones-dark.jpg). Their words are in each theme's `copy` map in `theme.js`, their scenes in `ui/hub.js` and their look in the anime section of `styles.css`.
+
+**In every theme:** while Claude or Codex is writing, a band of light runs along the top of the message box (in Codex's color when only Codex is), and picking a new theme or switching light and dark fades the new look in rather than snapping.
 
 ## Alerts
 

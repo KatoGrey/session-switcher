@@ -89,6 +89,11 @@ function syncSend() {
   $c('chat').classList.toggle('to-codex', C.target === 'comp' && duo() && partnerProv() === 'codex');
   $c('chat').classList.toggle('to-claude', C.target === 'comp' && duo() && partnerProv() === 'claude');
   $c('chat').classList.toggle('to-both', C.target === 'both' && duo());
+  // While either of them is writing, a band of light runs along the top of the message box (Codex's
+  // color when only Codex is).
+  const writing = [C.state === 'busy' && C.provider, C.comp && !C.comp.ended && C.comp.state === 'busy' && partnerProv()].filter(Boolean);
+  $c('chat').classList.toggle('is-working', writing.length > 0);
+  $c('chat').classList.toggle('codex-working', writing.length > 0 && writing.every(p => p === 'codex'));
 }
 function setStatus(src, t) {
   if (src === 'comp') { if (C.comp) { C.comp.status = t; renderCrewSoon(); } return; }

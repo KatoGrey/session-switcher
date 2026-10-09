@@ -26,6 +26,20 @@
 @font-face{font-family:"Pacifico";src:url(/fonts/pacifico.woff2) format("woff2");font-weight:400;font-display:swap}
 @font-face{font-family:"Nunito";src:url(/fonts/nunito.woff2) format("woff2");font-weight:400 900;font-display:swap}
 @font-face{font-family:"Nunito";src:url(/fonts/nunito-italic.woff2) format("woff2");font-weight:400 900;font-style:italic;font-display:swap}
+/* the anime themes: Orbitron and M PLUS Rounded 1c (Isekai), Cinzel Decorative and EB Garamond (High Fantasy), Pirata One and Alegreya (Dungeon) */
+@font-face{font-family:"Orbitron";src:url(/fonts/orbitron.woff2) format("woff2");font-weight:400 900;font-display:swap}
+@font-face{font-family:"M PLUS Rounded 1c";src:url(/fonts/mplus-rounded-400.woff2) format("woff2");font-weight:400 500;font-display:swap}
+@font-face{font-family:"M PLUS Rounded 1c";src:url(/fonts/mplus-rounded-700.woff2) format("woff2");font-weight:600 700;font-display:swap}
+@font-face{font-family:"M PLUS Rounded 1c";src:url(/fonts/mplus-rounded-800.woff2) format("woff2");font-weight:800 900;font-display:swap}
+@font-face{font-family:"Cinzel Decorative";src:url(/fonts/cinzel-decorative-400.woff2) format("woff2");font-weight:400 600;font-display:swap}
+@font-face{font-family:"Cinzel Decorative";src:url(/fonts/cinzel-decorative-700.woff2) format("woff2");font-weight:700 900;font-display:swap}
+@font-face{font-family:"EB Garamond";src:url(/fonts/eb-garamond.woff2) format("woff2");font-weight:400 800;font-display:swap}
+@font-face{font-family:"EB Garamond";src:url(/fonts/eb-garamond-italic.woff2) format("woff2");font-weight:400 800;font-style:italic;font-display:swap}
+@font-face{font-family:"Pirata One";src:url(/fonts/pirata-one.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Alegreya";src:url(/fonts/alegreya.woff2) format("woff2");font-weight:400 900;font-display:swap}
+@font-face{font-family:"Alegreya";src:url(/fonts/alegreya-italic.woff2) format("woff2");font-weight:400 900;font-style:italic;font-display:swap}
+@font-face{font-family:"Alegreya SC";src:url(/fonts/alegreya-sc-400.woff2) format("woff2");font-weight:400 500;font-display:swap}
+@font-face{font-family:"Alegreya SC";src:url(/fonts/alegreya-sc-700.woff2) format("woff2");font-weight:600 900;font-display:swap}
 
 /* Every color the app uses, as "r g b". Themes (theme.js) override these. */
 :root{--c-000000:0 0 0;--c-3d1a18:61 26 24;--c-050406:5 4 6;--c-0a090c:10 9 12;--c-0b090d:11 9 13;--c-0b0a0d:11 10 13;--c-0c0a0e:12 10 14;--c-0d0b0f:13 11 15;--c-0e0c10:14 12 16;--c-0f0d11:15 13 17;--c-100e12:16 14 18;--c-110e12:17 14 18;--c-110f13:17 15 19;--c-120f14:18 15 20;--c-121014:18 16 20;--c-121015:18 16 21;--c-141117:20 17 23;--c-151116:21 17 22;--c-17131a:23 19 26;--c-18141b:24 20 27;--c-19151c:25 21 28;--c-1a1405:26 20 5;--c-1a161d:26 22 29;--c-1b1519:27 21 25;--c-1b171e:27 23 30;--c-1c181f:28 24 31;--c-1d1920:29 25 32;--c-221d26:34 29 38;--c-241e29:36 30 41;--c-241f28:36 31 40;--c-2a242e:42 36 46;--c-2b1615:43 22 21;--c-2c2632:44 38 50;--c-3c5a96:60 90 150;--c-3d3443:61 52 67;--c-4664a0:70 100 160;--c-46679f:70 103 159;--c-5072ab:80 114 171;--c-5e2622:94 38 34;--c-5f2a26:95 42 38;--c-5f86c6:95 134 198;--c-6a91d2:106 145 210;--c-6c2e29:108 46 41;--c-6d302b:109 48 43;--c-6e2a25:110 42 37;--c-6f97d8:111 151 216;--c-716a63:135 128 120;--c-781412:120 20 18;--c-78342e:120 52 46;--c-7a332d:122 51 45;--c-7a3530:122 53 48;--c-7d1513:125 21 19;--c-7fa3dc:127 163 220;--c-7fb79a:127 183 154;--c-8c3a34:140 58 52;--c-8d3e37:141 62 55;--c-94423b:148 66 59;--c-9a4038:154 64 56;--c-9a463e:154 70 62;--c-9a928a:154 146 138;--c-a5463f:165 70 63;--c-a5564d:165 86 77;--c-a58be8:165 139 232;--c-a8544b:168 84 75;--c-a98f45:169 143 69;--c-a9c3ef:169 195 239;--c-b0544b:176 84 75;--c-b8655b:184 101 91;--c-c9aa4c:201 170 76;--c-c9daf6:201 218 246;--c-c9e8d6:201 232 214;--c-cf8274:207 130 116;--c-cfc6b6:207 198 182;--c-d08072:208 128 114;--c-d4b557:212 181 87;--c-d68a7c:214 138 124;--c-d68c7d:214 140 125;--c-d8b7aa:216 183 170;--c-d8e4f8:216 228 248;--c-d9bf74:217 191 116;--c-dcc790:220 199 144;--c-e2a596:226 165 150;--c-e6d3a0:230 211 160;--c-e6dccb:230 220 203;--c-e7b2a8:231 178 168;--c-e9d283:233 210 131;--c-e9e1d4:233 225 212;--c-eadfce:234 223 206;--c-ede6d9:237 230 217;--c-efdcd3:239 220 211;--c-f0dc95:240 220 149;--c-f1dc92:241 220 146;--c-f1dfd6:241 223 214;--c-f3e2d8:243 226 216;--c-f6ece2:246 236 226;--c-f6efe3:246 239 227;--c-ffffff:255 255 255}
@@ -646,7 +660,15 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
 
 /* dock: permissions + composer */
-.c-dock{border-top:1px solid var(--seam);background:linear-gradient(180deg,rgb(var(--c-0e0c10) / .94),rgb(var(--c-0b0a0d)))}
+.c-dock{position:relative;border-top:1px solid var(--seam);background:linear-gradient(180deg,rgb(var(--c-0e0c10) / .94),rgb(var(--c-0b0a0d)))}
+/* while a reply is being written, a band of light runs along the top of the message box */
+.chat.is-working .c-dock::before{content:"";position:absolute;left:0;right:0;top:-1px;height:2px;pointer-events:none;opacity:.9;
+  background:linear-gradient(90deg,transparent,rgb(var(--c-a5463f) / .85) 30%,rgb(var(--c-d9bf74)) 50%,rgb(var(--c-a5463f) / .85) 70%,transparent) 50% 0/38% 100% no-repeat}
+.chat.is-working.codex-working .c-dock::before{background-image:linear-gradient(90deg,transparent,rgb(var(--c-6f97d8) / .85) 30%,rgb(var(--c-a9c3ef)) 50%,rgb(var(--c-6f97d8) / .85) 70%,transparent)}
+.motion .chat.is-working .c-dock::before{animation:work-sweep 2.4s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes work-sweep{0%{background-position:-70% 0}100%{background-position:170% 0}}
+/* a new theme fades in over the old one (Setup → Appearance) */
+.look-fade::view-transition-old(root),.look-fade::view-transition-new(root){animation-duration:.45s;animation-timing-function:ease}
 .c-pending{max-width:860px;margin:0 auto;padding:0 28px;display:flex;flex-direction:column;gap:10px}
 .c-pending:not(:empty){padding-top:14px}
 .perm{border:1px solid rgb(var(--c-d9bf74) / .6);border-radius:8px;padding:15px 17px;background:linear-gradient(180deg,rgb(var(--c-d9bf74) / .08),rgb(var(--c-141117) / .9));box-shadow:0 0 30px -14px rgb(var(--c-d9bf74) / .5)}
@@ -2378,6 +2400,506 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 .sw[data-sky]::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(1px 1px at 20% 30%,var(--sw-ink),transparent),radial-gradient(1px 1px at 70% 20%,var(--sw-ink),transparent),radial-gradient(1.5px 1.5px at 85% 70%,var(--sw-gold),transparent),radial-gradient(1px 1px at 40% 80%,var(--sw-ink),transparent);opacity:.6}
 .lk-saga .sw-card{box-shadow:inset 0 2px 0 var(--sw-acc)}
 
+/* ==================== the anime themes: Isekai, High Fantasy and Dungeon ====================
+   Made for dark mode, drawn like an anime's world: glowing magic, gradient skies, rim light and
+   drifting particles. Like the other themed looks, text and surfaces come from the --c-* variables
+   (so light and dark, contrast and Codex's color keep working); --an-* and each theme's own prefix
+   (--ie-, --hf-, --dg-) are decoration only, "r g b". */
+
+/* ---------- shared ---------- */
+[data-family="anime"] :is(.btn,.pulse,.usechip,.seek,.seal,.c-box,.drawer,.menu,.palette .pal-box,dialog,.lk-theme,.qr,.guard,.note,.headroom,.omen,.dial-card,.world,.world-new,.hero,.livepill,.c-acct,.wn-plus,.ri){border-radius:var(--radius)}
+[data-family="anime"] :is(.hero-sigil,.hero .stamp){display:none}
+[data-family="anime"] .hero::after{display:none}
+[data-family="anime"] .hero-in{grid-template-columns:minmax(0,1fr)}
+[data-family="anime"] .dial .rn{display:none}
+[data-family="anime"][data-mode="light"] .petals{opacity:.75}
+[data-family="anime"] .hero-art{padding:0;-webkit-mask:linear-gradient(90deg,transparent,#000 16%);mask:linear-gradient(90deg,transparent,#000 16%)}
+[data-family="anime"] .an-scene{position:absolute;inset:0;width:100%;height:100%}
+/* the label faces are for labels; commands and paths stay monospace, and small print reads in the body face */
+[data-family="anime"] :is(.t-sum,.perm-sum,.t-tool){font-family:var(--f-mono);letter-spacing:0;text-transform:none}
+[data-family="anime"] :is(.ri-s,.pal-i .pi-s,.utime,.r-date,.r-ago,.art-t small,.rail-keys,.legend,.dc-checked,.c-model,.c-acct .cu,.t-time,.ac-win i,.menu .m-acct .m-u,.pal-foot){font-family:var(--f-body);letter-spacing:.01em}
+[data-theme="highfantasy"] :is(.ri-s,.pal-i .pi-s,.utime,.r-date,.rail-keys,.dc-checked,.c-model,.legend,.c-acct .cu){font-size:13.5px}
+[data-theme="dungeon"] :is(.ri-s,.pal-i .pi-s,.utime,.r-date,.rail-keys,.dc-checked,.c-model,.legend,.c-acct .cu){font-size:12.5px}
+[data-family="anime"] .hero-art .ha-read{margin:0 14px 12px auto;gap:18px;padding:9px 16px 8px;border-radius:calc(var(--radius) - 2px);backdrop-filter:blur(6px)}
+[data-family="anime"] .hero-art .ha-read span{flex-direction:row;align-items:baseline;gap:7px}
+.an-star{fill:rgb(var(--an-star))}
+.motion .an-star{animation:an-twinkle 3.6s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+@keyframes an-twinkle{0%,100%{opacity:.25}50%{opacity:1}}
+@keyframes an-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes an-spin{to{transform:rotate(360deg)}}
+@keyframes an-rise{0%{transform:translateY(0);opacity:0}15%{opacity:1}100%{transform:translateY(-58px);opacity:0}}
+@keyframes an-flicker{0%,100%{transform:scale(1,1) skewX(0)}20%{transform:scale(.94,1.06) skewX(2deg)}40%{transform:scale(1.04,.95) skewX(-2deg)}60%{transform:scale(.97,1.04) skewX(1deg)}80%{transform:scale(1.03,.97) skewX(-1deg)}}
+@keyframes an-glow{0%,100%{opacity:.75}30%{opacity:1}55%{opacity:.6}80%{opacity:.9}}
+@keyframes an-blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}
+@keyframes an-pulse{0%,100%{opacity:1}50%{opacity:.55}}
+
+/* the skies behind the hub: specks of light that rise, wander and blink */
+.sky-glow{position:absolute;inset:0;overflow:hidden}
+.sky-layer{position:absolute;left:0;top:0;width:100%;height:100%;will-change:transform}
+.sky-layer.rise{height:calc(100% + var(--tile))}
+.motion .sky-layer.rise{animation:sky-rise var(--dur) linear infinite}
+.motion .sky-layer.rise.b{animation-delay:-20s}
+@keyframes sky-rise{to{transform:translate3d(0,calc(-1 * var(--tile)),0)}}
+.sky-glow .h{opacity:.2}
+.sky-glow .a{opacity:.6}
+.sky-glow .b{opacity:.38}
+.sky-glow.motes .c{fill:rgb(var(--an-glow))}
+.sky-glow.motes .p{fill:rgb(var(--an-pink))}
+.sky-glow.motes .g{fill:rgb(var(--an-gold))}
+.sky-glow.motes .v{fill:rgb(var(--an-violet))}
+.sky-glow.fireflies .f{fill:rgb(var(--hf-fly))}
+.sky-glow.fireflies .g{fill:rgb(var(--an-gold))}
+.motion .sky-glow.fireflies .a{animation:ff-drift-a 17s ease-in-out infinite alternate,ff-blink 4.4s ease-in-out infinite}
+.motion .sky-glow.fireflies .b{animation:ff-drift-b 23s ease-in-out infinite alternate,ff-blink 6s ease-in-out -2.6s infinite}
+@keyframes ff-drift-a{to{transform:translate3d(30px,-24px,0)}}
+@keyframes ff-drift-b{to{transform:translate3d(-36px,20px,0)}}
+@keyframes ff-blink{0%,100%{opacity:.15}50%{opacity:.8}}
+.sky-glow.embers .e{fill:rgb(var(--an-ember))}
+.sky-glow.embers .o{fill:rgb(var(--dg-f2))}
+.sky-glow.embers .g{fill:rgb(var(--dg-f1))}
+.sky-glow.embers .a{opacity:.5}
+.sky-glow.embers .b{opacity:.3}
+
+/* Setup: the cards show off their lettering */
+.lk-anime .lk-tn b{font-family:var(--sw-font);font-weight:400;letter-spacing:.02em;text-transform:none;font-size:17px}
+.lk-anime[data-v="isekai"] .lk-tn b{font-weight:700;font-size:14px;letter-spacing:.14em;text-transform:uppercase}
+.lk-anime[data-v="highfantasy"] .lk-tn b{font-weight:700;font-size:16px}
+.lk-anime[data-v="dungeon"] .lk-tn b{font-size:21px}
+.lk-anime .sw-card{box-shadow:inset 0 2px 0 var(--sw-gold),0 0 14px -4px var(--sw-acc)}
+/* and a hint of each world's sky in its swatch */
+.lk-anime[data-v="isekai"] .sw{background-image:radial-gradient(60% 70% at 80% 0%,rgb(166 130 255 / .35),transparent),linear-gradient(180deg,transparent 55%,rgb(228 112 166 / .28))}
+.lk-anime[data-v="highfantasy"] .sw{background-image:radial-gradient(circle at 84% 22%,rgb(252 249 230 / .5) 0 7px,rgb(252 249 230 / .12) 8px,transparent 22px),linear-gradient(180deg,transparent 50%,rgb(40 84 88 / .4))}
+.lk-anime[data-v="dungeon"] .sw{background-image:radial-gradient(50% 60% at 50% 110%,rgb(255 146 58 / .3),transparent)}
+
+/* ==================== Isekai ====================
+   Another world at twilight: indigo glass, a cyan magic glow, sakura pink and gold. Orbitron for the
+   big words (a game's status screen), M PLUS Rounded for reading. Panels have the corner brackets of
+   a system window; status dots are glowing diamonds. */
+[data-theme="isekai"]{--radius:10px;
+  --an-glow:96 222 255; --an-gold:255 208 104; --an-pink:255 130 208; --an-violet:166 130 255; --an-star:232 240 255;
+  --ie-sky1:12 10 46; --ie-sky2:70 36 128; --ie-sky3:228 112 166; --ie-moon1:255 250 238; --ie-moon2:206 204 255; --ie-halo:206 204 255;
+  --ie-rock1:66 52 120; --ie-rock2:16 12 40; --ie-grass:92 218 182; --ie-cloud:255 212 236; --ie-tower:22 18 52;
+  --ie-win:10 12 38; --ie-ink:222 240 255; --ie-hp1:74 226 140; --ie-hp2:196 255 120;
+  --ie-btn1:44 156 226; --ie-btn2:34 102 200; --ie-corner:rgb(var(--an-glow) / .7)}
+[data-theme="isekai"][data-mode="light"]{
+  --an-glow:0 128 196; --an-gold:168 108 0; --an-pink:208 40 138; --an-violet:100 70 214; --an-star:255 255 255;
+  --ie-sky1:98 150 255; --ie-sky2:172 190 255; --ie-sky3:255 204 226; --ie-moon1:255 255 255; --ie-moon2:226 230 255; --ie-halo:255 255 255;
+  --ie-rock1:132 120 200; --ie-rock2:74 62 146; --ie-grass:56 196 140; --ie-cloud:255 255 255; --ie-tower:60 50 130;
+  --ie-win:255 255 255; --ie-ink:22 28 72; --ie-corner:rgb(var(--an-glow) / .55)}
+[data-theme="isekai"] body{background:radial-gradient(1000px 540px at 82% -12%,rgb(var(--an-violet) / .2),transparent 62%),radial-gradient(820px 520px at -12% 112%,rgb(var(--an-glow) / .11),transparent 60%),var(--abyss) fixed}
+[data-theme="isekai"] ::selection{background:rgb(var(--an-glow) / .32);color:inherit}
+[data-theme="isekai"] :focus-visible{outline-color:rgb(var(--an-glow))}
+[data-theme="isekai"] *{scrollbar-color:rgb(var(--an-glow) / .4) transparent}
+[data-theme="isekai"] :is(.sec-note,.empty-line,.r-sub,.nav-foot,.seek .s-t,.r-as,.o-where,.w-last.quiet,.world-new > span:last-child,.wordmark small,.lk-tn small,.hero h1 em,.c-status,.c-earlier){font-style:normal}
+[data-theme="isekai"] .sigil{filter:drop-shadow(0 0 8px rgb(var(--an-glow) / .55))}
+/* diamonds in place of the fleurons */
+[data-theme="isekai"] .glyph:not(.c-find .glyph){font-size:0 !important;display:inline-grid;place-items:center;flex:none;min-width:7px}
+[data-theme="isekai"] .glyph:not(.c-find .glyph)::before{content:"";width:6px;height:6px;background:currentColor;transform:rotate(45deg);border-radius:1px;box-shadow:0 0 6px currentColor}
+[data-theme="isekai"] .nav-i .glyph{width:16px}
+[data-theme="isekai"] .w-today .glyph{width:7px;margin-right:8px}
+/* the bar and the sidebar */
+[data-theme="isekai"] .bar{background:linear-gradient(180deg,rgb(var(--c-0e0c10) / .96),rgb(var(--c-0c0a0e) / .92));border-bottom-color:rgb(var(--an-glow) / .28);box-shadow:0 1px 0 rgb(var(--an-glow) / .06),0 12px 30px -26px rgb(var(--an-glow) / .8)}
+[data-theme="isekai"] .wordmark b{font:700 14.5px/1.15 var(--f-display);letter-spacing:.2em;text-transform:uppercase;color:rgb(var(--an-glow));text-shadow:0 0 14px rgb(var(--an-glow) / .45)}
+[data-theme="isekai"] .wordmark small{font:700 12px/1.2 var(--f-body);letter-spacing:.02em;margin-top:4px}
+[data-theme="isekai"] :is(.pulse,.usechip,.seek){border-color:rgb(var(--an-glow) / .26);background:rgb(var(--c-141117) / .75)}
+[data-theme="isekai"] .pulse{font:600 11px/1 var(--f-label);letter-spacing:.14em}
+[data-theme="isekai"] .pulse.needs{border-color:rgb(var(--an-gold) / .6);box-shadow:0 0 0 1px rgb(var(--an-gold) / .15),0 0 22px -6px rgb(var(--an-gold) / .7)}
+[data-theme="isekai"] .nav{background:linear-gradient(180deg,rgb(var(--c-0c0a0e) / .9),rgb(var(--c-0a090c) / .9))}
+[data-theme="isekai"] .nav-h{font:700 10px/1 var(--f-label);letter-spacing:.24em;color:rgb(var(--an-glow) / .85)}
+[data-theme="isekai"] .nav-i{font-weight:700}
+[data-theme="isekai"] .nav-i:hover{background:linear-gradient(90deg,rgb(var(--an-glow) / .09),transparent 80%)}
+[data-theme="isekai"] .nav-i[aria-current="true"]{border-left-color:rgb(var(--an-glow));background:linear-gradient(90deg,rgb(var(--an-glow) / .18),rgb(var(--an-violet) / .06) 70%,transparent);box-shadow:inset 2px 0 12px -6px rgb(var(--an-glow))}
+[data-theme="isekai"] :is(.nav-i .glyph,.nav-i[aria-current="true"] .glyph){color:rgb(var(--an-glow))}
+[data-theme="isekai"] .seal{background:linear-gradient(160deg,rgb(var(--c-1a161d)),rgb(var(--c-141117)));border-color:rgb(var(--an-glow) / .26)}
+[data-theme="isekai"] :is(.ac-who small,.ac-win small,.seal-k){font-family:var(--f-label);font-weight:600;letter-spacing:.16em}
+[data-theme="isekai"] :is(.ac-who b,.seal-n){font:800 14.5px/1.15 var(--f-caps);letter-spacing:.01em}
+[data-theme="isekai"] .eyebrow{font:600 10.5px/1.2 var(--f-label);letter-spacing:.22em;color:rgb(var(--an-glow))}
+[data-theme="isekai"] .tag{font-family:var(--f-body);font-weight:800;letter-spacing:.08em}
+/* status dots: glowing diamonds */
+[data-theme="isekai"] :is(.gilt-dot,.ember-dot,.ready-dot,.violet-dot,.ash-dot,.live-dot,.reply-dot){width:8px;height:8px;border-radius:1.5px;transform:rotate(45deg)}
+[data-theme="isekai"] .gilt-dot{background:rgb(var(--an-gold));box-shadow:0 0 10px rgb(var(--an-gold) / .8)}
+[data-theme="isekai"] :is(.ember-dot,.live-dot){background:rgb(var(--an-glow));box-shadow:0 0 8px rgb(var(--an-glow) / .8);animation:none}
+[data-theme="isekai"] .motion .ember-dot{animation:ie-cast 1.6s ease-in-out infinite}
+[data-theme="isekai"] .reply-dot{background:none;box-shadow:inset 0 0 0 2px rgb(var(--an-gold)),0 0 8px rgb(var(--an-gold) / .5)}
+@keyframes ie-cast{0%,100%{box-shadow:0 0 4px rgb(var(--an-glow) / .6);opacity:.8}50%{box-shadow:0 0 14px rgb(var(--an-glow));opacity:1}}
+/* section headings: a system readout over a cyan-to-pink rule */
+[data-theme="isekai"] .sec-h h2{font:700 clamp(17px,1.7vw,22px)/1.2 var(--f-display);letter-spacing:.1em;text-transform:uppercase}
+[data-theme="isekai"] .sec-h::before{width:110px;height:2px;background:linear-gradient(90deg,rgb(var(--an-glow)),rgb(var(--an-pink)));box-shadow:0 0 10px rgb(var(--an-glow) / .7)}
+[data-theme="isekai"] .sec-h::after{background:linear-gradient(90deg,rgb(var(--an-glow) / .35),var(--seam) 40%)}
+/* the hero: a system window with corner brackets, the other world on the right */
+[data-theme="isekai"] .hero{border-color:rgb(var(--an-glow) / .32);background:radial-gradient(600px 300px at 0% 0%,rgb(var(--an-violet) / .14),transparent 70%),linear-gradient(160deg,rgb(var(--c-1a161d)),rgb(var(--c-0e0c10)));box-shadow:0 0 0 1px rgb(var(--an-glow) / .06),0 0 40px -18px rgb(var(--an-glow) / .45),0 30px 60px -36px rgb(var(--c-000000))}
+[data-theme="isekai"] :is(.hero,.omen,.dial-card,dialog)::before{content:"";position:absolute;inset:6px;border:0;border-radius:0;pointer-events:none;
+  background:linear-gradient(var(--ie-corner) 0 0) top left/14px 1.5px,linear-gradient(var(--ie-corner) 0 0) top left/1.5px 14px,linear-gradient(var(--ie-corner) 0 0) top right/14px 1.5px,linear-gradient(var(--ie-corner) 0 0) top right/1.5px 14px,
+    linear-gradient(var(--ie-corner) 0 0) bottom left/14px 1.5px,linear-gradient(var(--ie-corner) 0 0) bottom left/1.5px 14px,linear-gradient(var(--ie-corner) 0 0) bottom right/14px 1.5px,linear-gradient(var(--ie-corner) 0 0) bottom right/1.5px 14px;background-repeat:no-repeat}
+[data-theme="isekai"] .hero-in{padding-top:30px;padding-bottom:30px}
+[data-theme="isekai"] .hero .eyebrow{letter-spacing:.14em}
+[data-theme="isekai"] .hero h1{font:700 clamp(22px,2.4vw,31px)/1.3 var(--f-display);letter-spacing:.03em;text-shadow:0 0 22px rgb(var(--an-glow) / .3)}
+[data-theme="isekai"] .hero h1 em{font:700 .6em/1.45 var(--f-body);letter-spacing:.01em;color:var(--parch-2);margin-top:8px;text-shadow:none}
+[data-theme="isekai"] .hero p{font-size:16px}
+/* the scene */
+[data-theme="isekai"] .ie-sky1{stop-color:rgb(var(--ie-sky1))}
+[data-theme="isekai"] .ie-sky2{stop-color:rgb(var(--ie-sky2))}
+[data-theme="isekai"] .ie-sky3{stop-color:rgb(var(--ie-sky3))}
+[data-theme="isekai"] .ie-moon1{stop-color:rgb(var(--ie-moon1))}
+[data-theme="isekai"] .ie-moon2{stop-color:rgb(var(--ie-moon2))}
+[data-theme="isekai"] .ie-halo{stop-color:rgb(var(--ie-halo));stop-opacity:.42}
+[data-theme="isekai"] .ie-halo0{stop-color:rgb(var(--ie-halo));stop-opacity:0}
+[data-theme="isekai"] .ie-fall1{stop-color:rgb(var(--an-glow));stop-opacity:.85}
+[data-theme="isekai"] .ie-fall0{stop-color:rgb(var(--an-glow));stop-opacity:0}
+[data-theme="isekai"] .ie-rock1{stop-color:rgb(var(--ie-rock1))}
+[data-theme="isekai"] .ie-rock2{stop-color:rgb(var(--ie-rock2))}
+[data-theme="isekai"] .ie-crater circle{fill:rgb(var(--ie-sky2) / .14)}
+[data-theme="isekai"] .ie-moon-s{fill:rgb(var(--an-pink) / .85);filter:drop-shadow(0 0 6px rgb(var(--an-pink) / .8))}
+[data-theme="isekai"] .ie-cloud{fill:rgb(var(--ie-cloud) / .22)}
+[data-theme="isekai"] .ie-cloud.far{fill:rgb(var(--ie-cloud) / .12)}
+[data-theme="isekai"] .ie-grass{fill:rgb(var(--ie-grass))}
+[data-theme="isekai"] .ie-strata{fill:none;stroke:rgb(var(--an-glow) / .18);stroke-width:1}
+[data-theme="isekai"] .ie-tower{fill:rgb(var(--ie-tower))}
+[data-theme="isekai"] .ie-lamp{fill:rgb(var(--an-gold));filter:drop-shadow(0 0 3px rgb(var(--an-gold)))}
+[data-theme="isekai"] .ie-tree{fill:none;stroke:rgb(var(--ie-tower));stroke-width:2;stroke-linecap:round}
+[data-theme="isekai"] .ie-tree-c{fill:rgb(var(--ie-grass) / .8)}
+[data-theme="isekai"] .ie-fall{fill:none;stroke-width:4;stroke-linecap:round}
+[data-theme="isekai"] .ie-fall-s{fill:none;stroke:rgb(var(--c-ffffff) / .55);stroke-width:1.2;stroke-dasharray:4 9}
+[data-theme="isekai"] .motion .ie-fall-s{animation:ie-flow 1.2s linear infinite}
+@keyframes ie-flow{to{stroke-dashoffset:-26}}
+[data-theme="isekai"] .ie-circle{fill:none;stroke:rgb(var(--an-glow) / .38);stroke-width:1.2;transition:stroke .6s}
+[data-theme="isekai"] .ie-circle .thin{stroke-width:.7}
+[data-theme="isekai"] .ie-circle .runes{stroke-width:4;stroke-dasharray:1.5 5}
+[data-theme="isekai"] .ie-circle.on{stroke:rgb(var(--an-glow));filter:drop-shadow(0 0 3px rgb(var(--an-glow)))}
+[data-theme="isekai"] .motion .ie-circle.on{animation:an-spin 14s linear infinite}
+[data-theme="isekai"] .ie-mote{fill:rgb(var(--an-glow));filter:drop-shadow(0 0 2px rgb(var(--an-glow)))}
+[data-theme="isekai"] .motion .ie-mote{animation:an-rise 3.2s ease-out infinite;animation-delay:calc(var(--d) * -1)}
+[data-theme="isekai"] .ie-crystal{fill:rgb(var(--an-glow));filter:drop-shadow(0 0 5px rgb(var(--an-glow)))}
+[data-theme="isekai"] .ie-crystal.gold{fill:rgb(var(--an-gold));filter:drop-shadow(0 0 6px rgb(var(--an-gold)))}
+[data-theme="isekai"] .ie-facet{fill:rgb(var(--c-ffffff) / .45)}
+[data-theme="isekai"] .motion .ie-bob{animation:an-bob 3.4s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+/* the status window */
+[data-theme="isekai"] .ie-win{position:relative;margin:0 14px 14px auto;width:min(254px,calc(100% - 28px));padding:9px 12px 9px;border:1px solid rgb(var(--an-glow) / .6);border-radius:8px;color:rgb(var(--ie-ink));
+  background:linear-gradient(180deg,rgb(var(--ie-win) / .8),rgb(var(--ie-win) / .66));backdrop-filter:blur(7px);box-shadow:0 0 0 1px rgb(var(--an-glow) / .12),0 0 24px -6px rgb(var(--an-glow) / .6),inset 0 0 20px -10px rgb(var(--an-glow) / .7)}
+[data-theme="isekai"] .ie-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid rgb(var(--an-glow) / .3)}
+[data-theme="isekai"] .ie-h b{font:700 10.5px/1 var(--f-display);letter-spacing:.32em;text-transform:uppercase;color:rgb(var(--an-glow));text-shadow:0 0 8px rgb(var(--an-glow) / .6)}
+[data-theme="isekai"] .ie-h span{font:800 12.5px/1.1 var(--f-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+[data-theme="isekai"] .ie-lv{display:flex;align-items:baseline;gap:5px;margin-bottom:4px}
+[data-theme="isekai"] .ie-lv span{font:700 10px/1 var(--f-display);letter-spacing:.06em;opacity:.8}
+[data-theme="isekai"] .ie-lv b{font:800 21px/1 var(--f-display);letter-spacing:.02em;font-variant-numeric:tabular-nums}
+[data-theme="isekai"] .ie-lv em{margin-left:auto;font:800 11.5px/1 var(--f-body);font-style:normal;color:rgb(var(--an-gold));letter-spacing:.04em}
+[data-theme="isekai"] .ie-bar{display:grid;grid-template-columns:22px minmax(0,1fr) 34px;align-items:center;gap:7px;margin:5px 0}
+[data-theme="isekai"] .ie-bar span{font:700 9.5px/1 var(--f-display);letter-spacing:.08em}
+[data-theme="isekai"] .ie-bar i{display:block;height:7px;border-radius:4px;background:rgb(var(--ie-ink) / .12);box-shadow:inset 0 0 0 1px rgb(var(--ie-ink) / .1);overflow:hidden}
+[data-theme="isekai"] .ie-bar i b{display:block;height:100%;border-radius:4px;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+[data-theme="isekai"] .ie-bar.hp i b{background:linear-gradient(90deg,rgb(var(--ie-hp1)),rgb(var(--ie-hp2)));box-shadow:0 0 8px rgb(var(--ie-hp1) / .7)}
+[data-theme="isekai"] .ie-bar.mp i b{background:linear-gradient(90deg,rgb(var(--an-glow)),rgb(var(--an-violet)));box-shadow:0 0 8px rgb(var(--an-glow) / .7)}
+[data-theme="isekai"] .ie-bar.low i b{background:linear-gradient(90deg,rgb(255 84 84),rgb(255 160 80));box-shadow:0 0 8px rgb(255 84 84 / .8)}
+[data-theme="isekai"] .motion .ie-bar.low i b{animation:an-pulse 1.4s ease-in-out infinite}
+[data-theme="isekai"] .ie-bar em{font:700 10px/1 var(--f-display);font-style:normal;text-align:right;font-variant-numeric:tabular-nums}
+[data-theme="isekai"] .ie-sk{display:flex;justify-content:space-between;gap:6px;margin-top:7px;padding-top:6px;border-top:1px dashed rgb(var(--an-glow) / .3);font:800 10px/1 var(--f-body);letter-spacing:.03em;color:rgb(var(--ie-ink) / .78)}
+[data-theme="isekai"] .ie-sk b{margin-left:5px;font:800 12.5px/1 var(--f-display);color:rgb(var(--ie-ink));font-variant-numeric:tabular-nums}
+[data-theme="isekai"] .ie-sk .hot b{color:rgb(var(--an-gold));text-shadow:0 0 8px rgb(var(--an-gold) / .7)}
+[data-theme="isekai"] .ie-sk .on b{color:rgb(var(--an-glow));text-shadow:0 0 8px rgb(var(--an-glow) / .7)}
+/* cards: glass panels with a glowing edge */
+[data-theme="isekai"] :is(.omen,.dial-card,.world){background:linear-gradient(170deg,rgb(var(--c-1d1920) / .94),rgb(var(--c-121014) / .94));border-color:rgb(var(--an-glow) / .18);box-shadow:0 22px 44px -30px rgb(var(--c-000000))}
+[data-theme="isekai"] :is(.omen,.world):hover{border-color:rgb(var(--an-glow) / .38);box-shadow:0 0 22px -10px rgb(var(--an-glow) / .55),0 22px 44px -30px rgb(var(--c-000000))}
+[data-theme="isekai"] .omen-in{background:none;border-radius:6px}
+[data-theme="isekai"] .omen-in::before{display:none}
+[data-theme="isekai"] .omen.working{--edge:rgb(var(--an-glow) / .55);--accent:rgb(var(--an-glow));border-color:rgb(var(--an-glow) / .35);box-shadow:0 0 26px -12px rgb(var(--an-glow) / .7)}
+[data-theme="isekai"] .omen.needs{--edge:rgb(var(--an-gold) / .75);--accent:rgb(var(--an-gold));border-color:rgb(var(--an-gold) / .45);box-shadow:0 0 28px -10px rgb(var(--an-gold) / .6)}
+[data-theme="isekai"] .o-title{font:800 16.5px/1.3 var(--f-caps);letter-spacing:0}
+[data-theme="isekai"] .dial-card.current{border-color:rgb(var(--an-glow) / .5);box-shadow:0 0 0 1px rgb(var(--an-glow) / .15),0 0 30px -12px rgb(var(--an-glow) / .6)}
+[data-theme="isekai"] .dial-card.current::after{content:"Equipped";background:linear-gradient(90deg,rgb(var(--ie-btn1)),rgb(var(--ie-btn2)));color:rgb(255 255 255);font:700 9px/1 var(--f-display);letter-spacing:.2em;padding:6px 10px 5px;border-radius:4px;box-shadow:0 0 12px rgb(var(--an-glow) / .6)}
+[data-theme="isekai"] :is(.dc-name,.w-name){font:800 21px/1.15 var(--f-caps);letter-spacing:0}
+[data-theme="isekai"] .w-glyph{background:radial-gradient(circle at 70% 20%,rgb(var(--an-pink) / .25),transparent 50%),linear-gradient(160deg,rgb(var(--ie-sky2) / .7),rgb(var(--c-1a161d)))}
+[data-theme="isekai"] .w-glyph::before,[data-theme="isekai"] .w-glyph::after{display:none}
+[data-theme="isekai"] .w-glyph b{font:900 74px/1.1 var(--f-display);color:rgb(var(--an-glow));opacity:.22;letter-spacing:0}
+/* buttons */
+[data-theme="isekai"] .btn{font-weight:700}
+[data-theme="isekai"] .btn:hover:not(:disabled){border-color:rgb(var(--an-glow) / .5)}
+[data-theme="isekai"] .btn.prime{background:linear-gradient(180deg,rgb(var(--ie-btn1)),rgb(var(--ie-btn2)));border-color:rgb(var(--an-glow) / .8);color:rgb(255 255 255);box-shadow:0 0 16px -6px rgb(var(--an-glow) / .9),inset 0 1px 0 rgb(255 255 255 / .3)}
+[data-theme="isekai"] .btn.prime:hover:not(:disabled){background:linear-gradient(180deg,rgb(60 172 236),rgb(42 116 214));border-color:rgb(var(--an-glow))}
+[data-theme="isekai"] .btn.gilt{background:linear-gradient(180deg,rgb(255 222 130),rgb(240 178 60));border-color:rgb(255 226 150);color:rgb(58 34 0);box-shadow:0 0 18px -6px rgb(var(--an-gold) / .9),inset 0 1px 0 rgb(255 255 255 / .5)}
+[data-theme="isekai"] .btn.gilt:hover:not(:disabled){background:linear-gradient(180deg,rgb(255 230 150),rgb(248 190 76))}
+[data-theme="isekai"] :is(.menu,dialog,.palette .pal-box,.drawer){border-color:rgb(var(--an-glow) / .32);box-shadow:0 0 0 1px rgb(var(--an-glow) / .08),0 0 40px -14px rgb(var(--an-glow) / .45),0 30px 70px -24px rgb(var(--c-000000))}
+/* the chat: dialogue boxes */
+[data-theme="isekai"] .c-head{border-bottom-color:rgb(var(--an-glow) / .26)}
+[data-theme="isekai"] .c-title{font:700 19px/1.25 var(--f-display);letter-spacing:.04em}
+[data-theme="isekai"] .turn .who{font:700 10px/1 var(--f-label);letter-spacing:.22em;color:rgb(var(--an-glow))}
+[data-theme="isekai"] .turn .who::before{content:"";width:7px;height:7px;background:rgb(var(--an-glow));transform:rotate(45deg);box-shadow:0 0 8px rgb(var(--an-glow))}
+[data-theme="isekai"] .turn::before{background:linear-gradient(180deg,rgb(var(--an-glow) / .35),transparent)}
+[data-theme="isekai"] .ububble{background:linear-gradient(180deg,rgb(var(--an-violet) / .17),rgb(var(--an-glow) / .07));border-color:rgb(var(--an-glow) / .38);border-radius:12px 12px 3px 12px;box-shadow:inset 0 0 18px -10px rgb(var(--an-glow) / .7)}
+[data-theme="isekai"] .c-box{border-color:rgb(var(--an-glow) / .3)}
+[data-theme="isekai"] .c-box:focus-within{border-color:rgb(var(--an-glow) / .75);box-shadow:0 0 0 3px rgb(var(--an-glow) / .14),0 0 24px -8px rgb(var(--an-glow) / .7)}
+[data-theme="isekai"] .md{font-size:16px;line-height:1.75}
+[data-theme="isekai"] .md strong{font-weight:800}
+[data-theme="isekai"] .typing i{background:rgb(var(--an-glow));box-shadow:0 0 6px rgb(var(--an-glow));border-radius:1px;transform:rotate(45deg)}
+[data-theme="isekai"] .chat.is-working .c-dock::before{background-image:linear-gradient(90deg,transparent,rgb(var(--an-violet) / .85) 25%,rgb(var(--an-glow)) 50%,rgb(var(--an-pink) / .85) 75%,transparent);box-shadow:0 0 12px rgb(var(--an-glow) / .6)}
+[data-theme="isekai"] .c-box textarea{font-size:16px}
+
+/* ==================== High Fantasy ====================
+   Emerald and gold under a great moon: Cinzel Decorative for the big words, Cinzel for names,
+   EB Garamond to read by. Gilded hairlines, a drop cap to open each reply, status dots that are
+   four-pointed stars. */
+[data-theme="highfantasy"]{--radius:6px;
+  --an-deep:12 60 44; --an-gold:230 194 110; --an-emerald:72 206 146; --an-star:236 242 222;
+  --hf-sky1:4 12 22; --hf-sky2:12 40 54; --hf-sky3:40 84 88; --hf-halo:214 236 214; --hf-moon1:252 249 230; --hf-moon2:212 220 194; --hf-maria:150 166 148;
+  --hf-far:34 66 76; --hf-mid:16 40 44; --hf-cliff:9 24 26; --hf-castle:6 15 17; --hf-roof:16 62 52; --hf-banner:226 182 80;
+  --hf-win:255 206 112; --hf-fire:255 150 50; --hf-fire2:255 226 120; --hf-mist:150 200 190; --hf-fly:222 255 150; --hf-dragon:3 9 12;
+  --hf-btn1:30 124 88; --hf-btn2:16 84 58; --hf-ink:246 240 220;
+  --hf-star:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 0C13 8 16 11 24 12 16 13 13 16 12 24 11 16 8 13 0 12 8 11 11 8 12 0Z'/%3E%3C/svg%3E");
+  --hf-star-o:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 3.5C12.9 9.6 14.4 11.1 20.5 12 14.4 12.9 12.9 14.4 12 20.5 11.1 14.4 9.6 12.9 3.5 12 9.6 11.1 11.1 9.6 12 3.5Z' fill='none' stroke='%23000' stroke-width='2.6' stroke-linejoin='round'/%3E%3C/svg%3E")}
+[data-theme="highfantasy"][data-mode="light"]{
+  --an-deep:22 98 68; --an-gold:146 100 16; --an-emerald:20 130 84;
+  --hf-sky1:118 168 200; --hf-sky2:218 222 200; --hf-sky3:255 212 158; --hf-halo:255 238 196; --hf-moon1:255 253 244; --hf-moon2:250 232 206; --hf-maria:226 210 186;
+  --hf-far:150 178 182; --hf-mid:96 132 122; --hf-cliff:56 82 74; --hf-castle:36 56 52; --hf-roof:24 96 72; --hf-mist:255 250 238; --hf-fly:255 214 90; --hf-dragon:44 58 66}
+[data-theme="highfantasy"] body{background:radial-gradient(1100px 600px at 78% -16%,rgb(var(--an-emerald) / .11),transparent 60%),radial-gradient(900px 520px at -6% 112%,rgb(var(--an-gold) / .07),transparent 60%),var(--abyss) fixed}
+[data-theme="highfantasy"] ::selection{background:rgb(var(--an-gold) / .3);color:inherit}
+[data-theme="highfantasy"] :focus-visible{outline-color:rgb(var(--an-gold))}
+[data-theme="highfantasy"] *{scrollbar-color:rgb(var(--an-gold) / .4) transparent}
+[data-theme="highfantasy"] .sigil{filter:drop-shadow(0 0 6px rgb(var(--an-gold) / .35))}
+[data-theme="highfantasy"] .bar{background:linear-gradient(180deg,rgb(var(--c-0e0c10) / .97),rgb(var(--c-0c0a0e) / .94));border-bottom-color:rgb(var(--an-gold) / .3);box-shadow:0 1px 0 rgb(var(--an-gold) / .06),0 12px 30px -26px rgb(var(--c-000000))}
+[data-theme="highfantasy"] .wordmark b{font:700 17px/1.15 var(--f-display);letter-spacing:.06em;color:rgb(var(--an-gold))}
+[data-theme="highfantasy"] .wordmark small{font:italic 400 14px/1.2 var(--f-body);margin-top:2px}
+[data-theme="highfantasy"] :is(.pulse,.usechip,.seek){border-color:rgb(var(--an-gold) / .26)}
+[data-theme="highfantasy"] .pulse{font:600 11.5px/1 var(--f-label);letter-spacing:.12em}
+[data-theme="highfantasy"] .nav-h{font:700 10.5px/1 var(--f-label);letter-spacing:.22em;color:rgb(var(--an-gold) / .9)}
+[data-theme="highfantasy"] .nav-i{font-size:16.5px}
+[data-theme="highfantasy"] .nav-i:hover{background:linear-gradient(90deg,rgb(var(--an-gold) / .07),transparent 80%)}
+[data-theme="highfantasy"] .nav-i[aria-current="true"]{border-left-color:rgb(var(--an-gold));background:linear-gradient(90deg,rgb(var(--an-emerald) / .16),rgb(var(--an-emerald) / .03) 85%)}
+[data-theme="highfantasy"] :is(.nav-i .glyph,.nav-i[aria-current="true"] .glyph){color:rgb(var(--an-gold))}
+[data-theme="highfantasy"] .seal{border-color:rgb(var(--an-gold) / .28)}
+[data-theme="highfantasy"] :is(.ac-who small,.ac-win small,.seal-k){font-family:var(--f-label);font-weight:600;letter-spacing:.16em}
+[data-theme="highfantasy"] .eyebrow{font:600 11px/1.2 var(--f-label);letter-spacing:.24em;color:rgb(var(--an-gold))}
+/* status dots: four-pointed stars; one at work glimmers */
+[data-theme="highfantasy"] :is(.gilt-dot,.ember-dot,.ready-dot,.violet-dot,.ash-dot,.live-dot,.reply-dot){width:12px;height:12px;border-radius:0;box-shadow:none;-webkit-mask:var(--hf-star) center/contain no-repeat;mask:var(--hf-star) center/contain no-repeat}
+[data-theme="highfantasy"] .gilt-dot{background:rgb(var(--an-gold))}
+[data-theme="highfantasy"] .reply-dot{background:rgb(var(--an-gold));-webkit-mask-image:var(--hf-star-o);mask-image:var(--hf-star-o)}
+[data-theme="highfantasy"] :is(.ember-dot,.live-dot){background:rgb(var(--an-emerald));animation:none}
+[data-theme="highfantasy"] .motion .ember-dot{animation:hf-glimmer 2.4s ease-in-out infinite}
+@keyframes hf-glimmer{0%,100%{transform:scale(.8) rotate(0);opacity:.75}50%{transform:scale(1.15) rotate(45deg);opacity:1}}
+/* section headings: Cinzel Decorative over a gilded rule */
+[data-theme="highfantasy"] .sec-h h2{font:700 clamp(21px,2.1vw,27px)/1.25 var(--f-display);letter-spacing:.02em}
+[data-theme="highfantasy"] .sec-h::before{width:120px;height:2px;background:linear-gradient(90deg,rgb(var(--an-gold)),rgb(var(--an-gold) / 0))}
+[data-theme="highfantasy"] .sec-h::after{background:linear-gradient(90deg,rgb(var(--an-gold) / .35),var(--seam) 45%)}
+/* the hero: a gilded frame and the citadel */
+[data-theme="highfantasy"] .hero{border-color:rgb(var(--an-gold) / .38);background:radial-gradient(700px 320px at 0% 0%,rgb(var(--an-emerald) / .1),transparent 70%),linear-gradient(165deg,rgb(var(--c-1a161d)),rgb(var(--c-0e0c10)))}
+[data-theme="highfantasy"] .hero::before{inset:6px;border:1px solid rgb(var(--an-gold) / .22);border-radius:3px}
+[data-theme="highfantasy"] .hero-in{padding-top:30px;padding-bottom:30px}
+[data-theme="highfantasy"] .hero .eyebrow{letter-spacing:.16em}
+[data-theme="highfantasy"] .hero h1{font:700 clamp(26px,2.8vw,37px)/1.2 var(--f-caps);letter-spacing:.02em}
+[data-theme="highfantasy"] .hero h1 em{font:italic 500 .66em/1.35 var(--f-body);letter-spacing:0;color:var(--parch-2);margin-top:8px}
+[data-theme="highfantasy"] .hero p{font-size:18px;line-height:1.55}
+[data-theme="highfantasy"] .ha-read{background:rgb(var(--c-0e0c10) / .62);border:1px solid rgb(var(--an-gold) / .3)}
+[data-theme="highfantasy"] .ha-read span{font:600 10px/1 var(--f-label);letter-spacing:.18em;color:var(--parch-2)}
+[data-theme="highfantasy"] .ha-read b{font:700 21px/1 var(--f-display);color:var(--parch)}
+[data-theme="highfantasy"] .ha-read .hot b{color:rgb(var(--an-gold))}
+/* the scene */
+[data-theme="highfantasy"] .hf-sky1{stop-color:rgb(var(--hf-sky1))}
+[data-theme="highfantasy"] .hf-sky2{stop-color:rgb(var(--hf-sky2))}
+[data-theme="highfantasy"] .hf-sky3{stop-color:rgb(var(--hf-sky3))}
+[data-theme="highfantasy"] .hf-halo{stop-color:rgb(var(--hf-halo));stop-opacity:.4}
+[data-theme="highfantasy"] .hf-halo5{stop-color:rgb(var(--hf-halo));stop-opacity:.1}
+[data-theme="highfantasy"] .hf-halo0{stop-color:rgb(var(--hf-halo));stop-opacity:0}
+[data-theme="highfantasy"] .hf-moon1{stop-color:rgb(var(--hf-moon1))}
+[data-theme="highfantasy"] .hf-moon2{stop-color:rgb(var(--hf-moon2))}
+[data-theme="highfantasy"] .hf-maria circle{fill:rgb(var(--hf-maria) / .35)}
+[data-theme="highfantasy"] .hf-mist0{stop-color:rgb(var(--hf-mist));stop-opacity:0}
+[data-theme="highfantasy"] .hf-mist1{stop-color:rgb(var(--hf-mist));stop-opacity:.22}
+[data-theme="highfantasy"] .hf-mt.far{fill:rgb(var(--hf-far))}
+[data-theme="highfantasy"] .hf-mt.farthest{fill:rgb(var(--hf-far) / .45)}
+[data-theme="highfantasy"] .hf-snow{fill:rgb(var(--hf-moon1) / .55)}
+[data-theme="highfantasy"] .hf-mt.mid{fill:rgb(var(--hf-mid))}
+[data-theme="highfantasy"] .hf-cliff{fill:rgb(var(--hf-cliff))}
+[data-theme="highfantasy"] .hf-crack{fill:none;stroke:rgb(var(--hf-far) / .5);stroke-width:1}
+[data-theme="highfantasy"] .hf-castle path{fill:rgb(var(--hf-castle))}
+[data-theme="highfantasy"] .hf-castle .hf-roof{fill:rgb(var(--hf-roof))}
+[data-theme="highfantasy"] .hf-castle .hf-gate{fill:rgb(var(--hf-win) / .25)}
+[data-theme="highfantasy"] .hf-castle .hf-pole{fill:none;stroke:rgb(var(--hf-castle));stroke-width:1.2}
+[data-theme="highfantasy"] .hf-castle .hf-banner{fill:rgb(var(--hf-banner))}
+[data-theme="highfantasy"] .motion .hf-banner{transform-box:fill-box;transform-origin:0 50%;animation:hf-wave 2.8s ease-in-out infinite}
+@keyframes hf-wave{0%,100%{transform:scaleX(1) skewY(0)}50%{transform:scaleX(.82) skewY(6deg)}}
+[data-theme="highfantasy"] .hf-win{fill:rgb(var(--hf-roof) / .6);transition:fill .6s}
+[data-theme="highfantasy"] .hf-win.lit{fill:rgb(var(--hf-win));filter:drop-shadow(0 0 3px rgb(var(--hf-win)))}
+[data-theme="highfantasy"] .motion .hf-win.lit{animation:an-glow 3.2s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+[data-theme="highfantasy"] .hf-bglow{fill:rgb(var(--hf-fire) / .22)}
+[data-theme="highfantasy"] .hf-flame{fill:rgb(var(--hf-fire));filter:drop-shadow(0 0 3px rgb(var(--hf-fire)))}
+[data-theme="highfantasy"] .hf-beacon.gold .hf-flame{fill:rgb(var(--hf-fire2));filter:drop-shadow(0 0 4px rgb(var(--hf-fire2)))}
+[data-theme="highfantasy"] .hf-beacon.gold .hf-bglow{fill:rgb(var(--hf-fire2) / .28)}
+[data-theme="highfantasy"] .hf-brazier{fill:rgb(var(--hf-castle))}
+[data-theme="highfantasy"] .motion .hf-flame{transform-box:fill-box;transform-origin:50% 100%;animation:an-flicker .9s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+[data-theme="highfantasy"] .motion .hf-bglow{animation:an-glow 1.8s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+[data-theme="highfantasy"] .hf-fall{fill:none;stroke:rgb(var(--hf-mist) / .5);stroke-width:3.5;stroke-linecap:round}
+[data-theme="highfantasy"] .hf-fall.s{stroke:rgb(var(--c-ffffff) / .6);stroke-width:1;stroke-dasharray:3 8}
+[data-theme="highfantasy"] .motion .hf-fall.s{animation:ie-flow 1.3s linear infinite}
+[data-theme="highfantasy"] .hf-fly{fill:rgb(var(--hf-fly));filter:drop-shadow(0 0 2.5px rgb(var(--hf-fly)))}
+[data-theme="highfantasy"] .motion .hf-fly{animation:an-twinkle 2.8s ease-in-out infinite,an-bob 4.4s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+[data-theme="highfantasy"] .hf-dragon path{fill:rgb(var(--hf-dragon))}
+[data-theme="highfantasy"] .hf-dragon .far{opacity:.7}
+[data-theme="highfantasy"] .motion .hf-dragon{animation:hf-fly 38s linear infinite}
+@keyframes hf-fly{0%{transform:translate(-190px,40px)}55%{transform:translate(130px,-6px)}100%{transform:translate(330px,-30px)}}
+/* cards: a gilded hairline inside */
+[data-theme="highfantasy"] :is(.omen,.dial-card,.world){border-color:rgb(var(--an-gold) / .22)}
+[data-theme="highfantasy"] :is(.omen,.world):hover{border-color:rgb(var(--an-gold) / .42)}
+[data-theme="highfantasy"] .omen-in::before{border:1px solid rgb(var(--an-gold) / .14);border-style:solid}
+[data-theme="highfantasy"] .omen.working{--edge:rgb(var(--an-emerald) / .6);--accent:rgb(var(--an-emerald));border-color:rgb(var(--an-emerald) / .3);box-shadow:0 22px 44px -28px rgb(var(--an-emerald) / .5)}
+[data-theme="highfantasy"] .omen.needs{--edge:rgb(var(--an-gold) / .85);--accent:rgb(var(--an-gold))}
+[data-theme="highfantasy"] .o-title{font:700 15.5px/1.3 var(--f-caps);letter-spacing:.02em}
+[data-theme="highfantasy"] .dial-card.current{border-color:rgb(var(--an-gold) / .55);box-shadow:0 0 0 1px rgb(var(--an-gold) / .14),0 26px 50px -30px rgb(var(--an-gold) / .4)}
+[data-theme="highfantasy"] .dial-card.current::after{content:"Sworn to";background:linear-gradient(180deg,rgb(var(--hf-btn1)),rgb(var(--hf-btn2)));color:rgb(var(--hf-ink));border:1px solid rgb(var(--an-gold) / .6);font:700 9.5px/1 var(--f-label);letter-spacing:.2em}
+[data-theme="highfantasy"] :is(.dc-name,.w-name){font:700 21px/1.15 var(--f-caps);letter-spacing:.02em}
+[data-theme="highfantasy"] .w-glyph{background:radial-gradient(circle at 70% 25%,rgb(var(--hf-moon1) / .18),transparent 40%),linear-gradient(170deg,rgb(var(--hf-sky2)),rgb(var(--c-1a161d)))}
+[data-theme="highfantasy"] .w-glyph b{font:700 76px/1.1 var(--f-display);color:rgb(var(--an-gold));opacity:.24}
+/* buttons */
+[data-theme="highfantasy"] .btn{font-family:var(--f-label);font-weight:600;letter-spacing:.06em;font-size:13.5px}
+[data-theme="highfantasy"] .btn.prime{background:linear-gradient(180deg,rgb(var(--hf-btn1)),rgb(var(--hf-btn2)));border-color:rgb(var(--an-gold) / .65);color:rgb(var(--hf-ink));box-shadow:0 8px 18px -10px rgb(var(--an-emerald) / .6),inset 0 1px 0 rgb(255 255 255 / .14)}
+[data-theme="highfantasy"] .btn.prime:hover:not(:disabled){background:linear-gradient(180deg,rgb(38 140 100),rgb(20 98 68));border-color:rgb(var(--an-gold))}
+[data-theme="highfantasy"] .btn.gilt{background:linear-gradient(180deg,rgb(242 214 140),rgb(206 160 70));border-color:rgb(246 224 160);color:rgb(46 30 4)}
+[data-theme="highfantasy"] .btn.gilt:hover:not(:disabled){background:linear-gradient(180deg,rgb(248 224 156),rgb(218 172 82))}
+[data-theme="highfantasy"] :is(.menu,dialog,.palette .pal-box,.drawer){border-color:rgb(var(--an-gold) / .34)}
+/* the chat: a chronicle, each reply opening on a gilded initial */
+[data-theme="highfantasy"] .c-head{border-bottom-color:rgb(var(--an-gold) / .26)}
+[data-theme="highfantasy"] .c-title{font:700 21px/1.2 var(--f-caps);letter-spacing:.02em}
+[data-theme="highfantasy"] .turn .who{font:700 10.5px/1 var(--f-label);letter-spacing:.2em;color:rgb(var(--an-gold))}
+[data-theme="highfantasy"] .turn .who::before{content:"✧";color:rgb(var(--an-gold));font-size:12px}
+[data-theme="highfantasy"] .turn::before{background:linear-gradient(180deg,rgb(var(--an-gold) / .3),transparent)}
+[data-theme="highfantasy"] .turn-foot + .part :is(.final > .md,.live > .live-done) > p:first-child{display:flow-root}
+[data-theme="highfantasy"] .turn-foot + .part :is(.final > .md,.live > .live-done) > p:first-child::first-letter{float:left;font:700 3.05em/.82 var(--f-display);margin:.08em .1em 0 0;color:rgb(var(--an-gold))}
+[data-theme="highfantasy"] .ububble{background:linear-gradient(180deg,rgb(var(--an-emerald) / .12),rgb(var(--an-emerald) / .05));border-color:rgb(var(--an-gold) / .32);border-radius:10px 10px 2px 10px}
+[data-theme="highfantasy"] .c-box{border-color:rgb(var(--an-gold) / .28)}
+[data-theme="highfantasy"] .c-box:focus-within{border-color:rgb(var(--an-gold) / .65);box-shadow:0 0 0 3px rgb(var(--an-gold) / .12)}
+[data-theme="highfantasy"] .md{font-size:18px;line-height:1.66}
+[data-theme="highfantasy"] .c-box textarea{font-size:17.5px}
+[data-theme="highfantasy"] .typing i{background:rgb(var(--an-gold))}
+[data-theme="highfantasy"] .chat.is-working .c-dock::before{background-image:linear-gradient(90deg,transparent,rgb(var(--an-emerald) / .8) 30%,rgb(var(--an-gold)) 50%,rgb(var(--an-emerald) / .8) 70%,transparent)}
+
+/* ==================== Dungeon ====================
+   Torchlit stone, deep below: iron and rust, ember light, Pirata One carved over the doors, Alegreya
+   for reading. The hub's scene stays dark in light mode too (it's underground); status dots are
+   little flames, and a working chat's flickers. */
+[data-theme="dungeon"]{--radius:5px;
+  --an-iron:46 40 38; --an-rust:178 98 56; --an-ember:255 146 58; --an-gold:228 172 82;
+  --dg-mortar:18 15 14; --dg-stone:60 52 48; --dg-stone-b:52 45 42; --dg-stone-c:66 58 52; --dg-deep0:0 0 0; --dg-deep1:22 17 15;
+  --dg-pool:255 146 54; --dg-f1:255 236 150; --dg-f2:255 104 28; --dg-eye:255 66 40; --dg-eye-gold:255 212 72;
+  --dg-wood:104 60 32; --dg-band:212 160 70; --dg-iron:26 22 22; --dg-floor:24 20 19; --dg-line:120 100 88; --dg-read:226 210 190;
+  --dg-btn1:196 94 42; --dg-btn2:148 60 26; --dg-ink:255 240 220;
+  --dg-flame:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 .5C17 6.5 20 10.6 20 15.2 20 19.8 16.4 23.5 12 23.5S4 19.8 4 15.2C4 12.2 5.8 9.8 7.5 8.2 7.9 10.8 9.3 12.5 10.9 12.9 9.9 8.9 10.5 4.6 12 .5Z'/%3E%3C/svg%3E");
+  --dg-flame-o:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 3.6C16 8.6 18.4 11.8 18.4 15.3 18.4 19 15.6 21.9 12 21.9S5.6 19 5.6 15.3C5.6 13.4 6.5 11.7 7.6 10.5 8.4 12.6 9.9 14 11.6 14.4 11 10.4 11 7 12 3.6Z' fill='none' stroke='%23000' stroke-width='2.8' stroke-linejoin='round'/%3E%3C/svg%3E")}
+[data-theme="dungeon"][data-mode="light"]{--an-iron:84 72 66; --an-rust:150 72 30; --an-ember:196 88 20; --an-gold:150 96 20}
+[data-theme="dungeon"] body{background:radial-gradient(1000px 560px at 50% -18%,rgb(var(--an-ember) / .1),transparent 62%),radial-gradient(700px 460px at 110% 110%,rgb(var(--an-rust) / .08),transparent 60%),var(--abyss) fixed}
+[data-theme="dungeon"] ::selection{background:rgb(var(--an-ember) / .3);color:inherit}
+[data-theme="dungeon"] :focus-visible{outline-color:rgb(var(--an-ember))}
+[data-theme="dungeon"] *{scrollbar-color:rgb(var(--an-rust) / .55) transparent}
+[data-theme="dungeon"] .sigil{filter:drop-shadow(0 0 6px rgb(var(--an-ember) / .35))}
+/* the keyhole doesn't turn while chats work: it glows, like light behind the door */
+[data-theme="dungeon"] .motion.working .bar .sigil{animation:dg-door 2.6s ease-in-out infinite}
+@keyframes dg-door{0%,100%{filter:drop-shadow(0 0 4px rgb(var(--an-ember) / .3))}50%{filter:drop-shadow(0 0 13px rgb(var(--an-ember) / .85))}}
+[data-theme="dungeon"] .bar{background:linear-gradient(180deg,rgb(var(--c-0e0c10) / .97),rgb(var(--c-0c0a0e) / .95));border-bottom:1px solid rgb(var(--an-rust) / .38);box-shadow:0 12px 30px -24px rgb(var(--an-ember) / .45)}
+[data-theme="dungeon"] .wordmark b{font:400 25px/1.05 var(--f-display);letter-spacing:.02em;color:rgb(var(--an-ember));text-shadow:0 0 16px rgb(var(--an-ember) / .4)}
+[data-theme="dungeon"] .wordmark small{font:italic 400 13.5px/1.2 var(--f-body);margin-top:2px}
+[data-theme="dungeon"] :is(.pulse,.usechip,.seek){border-color:rgb(var(--an-rust) / .32)}
+[data-theme="dungeon"] .pulse{font:700 12.5px/1 var(--f-label);letter-spacing:.08em}
+[data-theme="dungeon"] .nav-h{font:700 12px/1 var(--f-label);letter-spacing:.16em;color:rgb(var(--an-rust))}
+[data-theme="dungeon"] .nav-i{font-size:16.5px}
+[data-theme="dungeon"] .nav-i:hover{background:linear-gradient(90deg,rgb(var(--an-ember) / .07),transparent 80%)}
+[data-theme="dungeon"] .nav-i[aria-current="true"]{border-left-color:rgb(var(--an-ember));background:linear-gradient(90deg,rgb(var(--an-ember) / .16),rgb(var(--an-ember) / .03) 85%);box-shadow:inset 3px 0 14px -8px rgb(var(--an-ember))}
+[data-theme="dungeon"] :is(.nav-i .glyph,.nav-i[aria-current="true"] .glyph){color:rgb(var(--an-ember))}
+[data-theme="dungeon"] .seal{border-color:rgb(var(--an-rust) / .35)}
+[data-theme="dungeon"] :is(.ac-who small,.ac-win small,.seal-k){font-family:var(--f-label);font-weight:700;letter-spacing:.1em;font-size:11px}
+[data-theme="dungeon"] :is(.ac-who b,.seal-n){font:700 15.5px/1.15 var(--f-caps);letter-spacing:.02em}
+[data-theme="dungeon"] .eyebrow{font:700 12.5px/1.2 var(--f-label);letter-spacing:.14em;color:rgb(var(--an-ember))}
+[data-theme="dungeon"] .tag{font-family:var(--f-label);font-weight:700;letter-spacing:.06em}
+/* status dots: little flames */
+[data-theme="dungeon"] :is(.gilt-dot,.ember-dot,.ready-dot,.violet-dot,.ash-dot,.live-dot,.reply-dot){width:10px;height:12px;border-radius:0;box-shadow:none;-webkit-mask:var(--dg-flame) center/contain no-repeat;mask:var(--dg-flame) center/contain no-repeat}
+[data-theme="dungeon"] .gilt-dot{background:linear-gradient(180deg,rgb(var(--dg-f1)),rgb(var(--an-gold)))}
+[data-theme="dungeon"] .reply-dot{background:rgb(var(--an-gold));-webkit-mask-image:var(--dg-flame-o);mask-image:var(--dg-flame-o)}
+[data-theme="dungeon"] :is(.ember-dot,.live-dot){background:linear-gradient(180deg,rgb(var(--dg-f1)),rgb(var(--dg-f2)));animation:none}
+[data-theme="dungeon"] .motion .ember-dot{transform-origin:50% 100%;animation:an-flicker .8s ease-in-out infinite}
+/* section headings: carved */
+[data-theme="dungeon"] .sec-h h2{font:400 clamp(28px,2.8vw,36px)/1.1 var(--f-display);letter-spacing:.01em}
+[data-theme="dungeon"] .sec-h::before{width:96px;height:3px;background:linear-gradient(90deg,rgb(var(--an-ember)),rgb(var(--an-rust) / 0));box-shadow:0 0 10px rgb(var(--an-ember) / .45)}
+[data-theme="dungeon"] .sec-h::after{background:linear-gradient(90deg,rgb(var(--an-rust) / .45),var(--seam) 40%)}
+/* the hero: an iron-bound door into the dark */
+[data-theme="dungeon"] .hero{border:1px solid rgb(var(--an-rust) / .42);background:radial-gradient(640px 300px at 0% 0%,rgb(var(--an-ember) / .08),transparent 70%),linear-gradient(170deg,rgb(var(--c-1a161d)),rgb(var(--c-0e0c10)));box-shadow:0 30px 60px -36px rgb(var(--c-000000)),inset 0 0 0 1px rgb(var(--c-000000) / .4)}
+[data-theme="dungeon"] .hero::before{inset:5px;border:2px solid rgb(var(--an-iron));border-radius:3px;
+  background:radial-gradient(circle at 8px 8px,rgb(var(--an-rust)) 0 2.4px,transparent 3px),radial-gradient(circle at calc(100% - 8px) 8px,rgb(var(--an-rust)) 0 2.4px,transparent 3px),radial-gradient(circle at 8px calc(100% - 8px),rgb(var(--an-rust)) 0 2.4px,transparent 3px),radial-gradient(circle at calc(100% - 8px) calc(100% - 8px),rgb(var(--an-rust)) 0 2.4px,transparent 3px)}
+[data-theme="dungeon"] .hero-in{padding-top:30px;padding-bottom:30px}
+[data-theme="dungeon"] .hero h1{font:400 clamp(32px,3.5vw,47px)/1.08 var(--f-display);letter-spacing:.01em;text-shadow:0 0 26px rgb(var(--an-ember) / .25)}
+[data-theme="dungeon"] .hero h1 em{font:italic 500 .52em/1.35 var(--f-body);letter-spacing:0;color:var(--parch-2);margin-top:10px;text-shadow:none}
+[data-theme="dungeon"] .hero p{font-size:17.5px}
+[data-theme="dungeon"] .delve .ha-read{background:rgb(14 11 10 / .7);border:1px solid rgb(var(--an-rust) / .45)}
+[data-theme="dungeon"] .delve .ha-read span{font:700 12px/1 var(--f-label);letter-spacing:.08em;color:rgb(var(--dg-read) / .8)}
+[data-theme="dungeon"] .delve .ha-read b{font:400 25px/1 var(--f-display);color:rgb(var(--dg-read))}
+[data-theme="dungeon"] .delve .ha-read .hot b{color:rgb(var(--dg-eye-gold));text-shadow:0 0 10px rgb(var(--dg-eye-gold) / .6)}
+/* the scene */
+[data-theme="dungeon"] .dg-mortar{fill:rgb(var(--dg-mortar))}
+[data-theme="dungeon"] .dg-brick{fill:rgb(var(--dg-stone))}
+[data-theme="dungeon"] .dg-brick.b{fill:rgb(var(--dg-stone-b))}
+[data-theme="dungeon"] .dg-brick.c{fill:rgb(var(--dg-stone-c))}
+[data-theme="dungeon"] .dg-deep0{stop-color:rgb(var(--dg-deep0))}
+[data-theme="dungeon"] .dg-deep1{stop-color:rgb(var(--dg-deep1))}
+[data-theme="dungeon"] .dg-pool1{stop-color:rgb(var(--dg-pool));stop-opacity:.6}
+[data-theme="dungeon"] .dg-pool0{stop-color:rgb(var(--dg-pool));stop-opacity:0}
+[data-theme="dungeon"] .dg-vig0{stop-color:rgb(0 0 0);stop-opacity:0}
+[data-theme="dungeon"] .dg-vig1{stop-color:rgb(0 0 0);stop-opacity:.78}
+[data-theme="dungeon"] .dg-f1{stop-color:rgb(var(--dg-f1))}
+[data-theme="dungeon"] .dg-f2{stop-color:rgb(var(--dg-f2))}
+[data-theme="dungeon"] .dg-chain{fill:none;stroke:rgb(var(--dg-iron));stroke-width:3.4;stroke-dasharray:5 2.2;stroke-linecap:round}
+[data-theme="dungeon"] .dg-inner{fill:none;stroke:rgb(var(--dg-line) / .14);stroke-width:1.4}
+[data-theme="dungeon"] .dg-floorline{fill:none;stroke:rgb(var(--dg-line) / .12);stroke-width:1}
+[data-theme="dungeon"] .dg-arch{fill:none;stroke:rgb(var(--dg-stone-c));stroke-width:12;stroke-dasharray:15 2}
+[data-theme="dungeon"] .dg-jamb{fill:none;stroke:rgb(var(--dg-stone-c));stroke-width:12;stroke-dasharray:20 2}
+[data-theme="dungeon"] .dg-key{fill:rgb(var(--dg-stone-c));stroke:rgb(var(--dg-mortar));stroke-width:1.5}
+[data-theme="dungeon"] .dg-floor{fill:rgb(var(--dg-floor))}
+[data-theme="dungeon"] .dg-pool{fill:url(#dgPool)}
+[data-theme="dungeon"] .motion .dg-pool{animation:an-glow 1.7s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+[data-theme="dungeon"] .dg-sconce{fill:rgb(var(--dg-iron));stroke:rgb(var(--dg-iron));stroke-width:1.6}
+[data-theme="dungeon"] .dg-stick{fill:rgb(var(--dg-wood))}
+[data-theme="dungeon"] .dg-flame{fill:url(#dgFlame);filter:drop-shadow(0 0 5px rgb(var(--dg-f2)))}
+[data-theme="dungeon"] .dg-core{fill:rgb(255 252 230 / .9)}
+[data-theme="dungeon"] .motion .dg-torch.lit :is(.dg-flame,.dg-core){transform-box:fill-box;transform-origin:50% 100%;animation:an-flicker .7s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+[data-theme="dungeon"] .dg-ember{fill:rgb(var(--dg-f1))}
+[data-theme="dungeon"] .dg-ember{opacity:0}
+[data-theme="dungeon"] .motion .dg-ember{animation:dg-ember 2.4s ease-out infinite;animation-delay:calc(var(--d) * -1)}
+@keyframes dg-ember{0%{transform:translate(0,0);opacity:0}10%{opacity:1}100%{transform:translate(6px,-44px);opacity:0}}
+[data-theme="dungeon"] .dg-eyes ellipse{fill:rgb(var(--dg-eye));filter:drop-shadow(0 0 3px rgb(var(--dg-eye)))}
+[data-theme="dungeon"] .dg-eyes.gold ellipse{fill:rgb(var(--dg-eye-gold));filter:drop-shadow(0 0 3px rgb(var(--dg-eye-gold)))}
+[data-theme="dungeon"] .motion .dg-eyes{transform-box:fill-box;transform-origin:50% 50%;animation:an-blink 5.2s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+[data-theme="dungeon"] .dg-wood{fill:rgb(var(--dg-wood));stroke:rgb(var(--dg-iron));stroke-width:1}
+[data-theme="dungeon"] .dg-band{fill:none;stroke:rgb(var(--dg-band));stroke-width:1.6}
+[data-theme="dungeon"] .dg-lock{fill:rgb(var(--dg-band))}
+[data-theme="dungeon"] .dg-glint{fill:rgb(255 244 200)}
+[data-theme="dungeon"] .motion .dg-glint{transform-box:fill-box;transform-origin:50% 50%;animation:mb-twinkle 2.8s ease-in-out infinite}
+/* cards: dark stone in an iron frame */
+[data-theme="dungeon"] :is(.omen,.dial-card,.world){border-color:rgb(var(--an-rust) / .26)}
+[data-theme="dungeon"] :is(.omen,.world):hover{border-color:rgb(var(--an-rust) / .5)}
+[data-theme="dungeon"] .omen-in::before{border:1px solid rgb(var(--an-iron));border-radius:2px}
+[data-theme="dungeon"] .omen.working{--edge:rgb(var(--an-ember) / .6);--accent:rgb(var(--an-ember));border-color:rgb(var(--an-ember) / .32);box-shadow:0 22px 44px -26px rgb(var(--an-ember) / .55)}
+[data-theme="dungeon"] .omen.needs{--edge:rgb(var(--an-gold) / .85);--accent:rgb(var(--an-gold))}
+[data-theme="dungeon"] .o-title{font:700 16.5px/1.3 var(--f-caps);letter-spacing:.02em}
+[data-theme="dungeon"] .dial-card.current{border-color:rgb(var(--an-ember) / .5);box-shadow:0 0 0 1px rgb(var(--an-ember) / .12),0 26px 50px -30px rgb(var(--an-ember) / .45)}
+[data-theme="dungeon"] .dial-card.current::after{content:"Delving as";background:linear-gradient(180deg,rgb(var(--dg-btn1)),rgb(var(--dg-btn2)));color:rgb(var(--dg-ink));font:700 11px/1 var(--f-label);letter-spacing:.1em;text-transform:none;border-radius:3px}
+[data-theme="dungeon"] :is(.dc-name,.w-name){font:700 22px/1.15 var(--f-caps);letter-spacing:.01em}
+[data-theme="dungeon"] .w-glyph{background:repeating-linear-gradient(0deg,rgb(var(--dg-mortar)) 0 2px,transparent 2px 18px),repeating-linear-gradient(90deg,rgb(var(--dg-mortar)) 0 2px,transparent 2px 36px),linear-gradient(170deg,rgb(var(--dg-stone)),rgb(var(--dg-deep1)))}
+[data-theme="dungeon"] .w-glyph::before,[data-theme="dungeon"] .w-glyph::after{display:none}
+[data-theme="dungeon"] .w-glyph b{font:400 84px/1.1 var(--f-display);color:rgb(var(--an-ember));opacity:.3;text-shadow:0 0 20px rgb(var(--an-ember))}
+/* buttons: iron and ember */
+[data-theme="dungeon"] .btn{font-family:var(--f-label);font-weight:700;letter-spacing:.04em;font-size:14.5px}
+[data-theme="dungeon"] .btn.prime{background:linear-gradient(180deg,rgb(var(--dg-btn1)),rgb(var(--dg-btn2)));border-color:rgb(226 128 66);color:rgb(var(--dg-ink));box-shadow:0 8px 18px -10px rgb(var(--an-ember) / .7),inset 0 1px 0 rgb(255 255 255 / .16)}
+[data-theme="dungeon"] .btn.prime:hover:not(:disabled){background:linear-gradient(180deg,rgb(214 106 50),rgb(162 68 30))}
+[data-theme="dungeon"] .btn.gilt{background:linear-gradient(180deg,rgb(240 196 110),rgb(204 142 52));border-color:rgb(246 210 140);color:rgb(44 24 4)}
+[data-theme="dungeon"] .btn.gilt:hover:not(:disabled){background:linear-gradient(180deg,rgb(248 208 126),rgb(216 154 62))}
+[data-theme="dungeon"] :is(.menu,dialog,.palette .pal-box,.drawer){border-color:rgb(var(--an-rust) / .4)}
+/* the chat */
+[data-theme="dungeon"] .c-head{border-bottom-color:rgb(var(--an-rust) / .32)}
+[data-theme="dungeon"] .c-title{font:400 27px/1.1 var(--f-display);letter-spacing:.01em}
+[data-theme="dungeon"] .turn .who{font:700 12px/1 var(--f-label);letter-spacing:.1em;color:rgb(var(--an-ember))}
+[data-theme="dungeon"] .turn .who::before{content:"";width:8px;height:11px;background:linear-gradient(180deg,rgb(var(--dg-f1)),rgb(var(--dg-f2)));-webkit-mask:var(--dg-flame) center/contain no-repeat;mask:var(--dg-flame) center/contain no-repeat}
+[data-theme="dungeon"] .turn::before{background:linear-gradient(180deg,rgb(var(--an-rust) / .45),transparent)}
+[data-theme="dungeon"] .ububble{background:linear-gradient(180deg,rgb(var(--c-221d26)),rgb(var(--c-1a161d)));border-color:rgb(var(--an-rust) / .45);border-radius:8px 8px 2px 8px}
+[data-theme="dungeon"] .c-box{border-color:rgb(var(--an-rust) / .35)}
+[data-theme="dungeon"] .c-box:focus-within{border-color:rgb(var(--an-ember) / .65);box-shadow:0 0 0 3px rgb(var(--an-ember) / .12),0 0 22px -8px rgb(var(--an-ember) / .6)}
+[data-theme="dungeon"] .md{font-size:17px;line-height:1.66}
+[data-theme="dungeon"] .c-box textarea{font-size:17px}
+[data-theme="dungeon"] .typing i{background:rgb(var(--an-ember));box-shadow:0 0 6px rgb(var(--an-ember))}
+[data-theme="dungeon"] .chat.is-working .c-dock::before{background-image:linear-gradient(90deg,transparent,rgb(var(--dg-f2) / .85) 30%,rgb(var(--dg-f1)) 50%,rgb(var(--dg-f2) / .85) 70%,transparent);box-shadow:0 0 12px rgb(var(--an-ember) / .55)}
+
 /* ---------- phones ---------- */
 @media (max-width:900px){
   [data-art] .hero-art{position:relative;width:auto;height:150px;margin:0 18px 18px;padding:0;top:auto;right:auto;bottom:auto}
@@ -2385,6 +2907,14 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
   [data-art] .hero{display:flex;flex-direction:column-reverse}
   [data-theme="imperial"] .console{padding:0}
   [data-theme="malibu"] .hero-art.sunset{-webkit-mask:none;mask:none;border-radius:16px}
+  [data-family="anime"] .hero-art{-webkit-mask:none;mask:none;border-radius:calc(var(--radius) - 2px);height:168px}
+  [data-theme="isekai"] .ie-win{margin:0 10px 10px auto;width:min(244px,calc(100% - 20px));padding:7px 10px}
+  [data-theme="isekai"] .ie-sk{font-size:9.5px;gap:4px}
+  [data-theme="isekai"] .ie-sk b{margin-left:3px;font-size:11.5px}
+  [data-theme="isekai"] .ie-lv{margin-bottom:2px}
+  [data-theme="isekai"] .ie-lv b{font-size:17px}
+  [data-theme="isekai"] .ie-bar{margin:3px 0}
+  [data-theme="isekai"] .ie-sk{margin-top:5px;padding-top:5px}
 }
 @media (max-width:760px){
   [data-theme="imperial"] .hero h1{font-size:21px}
@@ -2392,4 +2922,11 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
   [data-family="saga"] .wordmark b{font-size:13px}
   [data-theme="malibu"] .hero h1{font-size:27px}
   [data-theme="malibu"] .wordmark b{font-size:19px}
+  [data-theme="isekai"] .hero h1{font-size:21px}
+  [data-theme="isekai"] .wordmark b{font-size:12px;letter-spacing:.14em}
+  [data-theme="highfantasy"] .hero h1{font-size:25px}
+  [data-theme="highfantasy"] .wordmark b{font-size:15px}
+  [data-theme="dungeon"] .hero h1{font-size:31px}
+  [data-theme="dungeon"] .wordmark b{font-size:21px}
+  [data-family="anime"] .hero-art .ha-read{gap:12px;padding:7px 12px 6px}
 }

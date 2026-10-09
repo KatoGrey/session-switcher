@@ -204,7 +204,149 @@ function heroArt({ N, R, W, Q }) {
     </svg>
       <div class="ha-read"><span class="${N + R ? 'hot' : ''}"><b>${pad(N + R)}</b>For you</span><span><b>${pad(W)}</b>On it</span><span><b>${pad(Q)}</b>Chilling</span></div></div>`;
   }
+  if (art === 'status') return isekaiArt({ N, R, W, Q });
+  if (art === 'citadel') return citadelArt({ N, R, W, Q });
+  if (art === 'delve') return delveArt({ N, R, W, Q });
   return '';
+}
+
+/* ---------- the anime themes' scenes ----------
+   Each is an SVG (400 × 240, cropped to fit) drawn in the theme's own colors (styles.css), and each
+   reads the same counts as the headline: N need your OK, R have replied, W are at work, Q are open
+   and idle. Anything that moves only moves when motion is on. */
+const sparks = (seed, n, box) => { const r = seeded(seed); return Array.from({ length: n }, () => [Math.round(box[0] + r() * (box[2] - box[0])), Math.round(box[1] + r() * (box[3] - box[1])), +(0.5 + r() * 1.1).toFixed(2), +(r() * 4).toFixed(2)]); };
+const starsSvg = (seed, n, box, cls = 'an-star') => sparks(seed, n, box).map(([x, y, s, d]) => `<circle class="${cls}" cx="${x}" cy="${y}" r="${s}" style="--d:${d}s"/>`).join('');
+const pad2 = n => String(n).padStart(2, '0');
+
+// Isekai: another world at twilight, two moons and floating islands over a sea of clouds. The magic
+// circle on the island turns while chats are at work (mana rises from it); a crystal floats up for each
+// chat waiting on you (gold: it needs your OK). The status window reads the account you work as: HP is
+// what's left of its five-hour window, MP what's left of its week, its level every chat you've had.
+function isekaiArt({ N, R, W, Q }) {
+  const a = current(), u = a && usageOf(a.id), d = u && u.data && u.data.available ? u.data : null;
+  const hp = d ? leftOf(d.fiveHour) : null, mp = d ? leftOf(d.week) : null;
+  const plan = (a && a.plan) || '';
+  const role = !a ? 'Wanderer' : /max/i.test(plan) ? 'Archmage' : /pro/i.test(plan) ? 'Mage' : /team|enterprise/i.test(plan) ? 'Guild mage' : 'Adventurer';
+  const CRYSTALS = [[96, 98], [146, 92], [72, 112], [170, 108], [120, 84], [52, 96]];
+  const crystal = ([x, y], i) => `<g class="ie-bob" style="--d:${(i * 0.7).toFixed(1)}s"><path class="ie-crystal${i < N ? ' gold' : ''}" d="M${x} ${y - 9}l5 9-5 9-5-9z"/><path class="ie-facet" d="M${x} ${y - 9}l2 9-2 9z"/></g>`;
+  const motes = Array.from({ length: Math.min(W * 3, 12) }, (_, i) => `<circle class="ie-mote" cx="${78 + ((i * 29) % 90)}" cy="${138 - (i % 3) * 3}" r="${(1.1 + (i % 3) * 0.45).toFixed(2)}" style="--d:${(i * 0.53).toFixed(2)}s"/>`).join('');
+  const bar = (k, v) => `<div class="ie-bar ${k}${v !== null && v <= 20 ? ' low' : ''}"><span>${k.toUpperCase()}</span><i><b style="width:${v ?? 0}%"></b></i><em>${v === null ? '–' : `${v}%`}</em></div>`;
+  return `<div class="hero-art status" aria-hidden="true"><svg class="an-scene" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="ieSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ie-sky1"/><stop offset=".58" class="ie-sky2"/><stop offset="1" class="ie-sky3"/></linearGradient>
+      <radialGradient id="ieMoon" cx=".38" cy=".34" r=".75"><stop offset="0" class="ie-moon1"/><stop offset="1" class="ie-moon2"/></radialGradient>
+      <radialGradient id="ieHalo"><stop offset="0" class="ie-halo"/><stop offset="1" class="ie-halo0"/></radialGradient>
+      <linearGradient id="ieFall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ie-fall1"/><stop offset="1" class="ie-fall0"/></linearGradient>
+      <linearGradient id="ieRock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ie-rock1"/><stop offset="1" class="ie-rock2"/></linearGradient>
+    </defs>
+    <rect width="400" height="240" fill="url(#ieSky)"/>
+    <g class="ie-stars">${starsSvg('ie-sky', 30, [8, 4, 396, 120])}</g>
+    <circle cx="104" cy="54" r="64" fill="url(#ieHalo)"/>
+    <circle cx="104" cy="54" r="25" fill="url(#ieMoon)"/>
+    <g class="ie-crater"><circle cx="96" cy="47" r="4.2"/><circle cx="113" cy="62" r="3"/><circle cx="110" cy="44" r="1.8"/><circle cx="94" cy="62" r="2.2"/></g>
+    <circle cx="172" cy="26" r="8.5" class="ie-moon-s"/>
+    <path class="ie-cloud far" d="M0 176q16-10 34-4 12-12 30-6 16-12 34-2 14-10 30-2 16-12 36-4 14-8 30 0 16-12 34-4 16-10 32 0 18-10 36-2 16-10 34-2 20-8 40 0V240H0z"/>
+    <g class="ie-isle"><path fill="url(#ieRock)" d="M232 54c8-4 34-4 42 0-3 5-8 7-11 14-3 6-6 12-9 22-3-9-6-15-10-20-5-6-10-10-12-16z"/><path class="ie-grass" d="M230 54c8-6 38-6 46 0-8 3-38 3-46 0z"/><path class="ie-tree" d="M262 52v-7m-4 0a4 4 0 1 1 8 0 4 4 0 1 1-8 0z"/></g>
+    <g class="ie-isle"><path fill="url(#ieRock)" d="M62 148c18-7 100-7 118 0-6 7-12 10-18 20-8 14-18 30-34 58-8-20-18-34-30-46-12-12-28-20-36-32z"/><path class="ie-strata" d="M74 160c30 4 70 4 96-2M92 176c20 3 44 3 62-1"/><path class="ie-grass" d="M58 148c20-9 104-9 124 0-20 5-104 5-124 0z"/>
+      <path class="ie-tower" d="M150 146v-26h9v26zM148 120l6.5-11 6.5 11z"/><rect class="ie-lamp" x="153" y="126" width="3" height="4" rx="1"/><path class="ie-tree" d="M80 146v-8"/><circle class="ie-tree-c" cx="80" cy="134" r="6"/><circle class="ie-tree-c" cx="88" cy="138" r="4.5"/></g>
+    <path class="ie-fall" stroke="url(#ieFall)" d="M175 150c3 18 3 50 1 90"/><path class="ie-fall-s" d="M175 150c3 18 3 50 1 90"/>
+    <g transform="translate(120 136) scale(1 .3)"><g class="ie-circle${W ? ' on' : ''}">
+      <circle r="60" vector-effect="non-scaling-stroke"/><circle r="52" class="thin" vector-effect="non-scaling-stroke"/><circle r="56" class="runes" vector-effect="non-scaling-stroke"/>
+      <path vector-effect="non-scaling-stroke" d="M0-46L39.8 23H-39.8ZM0 46L39.8-23H-39.8Z"/></g></g>
+    <g class="ie-motes">${motes}</g>
+    <g class="ie-crystals">${CRYSTALS.slice(0, Math.min(N + R, CRYSTALS.length)).map(crystal).join('')}</g>
+    <path class="ie-cloud" d="M-10 214q18-14 38-4 14-14 34-4 18-12 38 0 16-10 32 0 20-14 40-2 16-10 34 0 18-12 36-2 18-10 36 2 18-12 36-2 20-10 40 2V240H-10z"/>
+  </svg>
+  <div class="ie-win"><div class="ie-h"><b>Status</b><span>${esc(a ? a.name : '')}</span></div>
+    <div class="ie-lv"><span>Lv.</span><b>${levelOf(allSessions().length)}</b><em>${role}</em></div>
+    ${bar('hp', hp)}${bar('mp', mp)}
+    <div class="ie-sk"><span class="${N + R ? 'hot' : ''}">Summons<b>${pad2(N + R)}</b></span><span class="${W ? 'on' : ''}">Casting<b>${pad2(W)}</b></span><span>Resting<b>${pad2(Q)}</b></span></div></div></div>`;
+}
+const levelOf = chats => Math.min(999, Math.max(1, chats));
+
+// High Fantasy: a citadel on a cliff under a great moon, a dragon crossing it, beacons on the peaks. A
+// window lights for each chat at work; a beacon burns for each chat waiting on you (gold: it needs your
+// OK), the castle's own braziers first.
+function citadelArt({ N, R, W, Q }) {
+  const WINDOWS = [[258, 120], [252, 104], [264, 104], [228, 124], [292, 128], [252, 136], [264, 136], [228, 142], [292, 146]];
+  const BEACONS = [[240, 141], [278, 141], [198, 116], [330, 114], [86, 104], [142, 113]];
+  const win = ([x, y], i) => `<path class="hf-win${i < W ? ' lit' : ''}" style="--d:${(i * 0.9).toFixed(1)}s" d="M${x - 1.8} ${y + 7}v-5a1.8 1.8 0 0 1 3.6 0v5z"/>`;
+  const beacon = ([x, y], i) => `<g class="hf-beacon${i < N ? ' gold' : ''}" style="--d:${(i * 0.37).toFixed(2)}s"><circle cx="${x}" cy="${y - 4}" r="11" class="hf-bglow"/><path class="hf-flame" d="M${x} ${y - 10}c3 3 3.6 5.6 1.6 8.2-.5-1.6-1.2-2.2-1.6-2.4-.4.2-1.1.8-1.6 2.4-2-2.6-1.4-5.2 1.6-8.2z"/><path class="hf-brazier" d="M${x - 3} ${y - 2}h6l-1.6 3h-2.8z"/></g>`;
+  const flies = sparks('hf-flies', 9, [36, 176, 200, 232]).map(([x, y, s, d]) => `<circle class="hf-fly" cx="${x}" cy="${y}" r="${(s * 0.9).toFixed(2)}" style="--d:${d}s"/>`).join('');
+  return `<div class="hero-art citadel" aria-hidden="true"><svg class="an-scene" viewBox="0 0 400 240" preserveAspectRatio="xMidYMax slice">
+    <defs>
+      <linearGradient id="hfSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="hf-sky1"/><stop offset=".6" class="hf-sky2"/><stop offset="1" class="hf-sky3"/></linearGradient>
+      <radialGradient id="hfHalo"><stop offset="0" class="hf-halo"/><stop offset=".5" class="hf-halo5"/><stop offset="1" class="hf-halo0"/></radialGradient>
+      <radialGradient id="hfMoon" cx=".42" cy=".38" r=".7"><stop offset="0" class="hf-moon1"/><stop offset="1" class="hf-moon2"/></radialGradient>
+      <linearGradient id="hfMist" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="hf-mist0"/><stop offset="1" class="hf-mist1"/></linearGradient>
+    </defs>
+    <rect width="400" height="240" fill="url(#hfSky)"/>
+    <g class="hf-stars">${starsSvg('hf-sky', 34, [6, 4, 396, 110])}</g>
+    <circle cx="150" cy="66" r="96" fill="url(#hfHalo)"/>
+    <circle cx="150" cy="66" r="36" fill="url(#hfMoon)"/>
+    <g class="hf-maria"><circle cx="140" cy="56" r="7"/><circle cx="160" cy="76" r="5"/><circle cx="156" cy="52" r="3"/><circle cx="136" cy="78" r="3.4"/></g>
+    <g class="hf-dragon"><g transform="translate(112 38) scale(.62)">
+      <path class="far" d="M36 18L39 4 18 6Q22 10 24 12 27 11 29 14 32 13 34 17Z"/>
+      <path d="M0 27C10 27 18 22 28 21 32 20 36 18 40 18L46 3 22 0Q26 6 28 9 31 7 33 11 36 9 38 14L44 17C50 16 54 12 60 10L62 5 64 10 72 11 76 14 68 16C62 17 58 20 54 22L52 26 49 23C44 25 38 25 32 24L30 28 28 24C20 26 10 29 0 27Z"/></g></g>
+    <path class="hf-mt farthest" d="M0 136L22 122 48 128 70 112 104 124 124 104 156 120 184 106 216 124 246 98 276 118 312 102 344 120 372 108 400 116V240H0z"/>
+    <path class="hf-mt far" d="M0 150L30 130 52 140 86 106 112 130 142 115 170 136 198 118 232 140 262 112 298 134 330 116 362 138 400 124V240H0z"/>
+    <path class="hf-snow" d="${[[86, 106], [142, 115], [198, 118], [262, 112], [330, 116]].map(([x, y]) => `M${x - 9} ${y + 8.6}L${x} ${y}L${x + 8.6} ${y + 7.6}L${x + 4.6} ${y + 6}L${x + 1.4} ${y + 9}L${x - 2.6} ${y + 6.2}Z`).join('')}"/>
+    <path class="hf-mt mid" d="M0 182C34 164 66 172 98 160 128 150 158 172 188 164 200 162 206 168 212 172V240H0zM320 182C340 168 370 170 400 160V240H320z"/>
+    <path class="hf-cliff" d="M196 240L204 198 212 180 220 168H304L312 178 318 198 326 240z"/>
+    <path class="hf-crack" d="M232 178l-6 22 4 18M290 180l6 18-3 20M262 190l-2 30"/>
+    <g class="hf-castle">
+      <path d="M218 168v-22h4v-4h4v4h4v-4h4v4h4v-4h4v4h4v4h40v-4h4v4h4v-4h4v4h4v-4h4v4h2v22z"/>
+      <path d="M220 168v-56h16v56zM216 112l12-20 12 20zM284 168v-52h16v52zM280 116l12-20 12 20zM246 168v-72h24v72zM242 96l16-30 16 30z"/>
+      <path class="hf-roof" d="M216 112l12-20 12 20zM280 116l12-20 12 20zM242 96l16-30 16 30z"/>
+      <path class="hf-gate" d="M253 168v-9a5 5 0 0 1 10 0v9z"/>
+      <path class="hf-pole" d="M258 66V52"/><path class="hf-banner" d="M258 52.5l13 3.2-13 3.4z"/>
+    </g>
+    <g class="hf-wins">${WINDOWS.map(win).join('')}</g>
+    <g class="hf-beacons">${BEACONS.slice(0, Math.min(N + R, BEACONS.length)).map(beacon).join('')}</g>
+    <path class="hf-fall" d="M316 192c2 14 2 30 3 48"/><path class="hf-fall s" d="M316 192c2 14 2 30 3 48"/>
+    <rect y="186" width="400" height="54" fill="url(#hfMist)"/>
+    <g class="hf-flies">${flies}</g>
+  </svg>
+  <div class="ha-read"><span class="${N + R ? 'hot' : ''}"><b>${pad2(N + R)}</b>Heralds</span><span><b>${pad2(W)}</b>Quests</span><span><b>${pad2(Q)}</b>At rest</span></div></div>`;
+}
+
+// Dungeon: a torchlit archway into the dark. A torch burns for each chat at work, eyes open in the
+// dark for each chat waiting on you (gold: it needs your OK), and a chest sits ready for each one
+// open and idle.
+function delveArt({ N, R, W, Q }) {
+  const TORCHES = [[116, 122, 1], [284, 122, 1], [176, 156, 0.6], [224, 156, 0.6]];
+  const EYES = [[188, 186], [212, 170], [200, 200], [222, 192], [180, 166], [206, 150]];
+  const torch = ([x, y, s], i) => {
+    const lit = i < W;
+    return `<g class="dg-torch${lit ? ' lit' : ''}" transform="translate(${x} ${y}) scale(${s})" style="--d:${(i * 0.31).toFixed(2)}s">
+      ${lit ? '<circle class="dg-pool" r="58" cy="-22"/>' : ''}<path class="dg-sconce" d="M-6 6h12l-3 6h-6zM-1.5 6v-4"/><path class="dg-stick" d="M-2.4-14h4.8l-1 20h-2.8z"/>
+      ${lit ? `<path class="dg-flame" d="M0-36C7-27 8-20 3.5-15 2-13.5-2-13.5-3.5-15-8-20-7-27 0-36z"/><path class="dg-core" d="M0-27c3 4 3.4 7 1.4 9.4-.8.8-2 .8-2.8 0-2-2.4-1.6-5.4 1.4-9.4z"/>${[0, 1, 2].map(k => `<circle class="dg-ember" cx="${k * 3 - 3}" cy="-34" r="${(0.9 + k * 0.25).toFixed(2)}" style="--d:${(i * 0.4 + k * 0.6).toFixed(2)}s"/>`).join('')}` : ''}</g>`;
+  };
+  const eyes = ([x, y], i) => `<g class="dg-eyes${i < N ? ' gold' : ''}" style="--d:${(i * 1.3).toFixed(1)}s"><ellipse cx="${x - 3.6}" cy="${y}" rx="2.2" ry="1.3"/><ellipse cx="${x + 3.6}" cy="${y}" rx="2.2" ry="1.3"/></g>`;
+  const CHESTS = [[100, 218, 1], [124, 224, 0.8]];
+  const chest = ([x, y, k]) => `<g class="dg-chest" transform="translate(${x} ${y}) scale(${k})"><path class="dg-wood" d="M-14 0h28v-12h-28zM-14-12c0-8 28-8 28 0z"/><path class="dg-band" d="M-14-12h28M-8-17v17M8-17v17"/><rect class="dg-lock" x="-2.2" y="-14" width="4.4" height="5" rx="1"/><path class="dg-glint" d="M10-19l1 2.4 2.4 1-2.4 1-1 2.4-1-2.4-2.4-1 2.4-1z"/></g>`;
+  return `<div class="hero-art delve" aria-hidden="true"><svg class="an-scene" viewBox="0 0 400 240" preserveAspectRatio="xMidYMax slice">
+    <defs>
+      <pattern id="dgBrick" width="36" height="18" patternUnits="userSpaceOnUse"><rect width="36" height="18" class="dg-mortar"/><rect x="1" y="1" width="34" height="7.6" rx="1.2" class="dg-brick"/><rect x="-17" y="10" width="34" height="7.6" rx="1.2" class="dg-brick b"/><rect x="19" y="10" width="34" height="7.6" rx="1.2" class="dg-brick c"/></pattern>
+      <radialGradient id="dgDeep" cx=".5" cy=".62" r=".6"><stop offset="0" class="dg-deep0"/><stop offset="1" class="dg-deep1"/></radialGradient>
+      <radialGradient id="dgPool"><stop offset="0" class="dg-pool1"/><stop offset="1" class="dg-pool0"/></radialGradient>
+      <radialGradient id="dgVig" cx=".5" cy=".55" r=".75"><stop offset=".45" class="dg-vig0"/><stop offset="1" class="dg-vig1"/></radialGradient>
+      <linearGradient id="dgFlame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="dg-f1"/><stop offset="1" class="dg-f2"/></linearGradient>
+    </defs>
+    <rect width="400" height="240" fill="url(#dgBrick)"/>
+    <path class="dg-chain" d="M40 0v58M360 0v46"/>
+    <path fill="url(#dgDeep)" d="M146 240V122a54 54 0 0 1 108 0v118z"/>
+    <path class="dg-inner" d="M164 240v-108a36 36 0 0 1 72 0v108M178 240v-96a22 22 0 0 1 44 0v96"/>
+    <path class="dg-floorline" d="M146 240l38-58M254 240l-38-58M150 222h100M160 206h80"/>
+    <g class="dg-eyes-all">${EYES.slice(0, Math.min(N + R, EYES.length)).map(eyes).join('')}</g>
+    <path class="dg-arch" d="M140 122a60 60 0 0 1 120 0"/><path class="dg-jamb" d="M140 122v118M260 122v118"/>
+    <path class="dg-key" d="M193 56h14l-2 14h-10z"/>
+    <rect y="226" width="400" height="14" class="dg-floor"/>
+    ${TORCHES.map(torch).join('')}
+    ${CHESTS.slice(0, Math.min(Q, CHESTS.length)).map(chest).join('')}
+    <rect width="400" height="240" fill="url(#dgVig)"/>
+  </svg>
+  <div class="ha-read"><span class="${N + R ? 'hot' : ''}"><b>${pad2(N + R)}</b>Stirring</span><span><b>${pad2(W)}</b>Torches</span><span><b>${pad2(Q)}</b>Camped</span></div></div>`;
 }
 
 function guardHtml() {
