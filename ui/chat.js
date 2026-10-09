@@ -317,6 +317,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const ps = t.closest('#cPick [data-picksrc]'); if (ps) return openPick(ps.dataset.picksrc);
     if (t.closest('#cPick [data-pickdone]')) return closePick();
     const pe = t.closest('#cPick [data-effort]'); if (pe) return pickModel(Pick.src, { effort: pe.dataset.effort });
+    const ts = t.closest('.tg-sum');
+    if (ts) { const g = ts.closest('.tools'); g.classList.toggle('folded'); g._opened = !g.classList.contains('folded'); return updateGroup(g); }
     const gi = t.closest('[data-giveimg]'); if (gi) return giveImage(gi.dataset.giveimg);
     const c = t.closest('[data-c]'); if (!c) return;
     switch (c.dataset.c) {

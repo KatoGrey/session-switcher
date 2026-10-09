@@ -176,7 +176,7 @@ function ledgerTool(b) {
     f.n++; f.verb = b.name === 'Write' && f.verb !== 'edited' ? 'wrote' : 'edited';
     L.files.delete(p); L.files.set(p, f);
   } else if ((b.name === 'Bash' || b.name === 'PowerShell') && (b.detail || b.summary)) {
-    if (!L.cmds.some(c => c.id && c.id === b.id)) L.cmds.push({ id: b.id, text: typeof b.detail === 'string' ? b.detail : b.summary, desc: b.summary, st: b.result ? (b.result.isError ? 'err' : 'ok') : 'run' });
+    if (!L.cmds.some(c => c.id && c.id === b.id)) L.cmds.push({ id: b.id, text: typeof b.detail === 'string' && b.detail.trim() ? b.detail : b.summary, desc: b.summary, st: b.result ? (b.result.isError ? 'err' : 'ok') : 'run' });
   } else if (b.name === 'TodoWrite' && m.todos) L.todos = m.todos;
   else if (b.name === 'TaskCreate' && m.subject) L.pendingTasks.set(b.id, m.subject);
   else if (b.name === 'TaskUpdate' && m.taskId) {
@@ -338,9 +338,48 @@ function setToolResult(root, id, result) {
   }
   updateGroup(d.closest('.tools'));
 }
+// When a reply is done, its steps fold to their one line (click it to see them).
+function foldSteps(src) {
+  const prov = provFor(src);
+  const turn = [...$c('cFeed').querySelectorAll('.turn')].filter(t => (t.dataset.prov || C.provider) === prov).pop();
+  if (!turn) return;
+  for (const g of turn.querySelectorAll('.tools')) if (g.querySelectorAll('.tool').length >= 3 && !g._opened) { g.classList.add('folded'); updateGroup(g); }
+}
+// A reply's steps in one line: "Edited songs.lua, party.json · ran 2 commands · read 4 files".
+const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']);
+function stepsSummary(g) {
+  const steps = [...g.querySelectorAll('.tool')].map(d => ({ name: d.dataset.name, v: d._view || {}, st: d.querySelector('.t-st').className }));
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const edited = [...new Set(steps.filter(x => FILE_TOOLS.has(x.name)).map(x => base((x.v.meta && x.v.meta.path) || x.v.summary || '')).filter(Boolean))];
+  const cmds = steps.filter(x => x.name === 'Bash' || x.name === 'PowerShell').length;
+  const reads = steps.filter(x => READ_TOOLS.has(x.name)).length;
+  const web = steps.filter(x => /^Web/.test(x.name)).length;
+  const counted = steps.filter(x => FILE_TOOLS.has(x.name) || x.name === 'Bash' || x.name === 'PowerShell' || READ_TOOLS.has(x.name) || /^Web/.test(x.name)).length;
+  const parts = [];
+  if (edited.length) parts.push(`edited ${edited.slice(0, 3).join(', ')}${edited.length > 3 ? ` and ${edited.length - 3} more` : ''}`);
+  if (cmds) parts.push(`ran ${plural(cmds, 'command')}`);
+  if (reads) parts.push(`looked at ${plural(reads, 'file')}`);
+  if (web) parts.push(`used the web ${web === 1 ? 'once' : `${web} times`}`);
+  if (steps.length > counted) parts.push(plural(steps.length - counted, 'other step'));
+  const text = parts.join(' · ');
+  return {
+    text: text.charAt(0).toUpperCase() + text.slice(1),
+    running: steps.some(x => /\brun\b/.test(x.st)),
+    failed: steps.filter(x => /\berr\b/.test(x.st)).length,
+    n: steps.length,
+  };
+}
 function updateGroup(g) {
   if (!g) return;
   const n = g.querySelectorAll('.tool').length;
+  let sum = g.querySelector('.tg-sum');
+  if (n >= 2) {
+    if (!sum) { g.insertAdjacentHTML('afterbegin', '<button type="button" class="tg-sum" aria-expanded="true"></button>'); sum = g.firstElementChild; }
+    const s = stepsSummary(g);
+    const mark = s.running ? '<span class="gen-spin" aria-hidden="true"></span>' : s.failed ? `<span class="tg-x" aria-hidden="true">✕</span>` : '<span class="tg-ok" aria-hidden="true">✓</span>';
+    sum.innerHTML = `${mark}<span class="tg-t">${esc(s.text)}${s.failed ? ` · ${s.failed} failed` : ''}</span><span class="tg-n">${n} steps</span>`;
+    sum.setAttribute('aria-expanded', String(!g.classList.contains('folded')));
+  } else if (sum) sum.remove();
   const btn = g.querySelector('.tg-more');
   if (n > 3) {
     btn.hidden = false;
@@ -415,6 +454,8 @@ function addBlock(p, b, live) {
     }
     const te = toolEl(b, live); if (liveRender) te.classList.add('fresh');
     g.appendChild(te);
+    // From history, a finished reply's steps start folded to their one line.
+    if (!liveRender && g.querySelectorAll('.tool').length >= 3) g.classList.add('folded');
     if (b.result && b.name === 'Artifact') { const cards = artifactCards(b.result.text, learnArtifact(b, b.result), p.closest('.turn')); if (cards) g.insertAdjacentHTML('afterend', `<div class="arts">${cards}</div>`); }
     updateGroup(g);
     return;

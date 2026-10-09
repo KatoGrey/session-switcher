@@ -423,6 +423,30 @@ module.exports = [
     },
   },
   {
+    name: 'steps',
+    // A reply's steps in one line, folded once it's done.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const groups = () => b.eval(`return [...document.querySelectorAll('.tools')].map(g => ({ folded: g.classList.contains('folded'), sum: g.querySelector('.tg-sum')?.textContent.replace(/\\s+/g, ' ').trim() || null, shown: [...g.querySelectorAll('.tool')].filter(x => x.offsetParent).length }))`);
+      let gs = await groups();
+      t.check('three steps from history fold to one line', gs[0] && gs[0].folded && gs[0].shown === 0 && /^✓ ?Looked at 3 files ?3 steps/.test(gs[0].sum), gs);
+      t.check('two steps stay open, with their line', gs[1] && !gs[1].folded && gs[1].shown === 2 && /Edited songs\.lua · ran 1 command/.test(gs[1].sum), gs);
+      await b.clickOn('.tools.folded .tg-sum'); await sleep(200);
+      t.check('clicking the line shows the steps', (await groups())[0].shown === 3);
+      await b.clickOn('.tools .tg-sum'); await sleep(200);
+      t.check('and again folds them', (await groups())[0].folded);
+      // Live: the steps show as they happen, and fold when the reply is done.
+      const tool = (id, name, summary, res) => ({ type: 'tool', id, name, summary, meta: name === 'Edit' ? { path: summary } : null, detail: '', detailKind: 'text', result: res ? { text: 'ok', isError: res === 'err', images: [] } : null });
+      await b.eval(`handle({ kind: 'assistant', mid: 'live1', at: new Date().toISOString(), seq: 600, blocks: ${JSON.stringify([tool('a', 'Read', 'a.lua', 'ok'), tool('b', 'Edit', 'b.lua', 'ok'), tool('c', 'Bash', 'npm test', 'err')])} }); return 1`); await sleep(200);
+      gs = await groups();
+      t.check('live steps stay visible while it works', !gs.at(-1).folded && gs.at(-1).shown === 3 && /✕ ?Edited b\.lua · ran 1 command · looked at 1 file · 1 failed/.test(gs.at(-1).sum), gs.at(-1));
+      await b.eval(`handle({ kind: 'result', ok: true, errors: [], seq: 601 }); return 1`); await sleep(200);
+      t.check('and fold when the reply is done', (await groups()).at(-1).folded);
+      await t.shot(b, 'folded');
+    },
+  },
+  {
     name: 'undo',
     // What a reply changed: a bar under it, the changes, and Undo (which the assistant then hears about).
     async run(t) {

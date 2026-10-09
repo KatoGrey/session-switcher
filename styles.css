@@ -1837,3 +1837,15 @@ details.shared[open] summary{margin-bottom:6px}
 .chg-diff .dl.del{background:rgb(var(--c-cf8274) / .12);color:rgb(var(--c-e7b2a8))}
 .chg-diff .dl.hunk{color:rgb(var(--c-7fa3dc));margin-top:6px}
 
+/* ---------- a reply's steps, folded to one line ---------- */
+.tg-sum{display:flex;align-items:center;gap:9px;width:100%;margin:0 0 6px;padding:6px 10px;border:1px solid var(--seam);border-radius:7px;background:var(--vellum);color:var(--parch-2);font:400 13px/1.4 var(--f-body);text-align:left;cursor:pointer}
+.tg-sum:hover{border-color:var(--seam-2);color:var(--parch)}
+.tg-sum .tg-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tg-sum .tg-n{font:400 11px var(--f-mono);color:var(--ash-2)}
+.tg-sum .tg-n::after{content:' ▾';display:inline-block;transition:transform .15s}
+.tg-sum[aria-expanded="false"] .tg-n::after{transform:rotate(-90deg)}
+.tg-ok{color:rgb(var(--c-7fb79a))}
+.tg-x{color:var(--ember)}
+.tools.folded > .tool,.tools.folded > .tg-more{display:none}
+.tools.folded > .tg-sum{margin-bottom:0}
+

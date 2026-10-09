@@ -161,6 +161,7 @@ function handleEvent(ev, src) {
     case 'permission_cancel': case 'permission_done': removePermission(ev.requestId, src); break;
     case 'result':
       setStatus(src, '');
+      foldSteps(src);
       if (!comp) reviewAfterTurn(ev);
       if (!ev.ok && Date.now() - C.interruptedAt > 8000 && (ev.errors.length || ev.text)) {
         withStick(() => renderItem(feed, { kind: 'notice', level: 'warning', text: ev.text || ev.errors.join('\n') || `${PROV_NAME[provFor(src)]} stopped with an error.` }));
