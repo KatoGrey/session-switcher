@@ -399,6 +399,57 @@ test('tasks: checked when queued; started on the account with the most room, and
   assert.deepEqual(tasks.tidy([t, old]).map(x => x.state), ['queued']);
 });
 
+/* ---------- race: two copies, keep one ---------- */
+const race = require('../lib/race');
+
+test('race: two copies from where the project is now; keep one, and both copies go', async () => {
+  const dir = repo();
+  put(dir, 'game/rally.lua', 'bonus = 0.15\nstacks = true\n'); put(dir, 'README.md', 'Game\n');
+  gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  put(dir, 'game/wip.lua', 'unfinished\n');                 // uncommitted work comes along
+  put(dir, 'staged.txt', 'mine\n'); gitIn(dir, 'add', 'staged.txt');
+  const head = gitIn(dir, 'rev-parse', 'HEAD'), branches = gitIn(dir, 'branch', '--list'), staged = gitIn(dir, 'diff', '--cached', '--name-only');
+  const r = await race.makeRace(path.join(dir, 'game'));
+  assert.ok(race.isRaceDir(r.copies.claude.cwd) && race.isRaceDir(r.copies.codex.cwd));
+  assert.equal(path.basename(r.copies.claude.cwd), 'game', 'each copy opens at the same place in the project');
+  assert.equal(readLF(path.join(r.copies.codex.path, 'game', 'wip.lua')), 'unfinished\n');
+  // Each one works.
+  put(r.copies.claude.path, 'game/rally.lua', 'bonus = 0.15\nstacks = false\n');
+  put(r.copies.codex.path, 'game/rally.lua', 'bonus = 0.10\nstacks = true\n'); put(r.copies.codex.path, 'game/notes.md', 'why\n');
+  const c = await race.copyChanges(r, 'claude'), x = await race.copyChanges(r, 'codex');
+  assert.deepEqual(c.files.map(f => f.path), ['game/rally.lua']);
+  assert.deepEqual(x.files.map(f => f.path).sort(), ['game/notes.md', 'game/rally.lua']);
+  assert.match(await race.copyDiff(r, 'claude', 'game/rally.lua'), /^\+stacks = false$/m);
+  assert.equal(readLF(path.join(dir, 'game', 'rally.lua')), 'bonus = 0.15\nstacks = true\n', 'your folder untouched while they work');
+  // Keep Claude's.
+  const k = await race.keepCopy(r, 'claude');
+  assert.equal(k.applied, true);
+  assert.equal(readLF(path.join(dir, 'game', 'rally.lua')), 'bonus = 0.15\nstacks = false\n');
+  assert.ok(!fs.existsSync(path.join(dir, 'game', 'notes.md')), 'only the kept one’s changes');
+  await race.dropRace(r);
+  assert.ok(!fs.existsSync(r.dir), 'the copies are gone');
+  assert.equal(gitIn(dir, 'worktree', 'list').split('\n').length, 1, 'git forgets them');
+  assert.equal(gitIn(dir, 'rev-parse', 'HEAD'), head, 'no commits on your branch');
+  assert.equal(gitIn(dir, 'branch', '--list'), branches, 'no branches made');
+  assert.equal(gitIn(dir, 'diff', '--cached', '--name-only'), staged, 'what you staged is as it was');
+});
+
+test('race: keeping waits if the project changed since the race began', async () => {
+  const dir = repo();
+  put(dir, 'a.txt', 'one\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  const r = await race.makeRace(dir);
+  put(r.copies.codex.path, 'a.txt', 'codex\n');
+  put(dir, 'a.txt', 'you changed it meanwhile\n');
+  assert.deepEqual(await race.keepCopy(r, 'codex'), { applied: false, why: 'changed' });
+  const forced = await race.keepCopy(r, 'codex', { force: true });
+  assert.equal(forced.applied, false);
+  assert.equal(forced.why, 'conflict', 'git says what it couldn’t apply, and leaves your edit alone');
+  assert.equal(readLF(path.join(dir, 'a.txt')), 'you changed it meanwhile\n');
+  assert.ok(!fs.existsSync(path.join(dir, 'a.txt.rej')), 'all or nothing: no leftovers');
+  await race.dropRace(r);
+  await assert.rejects(race.makeRace(tmp()), /needs a git project/);
+});
+
 /* ---------- what a review looks at ---------- */
 const { reviewTarget, EMPTY_TREE } = require('../lib/review');
 const { execFileSync } = require('child_process');

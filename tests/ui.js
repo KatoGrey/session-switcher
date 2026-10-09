@@ -423,6 +423,39 @@ module.exports = [
     },
   },
   {
+    name: 'race',
+    // Claude and Codex on the same task, each in its own copy; keep the better one.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await sleep(500);
+      const card = () => b.eval(`const c = document.querySelector('#raceList .race'); return c && { text: c.textContent.replace(/\\s+/g, ' ').trim(), cols: [...c.querySelectorAll('.racer')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
+      let c = await card();
+      t.check('the hub shows the race, and the task', c && /Race in Starfall Tavern/.test(c.text) && /Make Rally stop stacking/.test(c.text), c && c.text);
+      t.check('with what each has changed so far', c && /^Claude ?done ?2 files changed \+21 −1/.test(c.cols[0]) && /^Codex ?working ?1 file changed \+1 −1/.test(c.cols[1]), c && c.cols);
+      await t.shot(b, 'card');
+      await b.clickOn('[data-act="race-diff"][data-who="claude"]'); await sleep(600);
+      t.check('See changes shows a racer’s changes', await b.eval(`return chgDlg.open && /What Claude changed in its copy \\(2 files\\)/.test(chgTitle.textContent) && !!document.querySelector('.chg-diff .dl.add')`));
+      await b.eval(`chgDlg.close(); return 1`);
+      await b.clickOn('[data-act="race-keep"][data-who="claude"]'); await sleep(300);
+      t.check('Keep asks first, saying what happens', /^Keep Claude’s changes\? \| Its 2 changed files come into Starfall Tavern; both chats stop and both copies are deleted\.$/.test(await b.eval(`return cfQ.textContent + ' | ' + cfX.textContent`)));
+      await b.clickOn('#cfYes'); await sleep(500);
+      t.check('if the project changed since, it asks before trying anyway', /changed since the race began/.test(await b.eval(`return document.getElementById('confirmDlg').open ? cfQ.textContent : ''`)));
+      await b.clickOn('#cfYes'); await sleep(500);
+      t.check('then keeps Claude’s', calls.some(([p, body]) => p === '/api/race' && body.action === 'keep' && body.who === 'claude' && body.force === true) && /Kept Claude’s changes/.test((await card()).text));
+      // Starting one.
+      await b.eval(`openRaceDialog(${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}); return 1`); await sleep(300);
+      t.check('Race Claude and Codex asks for the project, account and task', await b.eval(`return raceDlg.open && rcProject.selectedOptions[0].textContent === 'Starfall Tavern' && rcAcct.options[0].textContent === 'Whichever has the most room'`));
+      await b.eval(`rcText.value = 'Add a Lullaby cooldown.'; return 1`);
+      await b.clickOn('#rcForm [type="submit"]'); await sleep(600);
+      t.check('Start the race starts it', calls.some(([p, body]) => p === '/api/race' && body.action === 'start' && body.prompt === 'Add a Lullaby cooldown.') && /Add a Lullaby cooldown/.test((await card()).text));
+      await b.clickOn('[data-act="race-discard"]'); await sleep(300); await b.clickOn('#cfYes'); await sleep(400);
+      t.check('Discard both ends it', /Discarded/.test((await card()).text));
+      const items = await b.eval(`return projectItems(${JSON.stringify(demo.projects[0].cwd)}).filter(x => x !== '-').map(x => x.label)`);
+      t.check('a project’s menu can start a race', items.includes('Race Claude and Codex…'), items);
+    },
+  },
+  {
     name: 'tour',
     // The first time: a few cards, each pointing at part of the hub. Once skipped, never again.
     async run(t) {

@@ -27,6 +27,7 @@ const rulesLib = require('./lib/rules');
 const store = require('./lib/store');
 const { listFiles } = require('./lib/filelist');
 const tasksLib = require('./lib/tasks');
+const raceLib = require('./lib/race');
 
 const APP_VERSION = '5.4.1';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -196,7 +197,9 @@ let mergedMemo = null;
 const forgetMerged = () => { mergedMemo = null; };
 function sessionsWithCodex() {
   if (mergedMemo && Date.now() - mergedMemo.at < 1000) return mergedMemo.value;
-  const value = mergeSessions();
+  const merged = mergeSessions();
+  // A race's copies aren't projects of yours: their chats live on the race's card.
+  const value = merged.projects.some(p => raceLib.isRaceDir(p.cwd)) ? { ...merged, projects: merged.projects.filter(p => !raceLib.isRaceDir(p.cwd)) } : merged;
   mergedMemo = { at: Date.now(), value };
   return value;
 }
@@ -290,6 +293,64 @@ setInterval(() => { if (taskList.some(t => t.state === 'queued')) runQueue().cat
 // Usage changed (an account has room again, say): queued tasks may be able to start.
 function queueOnUsage() { if (taskList.some(t => t.state === 'queued')) setTimeout(() => runQueue().catch(() => {}), 1000); }
 
+// ---------- races: Claude and Codex on the same task, each in its own copy of the project ----------
+const RACES_FILE = path.join(DATA_DIR, 'races.json');
+let raceList = (() => { const j = store.loadOwnJson(RACES_FILE, null, log); return j && Array.isArray(j.races) ? j.races : []; })();
+const raceCopyAt = cwd => (cwd && raceLib.isRaceDir(cwd) && raceList.some(r => r.state === 'running' && Object.values(r.copies).some(c => normCwd(c.cwd) === normCwd(cwd))) && fs.existsSync(cwd) ? { cwd: path.resolve(cwd), exists: true } : null);
+function saveRaces() {
+  const now = Date.now();
+  raceList = raceList.filter(r => r.state === 'running' || now - Date.parse(r.doneAt || r.createdAt) < 6 * 3600e3);
+  try { store.writeJsonAtomic(RACES_FILE, { races: raceList }); } catch (err) { log(`Couldn’t save races.json: ${err.message}`); }
+  broadcast('races', {});
+}
+function raceOf(id) { const r = raceList.find(x => x.id === id); if (!r) throw fail(404, 'That race isn’t here any more.'); return r; }
+// Each racer: its chat's state, and what it has changed so far.
+async function racesView() {
+  const out = [];
+  for (const r of raceList) {
+    const racers = {};
+    for (const who of Object.keys(r.copies)) {
+      let chat = null; try { chat = chats.get(r.keys[who]); } catch { /* stopped */ }
+      let files = null;
+      if (r.state === 'running' && fs.existsSync(r.copies[who].path)) { try { files = (await raceLib.copyChanges(r, who)).files; } catch { files = null; } }
+      racers[who] = { key: chat && chat.state !== 'ended' ? r.keys[who] : null, state: chat ? chat.state : 'ended', sessionId: chat ? chat.sessionId : null, files };
+    }
+    out.push({ id: r.id, cwd: r.cwd, folder: r.folder, prompt: r.prompt, state: r.state, kept: r.kept || null, createdAt: r.createdAt, racers });
+  }
+  return out;
+}
+async function startRace({ cwd, prompt, accountId }) {
+  const p = projectAt(cwd);
+  if (!p || !p.exists) throw fail(404, 'Pick one of your projects.');
+  const text = String(prompt || '').trim();
+  if (!text) throw fail(400, 'Write the task for both of them.');
+  requireCodexSignedIn();
+  const c = config();
+  const account = accountId && accountId !== 'auto' ? acc.findAccount(c, accountId) : tasksLib.readyAccount({ state: 'queued', provider: 'claude', accountId: 'auto', when: 'now' }, queueContext()).account;
+  if (!account) throw fail(409, 'None of your Claude accounts has room right now.');
+  const made = await raceLib.makeRace(p.cwd);
+  const r = { ...made, cwd: p.cwd, folder: p.name, prompt: text, keys: {}, state: 'running', createdAt: new Date().toISOString() };
+  raceList.push(r); saveRaces();
+  try {
+    for (const [who, provider] of [['claude', 'claude'], ['codex', 'codex']]) {
+      const info = await openChat(c, { account: provider === 'codex' ? null : account.id, cwd: r.copies[who].cwd, mode: 'new', provider });
+      r.keys[who] = info.key;
+      const chat = chats.get(info.key);
+      chat.title = `Race: ${text.split('\n')[0].slice(0, 60)}`;
+      await waitReady(chat, 45000);
+      chat.send(text, []);
+    }
+  } catch (err) {
+    for (const k of Object.values(r.keys)) { try { await chats.get(k).stop(); } catch { /* gone */ } }
+    await raceLib.dropRace(r); raceList = raceList.filter(x => x !== r); saveRaces();
+    throw err;
+  }
+  saveRaces();
+  log(`Race started in ${p.cwd}: ${text.split('\n')[0].slice(0, 80)}`);
+  return r;
+}
+async function stopRacers(r) { for (const k of Object.values(r.keys || {})) { try { await chats.get(k).stop(); } catch { /* already stopped */ } } }
+
 // Opens a chat in the app window (or attaches to it if it's already running here), returning its info.
 async function openChat(c, body) {
   if (body.provider === 'codex' || (body.mode !== 'new' && isCodexId(body.sessionId))) {
@@ -305,7 +366,7 @@ async function openChat(c, body) {
       if (mode === 'resume') { const live = chats.bySession(threadId); if (live) return attachedInfo(live); }
       if (mode === 'fork' && title) title = `${title} (copy)`;
     } else {
-      const p = projectAt(body.cwd);
+      const p = projectAt(body.cwd) || raceCopyAt(body.cwd);
       if (!p) throw fail(404, 'That folder isn’t in the list.');
       if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
       cwd = p.cwd;
@@ -336,7 +397,7 @@ async function openChat(c, body) {
       }
     }
   } else {
-    const p = projectAt(body.cwd);
+    const p = projectAt(body.cwd) || raceCopyAt(body.cwd);
     if (!p) throw fail(404, 'That folder isn’t in the list.');
     if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
     cwd = p.cwd;
@@ -692,6 +753,12 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, { cwd, files: await listFiles(cwd) });
   }
   if (route === 'GET /api/tasks') return send(res, 200, { tasks: tasksView() });
+  if (route === 'GET /api/races') return send(res, 200, { races: await racesView() });
+  if (route === 'GET /api/race/diff') {
+    const q = url.searchParams, r = raceOf(q.get('id')), who = q.get('who');
+    if (!r.copies[who]) throw fail(400, 'Claude or Codex?');
+    return send(res, 200, { diff: await raceLib.copyDiff(r, who, q.get('path')) });
+  }
   if (route === 'GET /api/rules') {
     const cwd = url.searchParams.get('cwd') || null;
     return send(res, 200, { scope: cwd ? 'project' : 'user', cwd, ...rulesLib.readRules(rulesPathsFor(cwd)) });
@@ -772,6 +839,26 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, { scope: body.cwd ? 'project' : 'user', cwd: body.cwd || null, ...rulesLib.readRules(paths) });
     }
     case '/api/tools/copy': return send(res, 200, await copyTool(body.name, body.to, body.cwd || null));
+    case '/api/race': {
+      if (body.action === 'start') { const r = await startRace(body); return send(res, 200, { id: r.id, races: await racesView() }); }
+      const r = raceOf(body.id);
+      if (r.state !== 'running') throw fail(409, 'That race is over.');
+      if (body.action === 'discard') {
+        await stopRacers(r); await raceLib.dropRace(r);
+        Object.assign(r, { state: 'discarded', doneAt: new Date().toISOString() }); saveRaces();
+        return send(res, 200, { races: await racesView() });
+      }
+      if (body.action === 'keep') {
+        if (!r.copies[body.who]) throw fail(400, 'Keep Claude’s or Codex’s?');
+        const k = await raceLib.keepCopy(r, body.who, { force: !!body.force });
+        if (!k.applied) return send(res, 200, { kept: false, why: k.why, detail: k.detail || null, races: await racesView() });
+        await stopRacers(r); await raceLib.dropRace(r);
+        Object.assign(r, { state: 'kept', kept: body.who, doneAt: new Date().toISOString() }); saveRaces();
+        log(`Race in ${r.cwd}: kept ${body.who}'s changes (${k.files.length} file${k.files.length === 1 ? '' : 's'}).`);
+        return send(res, 200, { kept: true, files: k.files, races: await racesView() });
+      }
+      throw fail(400, 'Start, keep or discard a race.');
+    }
     case '/api/tasks': {
       if (body.action === 'add') {
         const t = tasksLib.validTask(body.task || {}, { projectAt, accounts: config().accounts });

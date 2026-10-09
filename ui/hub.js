@@ -488,6 +488,10 @@ function renderHub() {
       <div class="board" id="board"></div>
       <div class="quietrow" id="quietList"></div>
     </section>
+    <section class="sec" id="secRaces" hidden>
+      ${secHead('Head to head', 'Races')}
+      <ul class="races" id="raceList"></ul>
+    </section>
     <section class="sec" id="secQueue" hidden>
       ${secHead('Coming up', 'Queued')}
       <ul class="queue" id="queueList"></ul>
@@ -506,7 +510,7 @@ function renderHub() {
   renderHubLists();
   renderLive(true);
   if (!dialsDrawn && !renderHub.timer) renderHub.timer = setTimeout(() => { dialsDrawn = true; }, 2600);
-  renderQueue();
+  renderQueue(); renderRaces();
 }
 // Recent chats and the index, patched in place when transcripts change.
 function renderHubLists() {

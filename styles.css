@@ -1897,3 +1897,27 @@ body.solo .c-head .icon.c-backm{display:none}
 .tour-b{display:flex;align-items:center;gap:8px}
 @media (prefers-reduced-motion:reduce){ .tour-spot,.tour-card{transition:none} }
 
+/* ---------- races ---------- */
+.races{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.race{padding:14px 16px;border:1px solid var(--seam);border-radius:10px;background:var(--vellum)}
+.race-h{display:flex;align-items:baseline;gap:8px;margin:0 0 4px;color:var(--parch-2)}
+.race-h .glyph{color:var(--gilt)}
+.race-h b{font:600 11px/1 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:var(--gilt)}
+.race-h small{margin-left:auto;font:400 11px var(--f-mono);color:var(--ash-2)}
+.race-p{margin:0 0 12px;font-size:15px;font-weight:600;color:var(--parch)}
+.race-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.racer{display:grid;gap:6px;align-content:start;padding:10px 12px;border:1px solid var(--seam);border-radius:8px;background:rgb(var(--c-100e12))}
+.racer.codex .crew-dot{background:rgb(var(--c-6f97d8))}
+.rc-h{display:flex;align-items:center;gap:7px;margin:0}
+.rc-h b{font:600 12px/1 var(--f-caps);letter-spacing:.06em}
+.rc-st{margin-left:auto;font:400 11px var(--f-mono);color:var(--ash)}
+.rc-st.working{color:var(--gilt)}
+.rc-st.needs-your-OK{color:var(--gilt)}
+.rc-f{margin:0;font-size:13.5px;color:var(--parch-2)}
+.rc-b{display:flex;gap:4px;margin:0}
+.racer > .btn{justify-self:start}
+.race-b{margin:10px 0 0;text-align:right}
+.race.over{opacity:.7}
+.race-end{margin:0;color:var(--ash)}
+@media (max-width:760px){ .race-cols{grid-template-columns:1fr} }
+

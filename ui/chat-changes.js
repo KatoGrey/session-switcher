@@ -46,24 +46,24 @@ async function undoChanges(bar, force = false) {
   return undefined;
 }
 
-// The changes, file by file, in a dialog.
-async function viewChanges(bar) {
+// The changes, file by file, in a dialog. (diffUrl and title: for a race's copy instead of a reply.)
+async function viewChanges(bar, diffUrl = null, title = null) {
   const ev = bar && bar._ev; if (!ev) return;
-  const key = keyFor(bar.dataset.src);
+  const key = diffUrl ? null : keyFor(bar.dataset.src);
   let d = $c('chgDlg');
   if (!d) {
     document.body.insertAdjacentHTML('beforeend', `<dialog id="chgDlg" class="wide chg-dlg" aria-labelledby="chgTitle"><div class="setup-head"><h3 id="chgTitle">Changes</h3><button class="icon" data-chgclose aria-label="Close">✕</button></div><div class="chg-body" id="chgBody"></div></dialog>`);
     d = $c('chgDlg');
     d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-chgclose]')) d.close(); });
   }
-  $c('chgTitle').textContent = `What ${PROV_NAME[provFor(bar.dataset.src)]} changed (${ev.files.length} file${ev.files.length === 1 ? '' : 's'})`;
+  $c('chgTitle').textContent = `${title || `What ${PROV_NAME[provFor(bar.dataset.src)]} changed`} (${ev.files.length} file${ev.files.length === 1 ? '' : 's'})`;
   $c('chgBody').innerHTML = ev.files.slice(0, 40).map((f, i) => `<section class="chg-file"><p class="chg-fh"><b>${esc(f.path)}</b> ${f.status === 'added' ? '<small>new file</small>' : f.status === 'deleted' ? '<small>deleted</small>' : ''}</p><pre class="chg-diff" data-i="${i}">Loading…</pre></section>`).join('')
     + (ev.files.length > 40 ? `<p class="rd-intro">And ${ev.files.length - 40} more.</p>` : '');
   d.showModal();
   for (const [i, f] of ev.files.slice(0, 40).entries()) {
     const pre = $c('chgBody').querySelector(`.chg-diff[data-i="${i}"]`);
     try {
-      const r = await api(`/api/chat/diff?key=${encodeURIComponent(key)}&turn=${ev.turn}&path=${encodeURIComponent(f.path)}`);
+      const r = await api(diffUrl ? `${diffUrl}&path=${encodeURIComponent(f.path)}` : `/api/chat/diff?key=${encodeURIComponent(key)}&turn=${ev.turn}&path=${encodeURIComponent(f.path)}`);
       pre.innerHTML = diffHtml(r.diff) || '<span class="dl">(no text changes: a binary or empty file)</span>';
     } catch (err) { pre.textContent = err.message; }
     if (!d.open) return;

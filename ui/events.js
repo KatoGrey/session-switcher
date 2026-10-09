@@ -157,6 +157,7 @@ const pageClicks = wrap(async e => {
   if (act === 'world-more') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : worldMenu(b);
   if (act === 'reopen' || act === 'reopen-no') return reopenChats(act === 'reopen');
   if (/^task-(new|start|remove|open)$/.test(act)) return taskAction(act, b);
+  if (/^race-(new|open|diff|keep|discard)$/.test(act)) return raceAction(act, b);
   if (act === 'reveal') { const r = await api('/api/reveal', { cwd: S.folder }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
   if (act === 'browse') return Viewer.open({ path: S.folder, cwd: S.folder });
   if (act === 'pin') { S.pins.has(S.folder) ? S.pins.delete(S.folder) : S.pins.add(S.folder); savePins(); renderNav(); renderPage(); }
@@ -227,6 +228,7 @@ function connectLive() {
   es.addEventListener('accounts', wrap(async () => { await loadState(); renderNav(); if (S.view === 'hub') renderLive(); else renderPage(); codexLoginProgress(); if (window.ChatUI && ChatUI.refreshCrew) ChatUI.refreshCrew(); }));
   es.addEventListener('running', e => { try { S.running = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); renderNav(); });
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
+  es.addEventListener('races', () => { loadRaces().catch(() => {}); });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
   es.addEventListener('activity', e => { try { S.activity = keepOrder('running', JSON.parse(e.data).list || [], activityIds); } catch { return; } watchActivity(); renderLive(); renderNav(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
@@ -285,6 +287,7 @@ function projectItems(cwd) {
     ...(S.prompts.length ? [{ glyph: '❡', label: 'Start with a prompt…', disabled: !p.exists, run: () => showMenu(Ctx.at, worldNewItems(cwd).filter(x => x !== '-' && /^Start with|Edit prompts/.test(x.label || ''))) }] : []),
     { glyph: '§', label: 'Rules and tools…', hint: 'CLAUDE.md · AGENTS.md · MCP', disabled: !p.exists, why: 'The folder is gone', run: () => openRules(cwd) },
     { glyph: '⏳', label: 'Queue a task here…', hint: 'starts when an account has room', disabled: !p.exists, why: 'The folder is gone', run: () => openTaskDialog(cwd) },
+    ...(S.codex && S.codex.enabled ? [{ glyph: '⚑', label: 'Race Claude and Codex…', hint: 'same task, keep the better', disabled: !p.exists || !codexReady(), why: !p.exists ? 'The folder is gone' : 'Sign in to Codex first', run: () => openRaceDialog(cwd) }] : []),
     '-',
     { label: S.platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
     { label: 'Browse files', disabled: !p.exists, run: () => Viewer.open({ path: cwd, cwd }) },
@@ -406,7 +409,7 @@ petals();
 renderLivePill();
 if (SOLO) document.body.classList.add('solo');
 wrap(async () => {
-  await Promise.all([reload(), loadPrompts()]); connectLive(); watchActivity(); loadHealth(false).catch(() => {}); loadTasks().catch(() => {});
+  await Promise.all([reload(), loadPrompts()]); connectLive(); watchActivity(); loadHealth(false).catch(() => {}); loadTasks().catch(() => {}); loadRaces().catch(() => {});
   // A popped-out window opens straight into its chat.
   if (PAGE_ARGS.get('chat')) await ChatUI.open({ sessionId: PAGE_ARGS.get('chat') });
   else maybeTour();

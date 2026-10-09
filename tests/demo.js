@@ -149,6 +149,12 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     { id: 'tk1', cwd: P('Tidecaller'), folder: 'Tidecaller', provider: 'claude', accountId: 'auto', prompt: 'Write patch notes for 1.5', when: 'now', state: 'queued', why: 'room', createdAt: iso(min(20)) },
     { id: 'tk2', cwd: P('Neon Courier'), folder: 'Neon Courier', provider: 'codex', accountId: 'codex', prompt: 'Make a 512px app icon: a courier on a neon bike', when: 'at', at: later(3), state: 'queued', why: 'time', createdAt: iso(min(5)) },
   ];
+  // A race under way in Starfall Tavern: Claude has changed two files, Codex is still working on one.
+  let raceList = [{ id: 'race1', cwd: bard, folder: 'Starfall Tavern', prompt: 'Make Rally stop stacking, with a test that shows it.', state: 'running', createdAt: iso(min(12)), racers: {
+    claude: { key: 'k-race-claude', state: 'ready', files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 3, del: 1 }, { path: 'tests/rally_test.lua', status: 'added', add: 18, del: 0 }] },
+    codex: { key: 'k-race-codex', state: 'busy', files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 1, del: 1 }] },
+  } }];
+  let keepTries = 0;
   const rulesOut = () => ({ scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
@@ -178,6 +184,18 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/chat/diff') return { body: { diff: `diff --git a/${q.get('path')} b/${q.get('path')}\nindex 1..2 100644\n--- a/${q.get('path')}\n+++ b/${q.get('path')}\n@@ -12,3 +12,3 @@ function rally(party)\n   local bonus = 0.15\n-  rally.stacks = true\n+  rally.stacks = false  -- one Rally per party\n   return bonus\n` } };
     // Undo: the first time, one file changed since is left alone; forced, it goes too.
     if (p === '/api/chat/undo') return { body: body.force ? { restored: ['data/balance/party.json'], skipped: [] } : { restored: ['scripts/bard/songs.lua'], skipped: [{ path: 'data/balance/party.json', why: 'changed since' }] } };
+    if (p === '/api/races') return { body: { races: raceList } };
+    if (p === '/api/race/diff') return { body: { diff: `diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-rally.stacks = true\n+rally.stacks = false\n` } };
+    if (p === '/api/race') {
+      if (body.action === 'start') { raceList = [{ ...raceList[raceList.length - 1], id: 'race2', state: 'running', kept: null, prompt: body.prompt, createdAt: iso(NOW) }, ...raceList]; return { body: { id: 'race2', races: raceList } }; }
+      if (body.action === 'discard') { raceList = raceList.map(r => (r.id === body.id ? { ...r, state: 'discarded' } : r)); return { body: { races: raceList } }; }
+      // Keep: the first try says the project changed since; the forced one goes through.
+      if (body.action === 'keep') {
+        if (!body.force && !keepTries++) return { body: { kept: false, why: 'changed', races: raceList } };
+        raceList = raceList.map(r => (r.id === body.id ? { ...r, state: 'kept', kept: body.who } : r));
+        return { body: { kept: true, files: raceList[0].racers.claude.files, races: raceList } };
+      }
+    }
     if (p === '/api/tasks' && method === 'GET') return { body: { tasks: taskList } };
     if (p === '/api/tasks') {
       if (body.action === 'add') { const t = { id: `tk${taskList.length + 1}`, ...body.task, folder: projects.find(x => x.cwd === body.task.cwd)?.name, state: 'queued', why: body.task.when === 'at' ? 'time' : 'room', createdAt: iso(NOW) }; taskList.push(t); return { body: { task: t, tasks: taskList } }; }

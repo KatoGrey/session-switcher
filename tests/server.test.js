@@ -126,6 +126,24 @@ test('tasks: queued for a project, waiting while no account can start them, and 
   } finally { await s.stop(); }
 });
 
+test('races: one can’t start without Codex, and nothing is left behind', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-home-'));
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-proj-'));
+  const { execFileSync } = require('child_process');
+  execFileSync('git', ['-C', proj, 'init', '-q']);
+  fs.writeFileSync(path.join(proj, 'a.txt'), 'one\n');
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')), { home });
+  try {
+    await s.call('/api/project/create', { existing: proj, useExisting: true });
+    const r = await s.call('/api/race', { action: 'start', cwd: proj, prompt: 'Fix it', accountId: 'auto' });
+    assert.equal(r.status, 409);
+    assert.match(r.json.error, /Codex/);
+    assert.equal(execFileSync('git', ['-C', proj, 'worktree', 'list']).toString().trim().split('\n').length, 1, 'no copies made');
+    assert.deepEqual((await s.call('/api/races')).json.races, []);
+    assert.equal((await s.call('/api/race', { action: 'keep', id: 'nope', who: 'claude' })).status, 404);
+  } finally { await s.stop(); }
+});
+
 test('page scripts are served from ui/, and nothing else is', async () => {
   const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
   try {
