@@ -29,7 +29,8 @@ try { S.navFold = new Set(JSON.parse(store('navFold') || '[]')); } catch { S.nav
 function togglePin(cwd) {
   const on = !S.pins.has(cwd);
   if (on) S.pins.add(cwd); else S.pins.delete(cwd);
-  savePins(); renderNav(); if (S.view === 'folder' || S.view === 'hub') renderPage();
+  savePins(); renderNav();
+  if (S.view === 'hub') renderHubLists(); else if (S.view === 'folder') renderPage();
   toast(on ? `Pinned ${S.projects.find(p => p.cwd === cwd)?.name || 'it'} to the sidebar.` : 'Unpinned.', 4000, { label: 'Undo', run: () => togglePin(cwd) });
 }
 function toggleFav(id) {
@@ -232,7 +233,7 @@ function markSeen(x) {
   const cutoff = Date.now() - 3 * 864e5;
   for (const [key, t] of Object.entries(S.seen)) if (t < cutoff) delete S.seen[key];
   store('seen', JSON.stringify(S.seen));
-  renderLive();
+  renderLive(); renderNav();
 }
 // approve | question | terminal-wait | reply | working | quiet | ended
 function statusOf(x) {
@@ -384,13 +385,13 @@ function renderNav() {
   const A = awaiting().length, W = atWork().length;
   const total = S.projects.reduce((n, p) => n + p.sessions.length, 0);
   // Folders, split by which assistant the chats belong to. Pinned folders come first in each.
-  const group = prov => S.projects.map(p => ({ p, list: p.sessions.filter(x => (prov === 'codex') === isCodex(x)) })).filter(x => x.list.length)
-    .sort((x, y) => (S.pins.has(y.p.cwd) - S.pins.has(x.p.cwd)));
+  const group = prov => S.projects.map(p => ({ p, list: p.sessions.filter(x => (prov === 'codex') === isCodex(x)) })).filter(x => x.list.length);
   const item = (x, prov) => {
     const live = x.list.some(c => isRunning(c.id) || liveOf(c.id));
-    const cur = S.view === 'folder' && S.folder === x.p.cwd && (S.prov === prov || !S.prov);
+    const firstProv = S.projects.find(q => q.cwd === x.p.cwd)?.sessions.some(c => !isCodex(c)) ? 'claude' : 'codex';
+    const cur = S.view === 'folder' && S.folder === x.p.cwd && (S.prov ? S.prov === prov : !S.pins.has(x.p.cwd) && prov === firstProv);
     return `<button class="nav-i ${prov}" data-view="folder" data-cwd="${esc(x.p.cwd)}" data-prov="${prov}" aria-current="${cur}">
-      <span class="glyph" aria-hidden="true">${S.pins.has(x.p.cwd) ? '✦' : glyphFor(x.p.name)}</span><span class="ni-t">${esc(x.p.name)}</span>
+      <span class="glyph" aria-hidden="true">${glyphFor(x.p.name)}</span><span class="ni-t">${esc(x.p.name)}</span>
       ${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}<span class="count">${x.list.length}</span></button>`;
   };
   const claude = group('claude'), codexF = group('codex');
@@ -400,7 +401,7 @@ function renderNav() {
   const chatDot = id => { const x = S.activity.find(y => y.sessionId && y.sessionId.toLowerCase() === id.toLowerCase()); if (!x) return ''; const st = statusOf(x); return NEEDS.has(st) || st === 'reply' ? '<span class="gilt-dot nav-dot" title="Waiting for you"></span>' : st === 'working' ? '<span class="ember-dot nav-dot" title="At work"></span>' : ''; };
   const fold = (id, label, count, cls = '') => `<button class="nav-h prov ${cls} fold" data-fold="${id}" aria-expanded="${!S.navFold.has(id)}"><span class="pmark" aria-hidden="true"></span>${label}<span class="count">${count}</span><span class="fold-c" aria-hidden="true">▾</span></button>`;
   const pinnedHtml = pinnedP.length || pinnedC.length ? `${fold('pinned', 'Pinned', pinnedP.length + pinnedC.length, 'pinned')}
-    ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}"><span class="glyph" aria-hidden="true">★</span><span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
+    ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd && !S.prov}"><span class="glyph" aria-hidden="true">★</span><span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
       + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${isCodex(c) ? 'codex' : ''}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
   const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0);
   const showCodex = S.codex && S.codex.enabled;
@@ -726,7 +727,7 @@ function codexMenu(anchor) {
   showMenu(anchor, [
     { label: 'Check again', hint: 'sign-in, usage and chats', run: async () => { const r = await api('/api/codex/check', {}); S.codex = r.codex; S.usage = r.usage || S.usage; renderLive(); toast('Checked Codex.', 2000); } },
     ...(S.codexAuthUrl && !c.signedIn ? [{ label: 'Copy the sign-in link', hint: 'for a private browser window', run: async () => { try { await navigator.clipboard.writeText(S.codexAuthUrl); toast('Copied.', 1500); } catch { prompt('Copy this link:', S.codexAuthUrl); } } }] : []),
-    ...(c.signedIn ? [{ label: 'Open chatgpt.com', hint: 'regular ChatGPT, in its own window', run: () => openWeb('codex') }, { label: 'Sign out of Codex', run: async () => { if (!confirm('Sign Codex out of your ChatGPT account?\n\nYour Codex chats stay on this PC.')) return; await api('/api/codex/logout', {}); await reload(); toast('Codex is signed out.'); } }] : []),
+    ...(c.signedIn ? [{ label: 'Open chatgpt.com', hint: 'regular ChatGPT, in its own window', run: () => openWeb('codex') }, { label: 'Sign out of Codex', run: async () => { if (!(await appConfirm('Sign Codex out of your ChatGPT account?\n\nYour Codex chats stay on this PC.', { ok: 'Sign out', danger: true }))) return; await api('/api/codex/logout', {}); await reload(); toast('Codex is signed out.'); } }] : []),
     '-',
     { label: 'Turn Codex off', hint: 'hides it everywhere; turn it back on in Setup', run: async () => { await api('/api/codex/settings', { enabled: false }); await reload(); toast('Codex is off. Turn it back on in Setup.'); } },
   ]);
@@ -908,10 +909,10 @@ function openPromptEditor() {
     $('promptDlg').addEventListener('click', wrap(async e => {
       const b = e.target.closest('[data-pd]'); if (!b) return;
       const act = b.dataset.pd;
-      if (act === 'close') return $('promptDlg').close();
-      if (act === 'add') { $('pdList').insertAdjacentHTML('beforeend', promptRow({ id: '', title: '', text: '' })); $('pdList').lastElementChild.querySelector('input').focus(); return; }
-      if (act === 'remove') return b.closest('.pd-item').remove();
-      if (act === 'reset') { if (!confirm('Put back the starter prompts? Your own prompts will be replaced.')) return; S.prompts = (await api('/api/prompts', { reset: true })).prompts; return renderPromptEditor(); }
+      if (act === 'close') return closePromptEditor();
+      if (act === 'add') { $('promptDlg').dataset.dirty = '1'; $('pdList').insertAdjacentHTML('beforeend', promptRow({ id: '', title: '', text: '' })); $('pdList').lastElementChild.querySelector('input').focus(); return; }
+      if (act === 'remove') { $('promptDlg').dataset.dirty = '1'; return b.closest('.pd-item').remove(); }
+      if (act === 'reset') { if (!(await appConfirm('Put back the starter prompts?\n\nYour own prompts will be replaced.', { ok: 'Put them back', danger: true }))) return; S.prompts = (await api('/api/prompts', { reset: true })).prompts; return renderPromptEditor(); }
       if (act === 'sets') {
         return showMenu(b, (S.promptSets || []).map(st => ({ label: st.title, hint: `${plural(st.count, 'prompt')}, added to yours`, run: async () => { const n0 = S.prompts.length; S.prompts = (await api('/api/prompts', { addSet: st.id })).prompts; renderPromptEditor(); toast(S.prompts.length > n0 ? `Added ${plural(S.prompts.length - n0, 'prompt')} from ${st.title}.` : `You already have every prompt in ${st.title}.`, 3000); } })));
       }
@@ -919,12 +920,29 @@ function openPromptEditor() {
         const list = [...$('pdList').querySelectorAll('.pd-item')].map(el => ({ id: el.dataset.id, title: el.querySelector('.pd-t').value, text: el.querySelector('.pd-x').value, provider: el.querySelector('.pd-p').value === 'codex' ? 'codex' : undefined }));
         S.prompts = (await api('/api/prompts', { prompts: list })).prompts;
         toast(`Saved ${plural(S.prompts.length, 'prompt')}.`, 2000);
+        $('promptDlg').dataset.dirty = '';
         return $('promptDlg').close();
       }
     }));
   }
+  if (!$('promptDlg')._guard) {
+    $('promptDlg')._guard = true;
+    $('promptDlg').addEventListener('input', () => { $('promptDlg').dataset.dirty = '1'; });
+    // Esc and clicks on the backdrop ask before throwing edits away. (A browser can refuse to hold
+    // a dialog open on Esc; then it closes, and comes straight back to ask.)
+    $('promptDlg').addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); e.stopPropagation(); closePromptEditor(); } });
+    $('promptDlg').addEventListener('cancel', e => { if (!e.cancelable) return; e.preventDefault(); closePromptEditor(); });
+    $('promptDlg').addEventListener('close', () => { if ($('promptDlg').dataset.dirty) { $('promptDlg').showModal(); closePromptEditor(); } });
+    $('promptDlg').addEventListener('click', e => { if (e.target === $('promptDlg')) closePromptEditor(); });
+  }
   renderPromptEditor();
   $('promptDlg').showModal();
+}
+async function closePromptEditor() {
+  const d = $('promptDlg');
+  if ($('confirmDlg')?.open) return;
+  if (d.dataset.dirty && !(await appConfirm('Discard your changes to the prompts?\n\nThey haven’t been saved.', { ok: 'Discard', cancel: 'Keep editing', danger: true }))) return;
+  d.dataset.dirty = ''; d.close();
 }
 function promptRow(pr) {
   return `<div class="pd-item" data-id="${esc(pr.id || '')}"><div class="pd-top"><input class="pd-t" value="${esc(pr.title)}" placeholder="Name, like “Balance pass”" maxlength="80" aria-label="Prompt name">
@@ -932,7 +950,7 @@ function promptRow(pr) {
     <button class="icon" data-pd="remove" aria-label="Remove this prompt">✕</button></div>
     <textarea class="pd-x" rows="3" placeholder="What to ask. {project} and {date} fill in automatically." aria-label="Prompt text">${esc(pr.text)}</textarea></div>`;
 }
-function renderPromptEditor() { $('pdList').innerHTML = S.prompts.map(promptRow).join(''); }
+function renderPromptEditor() { $('pdList').innerHTML = S.prompts.map(promptRow).join(''); $('promptDlg').dataset.dirty = ''; }
 /* ---------- new project: make a folder (or pick one you have) and start a chat in it ---------- */
 const NP = { mode: 'new', places: null, busy: false };
 // The same rules the server uses, so mistakes show while you type.
@@ -1347,7 +1365,7 @@ async function openDrawer(id, quiet) {
         ${stat('Started', st.first ? stamp(Date.parse(st.first)) : '')}
         ${stat('Last activity', stamp(s.updated))}
         ${stat('Branch', s.branch)}
-        ${stat('Model', st.models.length ? st.models[st.models.length - 1] : '')}
+        ${stat('Model', st.models.length ? (window.ChatUI && ChatUI.modelName ? ChatUI.modelName(st.models[st.models.length - 1]) : st.models[st.models.length - 1]) : '')}
         ${stat('Claude Code', st.version)}
         ${stat('Size', s.sizeKB >= 1024 ? `${(s.sizeKB / 1024).toFixed(1)} MB` : `${s.sizeKB} KB`)}
       </dl>
@@ -1435,7 +1453,14 @@ $('menu').addEventListener('pointermove', e => { const b = e.target.closest('but
 // opens the right menu there instead; the wheel closes it.
 // (Closing on the whole click, not the press, so the release can't land on what's underneath.)
 $('menuBack').addEventListener('pointerdown', e => e.preventDefault());
-$('menuBack').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closeMenu(); });
+$('menuBack').addEventListener('click', e => {
+  e.preventDefault(); e.stopPropagation();
+  const was = menuAnchor;
+  closeMenu();
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const other = el && el.closest && el.closest('[aria-haspopup]');
+  if (other && other !== was && !other.closest('#menu')) other.click();
+});
 $('menuBack').addEventListener('contextmenu', e => {
   e.preventDefault();
   closeMenu();
@@ -1471,10 +1496,11 @@ function chatItems(id) {
   const a = current(); const ok = canLaunch(a);
   const why = !a.signedIn ? `Sign in to ${a.name} first` : (a.lockMessage || '');
   const live = liveOf(id), run = isRunning(id);
+  const watchIt = { label: 'Watch it live here', hint: 'read-only while it runs in its terminal', run: () => ChatUI.watch({ sessionId: id, source: 'terminal' }) };
   return [
+    ...(run && !live ? [watchIt] : []),
     live ? { label: 'Return to this chat', run: () => ChatUI.open({ sessionId: id }) }
-      : { label: `Open in the chat window as ${a.name}`, disabled: !ok, why, run: () => ChatUI.open({ sessionId: id }) },
-    ...(run && !live ? [{ label: 'Watch it live here', hint: 'read-only while it runs in its terminal', run: () => ChatUI.watch({ sessionId: id, source: 'terminal' }) }] : []),
+      : { label: `Open in the chat window as ${a.name}`, hint: run ? 'it’s also open in a terminal' : '', disabled: !ok, why, run: () => ChatUI.open({ sessionId: id }) },
     { label: `Resume in a terminal as ${a.name}`, disabled: !ok || !!live, why: live ? 'It’s open in the chat window' : why, run: () => resume(id, 'resume') },
     { label: 'Open a copy in the chat window', hint: 'keeps the original', disabled: !ok, why, run: () => ChatUI.open({ sessionId: id, mode: 'fork' }) },
     { label: 'Resume a copy in a terminal', hint: 'keeps the original', disabled: !ok, why, run: () => resume(id, 'fork') },
@@ -1551,13 +1577,13 @@ async function resume(id, mode = 'resume', force = false) {
   const a = current();
   const [s] = sessionById(id);
   if (mode === 'resume' && !force && s && s.active && !isRunning(id) &&
-      !confirm('This chat changed in the last few minutes, so it may still be open somewhere, like the desktop app. Opening it twice can mix up its history.\n\nResume anyway?')) return;
+      !(await appConfirm('This chat changed in the last few minutes, so it may still be open somewhere, like the desktop app. Opening it twice can mix up its history.\n\nResume anyway?', { ok: 'Resume anyway' }))) return;
   try {
     if (isCodex(s)) { const r = await api('/api/open', { provider: 'codex', sessionId: id, mode }); return reportLaunch(r, mode === 'fork' ? 'Opening a copy in Codex' : 'Resuming in Codex'); }
     const r = await api('/api/open', { account: a.id, sessionId: id, mode, force });
     reportLaunch(r, mode === 'desktop' ? 'Opening in the desktop app' : mode === 'fork' ? `Opening a copy as ${a.name}` : `Resuming as ${a.name}`);
   } catch (err) {
-    if (err.reason === 'running' && confirm(`${err.message}\n\nOpen it anyway?`)) return resume(id, mode, true);
+    if (err.reason === 'running' && await appConfirm(`${err.message}\n\nOpen it anyway?`, { ok: 'Open anyway' })) return resume(id, mode, true);
     throw err;
   }
 }
@@ -1598,7 +1624,7 @@ async function accountAction(act, id) {
     await reload(); return toast(`${a.name} is locked to ${r.account.expectEmail}, ${r.account.pinnedOrg.name}. Chats won’t open on any other account or plan.`);
   }
   if (act === 'unlock') {
-    if (!confirm(`Unlock ${a.name}?\n\nChats will open with it no matter which account or plan it’s signed into.`)) return;
+    if (!(await appConfirm(`Unlock ${a.name}?\n\nChats will open with it no matter which account or plan it’s signed into.`, { ok: 'Unlock' }))) return;
     await api('/api/accounts/lock', { account: a.id, lock: false }); await reload(); return toast(`${a.name} is unlocked.`);
   }
   if (act === 'rename') {
@@ -1607,11 +1633,11 @@ async function accountAction(act, id) {
     return;
   }
   if (act === 'signout') {
-    if (!confirm(`Sign ${a.name} out of ${a.email || 'its account'}?\n\nYour chats aren’t affected. You can sign in again any time.`)) return;
+    if (!(await appConfirm(`Sign ${a.name} out of ${a.email || 'its account'}?\n\nYour chats aren’t affected. You can sign in again any time.`, { ok: 'Sign out', danger: true }))) return;
     await api('/api/signout', { account: a.id }); await reload(); return toast(`${a.name} is signed out.`);
   }
   if (act === 'remove') {
-    if (!confirm(`Remove “${a.name}” from the switcher?\n\nIts sign-in folder stays on disk at ${a.configDir}, and your chats aren’t touched. Adding an account with the same name later brings its sign-in back.`)) return;
+    if (!(await appConfirm(`Remove “${a.name}” from the switcher?\n\nIts sign-in folder stays on disk at ${a.configDir}, and your chats aren’t touched. Adding an account with the same name later brings its sign-in back.`, { ok: 'Remove', danger: true }))) return;
     await api('/api/accounts/remove', { account: a.id }); if (S.acct === a.id) S.acct = null; await reload(); toast(`Removed ${a.name}.`);
   }
 }
@@ -1631,7 +1657,7 @@ async function addAccount() {
   const name = await ask('Add a Claude account', 'For another Claude login. Chats, checkpoints, saved notes, skills and settings stay shared, so every account sees the same list. (Codex and ChatGPT have their own card; you don’t add them here.)', '', 'Add account');
   if (!name) return;
   if (/codex|chat\s*gpt|openai|\bgpt\b/i.test(name) && S.codex && S.codex.enabled) {
-    if (!confirm(`“${name}” sounds like Codex. Codex signs in with your ChatGPT account on its own card, under Accounts and usage.\n\nOK signs Codex in with ChatGPT instead. Cancel adds “${name}” as a Claude account.`)) { /* add as Claude account */ }
+    if (!(await appConfirm(`“${name}” sounds like Codex.\n\nCodex signs in with your ChatGPT account on its own card, under Accounts and usage.`, { ok: 'Sign in to Codex instead', cancel: `Add “${name}” as a Claude account` }))) { /* add as Claude account */ }
     else return codexSignIn();
   }
   const r = await api('/api/accounts', { name });
@@ -1653,16 +1679,17 @@ function renderSetup(j) {
   const p = j.prefs;
   const t = (k, label, text, local) => `<label class="toggle"><input type="checkbox" ${local ? `data-local="${k}"` : `data-pref="${k}"`} ${(local ? Local[k] : p[k]) ? 'checked' : ''}><span><b>${label}</b><span>${text}</span></span></label>`;
   $('setupBody').innerHTML = `
-    <ul class="checks">${j.checks.map(c => `<li class="check ${c.state}"><span class="st" aria-label="${c.state}"></span><span><b>${esc(c.label)}</b><span class="dt">${esc(c.detail)}</span></span>
+    <nav class="setup-toc" aria-label="Sections"><a href="#st-health">Health</a><a href="#st-alerts">Alerts</a><a href="#st-prefs">Preferences</a><a href="#st-codex">Codex</a><a href="#st-phone">Phone</a><a href="#st-app">App</a></nav>
+    <ul class="checks" id="st-health">${j.checks.map(c => `<li class="check ${c.state}"><span class="st" aria-label="${c.state}"></span><span><b>${esc(c.label)}</b><span class="dt">${esc(c.detail)}</span></span>
       ${c.fix ? `<button class="btn sm" data-fix="${esc(c.fix.action)}" data-account="${esc(c.fix.account || '')}">${esc(c.fix.label)}</button>` : '<span></span>'}</li>`).join('')}</ul>
-    <p class="d-h">Alerts and looks</p>
+    <p class="d-h" id="st-alerts">Alerts and looks</p>
     <div class="prefs">
       ${t('sound', 'Chime when a chat needs you or replies', 'A soft bell. It doesn’t play for the chat you’re looking at.', true)}
       ${t('notify', 'Desktop notifications', 'Shows a Windows notification when a chat needs you or replies while this window is in the background.', true)}
       ${t('petals', 'Drifting petals', 'A few slow petals behind the hub. Turned off automatically if Windows is set to reduce motion.', true)}
       ${t('motion', 'Animations', 'World banners that open into their pages, cards that rise in, dials that draw themselves. Turned off automatically if Windows is set to reduce motion.', true)}
     </div>
-    <p class="d-h">Preferences</p>
+    <p class="d-h" id="st-prefs">Preferences</p>
     <div class="prefs">
       <div class="field"><label for="prefOpenIn">When you click Open on a chat</label>
         <select id="prefOpenIn" data-pref="openIn">
@@ -1681,21 +1708,21 @@ function renderSetup(j) {
         <div class="row2"><input id="prefClaude" value="${esc(j.claudeCommand)}" spellcheck="false"><button class="btn" id="saveClaude">Save</button></div>
         <small>Leave as “claude” unless Setup can’t find Claude Code; then paste the full path to claude.exe.</small></div>
     </div>
-    <p class="d-h">Codex</p>
+    <p class="d-h" id="st-codex">Codex</p>
     <div class="prefs">
       <label class="toggle"><input type="checkbox" data-codex="enabled" ${j.codex && j.codex.enabled ? 'checked' : ''}><span><b>Use Codex too</b><span>Shows your Codex (OpenAI) chats next to Claude’s, with its own sign-in and usage.</span></span></label>
       <div class="field"><label for="prefCodex">Codex command</label>
         <div class="row2"><input id="prefCodex" value="${esc(j.codex ? j.codex.command : 'codex')}" spellcheck="false"><button class="btn" id="saveCodex">Save</button></div>
         <small>Leave as “codex” unless Setup can’t find it; then paste the full path to codex.cmd.</small></div>
     </div>
-    ${window.REMOTE ? `<p class="d-h">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p>
-      ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
-    <p class="d-h">App</p>
+    ${window.REMOTE ? `<p class="d-h" id="st-phone">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p>
+      ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h" id="st-phone">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
+    <p class="d-h" id="st-app">App</p>
     <div class="app-actions">
       <button class="btn" data-fix="shortcut">Create desktop shortcut</button>
       <button class="btn" data-fix="share-copy" title="A zip of the app for someone else, without your accounts, chats or settings">Make a copy to share</button>
       <button class="btn" data-fix="update-claude">Update Claude Code</button>
-      <button class="btn" data-fix="quit">Quit Session Switcher</button>
+      <button class="btn danger" data-fix="quit">Quit Session Switcher</button>
     </div>
     <p class="ver">Session Switcher ${esc(j.appVersion)}. Your chats are read from your own .claude folder and never leave this PC.</p>`;
 }
@@ -1791,7 +1818,14 @@ $('setupBody').addEventListener('change', e => {
   if (c) { Look.set({ [c.dataset.look]: c.checked }); e.stopImmediatePropagation(); }
 }, true);
 $('setupClose').addEventListener('click', () => $('setup').close());
+$('setupBody').addEventListener('click', e => {
+  const a = e.target.closest('.setup-toc a'); if (!a) return;
+  e.preventDefault(); document.querySelector(a.getAttribute('href'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}, true);
 $('setupBody').addEventListener('change', wrap(async e => {
+  // The command boxes save when you leave them, like the switches do.
+  if (e.target.id === 'prefClaude') { await api('/api/prefs', { claudeCommand: e.target.value }); toast('Saved. Checking again…', 2000); return loadHealth(true); }
+  if (e.target.id === 'prefCodex') { await api('/api/codex/settings', { command: e.target.value }); toast('Saved. Checking again…', 2000); return loadHealth(true); }
   const ph = e.target.closest('[data-phone="enabled"]');
   if (ph) { renderPhone(await api('/api/phone', { enabled: ph.checked })); toast(ph.checked ? 'Phone access is on.' : 'Phone access is off. Paired phones can’t connect until you turn it on again.', 3500); return; }
   const loc = e.target.closest('[data-local]');
@@ -1809,9 +1843,9 @@ $('setupBody').addEventListener('click', wrap(async e => {
     const act = ph.dataset.phone;
     if (act === 'pair') { const r = await api('/api/phone/pair', {}); return renderPhone(r.status); }
     if (act === 'cancel') return renderPhone(await api('/api/phone/pair-cancel', {}));
-    if (act === 'forget') { if (!confirm('Remove this phone? It won’t be able to connect until you pair it again.')) return undefined; return renderPhone(await api('/api/phone/forget', { id: ph.dataset.id })); }
+    if (act === 'forget') { if (!(await appConfirm('Remove this phone?\n\nIt won’t be able to connect until you pair it again.', { ok: 'Remove', danger: true }))) return undefined; return renderPhone(await api('/api/phone/forget', { id: ph.dataset.id })); }
   }
-  if (e.target.closest('[data-fix="phone-disconnect"]')) { if (confirm('Disconnect this phone from your PC? You can pair it again any time.')) window.Android.disconnect(); return undefined; }
+  if (e.target.closest('[data-fix="phone-disconnect"]')) { if (await appConfirm('Disconnect this phone from your PC?\n\nYou can pair it again any time.', { ok: 'Disconnect', danger: true })) window.Android.disconnect(); return undefined; }
   if (e.target.id === 'saveCodex') { await api('/api/codex/settings', { command: $('prefCodex').value }); toast('Saved. Checking again…'); return loadHealth(true); }
   if (e.target.id === 'saveClaude') { await api('/api/prefs', { claudeCommand: $('prefClaude').value }); toast('Saved. Checking again…'); return loadHealth(true); }
   const b = e.target.closest('[data-fix]'); if (!b) return;
@@ -1828,10 +1862,7 @@ $('setupBody').addEventListener('click', wrap(async e => {
   if (what === 'update-claude') { const r = await api('/api/update-claude', {}); return r.dryRun ? reportLaunch(r) : toast(`Updating Claude Code in a ${r.how}. Close it when it finishes, then reopen Setup.`, 8000); }
   if (what === 'share-copy') return shareCopy();
   if (what === 'shortcut') { const r = await api('/api/shortcut', {}); return toast(r.dryRun ? 'Would create a desktop shortcut.' : 'Added “Claude Session Switcher” to your desktop.'); }
-  if (what === 'quit') {
-    if (!confirm('Quit Session Switcher? Chats in terminals keep running; chats in its window stop. Start it again from its shortcut.')) return;
-    await api('/api/quit', {}); document.body.innerHTML = '<p style="padding:40px;font-family:var(--f-body)">Session Switcher has quit. You can close this window.</p>';
-  }
+  if (what === 'quit') return quitApp();
 }));
 
 /* ---------- this PC's own settings: alerts and petals ---------- */
@@ -1954,9 +1985,9 @@ function palItems(q) {
   const acts = [
     { glyph: '✦', t: 'Go to the hub', run: () => go('hub') },
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
-    { glyph: '⚙', t: 'Setup and health', run: openSetup },
+    { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health' },
     { glyph: '◐', t: 'Appearance', s: 'themes, light or dark, text and interface size', run: () => openSetup('look') },
-    { glyph: '?', t: 'Keyboard shortcuts', run: () => openShortcuts() },
+    { glyph: '?', t: 'Keyboard shortcuts', run: () => openShortcuts(), alias: 'keys hotkeys help' },
     { glyph: '◐', t: Look.isLight() ? 'Switch to dark mode' : 'Switch to light mode', run: () => Look.set({ mode: Look.isLight() ? 'dark' : 'light' }) },
     ...Look.THEMES.filter(t => t.id !== Look.get().theme).map(t => ({ glyph: '◉', t: `Theme: ${t.name}`, s: t.note, run: () => Look.set({ theme: t.id }) })),
     { glyph: '◈', t: 'Check usage for every account', run: () => refreshUsage() },
@@ -1964,8 +1995,11 @@ function palItems(q) {
     ...S.accounts.map(a => ({ glyph: '❖', t: `Open claude.ai as ${a.name}`, s: 'regular Claude chats', run: () => openWeb(a.id) })),
     ...(S.codex && S.codex.enabled ? (S.codex.signedIn ? [{ glyph: '❖', t: 'Open chatgpt.com', s: 'regular ChatGPT', run: () => openWeb('codex') }, { glyph: '◈', t: 'Check Codex usage', run: () => refreshUsage('codex') }] : [{ glyph: '✥', t: 'Sign in to Codex with ChatGPT', run: codexSignIn }]) : []),
     { glyph: '✥', t: 'New project', s: 'make a folder and start a chat', run: () => openNewProject() },
-    { glyph: '✥', t: 'Add an account', run: addAccount },
-  ].map(x => ({ ...x, text: x.t }));
+    { glyph: '✥', t: 'Add an account', run: addAccount, alias: 'sign in login' },
+    ...(window.REMOTE ? [] : [{ glyph: '⏻', t: 'Quit Session Switcher', run: quitApp, alias: 'exit close stop app' }]),
+  ].map(x => ({ ...x, text: `${x.t} ${x.alias || ''}` }));
+  const claudeNew = canLaunch(current()) ? S.projects.filter(p => p.exists).map(p => ({ glyph: '✦', t: `New Claude chat in ${p.name}`, s: `as ${current().name}`, run: () => ChatUI.open({ cwd: p.cwd, mode: 'new' }), text: `new chat claude ${p.name}` })) : [];
+  const pinItems = S.projects.map(p => ({ glyph: '★', t: `${S.pins.has(p.cwd) ? 'Unpin' : 'Pin'} ${p.name}`, s: 'in the sidebar', run: () => togglePin(p.cwd), text: `pin unpin favorite ${p.name}` }));
   const folders = S.projects.map(p => ({ glyph: glyphFor(p.name), t: p.name, s: `${plural(p.sessions.length, 'chat')}`, run: () => go('folder', p.cwd), text: `${p.name} ${p.cwd}` }));
   const chats = allSessions().sort((x, y) => y[0].updated - x[0].updated).map(([s, p]) => ({ glyph: '❝', t: s.title, s: `${p.name} · ${agoL(s.updated)}`, run: () => (liveOf(s.id) ? ChatUI.open({ sessionId: s.id }) : isRunning(s.id) ? ChatUI.watch({ sessionId: s.id, source: 'terminal' }) : inApp() ? ChatUI.open({ sessionId: s.id }) : openDrawer(s.id)), text: `${s.title} ${p.name} ${s.firstPrompt || ''}` }));
   const cxNew = codexReady() ? S.projects.filter(p => p.exists).map(p => ({ glyph: '✥', t: `New Codex chat in ${p.name}`, s: 'Codex', run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: 'codex' }), text: `codex new ${p.name}` })) : [];
@@ -2001,7 +2035,8 @@ function palItems(q) {
   add('Actions', rank(acts).slice(0, 5));
   add('This chat', rank(chatActs).slice(0, 3));
   add('Switch model in this chat', rank(models).slice(0, 6));
-  add('Start a Codex chat', rank(cxNew).slice(0, 4));
+  add('Start a chat', rank([...claudeNew, ...cxNew]).slice(0, 4));
+  add('Pin', rank(pinItems).slice(0, 3));
   out.push({ g: 'Inside every message' }, { glyph: '❝', t: `Search every message for “${q}”`, s: 'full text', run: () => runSearch(q) });
   return out;
 }
@@ -2019,11 +2054,17 @@ function renderPal() {
   $('palQ').setAttribute('aria-activedescendant', `pal-${Pal.sel}`);
   $('palList').querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
 }
+let palReturn = null;
 function openPalette(prefill = '') {
   closeMenu();
+  if ($('palette').hidden) palReturn = document.activeElement;
   $('palette').hidden = false; $('palQ').value = prefill; Pal.sel = 0; renderPal(); $('palQ').focus();
 }
-function closePalette() { $('palette').hidden = true; }
+function closePalette() {
+  $('palette').hidden = true;
+  if (palReturn && document.contains(palReturn) && palReturn.focus) palReturn.focus({ preventScroll: true });
+  palReturn = null;
+}
 function pickPal(n) { const x = Pal.items.filter(i => !i.g)[n]; if (!x) return; closePalette(); wrap(x.run)(); }
 $('palQ').addEventListener('input', () => { Pal.sel = 0; renderPal(); });
 $('palQ').addEventListener('keydown', e => {
@@ -2247,6 +2288,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('acctPo
 window.addEventListener('resize', closeAcctPop);
 $('seek').addEventListener('click', () => openPalette());
 $('setupBtn').addEventListener('click', openSetup);
+$('navBack').addEventListener('click', () => { document.body.classList.remove('nav-open'); $('navToggle').setAttribute('aria-expanded', 'false'); });
 $('navToggle').addEventListener('click', () => { const on = !document.body.classList.contains('nav-open'); document.body.classList.toggle('nav-open', on); $('navToggle').setAttribute('aria-expanded', String(on)); });
 
 const pageClicks = wrap(async e => {
@@ -2276,7 +2318,14 @@ const pageClicks = wrap(async e => {
   const bn = t.closest('[data-banner]'); if (bn) { const w = await api('/api/project/banner', { cwd: S.folder, path: bn.dataset.banner === '-' ? null : bn.dataset.banner }); S.worlds[S.folder] = { ...w, at: Date.now() }; toast(bn.dataset.banner === '-' ? 'Banner reset to the automatic pick.' : 'Banner updated.', 2000); return renderFolder(); }
   const tb = t.closest('[data-wtab]'); if (tb) { S.worldTab = tb.dataset.wtab; return renderWorldBody(); }
   const sp = t.closest('[data-prompt]'); if (sp) { const pr = S.prompts.find(x => x.id === sp.dataset.prompt); if (pr) return startWithPrompt(S.folder, pr); return; }
-  const ch = t.closest('[data-chat]'); if (ch) { if (S.drawerId) closeDrawer(); return ChatUI.open({ sessionId: ch.dataset.chat }); }
+  const ch = t.closest('[data-chat]');
+  if (ch) {
+    if (S.drawerId) closeDrawer();
+    const q = S.view === 'search' && S.q ? S.q : null;
+    await ChatUI.open({ sessionId: ch.dataset.chat });
+    if (q && ChatUI.isOpen()) ChatUI.find(q);
+    return undefined;
+  }
   const wt = t.closest('[data-watch]'); if (wt) { if (S.drawerId) closeDrawer(); return ChatUI.watch({ sessionId: wt.dataset.watch, source: 'terminal' }); }
   const o = t.closest('[data-open]'); if (o) return resume(o.dataset.open, 'resume');
   const m = t.closest('[data-more]'); if (m) return m.getAttribute('aria-expanded') === 'true' ? closeMenu() : chatMenu(m, m.dataset.more);
@@ -2385,6 +2434,38 @@ function connectLive() {
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
 window.addEventListener('focus', () => { watchActivity(); renderLive(); });
+
+/* ---------- confirmations ---------- */
+// Asks before something that's hard to undo. The first paragraph is the question; the rest explains.
+function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false } = {}) {
+  let d = $('confirmDlg');
+  if (!d) {
+    document.body.insertAdjacentHTML('beforeend', `<dialog id="confirmDlg" class="confirm-dlg"><form method="dialog"><h3 id="cfQ"></h3><p id="cfX"></p><div class="d-row"><button class="btn" value="cancel" id="cfNo"></button><button class="btn prime" value="ok" id="cfYes"></button></div></form></dialog>`);
+    d = $('confirmDlg');
+    // The answer is taken the moment it's given, so a question asked right after can't pick up this one's.
+    const answer = v => { const r = d._resolve; d._resolve = null; if (r) r(v); };
+    d.querySelector('form').addEventListener('submit', e => answer(e.submitter?.value === 'ok'));
+    // Esc answers this question only, never the dialog underneath it.
+    d.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); answer(false); d.close('cancel'); } });
+    d.addEventListener('close', () => { if (!d.open) answer(d.returnValue === 'ok'); });
+  }
+  const [q, ...rest] = String(text).split(/\n\n/);
+  $('cfQ').textContent = q; $('cfX').textContent = rest.join('\n\n'); $('cfX').hidden = !rest.length;
+  $('cfYes').textContent = ok; $('cfNo').textContent = cancel;
+  $('cfYes').className = `btn ${danger ? 'danger-prime' : 'prime'}`;
+  d.returnValue = '';
+  if (d._resolve) d._resolve(false);
+  return new Promise(resolve => {
+    d._resolve = resolve;
+    if (!d.open) d.showModal();
+    $(danger ? 'cfNo' : 'cfYes').focus();
+  });
+}
+window.appConfirm = appConfirm;
+async function quitApp() {
+  if (!(await appConfirm('Quit Session Switcher?\n\nChats in terminals keep running; chats in its window stop. Start it again from its shortcut.', { ok: 'Quit', danger: true }))) return;
+  await api('/api/quit', {}); document.body.innerHTML = '<p style="padding:40px;font-family:var(--f-body)">Session Switcher has quit. You can close this window.</p>';
+}
 
 /* ---------- right-click (and long-press on a phone) ---------- */
 // Every chat, project, card and picture has its own menu; empty space gets the app's menu.

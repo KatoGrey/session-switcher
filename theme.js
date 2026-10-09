@@ -80,6 +80,9 @@
       }
       case 'ink': {
         let ll = light ? 0.97 - l * 0.97 : l;
+        // Light themes: the faint greys (dates, hints, labels) stay dark enough to read (~4.5:1).
+        if (light && l < 0.65) ll = Math.min(ll, 0.41);
+        if (!light && l < 0.5) ll = Math.max(ll, 0.46); // and in dark ones, light enough
         if (contrast) ll = light ? ll * 0.6 : ll + (1 - ll) * 0.4;
         return toRgb(t.ink, s * (t.id === 'graphite' ? 0.2 : 1), ll);
       }

@@ -4,7 +4,7 @@
    loadSessions, renderSide, renderMain, Viewer, usageLine, usageOf, binding, hot, miniDial, markSeen,
    updateTitle, statusOf, NEEDS, VERB_NOW, keyOf, findActivity, openActivity, patch. */
 (function () {
-  const $c = id => document.getElementById(id);
+  const $c = id => (id[0] === '[' ? document.querySelector(id) : document.getElementById(id));
   const C = {
     key: null, info: null, sessionId: null, es: null, lastSeq: 0, state: null, watch: null, watchSig: '',
     attachments: [], historyStart: 0, historyCursor: null, liveText: {}, liveTimer: null, interruptedAt: 0, title: '', folder: '', model: '', provider: 'claude',
@@ -848,11 +848,24 @@
     return out;
   }
   const isPhone = () => matchMedia('(max-width: 760px)').matches;
-  function closePick() { const b = $c('cPick'); if (b && !b.hidden) { b.hidden = true; Pick.src = null; document.body.classList.remove('sheet-open'); } const bk = $c('pickBack'); if (bk) bk.hidden = true; }
+  function closePick() {
+    const b = $c('cPick');
+    if (b && !b.hidden) {
+      const back = b.contains(document.activeElement) ? Pick.from || $c(`[data-crew="${Pick.src}"]`) : null;
+      b.hidden = true; Pick.src = null; document.body.classList.remove('sheet-open');
+      if (back && document.contains(back)) back.focus({ preventScroll: true });
+    }
+    Pick.from = null;
+    const bk = $c('pickBack'); if (bk) bk.hidden = true;
+  }
   async function openPick(src) {
+    if (!Pick.from) Pick.from = document.activeElement;
     Pick.src = src;
     if (src === 'comp' && (!C.comp || C.comp.ended)) { renderPick(); try { await ensureCompanion(); } catch (err) { closePick(); throw err; } }
     renderPick();
+    // The keyboard goes into the picker: to the choice in use.
+    const box = $c('cPick');
+    (box.querySelector('.mp-preset[aria-checked="true"], .mp-list [aria-checked="true"]') || box.querySelector('button'))?.focus({ preventScroll: true });
   }
   function renderPick() {
     const box = $c('cPick'); const src = Pick.src; if (!src) return;
@@ -952,6 +965,17 @@
     setTarget('main', false);
     placeText(`Here’s the picture Codex made (saved at \`${p}\`). `, false);
   }
+
+  // The first Esc while a reply is coming only asks; a second one within a moment stops it.
+  let escTimer = null;
+  function armEsc(name) {
+    C.escArmed = Date.now();
+    disarmEsc(true);
+    // It takes the place of the keyboard tips under the message box, clear of toasts and the reply.
+    $c('cHint').insertAdjacentHTML('afterend', `<p class="c-escarm" id="cEscArm" role="status"><kbd>Esc</kbd> again stops ${esc(name)}</p>`);
+    escTimer = setTimeout(disarmEsc, 1600);
+  }
+  function disarmEsc(keepArm) { clearTimeout(escTimer); $c('cEscArm')?.remove(); if (!keepArm) C.escArmed = 0; }
 
   /* ---------- composer ---------- */
   const sizeText = n => (n >= 1024 * 1024 * 1024 ? `${(n / 1024 / 1024 / 1024).toFixed(1)} GB` : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -1355,7 +1379,7 @@
     } catch (err) {
       if (err.reason === 'codex-signin' || err.reason === 'codex-missing') { toast(err.message, 9000); return undefined; }
       if (err.reason === 'running') {
-        if (confirm(`${err.message}\n\nOK opens it here anyway. Cancel lets you watch it live instead, without touching it.`)) return open({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText });
+        if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return open({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText });
         return watch({ sessionId, source: 'terminal' });
       }
       throw err;
@@ -1500,19 +1524,21 @@
         case 'fork': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'fork' }); }
         case 'takeover': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'resume' }); }
         case 'more': return showMenu(c, C.watch ? [
-          { label: 'Open a copy here', hint: 'keeps the original', run: () => open({ sessionId: C.watch.sessionId, mode: 'fork' }) },
+          { glyph: '⧉', label: 'Open a copy here', hint: 'keeps the original', run: () => open({ sessionId: C.watch.sessionId, mode: 'fork' }) },
+          '-',
+          ...chatHeadItems(),
           { label: 'Copy terminal command', run: async () => { const r = await api('/api/command', { account: S.acct, sessionId: C.watch.sessionId }); try { await navigator.clipboard.writeText(r.command); toast('Copied.'); } catch { prompt('Copy this command:', r.command); } } },
-          { label: 'Browse this chat’s folder', run: () => openFile('.') },
         ] : [
-          { label: 'Move to a terminal', hint: 'same account', disabled: !C.sessionId, why: 'Send a message first', run: async () => {
-            if (!confirm('Stop this chat here and continue it in a terminal window?')) return;
+          ...chatHeadItems().filter(x => x === '-' || !/^Stop this chat/.test(x.label)),
+          '-',
+          { glyph: '➤', label: 'Move to a terminal', hint: 'same account', disabled: !C.sessionId, why: 'Send a message first', run: async () => {
+            if (!(await window.appConfirm('Continue this chat in a terminal?\n\nIt stops here and resumes in a terminal window as the same account.', { ok: 'Move it' }))) return;
             const key = C.key; close(); const r = await api('/api/chat/handoff', { key });
             toast(r.dryRun ? `Would open a ${r.how}:\n${r.script}` : `Continuing in a ${r.how}.`, 7000);
           } },
           { label: 'Copy terminal command', disabled: !C.sessionId, run: async () => { const r = await api('/api/command', { account: C.info.accountId, sessionId: C.sessionId }); try { await navigator.clipboard.writeText(r.command); toast('Copied.'); } catch { prompt('Copy this command:', r.command); } } },
-          { label: 'Browse this chat’s folder', run: () => openFile('.') },
           '-',
-          { label: 'Stop this chat', danger: true, disabled: C.state === 'ended', run: async () => { await api('/api/chat/stop', { key: C.key }); } },
+          stopItem(),
         ]);
         default: return undefined;
       }
@@ -1540,7 +1566,12 @@
       const tgt = C.target === 'comp' && C.comp ? C.comp : null;
       const tstate = tgt ? tgt.state : C.state;
       if (e.key === 'Escape' && !$c('cPick').hidden) { e.preventDefault(); closePick(); return; }
-      if (e.key === 'Escape' && (tstate === 'busy' || tstate === 'waiting')) { e.preventDefault(); C.interruptedAt = Date.now(); wrap(() => api('/api/chat/interrupt', { key: tgt ? tgt.key : C.key }))(); }
+      if (e.key === 'Escape' && (tstate === 'busy' || tstate === 'waiting')) {
+        e.preventDefault();
+        if (Date.now() - (C.escArmed || 0) > 1600) { armEsc(PROV_NAME[tgt ? 'codex' : C.provider]); return; }
+        disarmEsc();
+        C.interruptedAt = Date.now(); wrap(() => api('/api/chat/interrupt', { key: tgt ? tgt.key : C.key }))();
+      }
     });
     $c('cText').addEventListener('paste', e => {
       const files = [...(e.clipboardData && e.clipboardData.files || [])];
@@ -1551,6 +1582,7 @@
     chat.addEventListener('dragleave', e => { if (e.target === chat || !chat.contains(e.relatedTarget)) chat.classList.remove('drop'); });
     chat.addEventListener('drop', e => { e.preventDefault(); chat.classList.remove('drop'); if (!C.watch) addFiles([...e.dataTransfer.files]); });
     $c('cLight').addEventListener('click', () => { $c('cLight').hidden = true; });
+    if ('ResizeObserver' in window) new ResizeObserver(() => document.documentElement.style.setProperty('--dock-h', `${Math.round(document.querySelector('.c-dock').getBoundingClientRect().height)}px`)).observe(document.querySelector('.c-dock'));
     $c('cScroll').addEventListener('scroll', () => { if (!jumpRaf) jumpRaf = requestAnimationFrame(() => { jumpRaf = 0; syncJump(); }); }, { passive: true });
     $c('cJump').addEventListener('click', jumpLatest);
     $c('cFindQ').addEventListener('input', runFind);
@@ -1565,6 +1597,16 @@
       const typing = e.target instanceof Element && e.target.closest('input, textarea, select');
       if (!typing && e.key === 'End') { e.preventDefault(); jumpLatest(); }
     });
+    document.addEventListener('keydown', e => {
+      if ($c('cPick').hidden) return;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePick(); return; }
+      if (!$c('cPick').contains(document.activeElement) || !['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+      const all = [...$c('cPick').querySelectorAll('button:not([hidden]), summary')].filter(x => x.offsetParent);
+      const i = all.indexOf(document.activeElement);
+      const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1;
+      all[(i + d + all.length) % all.length]?.focus({ preventScroll: true });
+      e.preventDefault();
+    }, true);
     document.addEventListener('mousedown', e => { if (!$c('cPick').hidden && !(e.target.closest && e.target.closest('#cPick, [data-crew]'))) closePick(); });
     $c('pickBack').addEventListener('pointerdown', e => e.preventDefault());
     $c('pickBack').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closePick(); });
@@ -1617,8 +1659,14 @@
       ...(id && !C.watch ? [{ label: 'Rename chat', run: async () => { await renameChat(id); const [s] = findSession(id); if (s) { C.title = s.title; $c('cTitle').textContent = s.title; } } }] : []),
       ...(id ? [{ label: 'Copy chat ID', run: () => copyOut(id) }] : []),
       { label: 'Browse this chat’s folder', run: () => openFile('.') },
-      ...(!C.watch && C.state !== 'ended' ? ['-', { label: 'Stop this chat', danger: true, run: () => api('/api/chat/stop', { key: C.key }) }] : []),
+      ...(!C.watch && C.state !== 'ended' ? ['-', stopItem()] : []),
     ];
+  }
+  function stopItem() {
+    return { label: 'Stop this chat', danger: true, disabled: C.state === 'ended', run: async () => {
+      if ((C.state === 'busy' || C.state === 'waiting') && !(await window.appConfirm(`Stop this chat?\n\n${PROV_NAME[C.provider]} is working on a reply; it stops now. The conversation is kept, and you can start it again.`, { ok: 'Stop it', danger: true }))) return;
+      await api('/api/chat/stop', { key: C.key });
+    } };
   }
   // Returns menu items for what was right-clicked, or undefined to let the app decide.
   function contextItems(t, at) {
@@ -1722,7 +1770,7 @@
     refreshCrew: () => { if (!$c('chat').hidden) renderCrew(); },
     refreshFav: () => syncFav(),
     sessionId: () => C.sessionId || (C.watch && C.watch.sessionId) || null,
-    contextItems,
+    contextItems, modelName,
     find: q => openFind(q), exportChat, jumpLatest,
     // Ctrl+K: "Sonnet 5.5", "GPT-6-Luna"… for the chat you're in.
     modelItems: () => {

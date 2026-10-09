@@ -138,6 +138,7 @@ To change them, choose **Edit prompts…** from any of those menus. You can rena
 
 - **Add a starter set** adds a ready-made set to yours. **Interactive fiction and games** has a balance pass, playtest and review, patch notes, new NPC, new story start, lore check, faction reputation tiers and key art.
 - **Restore the starter prompts** puts the originals back.
+- Closing the editor with unsaved changes (Esc, ✕ or a click outside it) asks first.
 
 A new chat opens on its project: its banner, its name, and your prompts one click away.
 
@@ -188,14 +189,15 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
   - Hide or show the ledger with the button at the top right of the chat.
 - **Controls:**
   - The selector in the header sets what Claude may do without asking.
-  - **Stop** (or Esc) interrupts Claude. You can type while it works to queue your next message.
-  - **⋯ → Move to a terminal** continues the chat in a terminal as the same account.
+  - **Stop**, or **Esc twice**, interrupts Claude. The first Esc only shows "Esc again stops Claude" under the message box, so a stray key never cuts a reply short. You can type while it works to queue your next message.
+  - **⋯** holds everything the chat's right-click menu has, plus **Move to a terminal** (continues the chat in a terminal as the same account) and **Stop this chat**, which asks first only if Claude is in the middle of a reply.
+  - The **Claude** and **Codex** pills open the model picker. It works from the keyboard too: the arrows move, Enter picks, Esc closes.
 
 Behind the scenes this is Claude Code itself, run in its official streaming mode, so your settings, CLAUDE.md, skills, MCP servers and hooks all apply. A few things exist only in the terminal interface, like `/login` or interactive `/rewind`; use **Resume in a terminal** for those.
 
 ### Watching chats that run elsewhere
 
-Chats running in a terminal, or recently used in the desktop app, also appear on the hub. Click one to **watch it live**: you can read along as it works, but you reply in its own window.
+Chats running in a terminal, or recently used in the desktop app, also appear on the hub. Click one to **watch it live**: you can read along as it works, but you reply in its own window. Its menus offer **Watch it live** first, since opening it in two places at once can mix up its history.
 
 **Open a copy here** branches the chat so you can continue it in the app without touching the original.
 
@@ -295,7 +297,7 @@ Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in 
 - **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite. Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
 - **Text size** (80–150%): messages, documents and the message box.
 - **Reading font:** Classic (the serif), Modern (a clean sans for reading), or Clean (sans headings too).
-- **Bold text** and **Higher contrast**.
+- **Bold text** and **Higher contrast**. Light themes keep small grey text (dates, hints, labels) dark enough to read.
 - **Interface size** (80–130%): scales everything at once. On smaller windows the top bar tucks away its smaller labels so nothing overlaps.
 - A live preview shows a reply and a message in your choices; **Back to the original look** undoes everything.
 
@@ -308,7 +310,7 @@ When a chat needs you or replies, Session Switcher can:
 - play a soft chime (on by default), except for the chat you're looking at
 - show a Windows notification while the window is in the background
 
-Turn these on or off from the **Live** pill at the bottom right, or in Setup. The drifting petals can be turned off there too; they stay off if Windows is set to reduce motion.
+Turn these on or off from the **Live** pill at the bottom of the sidebar, or in Setup. The drifting petals can be turned off there too; they stay off if Windows is set to reduce motion.
 
 ## Animations
 
@@ -332,7 +334,7 @@ Turn **Animations** off in Setup to keep everything still. It's also off automat
 | `←` / `→` | Step through a project's pictures in the full-size view |
 | `Alt+↑` / `Alt+↓` | Switch between running chats in the chat window |
 | `Enter` | Send. Use `Shift+Enter` for a new line |
-| `Esc` | Stop Claude, or close what's open |
+| `Esc` | Close what's open. While Claude or Codex is replying, press it twice to stop |
 | `Ctrl+F` | Find in this chat |
 | `End` | Jump to the latest message |
 | `?` | Keyboard shortcuts |
@@ -344,6 +346,8 @@ Turn **Animations** off in Setup to keep everything still. It's also off automat
 ## Right-click
 
 Right-click almost anything for what you can do with it. Shift+right-click still opens the browser's own menu, and text boxes keep their usual cut, copy and paste.
+
+Menus get out of the way: a click anywhere else closes the menu (without also pressing whatever you clicked), and so do Esc, scrolling and switching windows. With one menu open, a click on another ⋯ or menu button opens that one straight away, and a right-click elsewhere opens the menu for that spot. From the keyboard, the Menu key opens the menu for whatever has focus; the arrows, Home and End move, and typing a letter jumps to the item that starts with it.
 
 - **A chat** (in a list, on a hub card, or pinned in the sidebar): open it, open a copy, resume in a terminal, rename, pin to the sidebar, copy its ID or terminal command, show its transcript.
 - **A project** (its card, or its name in the sidebar): open it, pin it, continue the latest chat, start a new Claude or Codex chat, start with a prompt, show it in Explorer, browse its files, copy its path.
@@ -376,6 +380,7 @@ On a phone, a long press does the same on cards, pictures and controls.
 - **Code** is colored by language, in your theme's colors.
 - **Times:** hover a reply to see when it came.
 - **Export:** right-click the chat, or use `Ctrl+K`, to save it as a Markdown file.
+- **From a search:** opening a chat from **Search every chat** opens Find on the words you searched for.
 
 Press `?` anywhere (outside a text box) for the full list of keyboard shortcuts.
 
@@ -391,6 +396,7 @@ Press `?` anywhere (outside a text box) for the full list of keyboard shortcuts.
   - **Copy terminal command**
   - **Show transcript file**
 - The app warns before you open a chat that's already running somewhere.
+- Anything hard to undo (signing out, removing an account or a phone, quitting) asks first in the app's own box. Esc or **Cancel** always backs out.
 
 ## Speed with long chats
 
@@ -434,7 +440,7 @@ The gear's dot turns gold or red when something needs attention. Setup checks:
 - each extra account's shared data
 - sign-in overrides set on the PC
 
-Fixes are one click: update Claude Code, sign in, merge and share, or set the `claude` path. The preferences there cover:
+Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone and App. Fixes are one click: update Claude Code, sign in, merge and share, or set the `claude` path. The command boxes save as soon as you click away from them. The preferences there cover:
 
 - alerts, petals and animations
 - where chats open

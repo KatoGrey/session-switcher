@@ -22,7 +22,7 @@ const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
 
-const APP_VERSION = '5.3.1';
+const APP_VERSION = '5.4.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
 const APP_DIR = __dirname;
 const CONFIG_FILE = path.join(APP_DIR, 'accounts.json');
