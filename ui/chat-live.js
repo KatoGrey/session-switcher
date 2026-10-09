@@ -19,7 +19,7 @@ function runFind() {
   const q = $c('cFindQ').value.trim().toLowerCase();
   Find.hits = []; Find.i = -1;
   if (q.length >= 2) {
-    const walk = document.createTreeWalker($c('cFeed'), NodeFilter.SHOW_TEXT, { acceptNode: n => (n.parentElement.closest('.turn-act, .code-h, button.c-earlier, .c-welcome') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+    const walk = document.createTreeWalker($c('cFeed'), NodeFilter.SHOW_TEXT, { acceptNode: n => (n.parentElement.closest('.turn-act, .turn-foot, .code-h, button.c-earlier, .c-welcome') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
     let n;
     while ((n = walk.nextNode()) && Find.hits.length < 2000) {
       const t = n.nodeValue.toLowerCase();

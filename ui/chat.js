@@ -369,6 +369,27 @@ function close(silent) {
   if (!silent) loadSessions().then(() => { renderSide(); renderMain(); }).catch(() => {});
 }
 
+/* ---------- selecting ---------- */
+// Select all (a phone's, or Ctrl+A) takes the whole page: the header, every button, the message box.
+// In a chat it keeps to what you were in instead: the code block, else the message. Once that's all
+// selected, Select all again takes the whole conversation (still not the page around it).
+const Sel = { in: null, whole: false };
+const selHost = n => { const el = n && (n.nodeType === 1 ? n : n.parentElement); return el ? el.closest('#cFeed pre, #cFeed .md, #cFeed .ububble') : null; };
+const flat = s => s.replace(/\s+/g, ' ').trim();
+function onSelection() {
+  if ($c('chat').hidden) return;
+  const sel = document.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const r = sel.getRangeAt(0), a = selHost(r.startContainer);
+  if (a && a === selHost(r.endContainer)) { Sel.in = a; Sel.whole = !r.collapsed && flat(r.toString()) === flat(a.textContent); return; }
+  if (r.collapsed) { Sel.in = null; return; }
+  // A selection that runs from the chat's header to its message box is Select all.
+  const head = $c('chat').querySelector('.c-head'), foot = $c('cCompose');
+  if (!Sel.in || !Sel.in.isConnected || !r.intersectsNode(head) || !r.intersectsNode(foot)) return;
+  sel.selectAllChildren(Sel.whole ? $c('cFeed') : Sel.in);
+}
+document.addEventListener('selectionchange', onSelection);
+
 /* ---------- events ---------- */
 function lightbox(src) { $c('cLight').querySelector('img').src = src; $c('cLight').hidden = false; $c('cLight').focus(); }
 function openFile(p) { return Viewer.open({ path: p, key: C.key, session: C.sessionId || (C.watch && C.watch.sessionId), cwd: C.info && C.info.cwd }); }
@@ -388,7 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rv = t.closest('[data-reveal]');
     if (rv) { const r = await api('/api/reveal', { path: rv.dataset.reveal, key: C.key, session: C.sessionId }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
     const cp = t.closest('[data-copy]');
-    if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copy); toast('Copied.', 1500); } catch { prompt('Copy this:', cp.dataset.copy); } return; }
+    if (cp) return copyText(cp.dataset.copy);
     const ri = t.closest('.ri');
     if (ri && ri.dataset.navchat) {
       // A pinned chat that's closed: open it again, in this window (or watch it, if it's in a terminal).
@@ -400,7 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ri) { const li = ri.closest('li'); const x = li && findActivity(li.dataset.k); chat.classList.remove('show-rail'); if (x && !isViewing(x)) return openActivity(x); return; }
     const thumb = t.closest('.thumb'); if (thumb) return lightbox(thumb.dataset.full);
     const cc = t.closest('.code-copy');
-    if (cc) { try { await navigator.clipboard.writeText(cc.closest('.code').querySelector('code').textContent); cc.textContent = 'Copied'; setTimeout(() => { cc.textContent = 'Copy'; }, 1500); } catch { toast('Couldn’t copy.'); } return; }
+    if (cc) return copyText(cc.closest('.code').querySelector('code').textContent, null).then(ok => { if (ok) copiedButton(cc); });
     const more = t.closest('.tg-more'); if (more) { const g = more.closest('.tools'); g.classList.toggle('open'); updateGroup(g); return; }
     const rm = t.closest('[data-rm]'); if (rm) { const [a] = C.attachments.splice(+rm.dataset.rm, 1); if (a && a.url) URL.revokeObjectURL(a.url); renderAttachments(); return; }
     const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
@@ -443,10 +464,10 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
       case 'copyturn': {
-        const turn = c.closest('.turn');
-        const text = [...turn.querySelectorAll('.final > .md')].map(x => x.innerText.trim()).filter(Boolean).join('\n\n');
-        try { await navigator.clipboard.writeText(text); toast('Copied.', 1500); } catch { toast('Couldn’t copy.'); }
-        return undefined;
+        // The reply as written (Markdown), not as shown: headings, lists and code fences come along.
+        const text = turnMarkdown(c.closest('.turn'));
+        if (!text) { toast('This reply has no text to copy yet.', 2500); return undefined; }
+        return copyText(text, null).then(ok => { if (ok) copiedButton(c); });
       }
       case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return open({ sessionId: id, mode: 'resume', accountId: provider === 'codex' ? null : accountId, provider }); }
       case 'fork': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'fork' }); }
@@ -455,7 +476,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { glyph: '⧉', label: 'Open a copy here', hint: 'keeps the original', run: () => open({ sessionId: C.watch.sessionId, mode: 'fork' }) },
         '-',
         ...chatHeadItems(),
-        { label: 'Copy terminal command', run: async () => { const r = await api('/api/command', { account: S.acct, sessionId: C.watch.sessionId }); try { await navigator.clipboard.writeText(r.command); toast('Copied.'); } catch { prompt('Copy this command:', r.command); } } },
+        { label: 'Copy terminal command', run: async () => { const r = await api('/api/command', { account: S.acct, sessionId: C.watch.sessionId }); return copyText(r.command, 'Copied the command.'); } },
       ] : [
         ...chatHeadItems().filter(x => x === '-' || !/^Stop this chat/.test(x.label)),
         '-',
@@ -464,7 +485,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const key = C.key; close(); const r = await api('/api/chat/handoff', { key });
           toast(r.dryRun ? `Would open a ${r.how}:\n${r.script}` : `Continuing in a ${r.how}.`, 7000);
         } },
-        { label: 'Copy terminal command', disabled: !C.sessionId, run: async () => { const r = await api('/api/command', { account: C.info.accountId, sessionId: C.sessionId }); try { await navigator.clipboard.writeText(r.command); toast('Copied.'); } catch { prompt('Copy this command:', r.command); } } },
+        { label: 'Copy terminal command', disabled: !C.sessionId, run: async () => { const r = await api('/api/command', { account: C.info.accountId, sessionId: C.sessionId }); return copyText(r.command, 'Copied the command.'); } },
         '-',
         stopItem(),
       ]);
@@ -547,7 +568,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ---------- right-click inside the chat ---------- */
-async function copyOut(text, what = 'Copied.') { try { await navigator.clipboard.writeText(text); toast(what, 1500); } catch { prompt('Copy this:', text); } }
+const copyOut = (text, what = 'Copied.') => copyText(text, what);
+// A Copy button says so for a moment once it has copied.
+function copiedButton(b) {
+  clearTimeout(b._copied);
+  if (!b.dataset.label) b.dataset.label = b.textContent;
+  b.textContent = 'Copied ✓'; b.classList.add('copied');
+  b._copied = setTimeout(() => { b.textContent = b.dataset.label; b.classList.remove('copied'); }, 1600);
+}
 const quote = text => text.trim().split('\n').map(l => `> ${l}`).join('\n');
 async function copyImage(src) {
   try {
@@ -558,7 +586,7 @@ async function copyImage(src) {
     }
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
     toast('Picture copied.', 1500);
-  } catch { toast('This picture can’t be copied here. Use “Show in folder” instead.'); }
+  } catch { toast(window.REMOTE || !window.isSecureContext ? 'Press and hold the picture to copy or save it.' : 'This picture can’t be copied here. Use “Show in folder” instead.'); }
 }
 function modelItems(src) {
   const name = PROV_NAME[provFor(src)];

@@ -274,8 +274,7 @@ async function renameChat(id) {
 }
 async function copyCommand(id) {
   const r = await api('/api/command', { account: S.acct, sessionId: id });
-  try { await navigator.clipboard.writeText(r.command); toast(`Copied a PowerShell command that resumes this chat${isCodex(sessionById(id)[0]) ? ' in Codex' : ''}.`); }
-  catch { prompt('Copy this command:', r.command); }
+  return copyText(r.command, `Copied a PowerShell command that resumes this chat${isCodex(sessionById(id)[0]) ? ' in Codex' : ''}.`);
 }
 async function accountAction(act, id) {
   if (codexAcct(id)) { if (act === 'usage') return refreshUsage(id); if (act === 'web') return openWeb(id); return undefined; }

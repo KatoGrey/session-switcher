@@ -241,8 +241,8 @@ const Viewer = (() => {
       }
       case 'rendered': V.raw = false; return render();
       case 'raw': V.raw = true; return render();
-      case 'copy': try { await navigator.clipboard.writeText(f.text); b.textContent = 'Copied'; setTimeout(() => { b.textContent = `Copy ${f.markdown ? 'markdown' : 'text'}`; }, 1600); } catch { toast('Couldn’t copy. Select the text and press Ctrl+C instead.'); } return undefined;
-      case 'copypath': try { await navigator.clipboard.writeText(f.path); toast('Copied the path.', 2000); } catch { prompt('Copy this path:', f.path); } return undefined;
+      case 'copy': return copyText(f.text, null).then(ok => { if (ok) { b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = `Copy ${f.markdown ? 'markdown' : 'text'}`; }, 1600); } });
+      case 'copypath': return copyText(f.path, 'Copied the path.');
       case 'reveal': { const r = await api('/api/reveal', { path: f.path, ...V.ctx }); if (r.dryRun) toast(`Would run: ${r.script}`); return undefined; }
       default: return undefined;
     }

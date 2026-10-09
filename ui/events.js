@@ -271,9 +271,6 @@ async function quitApp() {
 /* ---------- right-click (and long-press on a phone) ---------- */
 // Every chat, project, card and picture has its own menu; empty space gets the app's menu.
 // Shift+right-click still opens the browser's own menu, and text boxes keep theirs.
-async function copyText(text, what = 'Copied.') {
-  try { await navigator.clipboard.writeText(text); toast(what, 1600); } catch { prompt('Copy this:', text); }
-}
 function projectItems(cwd) {
   const p = S.projects.find(x => x.cwd === cwd); if (!p) return [];
   const a = current();

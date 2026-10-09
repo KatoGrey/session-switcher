@@ -85,6 +85,56 @@ function toast(msg, ms = 5000, action = null) {
 }
 function wrap(fn) { return async (...args) => { try { return await fn(...args); } catch (err) { if (err.message !== 'Reloading…') toast(err.message, 9000); if (err.reason) reload().catch(() => {}); } return undefined; }; }
 
+/* ---------- copying ---------- */
+// Copies text wherever the app runs. The clipboard API only works on a secure page (the PC's own
+// window); phone access is plain http on the home network, where phones refuse it. There the
+// browser's older copy command still works, and if even that's refused, a sheet opens with the text
+// selected, to copy by hand. Phones only allow copying during a tap, so call this straight from one.
+// what: the toast to show (null: none). Resolves true when it copied.
+function copyText(text, what = 'Copied.') {
+  text = String(text ?? '');
+  const done = () => { if (what) toast(what, 1600); return true; };
+  if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(done, () => (legacyCopy(text) ? done() : copySheet(text)));
+  }
+  return Promise.resolve(legacyCopy(text) ? done() : copySheet(text));
+}
+function legacyCopy(text) {
+  const active = document.activeElement, sel = document.getSelection(), ranges = [];
+  for (let i = 0; i < sel.rangeCount; i++) ranges.push(sel.getRangeAt(i));
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  // Out of sight; 16px so an iPhone doesn't zoom in on it.
+  ta.style.cssText = 'position:fixed;top:0;left:-9999px;width:2em;height:2em;padding:0;border:0;opacity:0;font-size:16px';
+  document.body.appendChild(ta);
+  let ok = false;
+  try { ta.focus({ preventScroll: true }); ta.select(); ta.setSelectionRange(0, text.length); ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  sel.removeAllRanges(); for (const r of ranges) sel.addRange(r);
+  if (active && active !== document.body && active.focus) active.focus({ preventScroll: true });
+  return ok;
+}
+// The last resort: the text in a sheet, selected. In a text box, a phone's Select all keeps to the box.
+function copySheet(text) {
+  let d = $('copyDlg');
+  if (!d) {
+    document.body.insertAdjacentHTML('beforeend', `<dialog id="copyDlg" class="copy-dlg" aria-labelledby="copyT"><div class="setup-head"><h3 id="copyT">Copy this</h3><button type="button" class="icon" data-copy-close aria-label="Close">✕</button></div>
+      <p class="copy-hint">This device didn’t let the app copy it for you. Press and hold the text, choose Select all, then Copy.</p><textarea id="copyTa" readonly spellcheck="false"></textarea>
+      <div class="d-row"><button type="button" class="btn" data-copy-all>Select all</button><button type="button" class="btn prime" data-copy-close>Done</button></div></dialog>`);
+    d = $('copyDlg');
+    d.addEventListener('click', e => {
+      if (e.target === d || e.target.closest('[data-copy-close]')) d.close();
+      else if (e.target.closest('[data-copy-all]')) { const ta = $('copyTa'); ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); }
+    });
+  }
+  const ta = $('copyTa');
+  ta.value = text;
+  if (!d.open) d.showModal();
+  ta.scrollTop = 0; ta.focus({ preventScroll: true }); ta.select(); ta.setSelectionRange(0, text.length);
+  return false;
+}
+
 // A saga theme's own words for a piece of text (theme.js); other themes keep the text as it is.
 const voice = (text, vars) => Look.say(text, vars);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

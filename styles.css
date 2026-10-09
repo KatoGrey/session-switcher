@@ -1591,6 +1591,24 @@ body{zoom:var(--look-ui,1)}
 .tk-c{color:var(--ash-2);font-style:italic}
 .tk-f{color:var(--parch)}
 
+/* Copying: the sheet a device that refuses to copy gets instead, Copy buttons that say they did, and a
+   reply's buttons under it on a phone (the same buttons as beside its name), all big enough for a thumb */
+dialog.copy-dlg{width:min(600px,calc(100vw - 24px));padding:0}
+.copy-dlg .copy-hint{margin:14px 22px 10px;color:var(--ash);font-size:14.5px}
+.copy-dlg textarea{display:block;width:calc(100% - 44px);height:min(46vh,380px);margin:0 22px;padding:10px 12px;resize:vertical;border:1px solid var(--seam-2);border-radius:8px;background:var(--abyss);color:var(--parch);font:13.5px/1.55 var(--f-mono)}
+.copy-dlg .d-row{margin:0;padding:14px 22px 20px}
+.ta.copied,.code-copy.copied{color:var(--parch);border-color:rgb(var(--c-7fb79a) / .75)}
+.turn-foot{display:none;order:99;flex-wrap:wrap;gap:8px}
+@media (hover:none),(max-width:760px){
+  .turn .who .turn-act{display:none}
+  .turn-foot{display:flex}
+  .turn-foot .ta{display:inline-flex;align-items:center;min-height:38px;padding:8px 15px;font-size:12.5px}
+  .code-h{padding:5px 6px 5px 13px}
+  .code-copy{min-height:36px;min-width:64px;padding:6px 14px;font-size:12px}
+}
+/* On a touch screen, pressing and holding a code block selects all of it, ready to copy. */
+@media (pointer:coarse){ #cFeed pre{-webkit-user-select:all;user-select:all} }
+
 /* Keyboard shortcuts */
 dialog.keys-dlg{width:min(640px,calc(100vw - 32px))}
 .keys-body{padding:4px 22px 22px;max-height:70vh;overflow-y:auto}

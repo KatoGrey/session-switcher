@@ -402,10 +402,12 @@ function lastTurn(root, make) {
   t.className = liveRender ? 'turn fresh' : 'turn';
   t.dataset.prov = prov;
   const relay = C.provider === 'claude' && (codexOK() || C.compThread || C.comp);
-  t.innerHTML = `<div class="who"><span class="who-n">${PROV_NAME[prov]}</span><span class="who-m"></span><span class="turn-act">
-      <button type="button" class="ta" data-c="copyturn" title="Copy this reply">Copy</button>
+  const acts = `<button type="button" class="ta" data-c="copyturn" title="Copy this reply, as Markdown">Copy</button>
       ${prov === 'claude' && C.provider === 'claude' && codexOK() ? '<button type="button" class="ta rv" data-c="review" title="Codex reviews the changes so far, in a read-only sandbox">Review with Codex</button>' : ''}
-      ${relay ? `<button type="button" class="ta relay" data-c="relay" title="${prov === 'codex' ? 'Quote this to Claude' : 'Quote this to Codex, for an image, a test or a second opinion'}">${prov === 'codex' ? 'Send to Claude' : 'Ask Codex'}</button>` : ''}</span></div>`;
+      ${relay ? `<button type="button" class="ta relay" data-c="relay" title="${prov === 'codex' ? 'Quote this to Claude' : 'Quote this to Codex, for an image, a test or a second opinion'}">${prov === 'codex' ? 'Send to Claude' : 'Ask Codex'}</button>` : ''}`;
+  // The same buttons twice: beside the name (with a mouse, on hover) and under the reply (on a phone,
+  // where you finish reading; it stays last however the reply grows).
+  t.innerHTML = `<div class="who"><span class="who-n">${PROV_NAME[prov]}</span><span class="who-m"></span><span class="turn-act">${acts}</span></div><div class="turn-foot">${acts}</div>`;
   root.appendChild(t);
   return t;
 }
@@ -603,7 +605,7 @@ function savePage() {
 function exportChat() {
   const text = chatMarkdown();
   const name = `${String(C.title || 'chat').replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'chat'}.md`;
-  if (window.Android) { navigator.clipboard.writeText(text).then(() => toast('Copied the chat as Markdown.'), () => toast('Couldn’t copy.')); return; }
+  if (window.Android) { copyText(text, 'Copied the chat as Markdown.'); return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
   a.download = name;

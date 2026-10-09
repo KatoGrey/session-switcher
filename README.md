@@ -347,6 +347,9 @@ On the phone:
 - Big photos are shrunk to a sharp JPEG so they reach Claude as a picture. Videos and other files are saved in the project's `attachments` folder.
 - Menus and the model picker open as sheets from the bottom of the screen. Back closes whatever is open.
 - The **Claude** and **Codex** pills under the message box show each one's model, side by side, so you can see who you're writing to and switch with one tap.
+- **Copying works,** even though phone access is plain http, where phones don't let a page use the clipboard: every **Copy** falls back to the browser's own copy command, and if a phone refuses that too, the text opens in a sheet, already selected, to copy by hand.
+- A reply's buttons (**Copy**, **Ask Codex**, **Review with Codex**) sit in a row under it, where you finish reading, big enough for a thumb. **Copy** copies the reply as written, in Markdown, so lists, tables and code fences come along.
+- **Select all** keeps to what you're in: the code block, else the message. Select all again for the whole conversation; never the buttons and menus around it. Pressing and holding a code block selects all of it.
 - On a foldable, the cover screen gets a one-column layout, and the inner screen shows two columns of projects.
 
 To update the phone app, open the same `http://<your PC>:4788/get` page and install again. Your pairing is kept.
@@ -468,7 +471,7 @@ Menus get out of the way: a click anywhere else closes the menu (without also pr
 - **A project** (its card, or its name in the sidebar): open it, pin it, continue the latest chat, start a new Claude or Codex chat, start with a prompt, show it in Explorer, browse its files, copy its path.
 - **An account card:** sign-in checks, usage, rename, sign out.
 - **Inside a chat:**
-  - **A reply:** copy it (as text or Markdown), quote it in your message, or hand it to Codex or Claude.
+  - **A reply:** copy it (as text or Markdown), quote it in your message, or hand it to Codex or Claude. Its own **Copy** button copies the Markdown.
   - **Your message:** copy it, quote it, or **Edit and send again**.
   - **Selected text:** copy, quote, ask the other assistant about it, find it in this chat, or search every chat for it.
   - **Code:** copy it, as Markdown too, or put it in your message.
@@ -477,6 +480,7 @@ Menus get out of the way: a click anywhere else closes the menu (without also pr
   - **A step** (a command, an edit): show its details, copy the command or its output.
   - **The Claude or Codex pill:** quick picks and the model picker.
   - **The chat itself:** find, jump to the latest message, export as Markdown, pin, rename, copy its ID, stop.
+- **Ctrl+A** in a chat selects the message (or code block) you clicked in, not the whole window; press it again for the whole conversation.
 - **Empty space:** search, new project, light or dark mode, appearance, setup, keyboard shortcuts.
 
 On a phone, a long press does the same on cards, pictures and controls.

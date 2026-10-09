@@ -426,6 +426,56 @@ module.exports = [
     },
   },
   {
+    name: 'copying',
+    // On a phone, through phone access: plain http, where the clipboard API is refused.
+    async run(t) {
+      const b = await t.open({ width: 412, height: 880, mobile: true });
+      await b.eval(`ChatUI.watch({ sessionId: ${JSON.stringify(demo.ID['s-brawl'])}, source: 'terminal' }); return 1`); await sleep(2200);
+      // Like a phone on http: no clipboard API. The older copy command records what it copied.
+      await b.eval(`Object.defineProperty(window, 'isSecureContext', { value: false, configurable: true });
+        window._ok = true; document.execCommand = cmd => { if (cmd !== 'copy') return false; const a = document.activeElement; window._copied = a && a.value !== undefined ? a.value.slice(a.selectionStart, a.selectionEnd) : String(getSelection()); return window._ok; };
+        return 1`);
+      const code = await b.eval(`return document.querySelector('#cFeed .code code').textContent`);
+      await b.eval(`document.querySelector('#cFeed .code').scrollIntoView({ block: 'center' }); return 1`); await sleep(300);
+      const cc = await b.eval(`const q = document.querySelector('#cFeed .code-copy').getBoundingClientRect(); return { h: q.height, w: q.width }`);
+      t.check('a code block’s Copy is big enough to tap', cc.h >= 34 && cc.w >= 60, cc);
+      await b.clickOn('#cFeed .code-copy');
+      t.check('it copies the code where the clipboard API is refused', (await b.eval(`return window._copied`)) === code, await b.eval(`return window._copied`));
+      t.check('and says so', /Copied/.test(await b.eval(`return document.querySelector('#cFeed .code-copy').textContent`)));
+
+      // A reply's buttons sit under it, roomy; the one beside the name is hidden.
+      const foot = await b.eval(`const tn = [...document.querySelectorAll('#cFeed .turn')].find(x => x.querySelector('.final .md')); const f = tn.querySelector('.turn-foot'), top = tn.querySelector('.who .turn-act');
+        const fy = f.getBoundingClientRect().top, below = [...tn.children].filter(x => x !== f && getComputedStyle(x).display !== 'none').every(x => x.getBoundingClientRect().bottom <= fy + 1);
+        return { shown: getComputedStyle(f).display !== 'none', last: below, topHidden: getComputedStyle(top).display === 'none', h: Math.min(...[...f.querySelectorAll('.ta')].filter(x => x.offsetParent).map(x => x.getBoundingClientRect().height)) }`);
+      t.check('a reply’s buttons sit under it on a phone', foot.shown && foot.last && foot.topHidden, foot);
+      t.check('big enough to tap', foot.h >= 36, foot);
+      await b.eval(`window._copied = ''; return 1`);
+      await b.eval(`const tn = [...document.querySelectorAll('#cFeed .turn')].find(x => x.querySelector('.final .md')); tn.querySelector('.turn-foot').scrollIntoView({ block: 'center' }); return 1`); await sleep(300);
+      const fb = await b.eval(`const tn = [...document.querySelectorAll('#cFeed .turn')].find(x => x.querySelector('.final .md')); const q = tn.querySelector('.turn-foot [data-c="copyturn"]').getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]`);
+      await b.click(fb[0], fb[1]);
+      const md = await b.eval(`return window._copied`);
+      t.check('Copy copies the reply as written (Markdown), not the buttons around it', /```lua/.test(md) && !/\\bCopy\\b/.test(md.replace(/Copy this/g, '')), md.slice(0, 160));
+
+      // When even the older command is refused, the text opens in a sheet, selected, to copy by hand.
+      await b.eval(`window._ok = false; return 1`);
+      await b.click(fb[0], fb[1]); await sleep(300);
+      const sheet = await b.eval(`const d = document.getElementById('copyDlg'), ta = document.getElementById('copyTa'); return { open: !!(d && d.open), all: ta && ta.selectionStart === 0 && ta.selectionEnd === ta.value.length && ta.value.length > 20 }`);
+      t.check('when a device refuses even that, the text opens in a sheet, selected', sheet.open && sheet.all, sheet);
+      await t.shot(b, 'sheet');
+      await b.eval(`document.getElementById('copyDlg').close(); return 1`);
+
+      // Select all keeps to the code block you're in, then the conversation, never the whole page.
+      await b.eval(`delete document.execCommand; return 1`);
+      const sel = () => b.eval(`return String(getSelection())`);
+      await b.eval(`const c = document.querySelector('#cFeed .code code'); const r = document.createRange(); r.setStart(c.firstChild.firstChild || c.firstChild, 1); r.collapse(true); getSelection().removeAllRanges(); getSelection().addRange(r); await new Promise(r => setTimeout(r, 100)); document.execCommand('selectAll'); await new Promise(r => setTimeout(r, 200)); return 1`);
+      t.check('Select all in a code block selects just the code', (await sel()).trim() === code.trim(), (await sel()).slice(0, 120));
+      await b.eval(`document.execCommand('selectAll'); await new Promise(r => setTimeout(r, 200)); return 1`);
+      const all = await sel(), title = await b.eval(`return document.getElementById('cTitle').textContent`);
+      t.check('again, the whole conversation and not the page around it', all.includes(code.trim()) && /Harvest Festival/.test(all) && !all.includes(title) && !/Watching live/.test(all), all.slice(0, 120));
+      await b.eval(`getSelection().removeAllRanges(); return 1`);
+    },
+  },
+  {
     name: 'limits',
     // An account runs out mid-chat: carry on as another account, hand it to Codex, or wait.
     async run(t) {

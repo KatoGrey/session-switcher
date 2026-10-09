@@ -395,7 +395,7 @@ async function codexSignIn(method = 'browser') {
       const b = e.target.closest('[data-cx]');
       if (!b) { if (e.target === $('cxdlg')) $('cxdlg').close(); return; }
       if (b.dataset.cx === 'close') return $('cxdlg').close();
-      if (b.dataset.cx === 'copy') { try { await navigator.clipboard.writeText(b.dataset.text); b.textContent = 'Copied'; setTimeout(() => { b.textContent = b.dataset.label; }, 1500); } catch { prompt('Copy this:', b.dataset.text); } return; }
+      if (b.dataset.cx === 'copy') { copyText(b.dataset.text, null).then(ok => { if (ok) { b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = b.dataset.label; }, 1500); } }); return; }
       if (b.dataset.cx === 'code') return codexSignIn('code');
       if (b.dataset.cx === 'browser') return codexSignIn('browser');
     }));
@@ -463,7 +463,7 @@ function codexMenu(anchor) {
   const extra = !c.main && c.id !== 'codex';
   showMenu(anchor, [
     { label: 'Check again', hint: 'sign-in, usage and chats', run: async () => { const r = await api('/api/codex/check', {}); S.codex = r.codex; S.usage = r.usage || S.usage; renderAll(); toast('Checked Codex.', 2000); } },
-    ...(S.codexAuthUrl && !c.signedIn ? [{ label: 'Copy the sign-in link', hint: 'for a private browser window', run: async () => { try { await navigator.clipboard.writeText(S.codexAuthUrl); toast('Copied.', 1500); } catch { prompt('Copy this link:', S.codexAuthUrl); } } }] : []),
+    ...(S.codexAuthUrl && !c.signedIn ? [{ label: 'Copy the sign-in link', hint: 'for a private browser window', run: () => copyText(S.codexAuthUrl, 'Copied the link.') }] : []),
     ...(c.signedIn && c.kind !== 'ollama' ? [{ label: 'Open chatgpt.com', hint: 'regular ChatGPT, in its own window', run: () => openWeb(c.id) }, { label: `Sign out of ${c.name || 'Codex'}`, run: async () => { if (!(await appConfirm(`Sign ${c.name || 'Codex'} out of its ChatGPT account?\n\nYour Codex chats stay on this computer.`, { ok: 'Sign out', danger: true }))) return; await api('/api/codex/logout', { account: c.id }); await reload(); toast(`${c.name || 'Codex'} is signed out.`); } }] : []),
     '-',
     { label: 'Add another Codex account', hint: 'a second ChatGPT sign-in; chats stay shared', run: () => addCodexAccount('chatgpt') },
