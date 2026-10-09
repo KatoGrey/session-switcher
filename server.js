@@ -1016,7 +1016,7 @@ function commanderSessions(filter = 'active', groupName = '') {
     if (!x.sessionId || x.parentKey || isCommanderId(x.sessionId)) continue;
     const k = x.sessionId.toLowerCase(), f = known.get(k);
     rows.set(k, {
-      id: x.sessionId, title: (f && f.s.title) || x.title || 'New chat', folder: (f && f.p.name) || x.folder || null, assistant: x.provider === 'codex' ? 'Codex' : 'Claude',
+      id: x.sessionId, title: (f && f.s.title) || x.title || 'New chat', folder: (f && f.p.name) || x.folder || null, cwd: (f && f.p.cwd) || x.cwd || null, assistant: x.provider === 'codex' ? 'Codex' : 'Claude',
       state: stateWord(x), where: x.source === 'app' ? 'Session Switcher' : x.source === 'terminal' ? 'a terminal' : 'another app', account: x.accountName || null,
       lastLine: chatLib.one(x.lastText || '', 400), lastPrompt: chatLib.one(x.lastPrompt || '', 200),
       pending: (x.pending || []).map(p => ({ requestId: p.requestId, tool: p.toolName, summary: p.summary || null, question: !!p.question })),
@@ -1026,7 +1026,7 @@ function commanderSessions(filter = 'active', groupName = '') {
   const addKnown = id => {
     const k = String(id).toLowerCase(), f = known.get(k);
     if (rows.has(k) || !f || isCommanderId(id)) return;
-    rows.set(k, { id: f.s.id, title: f.s.title, folder: f.p.name, assistant: f.s.provider === 'codex' ? 'Codex' : 'Claude', state: 'not running', where: null, account: f.s.lastOpened ? f.s.lastOpened.accountName : null, lastLine: '', lastPrompt: f.s.lastPrompt || f.s.firstPrompt || '', pending: [], updated: iso(f.s.updated) });
+    rows.set(k, { id: f.s.id, title: f.s.title, folder: f.p.name, cwd: f.p.cwd, assistant: f.s.provider === 'codex' ? 'Codex' : 'Claude', state: 'not running', where: null, account: f.s.lastOpened ? f.s.lastOpened.accountName : null, lastLine: '', lastPrompt: f.s.lastPrompt || f.s.firstPrompt || '', pending: [], updated: iso(f.s.updated) });
   };
   for (const g of view.groups) g.chats.forEach(addKnown);
   for (const [child, parent] of Object.entries(view.parents)) { addKnown(child); addKnown(parent); }
