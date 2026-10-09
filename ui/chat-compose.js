@@ -255,7 +255,8 @@ async function sendMessage() {
     } finally {
       if (gen === C.gen) {
         setState('readonly'); $c('cSend').disabled = false; setStatus('main', '');
-        refreshWatch();
+        // Give the CLI turn a beat to reach the transcript, then reconcile the feed.
+        setTimeout(() => { if (gen === C.gen && C.watch) refreshWatch(); }, 1800);
         $c('cText').focus();
       }
     }
