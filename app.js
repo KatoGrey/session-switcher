@@ -30,14 +30,14 @@ function togglePin(cwd) {
   const on = !S.pins.has(cwd);
   if (on) S.pins.add(cwd); else S.pins.delete(cwd);
   savePins(); renderNav(); if (S.view === 'folder' || S.view === 'hub') renderPage();
-  toast(on ? 'Pinned to the sidebar.' : 'Unpinned.', 1600);
+  toast(on ? `Pinned ${S.projects.find(p => p.cwd === cwd)?.name || 'it'} to the sidebar.` : 'Unpinned.', 4000, { label: 'Undo', run: () => togglePin(cwd) });
 }
 function toggleFav(id) {
   const k = String(id).toLowerCase(), on = !S.favs.has(k);
   if (on) S.favs.add(k); else S.favs.delete(k);
   store('favChats', JSON.stringify([...S.favs]));
   renderNav(); if (window.ChatUI && ChatUI.refreshFav) ChatUI.refreshFav();
-  toast(on ? 'Pinned to the sidebar.' : 'Unpinned.', 1600);
+  toast(on ? 'Pinned the chat to the sidebar.' : 'Unpinned the chat.', 4000, { label: 'Undo', run: () => toggleFav(id) });
 }
 const isFav = id => !!id && S.favs.has(String(id).toLowerCase());
 window.toggleFav = toggleFav; window.isFav = isFav;
@@ -62,9 +62,18 @@ async function api(p, body) {
 }
 
 let toastTimer;
-function toast(msg, ms = 5000) {
-  const t = $('toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+// A short message at the bottom. With an action ({ label, run }), it carries a button, like Undo.
+function toast(msg, ms = 5000, action = null) {
+  const t = $('toast');
+  t.textContent = msg;
+  if (action) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-act'; b.textContent = action.label;
+    b.onclick = () => { t.classList.remove('show'); wrap(action.run)(); };
+    t.append(' ', b);
+  }
+  t.classList.toggle('has-act', !!action);
+  t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), action ? Math.max(ms, 6000) : ms);
 }
 function wrap(fn) { return async (...args) => { try { return await fn(...args); } catch (err) { if (err.message !== 'Reloading…') toast(err.message, 9000); if (err.reason) reload().catch(() => {}); } return undefined; }; }
 

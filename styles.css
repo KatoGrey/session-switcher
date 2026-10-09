@@ -1594,3 +1594,19 @@ button.nav-h.fold[aria-expanded="false"] .fold-c{transform:rotate(-90deg)}
 .c-skel i.u{align-self:flex-end;width:42%;height:38px;border-radius:14px}
 .c-skel i.s{width:48%}
 @keyframes skel{from{background-position:100% 0}to{background-position:-100% 0}}
+#toast.has-act{pointer-events:auto;display:flex;align-items:center;gap:14px}
+.toast-act{border:0;background:none;color:var(--gilt);font:600 14px var(--f-body);padding:2px 4px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.toast-act:hover{color:var(--parch)}
+@media (max-width:760px){
+  .ac-win{flex:0 1 auto;min-width:0}
+  .ac-win small{overflow:hidden;text-overflow:ellipsis}
+  .usechip{min-width:0;flex:0 1 auto}
+}
+@media (max-width:760px){
+  .bar{gap:6px}
+  .ac-win small,.usechip .ac-caret{display:none}
+  .ac-win b{white-space:nowrap}
+  .usechip{gap:8px;padding:0 10px 0 6px}
+  .pulse{gap:7px}
+}
+@media (max-width:760px){.livepill .lp-bell{display:none}.livepill{padding:6px}}
