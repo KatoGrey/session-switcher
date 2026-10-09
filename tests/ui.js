@@ -695,13 +695,15 @@ module.exports = [
     async run(t) {
       const b = await t.open();
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2000);
-      const themes = await b.eval(`return Look.themes ? Look.themes().map(x => x.id) : ['crimson', 'sapphire', 'emerald', 'amethyst', 'amber', 'ocean', 'rose', 'graphite']`);
+      const themes = await b.eval(`return Look.THEMES.map(x => x.id)`);
       for (const mode of ['light', 'dark']) {
         for (const theme of themes) {
           await b.eval(`Look.set({ theme: ${JSON.stringify(theme)}, mode: ${JSON.stringify(mode)} }); return 1`); await sleep(120);
           const c = await b.eval(`const g = n => 'rgb(' + getComputedStyle(document.documentElement).getPropertyValue(n).trim().split(' ').join(',') + ')';
             const s = document.querySelector('.md strong');
-            return { faint: g('--c-716a63'), text: g('--c-ede6d9'), bg: getComputedStyle(document.body).backgroundColor, strong: s ? getComputedStyle(s).color : null }`);
+            // A theme may paint the page with a gradient (no background color); its base is the page color then.
+            const bg = getComputedStyle(document.body).backgroundColor;
+            return { faint: g('--c-716a63'), text: g('--c-ede6d9'), bg: /, 0\\)$|^transparent$/.test(bg) ? g('--c-0a090c') : bg, strong: s ? getComputedStyle(s).color : null }`);
           t.check(`${theme} ${mode}: faint text readable (≥4.5:1)`, contrast(c.faint, c.bg) >= 4.5, `${contrast(c.faint, c.bg).toFixed(2)}`);
           t.check(`${theme} ${mode}: body text clear (≥7:1)`, contrast(c.text, c.bg) >= 7, `${contrast(c.text, c.bg).toFixed(2)}`);
           if (c.strong) t.check(`${theme} ${mode}: bold text clear (≥7:1)`, contrast(c.strong, c.bg) >= 7, `${contrast(c.strong, c.bg).toFixed(2)}`);

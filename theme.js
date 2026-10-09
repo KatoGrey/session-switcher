@@ -10,6 +10,55 @@
   const COLORS = ['3d1a18', "000000", "050406", "0a090c", "0b090d", "0b0a0d", "0c0a0e", "0d0b0f", "0e0c10", "0f0d11", "100e12", "110e12", "110f13", "120f14", "121014", "121015", "141117", "151116", "17131a", "18141b", "19151c", "1a1405", "1a161d", "1b1519", "1b171e", "1c181f", "1d1920", "221d26", "241e29", "241f28", "2a242e", "2b1615", "2c2632", "3c5a96", "3d3443", "4664a0", "46679f", "5072ab", "5e2622", "5f2a26", "5f86c6", "6a91d2", "6c2e29", "6d302b", "6e2a25", "6f97d8", "716a63", "781412", "78342e", "7a332d", "7a3530", "7d1513", "7fa3dc", "7fb79a", "8c3a34", "8d3e37", "94423b", "9a4038", "9a463e", "9a928a", "a5463f", "a5564d", "a58be8", "a8544b", "a98f45", "a9c3ef", "b0544b", "b8655b", "c9aa4c", "c9daf6", "c9e8d6", "cf8274", "cfc6b6", "d08072", "d4b557", "d68a7c", "d68c7d", "d8b7aa", "d8e4f8", "d9bf74", "dcc790", "e2a596", "e6d3a0", "e6dccb", "e7b2a8", "e9d283", "e9e1d4", "eadfce", "ede6d9", "efdcd3", "f0dc95", "f1dc92", "f1dfd6", "f3e2d8", "f6ece2", "f6efe3", "ffffff"];
   const ON_ACCENT = new Set(['f6ece2', 'f6efe3', 'ffffff', 'f1dfd6', 'f3e2d8', 'efdcd3']);
 
+  /* ---------- the space saga themes ----------
+     Imperial (a capital ship's bridge: clean, exact, black and white with red signals) and Rebel (a
+     worn hangar: warm metal, flight-suit orange, yellow deck lines). Built to work in all day: real
+     type for reading, a label face for small caps, nothing that moves unless it means something.
+     Besides colors, a saga theme brings its own fonts, a hero display that reads the hub's live
+     counts, a still background in place of the petals, an emblem for the seal, sound cues (sounds/,
+     Kenney CC0) and its own words. Its `copy` map is keyed by the app's own English text; anything it
+     leaves out reads as usual. {n} is a number in words. */
+  const INTER = '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif';
+  const BARLOW = '"Barlow", system-ui, -apple-system, sans-serif';
+  const SAGA = [
+    {
+      id: 'imperial', name: 'Imperial', note: 'A capital ship’s bridge: black glass, white light panels and red signal lamps. Clean and exact.', family: 'saga', sky: 'stars', art: 'console',
+      accent: 357, sat: 1.45, gold: 210, goldSat: 0.1, surface: 225, surfSat: 0.12, ink: 220, inkSat: 0.12, codex: 192,
+      fonts: { display: '"Michroma", ' + INTER, caps: INTER, body: INTER, label: INTER },
+      emblem: '<path d="M20 1.6L36 10.8V29.2L20 38.4L4 29.2V10.8Z" style="fill:rgb(var(--c-0a090c));stroke:rgb(var(--c-ede6d9))" stroke-width="1.4"/><path d="M20 6.2L32 13.1V26.9L20 33.8L8 26.9V13.1Z" fill="none" style="stroke:rgb(var(--c-ede6d9))" stroke-opacity=".35" stroke-width=".8"/><path d="M20 31L31 12.5L20 16.4L9 12.5Z" style="fill:rgb(var(--c-ede6d9))"/><path d="M20 16.4V31" style="stroke:rgb(var(--c-a5463f))" stroke-width="1.6"/>',
+      copy: {
+        'Your move': 'Requires your command', 'Awaiting you': 'Awaiting orders', 'Right now': 'Deployed', 'At work': 'Units engaged',
+        'By folder': 'Sectors', 'Your projects': 'Systems under command', 'Pick up where you left off': 'Fleet log', 'Recent chats': 'Recent operations',
+        'Your plans': 'Capacity', 'Accounts and usage': 'Fleet reserves', 'Begin': 'Command', 'The hub': 'Bridge', 'Search every chat': 'Search fleet records',
+        'All quiet.': 'All systems nominal.', 'Pick up any chat below.': 'The fleet awaits your command.', 'Nothing needs you yet.': 'No unit requires you.',
+        '{n} chat awaits you.': '{n} unit awaits your orders.', '{n} chats await you.': '{n} units await your orders.',
+        '{n} chat at work.': '{n} unit engaged.', '{n} chats at work.': '{n} units engaged.', 'Working as': 'Commanding as',
+        'Claude & Codex, every chat and account in one place': 'Fleet command · every unit, every reserve', 'Search every chat…': 'Search fleet records…',
+        'Drifting petals': 'Viewport stars', 'A few slow petals behind the hub.': 'A few still stars behind the hub, as through the bridge viewport.', 'Show the drifting petals': 'Show the viewport stars', 'Hide the drifting petals': 'Hide the viewport stars', 'Live': 'Uplink',
+      },
+    },
+    {
+      id: 'rebel', name: 'Rebel', note: 'A hard-worn hangar: scuffed metal, flight-suit orange, yellow deck lines and a targeting computer.', family: 'saga', sky: 'stars', art: 'trench',
+      accent: 21, sat: 1.45, gold: 47, goldSat: 0.95, surface: 32, surfSat: 0.42, ink: 38, inkSat: 0.5, codex: 210,
+      fonts: { display: '"Barlow Condensed", ' + BARLOW, caps: '"Barlow Condensed", ' + BARLOW, body: BARLOW, label: '"Barlow Semi Condensed", ' + BARLOW },
+      emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--c-a5463f))"/><circle cx="20" cy="20" r="15.4" fill="none" style="stroke:rgb(var(--c-f6efe3))" stroke-width="1.2"/><path d="M8.5 8.5L16.6 16.6M31.5 8.5L23.4 16.6M8.5 31.5L16.6 23.4M31.5 31.5L23.4 23.4" style="stroke:rgb(var(--c-f6efe3))" stroke-width="3" stroke-linecap="round"/><circle cx="20" cy="20" r="4.6" style="fill:rgb(var(--c-f6efe3))"/><circle cx="20" cy="20" r="1.8" style="fill:rgb(var(--c-a5463f))"/>',
+      copy: {
+        'Your move': 'Incoming', 'Awaiting you': 'Waiting on you', 'Right now': 'In flight', 'At work': 'Squadrons engaged',
+        'By folder': 'Hangar bays', 'Your projects': 'The hangar', 'Pick up where you left off': 'Flight log', 'Recent chats': 'Recent sorties',
+        'Your plans': 'Fuel and munitions', 'Accounts and usage': 'Fleet reserves', 'Begin': 'Base', 'The hub': 'Briefing room', 'Search every chat': 'Search comms',
+        'All quiet.': 'All wings report in.', 'Pick up any chat below.': 'Pick a heading below, leader.', 'Nothing needs you yet.': 'Nobody’s calling for you yet.',
+        '{n} chat awaits you.': '{n} squadron is waiting on you.', '{n} chats await you.': '{n} squadrons are waiting on you.',
+        '{n} chat at work.': '{n} squadron in flight.', '{n} chats at work.': '{n} squadrons in flight.', 'Working as': 'Flying as',
+        'Claude & Codex, every chat and account in one place': 'Squadron command · every wing, every reserve', 'Search every chat…': 'Search comms…',
+        'Drifting petals': 'Starfield', 'A few slow petals behind the hub.': 'A few still stars behind the hub.', 'Show the drifting petals': 'Show the starfield', 'Hide the drifting petals': 'Hide the starfield', 'Live': 'Comms',
+      },
+    },
+  ];
+  for (const t of SAGA) {
+    t.sfx = { needs: `/sounds/${t.id}-needs.mp3`, reply: `/sounds/${t.id}-reply.mp3`, engage: `/sounds/${t.id}-engage.mp3` };
+    Object.assign(t.copy, { '✦': '', 'Turned off automatically if Windows is set to reduce motion.': 'It never moves, so it stays on when your device is set to reduce motion.' });
+  }
+
   // accent: hue for the main color · sat: its strength · gold: hue for highlights · surface: hue
   // and strength of backgrounds · ink: hue of text · codex: hue that marks Codex.
   const THEMES = [
@@ -21,6 +70,7 @@
     { id: 'ocean', name: 'Ocean', note: 'Teal and sea glass.', accent: 186, sat: 1.05, gold: 44, surface: 200, surfSat: 1.3, ink: 190, codex: 230 },
     { id: 'rose', name: 'Rose', note: 'Soft pink and blush.', accent: 336, sat: 1.1, gold: 38, surface: 320, surfSat: 1.1, ink: 20, codex: 212 },
     { id: 'graphite', name: 'Graphite', note: 'Quiet greys, no color cast.', accent: 212, sat: 0.32, gold: 45, surface: 220, surfSat: 0.35, ink: 220, codex: 212 },
+    ...SAGA,
   ];
   const DEFAULTS = { theme: 'crimson', mode: 'dark', text: 100, ui: 100, font: 'classic', bold: false, contrast: false };
   const FONTS = {
@@ -84,13 +134,13 @@
         if (light && l < 0.65) ll = Math.min(ll, 0.41);
         if (!light && l < 0.5) ll = Math.max(ll, 0.5); // and in dark ones, light enough
         if (contrast) ll = light ? ll * 0.6 : ll + (1 - ll) * 0.4;
-        return toRgb(t.ink, s * (t.id === 'graphite' ? 0.2 : 1), ll);
+        return toRgb(t.ink, s * (t.inkSat ?? (t.id === 'graphite' ? 0.2 : 1)), ll);
       }
       case 'accent': {
         const ll = light ? (l > 0.42 ? 0.42 - (l - 0.42) * 0.4 : l * 0.95) : (contrast && l > 0.5 ? l + 0.06 : l);
         return toRgb(h - 4 + t.accent, s * t.sat, ll);
       }
-      case 'gold': return toRgb(h - 45 + t.gold, s * (t.id === 'graphite' ? 0.7 : 1), light ? (l > 0.4 ? 0.4 - (l - 0.4) * 0.3 : l) : l);
+      case 'gold': return toRgb(h - 45 + t.gold, s * (t.goldSat ?? (t.id === 'graphite' ? 0.7 : 1)), light ? (l > 0.4 ? 0.4 - (l - 0.4) * 0.3 : l) : l);
       case 'codex': return toRgb(h - 217 + t.codex, s, light ? (l > 0.42 ? 0.42 - (l - 0.42) * 0.4 : l) : l);
       default: return toRgb(h, s, light ? (l > 0.42 ? 0.4 - (l - 0.42) * 0.4 : l) : l);
     }
@@ -98,7 +148,13 @@
 
   /* ---------- settings ---------- */
   const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: light)') : null;
-  function load() { try { return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem('look') || '{}') || {}) }; } catch { return { ...DEFAULTS }; } }
+  // Earlier names of the saga themes, so a saved choice still finds its theme.
+  const RENAMED = { vanguard: 'rebel', dominion: 'imperial', mirage: 'rebel' };
+  function load() {
+    let o; try { o = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem('look') || '{}') || {}) }; } catch { o = { ...DEFAULTS }; }
+    if (RENAMED[o.theme]) o.theme = RENAMED[o.theme];
+    return o;
+  }
   let cur = load();
   const isLight = (o = cur) => o.mode === 'light' || (o.mode === 'system' && !!(mq && mq.matches));
   const themeOf = id => THEMES.find(t => t.id === id) || THEMES[0];
@@ -114,8 +170,13 @@
     root.dataset.mode = light ? 'light' : 'dark';
     root.dataset.theme = t.id;
     st.colorScheme = light ? 'light' : 'dark';
-    const f = FONTS[o.font] || null;
-    for (const [k, v] of [['--f-body', f && f.body], ['--f-display', f && f.display], ['--f-caps', f && f.caps]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
+    // A theme's own fonts come first; Modern and Clean still swap the reading font (Clean the headings too).
+    const f = FONTS[o.font] || null, tf = t.fonts || {};
+    for (const [k, v] of [['--f-body', (f && f.body) || tf.body], ['--f-display', (f && f.display) || tf.display], ['--f-caps', (f && f.caps) || tf.caps], ['--f-label', tf.label]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
+    if (t.family) root.dataset.family = t.family; else delete root.dataset.family;
+    if (t.sky) root.dataset.sky = t.sky; else delete root.dataset.sky;
+    if (t.art) root.dataset.art = t.art; else delete root.dataset.art;
+    emblem(t);
     st.setProperty('--look-text', String(clamp(Number(o.text) || 100, 80, 150) / 100));
     st.setProperty('--look-ui', String(clamp(Number(o.ui) || 100, 75, 140) / 100));
     root.classList.toggle('look-bold', !!o.bold);
@@ -127,6 +188,20 @@
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = `rgb(${derive('0a090c', t, light, false).join(',')})`;
     document.dispatchEvent(new CustomEvent('lookchange', { detail: o }));
+  }
+  // The seal (logo) takes the theme's emblem; the original is kept to put back.
+  let sigil0 = null;
+  function emblem(t = themeOf(cur.theme)) {
+    const sym = document.getElementById('sigil'); if (!sym) return;
+    if (sigil0 === null) sigil0 = sym.innerHTML;
+    const want = t.emblem || sigil0;
+    if (sym.innerHTML !== want) sym.innerHTML = want;
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => emblem());
+  // The theme's words for a piece of the app's text, or the text itself. {n} and the like fill in from vars.
+  function say(text, vars) {
+    const c = themeOf(cur.theme).copy, s = (c && c[text]) ?? text;
+    return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m)) : s;
   }
   function set(changes) {
     cur = { ...cur, ...changes };
@@ -141,6 +216,6 @@
   }
   if (mq && mq.addEventListener) mq.addEventListener('change', () => { if (cur.mode === 'system') apply(); });
 
-  window.Look = { THEMES, DEFAULTS, get: () => ({ ...cur }), set, reset, apply, swatch, isLight };
+  window.Look = { THEMES, DEFAULTS, get: () => ({ ...cur }), set, reset, apply, swatch, isLight, say, theme: () => themeOf(cur.theme) };
   apply();
 })();

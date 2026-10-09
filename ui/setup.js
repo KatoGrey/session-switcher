@@ -21,7 +21,7 @@ function renderSetup(j) {
     <div class="prefs">
       ${t('sound', 'Chime when a chat needs you or replies', 'A soft bell. It doesn’t play for the chat you’re looking at.', true)}
       ${t('notify', 'Desktop notifications', `Shows a ${S.platform === 'darwin' ? 'macOS' : 'Windows'} notification when a chat needs you or replies while this window is in the background.`, true)}
-      ${t('petals', 'Drifting petals', 'A few slow petals behind the hub. Turned off automatically if Windows is set to reduce motion.', true)}
+      ${t('petals', esc(voice('Drifting petals')), `${esc(voice('A few slow petals behind the hub.'))} ${esc(voice('Turned off automatically if Windows is set to reduce motion.'))}`, true)}
       ${t('motion', 'Animations', 'World banners that open into their pages, cards that rise in, dials that draw themselves. Turned off automatically if Windows is set to reduce motion.', true)}
     </div>
     <p class="d-h" id="st-prefs">Preferences</p>
@@ -114,15 +114,18 @@ function renderLook() {
   const seg = (k, opts) => `<div class="lk-seg" role="radiogroup">${opts.map(([v, l, sub]) => `<button type="button" role="radio" aria-checked="${String(o[k]) === String(v)}" data-look="${k}" data-v="${v}">${l}${sub ? `<small>${sub}</small>` : ''}</button>`).join('')}</div>`;
   const card = t => {
     const c = Look.swatch(t.id, light);
-    return `<button type="button" class="lk-theme" role="radio" aria-checked="${o.theme === t.id}" data-look="theme" data-v="${t.id}" style="--sw-bg:${c.bg};--sw-card:${c.card};--sw-line:${c.line};--sw-ink:${c.ink};--sw-ash:${c.ash};--sw-acc:${c.accent};--sw-emb:${c.ember};--sw-gold:${c.gold};--sw-cx:${c.codex}">
-      <span class="sw" aria-hidden="true"><span class="sw-bar"><i></i><i></i><i></i></span><span class="sw-card"><b></b><em></em><em class="s"></em><span class="sw-btn"></span><span class="sw-dot"></span></span></span>
+    return `<button type="button" class="lk-theme${t.sky ? ' lk-saga' : ''}" role="radio" aria-checked="${o.theme === t.id}" data-look="theme" data-v="${t.id}" style="--sw-bg:${c.bg};--sw-card:${c.card};--sw-line:${c.line};--sw-ink:${c.ink};--sw-ash:${c.ash};--sw-acc:${c.accent};--sw-emb:${c.ember};--sw-gold:${c.gold};--sw-cx:${c.codex}${t.fonts ? `;--sw-font:${esc(t.fonts.display)}` : ''}">
+      <span class="sw" aria-hidden="true"${t.sky ? ` data-sky="${t.sky}"` : ''}><span class="sw-bar"><i></i><i></i><i></i></span><span class="sw-card"><b></b><em></em><em class="s"></em><span class="sw-btn"></span><span class="sw-dot"></span></span></span>
       <span class="lk-tn"><b>${esc(t.name)}</b><small>${esc(t.note)}</small></span></button>`;
   };
   $('setupBody').innerHTML = `
     <p class="d-h">Light or dark</p>
     ${seg('mode', [['dark', '☾ Dark'], ['light', '☀ Light'], ['system', '◐ Match device']])}
     <p class="d-h">Theme</p>
-    <div class="lk-themes" role="radiogroup" aria-label="Theme">${Look.THEMES.map(card).join('')}</div>
+    <div class="lk-themes" role="radiogroup" aria-label="Theme">${Look.THEMES.filter(t => !t.family).map(card).join('')}</div>
+    <p class="d-h">Space saga</p>
+    <p class="lk-saga-note">Command your chats like a fleet. These bring their own lettering, a sky behind the hub, short sound cues and a few words of their own.</p>
+    <div class="lk-themes" role="radiogroup" aria-label="Space saga themes">${Look.THEMES.filter(t => t.family === 'saga').map(card).join('')}</div>
     <p class="d-h">Text</p>
     <div class="lk-row"><label for="lkText"><b>Text size</b><small>Messages, documents and the message box</small></label>
       <div class="lk-range"><span class="a-sm" aria-hidden="true">A</span><input type="range" id="lkText" min="80" max="150" step="5" value="${o.text}" data-look="text"><span class="a-lg" aria-hidden="true">A</span><output id="lkTextV">${o.text}%</output></div></div>
@@ -147,7 +150,12 @@ $('setupBody').addEventListener('input', e => {
 });
 $('setupBody').addEventListener('click', e => {
   const b = e.target.closest('button[data-look]');
-  if (b) { Look.set({ [b.dataset.look]: b.dataset.v }); renderLook(); return; }
+  if (b) {
+    const engage = b.dataset.look === 'theme' && b.dataset.v !== Look.get().theme;
+    Look.set({ [b.dataset.look]: b.dataset.v }); renderLook();
+    if (engage && Local.sound) chime('engage');
+    return;
+  }
   if (e.target.closest('[data-look-reset]')) { Look.reset(); renderLook(); toast('Back to the original look.', 2000); }
 });
 $('setupBody').addEventListener('change', e => {
@@ -228,12 +236,17 @@ async function setLocal(k, on) {
 }
 function applyMotion() { document.body.classList.toggle('motion', motionOk()); }
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => { applyMotion(); petals(); });
+// Behind the hub: drifting petals, or a saga theme's sky (a few still stars).
+// A sky never moves, so it still shows when the device asks for less motion.
 function petals() {
-  const box = $('petals');
-  const on = Local.petals && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const box = $('petals'), sky = Look.theme().sky || '';
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const on = Local.petals && (!still || !!sky);
   document.body.classList.toggle('no-petals', !on);
-  if (!on) { box.innerHTML = ''; return; }
-  if (box.children.length) return;
+  if (!on) { box.innerHTML = ''; delete box.dataset.kind; return; }
+  if (box.children.length && box.dataset.kind === (sky || 'petals')) return;
+  box.dataset.kind = sky || 'petals';
+  if (sky) { box.innerHTML = skyHtml(sky); return; }
   let h = '';
   for (let i = 0; i < 9; i++) {
     const r = n => ((hash(`petal${i}${n}`) % 1000) / 1000);
@@ -241,12 +254,57 @@ function petals() {
   }
   box.innerHTML = h;
 }
+// The same scatter every time for a given seed (so the sky doesn't jump between visits).
+function seeded(seed) {
+  let a = hash(seed);
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), a | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+// A tile of stars as one background (no element per star), repeated across a layer.
+function starTile(seed, size, n, big) {
+  const r = seeded(`stars${seed}`), dots = [];
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(r() * size), y = Math.round(r() * size), tint = r(), d = 0.5 + r() * big * 0.6;
+    const col = tint > 0.9 ? 'var(--gilt)' : tint > 0.8 ? 'var(--ember-soft)' : 'var(--parch)';
+    dots.push(`radial-gradient(circle at ${x}px ${y}px, ${col} 0 ${d.toFixed(2)}px, transparent ${(d + 0.9).toFixed(2)}px)`);
+  }
+  return `--tile:${size}px;background-image:${dots.join(',')};background-size:${size}px ${size}px`;
+}
+function skyHtml() {
+  return `<div class="sky-stars" style="${starTile('a', 487, 18, 1)}"></div><div class="sky-stars far" style="${starTile('b', 613, 10, 1.4)}"></div>`;
+}
+// Text written into the page itself (index.html) that a saga theme rewords.
+function sayStatic() {
+  for (const el of document.querySelectorAll('.wordmark small, .seek .s-t')) {
+    if (el.dataset.say === undefined) el.dataset.say = el.textContent;
+    el.textContent = voice(el.dataset.say);
+  }
+}
+let lookTheme = Look.get().theme;
+document.addEventListener('lookchange', () => {
+  const th = Look.get().theme; if (th === lookTheme) return;
+  lookTheme = th;
+  sayStatic(); petals(); renderLivePill(); renderAll();
+});
 
 /* ---------- alerts: chime, notification, title ---------- */
 let actx = null;
 document.addEventListener('pointerdown', () => { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch { /* no audio */ } }, { once: true });
+// A saga theme plays its own short clips (sounds/, Kenney CC0) instead of the bell.
+const Clips = new Map();
+function clip(url) {
+  let p = Clips.get(url);
+  if (!p) { p = fetch(url).then(r => r.arrayBuffer()).then(b => actx.decodeAudioData(b)); Clips.set(url, p); p.catch(() => Clips.delete(url)); }
+  p.then(buf => {
+    const src = actx.createBufferSource(), g = actx.createGain();
+    src.buffer = buf; src.playbackRate.value = 0.97 + Math.random() * 0.06; g.gain.value = 0.32;
+    src.connect(g); g.connect(actx.destination); src.start();
+  }).catch(() => { /* no audio */ });
+}
 function chime(kind) {
   if (!actx) return;
+  const fx = Look.theme().sfx;
+  if (fx) { if (fx[kind]) { if (actx.state === 'suspended') actx.resume(); clip(fx[kind]); } return; }
+  if (kind === 'engage') return;
   try {
     if (actx.state === 'suspended') actx.resume();
     const t0 = actx.currentTime + 0.02;
@@ -297,7 +355,7 @@ function notify(kind, x) {
 function renderLivePill() {
   const p = $('livepill');
   p.classList.toggle('off', !S.connected);
-  $('lpText').textContent = S.connected ? 'Live' : 'Reconnecting';
+  $('lpText').textContent = S.connected ? voice('Live') : 'Reconnecting';
   const b = $('lpBell');
   b.textContent = Local.sound || Local.notify ? 'Alerts on' : 'Alerts off';
   b.className = `lp-bell ${Local.sound || Local.notify ? 'on' : ''}`;
@@ -305,5 +363,5 @@ function renderLivePill() {
 $('livepill').addEventListener('click', e => showMenu(e.currentTarget, [
   { label: Local.sound ? 'Turn the chime off' : 'Turn the chime on', hint: 'when a chat needs you or replies', run: () => setLocal('sound', !Local.sound) },
   { label: Local.notify ? 'Turn desktop notifications off' : 'Turn desktop notifications on', hint: 'while this window is in the background', run: () => setLocal('notify', !Local.notify) },
-  { label: Local.petals ? 'Hide the drifting petals' : 'Show the drifting petals', run: () => setLocal('petals', !Local.petals) },
+  { label: voice(Local.petals ? 'Hide the drifting petals' : 'Show the drifting petals'), run: () => setLocal('petals', !Local.petals) },
 ]));

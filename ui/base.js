@@ -85,6 +85,8 @@ function toast(msg, ms = 5000, action = null) {
 }
 function wrap(fn) { return async (...args) => { try { return await fn(...args); } catch (err) { if (err.message !== 'Reloading…') toast(err.message, 9000); if (err.reason) reload().catch(() => {}); } return undefined; }; }
 
+// A saga theme's own words for a piece of text (theme.js); other themes keep the text as it is.
+const voice = (text, vars) => Look.say(text, vars);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const hash = s => { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 const glyphFor = name => GLYPHS[hash(name) % GLYPHS.length];

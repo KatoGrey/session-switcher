@@ -315,7 +315,7 @@ The Codex card does the same for **chatgpt.com**.
 Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in `Ctrl+K`):
 
 - **Light or dark:** Dark, Light, or Match device (it follows Windows or Android).
-- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite. Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
+- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus two space saga themes (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
 - **Text size** (80–150%): messages, documents and the message box.
 - **Reading font:** Classic (the serif), Modern (a clean sans for reading), or Clean (sans headings too).
 - **Bold text** and **Higher contrast**. Light themes keep small grey text (dates, hints, labels) dark enough to read.
@@ -323,6 +323,26 @@ Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in 
 - A live preview shows a reply and a message in your choices; **Back to the original look** undoes everything.
 
 Appearance is saved on each device, so your phone and your PC can look different.
+
+### Space saga themes
+
+Two more themes turn the hub into a command deck. Each has a light and a dark version, and Codex keeps its own color in both.
+
+| Theme | Feel | Lettering | In the hero |
+|---|---|---|---|
+| **Imperial** | A capital ship's bridge: black glass, white light panels, red signal lamps. Clean and exact. | Michroma titles, Inter for everything else | A wall of light panels over a console: readouts for orders, reports and units engaged, and a row of signal lamps (red needs your OK, white has replied, green is at work) |
+| **Rebel** | A hard-worn hangar: scuffed metal, flight-suit orange, squadron stripes, yellow deck lines | Barlow Condensed titles and names, Barlow for reading, Barlow Semi Condensed labels | A targeting computer flying down a trench, with readouts for waiting, in flight and standing by |
+
+Beyond colors, a saga theme brings:
+
+- **Its own lettering, all of it readable:** a display face for titles, a reading face for messages and a label face for the small uppercase labels (monospace in the other themes; code stays monospace). **Modern** and **Clean** still swap the reading font (Clean the headings too).
+- **A display in the hero** that reads the same live counts as the headline. Imperial's needs-you lamps pulse slowly and Rebel's trench scrolls; both hold still when **Animations** is off or your device asks for less motion.
+- **Its own panels and markings:** Imperial cards carry a lit edge in red (needs you) or white (at work), with rectangular signal lamps in place of dots. Rebel cards carry squadron stripes, with hazard stripes when a chat needs you. The default theme's ornaments (fleurons, the turning seal, dial numerals, painted project art) are left out, and project pictures are toned to match. Each theme has its own emblem in place of the seal.
+- **A few still stars** behind the hub in place of the petals. The petals switch turns them off, and its label changes with the theme.
+- **Its own words,** for example "Awaiting you" becomes "Awaiting orders" (Imperial) or "Waiting on you" (Rebel), and "Accounts and usage" becomes "Fleet reserves". Each theme keeps its words in one `copy` map in `theme.js`, keyed by the app's own text, so they're easy to change. The other themes keep the usual words.
+- **Short sound cues** in place of the bell when a chat needs you or replies, plus one when you pick the theme. They follow the chime setting.
+
+Screenshots are in [`docs/themes/`](docs/themes/). They use made-up chats and projects, and the chat window is shown in its read-only watch view. The fonts are under the SIL Open Font License (`fonts/OFL.txt`). The sounds are from Kenney's CC0 packs; `sounds/LICENSE-kenney.txt` lists which pack and file each comes from.
 
 ## Alerts
 

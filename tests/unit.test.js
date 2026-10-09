@@ -17,19 +17,19 @@ const PERSONAL = ['accounts.json', 'accounts.json.bak', 'history.json', 'chat-na
 
 test('share copy: personal files stay out', () => {
   const dir = tmp();
-  for (const f of ['server.js', 'app.js', 'index.html', 'styles.css', 'README.md', 'lib/chat.js', 'Session Switcher.command', 'macos/icon.icns']) put(dir, f);
+  for (const f of ['server.js', 'app.js', 'index.html', 'styles.css', 'README.md', 'lib/chat.js', 'Session Switcher.command', 'macos/icon.icns', 'sounds/rebel-reply.mp3', 'fonts/michroma.woff2']) put(dir, f);
   for (const f of PERSONAL) put(dir, f);
   put(dir, 'tests/unit.test.js');
   const names = appFiles(dir).map(f => f.name);
   for (const f of PERSONAL) assert.ok(!names.includes(f), `${f} must not be shared`);
   assert.ok(!names.some(n => n.startsWith('tests/')), 'the tests aren’t needed to run the app');
-  for (const f of ['server.js', 'lib/chat.js', 'Session Switcher.command', 'macos/icon.icns']) assert.ok(names.includes(f), `${f} should be shared`);
+  for (const f of ['server.js', 'lib/chat.js', 'Session Switcher.command', 'macos/icon.icns', 'sounds/rebel-reply.mp3', 'fonts/michroma.woff2']) assert.ok(names.includes(f), `${f} should be shared`);
 });
 
 test('share copy: this repo’s own files are all safe to share', () => {
   const names = appFiles(APP).map(f => f.name);
   assert.ok(names.includes('server.js') && names.includes('index.html'));
-  for (const n of names) assert.match(n, /\.(js|html|css|md|vbs|bat|command|ico|icns|woff2|txt)$/i, `${n} has an unexpected type`);
+  for (const n of names) assert.match(n, /\.(js|html|css|md|vbs|bat|command|ico|icns|woff2|mp3|txt)$/i, `${n} has an unexpected type`);
   assert.ok(!names.some(n => /\.json$|\.log$|\.bak$|keystore/i.test(n)), 'no settings, logs or keys');
 });
 

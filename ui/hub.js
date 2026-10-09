@@ -75,10 +75,10 @@ function renderNav() {
       <span class="seal-t"><span class="seal-k">${blocked ? 'Blocked' : 'Working as'}</span><span class="seal-n">${esc(a ? a.name : 'No account')}</span><span class="seal-e">${esc(a && a.signedIn ? (a.email || 'Signed in') : 'Not signed in')}</span></span>
       <span class="seal-caret">${ICON.caret}</span>
     </button>
-    <div class="nav-h">Begin</div>
-    <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">The hub</span>${A ? `<span class="tag gilt">${A}</span>` : W ? `<span class="tag">${W}</span>` : ''}</button>
-    <button class="nav-i" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">Recent chats</span><span class="count">${total}</span></button>
-    <button class="nav-i" data-view="palette" aria-current="${S.view === 'search'}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t">Search every chat</span><span class="count">Ctrl K</span></button>
+    <div class="nav-h">${esc(voice('Begin'))}</div>
+    <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">${esc(voice('The hub'))}</span>${A ? `<span class="tag gilt">${A}</span>` : W ? `<span class="tag">${W}</span>` : ''}</button>
+    <button class="nav-i" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">${esc(voice('Recent chats'))}</span><span class="count">${total}</span></button>
+    <button class="nav-i" data-view="palette" aria-current="${S.view === 'search'}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t">${esc(voice('Search every chat'))}</span><span class="count">Ctrl K</span></button>
     <button class="nav-i nav-new" data-view="newproject"><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New project</span></button>
     ${fresh.length ? `<div class="nav-h prov fresh"><span class="pmark" aria-hidden="true"></span>No chats yet<span class="count">${fresh.length}</span></div>${fresh.map(p => `<button class="nav-i" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}"><span class="glyph" aria-hidden="true">${glyphFor(p.name)}</span><span class="ni-t">${esc(p.name)}</span><span class="tag ghost">New</span></button>`).join('')}` : ''}
     ${pinnedHtml}
@@ -104,15 +104,15 @@ function heroHtml() {
   const Q = quietOpen().filter(x => x.source === 'app' && x.phase !== 'ended').length;
   let h, em;
   if (A.length) {
-    h = `${nword(A.length)} ${A.length === 1 ? 'chat awaits' : 'chats await'} you.`;
+    h = voice(A.length === 1 ? '{n} chat awaits you.' : '{n} chats await you.', { n: nword(A.length) });
     const parts = [];
     if (N) parts.push(N === 1 ? 'one needs your OK' : `${nword(N, false)} need your OK`);
     if (R) parts.push(R === 1 ? 'one has replied' : `${nword(R, false)} have replied`);
     if (W) parts.push(W === 1 ? 'one is still at work' : `${nword(W, false)} are still at work`);
     em = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}.` : `${parts[0]}.`;
     em = em[0].toUpperCase() + em.slice(1);
-  } else if (W) { h = `${nword(W)} ${W === 1 ? 'chat' : 'chats'} at work.`; em = 'Nothing needs you yet.'; }
-  else { h = 'All quiet.'; em = Q ? (Q === 1 ? 'One chat is open and ready.' : `${nword(Q)} chats are open and ready.`) : 'Pick up any chat below.'; }
+  } else if (W) { h = voice(W === 1 ? '{n} chat at work.' : '{n} chats at work.', { n: nword(W) }); em = voice('Nothing needs you yet.'); }
+  else { h = voice('All quiet.'); em = Q ? (Q === 1 ? 'One chat is open and ready.' : `${nword(Q)} chats are open and ready.`) : voice('Pick up any chat below.'); }
 
   let say = '';
   if (a) {
@@ -140,17 +140,37 @@ function heroHtml() {
   if (!first && latest && canLaunch(a)) acts.push(`<button class="btn" data-hero="latest" data-sid="${esc(latest[0].id)}" title="${esc(latest[0].title)}">Continue “${esc(latest[0].title.length > 34 ? `${latest[0].title.slice(0, 33)}…` : latest[0].title)}”</button>`);
   const today = new Date();
   return `<section class="hero" aria-label="Right now">
-    <svg class="hero-sigil" aria-hidden="true"><use href="#sigil"/></svg>
+    <svg class="hero-sigil" aria-hidden="true"><use href="#sigil"/></svg>${heroArt({ N, R, W, Q })}
     <div class="hero-in">
       <div>
-        <p class="eyebrow">${esc(today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · <span data-clock>${esc(clock(today))}</span></p>
+        <p class="eyebrow">${voice('@where') !== '@where' ? `${esc(voice('@where'))} · ` : ''}${esc(today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · <span data-clock>${esc(clock(today))}</span></p>
         <h1>${esc(h)}<em>${esc(em)}</em></h1>
         ${say ? `<p>${say}</p>` : ''}
         ${acts.length ? `<div class="hero-act">${acts.join('')}</div>` : ''}
       </div>
-      ${a ? `<div class="stamp">Working as<b>${esc(a.name)}</b>${a.plan ? esc(a.plan) : ''}</div>` : ''}
+      ${a ? `<div class="stamp">${esc(voice('Working as'))}<b>${esc(a.name)}</b>${a.plan ? esc(a.plan) : ''}</div>` : ''}
     </div>
   </section>`;
+}
+
+// A saga theme's display in the hero, drawn from the same counts as the headline.
+function heroArt({ N, R, W, Q }) {
+  const art = Look.theme().art;
+  const pad = n => String(n).padStart(2, '0');
+  if (art === 'console') {
+    // A bridge console: a wall of light panels, three readouts and a row of signal lamps (red: needs
+    // your OK, white: replied, green: at work).
+    const lamps = Array.from({ length: 18 }, (_, i) => `<i class="${i < N ? 'red' : i < N + R ? 'white' : i < N + R + W ? 'green' : ''}"></i>`).join('');
+    return `<div class="hero-art console" aria-hidden="true"><div class="ha-wall"></div>
+      <div class="ha-read"><span class="${N ? 'hot' : ''}"><b>${pad(N)}</b>Orders</span><span><b>${pad(R)}</b>Reports</span><span><b>${pad(W)}</b>Engaged</span></div>
+      <div class="ha-lamps">${lamps}</div></div>`;
+  }
+  if (art === 'trench') {
+    // A targeting computer: the run down the trench, with the board's counts as its readout.
+    return `<div class="hero-art trench" aria-hidden="true"><div class="ha-view"><div class="ha-floor"></div><div class="ha-wall l"></div><div class="ha-wall r"></div><i class="ha-reticle"></i></div>
+      <div class="ha-read"><span class="${N + R ? 'hot' : ''}">Waiting<b>${pad(N + R)}</b></span><span>In flight<b>${pad(W)}</b></span><span>Standing by<b>${pad(Q)}</b></span></div></div>`;
+  }
+  return '';
 }
 
 function guardHtml() {
@@ -449,7 +469,7 @@ function rowHtml(s, folderName, hit) {
 }
 
 function secHead(eyebrow, title, extra = '') {
-  return `<div class="sec-h"><p class="eyebrow">✦ ${esc(eyebrow)}</p><h2>${esc(title)}</h2>${extra ? `<div class="sec-x">${extra}</div>` : ''}</div>`;
+  return `<div class="sec-h"><p class="eyebrow">${esc(voice('✦'))} ${esc(voice(eyebrow))}</p><h2>${esc(voice(title))}</h2>${extra ? `<div class="sec-x">${extra}</div>` : ''}</div>`;
 }
 
 // The chats that were open in the app window when it last closed: reopen them in one click.

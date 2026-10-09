@@ -406,6 +406,7 @@ window.__mobileBack = () => {
 
 applyMotion();
 petals();
+sayStatic();
 renderLivePill();
 if (SOLO) document.body.classList.add('solo');
 wrap(async () => {
