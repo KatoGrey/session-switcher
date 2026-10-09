@@ -25,3 +25,7 @@ mobile/android/*.keystore
 
 # Files attached in chats run inside this folder
 attachments/
+
+# Xcode
+mobile/ios/**/xcuserdata/
+*.xcuserstate

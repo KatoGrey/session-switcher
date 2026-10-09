@@ -119,9 +119,20 @@ function when(iso) {
 }
 const current = () => S.accounts.find(a => a.id === S.acct) || S.accounts[0];
 const ringOf = a => RINGS[Math.max(0, S.accounts.indexOf(a)) % RINGS.length];
-const ringById = id => { if (id === 'codex') return CODEX_RING; const a = S.accounts.find(x => x.id === id); return a ? ringOf(a) : 'var(--ash-2)'; };
+// Codex accounts: the main one plus any extra ChatGPT or Ollama accounts. S.codex is the active one
+// (new Codex chats run as it); S.codex.accounts lists them all. Each keeps a Codex-family color.
+const CODEX_RINGS = [CODEX_RING, '#5fc4c9', '#8f7fe0', '#7fb79a', '#c9a24c'];
+const codexAccts = () => (S.codex ? (S.codex.accounts && S.codex.accounts.length ? S.codex.accounts : [S.codex]) : []);
+const codexAcct = id => codexAccts().find(x => x.id === id) || null;
+const codexRing = id => CODEX_RINGS[Math.max(0, codexAccts().findIndex(x => x.id === id)) % CODEX_RINGS.length];
+async function setCodexActive(id) {
+  if (!S.codex || !id || S.codex.id === id || !codexAcct(id)) return;
+  const r = await api('/api/codex/active', { id });
+  S.codex = r.codex; renderAll();
+}
+const ringById = id => { if (codexAcct(id)) return codexRing(id); const a = S.accounts.find(x => x.id === id); return a ? ringOf(a) : 'var(--ash-2)'; };
 // A Claude account, or Codex shown as an account (for headers and the usage chip).
-const acctById = id => (id === 'codex' && S.codex ? { id: 'codex', name: 'Codex', email: S.codex.email, plan: S.codex.plan, signedIn: S.codex.signedIn, codex: true } : S.accounts.find(x => x.id === id) || null);
+const acctById = id => (codexAcct(id) ? (x => ({ id: x.id, name: x.name, email: x.email, plan: x.plan, signedIn: x.signedIn, codex: true }))(codexAcct(id)) : S.accounts.find(x => x.id === id) || null);
 const codexReady = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
 const isCodex = s => !!(s && s.provider === 'codex');
 const canLaunch = a => !!a && a.signedIn && a.lock.ok;
@@ -284,7 +295,7 @@ function openActivity(x) {
 /* ---------- data ---------- */
 async function loadState() {
   const j = await api('/api/state');
-  S.accounts = j.accounts; S.dryRun = j.dryRun; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null;
+  S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null;
   const saved = store('acct');
   if (!S.accounts.some(a => a.id === S.acct)) S.acct = S.accounts.some(a => a.id === saved) ? saved : S.accounts[0].id;
 }
@@ -630,30 +641,40 @@ function dialShell(a, u, cur, blocked, locked, detail) {
 }
 
 // Codex, shown beside the Claude accounts.
-function codexCard() {
-  const c = S.codex;
-  const u = usageOf('codex');
+function codexCard(c = S.codex) {
+  const u = usageOf(c.id);
+  const ollama = c.kind === 'ollama', many = codexAccts().length > 1, on = many && S.codex && S.codex.id === c.id;
+  const da = `data-acct="${esc(c.id)}"`;
   let detail, acts = [];
   if (c.installed === false) {
     detail = '<p class="dc-msg">Codex is OpenAI’s coding agent. Install it to work on these folders with your ChatGPT plan too, with pictures shown as Codex makes them.</p>';
     acts.push('<button class="btn prime sm" data-act="codex-install">Install Codex</button>');
+  } else if (ollama && !c.signedIn) {
+    detail = `<p class="dc-msg">${esc(c.error || 'Codex runs through the Ollama app on this computer, with cloud models from your ollama.com account.')}</p>`;
+    acts.push(`<button class="btn prime sm" data-act="codex-check" ${da}>Check again</button>`);
+    acts.push(`<button class="btn quiet sm" data-act="codex-signin" ${da}>ollama signin</button>`);
   } else if (!c.signedIn) {
     detail = c.signingIn ? '<p class="dc-msg">Finish signing in to ChatGPT (on OpenAI’s site) in your browser. This card updates by itself when you’re done.</p>'
       : `<p class="dc-msg">${c.error ? esc(c.error) : 'Codex uses your ChatGPT account (OpenAI), separate from your Claude accounts. Sign in to use its plan here.'}</p>`;
-    acts.push(`<button class="btn prime sm" data-act="codex-signin">${c.signingIn ? 'Open the sign-in page again' : 'Sign in with ChatGPT'}</button>`);
+    acts.push(`<button class="btn prime sm" data-act="codex-signin" ${da}>${c.signingIn ? 'Open the sign-in page again' : 'Sign in with ChatGPT'}</button>`);
+  } else if (ollama) {
+    const models = (c.cloudModels || []).slice(0, 6);
+    detail = `${c.error ? `<p class="dc-msg">${esc(c.error)}</p>` : ''}<p class="dc-msg">${models.length ? `Cloud models: ${models.map(m => `<code>${esc(m)}</code>`).join(' ')}` : 'No cloud models pulled yet. Pick one in the model picker, or run <code>ollama pull &lt;model&gt;:cloud</code>.'}</p><p class="dc-msg"><small>ollama.com shows its own usage limits; there’s no way to read them here.</small></p>`;
+    acts.push(`<button class="btn prime sm" data-act="codex-new" ${da} aria-haspopup="menu" aria-expanded="false">New Ollama chat</button>`);
+    acts.push(`<button class="btn quiet sm" data-act="web" ${da} title="Your ollama.com usage and settings">ollama.com</button>`);
   } else {
     detail = usageDetail(u, true, '');
-    acts.push('<button class="btn prime sm" data-act="codex-new" aria-haspopup="menu" aria-expanded="false">New Codex chat</button>');
-    acts.push(`<button class="btn quiet sm" data-act="usage" data-acct="codex" ${u && u.checking ? 'disabled' : ''}>${u && u.checking ? 'Checking…' : 'Check usage'}</button>`);
-    acts.push('<button class="btn quiet sm" data-act="web" data-acct="codex" title="Regular ChatGPT, in its own window">chatgpt.com</button>');
+    acts.push(`<button class="btn prime sm" data-act="codex-new" ${da} aria-haspopup="menu" aria-expanded="false">New Codex chat</button>`);
+    acts.push(`<button class="btn quiet sm" data-act="usage" ${da} ${u && u.checking ? 'disabled' : ''}>${u && u.checking ? 'Checking…' : 'Check usage'}</button>`);
+    acts.push(`<button class="btn quiet sm" data-act="web" ${da} title="Regular ChatGPT, in its own window">chatgpt.com</button>`);
   }
-  acts.push('<span class="spacer"></span><button class="icon" data-act="codex-more" aria-haspopup="menu" aria-expanded="false" aria-label="More for Codex">' + ICON.more + '</button>');
+  acts.push(`<span class="spacer"></span><button class="icon" data-act="codex-more" ${da} aria-haspopup="menu" aria-expanded="false" aria-label="More for ${esc(c.name)}">` + ICON.more + '</button>');
   const checked = [u && u.at ? `Usage checked ${agoL(u.at)}` : '', c.checkedAt ? `sign-in checked ${agoL(c.checkedAt)}` : ''].filter(Boolean).join(' · ');
-  return `<article class="dial-card codex-card" style="--ring:${CODEX_RING}">
-    <div class="dial-wrap">${dialSvg(c.signedIn ? u : null)}<div class="legend"><span><i class="l5"></i>5 hours</span><span><i class="lw"></i>week</span><span><i class="ln"></i>time passed</span></div></div>
+  return `<article class="dial-card codex-card${on ? ' on' : ''}" style="--ring:${codexRing(c.id)}">
+    <div class="dial-wrap">${dialSvg(c.signedIn && !ollama ? u : null)}<div class="legend"><span><i class="l5"></i>5 hours</span><span><i class="lw"></i>week</span><span><i class="ln"></i>time passed</span></div></div>
     <div class="dc-body">
-      <div class="dc-k">${c.plan ? `<span class="tag codex">${esc(c.plan)}</span>` : ''}<span class="eyebrow">OpenAI</span></div>
-      <h3 class="dc-name">Codex</h3>
+      <div class="dc-k">${c.plan ? `<span class="tag codex">${esc(c.plan)}</span>` : ''}${on ? '<span class="tag gold">new Codex chats</span>' : ''}<span class="eyebrow">${ollama ? 'Ollama · through Codex' : 'OpenAI'}</span></div>
+      <h3 class="dc-name">${esc(c.name || 'Codex')}</h3>
       <p class="dc-who">${c.signedIn ? esc(c.email || 'Signed in') : c.installed === false ? 'Not installed' : 'Not signed in'}</p>
       ${detail}
       ${checked ? `<p class="dc-checked">${esc(checked)}</p>` : ''}
@@ -673,15 +694,17 @@ async function codexSignIn(method = 'browser') {
       if (b.dataset.cx === 'code') return codexSignIn('code');
       if (b.dataset.cx === 'browser') return codexSignIn('browser');
     }));
-    $('cxdlg').addEventListener('close', () => { if (S.codex && S.codex.signingIn && !S.codex.signedIn) api('/api/codex/login-cancel', {}).catch(() => {}); });
+    $('cxdlg').addEventListener('close', () => { if (S.codex && S.codex.signingIn && !S.codex.signedIn) api('/api/codex/login-cancel', { account: S.codex.id }).catch(() => {}); });
   }
-  $('cxBody').innerHTML = '<h3 id="cxTitle">Sign in to Codex</h3><p class="loading">Asking Codex for the ChatGPT sign-in page…</p>';
+  const who = esc((S.codex && S.codex.name) || 'Codex');
+  $('cxBody').innerHTML = `<h3 id="cxTitle">Sign in to ${who}</h3><p class="loading">Asking Codex for the ChatGPT sign-in page…</p>`;
   if (!$('cxdlg').open) $('cxdlg').showModal();
   let r;
-  try { r = await api('/api/codex/login', { method }); }
-  catch (err) { $('cxBody').innerHTML = `<h3 id="cxTitle">Sign in to Codex</h3><p class="cx-err">${esc(err.message)}</p><div class="d-row"><button class="btn" data-cx="close">Close</button></div>`; return; }
+  try { r = await api('/api/codex/login', { method, account: S.codex && S.codex.id }); }
+  catch (err) { $('cxBody').innerHTML = `<h3 id="cxTitle">Sign in to ${who}</h3><p class="cx-err">${esc(err.message)}</p><div class="d-row"><button class="btn" data-cx="close">Close</button></div>`; return; }
+  if (r.ollama) { $('cxBody').innerHTML = `<h3 id="cxTitle">Sign in to Ollama</h3><p>Finish <code>ollama signin</code> in the ${esc(r.how || 'terminal')} that just opened, then click <b>Check again</b> on the ${who} card.</p><div class="d-row"><button class="btn" data-cx="close">Close</button></div>`; return; }
   S.codexAuthUrl = r.authUrl || r.verificationUrl;
-  const head = '<h3 id="cxTitle">Sign in to Codex</h3><p>Codex uses your <b>ChatGPT</b> account, not Claude. The sign-in happens on OpenAI’s site:</p>';
+  const head = `<h3 id="cxTitle">Sign in to ${who}</h3><p>Codex uses your <b>ChatGPT</b> account, not Claude. The sign-in happens on OpenAI’s site${codexAccts().length > 1 ? `. Sign in with the ChatGPT account <b>${who}</b> should use; with an account switcher in your browser, switch to it first, or copy the link into a private window` : ''}:</p>`;
   if (r.type === 'chatgptDeviceCode') {
     $('cxBody').innerHTML = `${head}
       <p class="cx-host"><span class="glyph" aria-hidden="true">✦</span>${esc(r.host)}</p>
@@ -722,12 +745,28 @@ function codexNewMenu(anchor) {
   if (!folders.length) return toast('There are no folders yet. Open a folder in Claude Code or Codex once and it appears here.');
   showMenu(anchor, folders.map(p => ({ label: p.name, hint: p.cwd, run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: 'codex' }) })));
 }
+async function addCodexAccount(kind) {
+  const name = (prompt(kind === 'ollama' ? 'Name for the Ollama account:' : 'Name for this Codex account (for example “Work” or “Personal”):', kind === 'ollama' ? 'Ollama' : '') || '').trim();
+  if (!name) return;
+  const r = await api('/api/codex/accounts', { name, kind });
+  S.codex = r.codex; renderAll();
+  if (kind === 'ollama') toast(S.codex.signedIn ? `Added ${name}. New Codex chats now run through Ollama.` : `Added ${name}. Start the Ollama app, then click Check again on its card.`, 6000);
+  else codexSignIn();
+}
 function codexMenu(anchor) {
   const c = S.codex || {};
+  const extra = !c.main && c.id !== 'codex';
   showMenu(anchor, [
-    { label: 'Check again', hint: 'sign-in, usage and chats', run: async () => { const r = await api('/api/codex/check', {}); S.codex = r.codex; S.usage = r.usage || S.usage; renderLive(); toast('Checked Codex.', 2000); } },
+    { label: 'Check again', hint: 'sign-in, usage and chats', run: async () => { const r = await api('/api/codex/check', {}); S.codex = r.codex; S.usage = r.usage || S.usage; renderAll(); toast('Checked Codex.', 2000); } },
     ...(S.codexAuthUrl && !c.signedIn ? [{ label: 'Copy the sign-in link', hint: 'for a private browser window', run: async () => { try { await navigator.clipboard.writeText(S.codexAuthUrl); toast('Copied.', 1500); } catch { prompt('Copy this link:', S.codexAuthUrl); } } }] : []),
-    ...(c.signedIn ? [{ label: 'Open chatgpt.com', hint: 'regular ChatGPT, in its own window', run: () => openWeb('codex') }, { label: 'Sign out of Codex', run: async () => { if (!(await appConfirm('Sign Codex out of your ChatGPT account?\n\nYour Codex chats stay on this PC.', { ok: 'Sign out', danger: true }))) return; await api('/api/codex/logout', {}); await reload(); toast('Codex is signed out.'); } }] : []),
+    ...(c.signedIn && c.kind !== 'ollama' ? [{ label: 'Open chatgpt.com', hint: 'regular ChatGPT, in its own window', run: () => openWeb(c.id) }, { label: `Sign out of ${c.name || 'Codex'}`, run: async () => { if (!(await appConfirm(`Sign ${c.name || 'Codex'} out of its ChatGPT account?\n\nYour Codex chats stay on this computer.`, { ok: 'Sign out', danger: true }))) return; await api('/api/codex/logout', { account: c.id }); await reload(); toast(`${c.name || 'Codex'} is signed out.`); } }] : []),
+    '-',
+    { label: 'Add another Codex account', hint: 'a second ChatGPT sign-in; chats stay shared', run: () => addCodexAccount('chatgpt') },
+    ...(codexAccts().some(x => x.kind === 'ollama') ? [] : [{ label: 'Add Ollama', hint: 'Codex with ollama.com cloud models', run: () => addCodexAccount('ollama') }]),
+    ...(extra ? [
+      { label: 'Rename…', run: async () => { const n = (prompt('New name:', c.name) || '').trim(); if (!n || n === c.name) return; const r = await api('/api/codex/accounts/rename', { id: c.id, name: n }); S.codex = r.codex; renderAll(); } },
+      { label: 'Remove from the list', hint: 'its sign-in folder stays', run: async () => { if (!(await appConfirm(`Remove ${c.name} from Session Switcher?\n\nIts chats stay. Its sign-in stays in ~/.${c.id} if you add it again.`, { ok: 'Remove', danger: true }))) return; const r = await api('/api/codex/accounts/remove', { id: c.id }); S.codex = r.codex; renderAll(); } },
+    ] : []),
     '-',
     { label: 'Turn Codex off', hint: 'hides it everywhere; turn it back on in Setup', run: async () => { await api('/api/codex/settings', { enabled: false }); await reload(); toast('Codex is off. Turn it back on in Setup.'); } },
   ]);
@@ -787,7 +826,7 @@ function renderHub() {
       ${better ? `<div class="headroom"><span><b>${esc(better.a.name)}</b> has the most room right now: ${better.r}% left. ${esc(current().name)} has ${binding(usageOf(current().id)).left}%.</span><button class="btn sm" data-act="use" data-acct="${esc(better.a.id)}">Work as ${esc(better.a.name)}</button></div>` : ''}
       <div class="dials" id="dials"></div>
     </section>
-    ${S.dryRun ? '<p class="note">Preview mode: this computer isn’t Windows, so terminal buttons show what would run instead of opening one.</p>' : ''}`;
+    ${S.dryRun ? '<p class="note">Preview mode: terminal buttons show what would run instead of opening one.</p>' : ''}`;
   renderHubLists();
   renderLive(true);
   if (!dialsDrawn && !renderHub.timer) renderHub.timer = setTimeout(() => { dialsDrawn = true; }, 2600);
@@ -1004,7 +1043,7 @@ async function openNewProject() {
         b.disabled = true;
         try {
           const r = await api('/api/project/pick', { start: input.value || (NP.places && NP.places.suggested) || '', title: b.dataset.np === 'browse' ? 'Choose where the new project’s folder goes' : 'Choose the project’s folder' });
-          if (r.unsupported) toast('The folder window only opens on Windows. Type the path instead.', 4000);
+          if (r.unsupported) toast('The folder window only opens on Windows and macOS. Type the path instead.', 4000);
           else if (r.path) { input.value = r.path; npRefresh(); }
         } finally { b.disabled = false; input.focus(); }
         return;
@@ -1048,7 +1087,7 @@ function npRenderAs() {
     const why = !a.signedIn ? 'Not signed in' : !a.lock.ok ? (a.lockMessage || 'Not on its locked account') : usageLine(a.id, { short: true }) || a.email || 'Ready';
     return { v: a.id, ring: ringOf(a), name: a.name, sub: why, ok };
   });
-  if (S.codex && S.codex.enabled) opts.push({ v: 'codex', ring: CODEX_RING, name: 'Codex', sub: codexReady() ? (usageLine('codex', { short: true }) || 'ChatGPT') : 'Sign in to Codex first', ok: codexReady(), codex: true });
+  if (S.codex && S.codex.enabled) opts.push({ v: 'codex', ring: codexRing(S.codex.id), name: S.codex.name || 'Codex', sub: codexReady() ? (usageLine(S.codex.id, { short: true }) || (S.codex.kind === 'ollama' ? 'Ollama' : 'ChatGPT')) : 'Sign in to Codex first', ok: codexReady(), codex: true });
   opts.push({ v: 'none', name: 'Don’t start a chat yet', sub: 'Just make the folder and open the project', ok: true, none: true });
   const pick = (canLaunch(cur) && cur.id) || (opts.find(o => o.ok) || {}).v;
   $('npAs').innerHTML = opts.map(o => `<label class="np-opt ${o.ok ? '' : 'off'} ${o.codex ? 'codex' : ''}"><input type="radio" name="npAs" value="${esc(o.v)}" ${o.v === pick ? 'checked' : ''} ${o.ok ? '' : 'disabled'}>
@@ -1154,8 +1193,8 @@ function renderLive(force) {
   patch($('quietList'), Q, keyOf, quietChip, '');
   $('quietList').classList.toggle('has', Q.length > 0);
   const dials = S.accounts.map(a => ({ a }));
-  if (S.codex && S.codex.enabled) dials.push({ codex: true });
-  patch($('dials'), [...dials, { add: true }], x => (x.add ? 'add' : x.codex ? 'codex' : x.a.id), x => (x.add ? '<button class="add-card" data-act="add"><span class="glyph" aria-hidden="true">✦</span>Add another Claude account</button>' : x.codex ? codexCard() : dialCard(x.a)));
+  if (S.codex && S.codex.enabled) for (const cx of codexAccts()) dials.push({ cx });
+  patch($('dials'), [...dials, { add: true }], x => (x.add ? 'add' : x.cx ? `cx:${x.cx.id}` : x.a.id), x => (x.add ? '<button class="add-card" data-act="add"><span class="glyph" aria-hidden="true">✦</span>Add another Claude account</button>' : x.cx ? codexCard(x.cx) : dialCard(x.a)));
   tick();
 }
 
@@ -1600,7 +1639,7 @@ async function copyCommand(id) {
   catch { prompt('Copy this command:', r.command); }
 }
 async function accountAction(act, id) {
-  if (id === 'codex') { if (act === 'usage') return refreshUsage('codex'); if (act === 'web') return openWeb('codex'); return undefined; }
+  if (codexAcct(id)) { if (act === 'usage') return refreshUsage(id); if (act === 'web') return openWeb(id); return undefined; }
   const a = S.accounts.find(x => x.id === id) || current();
   if (act === 'use') return useAccount(a.id);
   if (act === 'web') return openWeb(a.id);
@@ -1685,7 +1724,7 @@ function renderSetup(j) {
     <p class="d-h" id="st-alerts">Alerts and looks</p>
     <div class="prefs">
       ${t('sound', 'Chime when a chat needs you or replies', 'A soft bell. It doesn’t play for the chat you’re looking at.', true)}
-      ${t('notify', 'Desktop notifications', 'Shows a Windows notification when a chat needs you or replies while this window is in the background.', true)}
+      ${t('notify', 'Desktop notifications', `Shows a ${S.platform === 'darwin' ? 'macOS' : 'Windows'} notification when a chat needs you or replies while this window is in the background.`, true)}
       ${t('petals', 'Drifting petals', 'A few slow petals behind the hub. Turned off automatically if Windows is set to reduce motion.', true)}
       ${t('motion', 'Animations', 'World banners that open into their pages, cards that rise in, dials that draw themselves. Turned off automatically if Windows is set to reduce motion.', true)}
     </div>
@@ -1698,15 +1737,15 @@ function renderSetup(j) {
         </select></div>
       <div class="field"><label for="prefTerminal">Terminal chats open in</label>
         <select id="prefTerminal" data-pref="terminal">
-          ${[['auto', 'Windows Terminal tab when available, otherwise a console window'], ['wt-tab', 'Windows Terminal, new tab'], ['wt-window', 'Windows Terminal, new window'], ['console', 'Classic console window']].map(([v, l]) => `<option value="${v}" ${p.terminal === v ? 'selected' : ''}>${l}</option>`).join('')}
+          ${(S.platform === 'darwin' ? [['auto', 'Terminal'], ['iterm', 'iTerm']] : [['auto', 'Windows Terminal tab when available, otherwise a console window'], ['wt-tab', 'Windows Terminal, new tab'], ['wt-window', 'Windows Terminal, new window'], ['console', 'Classic console window']]).map(([v, l]) => `<option value="${v}" ${p.terminal === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select></div>
       ${t('syncSettings', 'Keep extra accounts’ settings in step', 'Copies your main settings.json, CLAUDE.md and keybindings to extra accounts whenever the main copy is newer.')}
       ${t('syncState', 'Carry over MCP servers and folder trust', 'Before a chat opens with an extra account, adds any MCP servers, approved tools and trusted folders from your main account that it doesn’t have yet.')}
       ${t('cleanEnv', 'Use only account sign-ins', 'Ignores ANTHROPIC_API_KEY and similar settings on this PC, so the account you pick is always the one used.')}
-      ${t('appWindow', 'Open as its own window', 'Uses Chrome or Edge to show Session Switcher without browser tabs or an address bar.')}
+      ${t('appWindow', 'Open as its own window', `Uses ${S.platform === 'darwin' ? 'Chrome (or Edge or Brave)' : 'Chrome or Edge'} to show Session Switcher without browser tabs or an address bar.`)}
       <div class="field"><label for="prefClaude">Claude Code command</label>
         <div class="row2"><input id="prefClaude" value="${esc(j.claudeCommand)}" spellcheck="false"><button class="btn" id="saveClaude">Save</button></div>
-        <small>Leave as “claude” unless Setup can’t find Claude Code; then paste the full path to claude.exe.</small></div>
+        <small>Leave as “claude” unless Setup can’t find Claude Code; then paste the full path to ${S.platform === 'darwin' ? 'claude (try <code>which claude</code> in Terminal)' : 'claude.exe'}.</small></div>
     </div>
     <p class="d-h" id="st-codex">Codex</p>
     <div class="prefs">
@@ -1719,7 +1758,7 @@ function renderSetup(j) {
       ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h" id="st-phone">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
     <p class="d-h" id="st-app">App</p>
     <div class="app-actions">
-      <button class="btn" data-fix="shortcut">Create desktop shortcut</button>
+      <button class="btn" data-fix="shortcut">${S.platform === 'darwin' ? 'Add to Applications' : 'Create desktop shortcut'}</button>
       <button class="btn" data-fix="share-copy" title="A zip of the app for someone else, without your accounts, chats or settings">Make a copy to share</button>
       <button class="btn" data-fix="update-claude">Update Claude Code</button>
       <button class="btn danger" data-fix="quit">Quit Session Switcher</button>
@@ -1739,15 +1778,15 @@ function renderPhone(st) {
   const lan = st.addresses.filter(a => !a.tailscale), ts = st.addresses.filter(a => a.tailscale);
   const left = st.pairing ? Math.max(0, Math.round((st.pairing.expiresAt - Date.now()) / 1000)) : 0;
   box.innerHTML = `
-    <label class="toggle"><input type="checkbox" data-phone="enabled" ${st.enabled ? 'checked' : ''}><span><b>Let my phone use Session Switcher</b><span>Your Android phone can see your chats, answer Claude and Codex, approve steps and switch models, over your Wi-Fi. Only phones you pair can connect. ${st.error ? `<b class="warn">${esc(st.error)}</b>` : ''}</span></span></label>
+    <label class="toggle"><input type="checkbox" data-phone="enabled" ${st.enabled ? 'checked' : ''}><span><b>Let my phone use Session Switcher</b><span>Your phone (iPhone or Android) can see your chats, answer Claude and Codex, approve steps and switch models, over your Wi-Fi. Only phones you pair can connect. ${st.error ? `<b class="warn">${esc(st.error)}</b>` : ''}</span></span></label>
     ${st.enabled ? `
     <div class="ph-grid">
-      <div class="ph-step"><span class="ph-n">1</span><div><b>Get the app</b><p>${st.apk ? `On your phone’s browser, open <code>http://${esc(lan[0] ? host(lan[0]) : `this-pc:${st.port}`)}/get</code> and install it.` : 'Build it first: run <code>mobile\\android\\build.cmd</code>, then come back here.'}</p></div></div>
-      <div class="ph-step"><span class="ph-n">2</span><div><b>Enter this PC’s address</b><p>${lan.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ') || '<i>No network found.</i>'}${ts.length ? `<br><small>Away from home with Tailscale: ${ts.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ')}</small>` : ''}</p></div></div>
+      <div class="ph-step"><span class="ph-n">1</span><div><b>Get the app</b><p><b>iPhone:</b> in Safari, open <code>http://${esc(lan[0] ? host(lan[0]) : `this-pc:${st.port}`)}/</code>, tap Share → <b>Add to Home Screen</b>, then open it from the Home Screen.<br><b>Android:</b> ${st.apk ? `open <code>http://${esc(lan[0] ? host(lan[0]) : `this-pc:${st.port}`)}/get</code> and install it.` : 'build it first with <code>mobile/android/build.cmd</code>.'}</p></div></div>
+      <div class="ph-step"><span class="ph-n">2</span><div><b>This computer’s address</b><p>${lan.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ') || '<i>No network found.</i>'}${ts.length ? `<br><small>Away from home with Tailscale: ${ts.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ')}</small>` : ''}</p></div></div>
       <div class="ph-step"><span class="ph-n">3</span><div><b>Pair it</b>${st.pairing ? `<p class="ph-code" aria-label="Pairing code">${esc(st.pairing.code.slice(0, 4))}<span>·</span>${esc(st.pairing.code.slice(4))}</p><p><small id="phLeft">Works once, for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}.</small> <button class="btn quiet sm" data-phone="cancel">Cancel</button></p>` : '<p><button class="btn prime sm" data-phone="pair">Show a pairing code</button></p>'}</div></div>
     </div>
     ${st.devices.length ? `<p class="ph-h">Paired phones</p><ul class="ph-dev">${st.devices.map(d => `<li><span class="glyph" aria-hidden="true">◈</span><span><b>${esc(d.name)}</b><small>paired ${esc(agoL(d.created))}${d.lastSeen ? ` · last used ${esc(agoL(d.lastSeen))}` : ''}</small></span><button class="btn quiet sm" data-phone="forget" data-id="${esc(d.id)}">Remove</button></li>`).join('')}</ul>` : ''}
-    <p class="ph-warn">A paired phone can do anything you can do here, including letting Claude run commands on this PC. Pair only your own phones, and remove one you lose. Windows may ask to let Node.js through the firewall; allow it on private networks.</p>` : ''}`;
+    <p class="ph-warn">A paired phone can do anything you can do here, including letting Claude run commands on this PC. Pair only your own phones, and remove one you lose. ${S.platform === 'darwin' ? 'macOS may ask to let Node accept incoming connections; allow it.' : 'Windows may ask to let Node.js through the firewall; allow it on private networks.'}</p>` : ''}`;
   if (st.pairing) phoneTimer = setInterval(() => {
     const l = Math.max(0, Math.round((st.pairing.expiresAt - Date.now()) / 1000));
     const el = $('phLeft'); if (!el || !$('setup').open) { clearInterval(phoneTimer); return; }
@@ -1861,7 +1900,7 @@ $('setupBody').addEventListener('click', wrap(async e => {
   }
   if (what === 'update-claude') { const r = await api('/api/update-claude', {}); return r.dryRun ? reportLaunch(r) : toast(`Updating Claude Code in a ${r.how}. Close it when it finishes, then reopen Setup.`, 8000); }
   if (what === 'share-copy') return shareCopy();
-  if (what === 'shortcut') { const r = await api('/api/shortcut', {}); return toast(r.dryRun ? 'Would create a desktop shortcut.' : 'Added “Claude Session Switcher” to your desktop.'); }
+  if (what === 'shortcut') { const r = await api('/api/shortcut', {}); return toast(r.dryRun ? 'Would create a desktop shortcut.' : S.platform === 'darwin' ? 'Added “Session Switcher” to Applications in your home folder. Find it with Spotlight or Launchpad.' : 'Added “Claude Session Switcher” to your desktop.'); }
   if (what === 'quit') return quitApp();
 }));
 
@@ -1993,7 +2032,7 @@ function palItems(q) {
     { glyph: '◈', t: 'Check usage for every account', run: () => refreshUsage() },
     ...S.accounts.filter(a => a.id !== S.acct).map(a => ({ glyph: '◆', t: `Work as ${a.name}`, s: usageLine(a.id, { short: true }), run: () => useAccount(a.id) })),
     ...S.accounts.map(a => ({ glyph: '❖', t: `Open claude.ai as ${a.name}`, s: 'regular Claude chats', run: () => openWeb(a.id) })),
-    ...(S.codex && S.codex.enabled ? (S.codex.signedIn ? [{ glyph: '❖', t: 'Open chatgpt.com', s: 'regular ChatGPT', run: () => openWeb('codex') }, { glyph: '◈', t: 'Check Codex usage', run: () => refreshUsage('codex') }] : [{ glyph: '✥', t: 'Sign in to Codex with ChatGPT', run: codexSignIn }]) : []),
+    ...(S.codex && S.codex.enabled ? (S.codex.signedIn ? [{ glyph: '❖', t: 'Open chatgpt.com', s: 'regular ChatGPT', run: () => openWeb(S.codex.id) }, { glyph: '◈', t: 'Check Codex usage', run: () => refreshUsage(S.codex.id) }] : [{ glyph: '✥', t: 'Sign in to Codex with ChatGPT', run: codexSignIn }]) : []),
     { glyph: '✥', t: 'New project', s: 'make a folder and start a chat', run: () => openNewProject() },
     { glyph: '✥', t: 'Add an account', run: addAccount, alias: 'sign in login' },
     ...(window.REMOTE ? [] : [{ glyph: '⏻', t: 'Quit Session Switcher', run: quitApp, alias: 'exit close stop app' }]),
@@ -2248,9 +2287,11 @@ function openAcctPop() {
       <span class="ap-dial">${miniDial(a.id, 34)}</span>
       <span class="ap-t"><b>${esc(a.name)}${runs ? ' <span class="tag">this chat</span>' : ''}${on ? ' <span class="tag gold">new chats</span>' : ''}</b><small>${esc(status)}</small><span class="ap-bars">${acctBars(a.id)}</span></span></button>`;
   };
-  const cx = S.codex && S.codex.enabled ? `<p class="ap-h">Codex</p><button type="button" class="ap-row codex" data-ap="codex" style="--ring:${CODEX_RING}">
-      <span class="ap-dial">${miniDial('codex', 34)}</span>
-      <span class="ap-t"><b>Codex${chatAcct === 'codex' ? ' <span class="tag codex">this chat</span>' : ''}</b><small>${esc(S.codex.signedIn ? `${S.codex.email || 'Signed in'}${S.codex.plan ? ` · ${S.codex.plan}` : ''}` : 'Not signed in')}</small><span class="ap-bars">${S.codex.signedIn ? acctBars('codex') : ''}</span></span></button>` : '';
+  const many = codexAccts().length > 1;
+  const cxRow = x => `<button type="button" class="ap-row codex ${many && x.id === S.codex.id ? 'on' : ''}" data-ap="${esc(x.id)}" style="--ring:${codexRing(x.id)}">
+      <span class="ap-dial">${miniDial(x.id, 34)}</span>
+      <span class="ap-t"><b>${esc(x.name || 'Codex')}${chatAcct === x.id ? ' <span class="tag codex">this chat</span>' : ''}${many && x.id === S.codex.id ? ' <span class="tag gold">new Codex chats</span>' : ''}</b><small>${esc(x.signedIn ? `${x.email || 'Signed in'}${x.plan ? ` · ${x.plan}` : ''}` : x.kind === 'ollama' ? 'Ollama app not running' : 'Not signed in')}</small><span class="ap-bars">${x.signedIn && x.kind !== 'ollama' ? acctBars(x.id) : ''}</span></span></button>`;
+  const cx = S.codex && S.codex.enabled ? `<p class="ap-h">${many ? 'Codex: new Codex chats open as' : 'Codex'}</p>${codexAccts().map(cxRow).join('')}` : '';
   pop.innerHTML = `<p class="ap-h">${inChat && chatAcct ? 'Pick the account new chats open as. This chat keeps its own.' : 'New chats open as'}</p>
     <div class="ap-list">${S.accounts.map(row).join('')}</div>${cx}
     <div class="ap-act">
@@ -2270,7 +2311,12 @@ $('acctPop').addEventListener('click', wrap(async e => {
   if (r) {
     const id = r.dataset.ap;
     closeAcctPop();
-    if (id === 'codex') return S.codex.signedIn ? hubTo('secAccounts') : codexSignIn();
+    if (codexAcct(id)) {
+      const many = codexAccts().length > 1;
+      await setCodexActive(id);
+      if (!S.codex.signedIn) return S.codex.kind === 'ollama' ? hubTo('secAccounts') : codexSignIn();
+      return many ? toast(`New Codex chats open as ${S.codex.name}.`, 2500) : hubTo('secAccounts');
+    }
     const a = S.accounts.find(x => x.id === id);
     if (a && !a.signedIn) { S.acct = id; store('acct', id); renderAll(); return accountAction(a.expectEmail ? 'signin-direct' : 'signin', id); }
     return useAccount(id);
@@ -2351,7 +2397,9 @@ const pageClicks = wrap(async e => {
   if (act === 'newchat') return ChatUI.open({ cwd: S.folder, mode: 'new' });
   if (act === 'newcodex') return ChatUI.open({ cwd: S.folder, mode: 'new', provider: 'codex' });
   if (act === 'newcodex-term') return reportLaunch(await api('/api/new', { provider: 'codex', cwd: S.folder }), 'Starting a new Codex chat');
+  if (b.dataset.acct && act.startsWith('codex-')) await setCodexActive(b.dataset.acct);
   if (act === 'codex-signin') return codexSignIn();
+  if (act === 'codex-check') { const r = await api('/api/codex/check', {}); S.codex = r.codex; S.usage = r.usage || S.usage; renderAll(); return toast(S.codex.signedIn ? `${S.codex.name} is ready.` : (S.codex.error || 'Still not ready.'), 4000); }
   if (act === 'codex-install') return codexInstall();
   if (act === 'codex-more') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : codexMenu(b);
   if (act === 'codex-new') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : codexNewMenu(b);
@@ -2485,7 +2533,7 @@ function projectItems(cwd) {
     ...(S.codex && S.codex.enabled ? [{ glyph: '◆', label: 'New Codex chat', disabled: !codexReady() || !p.exists, why: 'Sign in to Codex first', run: () => ChatUI.open({ cwd, mode: 'new', provider: 'codex' }) }] : []),
     ...(S.prompts.length ? [{ glyph: '❡', label: 'Start with a prompt…', disabled: !p.exists, run: () => showMenu(Ctx.at, worldNewItems(cwd).filter(x => x !== '-' && /^Start with|Edit prompts/.test(x.label || ''))) }] : []),
     '-',
-    { label: 'Show in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
+    { label: S.platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
     { label: 'Browse files', disabled: !p.exists, run: () => Viewer.open({ path: cwd, cwd }) },
     { label: 'Copy folder path', run: () => copyText(cwd) },
     ...(p.added && !p.sessions.length ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd }); await loadSessions(); renderAll(); } }] : []),
@@ -2584,6 +2632,8 @@ document.addEventListener('keydown', e => {
 // On a phone (through phone access), hide what only makes sense at the PC.
 if (window.REMOTE) document.body.classList.add('remote');
 if (window.Android || / SessionSwitcherAndroid\//.test(navigator.userAgent)) document.body.classList.add('android');
+// iPhone and iPad (Safari or the Home Screen app): same touch tweaks as the Android app.
+if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) document.body.classList.add('android', 'ios');
 // The Android app's Back button: close whatever is on top. Returns true if something closed.
 window.__mobileBack = () => {
   if (!$('cLight')?.hidden) { $('cLight').hidden = true; return true; }
