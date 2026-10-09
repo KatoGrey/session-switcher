@@ -297,7 +297,8 @@ test('snapshots: see what changed between two moments, without touching git’s 
   put(dir, 'a.js', 'one\n'); put(dir, 'b.js', 'keep\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
   put(dir, 'staged.js', 'mine\n'); gitIn(dir, 'add', 'staged.js');           // you've staged something
   const top = await snaps.topOf(dir);
-  assert.equal(path.resolve(top).toLowerCase(), path.resolve(dir).toLowerCase());
+  // By real names: a temp folder can have two (/var is /private/var on a Mac; Windows has 8.3 names).
+  assert.equal(fs.realpathSync.native(top).toLowerCase(), fs.realpathSync.native(dir).toLowerCase());
   const headBefore = gitIn(dir, 'rev-parse', 'HEAD'), indexBefore = gitIn(dir, 'diff', '--cached', '--name-only');
   const before = await snaps.snapshot(top);
   // "The reply": edits a.js, adds c.js, deletes b.js, writes an ignored file.
@@ -432,6 +433,20 @@ test('race: two copies from where the project is now; keep one, and both copies 
   assert.equal(gitIn(dir, 'rev-parse', 'HEAD'), head, 'no commits on your branch');
   assert.equal(gitIn(dir, 'branch', '--list'), branches, 'no branches made');
   assert.equal(gitIn(dir, 'diff', '--cached', '--name-only'), staged, 'what you staged is as it was');
+});
+
+test('race: a project reached through another name for its folder still gets its copies right', async () => {
+  // Like a Mac's /var (really /private/var) or a Windows short name: a link to the project.
+  const dir = repo();
+  put(dir, 'game/rally.lua', 'stacks = true\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  const link = path.join(tmp(), 'linked');
+  fs.symlinkSync(dir, link, 'junction');
+  const r = await race.makeRace(path.join(link, 'game'));
+  try {
+    assert.ok(race.isRaceDir(r.copies.claude.cwd) && race.isRaceDir(r.copies.codex.cwd), r.copies.claude.cwd);
+    assert.equal(path.basename(r.copies.claude.cwd), 'game');
+    assert.equal(readLF(path.join(r.copies.claude.cwd, 'rally.lua')), 'stacks = true\n');
+  } finally { await race.dropRace(r); }
 });
 
 test('race: keeping waits if the project changed since the race began', async () => {
