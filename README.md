@@ -374,7 +374,7 @@ The Codex card does the same for **chatgpt.com**.
 Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in `Ctrl+K`):
 
 - **Light or dark:** Dark, Light, or Match device (it follows Windows or Android).
-- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus two space saga themes (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
+- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus two space saga themes and Malibu (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
 - **Text size** (80–150%): messages, documents and the message box.
 - **Reading font:** Classic (the serif), Modern (a clean sans for reading), or Clean (sans headings too).
 - **Bold text** and **Higher contrast**. Light themes keep small grey text (dates, hints, labels) dark enough to read.
@@ -402,6 +402,20 @@ Beyond colors, a saga theme brings:
 - **Short sound cues** in place of the bell when a chat needs you or replies, plus one when you pick the theme. They follow the chime setting.
 
 Screenshots are in [`docs/themes/`](docs/themes/). They use made-up chats and projects, and the chat window is shown in its read-only watch view. The fonts are under the SIL Open Font License (`fonts/OFL.txt`). The sounds are from Kenney's CC0 packs; `sounds/LICENSE-kenney.txt` lists which pack and file each comes from.
+
+### Glam theme: Malibu
+
+Hot pink and pool blue at a beach house in the sun. Made for light mode; in dark mode the same pinks glow on plum at dusk. It's under **Glam** in **Setup → Appearance**.
+
+- **Lettering:** Pacifico, a bubbly retro script, for the logo, the hero and section titles; Nunito, soft and rounded, for reading and everything else.
+- **A sunset in the hero** that reads the live counts: a striped sun setting into the sea between two palms, a heart in the sky for each chat waiting on you (gold when it needs your OK, white when it has replied), a twinkle for each chat at work and a pool float for each one lounging. The waves roll, the hearts bob and the twinkles sparkle; all of it holds still when **Animations** is off or your device asks for less motion.
+- **Little hearts** in place of status dots; a working chat's heart beats.
+- **Sparkles** behind the hub in place of the petals (four-point sparkles and the odd heart, in pink, sunshine and pool blue), shimmering slowly.
+- **Pill buttons, stitched cards and pink speech bubbles,** a heart emblem with a sparkle in place of the seal, and a pink-to-peach rule under each section title.
+- **Its own words:** "Hello, gorgeous" over the sidebar, "Fresh gossip" for recent chats, "Your looks" for accounts (the current one is "Today's look"), "Who wore it better" for races, and headlines like "Two chats are ready for you, darling."
+- **Sweet chimes,** made on the spot rather than played from files: a rising twinkle when a chat needs you, three bright notes when one replies. They follow the chime setting.
+
+Screenshots: [`malibu-hub-light.jpg`](docs/themes/malibu-hub-light.jpg), [`malibu-hub-dark.jpg`](docs/themes/malibu-hub-dark.jpg), [`malibu-chat-light.jpg`](docs/themes/malibu-chat-light.jpg) and [`malibu-phone-light.jpg`](docs/themes/malibu-phone-light.jpg). Its words are in the theme's `copy` map in `theme.js`, its look in the Malibu section of `styles.css`.
 
 ## Alerts
 

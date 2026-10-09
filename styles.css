@@ -22,6 +22,10 @@
 @font-face{font-family:"Barlow Condensed";src:url(/fonts/barlow-condensed-700.woff2) format("woff2");font-weight:700 900;font-display:swap}
 @font-face{font-family:"Barlow Semi Condensed";src:url(/fonts/barlow-semi-condensed-500.woff2) format("woff2");font-weight:400 500;font-display:swap}
 @font-face{font-family:"Barlow Semi Condensed";src:url(/fonts/barlow-semi-condensed-600.woff2) format("woff2");font-weight:600 800;font-display:swap}
+/* The Malibu theme's lettering (loaded only when it's on) */
+@font-face{font-family:"Pacifico";src:url(/fonts/pacifico.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Nunito";src:url(/fonts/nunito.woff2) format("woff2");font-weight:400 900;font-display:swap}
+@font-face{font-family:"Nunito";src:url(/fonts/nunito-italic.woff2) format("woff2");font-weight:400 900;font-style:italic;font-display:swap}
 
 /* Every color the app uses, as "r g b". Themes (theme.js) override these. */
 :root{--c-000000:0 0 0;--c-3d1a18:61 26 24;--c-050406:5 4 6;--c-0a090c:10 9 12;--c-0b090d:11 9 13;--c-0b0a0d:11 10 13;--c-0c0a0e:12 10 14;--c-0d0b0f:13 11 15;--c-0e0c10:14 12 16;--c-0f0d11:15 13 17;--c-100e12:16 14 18;--c-110e12:17 14 18;--c-110f13:17 15 19;--c-120f14:18 15 20;--c-121014:18 16 20;--c-121015:18 16 21;--c-141117:20 17 23;--c-151116:21 17 22;--c-17131a:23 19 26;--c-18141b:24 20 27;--c-19151c:25 21 28;--c-1a1405:26 20 5;--c-1a161d:26 22 29;--c-1b1519:27 21 25;--c-1b171e:27 23 30;--c-1c181f:28 24 31;--c-1d1920:29 25 32;--c-221d26:34 29 38;--c-241e29:36 30 41;--c-241f28:36 31 40;--c-2a242e:42 36 46;--c-2b1615:43 22 21;--c-2c2632:44 38 50;--c-3c5a96:60 90 150;--c-3d3443:61 52 67;--c-4664a0:70 100 160;--c-46679f:70 103 159;--c-5072ab:80 114 171;--c-5e2622:94 38 34;--c-5f2a26:95 42 38;--c-5f86c6:95 134 198;--c-6a91d2:106 145 210;--c-6c2e29:108 46 41;--c-6d302b:109 48 43;--c-6e2a25:110 42 37;--c-6f97d8:111 151 216;--c-716a63:135 128 120;--c-781412:120 20 18;--c-78342e:120 52 46;--c-7a332d:122 51 45;--c-7a3530:122 53 48;--c-7d1513:125 21 19;--c-7fa3dc:127 163 220;--c-7fb79a:127 183 154;--c-8c3a34:140 58 52;--c-8d3e37:141 62 55;--c-94423b:148 66 59;--c-9a4038:154 64 56;--c-9a463e:154 70 62;--c-9a928a:154 146 138;--c-a5463f:165 70 63;--c-a5564d:165 86 77;--c-a58be8:165 139 232;--c-a8544b:168 84 75;--c-a98f45:169 143 69;--c-a9c3ef:169 195 239;--c-b0544b:176 84 75;--c-b8655b:184 101 91;--c-c9aa4c:201 170 76;--c-c9daf6:201 218 246;--c-c9e8d6:201 232 214;--c-cf8274:207 130 116;--c-cfc6b6:207 198 182;--c-d08072:208 128 114;--c-d4b557:212 181 87;--c-d68a7c:214 138 124;--c-d68c7d:214 140 125;--c-d8b7aa:216 183 170;--c-d8e4f8:216 228 248;--c-d9bf74:217 191 116;--c-dcc790:220 199 144;--c-e2a596:226 165 150;--c-e6d3a0:230 211 160;--c-e6dccb:230 220 203;--c-e7b2a8:231 178 168;--c-e9d283:233 210 131;--c-e9e1d4:233 225 212;--c-eadfce:234 223 206;--c-ede6d9:237 230 217;--c-efdcd3:239 220 211;--c-f0dc95:240 220 149;--c-f1dc92:241 220 146;--c-f1dfd6:241 223 214;--c-f3e2d8:243 226 216;--c-f6ece2:246 236 226;--c-f6efe3:246 239 227;--c-ffffff:255 255 255}
@@ -2172,6 +2176,140 @@ body.solo .c-head .icon.c-backm{display:none}
 [data-theme="rebel"][data-mode="light"] .ha-view{background:rgb(var(--c-0a090c));}
 [data-theme="rebel"][data-mode="light"] .ha-floor,[data-theme="rebel"][data-mode="light"] .ha-wall{--line:rgb(var(--c-a5463f) / .7)}
 
+/* ==================== Malibu ====================
+   Hot pink and pool blue at a beach house in the sun. Light mode first: blush paper, white cards with a
+   stitched edge, pill buttons, a bubbly script for the big words and Nunito for reading. In dark mode
+   the same pinks glow on plum. --mb-* are the theme's own vivid colors ("r g b") for decoration; text
+   and surfaces still come from the --c-* variables, so contrast and light/dark keep working. */
+[data-theme="malibu"]{--radius:16px;
+  --mb-hot:224 33 138; --mb-bubble:255 105 180; --mb-blush:255 222 236; --mb-pool:38 190 210; --mb-sun:255 196 77; --mb-gold:196 124 0; --mb-peach:255 160 122; --mb-palm:166 22 96;
+  --mb-sky1:255 150 200; --mb-sky2:255 184 160; --mb-sky3:255 228 168; --mb-sun1:255 214 102; --mb-sun2:255 105 170; --mb-sea1:76 214 228; --mb-sea2:22 150 184;
+  --mb-shadow:0 14px 34px -22px rgb(var(--mb-hot) / .45);
+  --mb-heart:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 22'%3E%3Cpath d='M12 21.5C5 16.6 1 12.7 1 7.6 1 4 3.8 1.2 7.2 1.2c2 0 3.8 1 4.8 2.6 1-1.6 2.8-2.6 4.8-2.6C20.2 1.2 23 4 23 7.6c0 5.1-4 9-11 13.9z'/%3E%3C/svg%3E");
+  --mb-heart-o:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 22'%3E%3Cpath d='M12 19.6C5.8 15.3 2.6 11.9 2.6 7.6c0-2.7 2.1-4.8 4.6-4.8 1.9 0 3.6 1.1 4.8 3 1.2-1.9 2.9-3 4.8-3 2.5 0 4.6 2.1 4.6 4.8 0 4.3-3.2 7.7-9.4 12z' fill='none' stroke='%23000' stroke-width='3.2'/%3E%3C/svg%3E")}
+[data-theme="malibu"][data-mode="dark"]{--mb-gold:255 196 77; --mb-palm:26 6 24; --mb-blush:74 18 54;
+  --mb-sky1:44 10 46; --mb-sky2:130 26 98; --mb-sky3:255 124 152; --mb-sea1:26 98 130; --mb-sea2:10 40 66; --mb-shadow:0 14px 34px -22px rgb(var(--c-000000) / .9)}
+[data-theme="malibu"] body{background:radial-gradient(900px 480px at 85% -10%,rgb(var(--mb-bubble) / .16),transparent 60%),radial-gradient(700px 420px at -10% 110%,rgb(var(--mb-pool) / .1),transparent 60%),var(--abyss) fixed}
+[data-theme="malibu"] ::selection{background:rgb(var(--mb-bubble) / .35);color:inherit}
+[data-theme="malibu"] :focus-visible{outline-color:rgb(var(--mb-hot))}
+[data-theme="malibu"] *{scrollbar-color:rgb(var(--mb-bubble) / .5) transparent}
+[data-theme="malibu"] :is(.btn,.pulse,.usechip,.seek,.seal,.c-box,.drawer,.menu,.palette .pal-box,dialog,.lk-theme,.qr,.guard,.note,.headroom,.omen,.dial-card,.world,.world-new,.hero,.livepill,.c-acct,.wn-plus,.ri){border-radius:var(--radius)}
+[data-theme="malibu"] :is(.sec-note,.empty-line,.r-sub,.nav-foot,.seek .s-t,.r-as,.o-where,.w-last.quiet,.wordmark small,.lk-tn small){font-style:normal}
+[data-theme="malibu"] :is(.hero-sigil,.hero .stamp){display:none}
+[data-theme="malibu"][data-mode="light"] .petals{opacity:1}
+[data-theme="malibu"][data-mode="light"] .sigil{filter:drop-shadow(0 3px 8px rgb(var(--mb-hot) / .35))}
+/* the bar and the sidebar */
+[data-theme="malibu"] .bar{background:linear-gradient(180deg,rgb(var(--c-0e0c10) / .97),rgb(var(--c-0c0a0e) / .94));border-bottom-color:rgb(var(--mb-bubble) / .35);box-shadow:0 10px 30px -26px rgb(var(--mb-hot) / .6)}
+[data-theme="malibu"] .wordmark b{font:400 23px/1.3 var(--f-display);letter-spacing:.01em;color:rgb(var(--mb-hot))}
+[data-theme="malibu"][data-mode="dark"] .wordmark b{color:rgb(var(--mb-bubble));text-shadow:0 0 14px rgb(var(--mb-hot) / .5)}
+[data-theme="malibu"] .wordmark small{font:600 12.5px/1.2 var(--f-body);margin-top:0}
+[data-theme="malibu"] :is(.pulse,.usechip,.seek){border-color:rgb(var(--mb-bubble) / .35)}
+[data-theme="malibu"] .pulse{font:800 12px/1 var(--f-label);letter-spacing:.1em}
+[data-theme="malibu"] :is(.ac-who small,.ac-win small,.seal-k){font-weight:800;letter-spacing:.12em}
+[data-theme="malibu"] :is(.ac-who b,.seal-n){font:800 14.5px/1.15 var(--f-caps);letter-spacing:0}
+[data-theme="malibu"] .seal{background:rgb(var(--c-1a161d));border-color:rgb(var(--mb-bubble) / .35);box-shadow:var(--mb-shadow)}
+[data-theme="malibu"] .nav-h{font:800 11px/1 var(--f-label);letter-spacing:.14em}
+[data-theme="malibu"] .nav-i{width:calc(100% - 20px);margin:1px 10px;padding-left:14px;border-left:0;border-radius:999px}
+[data-theme="malibu"] .nav-i:hover{background:rgb(var(--mb-bubble) / .1)}
+[data-theme="malibu"] .nav-i[aria-current="true"]{background:linear-gradient(90deg,rgb(var(--mb-bubble) / .24),rgb(var(--mb-bubble) / .06))}
+[data-theme="malibu"] .nav-i .glyph,[data-theme="malibu"] .nav-i[aria-current="true"] .glyph{color:rgb(var(--mb-hot))}
+[data-theme="malibu"] .tag{border-radius:999px;padding:4px 8px 3px;font-weight:800;letter-spacing:.1em}
+[data-theme="malibu"] .eyebrow{font:800 11.5px/1.2 var(--f-label);letter-spacing:.14em}
+/* status dots are little hearts; a working chat's heart beats */
+[data-theme="malibu"] :is(.gilt-dot,.ember-dot,.ready-dot,.violet-dot,.ash-dot,.live-dot,.reply-dot){width:11px;height:10px;border-radius:0;box-shadow:none;-webkit-mask:var(--mb-heart) center/contain no-repeat;mask:var(--mb-heart) center/contain no-repeat}
+[data-theme="malibu"] .reply-dot{background:rgb(var(--mb-gold));-webkit-mask-image:var(--mb-heart-o);mask-image:var(--mb-heart-o)}
+[data-theme="malibu"] .gilt-dot{background:rgb(var(--mb-gold))}
+[data-theme="malibu"] :is(.ember-dot,.live-dot){background:rgb(var(--mb-hot));animation:none}
+[data-theme="malibu"] .motion .ember-dot{animation:mb-beat 1.6s ease-in-out infinite}
+@keyframes mb-beat{0%,60%,100%{transform:scale(1)}15%{transform:scale(1.28)}30%{transform:scale(1)}45%{transform:scale(1.16)}}
+/* section headings: script titles over a pink-to-peach rule */
+[data-theme="malibu"] .sec-h h2{font:400 clamp(26px,2.6vw,34px)/1.35 var(--f-display);letter-spacing:0;color:var(--crimson)}
+[data-theme="malibu"][data-mode="dark"] .sec-h h2{color:rgb(var(--mb-bubble))}
+[data-theme="malibu"] .sec-h::before{height:3px;border-radius:3px;background:linear-gradient(90deg,rgb(var(--mb-hot)),rgb(var(--mb-peach)))}
+[data-theme="malibu"] .sec-h::after{background:repeating-linear-gradient(90deg,rgb(var(--mb-bubble) / .4) 0 6px,transparent 6px 11px)}
+/* the hero: a stitched pink card with the sunset on the right */
+[data-theme="malibu"] .hero{border-color:rgb(var(--mb-bubble) / .45);border-radius:24px;background:linear-gradient(135deg,rgb(var(--c-1a161d)),rgb(var(--mb-blush) / .6));box-shadow:var(--mb-shadow)}
+[data-theme="malibu"] .hero::before{inset:7px;border:1.5px dashed rgb(var(--mb-bubble) / .45);border-radius:18px}
+[data-theme="malibu"] .hero::after{display:none}
+[data-theme="malibu"] .hero-in{grid-template-columns:minmax(0,1fr);padding-top:30px;padding-bottom:30px}
+[data-theme="malibu"] .hero h1{font:400 clamp(28px,3.1vw,42px)/1.32 var(--f-display);letter-spacing:0;color:rgb(var(--mb-hot))}
+[data-theme="malibu"][data-mode="dark"] .hero h1{color:rgb(var(--mb-bubble));text-shadow:0 0 22px rgb(var(--mb-hot) / .55)}
+[data-theme="malibu"] .hero h1 em{font:700 .5em/1.4 var(--f-body);font-style:normal;color:var(--parch-2);margin-top:6px;text-shadow:none}
+[data-theme="malibu"] .hero-art.sunset{padding:0;-webkit-mask:linear-gradient(90deg,transparent,#000 12%);mask:linear-gradient(90deg,transparent,#000 12%)}
+[data-theme="malibu"] .mb-scene{position:absolute;inset:0;width:100%;height:100%}
+[data-theme="malibu"] .mb-sky1{stop-color:rgb(var(--mb-sky1))}
+[data-theme="malibu"] .mb-sky2{stop-color:rgb(var(--mb-sky2))}
+[data-theme="malibu"] .mb-sky3{stop-color:rgb(var(--mb-sky3))}
+[data-theme="malibu"] .mb-sun1{stop-color:rgb(var(--mb-sun1))}
+[data-theme="malibu"] .mb-sun2{stop-color:rgb(var(--mb-sun2))}
+[data-theme="malibu"] .mb-sea1{stop-color:rgb(var(--mb-sea1))}
+[data-theme="malibu"] .mb-sea2{stop-color:rgb(var(--mb-sea2))}
+[data-theme="malibu"] .mb-glint rect{fill:rgb(var(--mb-sun1) / .75)}
+[data-theme="malibu"] .mb-wave{fill:none;stroke:rgb(var(--c-ffffff) / .55);stroke-width:1.6;stroke-linecap:round}
+[data-theme="malibu"] .mb-palms{fill:rgb(var(--mb-palm))}
+[data-theme="malibu"] .mb-hearts path{stroke:rgb(var(--mb-hot));stroke-width:2}
+[data-theme="malibu"] .mb-hearts .pink{fill:rgb(var(--c-ffffff))}
+[data-theme="malibu"] .mb-hearts .gold{fill:rgb(var(--mb-sun))}
+[data-theme="malibu"] .mb-twinkle{fill:rgb(var(--c-ffffff))}
+[data-theme="malibu"] .mb-ring{fill:none;stroke:rgb(var(--mb-hot));stroke-width:4.5}
+[data-theme="malibu"] .mb-ring-s{fill:none;stroke:rgb(var(--c-ffffff));stroke-width:4.5;stroke-dasharray:5 7}
+[data-theme="malibu"] .motion .mb-wave{animation:mb-wave 6s linear infinite}
+[data-theme="malibu"] .motion .mb-float{animation:mb-float 3.2s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+[data-theme="malibu"] .motion .mb-twinkle{animation:mb-twinkle 2.6s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+[data-theme="malibu"] .motion .mb-bob{animation:mb-bob 3.6s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+@keyframes mb-wave{to{transform:translateX(40px)}}
+@keyframes mb-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes mb-twinkle{0%,100%{opacity:.3;transform:scale(.6)}50%{opacity:1;transform:scale(1)}}
+@keyframes mb-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(2.5px)}}
+[data-theme="malibu"] .sunset .ha-read{margin:0 14px 12px auto;gap:16px;padding:8px 16px 7px;border-radius:999px;background:rgb(var(--c-1a161d) / .78);backdrop-filter:blur(6px);box-shadow:0 6px 18px -10px rgb(var(--mb-hot) / .6)}
+[data-theme="malibu"] .sunset .ha-read span{flex-direction:row;align-items:baseline;gap:6px;font:800 10.5px/1 var(--f-label);letter-spacing:.1em;color:var(--ash)}
+[data-theme="malibu"] .sunset .ha-read b{font:400 21px/1.2 var(--f-display);color:var(--crimson)}
+[data-theme="malibu"][data-mode="dark"] .sunset .ha-read b{color:rgb(var(--mb-bubble))}
+/* cards: white with a soft pink shadow and a stitched edge */
+[data-theme="malibu"] :is(.omen,.dial-card,.world){background:rgb(var(--c-1a161d));border-color:rgb(var(--mb-bubble) / .35);box-shadow:var(--mb-shadow)}
+[data-theme="malibu"] .omen-in{border-radius:12px;background:none}
+[data-theme="malibu"] .omen-in::before{border:1.5px dashed rgb(var(--mb-bubble) / .3);border-radius:9px}
+[data-theme="malibu"] .omen.needs{border-color:rgb(var(--mb-gold) / .7)}
+[data-theme="malibu"] .o-title{font:800 17px/1.3 var(--f-caps);letter-spacing:0}
+[data-theme="malibu"] .dial-card.current{border-color:rgb(var(--mb-hot) / .55);box-shadow:0 0 0 3px rgb(var(--mb-bubble) / .18),var(--mb-shadow)}
+[data-theme="malibu"] .dial-card.current::after{content:"Today’s look";border-radius:999px;background:rgb(var(--mb-hot));color:rgb(var(--c-ffffff));font:800 10px/1 var(--f-label);letter-spacing:.12em;padding:6px 11px}
+[data-theme="malibu"] .dc-name{font:800 22px/1.15 var(--f-caps);letter-spacing:0}
+[data-theme="malibu"] .w-name{font:800 23px/1.15 var(--f-caps);letter-spacing:0}
+[data-theme="malibu"] .w-glyph{background:radial-gradient(circle,rgb(var(--mb-bubble) / .3) 2.2px,transparent 2.8px) 0 0/16px 16px,linear-gradient(160deg,rgb(var(--mb-blush)),rgb(var(--c-1a161d)))}
+[data-theme="malibu"] .w-glyph::before,[data-theme="malibu"] .w-glyph::after{display:none}
+[data-theme="malibu"] .w-glyph b{font:400 84px/1.25 var(--f-display);color:rgb(var(--mb-hot));opacity:.2;letter-spacing:0;top:-14px}
+/* buttons: hot pink pills; the sunny one is for what's waiting on you */
+[data-theme="malibu"] .btn{border-radius:999px}
+[data-theme="malibu"] :is(.btn.prime,.btn.gilt){font-weight:800}
+[data-theme="malibu"] .btn.prime{background:linear-gradient(180deg,rgb(214 30 132),rgb(186 20 112));border-color:rgb(186 20 112);color:rgb(var(--c-ffffff));box-shadow:0 8px 18px -10px rgb(var(--mb-hot) / .9),inset 0 1px 0 rgb(var(--c-ffffff) / .3)}
+[data-theme="malibu"] .btn.prime:hover:not(:disabled){background:linear-gradient(180deg,rgb(226 40 144),rgb(198 26 122))}
+[data-theme="malibu"] .btn.gilt{background:linear-gradient(180deg,rgb(var(--mb-sun)),rgb(var(--mb-peach)));border-color:rgb(var(--mb-peach));color:rgb(92 22 58);box-shadow:0 8px 18px -10px rgb(var(--mb-peach) / .9),inset 0 1px 0 rgb(var(--c-ffffff) / .5)}
+[data-theme="malibu"] .btn.gilt:hover:not(:disabled){background:linear-gradient(180deg,rgb(255 208 102),rgb(255 142 104))}
+/* menus and dialogs */
+[data-theme="malibu"] :is(.menu,dialog,.palette .pal-box,.drawer){border-color:rgb(var(--mb-bubble) / .4);box-shadow:0 30px 70px -24px rgb(var(--mb-hot) / .35),0 0 0 1px rgb(var(--mb-bubble) / .12)}
+/* the chat window: pink speech bubbles and a soft message box */
+[data-theme="malibu"] .c-head{border-bottom-color:rgb(var(--mb-bubble) / .3)}
+[data-theme="malibu"] .c-title{font:800 23px/1.2 var(--f-caps);letter-spacing:0}
+[data-theme="malibu"] .turn .who{font:800 10.5px/1 var(--f-label);letter-spacing:.14em}
+[data-theme="malibu"] .ububble{background:linear-gradient(180deg,rgb(var(--mb-bubble) / .16),rgb(var(--mb-hot) / .1));border-color:rgb(var(--mb-bubble) / .4);border-radius:20px 20px 6px 20px}
+[data-theme="malibu"] .c-box{border-radius:22px;border-color:rgb(var(--mb-bubble) / .4)}
+[data-theme="malibu"] .c-box:focus-within{border-color:rgb(var(--mb-hot) / .7);box-shadow:0 0 0 4px rgb(var(--mb-bubble) / .16)}
+[data-theme="malibu"] .md{line-height:1.7}
+[data-theme="malibu"] .md strong{font-weight:800}
+
+/* ---------- Malibu's sky: sparkles and the odd heart, shimmering slowly ---------- */
+.sky-sparkles{position:absolute;inset:0}
+.sky-sparkles .pink{fill:rgb(var(--mb-bubble))}
+.sky-sparkles .sun{fill:rgb(var(--mb-sun))}
+.sky-sparkles .pool{fill:rgb(var(--mb-pool))}
+.sky-sparkles .a{opacity:.42}
+.sky-sparkles .b{opacity:.26}
+.motion .sky-sparkles rect{animation:mb-shimmer 9s ease-in-out infinite}
+.motion .sky-sparkles .b{animation-delay:-4.5s}
+@keyframes mb-shimmer{0%,100%{opacity:.16}50%{opacity:.5}}
+.lk-glam .lk-tn b{font-family:var(--sw-font);font-weight:400;font-size:19px;letter-spacing:0;text-transform:none}
+.lk-glam .sw-card{box-shadow:inset 0 2px 0 var(--sw-acc)}
+
 /* ---------- the sky (in place of the petals): a few still stars ---------- */
 body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 @media (prefers-reduced-motion:reduce){ .petals[data-kind]:not([data-kind="petals"]){display:block} }
@@ -2191,9 +2329,12 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
   [data-art] .hero-in{padding-right:28px}
   [data-art] .hero{display:flex;flex-direction:column-reverse}
   [data-theme="imperial"] .console{padding:0}
+  [data-theme="malibu"] .hero-art.sunset{-webkit-mask:none;mask:none;border-radius:16px}
 }
 @media (max-width:760px){
   [data-theme="imperial"] .hero h1{font-size:21px}
   [data-theme="rebel"] .hero h1{font-size:30px}
   [data-family="saga"] .wordmark b{font-size:13px}
+  [data-theme="malibu"] .hero h1{font-size:27px}
+  [data-theme="malibu"] .wordmark b{font-size:19px}
 }

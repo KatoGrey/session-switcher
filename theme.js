@@ -59,6 +59,39 @@
     Object.assign(t.copy, { '✦': '', 'Turned off automatically if Windows is set to reduce motion.': 'It never moves, so it stays on when your device is set to reduce motion.' });
   }
 
+  /* ---------- the glam themes ----------
+     Malibu: hot pink and pool blue at a beach house in the sun. A bubbly script for the big words, a
+     soft rounded face for reading, sparkles behind the hub, a sunset in the hero (hearts in the sky
+     for chats waiting on you, twinkles for ones at work, pool floats for ones lounging), little
+     hearts for status dots (a working chat's heart beats) and sweet chimes made on the spot (tones:
+     [frequency, start, volume] per note). Made for light mode; in dark mode it's neon on plum. */
+  const PACIFICO = '"Pacifico", "Brush Script MT", cursive';
+  const NUNITO = '"Nunito", system-ui, -apple-system, "Segoe UI", sans-serif';
+  const GLAM = [
+    {
+      id: 'malibu', name: 'Malibu', note: 'Hot pink and pool blue at a beach house in the sun: a sunset, sparkles and little hearts. Made for light mode.', family: 'glam', sky: 'sparkles', art: 'sunset',
+      accent: 330, sat: 1.7, gold: 44, goldSat: 1.1, surface: 333, surfSat: 1.6, ink: 330, inkSat: 0.75, codex: 186,
+      fonts: { display: PACIFICO, caps: NUNITO, body: NUNITO, label: NUNITO },
+      emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--mb-hot))"/><circle cx="20" cy="20" r="15.8" fill="none" style="stroke:rgb(var(--c-ffffff))" stroke-opacity=".55" stroke-width="1" stroke-dasharray="1.6 2.2"/><path d="M20 29.6C13.2 25.1 10.2 21.4 10.2 17.6c0-3 2.3-5.3 5.1-5.3 2 0 3.7 1.1 4.7 2.8 1-1.7 2.7-2.8 4.7-2.8 2.8 0 5.1 2.3 5.1 5.3 0 3.8-3 7.5-9.8 12z" style="fill:rgb(var(--c-ffffff))"/><path d="M14.4 16.4c.3-1.4 1.4-2.3 2.8-2.4" fill="none" style="stroke:rgb(var(--mb-hot))" stroke-opacity=".5" stroke-width="1.3" stroke-linecap="round"/><path d="M30.2 6.6l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z" style="fill:rgb(var(--mb-sun))"/>',
+      tones: {
+        needs: [[1318.5, 0, 0.032], [1661.2, 0.07, 0.03], [1975.5, 0.14, 0.028], [2637, 0.21, 0.024]],
+        reply: [[1174.7, 0, 0.03], [1568, 0.1, 0.028], [2093, 0.2, 0.02]],
+      },
+      copy: {
+        'Your move': 'Your turn to shine', 'Awaiting you': 'Ready for you', 'Right now': 'Busy, busy', 'At work': 'Making it happen',
+        'Head to head': 'Who wore it better', 'Races': 'Showdowns', 'Coming up': 'On the calendar', 'Queued': 'Up next',
+        'By folder': 'Room by room', 'Your projects': 'The beach house', 'Pick up where you left off': 'Catch up', 'Recent chats': 'Fresh gossip',
+        'Your plans': 'Closet space', 'Accounts and usage': 'Your looks', 'Begin': 'Hello, gorgeous', 'The hub': 'Home', 'Search every chat': 'Find anything',
+        'All quiet.': 'All caught up, gorgeous.', 'Pick up any chat below.': 'Pick a chat below and make it fabulous.', 'Nothing needs you yet.': 'Nothing needs you yet. Smoothie break?',
+        '{n} chat awaits you.': '{n} chat is ready for you, darling.', '{n} chats await you.': '{n} chats are ready for you, darling.',
+        '{n} chat at work.': '{n} chat is on it.', '{n} chats at work.': '{n} chats are on it.', 'Working as': 'Today’s look', '@where': 'Malibu',
+        'Claude & Codex, every chat and account in one place': 'Claude & Codex, all dolled up', 'Search every chat…': 'Find anything…',
+        'Drifting petals': 'Sparkles', 'A few slow petals behind the hub.': 'A sprinkle of sparkles behind the hub.', 'Show the drifting petals': 'Show the sparkles', 'Hide the drifting petals': 'Hide the sparkles',
+        '✦': '♥', 'Turned off automatically if Windows is set to reduce motion.': 'They hold still when your device is set to reduce motion.',
+      },
+    },
+  ];
+
   // accent: hue for the main color · sat: its strength · gold: hue for highlights · surface: hue
   // and strength of backgrounds · ink: hue of text · codex: hue that marks Codex.
   const THEMES = [
@@ -71,6 +104,7 @@
     { id: 'rose', name: 'Rose', note: 'Soft pink and blush.', accent: 336, sat: 1.1, gold: 38, surface: 320, surfSat: 1.1, ink: 20, codex: 212 },
     { id: 'graphite', name: 'Graphite', note: 'Quiet greys, no color cast.', accent: 212, sat: 0.32, gold: 45, surface: 220, surfSat: 0.35, ink: 220, codex: 212 },
     ...SAGA,
+    ...GLAM,
   ];
   const DEFAULTS = { theme: 'crimson', mode: 'dark', text: 100, ui: 100, font: 'classic', bold: false, contrast: false };
   const FONTS = {

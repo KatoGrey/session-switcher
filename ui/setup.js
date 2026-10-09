@@ -114,7 +114,7 @@ function renderLook() {
   const seg = (k, opts) => `<div class="lk-seg" role="radiogroup">${opts.map(([v, l, sub]) => `<button type="button" role="radio" aria-checked="${String(o[k]) === String(v)}" data-look="${k}" data-v="${v}">${l}${sub ? `<small>${sub}</small>` : ''}</button>`).join('')}</div>`;
   const card = t => {
     const c = Look.swatch(t.id, light);
-    return `<button type="button" class="lk-theme${t.sky ? ' lk-saga' : ''}" role="radio" aria-checked="${o.theme === t.id}" data-look="theme" data-v="${t.id}" style="--sw-bg:${c.bg};--sw-card:${c.card};--sw-line:${c.line};--sw-ink:${c.ink};--sw-ash:${c.ash};--sw-acc:${c.accent};--sw-emb:${c.ember};--sw-gold:${c.gold};--sw-cx:${c.codex}${t.fonts ? `;--sw-font:${esc(t.fonts.display)}` : ''}">
+    return `<button type="button" class="lk-theme${t.family ? ` lk-${t.family}` : ''}" role="radio" aria-checked="${o.theme === t.id}" data-look="theme" data-v="${t.id}" style="--sw-bg:${c.bg};--sw-card:${c.card};--sw-line:${c.line};--sw-ink:${c.ink};--sw-ash:${c.ash};--sw-acc:${c.accent};--sw-emb:${c.ember};--sw-gold:${c.gold};--sw-cx:${c.codex}${t.fonts ? `;--sw-font:${esc(t.fonts.display)}` : ''}">
       <span class="sw" aria-hidden="true"${t.sky ? ` data-sky="${t.sky}"` : ''}><span class="sw-bar"><i></i><i></i><i></i></span><span class="sw-card"><b></b><em></em><em class="s"></em><span class="sw-btn"></span><span class="sw-dot"></span></span></span>
       <span class="lk-tn"><b>${esc(t.name)}</b><small>${esc(t.note)}</small></span></button>`;
   };
@@ -126,6 +126,9 @@ function renderLook() {
     <p class="d-h">Space saga</p>
     <p class="lk-saga-note">Command your chats like a fleet. These bring their own lettering, a sky behind the hub, short sound cues and a few words of their own.</p>
     <div class="lk-themes" role="radiogroup" aria-label="Space saga themes">${Look.THEMES.filter(t => t.family === 'saga').map(card).join('')}</div>
+    <p class="d-h">Glam</p>
+    <p class="lk-saga-note">Sunshine, sparkles and a little pink. Brings its own lettering, sparkles behind the hub, sweet chimes and a few words of its own.</p>
+    <div class="lk-themes" role="radiogroup" aria-label="Glam themes">${Look.THEMES.filter(t => t.family === 'glam').map(card).join('')}</div>
     <p class="d-h">Text</p>
     <div class="lk-row"><label for="lkText"><b>Text size</b><small>Messages, documents and the message box</small></label>
       <div class="lk-range"><span class="a-sm" aria-hidden="true">A</span><input type="range" id="lkText" min="80" max="150" step="5" value="${o.text}" data-look="text"><span class="a-lg" aria-hidden="true">A</span><output id="lkTextV">${o.text}%</output></div></div>
@@ -269,8 +272,21 @@ function starTile(seed, size, n, big) {
   }
   return `--tile:${size}px;background-image:${dots.join(',')};background-size:${size}px ${size}px`;
 }
-function skyHtml() {
+function skyHtml(kind) {
+  if (kind === 'sparkles') return `<svg class="sky-sparkles" width="100%" height="100%" aria-hidden="true"><defs>${sparkleTile('mbSkyA', 520, 16)}${sparkleTile('mbSkyB', 700, 11)}</defs><rect class="a" width="100%" height="100%" fill="url(#mbSkyA)"/><rect class="b" width="100%" height="100%" fill="url(#mbSkyB)"/></svg>`;
   return `<div class="sky-stars" style="${starTile('a', 487, 18, 1)}"></div><div class="sky-stars far" style="${starTile('b', 613, 10, 1.4)}"></div>`;
+}
+// Malibu's sky: four-point sparkles and the odd heart, in pink, sunshine and pool blue, as one tile.
+function sparkleTile(id, size, n) {
+  const r = seeded(id);
+  let shapes = '';
+  for (let i = 0; i < n; i++) {
+    const x = (r() * size).toFixed(1), y = (r() * size).toFixed(1), tint = r(), d = 3 + r() * 5;
+    const cls = tint > 0.72 ? 'sun' : tint > 0.3 ? 'pink' : 'pool';
+    if (r() > 0.82) shapes += `<path class="${cls}" transform="translate(${x} ${y}) scale(${(d / 16).toFixed(3)})" d="M0 9C-5-.5-10-1-10-5.8-10-9 -7.6-11-5-11c2 0 3.6 1 5 3 1.4-2 3-3 5-3 2.6 0 5 2 5 5.2C10-1 5-.5 0 9z"/>`;
+    else shapes += `<path class="${cls}" d="M${x} ${(y - d).toFixed(1)}q${(d * 0.18).toFixed(2)} ${(d * 0.82).toFixed(2)} ${d.toFixed(2)} ${d.toFixed(2)}q${(-d * 0.82).toFixed(2)} ${(d * 0.18).toFixed(2)} ${(-d).toFixed(2)} ${d.toFixed(2)}q${(-d * 0.18).toFixed(2)} ${(-d * 0.82).toFixed(2)} ${(-d).toFixed(2)} ${(-d).toFixed(2)}q${(d * 0.82).toFixed(2)} ${(-d * 0.18).toFixed(2)} ${d.toFixed(2)} ${(-d).toFixed(2)}z"/>`;
+  }
+  return `<pattern id="${id}" width="${size}" height="${size}" patternUnits="userSpaceOnUse">${shapes}</pattern>`;
 }
 // Text written into the page itself (index.html) that a saga theme rewords.
 function sayStatic() {
@@ -302,13 +318,15 @@ function clip(url) {
 }
 function chime(kind) {
   if (!actx) return;
-  const fx = Look.theme().sfx;
+  const fx = Look.theme().sfx, tones = Look.theme().tones;
   if (fx) { if (fx[kind]) { if (actx.state === 'suspended') actx.resume(); clip(fx[kind]); } return; }
-  if (kind === 'engage') return;
+  // A theme can bring its own notes (Malibu's twinkles); otherwise the bell.
+  if (tones && !tones[kind]) return;
+  if (kind === 'engage' && !tones) return;
   try {
     if (actx.state === 'suspended') actx.resume();
     const t0 = actx.currentTime + 0.02;
-    const notes = kind === 'needs' ? [[1318.5, 0, 0.06], [987.8, 0.17, 0.05]] : [[880, 0, 0.035], [1174.7, 0.11, 0.025]];
+    const notes = tones ? tones[kind] : kind === 'needs' ? [[1318.5, 0, 0.06], [987.8, 0.17, 0.05]] : [[880, 0, 0.035], [1174.7, 0.11, 0.025]];
     for (const [f, dt, vol] of notes) {
       const g = actx.createGain();
       g.gain.setValueAtTime(0.0001, t0 + dt);

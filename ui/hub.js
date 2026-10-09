@@ -173,6 +173,37 @@ function heroArt({ N, R, W, Q }) {
     return `<div class="hero-art trench" aria-hidden="true"><div class="ha-view"><div class="ha-floor"></div><div class="ha-wall l"></div><div class="ha-wall r"></div><i class="ha-reticle"></i></div>
       <div class="ha-read"><span class="${N + R ? 'hot' : ''}">Waiting<b>${pad(N + R)}</b></span><span>In flight<b>${pad(W)}</b></span><span>Standing by<b>${pad(Q)}</b></span></div></div>`;
   }
+  if (art === 'sunset') {
+    // Malibu: a striped sun setting into the sea between two palms. Hearts in the sky are chats
+    // waiting on you (gold: it needs your OK), twinkles are chats at work, pool floats are ones lounging.
+    const HEARTS = [[132, 58, 15], [176, 30, 12], [238, 44, 14], [284, 74, 11], [98, 92, 12], [212, 18, 10], [158, 88, 10]];
+    const TWINKLES = [[86, 40], [254, 100], [190, 66], [302, 30], [112, 22], [226, 122]];
+    const FLOATS = [[148, 204], [252, 216], [104, 224]];
+    const heart = (x, y, s, cls, i) => `<g transform="translate(${x} ${y}) scale(${(s / 24).toFixed(3)})"><path class="mb-float ${cls}" style="--d:${(i * 0.45).toFixed(2)}s" d="M12 21.5C5 16.6 1 12.7 1 7.6 1 4 3.8 1.2 7.2 1.2c2 0 3.8 1 4.8 2.6 1-1.6 2.8-2.6 4.8-2.6C20.2 1.2 23 4 23 7.6c0 5.1-4 9-11 13.9z"/></g>`;
+    const twinkle = ([x, y], i) => `<path class="mb-twinkle" style="--d:${(i * 0.6).toFixed(2)}s;transform-origin:${x}px ${y}px" d="M${x} ${y - 7}l1.8 5.2 5.2 1.8-5.2 1.8-1.8 5.2-1.8-5.2-5.2-1.8 5.2-1.8z"/>`;
+    const float = ([x, y], i) => `<g class="mb-bob" style="--d:${(i * 0.8).toFixed(2)}s"><ellipse cx="${x}" cy="${y}" rx="14" ry="4.6" class="mb-ring"/><ellipse cx="${x}" cy="${y}" rx="14" ry="4.6" class="mb-ring-s"/></g>`;
+    const hearts = Array.from({ length: Math.min(N + R, HEARTS.length) }, (_, i) => heart(...HEARTS[i], i < N ? 'gold' : 'pink', i)).join('');
+    return `<div class="hero-art sunset" aria-hidden="true"><svg class="mb-scene" viewBox="0 0 400 240" preserveAspectRatio="xMidYMax slice">
+      <defs>
+        <linearGradient id="mbSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="mb-sky1"/><stop offset=".62" class="mb-sky2"/><stop offset="1" class="mb-sky3"/></linearGradient>
+        <linearGradient id="mbSun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="mb-sun1"/><stop offset="1" class="mb-sun2"/></linearGradient>
+        <linearGradient id="mbSea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="mb-sea1"/><stop offset="1" class="mb-sea2"/></linearGradient>
+        <mask id="mbStripes"><rect width="400" height="240" fill="#fff"/><rect x="0" y="122" width="400" height="2.5" fill="#000"/><rect x="0" y="134" width="400" height="3.5" fill="#000"/><rect x="0" y="146" width="400" height="4.5" fill="#000"/><rect x="0" y="158" width="400" height="5.5" fill="#000"/></mask>
+        <clipPath id="mbAbove"><rect width="400" height="168"/></clipPath>
+        <g id="mbPalm"><path d="M346 240C344 190 336 130 326 76l6-1c11 53 20 113 26 165z"/><path d="M329 74c-29-14-54-8-71 12 24-12 46-14 71-8zM329 74c27-16 53-10 69 12-24-12-46-14-69-8zM329 74c-15-26-33-34-53-32 22 8 38 18 51 34zM329 74c13-28 31-36 51-34-20 10-36 20-49 36zM329 76c-17 6-29 22-33 40 10-16 20-28 35-37zM329 76c19 8 31 24 33 44-10-18-20-30-34-40z"/><circle cx="326" cy="81" r="3.6"/><circle cx="333.5" cy="82" r="3.6"/></g>
+      </defs>
+      <rect width="400" height="240" fill="url(#mbSky)"/>
+      <g class="mb-sparkles">${TWINKLES.slice(0, Math.min(W, TWINKLES.length)).map(twinkle).join('')}</g>
+      <circle cx="200" cy="150" r="62" fill="url(#mbSun)" mask="url(#mbStripes)" clip-path="url(#mbAbove)"/>
+      <rect y="168" width="400" height="72" fill="url(#mbSea)"/>
+      <g class="mb-glint"><rect x="152" y="174" width="96" height="3" rx="1.5"/><rect x="166" y="184" width="68" height="3" rx="1.5"/><rect x="178" y="194" width="44" height="3" rx="1.5"/><rect x="190" y="204" width="20" height="3" rx="1.5"/></g>
+      <path class="mb-wave" d="M-40 180q10-4 20 0t20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0M-40 214q10-4 20 0t20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0"/>
+      ${FLOATS.slice(0, Math.min(Q, FLOATS.length)).map(float).join('')}
+      <g class="mb-palms"><use href="#mbPalm" transform="translate(-30 0)"/><use href="#mbPalm" transform="translate(50 62) scale(-.72 .74) translate(-400 0)"/></g>
+      <g class="mb-hearts">${hearts}</g>
+    </svg>
+      <div class="ha-read"><span class="${N + R ? 'hot' : ''}"><b>${pad(N + R)}</b>For you</span><span><b>${pad(W)}</b>On it</span><span><b>${pad(Q)}</b>Chilling</span></div></div>`;
+  }
   return '';
 }
 

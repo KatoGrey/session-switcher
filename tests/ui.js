@@ -825,6 +825,47 @@ module.exports = [
     },
   },
   {
+    name: 'malibu',
+    // The glam theme: its own lettering, words, sunset, sparkles, hearts and chimes; light mode first.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`Look.set({ theme: 'malibu', mode: 'light' }); return 1`); await sleep(1500);
+      const h = await b.eval(`await document.fonts.ready; const dot = getComputedStyle(document.querySelector('.gilt-dot, .ember-dot')); return {
+        fonts: document.fonts.check('20px Pacifico') && document.fonts.check('16px Nunito'),
+        home: [...document.querySelectorAll('.nav-i .ni-t')].some(x => x.textContent === 'Home'),
+        word: document.querySelector('.wordmark small').textContent,
+        scene: !!document.querySelector('.hero-art.sunset svg.mb-scene'),
+        hearts: document.querySelectorAll('.mb-hearts path').length,
+        counts: [...document.querySelectorAll('.sunset .ha-read b')].map(x => +x.textContent),
+        sky: !!document.querySelector('#petals .sky-sparkles'),
+        heartDot: /svg/.test(dot.maskImage || dot.webkitMaskImage || ''),
+        emblem: document.getElementById('sigil').innerHTML.includes('mb-hot') }`);
+      t.check('its lettering loads', h.fonts, h);
+      t.check('it speaks its own words', h.home && /all dolled up/.test(h.word), h);
+      t.check('the hero has the sunset', h.scene, h);
+      t.check('a heart in the sky for each chat waiting on you', h.counts.length === 3 && h.hearts === Math.min(h.counts[0], 7), h);
+      t.check('sparkles behind the hub', h.sky, h);
+      t.check('status dots are hearts', h.heartDot, h);
+      t.check('the logo is a heart', h.emblem, h);
+      t.check('it chimes with its own notes, not sound files', await b.eval(`return Array.isArray(Look.theme().tones.needs) && !Look.theme().sfx`));
+      await t.shot(b, 'hub-light');
+      await b.eval(`openSetup('look'); return 1`); await sleep(800);
+      t.check('Setup lists it under Glam', await b.eval(`return [...document.querySelectorAll('[aria-label="Glam themes"] .lk-theme')].map(x => x.dataset.v).join() === 'malibu'`));
+      await t.shot(b, 'setup');
+      await b.eval(`document.getElementById('setup').close(); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2000);
+      await t.shot(b, 'chat-light');
+      await b.eval(`Look.set({ mode: 'dark' }); return 1`); await sleep(600);
+      await t.shot(b, 'chat-dark');
+      await b.eval(`ChatUI.close(); return 1`); await sleep(1000);
+      await t.shot(b, 'hub-dark');
+      const p = await t.open({ width: 412, height: 880, mobile: true });
+      await p.eval(`Look.set({ theme: 'malibu', mode: 'light' }); return 1`); await sleep(1200);
+      t.check('on a phone, nothing scrolls sideways', await p.eval(`return document.scrollingElement.scrollWidth <= innerWidth + 1`));
+      await t.shot(p, 'phone');
+      await b.eval(`Look.reset(); return 1`); await p.eval(`Look.reset(); return 1`);
+    },
+  },
+  {
     name: 'phone',
     async run(t) {
       const b = await t.open({ width: 412, height: 880, mobile: true });
