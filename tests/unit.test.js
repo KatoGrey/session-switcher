@@ -214,6 +214,62 @@ test('limits: running out becomes a notice and an offer to carry on; nearly out 
   assert.deepEqual(translate({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed' } }, {}), []);
 });
 
+/* ---------- rules and tools for both ---------- */
+const rules = require('../lib/rules');
+
+test('rules: one text saved to CLAUDE.md and AGENTS.md; the two compared', () => {
+  const dir = tmp();
+  const paths = rules.rulesPaths({ cwd: dir });
+  assert.deepEqual([path.basename(paths.claude), path.basename(paths.codex)], ['CLAUDE.md', 'AGENTS.md']);
+  let r = rules.readRules(paths);
+  assert.equal(r.claude.exists || r.codex.exists, false);
+  put(dir, 'CLAUDE.md', '# Rules\n\nRun the tests.\n');
+  r = rules.readRules(paths);
+  assert.equal(r.same, false, 'only one exists');
+  rules.writeRules(paths, '# Rules\r\n\r\nRun the tests.');
+  r = rules.readRules(paths);
+  assert.equal(r.same, true);
+  assert.equal(fs.readFileSync(paths.codex, 'utf8'), '# Rules\r\n\r\nRun the tests.\n', 'written as typed, with a final newline');
+  rules.writeRules(paths, 'Only Claude', ['claude']);
+  assert.equal(rules.readRules(paths).same, false);
+  assert.throws(() => rules.writeRules(paths, 'x'.repeat(300 * 1024)), /256 KB/);
+  const user = rules.rulesPaths({ claudeDir: path.join(dir, '.claude'), codexHome: path.join(dir, '.codex') });
+  assert.equal(user.claude, path.join(dir, '.claude', 'CLAUDE.md'));
+  assert.equal(user.codex, path.join(dir, '.codex', 'AGENTS.md'));
+});
+
+test('tools: both lists side by side, settings by name only (never their values)', () => {
+  const dir = tmp(), proj = path.join(dir, 'proj');
+  fs.mkdirSync(proj);
+  const claudeJson = put(dir, '.claude.json', JSON.stringify({
+    mcpServers: { latitude: { type: 'http', url: 'https://mcp.example.com/mcp' } },
+    projects: { [proj]: { mcpServers: { local1: { command: 'npx', args: ['local-mcp'], env: { SECRET_TOKEN: 'hunter2' } } } } },
+  }));
+  put(proj, '.mcp.json', JSON.stringify({ mcpServers: { shared: { command: 'uvx', args: ['shared-mcp'] } } }));
+  const claude = rules.claudeServers(claudeJson, proj);
+  assert.deepEqual(claude.map(x => `${x.name}:${x.scope}`), ['latitude:user', 'local1:local', 'shared:project']);
+  const codex = rules.codexServers([{ name: 'Blender', enabled: true, transport: { type: 'stdio', command: 'uvx', args: ['blender-mcp'], env: { BLENDER_PATH: 'C:\\Blender' } } }, { name: 'latitude', enabled: false, transport: { type: 'streamable_http', url: 'https://mcp.example.com/mcp' } }]);
+  const rows = rules.merged(claude, codex);
+  assert.deepEqual(rows.map(r => `${r.name}:${!!r.claude}:${!!r.codex}`), ['Blender:false:true', 'latitude:true:true', 'local1:true:false', 'shared:true:false']);
+  const shown = JSON.stringify(rows);
+  assert.ok(!shown.includes('hunter2') && !shown.includes('C:\\\\Blender'), 'no setting values');
+  assert.deepEqual(rows.find(r => r.name === 'local1').claude.envNames, ['SECRET_TOKEN']);
+  assert.equal(rows.find(r => r.name === 'latitude').codex.enabled, false);
+});
+
+test('tools: what can be copied across, and why not', () => {
+  assert.deepEqual(rules.forCodex({ command: 'uvx', args: ['blender-mcp'], env: { PORT: '9876' } }), { value: { command: 'uvx', args: ['blender-mcp'], env: { PORT: '9876' } } });
+  assert.deepEqual(rules.forCodex({ type: 'http', url: 'https://x.example/mcp' }), { value: { url: 'https://x.example/mcp' } });
+  assert.match(rules.forCodex({ type: 'http', url: 'https://x.example/mcp', headers: { Authorization: 'Bearer abc' } }).why, /headers/);
+  assert.deepEqual(rules.forClaude({ type: 'stdio', command: 'uvx', args: ['roblox-mcp'] }), { value: { type: 'stdio', command: 'uvx', args: ['roblox-mcp'] } });
+  assert.deepEqual(rules.forClaude({ type: 'streamable_http', url: 'https://x.example/mcp', bearer_token_env_var: 'X_TOKEN' }), { value: { type: 'http', url: 'https://x.example/mcp', headers: { Authorization: 'Bearer ${X_TOKEN}' } } });
+  assert.match(rules.forClaude({ command: 'node', args: ['repl.js'], env: { CODEX_HOME: 'C:\\x' } }).why, /part of Codex/);
+  assert.match(rules.forClaude({ command: 'node', args: ['x.js'], cwd: 'C:\\tools' }).why, /folder of its own/);
+  assert.ok(rules.NAME.test('Roblox_Studio') && !rules.NAME.test('bad.name') && !rules.NAME.test('a b'));
+  assert.equal(rules.runnable(process.platform === 'win32' ? 'C:\\x\\claude.exe' : '/usr/local/bin/claude'), true);
+  if (process.platform === 'win32') assert.equal(rules.runnable('C:\\x\\claude.cmd'), false, 'a .cmd needs a shell');
+});
+
 /* ---------- what a review looks at ---------- */
 const { reviewTarget, EMPTY_TREE } = require('../lib/review');
 const { execFileSync } = require('child_process');

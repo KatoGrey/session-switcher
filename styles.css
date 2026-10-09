@@ -1778,3 +1778,30 @@ details.shared[open] summary{margin-bottom:6px}
 .lm-b{display:flex;flex-wrap:wrap;gap:8px}
 .lm-b small{margin-left:6px;font:400 11px var(--f-mono);opacity:.8}
 
+/* ---------- rules and tools, shared by Claude and Codex ---------- */
+.rules-dlg{width:min(880px,calc(100vw - 32px))}
+.rd-body{padding:4px 22px 18px;max-height:calc(100vh - 150px);overflow:auto}
+.rd-scope{display:inline-flex;gap:4px;margin:4px 0 12px;padding:3px;border:1px solid var(--seam);border-radius:999px}
+.rd-scope button{border:0;background:none;color:var(--ash);font:500 13px var(--f-body);padding:5px 13px;border-radius:999px;cursor:pointer}
+.rd-scope button[aria-checked="true"]{background:var(--vellum-3);color:var(--parch)}
+.rd-intro{margin:0 0 10px;color:var(--parch-2);font-size:14.5px;line-height:1.5}
+.rd-intro code{font:400 12.5px var(--f-mono);color:var(--gilt)}
+.rd-state{margin:0 0 10px;padding:8px 12px;border-radius:7px;border:1px solid var(--seam);font-size:13.5px;color:var(--parch-2)}
+.rd-state.ok{border-color:rgb(var(--c-7fb79a) / .45);color:rgb(var(--c-c9e8d6))}
+.rd-state.warn{border-color:rgb(var(--c-d9bf74) / .45);background:rgb(var(--c-d9bf74) / .05)}
+.rd-text{width:100%;min-height:300px;resize:vertical;box-sizing:border-box;padding:12px 14px;border:1px solid var(--seam-2);border-radius:8px;background:rgb(var(--c-100e12));color:var(--parch);font:400 13.5px/1.55 var(--f-mono)}
+.rd-text:focus{outline:none;border-color:var(--gilt-2)}
+.rd-paths{font:400 11px/1.5 var(--f-mono);color:var(--ash-2);overflow-wrap:anywhere}
+.rd-hint{flex:1;font-size:13px;color:var(--ash)}
+.rd-tools{width:100%;border-collapse:collapse;font-size:14px}
+.rd-tools th{text-align:left;font:500 10.5px/1 var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ember);padding:6px 8px;border-bottom:1px solid var(--seam)}
+.rd-tools td{padding:9px 8px;border-bottom:1px solid var(--seam);vertical-align:top}
+.rd-tools td:first-child small{display:block;max-width:360px;margin-top:2px;font:400 11px/1.4 var(--f-mono);color:var(--ash-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rd-tools td:last-child{text-align:right;white-space:nowrap}
+.rd-yes{color:rgb(var(--c-7fb79a))}
+.rd-yes.off{color:var(--ash)}
+.rd-no{color:var(--ash-2)}
+.rd-both{color:rgb(var(--c-7fb79a));font-size:13px}
+.rd-note{color:var(--ash);font-size:13px}
+@media (max-width:760px){ .rd-body{padding:4px 14px 14px} .rd-tools td:first-child small{max-width:160px} }
+

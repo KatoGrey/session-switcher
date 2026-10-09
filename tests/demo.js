@@ -133,6 +133,18 @@ const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}
 async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false } = {}) {
   const info = { ...chatInfo, ...(context ? { context } : {}) };
   let reviews = 0;
+  // Rules and tools: the project's CLAUDE.md and AGENTS.md differ; one tool on each side, and Codex's own.
+  const rules = {
+    claude: { path: `${bard}\\CLAUDE.md`, exists: true, text: '# Starfall Tavern\n\nRun `npm test` before you finish.\nKeep Lua files under 300 lines.\n' },
+    codex: { path: `${bard}\\AGENTS.md`, exists: true, text: '# Old notes\n' },
+  };
+  const tool = (name, scope, extra) => ({ scope, transport: 'stdio', command: null, args: [], url: null, envNames: [], headerNames: [], tokenVar: null, cwd: null, own: false, ...extra });
+  let servers = [
+    { name: 'Blender', claude: null, codex: tool('Blender', 'user', { enabled: true, command: 'uvx', args: ['blender-mcp'], envNames: ['BLENDER_PATH'] }) },
+    { name: 'codex_app', claude: null, codex: tool('codex_app', 'user', { enabled: true, command: 'codex', args: ['app'], own: true }) },
+    { name: 'latitude', claude: tool('latitude', 'user', { transport: 'http', url: 'https://mcp.example.com/mcp' }), codex: null },
+  ];
+  const rulesOut = () => ({ scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
     let body = {}; try { body = JSON.parse(postData || '{}'); } catch { /* not JSON */ }
@@ -157,6 +169,13 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
     }
     if (p === '/api/chat/model') return { body: { ...info } };
+    if (p === '/api/rules' && method === 'GET') return { body: rulesOut() };
+    if (p === '/api/rules') { for (const k of body.to || []) rules[k] = { ...rules[k], exists: true, text: body.text.endsWith('\n') ? body.text : `${body.text}\n` }; return { body: rulesOut() }; }
+    if (p === '/api/tools') return { body: { servers, codexError: null, codexOn: true } };
+    if (p === '/api/tools/copy') {
+      servers = servers.map(r => (r.name !== body.name ? r : { ...r, [body.to]: { ...(r.claude || r.codex), scope: 'user', enabled: true } }));
+      return { body: { servers, codexError: null, codexOn: true, copied: body.name } };
+    }
     if (p === '/api/chat/review') { return { body: { id: `rv${++reviews}`, what: 'your uncommitted changes', base: body.base || null } }; }
     return { body: {} };
   });

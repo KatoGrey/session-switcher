@@ -380,6 +380,49 @@ module.exports = [
     },
   },
   {
+    name: 'rules',
+    // One set of rules for both (CLAUDE.md and AGENTS.md), and each one's tools side by side.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      const cwd = demo.projects.find(p => p.name === 'Starfall Tavern').cwd;
+      const items = await b.eval(`return projectItems(${JSON.stringify(cwd)}).filter(x => x !== '-').map(x => x.label)`);
+      t.check('a project’s menu has Rules and tools', items.includes('Rules and tools…'), items);
+      await b.eval(`openRules(${JSON.stringify(cwd)}); return 1`); await sleep(800);
+      const st = await b.eval(`return { title: rdTitle.textContent, state: document.getElementById('rdState').textContent.replace(/\\s+/g, ' '), text: document.getElementById('rdText').value }`);
+      t.check('it says the two files differ', /Rules and tools for Starfall Tavern/.test(st.title) && /They’re different/.test(st.state) && /Start from AGENTS\.md instead/.test(st.state), st);
+      t.check('and starts from CLAUDE.md', /Run `npm test` before you finish/.test(st.text), st.text);
+      await t.shot(b, 'rules');
+      await b.clickOn('#rdState [data-rd="from"]'); await sleep(200);
+      t.check('you can start from AGENTS.md instead', /^# Old notes/.test(await b.eval(`return document.getElementById('rdText').value`)));
+      await b.clickOn('#rdState [data-rd="from"]'); await sleep(200);
+      await b.eval(`const ta = document.getElementById('rdText'); ta.value += 'Ask before deleting save files.\\n'; ta.dispatchEvent(new Event('input', { bubbles: true })); return 1`);
+      await b.esc(); await sleep(200);
+      t.check('closing with unsaved changes asks first', await b.eval(`return document.getElementById('confirmDlg').open && document.getElementById('rulesDlg').open`));
+      await b.clickOn('#cfNo'); await sleep(200);
+      await b.clickOn('[data-rd="save"]'); await sleep(500);
+      const saved = calls.find(([p, body]) => p === '/api/rules' && body.text);
+      t.check('Save writes the same text to both files', saved && saved[1].cwd === cwd && saved[1].to.join() === 'claude,codex' && /Ask before deleting save files/.test(saved[1].text), saved && saved[1]);
+      t.check('and then they say the same thing', /say the same thing/.test(await b.eval(`return document.getElementById('rdState').textContent`)));
+
+      await b.clickOn('[data-rdtab="tools"]'); await sleep(300);
+      const rows = await b.eval(`return [...document.querySelectorAll('.rd-tools tbody tr')].map(tr => [...tr.children].map(td => td.textContent.replace(/\\s+/g, ' ').trim()))`);
+      const row = n => rows.find(r => r[0].startsWith(n)) || [];
+      t.check('Tools lists both sides', row('Blender')[2] === '✓ yours' && row('Blender')[1] === '—' && row('latitude')[1] === '✓ yours' && row('latitude')[2] === '—', rows);
+      t.check('offers to add a tool to the other', row('Blender')[3] === 'Add to Claude' && row('latitude')[3] === 'Add to Codex', rows);
+      t.check('but not Codex’s own', row('codex_app')[3] === 'Part of Codex', rows);
+      await t.shot(b, 'tools');
+      await b.clickOn('[data-rd="copy"][data-name="Blender"]'); await sleep(300);
+      const q = await b.eval(`return document.getElementById('cfQ').textContent + ' | ' + document.getElementById('cfX').textContent`);
+      t.check('adding asks first, saying what it runs and which settings come along', /^Add Blender to Claude Code\? \| It runs uvx blender-mcp\.\n\nIts settings \(BLENDER_PATH\) are copied as they are\. Claude Code will have it in every project\.$/.test(q), q);
+      await b.clickOn('#cfYes'); await sleep(500);
+      t.check('then adds it to Claude', calls.some(([p, body]) => p === '/api/tools/copy' && body.name === 'Blender' && body.to === 'claude'));
+      t.check('and both have it', /Both have it/.test(await b.eval(`return [...document.querySelectorAll('.rd-tools tbody tr')].find(tr => tr.textContent.includes('Blender')).textContent`)));
+      await b.eval(`document.getElementById('rulesDlg').close(); openPalette('agents.md'); return 1`); await sleep(500);
+      t.check('Ctrl+K finds it by CLAUDE.md, AGENTS.md or MCP', /Rules and tools/.test(await b.eval(`return document.getElementById('palette').textContent`)));
+    },
+  },
+  {
     name: 'new chat',
     async run(t) {
       // A chat that's running but hasn't saved any history yet (a new one): no "couldn't load" message.

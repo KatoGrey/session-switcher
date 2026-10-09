@@ -489,6 +489,7 @@ function chatHeadItems() {
     ...(id && !C.watch ? [{ label: 'Rename chat', run: async () => { await renameChat(id); const [s] = findSession(id); if (s) { C.title = s.title; $c('cTitle').textContent = s.title; } } }] : []),
     ...(id ? [{ label: 'Copy chat ID', run: () => copyOut(id) }] : []),
     { label: 'Browse this chat’s folder', run: () => openFile('.') },
+    ...(C.info && C.info.cwd ? [{ glyph: '§', label: 'Rules and tools…', hint: 'for Claude and Codex', run: () => openRules(C.info.cwd) }] : []),
     ...(!C.watch && C.state !== 'ended' ? ['-', stopItem()] : []),
   ];
 }

@@ -280,6 +280,7 @@ function projectItems(cwd) {
     { glyph: '✦', label: 'New Claude chat', hint: `as ${a.name}`, disabled: !canLaunch(a) || !p.exists, why: a.lockMessage || 'Sign in first', run: () => ChatUI.open({ cwd, mode: 'new' }) },
     ...(S.codex && S.codex.enabled ? [{ glyph: '◆', label: 'New Codex chat', disabled: !codexReady() || !p.exists, why: 'Sign in to Codex first', run: () => ChatUI.open({ cwd, mode: 'new', provider: 'codex' }) }] : []),
     ...(S.prompts.length ? [{ glyph: '❡', label: 'Start with a prompt…', disabled: !p.exists, run: () => showMenu(Ctx.at, worldNewItems(cwd).filter(x => x !== '-' && /^Start with|Edit prompts/.test(x.label || ''))) }] : []),
+    { glyph: '§', label: 'Rules and tools…', hint: 'CLAUDE.md · AGENTS.md · MCP', disabled: !p.exists, why: 'The folder is gone', run: () => openRules(cwd) },
     '-',
     { label: S.platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
     { label: 'Browse files', disabled: !p.exists, run: () => Viewer.open({ path: cwd, cwd }) },

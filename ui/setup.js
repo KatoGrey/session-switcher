@@ -49,6 +49,7 @@ function renderSetup(j) {
       <div class="field"><label for="prefCodex">Codex command</label>
         <div class="row2"><input id="prefCodex" value="${esc(j.codex ? j.codex.command : 'codex')}" spellcheck="false"><button class="btn" id="saveCodex">Save</button></div>
         <small>Leave as “codex” unless Setup can’t find it; then paste the full path to codex.cmd.</small></div>
+      <div class="field"><label>Rules and tools</label><div class="row2"><span class="rd-hint">Write rules once for both (CLAUDE.md and AGENTS.md), and give each one the other’s MCP tools.</span><button class="btn" data-fix="rules">Rules and tools…</button></div></div>
     </div>
     ${window.REMOTE ? `<p class="d-h" id="st-phone">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p>
       ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h" id="st-phone">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
@@ -187,6 +188,7 @@ $('setupBody').addEventListener('click', wrap(async e => {
   const what = b.dataset.fix, account = b.dataset.account;
   if (what === 'signin') { $('setup').close(); S.acct = account; store('acct', account); renderAll(); return accountAction(current().expectEmail ? 'signin-direct' : 'signin', account); }
   if (what === 'set-claude-path') { $('prefClaude').focus(); return; }
+  if (what === 'rules') { $('setup').close(); return openRules(null); }
   if (what === 'install-codex') return codexInstall();
   if (what === 'codex-signin') { $('setup').close(); return codexSignIn(); }
   if (what === 'fix-sharing') {

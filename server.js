@@ -23,6 +23,7 @@ const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
 const { reviewTarget } = require('./lib/review');
+const rulesLib = require('./lib/rules');
 
 const APP_VERSION = '5.4.1';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -209,6 +210,74 @@ function codexFind(id) {
   return { thread: t, session: s, cwd: t.cwd, exists: !!t.cwd && fs.existsSync(t.cwd), folder: path.basename(String(t.cwd || '').replace(/[\\/]+$/, '')) };
 }
 const isCodexId = id => !!codexFind(id);
+// Rules and tools: CLAUDE.md and AGENTS.md (for a project, or for every project), and each one's MCP servers.
+function rulesPathsFor(cwd) {
+  if (!cwd) return rulesLib.rulesPaths({ claudeDir: config().mainConfigDir, codexHome: codexHomes.MAIN_HOME() });
+  const p = projectAt(cwd);
+  if (!p) throw fail(404, 'That folder isn’t in the list.');
+  if (!p.exists) throw fail(404, `The folder ${p.cwd} no longer exists.`);
+  return rulesLib.rulesPaths({ cwd: p.cwd });
+}
+// Codex's MCP servers, as `codex mcp list --json` reports them.
+function codexMcpList(cwd) {
+  return new Promise(resolve => {
+    let child;
+    try { child = sys.spawnCodex(codexActive().config(), cwd || os.homedir(), ['mcp', 'list', '--json']); } catch (err) { return resolve({ error: err.message }); }
+    let out = '', errText = '';
+    const timer = setTimeout(() => { try { sys.killTree(child); } catch { /* gone */ } resolve({ error: 'Codex didn’t list its tools in time.' }); }, 20000);
+    child.stdout.on('data', d => { out += d; });
+    child.stderr.on('data', d => { errText += d; });
+    child.on('error', err => { clearTimeout(timer); resolve({ error: err.message }); });
+    child.on('close', code => {
+      clearTimeout(timer);
+      try { resolve({ list: JSON.parse(out) }); } catch { resolve({ error: code ? (errText.trim().split(/\r?\n/).pop() || `Codex stopped (code ${code}).`) : 'Codex’s list of tools couldn’t be read.' }); }
+    });
+  });
+}
+async function toolsFor(cwd) {
+  const p = cwd ? projectAt(cwd) : null;
+  const claudeJson = acc.mainStateFile(config());
+  const claude = claudeJson ? rulesLib.claudeServers(claudeJson, p ? p.cwd : null) : [];
+  const cx = config().codex.enabled ? await codexMcpList(p && p.exists ? p.cwd : null) : { list: [] };
+  return { servers: rulesLib.merged(claude, rulesLib.codexServers(cx.list)), codexError: cx.error || null, codexOn: config().codex.enabled };
+}
+// Copies one server to the other: to Codex through its own settings (config/value/write), to Claude
+// Code with `claude mcp add-json`, run directly (no shell), for all your projects.
+async function copyTool(name, to, cwd) {
+  if (!rulesLib.NAME.test(String(name || ''))) throw fail(400, 'That tool’s name has characters these settings can’t take.');
+  const t = await toolsFor(cwd);
+  const p = cwd ? projectAt(cwd) : null;
+  const claudeJson = acc.mainStateFile(config());
+  if (to === 'codex') {
+    const src = rulesLib.claudeServers(claudeJson || '', p ? p.cwd : null).find(x => x.name === name);
+    if (!src) throw fail(404, `Claude Code has no tool called ${name}.`);
+    const v = rulesLib.forCodex(src.spec);
+    if (v.why) throw fail(400, v.why);
+    requireCodexSignedIn();
+    const s = codexActive().server();
+    await s.request('config/value/write', { keyPath: `mcp_servers.${name}`, value: v.value, mergeStrategy: 'upsert' }, 30000);
+    await s.request('config/mcpServer/reload', {}, 30000).catch(() => {});
+  } else if (to === 'claude') {
+    const cx = await codexMcpList(p && p.exists ? p.cwd : null);
+    const src = rulesLib.codexServers(cx.list).find(x => x.name === name);
+    if (!src) throw fail(404, cx.error || `Codex has no tool called ${name}.`);
+    const v = rulesLib.forClaude(src.spec);
+    if (v.why) throw fail(400, v.why);
+    const c = config();
+    const found = path.isAbsolute(c.claudeCommand) ? [c.claudeCommand] : await sys.whereIs(c.claudeCommand || 'claude');
+    const exe = found.find(rulesLib.runnable);
+    const json = JSON.stringify(v.value);
+    if (!exe) throw fail(409, `Claude Code here is a script, which this can’t run safely. Run this in a terminal instead:\n\nclaude mcp add-json ${name} '${json}' -s user`);
+    const env = { ...process.env };
+    delete env.CLAUDE_CONFIG_DIR;
+    if (c.prefs.cleanEnv) for (const k of sys.OVERRIDE_VARS) delete env[k];
+    const r = await rulesLib.runDirect(exe, ['mcp', 'add-json', name, json, '-s', 'user'], { env, cwd: os.homedir() });
+    if (r.code !== 0) throw fail(500, `Claude Code didn’t add it: ${(r.stderr || r.stdout).trim().split(/\r?\n/).pop() || `code ${r.code}`}`);
+  } else throw fail(400, 'Copy it to Claude or to Codex.');
+  log(`Tools: copied ${name} to ${to === 'codex' ? 'Codex' : 'Claude Code'}.`);
+  return { ...(await toolsFor(cwd)), copied: name, was: t.servers.find(x => x.name === name) || null };
+}
+
 // Codex reviews a chat's work; progress and the result arrive in that chat as 'review' events.
 async function startReview(chat, files, base) {
   requireCodexSignedIn();
@@ -434,7 +503,7 @@ function stateFor() {
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/quit', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude']);
+const LOCAL_ONLY = new Set(['/api/tools/copy', '/api/quit', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
@@ -464,6 +533,11 @@ async function handleApi(req, res, url, remote = false) {
     const q = Object.fromEntries(url.searchParams);
     return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
   }
+  if (route === 'GET /api/rules') {
+    const cwd = url.searchParams.get('cwd') || null;
+    return send(res, 200, { scope: cwd ? 'project' : 'user', cwd, ...rulesLib.readRules(rulesPathsFor(cwd)) });
+  }
+  if (route === 'GET /api/tools') return send(res, 200, await toolsFor(url.searchParams.get('cwd') || null));
   if (route === 'GET /api/project/info') {
     const p = projectAt(url.searchParams.get('cwd'));
     if (!p) throw fail(404, 'That folder isn’t in the list.');
@@ -1059,6 +1133,15 @@ async function handleChat(req, res, url, body, c) {
     case '/api/chat/interrupt': await chats.get(body.key).interrupt(); return send(res, 200, { ok: true });
     case '/api/chat/compact': await chats.get(body.key).compact(); return send(res, 200, { ok: true });
     case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base));
+    case '/api/rules': {
+      const paths = rulesPathsFor(body.cwd || null);
+      const to = (Array.isArray(body.to) ? body.to : ['claude', 'codex']).filter(k => k === 'claude' || k === 'codex');
+      if (!to.length) throw fail(400, 'Save to CLAUDE.md, AGENTS.md or both.');
+      rulesLib.writeRules(paths, body.text, to);
+      log(`Rules: saved ${to.map(k => path.basename(paths[k])).join(' and ')} ${body.cwd ? `in ${body.cwd}` : 'for every project'}.`);
+      return send(res, 200, { scope: body.cwd ? 'project' : 'user', cwd: body.cwd || null, ...rulesLib.readRules(paths) });
+    }
+    case '/api/tools/copy': return send(res, 200, await copyTool(body.name, body.to, body.cwd || null));
     case '/api/chat/mode': {
       const chat = chats.get(body.key);
       await chat.setMode(body.mode);
