@@ -401,4 +401,9 @@ window.__mobileBack = () => {
 applyMotion();
 petals();
 renderLivePill();
-wrap(async () => { await Promise.all([reload(), loadPrompts()]); connectLive(); watchActivity(); loadHealth(false).catch(() => {}); })();
+if (SOLO) document.body.classList.add('solo');
+wrap(async () => {
+  await Promise.all([reload(), loadPrompts()]); connectLive(); watchActivity(); loadHealth(false).catch(() => {});
+  // A popped-out window opens straight into its chat.
+  if (PAGE_ARGS.get('chat')) await ChatUI.open({ sessionId: PAGE_ARGS.get('chat') });
+})();

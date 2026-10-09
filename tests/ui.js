@@ -423,6 +423,31 @@ module.exports = [
     },
   },
   {
+    name: 'windows',
+    // A chat in its own window, to have two side by side.
+    async run(t) {
+      const id = demo.ID['s-bard'];
+      const b = await t.open();
+      t.check('a chat’s menu offers its own window', (await b.eval(`return chatItems(${JSON.stringify(id)}).filter(x => x !== '-').map(x => x.label)`)).includes('Open in a new window'));
+      await b.eval(`window._opened = []; window.open = (...a) => { _opened.push(a); return {}; }; ChatUI.open({ sessionId: ${JSON.stringify(id)} }); return 1`); await sleep(2500);
+      await b.clickOn('[data-c="more"]'); await sleep(300);
+      await b.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => /Open in a new window/.test(x.textContent)).click(); return 1`); await sleep(300);
+      const opened = await b.eval(`return _opened`);
+      t.check('it opens that chat in a window of its own', opened.length === 1 && opened[0][0] === `/?chat=${encodeURIComponent(id)}&solo=1` && /popup/.test(opened[0][2]), opened);
+      t.check('and leaves this window’s chat for the hub', !(await b.eval(`return ChatUI.isOpen()`)));
+
+      const w = await t.open({ width: 980, height: 1000, path: `?chat=${encodeURIComponent(id)}&solo=1` });
+      await sleep(2500);
+      const solo = await w.eval(`return { open: ChatUI.isOpen(), title: document.getElementById('cTitle').textContent, bar: getComputedStyle(document.querySelector('.bar')).display, rail: getComputedStyle(document.getElementById('cRail')).display, top: document.querySelector('.chat').getBoundingClientRect().top, wide: document.scrollingElement.scrollWidth <= innerWidth + 1 }`);
+      t.check('the new window opens straight into the chat', solo.open && /Balance pass/.test(solo.title), solo);
+      t.check('with just the chat: no top bar, no list of running chats', solo.bar === 'none' && solo.rail === 'none' && solo.top < 2 && solo.wide, solo);
+      await t.shot(w, 'solo');
+      await w.eval(`window._closed = false; window.close = () => { _closed = true; }; return 1`);
+      await w.esc(); await w.eval(`document.querySelector('[data-c="back"]').click(); return 1`); await sleep(200);
+      t.check('its back button closes the window', await w.eval(`return _closed`));
+    },
+  },
+  {
     name: 'steps',
     // A reply's steps in one line, folded once it's done.
     async run(t) {

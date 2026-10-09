@@ -2,6 +2,15 @@
 /* Shared helpers, plan usage, what each running chat is doing, the data the hub shows, and keyed patching (live updates that leave hover, focus and typing alone). */
 
 const TOKEN = window.TOKEN;
+// A chat popped out into its own window (?chat=<id>&solo=1): just that chat, side by side with the rest.
+const PAGE_ARGS = new URLSearchParams(location.search);
+const SOLO = PAGE_ARGS.get('solo') === '1';
+const canPopOut = () => !window.REMOTE && !window.Android && !SOLO;
+function popOutChat(id) {
+  if (!id) { toast('Send a message first.'); return; }
+  const w = window.open(`/?chat=${encodeURIComponent(id)}&solo=1`, `ss-chat-${id}`, 'popup=yes,width=980,height=1040');
+  if (!w) toast('The window was blocked. Allow pop-ups for Session Switcher, then try again.', 7000);
+}
 const RINGS = ['#c98a7c', '#9d8ce0', '#c58a4f', '#b9a3c9', '#d79bb6', '#cfc3a6'];
 const CODEX_RING = '#6f97d8';
 const GLYPHS = ['❖', '◈', '◆', '☘', '☾', '✥', '⚑', '⚔', '✧', '❝', '➤', '◉'];

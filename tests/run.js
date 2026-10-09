@@ -58,11 +58,12 @@ async function main() {
         if (!ok) failed++;
         console.log(`  ${ok ? '✔' : '✖'} ${name}${!ok && detail !== undefined ? `  (${typeof detail === 'string' ? detail : JSON.stringify(detail)})` : ''}`);
       },
-      async open({ width = 1440, height = 900, mobile = false, demo: useDemo = true, ...demoOpts } = {}) {
+      // path: what follows the address, like "?chat=…" for a popped-out chat.
+      async open({ width = 1440, height = 900, mobile = false, demo: useDemo = true, path: at = '', ...demoOpts } = {}) {
         const b = await launch({ width, height, mobile });
         browsers.push(b);
         if (useDemo) await demo.install(b, demoOpts);
-        await b.nav(base, 3000);
+        await b.nav(base + at, 3000);
         return b;
       },
       async shot(b, name) { if (SHOTS) await b.shot(path.join(SHOTS, `${suite.name.replace(/\W+/g, '-')}-${name}.png`)); },

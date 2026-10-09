@@ -178,6 +178,7 @@ function chatItems(id) {
     { label: 'Open a copy in the chat window', hint: 'keeps the original', disabled: !ok, why, run: () => ChatUI.open({ sessionId: id, mode: 'fork' }) },
     { label: 'Resume a copy in a terminal', hint: 'keeps the original', disabled: !ok, why, run: () => resume(id, 'fork') },
     { label: 'Open in the desktop app', run: () => resume(id, 'desktop') },
+    ...(canPopOut() ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side with this one', disabled: !ok && !live, why, run: () => popOutChat(id) }] : []),
     '-',
     { label: 'Show details and messages', run: () => openDrawer(id) },
     { label: 'Browse this chat’s folder', run: () => Viewer.open({ path: '.', session: id }) },

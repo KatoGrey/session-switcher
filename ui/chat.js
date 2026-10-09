@@ -322,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const gi = t.closest('[data-giveimg]'); if (gi) return giveImage(gi.dataset.giveimg);
     const c = t.closest('[data-c]'); if (!c) return;
     switch (c.dataset.c) {
-      case 'back': return close();
+      case 'back': if (SOLO) { window.close(); return undefined; } return close();
       case 'rail': return chat.classList.toggle('show-rail');
       case 'ledger': {
         if (matchMedia('(max-width: 1320px)').matches) return chat.classList.toggle('show-ledger');
@@ -484,6 +484,7 @@ function chatHeadItems() {
   return [
     ...(id ? [{ glyph: window.isFav(id) ? '☆' : '★', label: window.isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => window.toggleFav(id) }, '-'] : []),
     ...(reviewAvailable() ? [{ glyph: '◆', label: 'Have Codex review the changes', hint: 'read-only', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview() }, '-'] : []),
+    ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; close(); popOutChat(sid); } }] : []),
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
     { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },
     '-',

@@ -1849,3 +1849,8 @@ details.shared[open] summary{margin-bottom:6px}
 .tools.folded > .tool,.tools.folded > .tg-more{display:none}
 .tools.folded > .tg-sum{margin-bottom:0}
 
+/* ---------- a chat in its own window ---------- */
+body.solo .bar,body.solo .chat .rail,body.solo .livepill,body.solo #petals{display:none}
+body.solo .chat{top:0;grid-template-columns:minmax(0,1fr) auto}
+body.solo .c-head .icon.c-backm{display:none}
+
