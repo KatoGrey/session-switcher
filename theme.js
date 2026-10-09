@@ -11,59 +11,46 @@
   const ON_ACCENT = new Set(['f6ece2', 'f6efe3', 'ffffff', 'f1dfd6', 'f3e2d8', 'efdcd3']);
 
   /* ---------- the space saga themes ----------
-     Gritty, used, industrial: worn panels and stencilled labels rather than glow, and quiet enough to
-     work in. Besides colors, a saga theme brings its own fonts, a still background (sky) in place of
-     the petals, an emblem for the seal, sound cues (sounds/, Kenney CC0) and its own words. Its `copy` map is keyed by
-     the app's own English text; anything it leaves out reads as usual. {n} is a number in words. */
-  const HUD = '"Share Tech Mono", "JetBrains Mono", ui-monospace, monospace';
-  const BODY = '"Barlow", system-ui, -apple-system, sans-serif', COND = '"Barlow Condensed", "Barlow", system-ui, sans-serif';
+     Imperial (a capital ship's bridge: clean, exact, black and white with red signals) and Rebel (a
+     worn hangar: warm metal, flight-suit orange, yellow deck lines). Built to work in all day: real
+     type for reading, a label face for small caps, nothing that moves unless it means something.
+     Besides colors, a saga theme brings its own fonts, a hero display that reads the hub's live
+     counts, a still background in place of the petals, an emblem for the seal, sound cues (sounds/,
+     Kenney CC0) and its own words. Its `copy` map is keyed by the app's own English text; anything it
+     leaves out reads as usual. {n} is a number in words. */
+  const INTER = '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif';
+  const BARLOW = '"Barlow", system-ui, -apple-system, sans-serif';
   const SAGA = [
     {
-      id: 'vanguard', name: 'Vanguard', note: 'A patched-up fighter hangar: gunmetal, flight-suit orange, green targeting readouts.', family: 'saga', sky: 'stars',
-      accent: 20, sat: 1.15, gold: 96, goldSat: 0.5, surface: 40, surfSat: 0.35, ink: 40, inkSat: 0.55, codex: 212,
-      fonts: { display: '"Saira Stencil One", "Barlow Condensed", system-ui, sans-serif', caps: COND, body: BODY, hud: HUD },
-      emblem: '<path d="M20 6L37 31H28.5L20 18.5L11.5 31H3Z" style="fill:rgb(var(--c-a5463f))"/><path d="M20 12.5L31 29H28.5L20 16.5L11.5 29H9Z" style="fill:rgb(var(--c-f6efe3))" fill-opacity=".9"/><path d="M13 35h14" style="stroke:rgb(var(--c-d9bf74))" stroke-width="2.4"/>',
+      id: 'imperial', name: 'Imperial', note: 'A capital ship’s bridge: black glass, white light panels and red signal lamps. Clean and exact.', family: 'saga', sky: 'stars', art: 'console',
+      accent: 357, sat: 1.45, gold: 210, goldSat: 0.1, surface: 225, surfSat: 0.12, ink: 220, inkSat: 0.12, codex: 192,
+      fonts: { display: '"Michroma", ' + INTER, caps: INTER, body: INTER, label: INTER },
+      emblem: '<path d="M20 1.6L36 10.8V29.2L20 38.4L4 29.2V10.8Z" style="fill:rgb(var(--c-0a090c));stroke:rgb(var(--c-ede6d9))" stroke-width="1.4"/><path d="M20 6.2L32 13.1V26.9L20 33.8L8 26.9V13.1Z" fill="none" style="stroke:rgb(var(--c-ede6d9))" stroke-opacity=".35" stroke-width=".8"/><path d="M20 31L31 12.5L20 16.4L9 12.5Z" style="fill:rgb(var(--c-ede6d9))"/><path d="M20 16.4V31" style="stroke:rgb(var(--c-a5463f))" stroke-width="1.6"/>',
       copy: {
-        '@where': 'Calder Reach', 'Your move': 'Incoming', 'Awaiting you': 'Awaiting orders', 'Right now': 'In flight', 'At work': 'Squadrons engaged',
-        'By folder': 'Sectors', 'Your projects': 'Star charts', 'Pick up where you left off': 'Flight log', 'Recent chats': 'Recent sorties',
-        'Your plans': 'Fuel and ordnance', 'Accounts and usage': 'Fleet reserves', 'Begin': 'Flight deck', 'The hub': 'Squadron command', 'Search every chat': 'Scan every channel',
-        'All quiet.': 'Holding formation.', 'Pick up any chat below.': 'Pick a heading below, pilot.', 'Nothing needs you yet.': 'No calls on the comm yet.',
-        '{n} chat awaits you.': '{n} squadron awaits your orders.', '{n} chats await you.': '{n} squadrons await your orders.',
-        '{n} chat at work.': '{n} squadron engaged.', '{n} chats at work.': '{n} squadrons engaged.', 'Working as': 'Flying as',
-        'Claude & Codex, every chat and account in one place': 'Squadron command · every wing, every reserve', 'Search every chat…': 'Scan every channel…',
-        'Drifting petals': 'Starfield', 'A few slow petals behind the hub.': 'A few faint stars behind the hub.', 'Show the drifting petals': 'Show the starfield', 'Hide the drifting petals': 'Hide the starfield', 'Live': 'Comms',
-      },
-    },
-    {
-      id: 'dominion', name: 'Dominion', note: 'The admiral’s bridge: black steel, white light panels and warning red.', family: 'saga', sky: 'grid',
-      accent: 358, sat: 1.35, gold: 210, goldSat: 0.12, surface: 220, surfSat: 0.14, ink: 215, inkSat: 0.2, codex: 190,
-      fonts: { display: '"Michroma", "Barlow", system-ui, sans-serif', caps: '"Michroma", "Barlow", system-ui, sans-serif', body: BODY, hud: HUD },
-      emblem: '<path d="M20 1.8L35.8 10.9V29.1L20 38.2L4.2 29.1V10.9Z" style="fill:rgb(var(--c-3d1a18));stroke:rgb(var(--c-a5463f))" stroke-width="1.6" stroke-linejoin="miter"/><path d="M20 6.5L31.7 13.25V26.75L20 33.5L8.3 26.75V13.25Z" fill="none" style="stroke:rgb(var(--c-d9bf74))" stroke-opacity=".45" stroke-width=".8"/><path d="M20 32L30.5 11.5L20 15.6L9.5 11.5Z" style="fill:rgb(var(--c-f6efe3))"/><path d="M20 15.6V32" style="stroke:rgb(var(--c-a5463f))" stroke-width="1.4"/>',
-      copy: {
-        '@where': 'Ostrava Line', 'Your move': 'Command required', 'Awaiting you': 'Awaiting orders', 'Right now': 'Deployed', 'At work': 'Fleet engaged',
-        'By folder': 'Theatres', 'Your projects': 'Systems under command', 'Pick up where you left off': 'Fleet log', 'Recent chats': 'Recent operations',
-        'Your plans': 'Logistics', 'Accounts and usage': 'Fleet reserves', 'Begin': 'Bridge', 'The hub': 'Tactical display', 'Search every chat': 'Query fleet records',
-        'All quiet.': 'The fleet stands ready.', 'Pick up any chat below.': 'Issue your orders below, Admiral.', 'Nothing needs you yet.': 'No unit requires you yet.',
+        'Your move': 'Requires your command', 'Awaiting you': 'Awaiting orders', 'Right now': 'Deployed', 'At work': 'Units engaged',
+        'By folder': 'Sectors', 'Your projects': 'Systems under command', 'Pick up where you left off': 'Fleet log', 'Recent chats': 'Recent operations',
+        'Your plans': 'Capacity', 'Accounts and usage': 'Fleet reserves', 'Begin': 'Command', 'The hub': 'Bridge', 'Search every chat': 'Search fleet records',
+        'All quiet.': 'All systems nominal.', 'Pick up any chat below.': 'The fleet awaits your command.', 'Nothing needs you yet.': 'No unit requires you.',
         '{n} chat awaits you.': '{n} unit awaits your orders.', '{n} chats await you.': '{n} units await your orders.',
-        '{n} chat at work.': '{n} unit deployed.', '{n} chats at work.': '{n} units deployed.', 'Working as': 'Commanding as',
-        'Claude & Codex, every chat and account in one place': 'Fleet command · every unit, every reserve', 'Search every chat…': 'Query fleet records…',
-        'Drifting petals': 'Tactical grid', 'A few slow petals behind the hub.': 'A faint plotting grid behind the hub.', 'Show the drifting petals': 'Show the tactical grid', 'Hide the drifting petals': 'Hide the tactical grid', 'Live': 'Uplink',
+        '{n} chat at work.': '{n} unit engaged.', '{n} chats at work.': '{n} units engaged.', 'Working as': 'Commanding as',
+        'Claude & Codex, every chat and account in one place': 'Fleet command · every unit, every reserve', 'Search every chat…': 'Search fleet records…',
+        'Drifting petals': 'Viewport stars', 'A few slow petals behind the hub.': 'A few still stars behind the hub, as through the bridge viewport.', 'Show the drifting petals': 'Show the viewport stars', 'Hide the drifting petals': 'Hide the viewport stars', 'Live': 'Uplink',
       },
     },
     {
-      id: 'mirage', name: 'Mirage', note: 'A sandblasted relay outpost under twin suns: rust, dust and a faded blue holo.', family: 'saga', sky: 'dunes',
-      accent: 198, sat: 0.95, gold: 28, goldSat: 0.8, surface: 30, surfSat: 0.6, ink: 38, inkSat: 0.8, codex: 300,
-      fonts: { display: '"Barlow Semi Condensed", "Barlow", system-ui, sans-serif', caps: COND, body: BODY, hud: HUD },
-      emblem: '<rect x="2.5" y="5.5" width="35" height="29" rx="3" style="fill:rgb(var(--c-3d1a18));stroke:rgb(var(--c-a5463f))" stroke-width="1.6"/><circle cx="15" cy="17" r="5" style="fill:rgb(var(--c-d9bf74))"/><circle cx="25.5" cy="19.5" r="2.8" style="fill:rgb(var(--c-f6efe3))" fill-opacity=".85"/><path d="M4 27C10 23.5 15 24 21 26.5S31 28.5 36 25V33H4Z" style="fill:rgb(var(--c-a5463f))"/>',
+      id: 'rebel', name: 'Rebel', note: 'A hard-worn hangar: scuffed metal, flight-suit orange, yellow deck lines and a targeting computer.', family: 'saga', sky: 'stars', art: 'trench',
+      accent: 21, sat: 1.45, gold: 47, goldSat: 0.95, surface: 32, surfSat: 0.42, ink: 38, inkSat: 0.5, codex: 210,
+      fonts: { display: '"Barlow Condensed", ' + BARLOW, caps: '"Barlow Condensed", ' + BARLOW, body: BARLOW, label: '"Barlow Semi Condensed", ' + BARLOW },
+      emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--c-a5463f))"/><circle cx="20" cy="20" r="15.4" fill="none" style="stroke:rgb(var(--c-f6efe3))" stroke-width="1.2"/><path d="M8.5 8.5L16.6 16.6M31.5 8.5L23.4 16.6M8.5 31.5L16.6 23.4M31.5 31.5L23.4 23.4" style="stroke:rgb(var(--c-f6efe3))" stroke-width="3" stroke-linecap="round"/><circle cx="20" cy="20" r="4.6" style="fill:rgb(var(--c-f6efe3))"/><circle cx="20" cy="20" r="1.8" style="fill:rgb(var(--c-a5463f))"/>',
       copy: {
-        '@where': 'Sareth Flats', 'Your move': 'Incoming transmission', 'Awaiting you': 'Awaiting reply', 'Right now': 'Active signals', 'At work': 'Crews in the field',
-        'By folder': 'Settlements', 'Your projects': 'Outposts', 'Pick up where you left off': 'Relay log', 'Recent chats': 'Recent transmissions',
-        'Your plans': 'Water and power', 'Accounts and usage': 'Outpost reserves', 'Begin': 'Relay', 'The hub': 'Holo table', 'Search every chat': 'Search the relay',
-        'All quiet.': 'Only the wind.', 'Pick up any chat below.': 'Pick up a transmission below.', 'Nothing needs you yet.': 'No signal for you yet.',
-        '{n} chat awaits you.': '{n} transmission awaits you.', '{n} chats await you.': '{n} transmissions await you.',
-        '{n} chat at work.': '{n} crew in the field.', '{n} chats at work.': '{n} crews in the field.', 'Working as': 'Broadcasting as',
-        'Claude & Codex, every chat and account in one place': 'Holo relay · every crew, every outpost', 'Search every chat…': 'Search the relay…',
-        'Drifting petals': 'Dune horizon', 'A few slow petals behind the hub.': 'Twin suns low over the dunes, behind the hub.', 'Show the drifting petals': 'Show the dune horizon', 'Hide the drifting petals': 'Hide the dune horizon', 'Live': 'Relay',
+        'Your move': 'Incoming', 'Awaiting you': 'Waiting on you', 'Right now': 'In flight', 'At work': 'Squadrons engaged',
+        'By folder': 'Hangar bays', 'Your projects': 'The hangar', 'Pick up where you left off': 'Flight log', 'Recent chats': 'Recent sorties',
+        'Your plans': 'Fuel and munitions', 'Accounts and usage': 'Fleet reserves', 'Begin': 'Base', 'The hub': 'Briefing room', 'Search every chat': 'Search comms',
+        'All quiet.': 'All wings report in.', 'Pick up any chat below.': 'Pick a heading below, leader.', 'Nothing needs you yet.': 'Nobody’s calling for you yet.',
+        '{n} chat awaits you.': '{n} squadron is waiting on you.', '{n} chats await you.': '{n} squadrons are waiting on you.',
+        '{n} chat at work.': '{n} squadron in flight.', '{n} chats at work.': '{n} squadrons in flight.', 'Working as': 'Flying as',
+        'Claude & Codex, every chat and account in one place': 'Squadron command · every wing, every reserve', 'Search every chat…': 'Search comms…',
+        'Drifting petals': 'Starfield', 'A few slow petals behind the hub.': 'A few still stars behind the hub.', 'Show the drifting petals': 'Show the starfield', 'Hide the drifting petals': 'Hide the starfield', 'Live': 'Comms',
       },
     },
   ];
@@ -161,7 +148,13 @@
 
   /* ---------- settings ---------- */
   const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: light)') : null;
-  function load() { try { return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem('look') || '{}') || {}) }; } catch { return { ...DEFAULTS }; } }
+  // Earlier names of the saga themes, so a saved choice still finds its theme.
+  const RENAMED = { vanguard: 'rebel', dominion: 'imperial', mirage: 'rebel' };
+  function load() {
+    let o; try { o = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem('look') || '{}') || {}) }; } catch { o = { ...DEFAULTS }; }
+    if (RENAMED[o.theme]) o.theme = RENAMED[o.theme];
+    return o;
+  }
   let cur = load();
   const isLight = (o = cur) => o.mode === 'light' || (o.mode === 'system' && !!(mq && mq.matches));
   const themeOf = id => THEMES.find(t => t.id === id) || THEMES[0];
@@ -179,9 +172,10 @@
     st.colorScheme = light ? 'light' : 'dark';
     // A theme's own fonts come first; Modern and Clean still swap the reading font (Clean the headings too).
     const f = FONTS[o.font] || null, tf = t.fonts || {};
-    for (const [k, v] of [['--f-body', (f && f.body) || tf.body], ['--f-display', (f && f.display) || tf.display], ['--f-caps', (f && f.caps) || tf.caps], ['--f-hud', tf.hud]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
+    for (const [k, v] of [['--f-body', (f && f.body) || tf.body], ['--f-display', (f && f.display) || tf.display], ['--f-caps', (f && f.caps) || tf.caps], ['--f-label', tf.label]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
     if (t.family) root.dataset.family = t.family; else delete root.dataset.family;
     if (t.sky) root.dataset.sky = t.sky; else delete root.dataset.sky;
+    if (t.art) root.dataset.art = t.art; else delete root.dataset.art;
     emblem(t);
     st.setProperty('--look-text', String(clamp(Number(o.text) || 100, 80, 150) / 100));
     st.setProperty('--look-ui', String(clamp(Number(o.ui) || 100, 75, 140) / 100));

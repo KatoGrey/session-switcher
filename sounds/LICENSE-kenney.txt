@@ -1,12 +1,9 @@
-Sound cues for the space saga themes (Vanguard, Dominion, Mirage).
-All by Kenney (kenney.nl), CC0 1.0 (public domain). Converted to mono mp3; the Vanguard engage clip is trimmed to 1.6 s with fades.
+Sound cues for the space saga themes (Imperial, Rebel).
+All by Kenney (kenney.nl), CC0 1.0 (public domain). Converted to mono mp3; the Rebel engage clip is trimmed to 1.6 s with fades.
 
-vanguard-needs.mp3   Digital Audio pack   twoTone1.ogg
-vanguard-reply.mp3   Digital Audio pack   phaserUp2.ogg
-vanguard-engage.mp3  Sci-fi Sounds pack   thrusterFire_000.ogg
-dominion-needs.mp3   Digital Audio pack   lowThreeTone.ogg
-dominion-reply.mp3   Interface Sounds pack  confirmation_002.ogg
-dominion-engage.mp3  Sci-fi Sounds pack   doorOpen_001.ogg
-mirage-needs.mp3     Digital Audio pack   threeTone1.ogg
-mirage-reply.mp3     Digital Audio pack   tone1.ogg
-mirage-engage.mp3    Sci-fi Sounds pack   forceField_000.ogg
+imperial-needs.mp3   Digital Audio pack     lowThreeTone.ogg
+imperial-reply.mp3   Interface Sounds pack  confirmation_002.ogg
+imperial-engage.mp3  Sci-fi Sounds pack     doorOpen_001.ogg
+rebel-needs.mp3      Digital Audio pack     twoTone1.ogg
+rebel-reply.mp3      Digital Audio pack     phaserUp2.ogg
+rebel-engage.mp3     Sci-fi Sounds pack     thrusterFire_000.ogg

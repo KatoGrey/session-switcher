@@ -480,7 +480,7 @@ function heroHtml() {
   if (!first && latest && canLaunch(a)) acts.push(`<button class="btn" data-hero="latest" data-sid="${esc(latest[0].id)}" title="${esc(latest[0].title)}">Continue “${esc(latest[0].title.length > 34 ? `${latest[0].title.slice(0, 33)}…` : latest[0].title)}”</button>`);
   const today = new Date();
   return `<section class="hero" aria-label="Right now">
-    <svg class="hero-sigil" aria-hidden="true"><use href="#sigil"/></svg>
+    <svg class="hero-sigil" aria-hidden="true"><use href="#sigil"/></svg>${heroArt({ N, R, W, Q })}
     <div class="hero-in">
       <div>
         <p class="eyebrow">${voice('@where') !== '@where' ? `${esc(voice('@where'))} · ` : ''}${esc(today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · <span data-clock>${esc(clock(today))}</span></p>
@@ -491,6 +491,26 @@ function heroHtml() {
       ${a ? `<div class="stamp">${esc(voice('Working as'))}<b>${esc(a.name)}</b>${a.plan ? esc(a.plan) : ''}</div>` : ''}
     </div>
   </section>`;
+}
+
+// A saga theme's display in the hero, drawn from the same counts as the headline.
+function heroArt({ N, R, W, Q }) {
+  const art = Look.theme().art;
+  const pad = n => String(n).padStart(2, '0');
+  if (art === 'console') {
+    // A bridge console: a wall of light panels, three readouts and a row of signal lamps (red: needs
+    // your OK, white: replied, green: at work).
+    const lamps = Array.from({ length: 18 }, (_, i) => `<i class="${i < N ? 'red' : i < N + R ? 'white' : i < N + R + W ? 'green' : ''}"></i>`).join('');
+    return `<div class="hero-art console" aria-hidden="true"><div class="ha-wall"></div>
+      <div class="ha-read"><span class="${N ? 'hot' : ''}"><b>${pad(N)}</b>Orders</span><span><b>${pad(R)}</b>Reports</span><span><b>${pad(W)}</b>Engaged</span></div>
+      <div class="ha-lamps">${lamps}</div></div>`;
+  }
+  if (art === 'trench') {
+    // A targeting computer: the run down the trench, with the board's counts as its readout.
+    return `<div class="hero-art trench" aria-hidden="true"><div class="ha-view"><div class="ha-floor"></div><div class="ha-wall l"></div><div class="ha-wall r"></div><i class="ha-reticle"></i></div>
+      <div class="ha-read"><span class="${N + R ? 'hot' : ''}">Waiting<b>${pad(N + R)}</b></span><span>In flight<b>${pad(W)}</b></span><span>Standing by<b>${pad(Q)}</b></span></div></div>`;
+  }
+  return '';
 }
 
 function guardHtml() {
@@ -1899,7 +1919,7 @@ async function setLocal(k, on) {
 }
 function applyMotion() { document.body.classList.toggle('motion', motionOk()); }
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => { applyMotion(); petals(); });
-// Behind the hub: drifting petals, or a saga theme's sky (faint stars, a plotting grid, a dune horizon).
+// Behind the hub: drifting petals, or a saga theme's sky (a few still stars).
 // A sky never moves, so it still shows when the device asks for less motion.
 function petals() {
   const box = $('petals'), sky = Look.theme().sky || '';
@@ -1932,10 +1952,8 @@ function starTile(seed, size, n, big) {
   }
   return `--tile:${size}px;background-image:${dots.join(',')};background-size:${size}px ${size}px`;
 }
-function skyHtml(kind) {
-  if (kind === 'grid') return `<div class="sky-stars" style="${starTile('g', 541, 12, 0.8)}"></div><div class="sky-grid"></div>`;
-  if (kind === 'dunes') return `<div class="sky-stars" style="${starTile('h', 523, 12, 0.9)}"></div><div class="sky-suns"><i></i><i></i></div><div class="sky-dunes"></div>`;
-  return `<div class="sky-stars" style="${starTile('a', 487, 20, 1)}"></div><div class="sky-stars far" style="${starTile('b', 613, 12, 1.4)}"></div>`;
+function skyHtml() {
+  return `<div class="sky-stars" style="${starTile('a', 487, 18, 1)}"></div><div class="sky-stars far" style="${starTile('b', 613, 10, 1.4)}"></div>`;
 }
 // Text written into the page itself (index.html) that a saga theme rewords.
 function sayStatic() {

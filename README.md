@@ -315,20 +315,20 @@ Appearance is saved on each device, so your phone and your PC can look different
 
 ### Space saga themes
 
-Three more themes give the hub the look of a worn, working starship: flat matte panels, stencilled labels and readout type, with no glow. They stay quiet so the work stays in front. Each has a light and a dark version, and Codex keeps its own color in all of them.
+Two more themes turn the hub into a command deck. Each has a light and a dark version, and Codex keeps its own color in both.
 
-| Theme | Feel | Lettering | Behind the hub |
+| Theme | Feel | Lettering | In the hero |
 |---|---|---|---|
-| **Vanguard** | A patched-up fighter hangar: gunmetal, flight-suit orange, green targeting readouts | Saira Stencil One headings, Barlow Condensed names, Barlow text | A few faint stars |
-| **Dominion** | The admiral's bridge: black steel, white light panels, warning red, square corners | Michroma headings and names, Barlow text | A faint plotting grid in one corner |
-| **Mirage** | A sandblasted relay outpost: rust, dust and a faded blue holo | Barlow Semi Condensed headings, Barlow Condensed names, Barlow text | Twin suns low over a dune horizon |
+| **Imperial** | A capital ship's bridge: black glass, white light panels, red signal lamps. Clean and exact. | Michroma titles, Inter for everything else | A wall of light panels over a console: readouts for orders, reports and units engaged, and a row of signal lamps (red needs your OK, white has replied, green is at work) |
+| **Rebel** | A hard-worn hangar: scuffed metal, flight-suit orange, squadron stripes, yellow deck lines | Barlow Condensed titles and names, Barlow for reading, Barlow Semi Condensed labels | A targeting computer flying down a trench, with readouts for waiting, in flight and standing by |
 
 Beyond colors, a saga theme brings:
 
-- **Its own lettering:** display fonts for the hero and section titles, a condensed face for names, Barlow for reading, and Share Tech Mono for labels and readouts. **Modern** and **Clean** still swap the reading font (Clean the headings too).
-- **Plain panels instead of the default theme's ornaments.** Cards get a status band along the top. The hero is a bolted plate with a short hazard stripe, and a project without a picture gets a bare hull plate with its bay letter. The fleurons, the turning seal, the dial numerals and the painted project art are left out, and pictures you chose for projects are toned down to match. Each theme has its own emblem in place of the seal.
-- **A still background in place of the petals.** It never moves. The petals switch turns it off, and the switch's label changes with the theme.
-- **Its own words,** for example "Awaiting you" becomes "Awaiting orders" and "Accounts and usage" becomes "Fleet reserves". Each theme keeps its words in one `copy` map in `theme.js`, keyed by the app's own text, so they're easy to change. The other themes keep the usual words.
+- **Its own lettering, all of it readable:** a display face for titles, a reading face for messages and a label face for the small uppercase labels (monospace in the other themes; code stays monospace). **Modern** and **Clean** still swap the reading font (Clean the headings too).
+- **A display in the hero** that reads the same live counts as the headline. Imperial's needs-you lamps pulse slowly and Rebel's trench scrolls; both hold still when **Animations** is off or your device asks for less motion.
+- **Its own panels and markings:** Imperial cards carry a lit edge in red (needs you) or white (at work), with rectangular signal lamps in place of dots. Rebel cards carry squadron stripes, with hazard stripes when a chat needs you. The default theme's ornaments (fleurons, the turning seal, dial numerals, painted project art) are left out, and project pictures are toned to match. Each theme has its own emblem in place of the seal.
+- **A few still stars** behind the hub in place of the petals. The petals switch turns them off, and its label changes with the theme.
+- **Its own words,** for example "Awaiting you" becomes "Awaiting orders" (Imperial) or "Waiting on you" (Rebel), and "Accounts and usage" becomes "Fleet reserves". Each theme keeps its words in one `copy` map in `theme.js`, keyed by the app's own text, so they're easy to change. The other themes keep the usual words.
 - **Short sound cues** in place of the bell when a chat needs you or replies, plus one when you pick the theme. They follow the chime setting.
 
 Screenshots are in [`docs/themes/`](docs/themes/). They use made-up chats and projects, and the chat window is shown in its read-only watch view. The fonts are under the SIL Open Font License (`fonts/OFL.txt`). The sounds are from Kenney's CC0 packs; `sounds/LICENSE-kenney.txt` lists which pack and file each comes from.
