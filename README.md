@@ -407,6 +407,45 @@ Menus get out of the way: a click anywhere else closes the menu (without also pr
 
 On a phone, a long press does the same on cards, pictures and controls.
 
+## Groups, sub-sessions and the Commander
+
+### Groups
+
+Groups are for chats you're juggling together, Claude and Codex alike.
+
+- **Make one:** click **+** next to **Groups** in the sidebar, or **New group** on the hub.
+- **Fill it:** right-click any chat and choose **Move to group…**, or drag a chat (from the sidebar, a list or the hub) onto a group.
+- **Tidy it:** right-click a group (or its **⋯** on the hub) to rename it, move it up or down, collapse it, or remove it. Removing a group never touches its chats. Drag one group onto another to put it in that place.
+- **See how it's doing:** each group shows how many of its chats are awaiting you (gold) and at work. The hub's **Your groups** lists every group with its chats.
+
+### Sub-sessions
+
+A sub-session is a new chat in the same folder, linked to the chat it came from.
+
+- Right-click a chat (or open its **⋯** menu) and choose **Start a sub-session**. It runs as the same assistant and, for Claude, the same account.
+- **Start a sub-session with a brief** fills the new chat's message box with a blank for its task, plus the first chat's latest reply as context. Type over the blank and send.
+- Sub-sessions sit under their parent in the sidebar (inside its group, or under **Sub-sessions**) and join the parent's group.
+- In a sub-session, the line above the title shows its group and the chat it came from; click that to go back. A chat with sub-sessions shows how many, and clicking that lists them.
+
+### The Commander
+
+The Commander is one chat that keeps an eye on the others. It's at the top of the sidebar.
+
+1. Click **Commander**, pick which Claude account it runs as, and click **Start the Commander**.
+2. Ask it things like "What needs me?" or "Nudge anything that's waiting for a simple carry on."
+
+It can:
+
+- list your chats with what each is doing (working, needs your OK, has a question, finished its turn, not running), plus their groups and sub-sessions
+- read a chat's latest messages
+- **nudge** a chat: send it a message. A chat that isn't running is opened in the chat window first. It can't type into a chat running in a terminal.
+- start a sub-session from a chat, with a task
+- answer a waiting permission request, but only if you turn on **Let it answer permission requests** in its settings (off to start with)
+
+Everything it does shows in the chat it touched: a gold **Commander** note, and its messages are marked **from Commander**. It asks you before each nudge unless you choose **Always allow** on that request. Its settings are in its right-click menu or the chat's **⋯** menu.
+
+It runs in the `commander/` folder inside Session Switcher's folder, with a `CLAUDE.md` that explains its job. Its tools come from `lib/commander-mcp.js`, a small MCP server that only talks to this Session Switcher, on this computer, with the per-launch token. Phones can't use those tools directly.
+
 ## Pinned and favorites
 
 - Pin projects and chats to the top of the sidebar: right-click them and choose **Pin to the sidebar**, or click the ☆ in a chat's header.
@@ -507,6 +546,8 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `system.js`: terminals and processes.
   - `health.js`: the Setup checks.
   - `store.js`: safe file writes.
+  - `organize.js`: groups, sub-session links and the Commander's settings.
+  - `commander-mcp.js`: the Commander's tools (an MCP server Claude Code starts for it).
 - `index.html`, `styles.css`, `app.js`: the hub.
 - `theme.js`: themes, light and dark, text and interface size. Every color in `styles.css` is a variable named after its original value (`--c-a5463f`), and each theme recolors them all from a few seed colors.
 - `chat-ui.js`: the chat window.
@@ -523,6 +564,8 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `prompts.json`: your prompts, once you edit them.
   - `chat-prefs.json`: the modes, models and effort you chose, and which Codex helper goes with which chat.
   - `devices.json`: phones you paired (hashed keys only).
+  - `organize.json`: your groups, which chats are sub-sessions of which, and the Commander's settings.
+  - `commander/`: the Commander's folder and its `CLAUDE.md`.
   - `switcher.log`: the app's log.
 
 Session Switcher never edits your chat files.
