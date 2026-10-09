@@ -83,6 +83,8 @@ const chats = chatLib.createChatManager({
     // Choices made before the chat had an id, and a Codex helper paired before then, are kept now.
     if (chat.choices && Object.keys(chat.choices).length) chatPrefs.set({ sessionId: chat.sessionId }, chat.choices);
     linkCompanion(chat);
+    // A sub-session remembers the chat it was started from (and joins its group).
+    if (chat.parentSession) { try { organize.link(chat.sessionId, chat.parentSession); broadcast('organize', organize.view()); } catch (err) { log(`Sub-session link: ${err.message}`); } }
     broadcast('live', chats.live());
     setTimeout(sessionsChanged, 1500);
   },
@@ -435,6 +437,7 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
   if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
   if (route === 'GET /api/organize') return send(res, 200, organize.view());
+  if (route === 'GET /api/chat/last-reply') return send(res, 200, { text: await lastReply(url.searchParams.get('id')) });
   if (route === 'GET /api/file') {
     const q = Object.fromEntries(url.searchParams);
     return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
@@ -985,6 +988,7 @@ async function handleChat(req, res, url, body, c) {
         const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
         const model = [body.model, pref.model].find(m => m && modelFits(inst, m)) || null;
         const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || 'New Codex chat', folder });
+        if (mode === 'new' && body.parent) chat.parentSession = parentFor(body.parent);
         if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
         log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
         return send(res, 200, { ...chat.info(), attached: false, remembered: !!pref.mode });
@@ -1022,6 +1026,7 @@ async function handleChat(req, res, url, body, c) {
       if (mode === 'fork' && title) title = `${title} (copy)`;
       const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
       const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder });
+      if (mode === 'new' && body.parent) chat.parentSession = parentFor(body.parent);
       if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
       log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
       return send(res, 200, { ...chat.info(), attached: false, remembered: !!pref.mode && !body.permissionMode, companionThread: sessionId && mode === 'resume' ? chatPrefs.companionOf(sessionId) : null });
@@ -1111,6 +1116,24 @@ async function handleChat(req, res, url, body, c) {
   throw fail(404, 'Not found.');
 }
 
+// The chat a new sub-session is started from: any chat in the list, by id.
+function parentFor(id) {
+  if (isCodexId(id)) return codexFind(id).thread.id;
+  return sessions.find(id).session.id;
+}
+// What a chat last said, in full (up to a few thousand characters), for a sub-session's brief.
+async function lastReply(id, max = 6000) {
+  let items = [];
+  if (isCodexId(id)) items = (await codex.history(id, null, null)).items || [];
+  else items = (await chatLib.readHistory(sessions.fileFor(id), { limit: 30 })).items;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.kind !== 'assistant') continue;
+    const text = (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim();
+    if (text) return text.length > max ? `${text.slice(0, max)}…` : text;
+  }
+  return '';
+}
 // A running chat's details for the window, with its paired Codex helper's id if it has one.
 function attachedInfo(chat) {
   return { ...chat.info(), attached: true, companionThread: chat.provider !== 'codex' && chat.sessionId ? chatPrefs.companionOf(chat.sessionId) : null };

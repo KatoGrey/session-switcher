@@ -396,6 +396,61 @@ function groupItems(gid) {
 }
 window.moveToGroupItems = moveToGroupItems;
 
+// Sub-sessions: a new chat in the same folder, linked to the chat it came from. With a brief, its
+// message box starts with that chat's latest reply and a blank for what the sub-session should do.
+const quoteLines = t => String(t || '').split('\n').map(l => `> ${l}`).join('\n');
+function briefText(s, last) {
+  // The task goes first, so it becomes the sub-session's title.
+  return `{describe what this sub-session should do}\n\nContext: you’re a sub-session of “${s.title}”, another chat in this folder.${last ? ` Its latest reply:\n\n${quoteLines(last)}` : ''}`;
+}
+async function startSubSession(id, withBrief) {
+  const [s, p] = sessionById(id); if (!s) return toast('That chat isn’t in the list any more.');
+  if (!p.exists) return toast(`The folder ${p.cwd} no longer exists.`);
+  let text = '';
+  if (withBrief) {
+    let last = '';
+    try { last = (await api(`/api/chat/last-reply?${new URLSearchParams({ id: s.id })}`)).text || ''; } catch (err) { toast(`Couldn’t read its last reply (${err.message}); the brief starts without it.`, 6000); }
+    text = briefText(s, last);
+  }
+  const prov = isCodex(s) ? 'codex' : 'claude';
+  const live = liveOf(s.id);
+  const acct = prov === 'claude' ? [live && live.accountId, s.lastOpened && s.lastOpened.account].find(x => x && S.accounts.some(a => a.id === x && canLaunch(a))) : null;
+  return ChatUI.open({ cwd: p.cwd, mode: 'new', provider: prov, accountId: acct || null, parent: s.id, initialText: text });
+}
+function subItems(id) {
+  const par = parentOfChat(id), [ps] = par ? sessionById(par) : [null];
+  return [
+    { glyph: '↳', label: 'Start a sub-session', hint: 'a new chat here, linked to this one', run: () => startSubSession(id, false) },
+    { glyph: '↳', label: 'Start a sub-session with a brief', hint: 'begins with this chat’s last reply', run: () => startSubSession(id, true) },
+    ...(ps ? [{ glyph: '↑', label: 'Open the chat it came from', hint: ps.title, run: () => openChatFromNav(ps.id) }, { label: 'Unlink from that chat', hint: 'it stops being a sub-session', run: () => orgDo({ action: 'unlink', chat: id }) }] : []),
+  ];
+}
+const orgItems = id => [groupItem(id), ...subItems(id)];
+window.orgItems = orgItems;
+// The chat window's breadcrumb: its group, then the chats it came from, then its sub-sessions.
+function crumbHtml(id, pendingParent) {
+  const bits = [];
+  const g = (id && groupOfChat(id)) || (pendingParent && groupOfChat(pendingParent));
+  if (g) bits.push(`<span class="cc-g" title="In the group ${esc(g.name)}">${esc(g.name)}</span>`);
+  const chain = [];
+  let up = (id && parentOfChat(id)) || pendingParent || null;
+  for (let i = 0; up && i < 3; i++) { chain.unshift(up); up = parentOfChat(up); }
+  if (up) bits.push('<span class="cc-more">…</span>');
+  for (const c of chain) { const [s] = sessionById(c); bits.push(`<button type="button" class="cc-p" data-crumb="${esc(c)}" title="Open the chat this one came from">${esc(s ? s.title : 'Earlier chat')}</button>`); }
+  let out = bits.map((b, i) => `${i ? '<span class="cc-sep" aria-hidden="true">›</span>' : ''}${b}`).join('');
+  const kids = id ? kidsOf(id).filter(k => sessionById(k)[0]) : [];
+  if (kids.length) out += `<button type="button" class="cc-k" data-crumb-kids="${esc(id)}" aria-haspopup="menu" aria-expanded="false">${esc(plural(kids.length, 'sub-session'))}</button>`;
+  return out;
+}
+window.crumbHtml = crumbHtml;
+document.addEventListener('click', wrap(async e => {
+  const t = e.target instanceof Element ? e.target : null; if (!t) return undefined;
+  const cr = t.closest('[data-crumb]'); if (cr) return openChatFromNav(cr.dataset.crumb);
+  const ck = t.closest('[data-crumb-kids]');
+  if (ck) return ck.getAttribute('aria-expanded') === 'true' ? closeMenu() : showMenu(ck, kidsOf(ck.dataset.crumbKids).map(k => sessionById(k)[0]).filter(Boolean).map(s => ({ glyph: chatMood(s.id) === 'await' ? '●' : chatMood(s.id) === 'work' ? '◌' : '↳', label: s.title, hint: chatMood(s.id) === 'await' ? 'waiting for you' : chatMood(s.id) === 'work' ? 'at work' : agoL(s.updated), run: () => openChatFromNav(s.id) })));
+  return undefined;
+}));
+
 // Dragging: a chat (from the sidebar, a list or a hub card) onto a group moves it there; a group
 // onto another group puts it in that place.
 const Drag = { chat: null, group: null };
@@ -944,7 +999,7 @@ function rowHtml(s, folderName, hit) {
   const sub = s.lastPrompt ? `You last asked: ${s.lastPrompt}` : (s.title !== s.firstPrompt ? `Started with: ${s.firstPrompt}` : '');
   const live = liveOf(s.id);
   const run = !live && isRunning(s.id);
-  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
+  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (parentOfChat(s.id) ? '<span class="tag ghost" title="Started from another chat">Sub-session</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
     : run ? '<span class="tag violet">In a terminal</span>' : (s.active ? '<span class="tag ghost">Just updated</span>' : ''));
   const primary = live ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Go back to this chat">Return</button>`
     : run ? `<button class="btn sm" data-watch="${esc(s.id)}" title="Read it live here while it runs in its terminal">Watch</button>`
@@ -1698,7 +1753,7 @@ function codexChatItems(s) {
     { label: 'Copy terminal command', run: () => copyCommand(s.id) },
   ];
 }
-function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id)]); }
+function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id), ...orgItems(s.id)]); }
 function chatItems(id) {
   const [s] = sessionById(id); if (!s) return [];
   if (isCodex(s)) return codexChatItems(s);
@@ -1722,7 +1777,7 @@ function chatItems(id) {
     { label: 'Show transcript file', run: async () => { const r = await api('/api/reveal', { sessionId: id }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
   ];
 }
-function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id)]); }
+function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id), ...orgItems(id)]); }
 const groupItem = id => ({ glyph: '▤', label: groupOfChat(id) ? `Move to another group…` : 'Move to group…', hint: groupOfChat(id) ? `in ${groupOfChat(id).name}` : '', run: () => showMenu(Ctx.at || { x: innerWidth / 2, y: innerHeight / 3 }, moveToGroupItems(id)) });
 const favItem = id => ({ glyph: isFav(id) ? '☆' : '★', label: isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => toggleFav(id) });
 
@@ -2780,7 +2835,7 @@ function activityItems(x) {
     { glyph: '❝', label: x.source === 'app' ? 'Open the chat' : x.source === 'terminal' ? 'Watch it live' : 'Read it here', run: () => { markSeen(x); return openActivity(x); } },
     ...(st === 'reply' ? [{ glyph: '✓', label: 'Mark as read', run: () => { markSeen(x); renderLive(true); renderNav(); } }] : []),
     ...(x.source === 'app' && x.key && x.phase !== 'ended' ? [{ label: 'Stop this chat', danger: true, run: () => api('/api/chat/stop', { key: x.key }) }] : []),
-    ...(x.sessionId && !x.parentKey ? ['-', favItem(x.sessionId), groupItem(x.sessionId), ...chatItems(x.sessionId).filter(i => i === '-' || !/^(Return|Open in the chat window)/.test(i.label))] : []),
+    ...(x.sessionId && !x.parentKey ? ['-', favItem(x.sessionId), ...orgItems(x.sessionId), ...chatItems(x.sessionId).filter(i => i === '-' || !/^(Return|Open in the chat window)/.test(i.label))] : []),
     ...(x.sessionId ? ['-', { label: 'Copy chat ID', run: () => copyText(x.sessionId) }] : []),
   ];
 }
@@ -2811,7 +2866,7 @@ const Ctx = { at: null };
 function contextItems(t) {
   // The chat window knows its own pieces (replies, code, pictures, files, the crew).
   if (window.ChatUI && ChatUI.isOpen() && t.closest('#chat')) { const it = ChatUI.contextItems(t, Ctx.at); if (it) return it; }
-  const withFav = id => [favItem(id), groupItem(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
+  const withFav = id => [favItem(id), ...orgItems(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
   const gh = t.closest('[data-group], [data-gcard]'); if (gh && !t.closest('[data-gchat]')) return groupItems(gh.dataset.group || gh.dataset.gcard);
   const gc = t.closest('[data-gchat]'); if (gc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(gc.dataset.gchat) }, ...withFav(gc.dataset.gchat)];
   const nc = t.closest('[data-navchat]'); if (nc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(nc.dataset.navchat) }, ...withFav(nc.dataset.navchat)];

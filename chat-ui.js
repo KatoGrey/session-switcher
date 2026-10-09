@@ -1332,7 +1332,7 @@
     renderRail();
   }
 
-  async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {}) {
+  async function begin(info, { mode = 'resume', sessionId = null, cwd = null, parent = null } = {}) {
     reset();
     const gen = C.gen;
     C.key = info.key; C.info = info; C.sessionId = info.sessionId || sessionId;
@@ -1349,6 +1349,7 @@
     C.folder = info.folder || (p ? p.name : (cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() : ''));
     $c('cTitle').textContent = C.title;
     $c('cFolder').textContent = C.folder;
+    C.parent = parent; refreshCrumb();
     headerAccount(info.accountId, info.accountName);
     setState(info.state || 'starting');
     show();
@@ -1369,17 +1370,17 @@
     $c('cText').focus();
   }
 
-  async function open({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '' } = {}) {
+  async function open({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', parent = null } = {}) {
     const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
     const [known] = sessionId ? findSession(sessionId) : [null];
     const prov = provider || (known && known.provider) || 'claude';
     let info;
     try {
-      info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov });
+      info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov, parent: mode === 'new' ? parent : null });
     } catch (err) {
       if (err.reason === 'codex-signin' || err.reason === 'codex-missing') { toast(err.message, 9000); return undefined; }
       if (err.reason === 'running') {
-        if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return open({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText });
+        if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return open({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText, parent });
         return watch({ sessionId, source: 'terminal' });
       }
       throw err;
@@ -1389,7 +1390,7 @@
       const label = ((info.modes || []).find(m => m.value === info.permissionMode) || {}).label || MODE_LABELS[info.permissionMode] || info.permissionMode;
       toast(`Opened in “${label}”, as you left it${mode === 'new' ? ' in this project' : ''}.`, 3500);
     }
-    await begin(info, { mode, sessionId, cwd });
+    await begin(info, { mode, sessionId, cwd, parent: mode === 'new' ? parent : null });
     // Started from a prompt: it waits in the message box so you can adjust it before sending.
     if (initialText) placeText(initialText, true);
     return undefined;
@@ -1408,7 +1409,7 @@
     C.provider = s && s.provider === 'codex' ? 'codex' : 'claude';
     C.title = s ? s.title : 'Chat'; C.folder = p ? p.name : '';
     C.info = { cwd: p ? p.cwd : null, accountId: s && s.lastOpened ? s.lastOpened.account : null, accountName: s && s.lastOpened ? s.lastOpened.accountName : '' };
-    $c('cTitle').textContent = C.title; $c('cFolder').textContent = C.folder;
+    $c('cTitle').textContent = C.title; $c('cFolder').textContent = C.folder; C.parent = null; refreshCrumb();
     headerAccount(C.info.accountId, C.info.accountId ? C.info.accountName : (source === 'terminal' ? 'In a terminal' : 'In another app'));
     setState(source === 'terminal' ? 'watching' : 'readonly');
     $c('cMode').hidden = true;
@@ -1639,6 +1640,13 @@
     ];
   }
   // ★ in the header pins this chat to the top of the sidebar.
+  // Group › the chat it came from › …, and how many sub-sessions it has.
+  function refreshCrumb() {
+    const el = $c('cCrumb'); if (!el || !window.crumbHtml) return;
+    const h = window.crumbHtml(C.sessionId || (C.watch && C.watch.sessionId), C.parent);
+    if (el._h !== h) { el.innerHTML = h; el._h = h; }
+    el.hidden = !h;
+  }
   function syncFav() {
     const b = $c('cFav'); if (!b) return;
     const id = C.sessionId || (C.watch && C.watch.sessionId);
@@ -1658,6 +1666,7 @@
       { label: 'Copy the whole chat as Markdown', run: () => copyOut(chatMarkdown(), 'Copied the chat as Markdown.') },
       ...(id && !C.watch ? [{ label: 'Rename chat', run: async () => { await renameChat(id); const [s] = findSession(id); if (s) { C.title = s.title; $c('cTitle').textContent = s.title; } } }] : []),
       ...(id ? [{ label: 'Copy chat ID', run: () => copyOut(id) }] : []),
+      ...(id && window.orgItems ? ['-', ...window.orgItems(id)] : []),
       { label: 'Browse this chat’s folder', run: () => openFile('.') },
       ...(!C.watch && C.state !== 'ended' ? ['-', stopItem()] : []),
     ];
@@ -1766,9 +1775,10 @@
     open, openKey, watch, close, md, renderRail, refreshUsage, isViewing,
     accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
     showLedger: () => { const chat = $c('chat'); if (matchMedia('(max-width: 1320px)').matches) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
-    sessionsChanged: () => { if (C.watch) refreshWatch(); },
+    sessionsChanged: () => { if (C.watch) refreshWatch(); if (!$c('chat').hidden) refreshCrumb(); },
     refreshCrew: () => { if (!$c('chat').hidden) renderCrew(); },
     refreshFav: () => syncFav(),
+    refreshCrumb: () => { if (!$c('chat').hidden) refreshCrumb(); },
     sessionId: () => C.sessionId || (C.watch && C.watch.sessionId) || null,
     contextItems, modelName,
     find: q => openFind(q), exportChat, jumpLatest,
