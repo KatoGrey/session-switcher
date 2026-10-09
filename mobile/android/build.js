@@ -265,7 +265,7 @@ async function main() {
     '-A', path.join(ROOT, 'assets'),
     '--java', dirs.gen,
     '--min-sdk-version', '24', '--target-sdk-version', '34',
-    '--version-code', '5', '--version-name', '5.0.0',
+    '--version-code', '6', '--version-name', '5.2.0',
     '--auto-add-overlay',
     dirs.res]);
 

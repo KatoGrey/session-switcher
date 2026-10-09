@@ -747,7 +747,8 @@ function renderHubLists() {
   const atlas = $('atlas');
   if (atlas) {
     patch(atlas, atlasItems(), x => (x.add ? '+new' : x.p.cwd), x => (x.add ? newProjectTile(x.i) : worldCard(x.p, x.i)));
-    // The projects rise in, once, the first time the atlas scrolls into view.
+    // The projects rise in, once, the first time the atlas scrolls into view. (Any part of it:
+    // on a phone the single column is many screens tall, so a share of it can never be visible.)
     if (!S.atlasEntered && !atlas._io) {
       const done = () => { S.atlasEntered = true; atlas.classList.remove('enter', 'go'); };
       if (!motionOk() || !('IntersectionObserver' in window)) done();
@@ -755,7 +756,7 @@ function renderHubLists() {
         atlas._io = new IntersectionObserver(es => {
           if (!es.some(x => x.isIntersecting)) return;
           atlas._io.disconnect(); atlas.classList.add('go'); setTimeout(done, 1900);
-        }, { threshold: 0.12 });
+        }, { threshold: 0, rootMargin: '0px 0px -8% 0px' });
         atlas._io.observe(atlas);
       }
     }

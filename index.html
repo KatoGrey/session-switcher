@@ -86,6 +86,9 @@
             <button type="button" class="btn quiet sm c-ib" data-c="attach" title="Attach files. Pictures go straight to the chat; videos, PDFs and other files are saved in the project’s attachments folder for it to open. You can also paste or drop them." aria-label="Attach files"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 4.5 5.4 9.6a1.5 1.5 0 0 0 2.1 2.1l5.4-5.4a3 3 0 0 0-4.2-4.2L3.3 7.5a4.5 4.5 0 0 0 6.4 6.4l4.1-4.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Attach</span></button>
             <button type="button" class="btn quiet sm c-ib" data-c="prompts" aria-haspopup="menu" aria-expanded="false" title="Insert a saved prompt. You can also type / in an empty message box." aria-label="Prompts"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10M3 8h10M3 12.5h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span>Prompts</span></button>
             <input type="file" id="cFile" multiple hidden>
+            <input type="file" id="cMedia" accept="image/*,video/*" multiple hidden>
+            <input type="file" id="cCam" accept="image/*" capture="environment" hidden>
+            <input type="file" id="cVid" accept="video/*" capture="environment" hidden>
             <span class="typing" id="cTyping" hidden aria-hidden="true"><i></i><i></i><i></i></span>
             <span class="c-status" id="cStatus" aria-live="polite"></span>
             <span class="spacer"></span>

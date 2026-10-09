@@ -656,9 +656,49 @@
     if (focus) $c('cText').focus();
   }
 
-  // The model picker: every model the chat's tool offers, and its effort levels.
+  // The model picker: quick picks (a model and an effort in one tap), every model the chat's tool
+  // offers, and its effort levels. On a phone it's a sheet from the bottom of the screen.
   const Pick = { src: null };
-  function closePick() { const b = $c('cPick'); if (b && !b.hidden) { b.hidden = true; Pick.src = null; } }
+  const EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+  const PRESETS = {
+    claude: [
+      { id: 'quick', name: 'Quick', glyph: '➤', note: 'Fast answers, small jobs', want: ['haiku'], effort: 'low' },
+      { id: 'balanced', name: 'Balanced', glyph: '◐', note: 'Everyday work', want: ['sonnet'], effort: 'medium' },
+      { id: 'deep', name: 'Deep', glyph: '◆', note: 'Hard problems, big changes', want: ['opus', 'default'], effort: 'high' },
+      { id: 'max', name: 'Max', glyph: '✦', note: 'The toughest tasks', want: ['fable', 'opus'], effort: 'max' },
+    ],
+    codex: [
+      { id: 'quick', name: 'Quick', glyph: '➤', note: 'Fast answers, quick tests', want: [/luna/], effort: 'low' },
+      { id: 'balanced', name: 'Balanced', glyph: '◐', note: 'Everyday work', want: [/sol/], effort: 'medium' },
+      { id: 'deep', name: 'Deep', glyph: '◆', note: 'Images, hard problems', want: ['@default'], effort: 'high' },
+      { id: 'max', name: 'Max', glyph: '✦', note: 'Everything it has', want: ['@default'], effort: 'max' },
+    ],
+  };
+  // The presets this chat's tool can actually do, each resolved to a model it offers and the
+  // nearest effort that model supports.
+  function presetsFor(src) {
+    const mi = C.mi[src]; if (!mi || !mi.models) return [];
+    const out = [];
+    for (const p of PRESETS[provFor(src)] || []) {
+      let m = null;
+      for (const w of p.want) {
+        m = w === '@default' ? mi.models.find(x => x.isDefault) || mi.models[0]
+          : w instanceof RegExp ? mi.models.find(x => w.test(x.value)) : mi.models.find(x => x.value === w);
+        if (m) break;
+      }
+      if (!m) continue;
+      const efforts = m.efforts && m.efforts.length ? m.efforts : mi.efforts || [];
+      let effort = efforts.includes(p.effort) ? p.effort : null;
+      if (!effort && efforts.length) {
+        const want = EFFORT_ORDER.indexOf(p.effort);
+        effort = efforts.slice().sort((a, b) => Math.abs(EFFORT_ORDER.indexOf(a) - want) - Math.abs(EFFORT_ORDER.indexOf(b) - want))[0];
+      }
+      out.push({ ...p, model: m.value, label: m.label, effort });
+    }
+    return out;
+  }
+  const isPhone = () => matchMedia('(max-width: 760px)').matches;
+  function closePick() { const b = $c('cPick'); if (b && !b.hidden) { b.hidden = true; Pick.src = null; document.body.classList.remove('sheet-open'); } }
   async function openPick(src) {
     Pick.src = src;
     if (src === 'comp' && (!C.comp || C.comp.ended)) { renderPick(); await ensureCompanion(); }
@@ -667,7 +707,10 @@
   function renderPick() {
     const box = $c('cPick'); const src = Pick.src; if (!src) return;
     const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
-    if (!mi || !mi.models || !mi.models.length) box.innerHTML = `<p class="mp-load"><span class="gen-spin" aria-hidden="true"></span>Asking ${name} which models it has…</p>`;
+    // With the Codex helper available, one picker sets either: tabs at the top.
+    const tabs = duo() ? `<div class="mp-tabs" role="tablist">${['main', 'comp'].map(t => `<button type="button" role="tab" class="${provFor(t)}" aria-selected="${t === src}" data-picksrc="${t}">${PROV_NAME[provFor(t)]}<small>${esc(C.mi[t] ? `${modelLabel(C.mi[t])}${C.mi[t].effort ? ` · ${C.mi[t].effort}` : ''}` : t === 'comp' ? 'not started' : '…')}</small></button>`).join('')}</div>` : '';
+    const top = `<div class="mp-top"><span class="mp-grab" aria-hidden="true"></span>${tabs || `<p class="mp-title">${name}’s model</p>`}<button type="button" class="mp-done" data-pickdone>Done</button></div>`;
+    if (!mi || !mi.models || !mi.models.length) box.innerHTML = `${top}<p class="mp-load"><span class="gen-spin" aria-hidden="true"></span>Asking ${name} which models it has…</p>`;
     else {
       const cur = mi.models.find(m => m.value === mi.model);
       const efforts = (cur && cur.efforts && cur.efforts.length ? cur.efforts : mi.efforts) || [];
@@ -675,16 +718,26 @@
       const older = m => provFor(src) === 'claude' && /^claude-/.test(m.value);
       const row = m => `<button type="button" role="radio" aria-checked="${m.value === mi.model}" data-model="${esc(m.value)}"><b>${esc(m.label)}</b>${m.description ? `<small>${esc(m.description)}</small>` : ''}</button>`;
       const late = mi.models.filter(older);
-      box.innerHTML = `<p class="mp-h"><span class="mp-t"><b>${name}</b> model</span><span>takes effect from your next message</span></p>
+      const presets = presetsFor(src);
+      const onPreset = presets.find(p => p.model === mi.model && p.effort === mi.effort);
+      const picks = presets.length ? `<p class="mp-h"><span class="mp-t">Quick picks</span><span>a model and effort in one tap</span></p>
+        <div class="mp-presets" role="radiogroup" aria-label="Quick picks">${presets.map(p => `<button type="button" role="radio" class="mp-preset" aria-checked="${p === onPreset}" data-preset="${p.id}">
+          <span class="mpp-g" aria-hidden="true">${p.glyph}</span><b>${esc(p.name)}</b><small>${esc(p.label)}${p.effort ? ` · ${esc(p.effort)}` : ''}</small><em>${esc(p.note)}</em></button>`).join('')}</div>` : '';
+      // On a phone the full list folds away under the quick picks, unless the model in use is only there.
+      const listOpen = !isPhone() || !onPreset;
+      box.innerHTML = `${top}${picks}
+        <details class="mp-all" ${listOpen ? 'open' : ''}><summary class="mp-h"><span class="mp-t"><b>${name}</b> · every model</span><span>takes effect from your next message</span></summary>
         <div class="mp-list" role="radiogroup" aria-label="${name} model">${mi.models.filter(m => !older(m)).map(row).join('')}
-        ${late.length ? `<details class="mp-more" ${late.some(m => m.value === mi.model) ? 'open' : ''}><summary>Earlier models (${late.length})</summary>${late.map(row).join('')}</details>` : ''}</div>
+        ${late.length ? `<details class="mp-more" ${late.some(m => m.value === mi.model) ? 'open' : ''}><summary>Earlier models (${late.length})</summary>${late.map(row).join('')}</details>` : ''}</div></details>
         ${efforts.length ? `<p class="mp-h"><span class="mp-t">Effort</span><span>how hard it thinks</span></p><div class="mp-eff" role="radiogroup" aria-label="Effort">${efforts.map(e => `<button type="button" role="radio" aria-checked="${e === mi.effort}" data-effort="${esc(e)}">${esc(e)}</button>`).join('')}</div>` : ''}
         ${mi.replyModel && mi.resolvedModel && mi.replyModel !== mi.resolvedModel && provFor(src) === 'claude' ? `<p class="mp-note">The last reply came from <b>${esc(modelName(mi.replyModel))}</b>.${$c('cMode').value === 'plan' ? ' In Plan only mode, Claude Code plans with a stronger model than Haiku.' : ''}</p>` : ''}
         <p class="mp-f">Remembered for this chat, and for new ${name} chats in ${esc(C.folder || 'this project')}. Shortcut: <kbd class="kbd">/model ${provFor(src) === 'codex' ? 'luna' : 'sonnet'}</kbd></p>`;
     }
     box.classList.toggle('codex', provFor(src) === 'codex');
+    const wasHidden = box.hidden;
     box.hidden = false;
-    box.querySelector('[aria-checked="true"]')?.scrollIntoView({ block: 'nearest' });
+    document.body.classList.toggle('sheet-open', isPhone());
+    if (wasHidden) box.scrollTop = 0;
   }
   async function pickModel(src, change) {
     const key = keyFor(src); if (!key) return;
@@ -759,33 +812,71 @@
   }
   // Pictures go to the chat itself; anything else (videos, PDFs, sound, documents) is saved in the
   // project's attachments folder and the message says where, so Claude or Codex can open it.
+  const readData = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => { const s = String(r.result); res(s.slice(s.indexOf(',') + 1)); }; r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+  // Phone photos are often over 5 MB: shrink them to a sharp JPEG (longest side 2048 px) so they
+  // still go to the chat as a picture it can see. Anything that can't be decoded is uploaded as a file.
+  async function shrinkPhoto(f) {
+    try {
+      const bmp = await createImageBitmap(f);
+      const k = Math.min(1, 2048 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      bmp.close && bmp.close();
+      for (const q of [0.88, 0.8, 0.7]) {
+        const out = await new Promise(res => c.toBlob(res, 'image/jpeg', q));
+        if (out && out.size <= 5 * 1024 * 1024) return out;
+      }
+    } catch { /* not decodable here (e.g. HEIC) */ }
+    return null;
+  }
+  async function addImage(f) {
+    let blob = f;
+    if (f.size > 5 * 1024 * 1024 || !/^image\/(png|jpeg|gif|webp)$/.test(f.type)) blob = await shrinkPhoto(f);
+    if (!blob) return false;
+    C.attachments.push({ mediaType: blob.type || f.type, data: await readData(blob) });
+    renderAttachments();
+    return true;
+  }
   function addFiles(files) {
     for (const f of files) {
-      if (/^image\/(png|jpeg|gif|webp)$/.test(f.type) && f.size <= 5 * 1024 * 1024 && C.attachments.length < 10) {
-        const r = new FileReader();
-        r.onload = () => { const s = String(r.result); C.attachments.push({ mediaType: f.type, data: s.slice(s.indexOf(',') + 1) }); renderAttachments(); };
-        r.readAsDataURL(f);
+      if (/^image\//.test(f.type) && !/svg/.test(f.type) && C.attachments.length < 10) {
+        addImage(f).then(ok => { if (!ok) uploadFile(f); }).catch(() => uploadFile(f));
         continue;
       }
-      if (!C.key) { toast('Start the chat first, then attach files.'); return; }
-      if (f.size > 2 * 1024 * 1024 * 1024) { toast(`${f.name} is over 2 GB.`); continue; }
-      const item = { name: f.name || 'file', size: f.size, type: f.type, kind: kindOf(f), progress: 0, rel: null, error: null };
-      (C.files || (C.files = [])).push(item);
-      const x = new XMLHttpRequest();
-      item.xhr = x;
-      x.open('POST', `/api/chat/upload?${new URLSearchParams({ key: C.key, name: item.name })}`);
-      x.setRequestHeader('X-Switcher-Token', TOKEN);
-      x.upload.onprogress = e => { if (e.lengthComputable) { item.progress = e.loaded / e.total; renderAttachments(); } };
-      x.onload = () => {
-        let j = {}; try { j = JSON.parse(x.responseText); } catch { /* not JSON */ }
-        if (x.status === 200) { item.rel = j.rel; item.path = j.path; item.size = j.size; } else item.error = j.error || `Upload failed (${x.status}).`;
-        if (item.error) toast(`${item.name}: ${item.error}`, 7000);
-        renderAttachments();
-      };
-      x.onerror = () => { item.error = 'The upload was interrupted.'; renderAttachments(); };
-      x.send(f);
-      renderAttachments();
+      uploadFile(f);
     }
+  }
+  // Uploads a file into the project’s attachments folder, with progress.
+  function uploadFile(f) {
+    if (!C.key) { toast('Start the chat first, then attach files.'); return; }
+    if (f.size > 2 * 1024 * 1024 * 1024) { toast(`${f.name} is over 2 GB.`); return; }
+    const item = { name: f.name || 'file', size: f.size, type: f.type, kind: kindOf(f), progress: 0, rel: null, error: null };
+    (C.files || (C.files = [])).push(item);
+    const x = new XMLHttpRequest();
+    item.xhr = x;
+    x.open('POST', `/api/chat/upload?${new URLSearchParams({ key: C.key, name: item.name })}`);
+    x.setRequestHeader('X-Switcher-Token', TOKEN);
+    x.upload.onprogress = e => { if (e.lengthComputable) { item.progress = e.loaded / e.total; renderAttachments(); } };
+    x.onload = () => {
+      let j = {}; try { j = JSON.parse(x.responseText); } catch { /* not JSON */ }
+      if (x.status === 200) { item.rel = j.rel; item.path = j.path; item.size = j.size; } else item.error = j.error || `Upload failed (${x.status}).`;
+      if (item.error) toast(`${item.name}: ${item.error}`, 7000);
+      renderAttachments();
+    };
+    x.onerror = () => { item.error = 'The upload was interrupted.'; renderAttachments(); };
+    x.send(f);
+    renderAttachments();
+  }
+  // Attach: on a phone, choose photos, the camera, or files; on a PC, straight to the file window.
+  function attachMenu(anchor) {
+    if (!matchMedia('(pointer: coarse)').matches) return $c('cFile').click();
+    return showMenu(anchor, [
+      { label: 'Photos & videos', hint: 'from your gallery', run: () => $c('cMedia').click() },
+      { label: 'Take a photo', run: () => $c('cCam').click() },
+      { label: 'Record a video', run: () => $c('cVid').click() },
+      { label: 'Files', hint: 'PDFs, documents, anything', run: () => $c('cFile').click() },
+    ]);
   }
   function grow() { const t = $c('cText'); t.style.height = 'auto'; t.style.height = `${Math.min(t.scrollHeight, window.innerHeight * 0.4)}px`; }
 
@@ -1142,6 +1233,10 @@
       const crew = t.closest('[data-crew]');
       if (crew) { const src = crew.dataset.crew; if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
       const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });
+      const pp = t.closest('#cPick [data-preset]');
+      if (pp) { const p = presetsFor(Pick.src).find(x => x.id === pp.dataset.preset); if (p) return pickModel(Pick.src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }); return undefined; }
+      const ps = t.closest('#cPick [data-picksrc]'); if (ps) return openPick(ps.dataset.picksrc);
+      if (t.closest('#cPick [data-pickdone]')) return closePick();
       const pe = t.closest('#cPick [data-effort]'); if (pe) return pickModel(Pick.src, { effort: pe.dataset.effort });
       const gi = t.closest('[data-giveimg]'); if (gi) return giveImage(gi.dataset.giveimg);
       const c = t.closest('[data-c]'); if (!c) return;
@@ -1155,7 +1250,7 @@
           try { localStorage.setItem('ledger', off ? 'off' : 'on'); } catch { /* fine */ }
           return renderLedgerSoon();
         }
-        case 'attach': return $c('cFile').click();
+        case 'attach': return attachMenu(c);
         case 'prompts': return c.getAttribute('aria-expanded') === 'true' ? closeMenu() : promptsMenu(c);
         case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
         case 'stop': C.interruptedAt = Date.now(); return api('/api/chat/interrupt', { key: C.target === 'comp' && C.comp ? C.comp.key : C.key });
@@ -1216,12 +1311,13 @@
       const files = [...(e.clipboardData && e.clipboardData.files || [])];
       if (files.length) { e.preventDefault(); addFiles(files); }
     });
-    $c('cFile').addEventListener('change', e => { addFiles([...e.target.files]); e.target.value = ''; });
+    for (const id of ['cFile', 'cMedia', 'cCam', 'cVid']) $c(id).addEventListener('change', e => { addFiles([...e.target.files]); e.target.value = ''; });
     chat.addEventListener('dragover', e => { if (!C.watch && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); chat.classList.add('drop'); } });
     chat.addEventListener('dragleave', e => { if (e.target === chat || !chat.contains(e.relatedTarget)) chat.classList.remove('drop'); });
     chat.addEventListener('drop', e => { e.preventDefault(); chat.classList.remove('drop'); if (!C.watch) addFiles([...e.dataTransfer.files]); });
     $c('cLight').addEventListener('click', () => { $c('cLight').hidden = true; });
     document.addEventListener('mousedown', e => { if (!$c('cPick').hidden && !(e.target.closest && e.target.closest('#cPick, [data-crew]'))) closePick(); });
+    document.addEventListener('touchstart', e => { if (!$c('cPick').hidden && !(e.target.closest && e.target.closest('#cPick, [data-crew]'))) closePick(); }, { passive: true });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && !$c('cLight').hidden) { $c('cLight').hidden = true; e.stopPropagation(); return; }
       if ($c('chat').hidden) return;

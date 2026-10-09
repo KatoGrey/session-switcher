@@ -11,6 +11,7 @@ import android.content.pm.ApplicationInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.util.Log;
 import android.webkit.ConsoleMessage;
@@ -25,6 +26,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -46,6 +48,9 @@ public class MainActivity extends Activity {
     private WebView webView;
     private SharedPreferences prefs;
     private ValueCallback<Uri[]> filePathCallback;
+    /** A photo the camera is taking right now (it writes straight to this address). */
+    private Uri pendingCapture;
+    private File pendingCaptureFile;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -69,7 +74,8 @@ public class MainActivity extends Activity {
         s.setTextZoom(100);
         s.setSupportMultipleWindows(false);
         s.setJavaScriptCanOpenWindowsAutomatically(false);
-        s.setUserAgentString(s.getUserAgentString() + " SessionSwitcherAndroid/5.0");
+        s.setUserAgentString(s.getUserAgentString() + " SessionSwitcherAndroid/5.2");
+        CaptureProvider.cleanOld(this);
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
@@ -184,9 +190,18 @@ public class MainActivity extends Activity {
         }
         ValueCallback<Uri[]> cb = filePathCallback;
         filePathCallback = null;
+        Uri capture = pendingCapture;
+        File captureFile = pendingCaptureFile;
+        pendingCapture = null;
+        pendingCaptureFile = null;
         if (cb == null) return;
         Uri[] result = null;
-        if (resultCode == RESULT_OK && data != null) {
+        if (capture != null) {
+            // "Take a photo": the camera saved it to our address; nothing comes back in data.
+            if (resultCode == RESULT_OK && captureFile != null && captureFile.length() > 0) result = new Uri[] { capture };
+            else if (captureFile != null) //noinspection ResultOfMethodCallIgnored
+                captureFile.delete();
+        } else if (resultCode == RESULT_OK && data != null) {
             List<Uri> uris = new ArrayList<>();
             ClipData clip = data.getClipData();
             if (clip != null) {
@@ -265,32 +280,68 @@ public class MainActivity extends Activity {
                                          FileChooserParams params) {
             if (filePathCallback != null) filePathCallback.onReceiveValue(null);
             filePathCallback = callback;
-
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
             String[] mimes = mimeTypes(params.getAcceptTypes());
-            if (mimes.length == 1) {
-                intent.setType(mimes[0]);
-            } else if (mimes.length > 1) {
-                intent.setType("*/*");
-                intent.putExtra(Intent.EXTRA_MIME_TYPES, mimes);
-            } else {
-                intent.setType("*/*");
+            boolean multiple = params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE;
+            boolean images = mimes.length > 0, videos = mimes.length > 0;
+            for (String m : mimes) { images &= m.startsWith("image/"); videos &= m.startsWith("video/"); }
+            boolean media = mimes.length > 0;
+            for (String m : mimes) media &= m.startsWith("image/") || m.startsWith("video/");
+
+            // The page asks for exactly what it wants (Attach → Photos & videos, Take a photo,
+            // Record a video, Files), so open that directly instead of a list of apps.
+            if (params.isCaptureEnabled() && images && startCamera()) return true;
+            if (params.isCaptureEnabled() && videos && start(new Intent(MediaStore.ACTION_VIDEO_CAPTURE))) return true;
+            if (media && Build.VERSION.SDK_INT >= 33) {
+                // Android's photo picker: your gallery, albums and cloud photos.
+                Intent pick = new Intent(MediaStore.ACTION_PICK_IMAGES);
+                if (images) pick.setType("image/*");
+                else if (videos) pick.setType("video/*");
+                if (multiple) pick.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, Math.min(10, MediaStore.getPickImagesMaxLimit()));
+                if (start(pick)) return true;
             }
-            if (params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
-                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            // Everything else: the system file browser (Downloads, Drive, recent files, and so on).
+            Intent open = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            open.addCategory(Intent.CATEGORY_OPENABLE);
+            if (mimes.length == 1) open.setType(mimes[0]);
+            else {
+                open.setType("*/*");
+                if (mimes.length > 1) open.putExtra(Intent.EXTRA_MIME_TYPES, mimes);
             }
-            CharSequence title = params.getTitle();
-            try {
-                startActivityForResult(Intent.createChooser(intent,
-                        TextUtils.isEmpty(title) ? "Choose a file" : title), REQ_FILE_CHOOSER);
-                return true;
-            } catch (ActivityNotFoundException e) {
-                Log.w(TAG, "No file picker available", e);
-                filePathCallback = null;
-                return false;
-            }
+            if (multiple) open.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            if (start(open)) return true;
+            Intent any = new Intent(Intent.ACTION_GET_CONTENT);
+            any.addCategory(Intent.CATEGORY_OPENABLE);
+            any.setType("*/*");
+            if (start(Intent.createChooser(any, "Choose a file"))) return true;
+            filePathCallback = null;
+            return false;
         }
+    }
+
+    private boolean start(Intent intent) {
+        try {
+            startActivityForResult(intent, REQ_FILE_CHOOSER);
+            return true;
+        } catch (ActivityNotFoundException | SecurityException e) {
+            Log.w(TAG, "Couldn't open " + intent.getAction(), e);
+            return false;
+        }
+    }
+
+    /** Opens the camera for one full-size photo, saved to a file only this app and the camera can reach. */
+    private boolean startCamera() {
+        File f = new File(CaptureProvider.dir(this), "photo-" + System.currentTimeMillis() + ".jpg");
+        Uri uri = CaptureProvider.uriFor(f);
+        Intent cam = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        cam.putExtra(MediaStore.EXTRA_OUTPUT, uri);
+        cam.setClipData(ClipData.newRawUri("", uri));
+        cam.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        pendingCapture = uri;
+        pendingCaptureFile = f;
+        if (start(cam)) return true;
+        pendingCapture = null;
+        pendingCaptureFile = null;
+        return false;
     }
 
     /** Converts accept="image/*,.png" style types into MIME types. */

@@ -237,7 +237,11 @@ Inside any Claude chat you can bring in Codex as a helper, for example to make i
 
 ## Models, effort and modes
 
-- **Switch models any time:** click the highlighted pill under the message box. It lists every model that chat's tool offers (Claude Code's or Codex's), with an **Effort** row (low to max). The change applies from your next message, without restarting the chat.
+- **Switch models any time:** click the highlighted pill under the message box.
+  - **Quick picks** at the top set a model and an effort in one tap: **Quick** (Haiku or GPT-6-Luna, low), **Balanced** (Sonnet or GPT-6-Sol, medium), **Deep** (Opus or Codex's default, high) and **Max** (Fable or Codex's default, max). They use whatever models your plan offers.
+  - **Claude | Codex** tabs at the top set either one, without leaving the picker.
+  - Below are every model that chat's tool offers and an **Effort** row (low to max).
+  - The change applies from your next message, without restarting the chat. On a phone, the picker opens as a sheet from the bottom of the screen.
   - Or type `/model sonnet`, `/model opus`, `/model luna` or `/effort high` in the message box and press Enter. Nothing is sent to the chat.
   - Or press `Ctrl+K` in a chat and type a model's name.
 - **Remembered:** the mode (what it may do without asking), the model and the effort are remembered:
@@ -255,6 +259,15 @@ Use Session Switcher from your Android phone: read your chats, reply to Claude o
 2. **Get the app:** on your phone's browser, open the `http://<your PC>:4788/get` address shown in Setup and install `SessionSwitcher.apk`. Android will ask you to allow installs from your browser.
 3. Open the app and enter the PC address shown in Setup.
 4. Click **Show a pairing code** in Setup, and type the 8-character code into the app. The code works once, for 10 minutes.
+
+On the phone:
+
+- **Attach** offers **Photos & videos** (Android's photo picker), **Take a photo**, **Record a video** and **Files**.
+- Big photos are shrunk to a sharp JPEG so they reach Claude as a picture. Videos and other files are saved in the project's `attachments` folder.
+- Menus and the model picker open as sheets from the bottom of the screen. Back closes whatever is open.
+- On a foldable, the cover screen gets a one-column layout, and the inner screen shows two columns of projects.
+
+To update the phone app, open the same `http://<your PC>:4788/get` page and install again. Your pairing is kept.
 
 How it stays safe:
 

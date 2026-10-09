@@ -22,7 +22,7 @@ const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
 
-const APP_VERSION = '5.1.0';
+const APP_VERSION = '5.2.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
 const APP_DIR = __dirname;
 const CONFIG_FILE = path.join(APP_DIR, 'accounts.json');
@@ -766,8 +766,8 @@ function uploadFile(req, res, url) {
   const chat = chats.get(url.searchParams.get('key'));
   const raw = String(url.searchParams.get('name') || 'file').split(/[\\/]/).pop();
   const name = raw.replace(/[<>:"|?*\x00-\x1f]/g, '_').replace(/^\.+/, '').slice(-120) || 'file';
+  // Phones often send files without saying their size first (chunked), so the size is checked as it arrives.
   const size = Number(req.headers['content-length'] || 0);
-  if (!size) throw fail(400, 'That file is empty.');
   if (size > UPLOAD_MAX) throw fail(413, 'Files up to 2 GB can be attached.');
   const day = new Date().toISOString().slice(0, 10);
   const dir = path.join(chat.cwd, 'attachments', day);
@@ -779,11 +779,13 @@ function uploadFile(req, res, url) {
   return new Promise((resolve, reject) => {
     const out = fs.createWriteStream(tmp);
     let got = 0;
-    req.on('data', c => { got += c.length; if (got > UPLOAD_MAX) { req.destroy(); out.destroy(); fs.unlink(tmp, () => {}); reject(fail(413, 'Files up to 2 GB can be attached.')); } });
-    req.on('aborted', () => { out.destroy(); fs.unlink(tmp, () => {}); });
-    out.on('error', err => { fs.unlink(tmp, () => {}); reject(fail(500, `Couldn’t save that file: ${err.message}`)); });
+    const failUpload = (status, msg) => { log(`Attach failed for ${name}: ${msg}`); fs.unlink(tmp, () => {}); reject(fail(status, msg)); };
+    req.on('data', c => { got += c.length; if (got > UPLOAD_MAX) { req.destroy(); out.destroy(); failUpload(413, 'Files up to 2 GB can be attached.'); } });
+    req.on('aborted', () => { out.destroy(); log(`Attach of ${name} was interrupted after ${Math.round(got / 1024)} KB.`); fs.unlink(tmp, () => {}); });
+    out.on('error', err => failUpload(500, `Couldn’t save that file: ${err.message}`));
     out.on('finish', () => {
-      try { fs.renameSync(tmp, dest); } catch (err) { return reject(fail(500, `Couldn’t save that file: ${err.message}`)); }
+      if (!got) return failUpload(400, 'That file arrived empty. Try attaching it again.');
+      try { fs.renameSync(tmp, dest); } catch (err) { return failUpload(500, `Couldn’t save that file: ${err.message}`); }
       log(`Attached ${path.relative(chat.cwd, dest)} (${Math.round(got / 1024)} KB)`);
       send(res, 200, { path: dest, rel: path.relative(chat.cwd, dest).replace(/\\/g, '/'), name: path.basename(dest), size: got });
       resolve();
