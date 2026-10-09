@@ -423,6 +423,36 @@ module.exports = [
     },
   },
   {
+    name: 'queue',
+    // Tasks that start as new chats when their time comes and an account has room.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await sleep(500);
+      const rows = () => b.eval(`return [...document.querySelectorAll('#queueList .task')].map(li => li.textContent.replace(/\\s+/g, ' ').trim())`);
+      let r = await rows();
+      t.check('the hub lists queued tasks, and what each waits for', r.length === 2 && /Write patch notes for 1\.5 ?Tidecaller · Claude, whichever account has room ?Waiting for an account with room/.test(r[0]) && /Make a 512px app icon.*Neon Courier · Codex ?Starts /.test(r[1]), r);
+      await t.shot(b, 'list');
+      await b.clickOn('[data-act="task-new"]'); await sleep(400);
+      const form = await b.eval(`return { open: taskDlg.open, projects: [...tkProject.options].map(o => o.textContent), who: [...tkWho.options].map(o => o.textContent), acct: [...tkAcct.options].map(o => o.textContent) }`);
+      t.check('“Queue a task” asks for the project, who, account, when and what', form.open && form.projects.includes('Starfall Tavern') && form.who.join() === 'Claude,Codex' && form.acct[0] === 'Whichever has the most room' && form.acct.includes('Personal'), form);
+      await b.eval(`tkProject.value = ${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}; tkWhen.value = 'at'; tkWhen.dispatchEvent(new Event('change', { bubbles: true })); tkText.value = 'Playtest the Harvest Festival quests and list what breaks.'; return 1`);
+      t.check('“Not before…” shows a time to pick', !(await b.eval(`return tkAtWrap.hidden`)));
+      await t.shot(b, 'dialog');
+      await b.clickOn('#tkGo'); await sleep(500);
+      const add = calls.find(([p, body]) => p === '/api/tasks' && body.action === 'add');
+      t.check('Queue it sends the task', add && add[1].task.provider === 'claude' && add[1].task.accountId === 'auto' && add[1].task.when === 'at' && /T\d\d:\d\d/.test(add[1].task.at) && /Playtest the Harvest Festival/.test(add[1].task.prompt), add && add[1]);
+      t.check('and it joins the list', (await rows()).length === 3 && !(await b.eval(`return taskDlg.open`)));
+      await b.clickOn('#queueList [data-act="task-start"][data-id="tk1"]'); await sleep(400);
+      r = await rows();
+      t.check('Start now starts it, and says where it is', /Started/.test(r[0]) && /Open it/.test(r[0]) && /under At work/.test(await b.eval(`return document.getElementById('toast').textContent`)), r[0]);
+      await b.clickOn('#queueList [data-act="task-remove"][data-id="tk2"]'); await sleep(400);
+      t.check('✕ takes it off the list', (await rows()).length === 2 && !(await rows()).some(x => /512px app icon/.test(x)));
+      const items = await b.eval(`return projectItems(${JSON.stringify(demo.projects[0].cwd)}).filter(x => x !== '-').map(x => x.label)`);
+      t.check('a project’s menu can queue a task there', items.includes('Queue a task here…'), items);
+    },
+  },
+  {
     name: 'windows',
     // A chat in its own window, to have two side by side.
     async run(t) {

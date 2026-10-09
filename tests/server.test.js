@@ -100,6 +100,32 @@ test('tools: listed (each side may be missing), and copying checks the name firs
   } finally { await s.stop(); }
 });
 
+test('tasks: queued for a project, waiting while no account can start them, and removed', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-home-'));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-proj-'));
+  const s = await startServer(dataDir, { home });
+  try {
+    assert.equal((await s.call('/api/project/create', { existing: proj, useExisting: true })).status, 200);
+    const bad = await s.call('/api/tasks', { action: 'add', task: { cwd: proj, prompt: '   ' } });
+    assert.equal(bad.status, 400);
+    const r = await s.call('/api/tasks', { action: 'add', task: { cwd: proj, provider: 'claude', accountId: 'auto', prompt: 'Write the README.', when: 'now' } });
+    assert.equal(r.status, 200);
+    const id = r.json.task.id;
+    let list = (await s.call('/api/tasks')).json.tasks;
+    assert.equal(list.length, 1);
+    assert.equal(list[0].state, 'queued');
+    assert.equal(list[0].why, 'account', 'nobody is signed in in this throwaway home, so it waits');
+    const start = await s.call('/api/tasks', { action: 'start', id });
+    assert.equal(start.status, 409);
+    assert.match(start.json.error, /sign in first/);
+    assert.ok(JSON.parse(fs.readFileSync(path.join(dataDir, 'tasks.json'), 'utf8')).tasks.length === 1, 'kept on disk');
+    assert.equal((await s.call('/api/tasks', { action: 'remove', id })).status, 200);
+    list = (await s.call('/api/tasks')).json.tasks;
+    assert.equal(list.length, 0);
+  } finally { await s.stop(); }
+});
+
 test('page scripts are served from ui/, and nothing else is', async () => {
   const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
   try {

@@ -365,6 +365,40 @@ test('a chat: snapshot before your message, its changes when the reply ends, and
   assert.equal(plain.snap.pending, null);
 });
 
+/* ---------- queued tasks ---------- */
+const tasks = require('../lib/tasks');
+
+test('tasks: checked when queued; started on the account with the most room, and only when it has some', () => {
+  const projectAt = cwd => (cwd === 'C:\\Proj' ? { cwd: 'C:\\Proj', name: 'Proj', exists: true } : null);
+  const accounts = [{ id: 'main', usable: true }, { id: 'work', usable: true }, { id: 'locked', usable: false }];
+  const t = tasks.validTask({ cwd: 'C:\\Proj', provider: 'claude', accountId: 'auto', prompt: '  Write the tests  ', when: 'now' }, { projectAt, accounts });
+  assert.equal(t.prompt, 'Write the tests');
+  assert.equal(t.state, 'queued');
+  assert.throws(() => tasks.validTask({ cwd: 'C:\\Elsewhere', prompt: 'x' }, { projectAt, accounts }), /Pick one of your projects/);
+  assert.throws(() => tasks.validTask({ cwd: 'C:\\Proj', prompt: '   ' }, { projectAt, accounts }), /Write what the task should do/);
+  assert.throws(() => tasks.validTask({ cwd: 'C:\\Proj', prompt: 'x', when: 'at', at: 'soon' }, { projectAt, accounts }), /Pick when/);
+  const u = (five, week) => ({ data: { available: true, fiveHour: { used: five }, week: { used: week } } });
+  // Auto: the one with the most room (main has 3% left of its week; work has 40%).
+  let r = tasks.readyAccount(t, { accounts, usage: { main: u(10, 97), work: u(60, 20) } });
+  assert.equal(r.account.id, 'work');
+  // Nobody has room: it waits.
+  r = tasks.readyAccount(t, { accounts, usage: { main: u(100, 50), work: u(10, 99) } });
+  assert.deepEqual(r, { account: null, why: 'room' });
+  // A set account waits for that account.
+  const onMain = { ...t, accountId: 'main' };
+  assert.equal(tasks.readyAccount(onMain, { accounts, usage: { main: u(100, 10), work: u(0, 0) } }).why, 'room');
+  // Not before its time.
+  const later = { ...t, when: 'at', at: new Date(Date.now() + 3600e3).toISOString() };
+  assert.equal(tasks.readyAccount(later, { accounts, usage: {} }).why, 'time');
+  // Codex: its own usage.
+  const cx = { ...t, provider: 'codex', accountId: 'codex' };
+  assert.equal(tasks.readyAccount(cx, { accounts, usage: { codex: u(50, 50) } }).account.id, 'codex');
+  assert.equal(tasks.readyAccount(cx, { accounts, usage: { codex: u(99, 10) } }).why, 'room');
+  // Finished tasks drop off after a while.
+  const old = { ...t, state: 'started', doneAt: new Date(Date.now() - 7 * 3600e3).toISOString() };
+  assert.deepEqual(tasks.tidy([t, old]).map(x => x.state), ['queued']);
+});
+
 /* ---------- what a review looks at ---------- */
 const { reviewTarget, EMPTY_TREE } = require('../lib/review');
 const { execFileSync } = require('child_process');

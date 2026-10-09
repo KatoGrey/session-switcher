@@ -26,6 +26,7 @@ const { reviewTarget } = require('./lib/review');
 const rulesLib = require('./lib/rules');
 const store = require('./lib/store');
 const { listFiles } = require('./lib/filelist');
+const tasksLib = require('./lib/tasks');
 
 const APP_VERSION = '5.4.1';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -139,7 +140,7 @@ function linkCompanion(chat) {
 }
 
 // Plan usage per account (5-hour and weekly windows with reset times).
-const usage = usageLib.createUsage({ log, chats, onChange: () => scheduleUsageBroadcast() });
+const usage = usageLib.createUsage({ log, chats, onChange: () => { scheduleUsageBroadcast(); queueOnUsage(); } });
 
 // Codex (OpenAI): its own sign-in, chats and usage, through `codex app-server`.
 // The main account uses the Codex home from Setup; extra ones (more ChatGPT accounts, or Ollama)
@@ -239,6 +240,56 @@ function codexFind(id) {
   return { thread: t, session: s, cwd: t.cwd, exists: !!t.cwd && fs.existsSync(t.cwd), folder: path.basename(String(t.cwd || '').replace(/[\\/]+$/, '')) };
 }
 const isCodexId = id => !!codexFind(id);
+// ---------- queued tasks: started as new chats when their time comes and an account has room ----------
+const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
+let taskList = (() => { const j = store.loadOwnJson(TASKS_FILE, null, log); return j && Array.isArray(j.tasks) ? j.tasks : []; })();
+let queueRunning = false;
+function saveTasks() {
+  taskList = tasksLib.tidy(taskList);
+  try { store.writeJsonAtomic(TASKS_FILE, { tasks: taskList }); } catch (err) { log(`Couldn’t save tasks.json: ${err.message}`); }
+  broadcast('tasks', { tasks: tasksView() });
+}
+function queueContext() {
+  const c = config();
+  const accounts = c.accounts.map(a => { const p = acc.publicAccount(c, a); return { id: a.id, name: a.name, usable: !!(p.signedIn && p.lock && p.lock.ok) }; });
+  const snap = usage.snapshot();
+  return { accounts, usage: { ...snap, codex: snap[codexActive().ACCOUNT.id] || snap.codex } };
+}
+// Each task with why it's waiting (a queued one), for the page.
+function tasksView() {
+  const ctx = queueContext();
+  return tasksLib.tidy(taskList).map(t => (t.state === 'queued' ? { ...t, why: tasksLib.readyAccount(t, ctx).why } : t));
+}
+const waitReady = (chat, ms) => new Promise(res => { const t0 = Date.now(); const tick = () => (chat.state !== 'starting' || Date.now() - t0 > ms ? res() : setTimeout(tick, 250)); tick(); });
+async function startTask(t, account) {
+  const info = await openChat(config(), { account: account.id, cwd: t.cwd, mode: 'new', provider: t.provider });
+  const chat = chats.get(info.key);
+  await waitReady(chat, 45000);
+  await chat.beforeTurn();
+  chat.send(t.prompt, []);
+  Object.assign(t, { state: 'started', key: info.key, accountName: info.accountName || account.name || null, doneAt: new Date().toISOString(), error: null });
+  log(`Task started in ${t.folder}: ${t.prompt.split('\n')[0].slice(0, 80)}`);
+}
+async function runQueue(onlyId = null, force = false) {
+  if (queueRunning) return;
+  queueRunning = true;
+  try {
+    let changed = false;
+    for (const t of taskList) {
+      if (t.state !== 'queued' || (onlyId && t.id !== onlyId)) continue;
+      const ctx = queueContext();
+      const r = tasksLib.readyAccount(force ? { ...t, when: 'now' } : t, ctx);
+      if (!r.account) continue;
+      try { await startTask(t, r.account); } catch (err) { Object.assign(t, { state: 'failed', error: err.message, doneAt: new Date().toISOString() }); log(`Task failed to start: ${err.message}`); }
+      changed = true;
+    }
+    if (changed) saveTasks();
+  } finally { queueRunning = false; }
+}
+setInterval(() => { if (taskList.some(t => t.state === 'queued')) runQueue().catch(() => {}); }, 30000).unref();
+// Usage changed (an account has room again, say): queued tasks may be able to start.
+function queueOnUsage() { if (taskList.some(t => t.state === 'queued')) setTimeout(() => runQueue().catch(() => {}), 1000); }
+
 // Opens a chat in the app window (or attaches to it if it's already running here), returning its info.
 async function openChat(c, body) {
   if (body.provider === 'codex' || (body.mode !== 'new' && isCodexId(body.sessionId))) {
@@ -640,6 +691,7 @@ async function handleApi(req, res, url, remote = false) {
     if (!cwd || !fs.existsSync(cwd)) throw fail(404, 'That folder isn’t available.');
     return send(res, 200, { cwd, files: await listFiles(cwd) });
   }
+  if (route === 'GET /api/tasks') return send(res, 200, { tasks: tasksView() });
   if (route === 'GET /api/rules') {
     const cwd = url.searchParams.get('cwd') || null;
     return send(res, 200, { scope: cwd ? 'project' : 'user', cwd, ...rulesLib.readRules(rulesPathsFor(cwd)) });
@@ -720,6 +772,24 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, { scope: body.cwd ? 'project' : 'user', cwd: body.cwd || null, ...rulesLib.readRules(paths) });
     }
     case '/api/tools/copy': return send(res, 200, await copyTool(body.name, body.to, body.cwd || null));
+    case '/api/tasks': {
+      if (body.action === 'add') {
+        const t = tasksLib.validTask(body.task || {}, { projectAt, accounts: config().accounts });
+        taskList.push(t); saveTasks();
+        runQueue(t.id).catch(() => {});
+        return send(res, 200, { task: t, tasks: tasksView() });
+      }
+      const t = taskList.find(x => x.id === body.id);
+      if (!t) throw fail(404, 'That task isn’t in the queue any more.');
+      if (body.action === 'remove') { taskList = taskList.filter(x => x !== t); saveTasks(); return send(res, 200, { tasks: tasksView() }); }
+      if (body.action === 'start') {
+        if (t.state !== 'queued') throw fail(409, 'That task has already started.');
+        await runQueue(t.id, true);
+        if (t.state === 'queued') { const why = tasksLib.readyAccount({ ...t, when: 'now' }, queueContext()).why; throw fail(409, why === 'room' ? 'No account has room for it right now; it starts as soon as one does.' : 'No account can start it right now: sign in first.'); }
+        return send(res, 200, { task: t, tasks: tasksView() });
+      }
+      throw fail(400, 'Add, start or remove a task.');
+    }
     case '/api/web': {
       if (isCodexAccount(body.account)) {
         const ollama = codexById(body.account).ACCOUNT.kind === 'ollama';

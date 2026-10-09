@@ -484,9 +484,13 @@ function renderHub() {
       <div class="summons-grid" id="awaitList"></div>
     </section>
     <section class="sec" id="secWork">
-      ${secHead('Right now', 'At work')}
+      ${secHead('Right now', 'At work', '<button class="btn sm" data-act="task-new">Queue a task</button>')}
       <div class="board" id="board"></div>
       <div class="quietrow" id="quietList"></div>
+    </section>
+    <section class="sec" id="secQueue" hidden>
+      ${secHead('Coming up', 'Queued')}
+      <ul class="queue" id="queueList"></ul>
     </section>
     <section class="sec" id="secWorlds">${secHead('By folder', 'Your projects', '<button class="btn sm" data-act="project-new">New project</button>')}<div class="atlas ${S.atlasEntered ? '' : 'enter'}" id="atlas"></div></section>
     <section class="sec">
@@ -502,6 +506,7 @@ function renderHub() {
   renderHubLists();
   renderLive(true);
   if (!dialsDrawn && !renderHub.timer) renderHub.timer = setTimeout(() => { dialsDrawn = true; }, 2600);
+  renderQueue();
 }
 // Recent chats and the index, patched in place when transcripts change.
 function renderHubLists() {

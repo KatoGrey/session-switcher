@@ -144,6 +144,11 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     { name: 'codex_app', claude: null, codex: tool('codex_app', 'user', { enabled: true, command: 'codex', args: ['app'], own: true }) },
     { name: 'latitude', claude: tool('latitude', 'user', { transport: 'http', url: 'https://mcp.example.com/mcp' }), codex: null },
   ];
+  // Queued tasks: one waiting for room, one for its time.
+  let taskList = [
+    { id: 'tk1', cwd: P('Tidecaller'), folder: 'Tidecaller', provider: 'claude', accountId: 'auto', prompt: 'Write patch notes for 1.5', when: 'now', state: 'queued', why: 'room', createdAt: iso(min(20)) },
+    { id: 'tk2', cwd: P('Neon Courier'), folder: 'Neon Courier', provider: 'codex', accountId: 'codex', prompt: 'Make a 512px app icon: a courier on a neon bike', when: 'at', at: later(3), state: 'queued', why: 'time', createdAt: iso(min(5)) },
+  ];
   const rulesOut = () => ({ scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
@@ -173,6 +178,13 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/chat/diff') return { body: { diff: `diff --git a/${q.get('path')} b/${q.get('path')}\nindex 1..2 100644\n--- a/${q.get('path')}\n+++ b/${q.get('path')}\n@@ -12,3 +12,3 @@ function rally(party)\n   local bonus = 0.15\n-  rally.stacks = true\n+  rally.stacks = false  -- one Rally per party\n   return bonus\n` } };
     // Undo: the first time, one file changed since is left alone; forced, it goes too.
     if (p === '/api/chat/undo') return { body: body.force ? { restored: ['data/balance/party.json'], skipped: [] } : { restored: ['scripts/bard/songs.lua'], skipped: [{ path: 'data/balance/party.json', why: 'changed since' }] } };
+    if (p === '/api/tasks' && method === 'GET') return { body: { tasks: taskList } };
+    if (p === '/api/tasks') {
+      if (body.action === 'add') { const t = { id: `tk${taskList.length + 1}`, ...body.task, folder: projects.find(x => x.cwd === body.task.cwd)?.name, state: 'queued', why: body.task.when === 'at' ? 'time' : 'room', createdAt: iso(NOW) }; taskList.push(t); return { body: { task: t, tasks: taskList } }; }
+      if (body.action === 'remove') taskList = taskList.filter(t => t.id !== body.id);
+      if (body.action === 'start') taskList = taskList.map(t => (t.id === body.id ? { ...t, state: 'started', key: 'k-started', accountName: 'Personal', why: undefined } : t));
+      return { body: { tasks: taskList } };
+    }
     if (p === '/api/files/list') return { body: { cwd: bard, files: ['README.md', 'PATCH-NOTES.md', 'scripts/bard/songs.lua', 'scripts/bard/encore.lua', 'scripts/party/rally.lua', 'data/balance/party.json', 'art/harvest-festival.png', 'docs/Song list.md'] } };
     if (p === '/api/rules' && method === 'GET') return { body: rulesOut() };
     if (p === '/api/rules') { for (const k of body.to || []) rules[k] = { ...rules[k], exists: true, text: body.text.endsWith('\n') ? body.text : `${body.text}\n` }; return { body: rulesOut() }; }
