@@ -237,7 +237,7 @@ async function watch({ sessionId, source = 'terminal' }) {
   C.info = { cwd: p ? p.cwd : null, accountId: s && s.lastOpened ? s.lastOpened.account : null, accountName: s && s.lastOpened ? s.lastOpened.accountName : '' };
   $c('cTitle').textContent = C.title; $c('cFolder').textContent = C.folder;
   headerAccount(C.info.accountId, C.info.accountId ? C.info.accountName : (oc ? `OpenClaw · ${PROV_NAME.openclaw}` : source === 'terminal' ? 'In a terminal' : 'In another app'));
-  setState(source === 'terminal' ? 'watching' : 'readonly');
+  setState(source === 'terminal' || source === 'openclaw' ? 'watching' : 'readonly');
   $c('cMode').hidden = true;
   // An OpenClaw session is live AND writable: what you send becomes a follow-up turn in it.
   $c('cCompose').hidden = !oc;
