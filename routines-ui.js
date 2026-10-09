@@ -106,7 +106,7 @@ const Routines = (() => {
       } finally { b.disabled = false; }
       return changed();
     }
-    if (act === 'pause') { await api('/api/routines/pause', { id: r.id, paused: r.enabled }); toast(r.enabled ? `Paused ${r.name}.` : `${r.name} is back on. It waits for its next time rather than catching up.`, 4000); return changed(); }
+    if (act === 'pause') { await api('/api/routines/pause', { id: r.id, paused: r.enabled }); toast(r.enabled ? `Paused ${r.name}.` : `${r.name} is back on. It starts from now rather than catching up on what it missed.`, 4000); return changed(); }
     if (act === 'edit') return edit(r);
     if (act === 'hist') { if (R.hist.has(r.id)) R.hist.delete(r.id); else R.hist.add(r.id); return render(); }
     if (act === 'open-chat') { const h = r.history.find(x => x.id === b.dataset.run); return h ? openRun(r, h) : undefined; }
