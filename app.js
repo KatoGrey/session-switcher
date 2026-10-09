@@ -135,6 +135,8 @@ const ringById = id => { if (codexAcct(id)) return codexRing(id); const a = S.ac
 const acctById = id => (codexAcct(id) ? (x => ({ id: x.id, name: x.name, email: x.email, plan: x.plan, signedIn: x.signedIn, codex: true }))(codexAcct(id)) : S.accounts.find(x => x.id === id) || null);
 const codexReady = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
 const isCodex = s => !!(s && s.provider === 'codex');
+const isOpenClaw = s => !!(s && s.provider === 'openclaw');
+const ocAgent = s => (s && s.agent ? (s.agent === 'main' ? 'Celeste' : s.agent.charAt(0).toUpperCase() + s.agent.slice(1)) : 'OpenClaw');
 const canLaunch = a => !!a && a.signedIn && a.lock.ok;
 const isRunning = id => !!S.running[String(id).toLowerCase()];
 function highlight(text, q) {
@@ -396,16 +398,17 @@ function renderNav() {
   const A = awaiting().length, W = atWork().length;
   const total = S.projects.reduce((n, p) => n + p.sessions.length, 0);
   // Folders, split by which assistant the chats belong to. Pinned folders come first in each.
-  const group = prov => S.projects.map(p => ({ p, list: p.sessions.filter(x => (prov === 'codex') === isCodex(x)) })).filter(x => x.list.length);
+  const clsOf = x => isCodex(x) ? 'codex' : isOpenClaw(x) ? 'openclaw' : 'claude';
+  const group = prov => S.projects.map(p => ({ p, list: p.sessions.filter(x => clsOf(x) === prov) })).filter(x => x.list.length);
   const item = (x, prov) => {
     const live = x.list.some(c => isRunning(c.id) || liveOf(c.id));
-    const firstProv = S.projects.find(q => q.cwd === x.p.cwd)?.sessions.some(c => !isCodex(c)) ? 'claude' : 'codex';
+    const firstProv = S.projects.find(q => q.cwd === x.p.cwd)?.sessions.some(c => clsOf(c) === 'claude') ? 'claude' : S.projects.find(q => q.cwd === x.p.cwd)?.sessions.some(c => clsOf(c) === 'openclaw') ? 'openclaw' : 'codex';
     const cur = S.view === 'folder' && S.folder === x.p.cwd && (S.prov ? S.prov === prov : !S.pins.has(x.p.cwd) && prov === firstProv);
     return `<button class="nav-i ${prov}" data-view="folder" data-cwd="${esc(x.p.cwd)}" data-prov="${prov}" aria-current="${cur}">
       <span class="glyph" aria-hidden="true">${glyphFor(x.p.name)}</span><span class="ni-t">${esc(x.p.name)}</span>
       ${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}<span class="count">${x.list.length}</span></button>`;
   };
-  const claude = group('claude'), codexF = group('codex');
+  const claude = group('claude'), codexF = group('codex'), ocF = group('openclaw');
   // Pinned: projects and favorite chats, at the top.
   const pinnedP = [...S.pins].map(cwd => S.projects.find(p => p.cwd === cwd)).filter(Boolean);
   const pinnedC = [...S.favs].map(id => sessionById(id)).filter(([s2]) => s2);
@@ -414,7 +417,7 @@ function renderNav() {
   const pinnedHtml = pinnedP.length || pinnedC.length ? `${fold('pinned', 'Pinned', pinnedP.length + pinnedC.length, 'pinned')}
     ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd && !S.prov}"><span class="glyph" aria-hidden="true">★</span><span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
       + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${isCodex(c) ? 'codex' : ''}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
-  const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0);
+  const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0), nOpenClaw = ocF.reduce((n, x) => n + x.list.length, 0);
   const showCodex = S.codex && S.codex.enabled;
   const fresh = S.projects.filter(p => !p.sessions.length);
   const blocked = a && (a.pinnedOrg || a.expectEmail) && !a.lock.ok;
@@ -435,6 +438,8 @@ function renderNav() {
     ${S.navFold.has('claude') ? '' : claude.length ? claude.map(x => item(x, 'claude')).join('') : '<p class="nav-empty">No Claude Code chats yet.</p>'}
     ${showCodex ? `${fold('codex', 'Codex', nCodex, 'codex')}
     ${S.navFold.has('codex') ? '' : codexF.length ? codexF.map(x => item(x, 'codex')).join('') : `<p class="nav-empty">${codexReady() ? 'No Codex chats yet. Start one with “New Codex chat” on the Codex card.' : 'Sign in on the Codex card to use Codex here.'}</p>`}` : ''}
+    ${ocF.length ? `${fold('openclaw', 'OpenClaw', nOpenClaw, 'openclaw')}
+    ${S.navFold.has('openclaw') ? '' : ocF.map(x => item(x, 'openclaw')).join('')}` : ''}
     <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p>`;
   // Only when something would look different (it's asked for several times a second while chats work).
   if ($('nav')._h === html) return;
@@ -773,15 +778,16 @@ function codexMenu(anchor) {
 }
 
 function rowHtml(s, folderName, hit) {
-  const a = current(); const cx = isCodex(s);
-  const ok = cx ? codexReady() : canLaunch(a);
-  const why = cx ? (S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first') : !a.signedIn ? `Sign in to ${a.name} first` : !a.lock.ok ? (a.lockMessage || 'Not on its locked account') : '';
+  const a = current(); const cx = isCodex(s); const oc = isOpenClaw(s);
+  const ok = oc ? true : cx ? codexReady() : canLaunch(a);
+  const why = oc ? '' : cx ? (S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first') : !a.signedIn ? `Sign in to ${a.name} first` : !a.lock.ok ? (a.lockMessage || 'Not on its locked account') : '';
   const sub = s.lastPrompt ? `You last asked: ${s.lastPrompt}` : (s.title !== s.firstPrompt ? `Started with: ${s.firstPrompt}` : '');
   const live = liveOf(s.id);
   const run = !live && isRunning(s.id);
-  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
+  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (oc ? `<span class="tag openclaw">✨ ${esc(ocAgent(s))}</span>` : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
     : run ? '<span class="tag violet">In a terminal</span>' : (s.active ? '<span class="tag ghost">Just updated</span>' : ''));
-  const primary = live ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Go back to this chat">Return</button>`
+  const primary = oc ? `<button class="btn sm" data-chat="${esc(s.id)}" title="View this OpenClaw session">Open</button>`
+    : live ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Go back to this chat">Return</button>`
     : run ? `<button class="btn sm" data-watch="${esc(s.id)}" title="Read it live here while it runs in its terminal">Watch</button>`
     : inApp() ? `<button class="btn sm" data-chat="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Open</button>`
     : `<button class="btn sm" data-open="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Resume</button>`;
@@ -1201,12 +1207,14 @@ function renderLive(force) {
 function renderRecent() {
   const every = allSessions().sort((x, y) => y[0].updated - x[0].updated);
   const hasCodex = every.some(([x]) => isCodex(x));
-  const f = hasCodex ? (S.recentProv || 'all') : 'all';
-  const all = f === 'all' ? every : every.filter(([x]) => (f === 'codex') === isCodex(x));
+  const hasOc = every.some(([x]) => isOpenClaw(x));
+  const provOf = x => isCodex(x) ? 'codex' : isOpenClaw(x) ? 'openclaw' : 'claude';
+  const f = (hasCodex || hasOc) ? (S.recentProv || 'all') : 'all';
+  const all = f === 'all' ? every : every.filter(([x]) => provOf(x) === f);
   const tab = (v, label, n) => `<button class="${f === v ? 'on' : ''}" data-recent="${v}" aria-pressed="${f === v}">${label} <span class="count">${n}</span></button>`;
   $('page').innerHTML = `<div id="guardSlot">${guardHtml()}</div>
     <header class="f-head"><div><p class="eyebrow">✧ Every folder</p><h1>Recent chats</h1><p class="f-meta">Your latest chats${f === 'codex' ? ' in Codex' : f === 'claude' ? ` in Claude Code, ready to open as ${esc(current().name)}` : ''}.</p></div>
-      ${hasCodex ? `<div class="seg provseg" role="group" aria-label="Show">${tab('all', 'All', every.length)}${tab('claude', 'Claude Code', every.filter(([x]) => !isCodex(x)).length)}${tab('codex', 'Codex', every.filter(([x]) => isCodex(x)).length)}</div>` : ''}</header>
+      ${hasCodex ? `<div class="seg provseg" role="group" aria-label="Show">${tab('all', 'All', every.length)}${tab('claude', 'Claude Code', every.filter(([x]) => !isCodex(x)).length)}${tab('codex', 'Codex', every.filter(([x]) => isCodex(x)).length)}${hasOc ? tab('openclaw', 'OpenClaw', every.filter(([x]) => isOpenClaw(x)).length) : ''}</div>` : ''}</header>
     ${all.length ? `<ul class="rows sec-gap">${all.slice(0, 60).map(([x, p]) => rowHtml(x, p.name)).join('')}</ul>` : '<p class="empty-line">Nothing here yet.</p>'}`;
 }
 // A project: its banner, then its chats, documents and pictures.
@@ -1217,13 +1225,13 @@ function renderFolder() {
   if (p.exists && worldStale(p.cwd)) loadWorld(p.cwd).then(() => { if (S.view === 'folder' && S.folder === p.cwd) renderFolder(); }).catch(() => {});
   const pinned = S.pins.has(p.cwd);
   const prov = S.prov;
-  const list = prov ? p.sessions.filter(x => (prov === 'codex') === isCodex(x)) : p.sessions;
+  const list = prov ? p.sessions.filter(x => (isCodex(x) ? 'codex' : isOpenClaw(x) ? 'openclaw' : 'claude') === prov) : p.sessions;
   const other = prov ? p.sessions.length - list.length : 0;
-  const otherName = prov === 'codex' ? 'Claude Code' : 'Codex';
+  const otherName = prov === 'codex' ? 'Claude Code' : prov === 'openclaw' ? 'Claude Code' : 'Codex';
   const today = midnight();
   const bits = [plural(p.sessions.filter(x => x.updated >= today).length, 'chat'), w && w.today.docs ? plural(w.today.docs, 'document') : '', w && w.today.images ? plural(w.today.images, 'image') : ''];
   const todayLine = bits.slice(1).some(Boolean) || p.sessions.some(x => x.updated >= today) ? ` Today: ${bits.filter(Boolean).join(', ')}.` : '';
-  const meta = [plural(list.length, prov === 'codex' ? 'Codex chat' : prov === 'claude' ? 'Claude Code chat' : 'chat'), p.notes && prov !== 'codex' ? plural(p.notes, 'saved note') : null, `last used ${agoL(list.length ? list[0].updated : p.updated)}`].filter(Boolean).join(', ');
+  const meta = [plural(list.length, prov === 'codex' ? 'Codex chat' : prov === 'claude' ? 'Claude Code chat' : prov === 'openclaw' ? 'OpenClaw session' : 'chat'), p.notes && prov !== 'codex' ? plural(p.notes, 'saved note') : null, `last used ${agoL(list.length ? list[0].updated : p.updated)}`].filter(Boolean).join(', ');
   const hasArt = !!(w && w.banner);
   const art = coverPrompt();
   const hint = p.exists && w && !hasArt
@@ -1233,7 +1241,7 @@ function renderFolder() {
   const heroH = `<div class="wp-art" style="view-transition-name:world-banner">${worldArt(p, w, '', false)}</div><span class="wp-shade" aria-hidden="true"></span>
     <div class="wp-in"><p class="eyebrow ${prov || ''}">${prov === 'codex' ? 'Codex chats in this project' : prov === 'claude' ? 'Claude Code chats in this project' : 'Project'}</p><h1>${esc(p.name)}</h1></div>${hint}`;
   const subH = `<div class="wp-where"><p class="f-path">${esc(p.cwd)}${p.exists ? '' : ' (this folder no longer exists)'}</p>
-      <p class="f-meta">${esc(meta[0].toUpperCase() + meta.slice(1))}.${esc(todayLine)}${other ? ` <button class="linkish" data-view="folder" data-cwd="${esc(p.cwd)}" data-prov="${prov === 'codex' ? 'claude' : 'codex'}">${other === 1 ? `1 ${otherName} chat` : `${other} ${otherName} chats`} here too</button>` : ''}</p></div>
+      <p class="f-meta">${esc(meta[0].toUpperCase() + meta.slice(1))}.${esc(todayLine)}${other ? ` <button class="linkish" data-view="folder" data-cwd="${esc(p.cwd)}" data-prov="${prov === 'codex' || prov === 'openclaw' ? 'claude' : 'codex'}">${other === 1 ? `1 ${otherName} chat` : `${other} ${otherName} chats`} here too</button>` : ''}</p></div>
     <div class="wp-tools"><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin' : 'Pin to top'}</button></div>`;
   const off = !canLaunch(a) || !p.exists;
   const cxOff = !codexReady() || !p.exists;
@@ -1268,9 +1276,10 @@ function renderWorldBody() {
   const set = h => { if (fresh || box._h !== h) { box.innerHTML = h; box._h = h; } };
   if (S.worldTab === 'chats') {
     const prov = S.prov;
-    const nCodex = p.sessions.filter(isCodex).length, nClaude = p.sessions.length - nCodex;
-    const list = prov ? p.sessions.filter(x => (prov === 'codex') === isCodex(x)) : p.sessions;
-    const seg = nCodex && nClaude ? `<div class="seg provseg" role="group" aria-label="Show">${[['all', 'All', p.sessions.length], ['claude', 'Claude Code', nClaude], ['codex', 'Codex', nCodex]].map(([v, l, n]) => `<button class="${(prov || 'all') === v ? 'on' : ''}" data-wprov="${v}" aria-pressed="${(prov || 'all') === v}">${l} <span class="count">${n}</span></button>`).join('')}</div>` : '';
+    const nOpenClaw = p.sessions.filter(isOpenClaw).length, nCodex = p.sessions.filter(isCodex).length, nClaude = p.sessions.length - nCodex - nOpenClaw;
+    const list = prov ? p.sessions.filter(x => (isCodex(x) ? 'codex' : isOpenClaw(x) ? 'openclaw' : 'claude') === prov) : p.sessions;
+    const segList = [['all', 'All', p.sessions.length], ['claude', 'Claude Code', nClaude], ['codex', 'Codex', nCodex], ['openclaw', 'OpenClaw', nOpenClaw]].filter(x => x[2]);
+    const seg = segList.length > 1 ? `<div class="seg provseg" role="group" aria-label="Show">${segList.map(([v, l, n]) => `<button class="${(prov || 'all') === v ? 'on' : ''}" data-wprov="${v}" aria-pressed="${(prov || 'all') === v}">${l} <span class="count">${n}</span></button>`).join('')}</div>` : '';
     if (fresh || !$('wbList')) { box.innerHTML = '<div class="wb-top" id="wbTop"></div><div id="wbList"></div>'; box._h = null; }
     if ($('wbTop')._h !== seg) { $('wbTop').innerHTML = seg; $('wbTop')._h = seg; $('wbTop').hidden = !seg; }
     const lb = $('wbList');
@@ -1370,6 +1379,8 @@ setInterval(tick, 1000);
 /* ---------- drawer ---------- */
 let drawerSeq = 0;
 async function openDrawer(id, quiet) {
+  const [ods] = sessionById(id);
+  if (ods && isOpenClaw(ods)) return ChatUI.openOc({ id: ods.id, sessionId: ods.sessionId, title: ods.title, agent: ods.agent, cwd: ods.cwd, folder: sessionById(id)[1] ? sessionById(id)[1].name : null });
   const seq = ++drawerSeq;
   const d = $('drawer');
   S.drawerId = id;
@@ -1532,6 +1543,10 @@ function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items &
 function chatItems(id) {
   const [s] = sessionById(id); if (!s) return [];
   if (isCodex(s)) return codexChatItems(s);
+  if (isOpenClaw(s)) { const [, ocp2] = sessionById(id); return [
+    { label: 'View this session here', hint: 'read-only transcript', run: () => ChatUI.openOc({ id: s.id, sessionId: s.sessionId, title: s.title, agent: s.agent, cwd: s.cwd, folder: ocp2 ? ocp2.name : null }) },
+    '-',
+  ]; }
   const a = current(); const ok = canLaunch(a);
   const why = !a.signedIn ? `Sign in to ${a.name} first` : (a.lockMessage || '');
   const live = liveOf(id), run = isRunning(id);
@@ -1614,7 +1629,8 @@ async function refreshUsage(id) {
 }
 async function resume(id, mode = 'resume', force = false) {
   const a = current();
-  const [s] = sessionById(id);
+  const [s, ocp] = sessionById(id);
+  if (s && isOpenClaw(s)) return ChatUI.openOc({ id: s.id, sessionId: s.sessionId, title: s.title, agent: s.agent, cwd: s.cwd, folder: ocp ? ocp.name : null });
   if (mode === 'resume' && !force && s && s.active && !isRunning(id) &&
       !(await appConfirm('This chat changed in the last few minutes, so it may still be open somewhere, like the desktop app. Opening it twice can mix up its history.\n\nResume anyway?', { ok: 'Resume anyway' }))) return;
   try {
@@ -2368,6 +2384,8 @@ const pageClicks = wrap(async e => {
   if (ch) {
     if (S.drawerId) closeDrawer();
     const q = S.view === 'search' && S.q ? S.q : null;
+    const [ocs, ocp] = sessionById(ch.dataset.chat);
+    if (ocs && isOpenClaw(ocs)) { await ChatUI.openOc({ id: ocs.id, sessionId: ocs.sessionId, title: ocs.title, agent: ocs.agent, cwd: ocs.cwd, folder: ocp ? ocp.name : null }); if (q && ChatUI.isOpen()) ChatUI.find(q); return undefined; }
     await ChatUI.open({ sessionId: ch.dataset.chat });
     if (q && ChatUI.isOpen()) ChatUI.find(q);
     return undefined;

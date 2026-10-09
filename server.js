@@ -17,6 +17,7 @@ const chatLib = require('./lib/chat');
 const usageLib = require('./lib/usage');
 const filesLib = require('./lib/files');
 const codexLib = require('./lib/codex');
+const openclawLib = require('./lib/openclaw');
 const codexHomes = require('./lib/codexhomes');
 const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
@@ -62,6 +63,8 @@ function save() {
 const sessions = createSessionStore({ root: path.join(config().mainConfigDir, 'projects'), dataDir: APP_DIR, log });
 const projectInfo = projectsLib.createProjects({ dataDir: APP_DIR, log });
 const chatPrefs = prefsLib.createChatPrefs({ dataDir: APP_DIR, log });
+const openclaw = openclawLib.createOpenClaw({ log, dataDir: APP_DIR });
+openclaw.onSessionsChanged(() => { forgetMerged(); broadcast('sessions'); });
 
 // ---------- live updates ----------
 
@@ -152,6 +155,11 @@ function codexSessions(maxAgeMs = 20000) {
   }).catch(() => {});
   return codex.cached(sessions.lastOpened);
 }
+// OpenClaw agent sessions as read-only rows; refreshes in the background like Codex's.
+function openclawSessions(maxAgeMs = 25000) {
+  openclaw.sessions(maxAgeMs).catch(() => {});
+  return openclaw.cached();
+}
 const normCwd = p => { const x = String(p || '').replace(/[\\/]+$/, ''); return process.platform === 'win32' ? x.toLowerCase() : x; };
 // Claude Code's folders plus Codex chats, merged by folder, plus folders created or added here
 // that don't have any chats yet.
@@ -167,11 +175,21 @@ function sessionsWithCodex() {
 function mergeSessions() {
   const base = sessions.scan();
   const cx = codexSessions();
+  const oc = openclawSessions();
   const extra = projectInfo.added();
-  if (!cx.length && !extra.length) return base;
+  if (!cx.length && !oc.length && !extra.length) return base;
   const projects = base.projects.map(p => ({ ...p, sessions: p.sessions.slice() }));
   const byCwd = new Map(projects.map(p => [normCwd(p.cwd), p]));
   for (const t of cx) {
+    if (!t.cwd) continue;
+    let p = byCwd.get(normCwd(t.cwd));
+    if (!p) {
+      p = { cwd: t.cwd, name: path.basename(String(t.cwd).replace(/[\\/]+$/, '')) || t.cwd, exists: fs.existsSync(t.cwd), notes: 0, sessions: [], updated: 0 };
+      byCwd.set(normCwd(t.cwd), p); projects.push(p);
+    }
+    p.sessions.push({ ...t, folderExists: p.exists });
+  }
+  for (const t of oc) {
     if (!t.cwd) continue;
     let p = byCwd.get(normCwd(t.cwd));
     if (!p) {
@@ -356,6 +374,7 @@ function startWatching() {
   setInterval(() => { if (clients.size) pollAccounts(); }, 90000);
   setInterval(() => { if (clients.size) { refreshAllUsage(4 * 60 * 1000); if (config().codex.enabled) refreshAllCodexUsage(); } }, 5 * 60 * 1000);
   setInterval(() => { if (clients.size && config().codex.enabled) codexSessions(15000); }, 20000);
+  setInterval(() => { if (clients.size) openclawSessions(15000); }, 30000);
   setInterval(() => { if (clients.size && chats.summaries().some(s => s.state !== 'ended')) scheduleActivity(); }, 5000); // keeps elapsed times honest
 }
 
@@ -426,6 +445,8 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/chat/history') {
     // A Codex helper's thread may be too new for the Codex chat list, so the page can say it's Codex.
     if (isCodexId(url.searchParams.get('id')) || (url.searchParams.get('provider') === 'codex' && chatPrefs.parentOf(url.searchParams.get('id')))) return send(res, 200, await codex.history(url.searchParams.get('id'), url.searchParams.get('cursor'), url.searchParams.get('until') || null));
+    // OpenClaw agent sessions are read-only history views served from the session store.
+    if (url.searchParams.get('provider') === 'openclaw') return send(res, 200, await openclaw.history(url.searchParams.get('id')));
     const file = sessions.fileFor(url.searchParams.get('id'));
     return send(res, 200, await chatLib.readHistory(file, { until: url.searchParams.get('until') || null, cursor: url.searchParams.get('cursor'), limit: 60 }));
   }

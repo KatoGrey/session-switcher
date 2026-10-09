@@ -7,11 +7,11 @@
   const $c = id => (id[0] === '[' ? document.querySelector(id) : document.getElementById(id));
   const C = {
     key: null, info: null, sessionId: null, es: null, lastSeq: 0, state: null, watch: null, watchSig: '',
-    attachments: [], historyStart: 0, historyCursor: null, liveText: {}, liveTimer: null, interruptedAt: 0, title: '', folder: '', model: '', provider: 'claude',
+    attachments: [], historyStart: 0, historyCursor: null, liveText: {}, liveTimer: null, interruptedAt: 0, title: '', folder: '', model: '', provider: 'claude', agentName: '',
     // The Codex helper working inside a Claude chat, which one your next message goes to, and each one's model.
     comp: null, compThread: null, target: 'main', mi: { main: null, comp: null },
   };
-  const PROV_NAME = { claude: 'Claude', codex: 'Codex' };
+  const PROV_NAME = { claude: 'Claude', codex: 'Codex', openclaw: 'OpenClaw' };
   const codexOK = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
   const duo = () => !C.watch && C.provider === 'claude' && (codexOK() || !!C.comp);
   const provFor = src => (src === 'comp' ? 'codex' : C.provider);
@@ -1236,6 +1236,7 @@
     if (!C.sessionId) return null;
     const gen = C.gen;
     const params = new URLSearchParams({ id: C.sessionId });
+    if (C.provider === 'openclaw') params.set('provider', 'openclaw');
     // Up to where the open chat's live replay begins, so nothing shows twice or goes missing.
     const until = C.info && !C.watch ? C.info.bufferFrom || C.info.startedAt : null;
     if (until) params.set('until', until);
@@ -1244,7 +1245,9 @@
     if (gen !== C.gen) return null;   // you've moved on to another chat
     C.historyStart = h.start;
     C.historyCursor = h.cursor || null;
-    let rows = h.items.map(it => ({ it, prov: C.provider }));
+    let rows = C.provider === 'openclaw'
+      ? h.items.map(it => ({ it: it.role === 'user' ? { kind: 'user', text: it.text, at: it.at, images: [] } : { kind: 'assistant', blocks: [{ type: 'text', text: it.text }], at: it.at }, prov: C.provider }))
+      : h.items.map(it => ({ it, prov: C.provider }));
     // A Claude chat's Codex helper: its earlier messages slot in among Claude's by time.
     if (before === undefined && C.compThread && C.provider === 'claude') {
       try { rows = mergeHelper(rows, (await api(`/api/chat/history?${new URLSearchParams({ id: C.compThread, provider: 'codex' })}`)).items); } catch { /* shown without them */ }
@@ -1309,7 +1312,7 @@
     $c('cText').value = ''; C.attachments = []; C.files = []; C.converting = 0; renderAttachments(); grow();
     closeFind(); unseen = 0;
     C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
-    Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+    Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', agentName: '', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
     closePick();
     $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
     clearPermissions();
@@ -1344,6 +1347,7 @@
     if (gen !== C.gen) return;
     setTarget('main', false);
     $c('chat').classList.toggle('codex', C.provider === 'codex');
+    $c('chat').classList.toggle('openclaw', C.provider === 'openclaw');
     const [s, p] = findSession(C.sessionId);
     C.title = info.title && info.title !== 'New chat' ? info.title : mode === 'new' ? 'New chat' : mode === 'fork' ? `${s ? s.title : 'Chat'} (copy)` : (s ? s.title : info.title || 'Chat');
     C.folder = info.folder || (p ? p.name : (cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() : ''));
@@ -1393,6 +1397,29 @@
     // Started from a prompt: it waits in the message box so you can adjust it before sending.
     if (initialText) placeText(initialText, true);
     return undefined;
+  }
+
+  // Read-only viewer for OpenClaw agent sessions (history from the session store).
+  async function openOc({ id, sessionId, title, agent, cwd = null, folder = null } = {}) {
+    reset();
+    C.provider = 'openclaw';
+    C.agentName = agent || 'Celeste';
+    PROV_NAME.openclaw = C.agentName;
+    C.sessionId = sessionId || id;
+    C.title = title || `${C.agentName} session`; C.folder = folder || '';
+    C.info = { cwd, accountId: null, accountName: 'OpenClaw' };
+    $c('cTitle').textContent = C.title; $c('cFolder').textContent = C.folder;
+    headerAccount(null, `OpenClaw · ${C.agentName}`);
+    setState('readonly');
+    $c('cMode').hidden = true;
+    $c('cCompose').hidden = true;
+    $c('cWatch').hidden = true;
+    show();
+    const gen = C.gen;
+    try { await loadHistory(); } catch (err) { toast(`Couldn’t read this session: ${err.message}`); }
+    if (gen !== C.gen) return;
+    toBottom();
+    renderRail(); renderLedgerSoon(); syncFav();
   }
 
   async function openKey(key) {
@@ -1763,7 +1790,7 @@
   }
 
   window.ChatUI = {
-    open, openKey, watch, close, md, renderRail, refreshUsage, isViewing,
+    open, openKey, openOc, watch, close, md, renderRail, refreshUsage, isViewing,
     accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
     showLedger: () => { const chat = $c('chat'); if (matchMedia('(max-width: 1320px)').matches) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
     sessionsChanged: () => { if (C.watch) refreshWatch(); },
