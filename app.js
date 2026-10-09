@@ -78,6 +78,8 @@ function toast(msg, ms = 5000, action = null) {
 }
 function wrap(fn) { return async (...args) => { try { return await fn(...args); } catch (err) { if (err.message !== 'Reloading…') toast(err.message, 9000); if (err.reason) reload().catch(() => {}); } return undefined; }; }
 
+// A saga theme's own words for a piece of text (theme.js); other themes keep the text as it is.
+const voice = (text, vars) => Look.say(text, vars);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const hash = s => { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 const glyphFor = name => GLYPHS[hash(name) % GLYPHS.length];
@@ -413,10 +415,10 @@ function renderNav() {
       <span class="seal-t"><span class="seal-k">${blocked ? 'Blocked' : 'Working as'}</span><span class="seal-n">${esc(a ? a.name : 'No account')}</span><span class="seal-e">${esc(a && a.signedIn ? (a.email || 'Signed in') : 'Not signed in')}</span></span>
       <span class="seal-caret">${ICON.caret}</span>
     </button>
-    <div class="nav-h">Begin</div>
-    <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">The hub</span>${A ? `<span class="tag gilt">${A}</span>` : W ? `<span class="tag">${W}</span>` : ''}</button>
-    <button class="nav-i" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">Recent chats</span><span class="count">${total}</span></button>
-    <button class="nav-i" data-view="palette" aria-current="${S.view === 'search'}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t">Search every chat</span><span class="count">Ctrl K</span></button>
+    <div class="nav-h">${esc(voice('Begin'))}</div>
+    <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">${esc(voice('The hub'))}</span>${A ? `<span class="tag gilt">${A}</span>` : W ? `<span class="tag">${W}</span>` : ''}</button>
+    <button class="nav-i" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">${esc(voice('Recent chats'))}</span><span class="count">${total}</span></button>
+    <button class="nav-i" data-view="palette" aria-current="${S.view === 'search'}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t">${esc(voice('Search every chat'))}</span><span class="count">Ctrl K</span></button>
     <button class="nav-i nav-new" data-view="newproject"><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New project</span></button>
     ${fresh.length ? `<div class="nav-h prov fresh"><span class="pmark" aria-hidden="true"></span>No chats yet<span class="count">${fresh.length}</span></div>${fresh.map(p => `<button class="nav-i" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}"><span class="glyph" aria-hidden="true">${glyphFor(p.name)}</span><span class="ni-t">${esc(p.name)}</span><span class="tag ghost">New</span></button>`).join('')}` : ''}
     ${pinnedHtml}
@@ -442,15 +444,15 @@ function heroHtml() {
   const Q = quietOpen().filter(x => x.source === 'app' && x.phase !== 'ended').length;
   let h, em;
   if (A.length) {
-    h = `${nword(A.length)} ${A.length === 1 ? 'chat awaits' : 'chats await'} you.`;
+    h = voice(A.length === 1 ? '{n} chat awaits you.' : '{n} chats await you.', { n: nword(A.length) });
     const parts = [];
     if (N) parts.push(N === 1 ? 'one needs your OK' : `${nword(N, false)} need your OK`);
     if (R) parts.push(R === 1 ? 'one has replied' : `${nword(R, false)} have replied`);
     if (W) parts.push(W === 1 ? 'one is still at work' : `${nword(W, false)} are still at work`);
     em = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}.` : `${parts[0]}.`;
     em = em[0].toUpperCase() + em.slice(1);
-  } else if (W) { h = `${nword(W)} ${W === 1 ? 'chat' : 'chats'} at work.`; em = 'Nothing needs you yet.'; }
-  else { h = 'All quiet.'; em = Q ? (Q === 1 ? 'One chat is open and ready.' : `${nword(Q)} chats are open and ready.`) : 'Pick up any chat below.'; }
+  } else if (W) { h = voice(W === 1 ? '{n} chat at work.' : '{n} chats at work.', { n: nword(W) }); em = voice('Nothing needs you yet.'); }
+  else { h = voice('All quiet.'); em = Q ? (Q === 1 ? 'One chat is open and ready.' : `${nword(Q)} chats are open and ready.`) : voice('Pick up any chat below.'); }
 
   let say = '';
   if (a) {
@@ -481,12 +483,12 @@ function heroHtml() {
     <svg class="hero-sigil" aria-hidden="true"><use href="#sigil"/></svg>
     <div class="hero-in">
       <div>
-        <p class="eyebrow">${esc(today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · <span data-clock>${esc(clock(today))}</span></p>
+        <p class="eyebrow">${voice('@where') !== '@where' ? `${esc(voice('@where'))} · ` : ''}${esc(today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · <span data-clock>${esc(clock(today))}</span></p>
         <h1>${esc(h)}<em>${esc(em)}</em></h1>
         ${say ? `<p>${say}</p>` : ''}
         ${acts.length ? `<div class="hero-act">${acts.join('')}</div>` : ''}
       </div>
-      ${a ? `<div class="stamp">Working as<b>${esc(a.name)}</b>${a.plan ? esc(a.plan) : ''}</div>` : ''}
+      ${a ? `<div class="stamp">${esc(voice('Working as'))}<b>${esc(a.name)}</b>${a.plan ? esc(a.plan) : ''}</div>` : ''}
     </div>
   </section>`;
 }
@@ -759,7 +761,7 @@ function rowHtml(s, folderName, hit) {
 }
 
 function secHead(eyebrow, title, extra = '') {
-  return `<div class="sec-h"><p class="eyebrow">✦ ${esc(eyebrow)}</p><h2>${esc(title)}</h2>${extra ? `<div class="sec-x">${extra}</div>` : ''}</div>`;
+  return `<div class="sec-h"><p class="eyebrow">${esc(voice('✦'))} ${esc(voice(eyebrow))}</p><h2>${esc(voice(title))}</h2>${extra ? `<div class="sec-x">${extra}</div>` : ''}</div>`;
 }
 
 function renderHub() {
@@ -1686,7 +1688,7 @@ function renderSetup(j) {
     <div class="prefs">
       ${t('sound', 'Chime when a chat needs you or replies', 'A soft bell. It doesn’t play for the chat you’re looking at.', true)}
       ${t('notify', 'Desktop notifications', `Shows a ${S.platform === 'darwin' ? 'macOS' : 'Windows'} notification when a chat needs you or replies while this window is in the background.`, true)}
-      ${t('petals', 'Drifting petals', 'A few slow petals behind the hub. Turned off automatically if Windows is set to reduce motion.', true)}
+      ${t('petals', esc(voice('Drifting petals')), `${esc(voice('A few slow petals behind the hub.'))} ${esc(voice('Turned off automatically if Windows is set to reduce motion.'))}`, true)}
       ${t('motion', 'Animations', 'World banners that open into their pages, cards that rise in, dials that draw themselves. Turned off automatically if Windows is set to reduce motion.', true)}
     </div>
     <p class="d-h" id="st-prefs">Preferences</p>
@@ -1777,15 +1779,18 @@ function renderLook() {
   const seg = (k, opts) => `<div class="lk-seg" role="radiogroup">${opts.map(([v, l, sub]) => `<button type="button" role="radio" aria-checked="${String(o[k]) === String(v)}" data-look="${k}" data-v="${v}">${l}${sub ? `<small>${sub}</small>` : ''}</button>`).join('')}</div>`;
   const card = t => {
     const c = Look.swatch(t.id, light);
-    return `<button type="button" class="lk-theme" role="radio" aria-checked="${o.theme === t.id}" data-look="theme" data-v="${t.id}" style="--sw-bg:${c.bg};--sw-card:${c.card};--sw-line:${c.line};--sw-ink:${c.ink};--sw-ash:${c.ash};--sw-acc:${c.accent};--sw-emb:${c.ember};--sw-gold:${c.gold};--sw-cx:${c.codex}">
-      <span class="sw" aria-hidden="true"><span class="sw-bar"><i></i><i></i><i></i></span><span class="sw-card"><b></b><em></em><em class="s"></em><span class="sw-btn"></span><span class="sw-dot"></span></span></span>
+    return `<button type="button" class="lk-theme${t.sky ? ' lk-saga' : ''}" role="radio" aria-checked="${o.theme === t.id}" data-look="theme" data-v="${t.id}" style="--sw-bg:${c.bg};--sw-card:${c.card};--sw-line:${c.line};--sw-ink:${c.ink};--sw-ash:${c.ash};--sw-acc:${c.accent};--sw-emb:${c.ember};--sw-gold:${c.gold};--sw-cx:${c.codex}${t.fonts ? `;--sw-font:${esc(t.fonts.display)}` : ''}">
+      <span class="sw" aria-hidden="true"${t.sky ? ` data-sky="${t.sky}"` : ''}><span class="sw-bar"><i></i><i></i><i></i></span><span class="sw-card"><b></b><em></em><em class="s"></em><span class="sw-btn"></span><span class="sw-dot"></span></span></span>
       <span class="lk-tn"><b>${esc(t.name)}</b><small>${esc(t.note)}</small></span></button>`;
   };
   $('setupBody').innerHTML = `
     <p class="d-h">Light or dark</p>
     ${seg('mode', [['dark', '☾ Dark'], ['light', '☀ Light'], ['system', '◐ Match device']])}
     <p class="d-h">Theme</p>
-    <div class="lk-themes" role="radiogroup" aria-label="Theme">${Look.THEMES.map(card).join('')}</div>
+    <div class="lk-themes" role="radiogroup" aria-label="Theme">${Look.THEMES.filter(t => !t.family).map(card).join('')}</div>
+    <p class="d-h">Space saga</p>
+    <p class="lk-saga-note">Command your chats like a fleet. These bring their own lettering, a sky behind the hub, short sound cues and a few words of their own.</p>
+    <div class="lk-themes" role="radiogroup" aria-label="Space saga themes">${Look.THEMES.filter(t => t.family === 'saga').map(card).join('')}</div>
     <p class="d-h">Text</p>
     <div class="lk-row"><label for="lkText"><b>Text size</b><small>Messages, documents and the message box</small></label>
       <div class="lk-range"><span class="a-sm" aria-hidden="true">A</span><input type="range" id="lkText" min="80" max="150" step="5" value="${o.text}" data-look="text"><span class="a-lg" aria-hidden="true">A</span><output id="lkTextV">${o.text}%</output></div></div>
@@ -1810,7 +1815,12 @@ $('setupBody').addEventListener('input', e => {
 });
 $('setupBody').addEventListener('click', e => {
   const b = e.target.closest('button[data-look]');
-  if (b) { Look.set({ [b.dataset.look]: b.dataset.v }); renderLook(); return; }
+  if (b) {
+    const engage = b.dataset.look === 'theme' && b.dataset.v !== Look.get().theme;
+    Look.set({ [b.dataset.look]: b.dataset.v }); renderLook();
+    if (engage && Local.sound) chime('engage');
+    return;
+  }
   if (e.target.closest('[data-look-reset]')) { Look.reset(); renderLook(); toast('Back to the original look.', 2000); }
 });
 $('setupBody').addEventListener('change', e => {
@@ -1889,12 +1899,17 @@ async function setLocal(k, on) {
 }
 function applyMotion() { document.body.classList.toggle('motion', motionOk()); }
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => { applyMotion(); petals(); });
+// Behind the hub: drifting petals, or a saga theme's sky (stars, a tactical grid, holo static and dunes).
+// A sky still shows when the device asks for less motion; it just holds still.
 function petals() {
-  const box = $('petals');
-  const on = Local.petals && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const box = $('petals'), sky = Look.theme().sky || '';
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const on = Local.petals && (!still || !!sky);
   document.body.classList.toggle('no-petals', !on);
-  if (!on) { box.innerHTML = ''; return; }
-  if (box.children.length) return;
+  if (!on) { box.innerHTML = ''; delete box.dataset.kind; return; }
+  if (box.children.length && box.dataset.kind === (sky || 'petals')) return;
+  box.dataset.kind = sky || 'petals';
+  if (sky) { box.innerHTML = skyHtml(sky); return; }
   let h = '';
   for (let i = 0; i < 9; i++) {
     const r = n => ((hash(`petal${i}${n}`) % 1000) / 1000);
@@ -1902,12 +1917,71 @@ function petals() {
   }
   box.innerHTML = h;
 }
+// The same scatter every time for a given seed (so the sky doesn't jump between visits).
+function seeded(seed) {
+  let a = hash(seed);
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), a | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+// A tile of stars as one background (no element per star), repeated across a layer.
+function starTile(seed, size, n, big) {
+  const r = seeded(`stars${seed}`), dots = [];
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(r() * size), y = Math.round(r() * size), tint = r(), d = 0.5 + r() * big * 0.6;
+    const col = tint > 0.9 ? 'var(--gilt)' : tint > 0.8 ? 'var(--ember-soft)' : 'var(--parch)';
+    dots.push(`radial-gradient(circle at ${x}px ${y}px, ${col} 0 ${d.toFixed(2)}px, transparent ${(d + 0.9).toFixed(2)}px)`);
+  }
+  return `--tile:${size}px;background-image:${dots.join(',')};background-size:${size}px ${size}px`;
+}
+function skyHtml(kind) {
+  const rr = seeded(kind), r = () => rr();
+  const stars = `<div class="sky-stars s1" style="${starTile('a', 487, 26, 1)}"></div><div class="sky-stars s2" style="${starTile('b', 613, 16, 1.5)}"></div>`;
+  if (kind === 'hyperspace') {
+    let h = `${stars}<div class="sky-stars s3" style="${starTile('c', 797, 9, 2.4)}"></div><div class="sky-glow"></div>`;
+    for (let i = 0; i < 7; i++) h += `<i class="streak" style="--a:${Math.round(r('a', i) * 360)}deg;--w:${Math.round(120 + r('w', i) * 240)}px;--d:${(10 + r('d', i) * 14).toFixed(1)}s;--delay:-${(r('t', i) * 24).toFixed(1)}s"></i>`;
+    return h;
+  }
+  if (kind === 'grid') {
+    let h = `<div class="sky-stars s1" style="${starTile('g', 541, 22, 1)}"></div><div class="sky-grid"></div><div class="sky-sweep"></div>`;
+    for (let i = 0; i < 6; i++) h += `<i class="pip ${i % 3 === 0 ? 'foe' : ''}" style="--x:${Math.round(55 + r('x', i) * 40)}vw;--y:${Math.round(45 + r('y', i) * 48)}vh;--delay:-${(r('t', i) * 6).toFixed(1)}s"></i>`;
+    return h;
+  }
+  let h = `<div class="sky-stars s1" style="${starTile('h', 523, 20, 1)}"></div><div class="sky-suns"><i></i><i></i></div><div class="sky-dunes"></div>`;
+  for (let i = 0; i < 8; i++) h += `<i class="mote" style="--y:${Math.round(62 + r('y', i) * 34)}vh;--d:${(18 + r('d', i) * 22).toFixed(1)}s;--delay:-${(r('t', i) * 40).toFixed(1)}s;--s:${(1 + r('s', i) * 1.6).toFixed(1)}px"></i>`;
+  return `${h}<div class="sky-scan"></div><div class="sky-roll"></div>`;
+}
+// Text written into the page itself (index.html) that a saga theme rewords.
+function sayStatic() {
+  for (const el of document.querySelectorAll('.wordmark small, .seek .s-t')) {
+    if (el.dataset.say === undefined) el.dataset.say = el.textContent;
+    el.textContent = voice(el.dataset.say);
+  }
+}
+let lookTheme = Look.get().theme;
+document.addEventListener('lookchange', () => {
+  const th = Look.get().theme; if (th === lookTheme) return;
+  lookTheme = th;
+  sayStatic(); petals(); renderLivePill(); renderAll();
+});
 
 /* ---------- alerts: chime, notification, title ---------- */
 let actx = null;
 document.addEventListener('pointerdown', () => { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch { /* no audio */ } }, { once: true });
+// A saga theme plays its own short clips (sounds/, Kenney CC0) instead of the bell.
+const Clips = new Map();
+function clip(url) {
+  let p = Clips.get(url);
+  if (!p) { p = fetch(url).then(r => r.arrayBuffer()).then(b => actx.decodeAudioData(b)); Clips.set(url, p); p.catch(() => Clips.delete(url)); }
+  p.then(buf => {
+    const src = actx.createBufferSource(), g = actx.createGain();
+    src.buffer = buf; src.playbackRate.value = 0.97 + Math.random() * 0.06; g.gain.value = 0.32;
+    src.connect(g); g.connect(actx.destination); src.start();
+  }).catch(() => { /* no audio */ });
+}
 function chime(kind) {
   if (!actx) return;
+  const fx = Look.theme().sfx;
+  if (fx) { if (fx[kind]) { if (actx.state === 'suspended') actx.resume(); clip(fx[kind]); } return; }
+  if (kind === 'engage') return;
   try {
     if (actx.state === 'suspended') actx.resume();
     const t0 = actx.currentTime + 0.02;
@@ -1958,7 +2032,7 @@ function notify(kind, x) {
 function renderLivePill() {
   const p = $('livepill');
   p.classList.toggle('off', !S.connected);
-  $('lpText').textContent = S.connected ? 'Live' : 'Reconnecting';
+  $('lpText').textContent = S.connected ? voice('Live') : 'Reconnecting';
   const b = $('lpBell');
   b.textContent = Local.sound || Local.notify ? 'Alerts on' : 'Alerts off';
   b.className = `lp-bell ${Local.sound || Local.notify ? 'on' : ''}`;
@@ -1966,7 +2040,7 @@ function renderLivePill() {
 $('livepill').addEventListener('click', e => showMenu(e.currentTarget, [
   { label: Local.sound ? 'Turn the chime off' : 'Turn the chime on', hint: 'when a chat needs you or replies', run: () => setLocal('sound', !Local.sound) },
   { label: Local.notify ? 'Turn desktop notifications off' : 'Turn desktop notifications on', hint: 'while this window is in the background', run: () => setLocal('notify', !Local.notify) },
-  { label: Local.petals ? 'Hide the drifting petals' : 'Show the drifting petals', run: () => setLocal('petals', !Local.petals) },
+  { label: voice(Local.petals ? 'Hide the drifting petals' : 'Show the drifting petals'), run: () => setLocal('petals', !Local.petals) },
 ]));
 
 /* ---------- command palette ---------- */
@@ -2602,5 +2676,6 @@ window.__mobileBack = () => {
 
 applyMotion();
 petals();
+sayStatic();
 renderLivePill();
 wrap(async () => { await Promise.all([reload(), loadPrompts()]); connectLive(); watchActivity(); loadHealth(false).catch(() => {}); })();

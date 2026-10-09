@@ -1,5 +1,13 @@
 The typefaces in this folder are licensed under the SIL Open Font License 1.1.
 Cinzel, Playfair Display, JetBrains Mono and Spectral, via Fontsource (latin subsets).
+Orbitron, Exo 2, Michroma, Chakra Petch, Oxanium and Share Tech Mono (the space saga themes), via Google Fonts (latin subsets).
+
+Copyright 2018 The Orbitron Project Authors (https://github.com/theleagueof/orbitron), with Reserved Font Name: "Orbitron"
+Copyright 2013 The Exo 2 Project Authors (https://github.com/googlefonts/Exo-2.0)
+Copyright 2011 The Michroma Project Authors (https://github.com/googlefonts/Michroma-font)
+Copyright 2018 The Chakra Petch Project Authors (https://github.com/m4rc1e/Chakra-Petch.git)
+Copyright 2019 The Oxanium Project Authors (https://github.com/sevmeyer/oxanium)
+Copyright (c) 2012, Carrois Type Design, Ralph du Carrois (post@carrois.com www.carrois.com), with Reserved Font Name 'Share'
 
 Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-ExtraLightItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-Light.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-LightItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-Regular.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-Italic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-Medium.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-MediumItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-SemiBold.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-SemiBoldItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-Bold.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-BoldItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-ExtraBold.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-ExtraBoldItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral)
 

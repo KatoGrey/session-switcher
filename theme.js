@@ -10,6 +10,67 @@
   const COLORS = ['3d1a18', "000000", "050406", "0a090c", "0b090d", "0b0a0d", "0c0a0e", "0d0b0f", "0e0c10", "0f0d11", "100e12", "110e12", "110f13", "120f14", "121014", "121015", "141117", "151116", "17131a", "18141b", "19151c", "1a1405", "1a161d", "1b1519", "1b171e", "1c181f", "1d1920", "221d26", "241e29", "241f28", "2a242e", "2b1615", "2c2632", "3c5a96", "3d3443", "4664a0", "46679f", "5072ab", "5e2622", "5f2a26", "5f86c6", "6a91d2", "6c2e29", "6d302b", "6e2a25", "6f97d8", "716a63", "781412", "78342e", "7a332d", "7a3530", "7d1513", "7fa3dc", "7fb79a", "8c3a34", "8d3e37", "94423b", "9a4038", "9a463e", "9a928a", "a5463f", "a5564d", "a58be8", "a8544b", "a98f45", "a9c3ef", "b0544b", "b8655b", "c9aa4c", "c9daf6", "c9e8d6", "cf8274", "cfc6b6", "d08072", "d4b557", "d68a7c", "d68c7d", "d8b7aa", "d8e4f8", "d9bf74", "dcc790", "e2a596", "e6d3a0", "e6dccb", "e7b2a8", "e9d283", "e9e1d4", "eadfce", "ede6d9", "efdcd3", "f0dc95", "f1dc92", "f1dfd6", "f3e2d8", "f6ece2", "f6efe3", "ffffff"];
   const ON_ACCENT = new Set(['f6ece2', 'f6efe3', 'ffffff', 'f1dfd6', 'f3e2d8', 'efdcd3']);
 
+  /* ---------- the space saga themes ----------
+     Besides colors, a saga theme brings its own fonts, a background (sky) in place of the petals, an
+     emblem for the seal, sound cues (sounds/, Kenney CC0) and its own words. Its `copy` map is keyed by
+     the app's own English text; anything it leaves out reads as usual. {n} is a number in words. */
+  const HUD = '"Share Tech Mono", "JetBrains Mono", ui-monospace, monospace';
+  const SAGA = [
+    {
+      id: 'vanguard', name: 'Vanguard', note: 'Starfighter cockpit: amber HUD, teal targeting, hyperspace.', family: 'saga', sky: 'hyperspace',
+      accent: 24, sat: 1.6, gold: 176, goldSat: 0.9, surface: 214, surfSat: 1.15, ink: 34, codex: 226,
+      fonts: { display: '"Orbitron", "Exo 2", system-ui, sans-serif', caps: '"Orbitron", "Exo 2", system-ui, sans-serif', body: '"Exo 2", system-ui, -apple-system, sans-serif', hud: HUD },
+      emblem: '<circle cx="20" cy="20" r="18.5" style="fill:rgb(var(--c-3d1a18));stroke:rgb(var(--c-a5463f))" stroke-width="1.6"/><circle cx="20" cy="20" r="13.5" fill="none" style="stroke:rgb(var(--c-d9bf74))" stroke-opacity=".55" stroke-width=".8" stroke-dasharray="5 3.5"/><path d="M20 1.5v5M20 33.5v5M1.5 20h5M33.5 20h5" style="stroke:rgb(var(--c-d9bf74))" stroke-width="1.3"/><path d="M20 8.5L29.5 29L20 24.2L10.5 29Z" style="fill:rgb(var(--c-f6efe3))"/><path d="M20 13.5L23.4 23.5L20 21.8L16.6 23.5Z" style="fill:rgb(var(--c-a5463f))"/>',
+      copy: {
+        '@where': 'Calder Reach', 'Your move': 'Incoming', 'Awaiting you': 'Awaiting orders', 'Right now': 'In flight', 'At work': 'Squadrons engaged',
+        'By folder': 'Sectors', 'Your projects': 'Star charts', 'Pick up where you left off': 'Flight log', 'Recent chats': 'Recent sorties',
+        'Your plans': 'Fuel and ordnance', 'Accounts and usage': 'Fleet reserves', 'Begin': 'Flight deck', 'The hub': 'Squadron command', 'Search every chat': 'Scan every channel',
+        'All quiet.': 'Holding formation.', 'Pick up any chat below.': 'Pick a heading below, pilot.', 'Nothing needs you yet.': 'No calls on the comm yet.',
+        '{n} chat awaits you.': '{n} squadron awaits your orders.', '{n} chats await you.': '{n} squadrons await your orders.',
+        '{n} chat at work.': '{n} squadron engaged.', '{n} chats at work.': '{n} squadrons engaged.', 'Working as': 'Flying as',
+        'Claude & Codex, every chat and account in one place': 'Squadron command · every wing, every reserve', 'Search every chat…': 'Scan every channel…',
+        'Drifting petals': 'Starfield', 'A few slow petals behind the hub.': 'Stars and the odd hyperspace streak behind the hub.', 'Show the drifting petals': 'Show the starfield', 'Hide the drifting petals': 'Hide the starfield', 'Live': 'Comms',
+      },
+    },
+    {
+      id: 'dominion', name: 'Dominion', note: 'The admiral’s bridge: black, white and red, on a tactical grid.', family: 'saga', sky: 'grid',
+      accent: 358, sat: 1.75, gold: 205, goldSat: 0.16, surface: 220, surfSat: 0.12, ink: 210, inkSat: 0.25, codex: 188,
+      fonts: { display: '"Michroma", "Chakra Petch", system-ui, sans-serif', caps: '"Michroma", "Chakra Petch", system-ui, sans-serif', body: '"Chakra Petch", system-ui, -apple-system, sans-serif', hud: HUD },
+      emblem: '<path d="M20 1.8L35.8 10.9V29.1L20 38.2L4.2 29.1V10.9Z" style="fill:rgb(var(--c-3d1a18));stroke:rgb(var(--c-a5463f))" stroke-width="1.6" stroke-linejoin="miter"/><path d="M20 6.5L31.7 13.25V26.75L20 33.5L8.3 26.75V13.25Z" fill="none" style="stroke:rgb(var(--c-d9bf74))" stroke-opacity=".45" stroke-width=".8"/><path d="M20 32L30.5 11.5L20 15.6L9.5 11.5Z" style="fill:rgb(var(--c-f6efe3))"/><path d="M20 15.6V32" style="stroke:rgb(var(--c-a5463f))" stroke-width="1.4"/>',
+      copy: {
+        '@where': 'Ostrava Line', 'Your move': 'Command required', 'Awaiting you': 'Awaiting orders', 'Right now': 'Deployed', 'At work': 'Fleet engaged',
+        'By folder': 'Theatres', 'Your projects': 'Systems under command', 'Pick up where you left off': 'Fleet log', 'Recent chats': 'Recent operations',
+        'Your plans': 'Logistics', 'Accounts and usage': 'Fleet reserves', 'Begin': 'Bridge', 'The hub': 'Tactical display', 'Search every chat': 'Query fleet records',
+        'All quiet.': 'The fleet stands ready.', 'Pick up any chat below.': 'Issue your orders below, Admiral.', 'Nothing needs you yet.': 'No unit requires you yet.',
+        '{n} chat awaits you.': '{n} unit awaits your orders.', '{n} chats await you.': '{n} units await your orders.',
+        '{n} chat at work.': '{n} unit deployed.', '{n} chats at work.': '{n} units deployed.', 'Working as': 'Commanding as',
+        'Claude & Codex, every chat and account in one place': 'Fleet command · every unit, every reserve', 'Search every chat…': 'Query fleet records…',
+        'Drifting petals': 'Tactical grid', 'A few slow petals behind the hub.': 'A tactical grid and a slow sensor sweep behind the hub.', 'Show the drifting petals': 'Show the tactical grid', 'Hide the drifting petals': 'Hide the tactical grid', 'Live': 'Uplink',
+      },
+    },
+    {
+      id: 'mirage', name: 'Mirage', note: 'A holo relay on a twin-sun dune world: blue light, sand and static.', family: 'saga', sky: 'holo',
+      accent: 196, sat: 1.35, gold: 36, goldSat: 0.8, surface: 24, surfSat: 1.05, ink: 38, codex: 302,
+      fonts: { display: '"Oxanium", "Exo 2", system-ui, sans-serif', caps: '"Oxanium", "Exo 2", system-ui, sans-serif', body: '"Exo 2", system-ui, -apple-system, sans-serif', hud: HUD },
+      emblem: '<circle cx="20" cy="20" r="18.5" style="fill:rgb(var(--c-3d1a18));stroke:rgb(var(--c-a5463f))" stroke-width="1.6"/><circle cx="15" cy="16.5" r="5" style="fill:rgb(var(--c-d9bf74))"/><circle cx="25.5" cy="19" r="3" style="fill:rgb(var(--c-f6efe3))" fill-opacity=".85"/><path d="M3 25.5C9 22 14 22.5 20 25S31 27.5 37 23.5V30C31 35 9 35 3 30Z" style="fill:rgb(var(--c-a5463f))" fill-opacity=".9"/><path d="M6 21.5h28" style="stroke:rgb(var(--c-f6efe3))" stroke-opacity=".35" stroke-width=".6"/>',
+      copy: {
+        '@where': 'Sareth Flats', 'Your move': 'Incoming transmission', 'Awaiting you': 'Awaiting reply', 'Right now': 'Active signals', 'At work': 'Crews in the field',
+        'By folder': 'Settlements', 'Your projects': 'Outposts', 'Pick up where you left off': 'Relay log', 'Recent chats': 'Recent transmissions',
+        'Your plans': 'Water and power', 'Accounts and usage': 'Outpost reserves', 'Begin': 'Relay', 'The hub': 'Holo table', 'Search every chat': 'Search the relay',
+        'All quiet.': 'Only the wind.', 'Pick up any chat below.': 'Pick up a transmission below.', 'Nothing needs you yet.': 'No signal for you yet.',
+        '{n} chat awaits you.': '{n} transmission awaits you.', '{n} chats await you.': '{n} transmissions await you.',
+        '{n} chat at work.': '{n} crew in the field.', '{n} chats at work.': '{n} crews in the field.', 'Working as': 'Broadcasting as',
+        'Claude & Codex, every chat and account in one place': 'Holo relay · every crew, every outpost', 'Search every chat…': 'Search the relay…',
+        'Drifting petals': 'Holo static and dunes', 'A few slow petals behind the hub.': 'Scanlines, drifting sand and twin suns behind the hub.', 'Show the drifting petals': 'Show the holo static', 'Hide the drifting petals': 'Hide the holo static', 'Live': 'Relay',
+      },
+    },
+  ];
+  const MARK = { vanguard: '▸', dominion: '◢', mirage: '◈' };
+  for (const t of SAGA) {
+    t.sfx = { needs: `/sounds/${t.id}-needs.mp3`, reply: `/sounds/${t.id}-reply.mp3`, engage: `/sounds/${t.id}-engage.mp3` };
+    Object.assign(t.copy, { '✦': MARK[t.id], 'Turned off automatically if Windows is set to reduce motion.': 'It holds still if your device is set to reduce motion.' });
+  }
+
   // accent: hue for the main color · sat: its strength · gold: hue for highlights · surface: hue
   // and strength of backgrounds · ink: hue of text · codex: hue that marks Codex.
   const THEMES = [
@@ -21,6 +82,7 @@
     { id: 'ocean', name: 'Ocean', note: 'Teal and sea glass.', accent: 186, sat: 1.05, gold: 44, surface: 200, surfSat: 1.3, ink: 190, codex: 230 },
     { id: 'rose', name: 'Rose', note: 'Soft pink and blush.', accent: 336, sat: 1.1, gold: 38, surface: 320, surfSat: 1.1, ink: 20, codex: 212 },
     { id: 'graphite', name: 'Graphite', note: 'Quiet greys, no color cast.', accent: 212, sat: 0.32, gold: 45, surface: 220, surfSat: 0.35, ink: 220, codex: 212 },
+    ...SAGA,
   ];
   const DEFAULTS = { theme: 'crimson', mode: 'dark', text: 100, ui: 100, font: 'classic', bold: false, contrast: false };
   const FONTS = {
@@ -84,13 +146,13 @@
         if (light && l < 0.65) ll = Math.min(ll, 0.41);
         if (!light && l < 0.5) ll = Math.max(ll, 0.46); // and in dark ones, light enough
         if (contrast) ll = light ? ll * 0.6 : ll + (1 - ll) * 0.4;
-        return toRgb(t.ink, s * (t.id === 'graphite' ? 0.2 : 1), ll);
+        return toRgb(t.ink, s * (t.inkSat ?? (t.id === 'graphite' ? 0.2 : 1)), ll);
       }
       case 'accent': {
         const ll = light ? (l > 0.42 ? 0.42 - (l - 0.42) * 0.4 : l * 0.95) : (contrast && l > 0.5 ? l + 0.06 : l);
         return toRgb(h - 4 + t.accent, s * t.sat, ll);
       }
-      case 'gold': return toRgb(h - 45 + t.gold, s * (t.id === 'graphite' ? 0.7 : 1), light ? (l > 0.4 ? 0.4 - (l - 0.4) * 0.3 : l) : l);
+      case 'gold': return toRgb(h - 45 + t.gold, s * (t.goldSat ?? (t.id === 'graphite' ? 0.7 : 1)), light ? (l > 0.4 ? 0.4 - (l - 0.4) * 0.3 : l) : l);
       case 'codex': return toRgb(h - 217 + t.codex, s, light ? (l > 0.42 ? 0.42 - (l - 0.42) * 0.4 : l) : l);
       default: return toRgb(h, s, light ? (l > 0.42 ? 0.4 - (l - 0.42) * 0.4 : l) : l);
     }
@@ -114,8 +176,12 @@
     root.dataset.mode = light ? 'light' : 'dark';
     root.dataset.theme = t.id;
     st.colorScheme = light ? 'light' : 'dark';
-    const f = FONTS[o.font] || null;
-    for (const [k, v] of [['--f-body', f && f.body], ['--f-display', f && f.display], ['--f-caps', f && f.caps]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
+    // A theme's own fonts come first; Modern and Clean still swap the reading font (Clean the headings too).
+    const f = FONTS[o.font] || null, tf = t.fonts || {};
+    for (const [k, v] of [['--f-body', (f && f.body) || tf.body], ['--f-display', (f && f.display) || tf.display], ['--f-caps', (f && f.caps) || tf.caps], ['--f-hud', tf.hud]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
+    if (t.family) root.dataset.family = t.family; else delete root.dataset.family;
+    if (t.sky) root.dataset.sky = t.sky; else delete root.dataset.sky;
+    emblem(t);
     st.setProperty('--look-text', String(clamp(Number(o.text) || 100, 80, 150) / 100));
     st.setProperty('--look-ui', String(clamp(Number(o.ui) || 100, 75, 140) / 100));
     root.classList.toggle('look-bold', !!o.bold);
@@ -127,6 +193,20 @@
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = `rgb(${derive('0a090c', t, light, false).join(',')})`;
     document.dispatchEvent(new CustomEvent('lookchange', { detail: o }));
+  }
+  // The seal (logo) takes the theme's emblem; the original is kept to put back.
+  let sigil0 = null;
+  function emblem(t = themeOf(cur.theme)) {
+    const sym = document.getElementById('sigil'); if (!sym) return;
+    if (sigil0 === null) sigil0 = sym.innerHTML;
+    const want = t.emblem || sigil0;
+    if (sym.innerHTML !== want) sym.innerHTML = want;
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => emblem());
+  // The theme's words for a piece of the app's text, or the text itself. {n} and the like fill in from vars.
+  function say(text, vars) {
+    const c = themeOf(cur.theme).copy, s = (c && c[text]) ?? text;
+    return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m)) : s;
   }
   function set(changes) {
     cur = { ...cur, ...changes };
@@ -141,6 +221,6 @@
   }
   if (mq && mq.addEventListener) mq.addEventListener('change', () => { if (cur.mode === 'system') apply(); });
 
-  window.Look = { THEMES, DEFAULTS, get: () => ({ ...cur }), set, reset, apply, swatch, isLight };
+  window.Look = { THEMES, DEFAULTS, get: () => ({ ...cur }), set, reset, apply, swatch, isLight, say, theme: () => themeOf(cur.theme) };
   apply();
 })();
