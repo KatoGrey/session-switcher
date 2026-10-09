@@ -87,7 +87,10 @@ const chats = chatLib.createChatManager({
     scheduleActivity();
     // A finished turn changes the account's usage; check it shortly after.
     const f = chat.activity.finishedAt;
-    if (f && finishedSeen.get(chat.key) !== f) { finishedSeen.set(chat.key, f); scheduleUsage(chat.account.id, 8000); }
+    if (f && finishedSeen.get(chat.key) !== f) {
+      finishedSeen.set(chat.key, f); scheduleUsage(chat.account.id, 8000);
+      for (const k of finishedSeen.keys()) if (!chats.chats.has(k)) finishedSeen.delete(k);
+    }
   },
   onRateLimit: (chat, info) => usage.fromRateLimit(chat.account.id, info),
 });
@@ -114,14 +117,23 @@ function codexSessions(maxAgeMs = 20000) {
   if (!config().codex.enabled) return [];
   codex.list({ maxAgeMs, lastOpened: sessions.lastOpened }).then(list => {
     const sig = list.map(x => `${x.id}:${x.updated}:${x.title}`).join('|');
-    if (sig !== codexSig) { const first = !codexSig; codexSig = sig; if (!first || list.length) broadcast('sessions'); }
+    if (sig !== codexSig) { const first = !codexSig; codexSig = sig; forgetMerged(); if (!first || list.length) broadcast('sessions'); }
   }).catch(() => {});
   return codex.cached(sessions.lastOpened);
 }
 const normCwd = p => { const x = String(p || '').replace(/[\\/]+$/, ''); return process.platform === 'win32' ? x.toLowerCase() : x; };
 // Claude Code's folders plus Codex chats, merged by folder, plus folders created or added here
 // that don't have any chats yet.
+// Reused for a second: banner, picture and media requests each look a project up in it.
+let mergedMemo = null;
+const forgetMerged = () => { mergedMemo = null; };
 function sessionsWithCodex() {
+  if (mergedMemo && Date.now() - mergedMemo.at < 1000) return mergedMemo.value;
+  const value = mergeSessions();
+  mergedMemo = { at: Date.now(), value };
+  return value;
+}
+function mergeSessions() {
   const base = sessions.scan();
   const cx = codexSessions();
   const extra = projectInfo.added();
@@ -190,17 +202,31 @@ async function pollRunning() {
   if (!clients.size) return;
   try {
     const now = await sys.runningSessions();
-    if (JSON.stringify(now) !== JSON.stringify(running)) { running = now; broadcast('running', running); }
-    scheduleActivity();
+    if (JSON.stringify(now) !== JSON.stringify(running)) { running = now; broadcast('running', running); scheduleActivity(); }
   } catch { /* try again next tick */ }
 }
 
 // Everything that's running right now: chats in the app's window, chats in terminals, and chats
 // another program (like the desktop app) wrote to in the last two minutes.
+// What a transcript's last part says, cached until the file changes (it's asked for often).
+const tailCache = new Map();
+function tailOf(file) {
+  const st = fs.statSync(file);
+  const k = `${st.size}:${st.mtimeMs}`, hit = tailCache.get(file);
+  if (hit && hit.k === k) return hit.t;
+  const t = chatLib.tailActivity(file, st);
+  tailCache.set(file, { k, t });
+  if (tailCache.size > 300) tailCache.delete(tailCache.keys().next().value);
+  return t;
+}
 function activityList() {
   const now = Date.now();
+  const { projects } = sessions.scan();
+  const byId = new Map();
+  for (const p of projects) for (const s of p.sessions) byId.set(s.id.toLowerCase(), { s, p });
   const out = chats.summaries().map(s => {
-    if (s.sessionId && s.provider !== 'codex') { try { const f = sessions.find(s.sessionId); s.title = f.session.title; s.folder = f.project.name; } catch { /* not written yet */ } }
+    const f = s.sessionId && s.provider !== 'codex' ? byId.get(s.sessionId.toLowerCase()) : null;
+    if (f) { s.title = f.s.title; s.folder = f.p.name; }
     return s;
   });
   // A Codex helper is named after the Claude chat it works with.
@@ -208,7 +234,6 @@ function activityList() {
   const seen = new Set(out.filter(x => x.sessionId).map(x => x.sessionId.toLowerCase()));
   // Chats this app ran and has since stopped aren't "elsewhere"; they were here.
   const ranHere = new Set([...chats.chats.values()].filter(c => c.sessionId).map(c => c.sessionId.toLowerCase()));
-  const { projects } = sessions.scan();
   for (const p of projects) {
     for (const s of p.sessions) {
       const id = s.id.toLowerCase();
@@ -219,7 +244,7 @@ function activityList() {
       // waiting for you doesn't vanish; anything older is just history.
       if (!pids && (age > 10 * 60 * 1000 || ranHere.has(id))) continue;
       let t = { phase: 'idle', tool: null, detail: null, lastText: '', lastPrompt: s.lastPrompt || '', steps: 0 };
-      try { const file = sessions.fileFor(s.id); t = chatLib.tailActivity(file, fs.statSync(file)); } catch { /* unreadable */ }
+      try { t = tailOf(sessions.fileFor(s.id)); } catch { /* unreadable */ }
       if (!pids && age > 2 * 60 * 1000 && !(t.phase === 'idle' && t.lastText)) continue;
       let phase = t.phase;
       // A tool step with no result for a while, in a terminal, is usually a permission prompt waiting there.
@@ -274,12 +299,12 @@ function watchSignIn(a) {
 
 let sessionsSig = '';
 function sessionsSignature() {
-  const { projects } = sessions.scan();
+  const { projects } = sessions.scan({ fresh: true });
   return projects.map(p => p.sessions.map(s => `${s.id}:${s.updated}`).join(',')).join('|');
 }
 function sessionsChanged() {
   const sig = sessionsSignature();
-  if (sig !== sessionsSig) { sessionsSig = sig; broadcast('sessions'); sessions.refreshIndex(); scheduleActivity(); }
+  if (sig !== sessionsSig) { sessionsSig = sig; forgetMerged(); broadcast('sessions'); sessions.refreshIndex(); scheduleActivity(); }
 }
 
 function startWatching() {
@@ -296,7 +321,7 @@ function startWatching() {
     log(`File watching unavailable (${err.message}); checking every few seconds instead.`);
   }
   setInterval(() => { if (clients.size) sessionsChanged(); }, 8000);       // safety net if watching misses something
-  setInterval(pollRunning, 6000);
+  setInterval(pollRunning, 10000);
   setInterval(() => { if (clients.size) pollAccounts(); }, 90000);
   setInterval(() => { if (clients.size) { refreshAllUsage(4 * 60 * 1000); if (config().codex.enabled && codex.publicState().signedIn) codex.refreshUsage().catch(() => {}); } }, 5 * 60 * 1000);
   setInterval(() => { if (clients.size && config().codex.enabled) codexSessions(15000); }, 20000);
@@ -315,6 +340,7 @@ function send(res, code, obj) {
 function readBody(req, max = 65536) {
   return new Promise((resolve, reject) => {
     let data = '';
+    req.setEncoding('utf8');
     req.on('data', c => { data += c; if (data.length > max) { reject(fail(413, max > 65536 ? 'That’s too much to send at once. Try fewer or smaller images.' : 'Request too large.')); req.destroy(); } });
     req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { reject(fail(400, 'Bad request.')); } });
     req.on('error', reject);
@@ -368,10 +394,9 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/sessions') return send(res, 200, { ...sessionsWithCodex(), running, live: chats.live() });
   if (route === 'GET /api/chat/history') {
     // A Codex helper's thread may be too new for the Codex chat list, so the page can say it's Codex.
-    if (isCodexId(url.searchParams.get('id')) || (url.searchParams.get('provider') === 'codex' && chatPrefs.parentOf(url.searchParams.get('id')))) return send(res, 200, await codex.history(url.searchParams.get('id'), url.searchParams.get('cursor')));
+    if (isCodexId(url.searchParams.get('id')) || (url.searchParams.get('provider') === 'codex' && chatPrefs.parentOf(url.searchParams.get('id')))) return send(res, 200, await codex.history(url.searchParams.get('id'), url.searchParams.get('cursor'), url.searchParams.get('until') || null));
     const file = sessions.fileFor(url.searchParams.get('id'));
-    const before = url.searchParams.get('before');
-    return send(res, 200, await chatLib.readHistory(file, { until: url.searchParams.get('until') || null, before: before === null ? null : Number(before), limit: 60 }));
+    return send(res, 200, await chatLib.readHistory(file, { until: url.searchParams.get('until') || null, cursor: url.searchParams.get('cursor'), limit: 60 }));
   }
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
@@ -541,6 +566,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/project/create': {
       const made = projectInfo.create({ parent: body.parent, name: body.name, existing: body.existing || null, useExisting: !!body.useExisting });
       log(`${made.created ? 'Created' : 'Added'} project ${made.cwd}`);
+      forgetMerged();
       broadcast('sessions');
       return send(res, 200, { ...made, project: projectAt(made.cwd) });
     }
@@ -549,6 +575,7 @@ async function handleApi(req, res, url, remote = false) {
       if (!p) throw fail(404, 'That folder isn’t in the list.');
       if (p.sessions.length) throw fail(400, 'This project has chats, so it stays in the list. Its folder isn’t touched either way.');
       projectInfo.forget(p.cwd);
+      forgetMerged();
       broadcast('sessions');
       return send(res, 200, { ok: true });
     }
@@ -985,9 +1012,9 @@ function chatEvents(req, res, url) {
   const chat = chats.get(url.searchParams.get('key'));
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
   res.write('retry: 2000\n\n');
-  const after = Number(url.searchParams.get('after') || 0);
+  const after = Math.max(Number(url.searchParams.get('after') || 0), Number(req.headers['last-event-id'] || 0) || 0);
   res.write(`event: hello\ndata: ${JSON.stringify(chat.info())}\n\n`);
-  for (const ev of chat.buffer) if (ev.seq > after) res.write(`event: chat\ndata: ${JSON.stringify(ev)}\n\n`);
+  for (const ev of chat.buffer) if (ev.seq > after) res.write(`id: ${ev.seq}\nevent: chat\ndata: ${JSON.stringify(ev)}\n\n`);
   chat.clients.add(res);
   const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* closed */ } }, 25000);
   req.on('close', () => { clearInterval(ping); chat.clients.delete(res); });

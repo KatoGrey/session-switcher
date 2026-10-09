@@ -315,7 +315,9 @@ function patch(container, items, keyFn, htmlFn, emptyHtml = '') {
   let prev = null;
   for (const w of want) {
     let el = old.get(w.k);
-    if (!el || el._h !== w.h) {
+    // A card you're typing in stays as it is until you're done (no caret jumps, no lost input).
+    const typingIn = el && active && el.contains(active) && active.matches('textarea, input[type="text"]') && !!active.value;
+    if (!typingIn && (!el || el._h !== w.h)) {
       const t = document.createElement('template'); t.innerHTML = w.h;
       const n = t.content.firstElementChild; n.dataset.k = w.k; n._h = w.h;
       if (el) {
@@ -404,7 +406,7 @@ function renderNav() {
   const showCodex = S.codex && S.codex.enabled;
   const fresh = S.projects.filter(p => !p.sessions.length);
   const blocked = a && (a.pinnedOrg || a.expectEmail) && !a.lock.ok;
-  $('nav').innerHTML = `
+  const html = `
     <button class="seal ${blocked ? 'blocked' : ''}" id="seal" aria-haspopup="menu" aria-expanded="false" title="Choose which account new chats open as">
       <span class="seal-mark" style="--ring:${a ? ringOf(a) : 'var(--ash)'}">${a ? miniDial(a.id, 44) : ''}<b>${esc(a ? initial(a.name) : '?')}</b></span>
       <span class="seal-t"><span class="seal-k">${blocked ? 'Blocked' : 'Working as'}</span><span class="seal-n">${esc(a ? a.name : 'No account')}</span><span class="seal-e">${esc(a && a.signedIn ? (a.email || 'Signed in') : 'Not signed in')}</span></span>
@@ -422,6 +424,13 @@ function renderNav() {
     ${showCodex ? `${fold('codex', 'Codex', nCodex, 'codex')}
     ${S.navFold.has('codex') ? '' : codexF.length ? codexF.map(x => item(x, 'codex')).join('') : `<p class="nav-empty">${codexReady() ? 'No Codex chats yet. Start one with “New Codex chat” on the Codex card.' : 'Sign in on the Codex card to use Codex here.'}</p>`}` : ''}
     <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p>`;
+  // Only when something would look different (it's asked for several times a second while chats work).
+  if ($('nav')._h === html) return;
+  $('nav')._h = html;
+  const focused = document.activeElement && $('nav').contains(document.activeElement) ? document.activeElement : null;
+  const keep = focused && (focused.dataset.cwd ? `[data-cwd="${CSS.escape(focused.dataset.cwd)}"][data-view="${focused.dataset.view || ''}"]` : focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : focused.dataset.navchat ? `[data-navchat="${CSS.escape(focused.dataset.navchat)}"]` : focused.dataset.fold ? `[data-fold="${focused.dataset.fold}"]` : focused.id ? `#${focused.id}` : null);
+  $('nav').innerHTML = html;
+  if (keep) $('nav').querySelector(keep)?.focus({ preventScroll: true });
 }
 
 /* ---------- the hub ---------- */
@@ -495,7 +504,7 @@ function awaitCard(x) {
   const st = statusOf(x), k = keyOf(x);
   const p = (x.pending || [])[0];
   const label = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: asked(x) ? 'Your turn · asked you something' : x.ok === false ? 'Your turn · stopped early' : 'Your turn' }[st];
-  const since = st === 'reply' ? `<span class="o-time" data-ago="${x.finishedAt}">${esc(agoL(x.finishedAt))}</span>` : `<span class="o-time">waiting <span data-since="${x.lastEventAt || Date.now()}"></span></span>`;
+  const since = st === 'reply' ? `<span class="o-time" data-ago="${x.finishedAt}"></span>` : `<span class="o-time">waiting <span data-since="${x.lastEventAt || Date.now()}"></span></span>`;
   let body = '';
   if (st === 'approve') body = `<p class="o-ask">${esc(wantsTo(p))}${p && (p.detail || p.summary) ? `:</p><p class="o-cmd"><code>${esc(p.detail || p.summary)}</code></p>` : '.</p>'}`;
   else if (st === 'question') body = `<p class="o-ask">Claude asked a multiple-choice question. Open the chat to answer it.</p>`;
@@ -819,7 +828,7 @@ function loadWorld(cwd, fresh) {
   worldFetch[cwd] = pr;
   return pr;
 }
-const worldStale = cwd => !S.worlds[cwd] || Date.now() - S.worlds[cwd].at > 90000;
+const worldStale = cwd => !S.worlds[cwd] || Date.now() - S.worlds[cwd].at > 5 * 60 * 1000;
 // Fetches project details a few at a time, then refreshes whatever shows them.
 function ensureWorlds() {
   if (worldsLoading) return;
@@ -1291,11 +1300,13 @@ const hubTo = id => (S.view !== 'hub' || (window.ChatUI && ChatUI.isOpen()) ? go
 
 /* ---------- clocks ---------- */
 function tick() {
+  if (document.hidden) return;
   const now = Date.now();
-  for (const el of document.querySelectorAll('[data-since]')) { const t = +el.dataset.since; el.textContent = t ? dur(now - t, true) : ''; }
-  for (const el of document.querySelectorAll('[data-ago]')) { const t = +el.dataset.ago; if (t) el.textContent = agoL(t); }
-  for (const el of document.querySelectorAll('[data-until]')) { const t = +el.dataset.until; el.textContent = t > now ? `in ${dur(t - now)}` : 'any moment'; }
-  for (const el of document.querySelectorAll('[data-clock]')) el.textContent = clock(now);
+  const set = (el, v) => { if (el.textContent !== v) el.textContent = v; };
+  for (const el of document.querySelectorAll('[data-since]')) { const t = +el.dataset.since; set(el, t ? dur(now - t, true) : ''); }
+  for (const el of document.querySelectorAll('[data-ago]')) { const t = +el.dataset.ago; if (t) set(el, agoL(t)); }
+  for (const el of document.querySelectorAll('[data-until]')) { const t = +el.dataset.until; set(el, t > now ? `in ${dur(t - now)}` : 'any moment'); }
+  for (const el of document.querySelectorAll('[data-clock]')) set(el, clock(now));
 }
 setInterval(tick, 1000);
 
@@ -2309,7 +2320,8 @@ document.addEventListener('keydown', e => {
 
 /* ---------- live updates ---------- */
 let es = null, sessTimer = null;
-const idle = () => !document.hidden && !document.querySelector('dialog[open]') && $('menu').hidden;
+// Pages behind the chat window, a dialog or a menu wait until they're visible again.
+const idle = () => !document.hidden && !document.body.classList.contains('chat-open') && !document.querySelector('dialog[open]') && $('menu').hidden;
 function connectLive() {
   try { es = new EventSource(`/api/events?token=${TOKEN}`); } catch { return; }
   es.onopen = () => { S.connected = true; renderLivePill(); Promise.all([loadActivity(), loadUsage()]).then(() => { watchActivity(); renderLive(); }).catch(() => {}); };

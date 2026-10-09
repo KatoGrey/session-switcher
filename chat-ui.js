@@ -472,6 +472,7 @@
     const away = !nearBottom();
     if (!away) unseen = 0;
     b.hidden = !away || $c('chat').hidden;
+    if (!away && C.watchPending) refreshWatch();
     b.innerHTML = `<span aria-hidden="true">↓</span>${unseen ? `${unseen} new` : 'Latest'}`;
     b.classList.toggle('has-new', unseen > 0);
   }
@@ -547,11 +548,29 @@
   }
 
   /* ---------- live events ---------- */
+  // A streaming reply: paragraphs that are finished render once; only the one being written
+  // re-renders as it grows, so long replies stay smooth.
+  function stableCut(text) {
+    let fence = false, cut = 0, at = 0;
+    for (const line of text.split('\n')) {
+      at += line.length + 1;
+      if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+      else if (!fence && !line.trim() && at <= text.length) cut = at;
+    }
+    return cut;
+  }
   function flushLive() {
     C.liveTimer = null;
     for (const [mid, text] of Object.entries(C.liveText)) {
       const p = $c('cFeed').querySelector(`.part[data-mid="${CSS.escape(mid)}"] .live`);
-      if (p) withStick(() => { p.innerHTML = md(text); });
+      if (!p) continue;
+      let done = p.firstElementChild && p.firstElementChild.classList.contains('live-done') ? p.firstElementChild : null;
+      if (!done) { p.innerHTML = '<div class="live-done"></div><div class="live-tail"></div>'; done = p.firstElementChild; done._len = 0; }
+      const cut = stableCut(text);
+      withStick(() => {
+        if (cut !== done._len) { done.innerHTML = md(text.slice(0, cut)); done._len = cut; }
+        p.lastElementChild.innerHTML = md(text.slice(cut));
+      });
     }
   }
   function setState(s) {
@@ -618,7 +637,7 @@
         setStatus(src, comp ? 'Writing…' : '');
         part(feed, ev.mid);
         C.liveText[ev.mid] = (C.liveText[ev.mid] || '') + ev.text;
-        if (!C.liveTimer) C.liveTimer = setTimeout(flushLive, 90);
+        if (!C.liveTimer) C.liveTimer = setTimeout(flushLive, C.liveText[ev.mid].length > 8000 ? 250 : 90);
         break;
       case 'assistant': {
         delete C.liveText[ev.mid];
@@ -656,7 +675,8 @@
           break;
         }
         setState('ended');
-        clearPermissions();
+        // The Codex helper may still be running and waiting on you; keep its cards.
+        for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src !== 'comp') card.remove();
         const why = ev.stopped ? 'This chat was stopped.' : ev.code ? 'Claude Code stopped unexpectedly.' : 'Claude Code finished and closed this chat.';
         withStick(() => feed.insertAdjacentHTML('beforeend', `<div class="ended"><p><b>${why}</b> Your conversation is saved; start it again to keep going.</p>${ev.detail ? `<pre class="t-out err">${esc(ev.detail)}</pre>` : ''}<button type="button" class="btn prime" data-c="restart">Start again</button></div>`));
         toBottom();
@@ -711,8 +731,10 @@
     box.appendChild(card);
     const tool = lastTool($c('cFeed'), p.toolUseId);
     if (tool) tool.querySelector('.t-time').textContent = 'waiting for you';
-    toBottom();
-    (card.querySelector('.btn.gilt') || card.querySelector('button')).focus({ preventScroll: true });
+    if (nearBottom()) toBottom(); else noteUnseen();
+    // Only take focus if you're not typing: a keystroke meant for the message box must never approve a step.
+    const a = document.activeElement;
+    if (!(a && a.closest && a.closest('input, textarea, select, [contenteditable="true"]'))) (card.querySelector('.btn.gilt') || card.querySelector('button')).focus({ preventScroll: true });
   }
   function removePermission(id, src = 'main') {
     const c = $c('cPending').querySelector(`[data-req="${CSS.escape(`${src}:${id}`)}"]`);
@@ -829,7 +851,7 @@
   function closePick() { const b = $c('cPick'); if (b && !b.hidden) { b.hidden = true; Pick.src = null; document.body.classList.remove('sheet-open'); } }
   async function openPick(src) {
     Pick.src = src;
-    if (src === 'comp' && (!C.comp || C.comp.ended)) { renderPick(); await ensureCompanion(); }
+    if (src === 'comp' && (!C.comp || C.comp.ended)) { renderPick(); try { await ensureCompanion(); } catch (err) { closePick(); throw err; } }
     renderPick();
   }
   function renderPick() {
@@ -890,11 +912,14 @@
   }
 
   // Starts (or reconnects to) the Codex helper for this Claude chat.
-  async function ensureCompanion() {
-    if (C.comp && !C.comp.ended) return C.comp;
-    const info = await api('/api/chat/companion', { key: C.key });
-    attachComp(info);
-    return C.comp;
+  function ensureCompanion() {
+    if (C.comp && !C.comp.ended) return Promise.resolve(C.comp);
+    if (C.compPending) return C.compPending;
+    const gen = C.gen;
+    C.compPending = api('/api/chat/companion', { key: C.key })
+      .then(info => { if (gen !== C.gen) throw new Error('You switched chats.'); attachComp(info); return C.comp; })
+      .finally(() => { C.compPending = null; });
+    return C.compPending;
   }
   function attachComp(info) {
     if (C.comp && C.comp.es) C.comp.es.close();
@@ -931,8 +956,9 @@
   const sizeText = n => (n >= 1024 * 1024 * 1024 ? `${(n / 1024 / 1024 / 1024).toFixed(1)} GB` : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
   const kindOf = f => (/^video\//.test(f.type) || VIDEO_RE.test(f.name) ? 'video' : /^audio\//.test(f.type) || AUDIO_RE.test(f.name) ? 'audio' : /pdf$/.test(f.type) || /\.pdf$/i.test(f.name) ? 'PDF' : 'file');
   function renderAttachments() {
-    const imgs = C.attachments.map((a, i) => `<span class="att"><img src="data:${esc(a.mediaType)};base64,${a.data}" alt=""><button type="button" data-rm="${i}" aria-label="Remove image">✕</button></span>`);
-    const files = (C.files || []).map((f, i) => `<span class="att file ${f.error ? 'err' : f.rel ? 'done' : 'up'}" title="${esc(f.error || f.rel || 'Uploading…')}">
+    const imgs = C.attachments.map((a, i) => `<span class="att"><img src="${a.url ? esc(a.url) : `data:${esc(a.mediaType)};base64,${a.data}`}" alt=""><button type="button" data-rm="${i}" aria-label="Remove image">✕</button></span>`);
+    if (C.converting) imgs.push(`<span class="att pending" title="Preparing ${C.converting === 1 ? 'a picture' : `${C.converting} pictures`}"><span class="gen-spin" aria-hidden="true"></span></span>`);
+    const files = (C.files || []).map((f, i) => `<span class="att file ${f.error ? 'err' : f.rel ? 'done' : 'up'}" data-fid="${i}" title="${esc(f.error || f.rel || 'Uploading…')}">
       <span class="af-ico" aria-hidden="true">${esc(fileGlyph(f.name))}</span><span class="af-t"><b>${esc(f.name)}</b><small>${esc(f.error ? 'Couldn’t attach' : f.rel ? `${f.kind}, ${sizeText(f.size)}` : `Uploading ${Math.round((f.progress || 0) * 100)}%`)}</small></span>
       ${!f.rel && !f.error ? `<i class="af-bar" style="width:${Math.round((f.progress || 0) * 100)}%"></i>` : ''}<button type="button" data-rmf="${i}" aria-label="Remove file">✕</button></span>`);
     $c('cAtt').innerHTML = imgs.join('') + files.join('');
@@ -959,22 +985,40 @@
     return null;
   }
   async function addImage(f) {
-    let blob = f;
-    if (f.size > 5 * 1024 * 1024 || !/^image\/(png|jpeg|gif|webp)$/.test(f.type)) blob = await shrinkPhoto(f);
-    if (!blob) return false;
-    C.attachments.push({ mediaType: blob.type || f.type, data: await readData(blob) });
-    renderAttachments();
-    return true;
+    const gen = C.gen;
+    C.converting = (C.converting || 0) + 1; renderAttachments();
+    try {
+      let blob = f;
+      if (f.size > 5 * 1024 * 1024 || !/^image\/(png|jpeg|gif|webp)$/.test(f.type)) blob = await shrinkPhoto(f);
+      if (!blob) return false;
+      const data = await readData(blob);
+      if (gen !== C.gen) return true;   // you switched chats meanwhile
+      C.attachments.push({ mediaType: blob.type || f.type, data, url: URL.createObjectURL(blob) });
+      return true;
+    } finally {
+      if (gen === C.gen) { C.converting = Math.max(0, (C.converting || 1) - 1); renderAttachments(); }
+    }
   }
   function addFiles(files) {
     for (const f of files) {
-      if (/^image\//.test(f.type) && !/svg/.test(f.type) && C.attachments.length < 10) {
+      if (/^image\//.test(f.type) && !/svg/.test(f.type) && C.attachments.length + (C.converting || 0) < 10) {
         addImage(f).then(ok => { if (!ok) uploadFile(f); }).catch(() => uploadFile(f));
         continue;
       }
       uploadFile(f);
     }
   }
+  // An upload's progress updates its own card, not the whole row (pictures stay put).
+  function fileProgress(item) {
+    const i = (C.files || []).indexOf(item);
+    const el = i >= 0 && $c('cAtt').querySelector(`[data-fid="${i}"]`);
+    if (!el) return renderAttachments();
+    const pct = Math.round((item.progress || 0) * 100);
+    const bar = el.querySelector('.af-bar'); if (bar) bar.style.width = `${pct}%`;
+    const sm = el.querySelector('small'); if (sm) sm.textContent = `Uploading ${pct}%`;
+    return undefined;
+  }
+  const dropAttachments = () => { for (const a of C.attachments || []) if (a.url) URL.revokeObjectURL(a.url); for (const f of C.files || []) if (f.xhr && !f.rel && !f.error) f.xhr.abort(); };
   // Uploads a file into the project’s attachments folder, with progress.
   function uploadFile(f) {
     if (!C.key) { toast('Start the chat first, then attach files.'); return; }
@@ -985,7 +1029,7 @@
     item.xhr = x;
     x.open('POST', `/api/chat/upload?${new URLSearchParams({ key: C.key, name: item.name })}`);
     x.setRequestHeader('X-Switcher-Token', TOKEN);
-    x.upload.onprogress = e => { if (e.lengthComputable) { item.progress = e.loaded / e.total; renderAttachments(); } };
+    x.upload.onprogress = e => { if (e.lengthComputable) { item.progress = e.loaded / e.total; fileProgress(item); } };
     x.onload = () => {
       let j = {}; try { j = JSON.parse(x.responseText); } catch { /* not JSON */ }
       if (x.status === 200) { item.rel = j.rel; item.path = j.path; item.size = j.size; } else item.error = j.error || `Upload failed (${x.status}).`;
@@ -1056,7 +1100,7 @@
       ${chips ? `<p class="cw-h">Start from a prompt, or just write. Type <kbd class="kbd">/</kbd> to search them.</p><div class="chips">${chips}</div>` : ''}</div></div>`);
   }
   // What you were typing stays with each chat, even if you switch away or close the window.
-  const draftKey = () => (C.sessionId ? `draft:${C.sessionId}` : C.info && C.info.cwd ? `draft:new:${C.info.cwd}` : null);
+  const draftKey = () => (C.sessionId ? `draft:${C.sessionId}` : C.info && C.info.cwd ? `draft:new:${C.provider}:${C.info.cwd}` : null);
   let draftTimer = null;
   function saveDraft() {
     clearTimeout(draftTimer);
@@ -1066,12 +1110,23 @@
     const k = draftKey(); if (!k || $c('cText').value) return;
     try { const v = localStorage.getItem(k); if (v) { $c('cText').value = v; grow(); } } catch { /* none */ }
   }
-  function clearDraft() { clearTimeout(draftTimer); const k = draftKey(); try { if (k) localStorage.removeItem(k); if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.info.cwd}`); } catch { /* fine */ } }
+  function clearDraft() { clearTimeout(draftTimer); const k = draftKey(); try { if (k) localStorage.removeItem(k); if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
 
   async function sendMessage() {
-    let text = $c('cText').value;
+    const typed = $c('cText').value;
+    let text = typed;
     if (!text.trim() && !C.attachments.length && !(C.files || []).length) return;
-    const clear = () => { $c('cText').value = ''; C.attachments = []; C.files = []; renderAttachments(); grow(); };
+    if (C.converting) { toast('Still preparing your pictures; send again in a moment.'); return; }
+    const key0 = C.key, sentImgs = C.attachments.slice(), sentFiles = (C.files || []).filter(f => f.rel);
+    // Clears only what was sent, and only in the same chat: anything typed meanwhile stays.
+    const clear = () => {
+      if (C.key !== key0) return;
+      if ($c('cText').value === typed) { $c('cText').value = ''; clearDraft(); }
+      for (const a of sentImgs) if (a.url) URL.revokeObjectURL(a.url);
+      C.attachments = C.attachments.filter(a => !sentImgs.includes(a));
+      C.files = (C.files || []).filter(f => !sentFiles.includes(f));
+      renderAttachments(); grow();
+    };
     const files = C.files || [];
     if (files.some(f => !f.rel && !f.error)) { toast('Still uploading. It sends once your files are attached; try again in a moment.'); return; }
     const ready = files.filter(f => f.rel);
@@ -1090,7 +1145,7 @@
     try {
       const key = target === 'comp' ? (await ensureCompanion()).key : C.key;
       await api('/api/chat/send', { key, text, images });
-      clear(); clearDraft();
+      clear();
     } finally { $c('cSend').disabled = false; $c('cText').focus(); }
   }
   function modeOptions(list) {
@@ -1149,16 +1204,21 @@
 
   async function loadHistory(before) {
     if (!C.sessionId) return null;
+    const gen = C.gen;
     const params = new URLSearchParams({ id: C.sessionId });
-    if (C.info && C.info.startedAt && !C.info.fork && !C.watch) params.set('until', C.info.startedAt);
-    if (before !== undefined) { if (C.historyCursor) params.set('cursor', C.historyCursor); else params.set('before', String(before)); }
+    // Up to where the open chat's live replay begins, so nothing shows twice or goes missing.
+    const until = C.info && !C.watch ? C.info.bufferFrom || C.info.startedAt : null;
+    if (until) params.set('until', until);
+    if (before !== undefined && C.historyCursor) params.set('cursor', C.historyCursor);
     const h = await api(`/api/chat/history?${params}`);
+    if (gen !== C.gen) return null;   // you've moved on to another chat
     C.historyStart = h.start;
     C.historyCursor = h.cursor || null;
     let rows = h.items.map(it => ({ it, prov: C.provider }));
     // A Claude chat's Codex helper: its earlier messages slot in among Claude's by time.
     if (before === undefined && C.compThread && C.provider === 'claude') {
       try { rows = mergeHelper(rows, (await api(`/api/chat/history?${new URLSearchParams({ id: C.compThread, provider: 'codex' })}`)).items); } catch { /* shown without them */ }
+      if (gen !== C.gen) return null;
     }
     const tmp = document.createElement('div');
     for (const r of rows) { curProv = r.prov; try { renderItem(tmp, r.it, false); } finally { curProv = null; } }
@@ -1170,8 +1230,13 @@
       s.scrollTop += s.scrollHeight - oldH;
     }
     $c('cEarlier').hidden = h.start <= 0;
-    $c('cEarlier').textContent = C.historyCursor ? 'Show earlier messages' : `Show earlier messages (${h.start} more)`;
+    $c('cEarlier').textContent = 'Show earlier messages';
     return h;
+  }
+  // Waits (briefly) for the last pictures to size themselves, so "the bottom" is really the bottom.
+  async function settle() {
+    const imgs = [...$c('cFeed').querySelectorAll('img')].slice(-6).filter(i => !i.complete);
+    if (imgs.length) await Promise.race([Promise.all(imgs.map(i => (i.decode ? i.decode().catch(() => {}) : null))), new Promise(r => setTimeout(r, 1500))]);
   }
 
   function mergeHelper(rows, items) {
@@ -1209,9 +1274,12 @@
     if (C.comp && C.comp.es) C.comp.es.close();
     // Each chat has its own message box: what you typed stays with the chat it was for (as a draft).
     clearTimeout(draftTimer);
-    $c('cText').value = ''; C.attachments = []; C.files = []; renderAttachments(); grow();
+    clearInterval(C.watchTimer);
+    dropAttachments();
+    $c('cText').value = ''; C.attachments = []; C.files = []; C.converting = 0; renderAttachments(); grow();
     closeFind(); unseen = 0;
-    Object.assign(C, { key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+    C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
+    Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
     closePick();
     $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
     clearPermissions();
@@ -1236,12 +1304,14 @@
 
   async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {}) {
     reset();
+    const gen = C.gen;
     C.key = info.key; C.info = info; C.sessionId = info.sessionId || sessionId;
     C.provider = info.provider || 'claude';
     if (info.modes) modeOptions(info.modes);
     if (info.models && info.models.length) C.mi.main = info;
     C.compThread = info.companionThread || null;
-    if (info.companionKey && C.provider === 'claude') { try { attachComp(await api('/api/chat/attach', { key: info.companionKey })); } catch { /* the helper has stopped */ } }
+    if (info.companionKey && C.provider === 'claude') { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { /* the helper has stopped */ } }
+    if (gen !== C.gen) return;
     setTarget('main', false);
     $c('chat').classList.toggle('codex', C.provider === 'codex');
     const [s, p] = findSession(C.sessionId);
@@ -1256,12 +1326,14 @@
       // A quiet placeholder while the conversation loads, instead of an empty window.
       $c('cFeed').insertAdjacentHTML('beforeend', '<div class="c-skel" aria-hidden="true"><i class="u"></i><i></i><i class="s"></i><i class="u"></i><i></i></div>');
       try { await loadHistory(); } catch (err) { toast(`Couldn’t load earlier messages: ${err.message}`); }
+      if (gen !== C.gen) return;
       $c('cFeed').querySelector('.c-skel')?.remove();
     }
     if (mode === 'new') welcome(info.cwd || cwd);
     restoreDraft();
     toBottom();
     connect();
+    settle().then(() => { if (gen === C.gen && !unseen) toBottom(); });
     markSeen(findActivity(info.key) || { key: info.key, sessionId: C.sessionId, finishedAt: Date.now() });
     renderRail(); renderLedgerSoon(); syncFav();
     $c('cText').focus();
@@ -1316,7 +1388,9 @@
       ? '<p><b>Watching live.</b> This chat is running in a terminal, so you can read along here and reply in its terminal window. New messages appear by themselves.</p><button type="button" class="btn" data-c="fork">Open a copy here</button>'
       : '<p><b>Read-only.</b> This chat was last used in another app, like the desktop app. Continue it here if it’s closed there.</p><button type="button" class="btn prime" data-c="takeover">Continue it here</button><button type="button" class="btn quiet" data-c="fork">Open a copy</button>';
     show();
-    try { const h = await loadHistory(); C.watchSig = sigOf(h); } catch (err) { toast(`Couldn’t read this chat: ${err.message}`); }
+    const gen = C.gen;
+    try { const h = await loadHistory(); if (gen !== C.gen) return; C.watchSig = sigOf(h); } catch (err) { toast(`Couldn’t read this chat: ${err.message}`); }
+    if (gen !== C.gen) return;
     syncFav();
     toBottom();
     markSeen(findActivity(`s:${sessionId}`) || { sessionId, finishedAt: Date.now() });
@@ -1328,20 +1402,23 @@
   let watchBusy = false;
   async function refreshWatch() {
     if (!C.watch || watchBusy) return;
+    const id = C.watch.sessionId, gen = C.gen;
     watchBusy = true;
     try {
-      const h = await api(`/api/chat/history?${new URLSearchParams({ id: C.watch.sessionId })}`);
-      if (!C.watch || sigOf(h) === C.watchSig) return;
-      C.watchSig = sigOf(h);
-      const stick = nearBottom();
-      const keepTop = scroller().scrollTop;
+      const h = await api(`/api/chat/history?${new URLSearchParams({ id })}`);
+      if (gen !== C.gen || !C.watch || C.watch.sessionId !== id || sigOf(h) === C.watchSig) return;
+      // Reading further up? Don't move the page; count it, and catch up when you come back down.
+      if (!nearBottom()) { C.watchPending = true; if (!unseen) { unseen = 1; syncJump(); } return; }
+      C.watchSig = sigOf(h); C.watchPending = false;
+      const open = new Set([...$c('cFeed').querySelectorAll('details[open][data-tool-id]')].map(d => d.dataset.toolId));
       ledgerReset();
       $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
       for (const it of h.items) renderItem($c('cFeed'), it, false);
-      C.historyStart = h.start;
+      for (const d of $c('cFeed').querySelectorAll('details[data-tool-id]')) if (open.has(d.dataset.toolId)) d.open = true;
+      C.historyStart = h.start; C.historyCursor = h.cursor || null;
       $c('cEarlier').hidden = h.start <= 0;
-      $c('cEarlier').textContent = `Show earlier messages (${h.start} more)`;
-      if (stick) toBottom(); else scroller().scrollTop = keepTop;
+      $c('cEarlier').textContent = 'Show earlier messages';
+      toBottom();
     } catch { /* try again next time */ } finally { watchBusy = false; }
   }
 
@@ -1377,7 +1454,7 @@
       const cc = t.closest('.code-copy');
       if (cc) { try { await navigator.clipboard.writeText(cc.closest('.code').querySelector('code').textContent); cc.textContent = 'Copied'; setTimeout(() => { cc.textContent = 'Copy'; }, 1500); } catch { toast('Couldn’t copy.'); } return; }
       const more = t.closest('.tg-more'); if (more) { const g = more.closest('.tools'); g.classList.toggle('open'); updateGroup(g); return; }
-      const rm = t.closest('[data-rm]'); if (rm) { C.attachments.splice(+rm.dataset.rm, 1); renderAttachments(); return; }
+      const rm = t.closest('[data-rm]'); if (rm) { const [a] = C.attachments.splice(+rm.dataset.rm, 1); if (a && a.url) URL.revokeObjectURL(a.url); renderAttachments(); return; }
       const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
       if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
       const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
@@ -1614,7 +1691,7 @@
         ...(text && !C.watch ? [{ glyph: '❝', label: 'Quote in my message', run: () => placeText(`${quote(text)}\n\n`, false) }] : []),
         ...(text && duo() ? [{ glyph: prov === 'codex' ? '✦' : '◆', label: prov === 'codex' ? 'Send to Claude' : 'Ask Codex about this', run: () => relay(turn) }] : []),
         '-',
-        ...chatHeadItems().slice(0, 3),
+        ...chatHeadItems().filter(x => x !== '-' && /^(Find|Jump)/.test(x.label)),
       ];
     }
     const crew = t.closest('[data-crew]');

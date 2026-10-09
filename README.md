@@ -392,6 +392,16 @@ Press `?` anywhere (outside a text box) for the full list of keyboard shortcuts.
   - **Show transcript file**
 - The app warns before you open a chat that's already running somewhere.
 
+## Speed with long chats
+
+Session Switcher is built to stay quick even with very long chats (hundreds of megabytes):
+
+- Chats open from the end of their transcript and load earlier messages a page at a time, so even a huge chat opens almost instantly.
+- The search index is built once, then only reads what was added to each chat since.
+- The details drawer reads its counts from the index and its latest messages from the end of the file.
+- The list of chats, the project list and the activity board are reused for a moment instead of being rebuilt several times a second, and the check for chats running in terminals is a light query every 10 seconds.
+- In the chat window, a reply that's streaming in only re-renders the paragraph being written.
+
 ## What keeps it safe
 
 - **Locks:** a locked account won't open chats unless Claude Code confirms it's signed in as the right email and organization. The check reruns before every launch, and immediately after any sign-in change.
@@ -411,6 +421,7 @@ Press `?` anywhere (outside a text box) for the full list of keyboard shortcuts.
   - "Merge and share" moves files into your main folder and keeps the account's old folder aside.
   - Removing an account keeps its sign-in folder.
 - **Crash-safe settings:** `accounts.json` is written atomically, with a backup, and restored automatically if it's ever damaged.
+- **Approvals can't be clicked by accident:** an approval card only takes the keyboard if you aren't typing, so a keystroke meant for the message box never approves a step.
 - **Local only:** the app listens only on 127.0.0.1, and every request needs a per-launch token. Requests from other websites are refused, and the fonts are bundled, so nothing loads from the internet.
 
 ## Setup & health
