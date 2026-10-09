@@ -430,6 +430,7 @@ function renderNav() {
     <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">${esc(voice('The hub'))}</span>${A ? `<span class="tag gilt">${A}</span>` : W ? `<span class="tag">${W}</span>` : ''}</button>
     <button class="nav-i" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">${esc(voice('Recent chats'))}</span><span class="count">${total}</span></button>
     <button class="nav-i" data-view="palette" aria-current="${S.view === 'search'}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t">${esc(voice('Search every chat'))}</span><span class="count">Ctrl K</span></button>
+    ${routinesNav()}
     <button class="nav-i nav-new" data-view="newproject"><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New project</span></button>
     ${fresh.length ? `<div class="nav-h prov fresh"><span class="pmark" aria-hidden="true"></span>No chats yet<span class="count">${fresh.length}</span></div>${fresh.map(p => `<button class="nav-i" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}"><span class="glyph" aria-hidden="true">${glyphFor(p.name)}</span><span class="ni-t">${esc(p.name)}</span><span class="tag ghost">New</span></button>`).join('')}` : ''}
     ${pinnedHtml}
@@ -445,6 +446,13 @@ function renderNav() {
   const keep = focused && (focused.dataset.cwd ? `[data-cwd="${CSS.escape(focused.dataset.cwd)}"][data-view="${focused.dataset.view || ''}"]` : focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : focused.dataset.navchat ? `[data-navchat="${CSS.escape(focused.dataset.navchat)}"]` : focused.dataset.fold ? `[data-fold="${focused.dataset.fold}"]` : focused.id ? `#${focused.id}` : null);
   $('nav').innerHTML = html;
   if (keep) $('nav').querySelector(keep)?.focus({ preventScroll: true });
+}
+
+// Routines (routines-ui.js): chats that start on their own.
+function routinesNav() {
+  const r = window.Routines ? Routines.navInfo() : null;
+  const badge = r && r.needs ? '<span class="tag gilt">!</span>' : r && r.any ? `<span class="count">${r.on}</span>` : '';
+  return `<button class="nav-i" data-view="routines" aria-current="${S.view === 'routines'}"><span class="glyph" aria-hidden="true">⟳</span><span class="ni-t">${esc(voice('Routines'))}</span>${badge}</button>`;
 }
 
 /* ---------- the hub ---------- */
@@ -1349,6 +1357,7 @@ function renderPage() {
   else if (S.view === 'recent') renderRecent();
   else if (S.view === 'folder') renderFolder();
   else if (S.view === 'search') renderSearch();
+  else if (S.view === 'routines') Routines.render();
 }
 function renderAll() { renderNav(); renderPage(); renderBar(); updateTitle(); }
 // Names the chat window uses.
@@ -2104,6 +2113,7 @@ function palItems(q) {
   const acts = [
     { glyph: '✦', t: 'Go to the hub', run: () => go('hub') },
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
+    { glyph: '⟳', t: 'Routines', s: 'chats that start on a schedule or when something new turns up', run: () => go('routines'), alias: 'schedule watch automation cron' },
     { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health' },
     { glyph: '◐', t: 'Appearance', s: 'themes, light or dark, text and interface size', run: () => openSetup('look') },
     { glyph: '?', t: 'Keyboard shortcuts', run: () => openShortcuts(), alias: 'keys hotkeys help' },
@@ -2558,6 +2568,7 @@ function connectLive() {
   es.addEventListener('running', e => { try { S.running = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); renderNav(); });
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
   es.addEventListener('activity', e => { try { S.activity = JSON.parse(e.data).list || []; } catch { return; } watchActivity(); renderLive(); renderNav(); });
+  es.addEventListener('routines', () => { if (window.Routines) Routines.changed(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
@@ -2636,6 +2647,7 @@ function appItems() {
     { glyph: '+', label: 'New project', run: () => openNewProject() },
     { glyph: '◉', label: 'The hub', run: () => go('hub') },
     { glyph: '✧', label: 'Recent chats', run: () => go('recent') },
+    { glyph: '⟳', label: 'Routines', run: () => go('routines') },
     '-',
     { glyph: light ? '☾' : '☀', label: light ? 'Dark mode' : 'Light mode', run: () => Look.set({ mode: light ? 'dark' : 'light' }) },
     { glyph: '◐', label: 'Appearance…', run: () => openSetup('look') },
