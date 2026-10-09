@@ -487,9 +487,18 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `system.js`: terminals and processes.
   - `health.js`: the Setup checks.
   - `store.js`: safe file writes.
-- `index.html`, `styles.css`, `app.js`: the hub.
+- `index.html`, `styles.css`: the page and its look.
+- `ui/`: what runs in the page, loaded in the order `index.html` lists (they share one scope):
+  - `base.js`: shared helpers, plan usage, live activity, the data the hub shows.
+  - `hub.js`: the top bar, the sidebar, the hub and each project's page.
+  - `create.js`: the prompt book, new projects, **Make a copy to share**.
+  - `motion.js`: the animations and clocks.
+  - `actions.js`: a chat's details drawer, menus, and what buttons and menu items do.
+  - `setup.js`: Setup, phone access, Appearance, alerts and the live pill.
+  - `palette.js`: the command palette (`Ctrl+K`) and the file viewer.
+  - `events.js`: clicks, the account dropdown, live updates, confirmations, right-click, the shortcuts sheet.
+  - `chat-feed.js`, `chat-live.js`, `chat-compose.js`, `chat.js`: the chat window (drawing the conversation; live events, permissions and the crew; the message box; opening, closing and the rest).
 - `theme.js`: themes, light and dark, text and interface size. Every color in `styles.css` is a variable named after its original value (`--c-a5463f`), and each theme recolors them all from a few seed colors.
-- `chat-ui.js`: the chat window.
 - `fonts/`: the bundled typefaces (SIL Open Font License).
 - `mobile/android/`: the Android app (a small WebView remote) and its build script.
 - `mobile/ios/`: the iPhone app (a small WebView remote), as an XcodeGen project.

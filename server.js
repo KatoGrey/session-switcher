@@ -1142,9 +1142,10 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': 'font/woff2', 'Cache-Control': 'max-age=604800', 'X-Content-Type-Options': 'nosniff' });
       return res.end(data);
     }
-    const STATIC = { '/chat-ui.js': 'text/javascript', '/app.js': 'text/javascript', '/theme.js': 'text/javascript', '/styles.css': 'text/css' };
-    if (req.method === 'GET' && STATIC[url.pathname]) {
-      res.writeHead(200, { 'Content-Type': `${STATIC[url.pathname]}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    const STATIC = { '/theme.js': 'text/javascript', '/styles.css': 'text/css' };
+    const type = STATIC[url.pathname] || (/^\/ui\/[a-z0-9-]+\.js$/.test(url.pathname) ? 'text/javascript' : null);
+    if (req.method === 'GET' && type) {
+      res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       return res.end(fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1)), 'utf8'));
     }
     if (req.method === 'GET' && url.pathname === '/api/chat/events') {

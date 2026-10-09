@@ -134,3 +134,22 @@ test('history: paging back through a long chat returns every message once, in or
   assert.equal(new Set(texts).size, 300, 'no message twice');
   assert.equal(texts.at(-1), 'answer 149');
 });
+
+/* ---------- the page's scripts share one scope: no name may be declared twice ---------- */
+test('page scripts: every ui/ file is loaded, and no top-level name is declared twice', () => {
+  const html = fs.readFileSync(path.join(APP, 'index.html'), 'utf8');
+  const loaded = [...html.matchAll(/<script src="\/(ui\/[a-z0-9-]+\.js)"><\/script>/g)].map(m => m[1]);
+  const present = fs.readdirSync(path.join(APP, 'ui')).filter(f => f.endsWith('.js')).map(f => `ui/${f}`);
+  assert.deepEqual([...loaded].sort(), [...present].sort(), 'index.html loads exactly the files in ui/');
+  const seen = new Map();
+  const decl = /^(?:async\s+)?function\s*\*?\s*([\w$]+)|^(?:const|let|var|class)\s+([\w$]+)/;
+  for (const f of ['theme.js', ...loaded]) {
+    fs.readFileSync(path.join(APP, f), 'utf8').split('\n').forEach((line, i) => {
+      const m = line.match(decl);
+      if (!m) return;
+      const name = m[1] || m[2];
+      assert.ok(!seen.has(name), `${name} is declared in both ${seen.get(name)} and ${f}:${i + 1}; the later one would silently replace the earlier`);
+      seen.set(name, `${f}:${i + 1}`);
+    });
+  }
+});

@@ -142,7 +142,18 @@
 <button class="livepill" id="livepill" aria-haspopup="menu" aria-expanded="false" title="Live updates and alerts"><span class="lp-seal" aria-hidden="true">✦</span><span class="lp-text" id="lpText">Connecting</span><span class="lp-bell" id="lpBell"></span></button>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="/app.js"></script>
-<script src="/chat-ui.js"></script>
+<!-- The hub, then the chat window: classic scripts that share one scope, so the order matters. -->
+<script src="/ui/base.js"></script>
+<script src="/ui/hub.js"></script>
+<script src="/ui/create.js"></script>
+<script src="/ui/motion.js"></script>
+<script src="/ui/actions.js"></script>
+<script src="/ui/setup.js"></script>
+<script src="/ui/palette.js"></script>
+<script src="/ui/events.js"></script>
+<script src="/ui/chat-feed.js"></script>
+<script src="/ui/chat-live.js"></script>
+<script src="/ui/chat-compose.js"></script>
+<script src="/ui/chat.js"></script>
 </body>
 </html>
