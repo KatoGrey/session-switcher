@@ -1874,3 +1874,15 @@ body.solo .c-head .icon.c-backm{display:none}
 .tk-prompt textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--seam-2);border-radius:8px;background:rgb(var(--c-100e12));color:var(--parch);font:400 14.5px/1.5 var(--f-body);letter-spacing:0;text-transform:none;resize:vertical}
 .tk-prompt select{justify-self:start}
 
+
+/* Phones: Claude and Codex each show their name over their model, so the model fits; Both takes only its own width */
+@media (max-width:760px){
+  .c-crew{border-radius:18px}
+  .c-crew .crew.both{flex:0 0 auto;padding:5px 11px}
+  .c-crew .crew:not(.both){display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;grid-template-areas:'dot name ring caret' 'dot model ring caret';column-gap:6px;row-gap:1px;align-items:center;padding:5px 10px 5px 9px;border-radius:14px}
+  .c-crew .crew-dot{grid-area:dot}
+  .c-crew .crew-n{grid-area:name;font-size:10.5px;justify-self:start}
+  .c-crew .crew-m{grid-area:model;justify-self:stretch;text-align:left;font:400 12.5px/1.2 var(--f-body);max-width:none}
+  .c-crew .crew-ctx{grid-area:ring}
+  .c-crew .crew-caret{grid-area:caret}
+}
