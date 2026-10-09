@@ -963,11 +963,12 @@ function writeCommanderFiles() {
   const dir = path.join(os.tmpdir(), 'claude-switcher');
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `commander-mcp-${PORT}.json`);
-  if (!SAFE_ARG.test(file)) throw fail(500, `The Commander’s settings file would be at ${file}, and that path has characters Session Switcher can’t pass to Claude Code.`);
+  const arg = file.replace(/\\/g, '/'); // Claude Code takes forward slashes on Windows too
+  if (!SAFE_ARG.test(arg)) throw fail(500, `The Commander’s settings file would be at ${file}, and that path has characters Session Switcher can’t pass to Claude Code.`);
   const config = { mcpServers: { switcher: { type: 'stdio', command: process.execPath, args: [MCP_SCRIPT], env: { SWITCHER_URL: `http://127.0.0.1:${PORT}`, SWITCHER_TOKEN: TOKEN } } } };
   fs.writeFileSync(file, JSON.stringify(config, null, 2), { mode: 0o600 });
   try { fs.chmodSync(file, 0o600); } catch { /* best effort */ }
-  return file;
+  return arg;
 }
 // The Commander's chat is always called "Commander" (its transcript appears a moment after it starts).
 function nameCommander(id, tries = 8) {
