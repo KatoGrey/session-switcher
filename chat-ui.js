@@ -54,8 +54,42 @@
     const t = String(s).replace(/https?:\/\/[^\s<>()"'`]+[^\s<>()"'`.,;:!?]/g, url => keep(link(url, esc(url))));
     return esc(t).replace(/\n/g, '<br>').replace(/\u0000(\d+)\u0000/g, (_, n) => slots[+n]);
   }
+  // A light highlighter for code blocks: comments, strings, numbers, keywords and calls. Plenty for
+  // reading; it never changes the text, and very long blocks are left plain.
+  const KW = {
+    js: 'const let var function return if else for while do switch case break continue new class extends import from export default async await try catch finally throw typeof instanceof in of this null undefined true false yield delete void static get set super interface type enum implements public private protected readonly as',
+    py: 'def return if elif else for while in not and or is None True False class import from as with try except finally raise lambda yield pass break continue global nonlocal async await self del assert',
+    sh: 'if then else elif fi for do done while until case esac function in return export local readonly echo cd exit set unset source alias sudo param foreach begin process end try catch',
+    c: 'int long short char float double void bool boolean string var const static public private protected class struct enum interface new return if else for while do switch case break continue try catch finally throw using namespace import package func fn let mut impl trait pub match use mod true false null nil self this async await yield defer go select chan map type local function then end and or not',
+    css: 'important media supports keyframes from to root',
+  };
+  const LANG = { js: 'js', javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', tsx: 'js', mjs: 'js', cjs: 'js', json: 'js', jsonc: 'js', py: 'py', python: 'py', sh: 'sh', bash: 'sh', shell: 'sh', zsh: 'sh', console: 'sh', ps1: 'sh', powershell: 'sh', pwsh: 'sh', bat: 'sh', cmd: 'sh', yaml: 'py', yml: 'py', toml: 'py', ini: 'py', c: 'c', cpp: 'c', 'c++': 'c', cs: 'c', csharp: 'c', java: 'c', go: 'c', rs: 'c', rust: 'c', kotlin: 'c', swift: 'c', lua: 'c', luau: 'c', php: 'c', rb: 'py', ruby: 'py', css: 'css', scss: 'css', less: 'css', html: 'html', xml: 'html', svg: 'html', vue: 'html' };
+  const kwSets = {};
+  function hl(code, lang) {
+    const L = LANG[String(lang || '').toLowerCase()];
+    if (!L || code.length > 30000) return esc(code);
+    if (L === 'html') return esc(code).replace(/(&lt;!--[\s\S]*?--&gt;)|(&lt;\/?)([\w:-]+)|([\w:-]+)(=)(&quot;[^&]*?&quot;|&#39;[^&]*?&#39;)/g,
+      (m, com, open, tag, attr, eq, val) => (com ? `<span class="tk-c">${com}</span>` : tag ? `${open}<span class="tk-k">${tag}</span>` : `<span class="tk-f">${attr}</span>${eq}<span class="tk-s">${val}</span>`));
+    const kws = kwSets[L] || (kwSets[L] = new Set(KW[L].split(' ')));
+    const hash = L === 'py' || L === 'sh';
+    const dash = /^(lua|luau|sql)$/i.test(lang);   // where -- starts a comment
+    const re = /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|--\[\[[\s\S]*?\]\]|--[^\n]*)|(#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|(\b\d[\d_]*(?:\.\d+)?(?:e[+-]?\d+)?\b|\b0x[\da-fA-F]+\b)|([A-Za-z_$][\w$]*)/g;
+    let out = '', last = 0, m;
+    while ((m = re.exec(code))) {
+      let cls = null;
+      if (m[1]) cls = m[1].startsWith('--') && !dash ? null : 'tk-c';
+      else if (m[2]) cls = hash ? 'tk-c' : null;
+      else if (m[3]) cls = 'tk-s';
+      else if (m[4]) cls = 'tk-n';
+      else if (m[5]) cls = kws.has(m[5]) ? 'tk-k' : code[re.lastIndex] === '(' ? 'tk-f' : null;
+      if (!cls) { if (m[2] || m[1]) re.lastIndex = m.index + (m[1] ? 2 : 1); continue; }
+      out += esc(code.slice(last, m.index)) + `<span class="${cls}">${esc(m[0])}</span>`;
+      last = re.lastIndex;
+    }
+    return out + esc(code.slice(last));
+  }
   function codeBlock(code, lang) {
-    return `<div class="code"><div class="code-h"><span>${esc(lang || 'code')}</span><button type="button" class="code-copy">Copy</button></div><pre><code>${esc(code)}</code></pre></div>`;
+    return `<div class="code"><div class="code-h"><span>${esc(lang || 'code')}</span><button type="button" class="code-copy">Copy</button></div><pre><code>${hl(code, lang)}</code></pre></div>`;
   }
   const LIST_RE = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/;
   function list(lines, i) {
@@ -388,8 +422,17 @@
     }
     ledgerText(b.text);
     const cards = artifactCards(b.text, null, p.closest('.turn'));
-    fin.insertAdjacentHTML('beforeend', `<div class="md">${md(b.text)}</div>${cards ? `<div class="arts">${cards}</div>` : ''}`);
+    const div = document.createElement('div');
+    div.className = 'md';
+    div.innerHTML = md(b.text);
+    RAW.set(div, b.text);
+    fin.appendChild(div);
+    if (cards) fin.insertAdjacentHTML('beforeend', `<div class="arts">${cards}</div>`);
   }
+  // The markdown behind each reply and message, for copying, quoting and exporting.
+  const RAW = new WeakMap();
+  const turnMarkdown = turn => [...turn.querySelectorAll('.final > .md')].map(x => RAW.get(x) || x.innerText).filter(Boolean).join('\n\n').trim();
+  const shortTime = t => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   function renderItem(root, it, live) {
     if (it.kind === 'user') {
       const d = document.createElement('div');
@@ -398,6 +441,7 @@
       // "Attached file: `path` (info)" lines become players and file cards.
       const files = [];
       const text = String(it.text || '').split('\n').filter(l => { const m = l.trim().match(ATTACH_LINE); if (m) files.push([m[1], m[2] || '']); return !m; }).join('\n').trim();
+      RAW.set(d, String(it.text || ''));
       d.innerHTML = `${toCodex ? '<span class="to-tag">to Codex</span>' : ''}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
       root.appendChild(d);
     } else if (it.kind === 'assistant') {
@@ -406,6 +450,8 @@
       const p = part(root, it.mid, model);
       const wm = p.closest('.turn').querySelector('.who-m');
       if (wm && model && model !== '<synthetic>' && !wm.textContent) wm.textContent = modelName(model);
+      const who = p.closest('.turn').querySelector('.who');
+      if (it.at && who && !who.querySelector('.who-time')) who.querySelector('.who-m').insertAdjacentHTML('afterend', `<time class="who-time" datetime="${esc(it.at)}" title="${esc(stamp(Date.parse(it.at)))}">${esc(shortTime(Date.parse(it.at)))}</time>`);
       for (const b of it.blocks) addBlock(p, b, live);
       if (it.aborted) p.querySelector('.final').insertAdjacentHTML('beforeend', '<p class="aborted">Stopped before finishing.</p>');
     } else if (it.kind === 'notice') {
@@ -417,7 +463,88 @@
   const scroller = () => $c('cScroll');
   const nearBottom = () => { const s = scroller(); return s.scrollHeight - s.scrollTop - s.clientHeight < 140; };
   const toBottom = () => { const s = scroller(); s.scrollTop = s.scrollHeight; };
-  function withStick(fn) { const stick = nearBottom(); fn(); if (stick) toBottom(); }
+  function withStick(fn) { const stick = nearBottom(); fn(); if (stick) toBottom(); else noteUnseen(); }
+  // "Jump to latest": shown while you're reading further up; counts what arrived meanwhile.
+  let unseen = 0, jumpRaf = 0;
+  function noteUnseen() { if (!liveRender) return; unseen++; syncJump(); }
+  function syncJump() {
+    const b = $c('cJump'); if (!b) return;
+    const away = !nearBottom();
+    if (!away) unseen = 0;
+    b.hidden = !away || $c('chat').hidden;
+    b.innerHTML = `<span aria-hidden="true">↓</span>${unseen ? `${unseen} new` : 'Latest'}`;
+    b.classList.toggle('has-new', unseen > 0);
+  }
+  function jumpLatest() { const s = scroller(); s.scrollTo({ top: s.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); unseen = 0; syncJump(); }
+
+  /* ---------- export to Markdown ---------- */
+  function chatMarkdown() {
+    const out = [`# ${C.title || 'Chat'}`, '', `_${[C.folder, C.model, new Date().toLocaleString()].filter(Boolean).join(' · ')}_`, ''];
+    for (const el of $c('cFeed').children) {
+      if (el.classList.contains('umsg')) out.push(`**You${el.classList.contains('to-codex') ? ' → Codex' : ''}:**`, '', RAW.get(el) || el.innerText.trim(), '');
+      else if (el.classList.contains('turn')) {
+        const text = turnMarkdown(el);
+        const steps = el.querySelectorAll('.tool').length;
+        if (!text && !steps) continue;
+        out.push(`**${PROV_NAME[el.dataset.prov] || 'Claude'}:**`, '');
+        if (steps) out.push(`_(${steps} step${steps === 1 ? '' : 's'})_`, '');
+        if (text) out.push(text, '');
+      } else if (el.classList.contains('cnotice')) out.push(`> ${el.innerText.trim()}`, '');
+    }
+    return out.join('\n').replace(/\n{3,}/g, '\n\n');
+  }
+  function exportChat() {
+    const text = chatMarkdown();
+    const name = `${String(C.title || 'chat').replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'chat'}.md`;
+    if (window.Android) { navigator.clipboard.writeText(text).then(() => toast('Copied the chat as Markdown.'), () => toast('Couldn’t copy.')); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast(`Saved ${name} to your Downloads.`, 3000);
+  }
+
+  /* ---------- find in this chat (Ctrl+F) ---------- */
+  const Find = { hits: [], i: -1 };
+  const canMark = typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined';
+  function openFind(q) {
+    const bar = $c('cFind'); bar.hidden = false;
+    const inp = $c('cFindQ');
+    if (q) inp.value = q;
+    inp.focus(); inp.select();
+    runFind();
+  }
+  function closeFind() {
+    $c('cFind').hidden = true; Find.hits = []; Find.i = -1;
+    if (canMark) { CSS.highlights.delete('find'); CSS.highlights.delete('find-cur'); }
+  }
+  function runFind() {
+    const q = $c('cFindQ').value.trim().toLowerCase();
+    Find.hits = []; Find.i = -1;
+    if (q.length >= 2) {
+      const walk = document.createTreeWalker($c('cFeed'), NodeFilter.SHOW_TEXT, { acceptNode: n => (n.parentElement.closest('.turn-act, .code-h, button.c-earlier, .c-welcome') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+      let n;
+      while ((n = walk.nextNode()) && Find.hits.length < 2000) {
+        const t = n.nodeValue.toLowerCase();
+        for (let at = t.indexOf(q); at >= 0; at = t.indexOf(q, at + q.length)) { const r = document.createRange(); r.setStart(n, at); r.setEnd(n, at + q.length); Find.hits.push(r); }
+      }
+    }
+    if (canMark) { CSS.highlights.delete('find-cur'); if (Find.hits.length) CSS.highlights.set('find', new Highlight(...Find.hits)); else CSS.highlights.delete('find'); }
+    stepFind(1, true);
+  }
+  function stepFind(d, fromStart) {
+    const n = Find.hits.length;
+    $c('cFindN').textContent = !$c('cFindQ').value.trim() ? '' : n ? `${(fromStart ? n - 1 : (Find.i + d + n) % n) + 1} of ${n}` : 'No matches';
+    if (!n) return;
+    Find.i = fromStart ? n - 1 : (Find.i + d + n) % n;   // starts at the newest match
+    const r = Find.hits[Find.i];
+    for (let el = r.startContainer.parentElement; el; el = el.parentElement) if (el.tagName === 'DETAILS' && !el.open) el.open = true;
+    if (canMark) CSS.highlights.set('find-cur', new Highlight(r));
+    const box = r.getBoundingClientRect(), s = scroller(), sb = s.getBoundingClientRect();
+    if (box.top < sb.top + 60 || box.bottom > sb.bottom - 60) s.scrollTop += box.top - sb.top - s.clientHeight / 2;
+    $c('cFindN').textContent = `${Find.i + 1} of ${n}`;
+  }
 
   /* ---------- live events ---------- */
   function flushLive() {
@@ -475,6 +602,7 @@
       }
       case 'init':
         if (comp) { C.comp.sessionId = ev.sessionId; break; }
+        setTimeout(syncFav, 0);
         C.sessionId = ev.sessionId || C.sessionId;
         if (ev.permissionMode) setMode(ev.permissionMode);
         C.model = modelName(ev.model);
@@ -927,6 +1055,19 @@
       <div class="cw-in"><p class="cw-k">A new ${C.provider === 'codex' ? 'Codex' : 'Claude'} chat in</p><h2>${esc(p ? p.name : C.folder || 'this folder')}</h2>
       ${chips ? `<p class="cw-h">Start from a prompt, or just write. Type <kbd class="kbd">/</kbd> to search them.</p><div class="chips">${chips}</div>` : ''}</div></div>`);
   }
+  // What you were typing stays with each chat, even if you switch away or close the window.
+  const draftKey = () => (C.sessionId ? `draft:${C.sessionId}` : C.info && C.info.cwd ? `draft:new:${C.info.cwd}` : null);
+  let draftTimer = null;
+  function saveDraft() {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(() => { const k = draftKey(); if (!k) return; try { const v = $c('cText').value; if (v.trim()) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch { /* full or private */ } }, 400);
+  }
+  function restoreDraft() {
+    const k = draftKey(); if (!k || $c('cText').value) return;
+    try { const v = localStorage.getItem(k); if (v) { $c('cText').value = v; grow(); } } catch { /* none */ }
+  }
+  function clearDraft() { clearTimeout(draftTimer); const k = draftKey(); try { if (k) localStorage.removeItem(k); if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.info.cwd}`); } catch { /* fine */ } }
+
   async function sendMessage() {
     let text = $c('cText').value;
     if (!text.trim() && !C.attachments.length && !(C.files || []).length) return;
@@ -949,7 +1090,7 @@
     try {
       const key = target === 'comp' ? (await ensureCompanion()).key : C.key;
       await api('/api/chat/send', { key, text, images });
-      clear();
+      clear(); clearDraft();
     } finally { $c('cSend').disabled = false; $c('cText').focus(); }
   }
   function modeOptions(list) {
@@ -1066,7 +1207,10 @@
     if (C.es) { C.es.close(); C.es = null; }
     clearTimeout(C.liveTimer);
     if (C.comp && C.comp.es) C.comp.es.close();
-    C.files = [];
+    // Each chat has its own message box: what you typed stays with the chat it was for (as a draft).
+    clearTimeout(draftTimer);
+    $c('cText').value = ''; C.attachments = []; C.files = []; renderAttachments(); grow();
+    closeFind(); unseen = 0;
     Object.assign(C, { key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
     closePick();
     $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
@@ -1108,12 +1252,18 @@
     headerAccount(info.accountId, info.accountName);
     setState(info.state || 'starting');
     show();
-    if (mode !== 'new' && C.sessionId) { try { await loadHistory(); } catch (err) { toast(`Couldn’t load earlier messages: ${err.message}`); } }
+    if (mode !== 'new' && C.sessionId) {
+      // A quiet placeholder while the conversation loads, instead of an empty window.
+      $c('cFeed').insertAdjacentHTML('beforeend', '<div class="c-skel" aria-hidden="true"><i class="u"></i><i></i><i class="s"></i><i class="u"></i><i></i></div>');
+      try { await loadHistory(); } catch (err) { toast(`Couldn’t load earlier messages: ${err.message}`); }
+      $c('cFeed').querySelector('.c-skel')?.remove();
+    }
     if (mode === 'new') welcome(info.cwd || cwd);
+    restoreDraft();
     toBottom();
     connect();
     markSeen(findActivity(info.key) || { key: info.key, sessionId: C.sessionId, finishedAt: Date.now() });
-    renderRail(); renderLedgerSoon();
+    renderRail(); renderLedgerSoon(); syncFav();
     $c('cText').focus();
   }
 
@@ -1167,6 +1317,7 @@
       : '<p><b>Read-only.</b> This chat was last used in another app, like the desktop app. Continue it here if it’s closed there.</p><button type="button" class="btn prime" data-c="takeover">Continue it here</button><button type="button" class="btn quiet" data-c="fork">Open a copy</button>';
     show();
     try { const h = await loadHistory(); C.watchSig = sigOf(h); } catch (err) { toast(`Couldn’t read this chat: ${err.message}`); }
+    syncFav();
     toBottom();
     markSeen(findActivity(`s:${sessionId}`) || { sessionId, finishedAt: Date.now() });
     renderRail(); renderLedgerSoon();
@@ -1255,6 +1406,7 @@
         case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
         case 'stop': C.interruptedAt = Date.now(); return api('/api/chat/interrupt', { key: C.target === 'comp' && C.comp ? C.comp.key : C.key });
         case 'relay': return relay(c.closest('.turn'));
+        case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
         case 'copyturn': {
           const turn = c.closest('.turn');
           const text = [...turn.querySelectorAll('.final > .md')].map(x => x.innerText.trim()).filter(Boolean).join('\n\n');
@@ -1287,7 +1439,7 @@
     });
     $c('cMode').addEventListener('change', wrap(async e => { await api('/api/chat/mode', { key: C.key, mode: e.target.value }); toast(`Mode: ${(e.target.selectedOptions[0] || {}).textContent || e.target.value}. Remembered for this chat and new ones in ${C.folder || 'this project'}.`, 3000); renderLedgerSoon(); }));
     $c('cCompose').addEventListener('submit', e => { e.preventDefault(); wrap(sendMessage)(); });
-    $c('cText').addEventListener('input', () => { grow(); Slash.moved = false; renderSlash(); });
+    $c('cText').addEventListener('input', () => { grow(); Slash.moved = false; renderSlash(); saveDraft(); });
     $c('cText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $c('cText')) closeSlash(); }, 120));
     $c('cSlash').addEventListener('mousedown', e => { const li = e.target.closest('[data-si]'); if (!li) return; e.preventDefault(); pickSlash(+li.dataset.si); });
     $c('cPending').addEventListener('keydown', e => {
@@ -1316,6 +1468,20 @@
     chat.addEventListener('dragleave', e => { if (e.target === chat || !chat.contains(e.relatedTarget)) chat.classList.remove('drop'); });
     chat.addEventListener('drop', e => { e.preventDefault(); chat.classList.remove('drop'); if (!C.watch) addFiles([...e.dataTransfer.files]); });
     $c('cLight').addEventListener('click', () => { $c('cLight').hidden = true; });
+    $c('cScroll').addEventListener('scroll', () => { if (!jumpRaf) jumpRaf = requestAnimationFrame(() => { jumpRaf = 0; syncJump(); }); }, { passive: true });
+    $c('cJump').addEventListener('click', jumpLatest);
+    $c('cFindQ').addEventListener('input', runFind);
+    $c('cFindQ').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); stepFind(e.shiftKey ? 1 : -1); }   // Enter goes up, to older matches
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFind(); $c('cText').focus(); }
+    });
+    $c('cFind').addEventListener('click', e => { const b = e.target.closest('[data-find]'); if (!b) return; if (b.dataset.find === 'close') closeFind(); else stepFind(b.dataset.find === 'up' ? -1 : 1); });
+    document.addEventListener('keydown', e => {
+      if ($c('chat').hidden || document.querySelector('dialog[open]')) return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind(String(window.getSelection() || '').trim().slice(0, 80)); return; }
+      const typing = e.target instanceof Element && e.target.closest('input, textarea, select');
+      if (!typing && e.key === 'End') { e.preventDefault(); jumpLatest(); }
+    });
     document.addEventListener('mousedown', e => { if (!$c('cPick').hidden && !(e.target.closest && e.target.closest('#cPick, [data-crew]'))) closePick(); });
     document.addEventListener('touchstart', e => { if (!$c('cPick').hidden && !(e.target.closest && e.target.closest('#cPick, [data-crew]'))) closePick(); }, { passive: true });
     document.addEventListener('keydown', e => {
@@ -1325,12 +1491,155 @@
     }, true);
   });
 
+  /* ---------- right-click inside the chat ---------- */
+  async function copyOut(text, what = 'Copied.') { try { await navigator.clipboard.writeText(text); toast(what, 1500); } catch { prompt('Copy this:', text); } }
+  const quote = text => text.trim().split('\n').map(l => `> ${l}`).join('\n');
+  async function copyImage(src) {
+    try {
+      let blob = await (await fetch(src)).blob();
+      if (blob.type !== 'image/png') {
+        const bmp = await createImageBitmap(blob); const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+        c.getContext('2d').drawImage(bmp, 0, 0); blob = await new Promise(r => c.toBlob(r, 'image/png'));
+      }
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      toast('Picture copied.', 1500);
+    } catch { toast('This picture can’t be copied here. Use “Show in folder” instead.'); }
+  }
+  function modelItems(src) {
+    const name = PROV_NAME[provFor(src)];
+    return [
+      { glyph: '◈', label: `Choose ${name}’s model…`, run: () => openPick(src) },
+      ...presetsFor(src).map(p => ({ glyph: p.glyph, label: `${p.name}: ${p.label}${p.effort ? ` · ${p.effort}` : ''}`, hint: p.note, checked: C.mi[src] && C.mi[src].model === p.model && C.mi[src].effort === p.effort, run: () => pickModel(src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }) })),
+    ];
+  }
+  // ★ in the header pins this chat to the top of the sidebar.
+  function syncFav() {
+    const b = $c('cFav'); if (!b) return;
+    const id = C.sessionId || (C.watch && C.watch.sessionId);
+    const on = !!(id && window.isFav && window.isFav(id));
+    b.hidden = !id; b.setAttribute('aria-pressed', String(on));
+    b.title = on ? 'Unpin from the sidebar' : 'Pin to the sidebar';
+    b.innerHTML = on ? '★' : '☆';
+  }
+  function chatHeadItems() {
+    const id = C.sessionId;
+    return [
+      ...(id ? [{ glyph: window.isFav(id) ? '☆' : '★', label: window.isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => window.toggleFav(id) }, '-'] : []),
+      { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
+      { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },
+      '-',
+      { glyph: '❧', label: 'Export as Markdown', hint: window.Android ? 'copies it' : 'saves a .md file', run: exportChat },
+      { label: 'Copy the whole chat as Markdown', run: () => copyOut(chatMarkdown(), 'Copied the chat as Markdown.') },
+      ...(id && !C.watch ? [{ label: 'Rename chat', run: async () => { await renameChat(id); const [s] = findSession(id); if (s) { C.title = s.title; $c('cTitle').textContent = s.title; } } }] : []),
+      ...(id ? [{ label: 'Copy chat ID', run: () => copyOut(id) }] : []),
+      { label: 'Browse this chat’s folder', run: () => openFile('.') },
+      ...(!C.watch && C.state !== 'ended' ? ['-', { label: 'Stop this chat', danger: true, run: () => api('/api/chat/stop', { key: C.key }) }] : []),
+    ];
+  }
+  // Returns menu items for what was right-clicked, or undefined to let the app decide.
+  function contextItems(t, at) {
+    if (C.watch && !t.closest('#cFeed')) return undefined;
+    const sel = window.getSelection();
+    const picked = sel && !sel.isCollapsed ? String(sel).trim() : '';
+    if (picked && sel.anchorNode && $c('cFeed').contains(sel.anchorNode) && t.closest('#cFeed')) {
+      const short = picked.length > 40 ? `${picked.slice(0, 39)}…` : picked;
+      return [
+        { glyph: '⧉', label: 'Copy', keys: 'Ctrl C', run: () => copyOut(picked) },
+        ...(!C.watch ? [{ glyph: '❝', label: 'Quote in my message', run: () => placeText(`${quote(picked)}\n\n`, false) }] : []),
+        ...(duo() ? [{ glyph: '◆', label: C.target === 'comp' ? 'Ask Claude about this' : 'Ask Codex about this', run: () => { setTarget(C.target === 'comp' ? 'main' : 'comp', false); placeText(`${quote(picked)}\n\n`, false); } }] : []),
+        { glyph: '⌕', label: `Find “${short}” in this chat`, run: () => openFind(picked) },
+        { glyph: '✦', label: `Search every chat for “${short}”`, run: () => openPalette(picked) },
+      ];
+    }
+    const gen = t.closest('.gen, .thumb, .af-media');
+    if (gen) {
+      const img = gen.querySelector('img'), vid = gen.querySelector('video');
+      const p = gen.querySelector('[data-file]')?.dataset.file || gen.querySelector('[data-reveal]')?.dataset.reveal || null;
+      const inProject = p && C.info && C.info.cwd && p.toLowerCase().startsWith(C.info.cwd.toLowerCase());
+      return [
+        ...(img ? [{ glyph: '⤢', label: 'View full size', run: () => lightbox((gen.querySelector('[data-full]') || gen).dataset.full || img.src) }, { glyph: '⧉', label: 'Copy picture', run: () => copyImage(img.src) }] : []),
+        ...(vid ? [{ glyph: '▶', label: vid.paused ? 'Play' : 'Pause', run: () => (vid.paused ? vid.play() : vid.pause()) }] : []),
+        ...(p && C.provider === 'claude' && img ? [{ glyph: '✦', label: 'Give to Claude', run: () => giveImage(p) }] : []),
+        ...(p ? ['-', { label: 'Open in the viewer', run: () => openFile(p) }, { label: 'Show in folder', disabled: !!window.REMOTE, why: 'Only on the PC', run: () => api('/api/reveal', { path: p, key: C.key, session: C.sessionId }) }, { label: 'Copy path', run: () => copyOut(p) }] : []),
+        ...(inProject && img ? [{ label: 'Use as the project’s banner', run: async () => { await api('/api/project/banner', { cwd: C.info.cwd, path: p }); toast('Banner set.', 1800); } }] : []),
+      ];
+    }
+    const code = t.closest('.code');
+    if (code) {
+      const text = code.querySelector('code').textContent, lang = code.querySelector('.code-h span').textContent;
+      return [
+        { glyph: '⧉', label: 'Copy code', run: () => copyOut(text) },
+        { label: 'Copy as Markdown', run: () => copyOut(`\`\`\`${lang === 'code' ? '' : lang}\n${text}\n\`\`\``) },
+        ...(!C.watch ? [{ glyph: '❝', label: 'Put it in my message', run: () => placeText(`\`\`\`${lang === 'code' ? '' : lang}\n${text}\n\`\`\`\n\n`, false) }] : []),
+      ];
+    }
+    const fl = t.closest('.flink[data-path], [data-file]');
+    if (fl) {
+      const p = fl.dataset.path || fl.dataset.file;
+      return [
+        { glyph: '❧', label: 'Open', run: () => openFile(p) },
+        { label: 'Show in folder', disabled: !!window.REMOTE, why: 'Only on the PC', run: () => api('/api/reveal', { path: p, key: C.key, session: C.sessionId }) },
+        { label: 'Copy path', run: () => copyOut(p) },
+        ...(!C.watch ? [{ label: 'Mention it in my message', run: () => placeText(`\`${p}\` `, false) }] : []),
+      ];
+    }
+    if (t.closest('a[href^="http"]')) return undefined;
+    const tool = t.closest('.tool');
+    if (tool) {
+      const v = tool._view || {}, out = tool.querySelector('.t-out');
+      const input = typeof v.detail === 'string' ? v.detail : v.detail && v.detail.new ? v.detail.new : '';
+      const path = (v.meta && v.meta.path) || (v.name === 'Read' ? v.summary : null);
+      return [
+        { glyph: tool.open ? '▴' : '▾', label: tool.open ? 'Collapse' : 'Show details', run: () => { tool.open = !tool.open; } },
+        ...(input ? [{ glyph: '⧉', label: v.detailKind === 'command' ? 'Copy command' : 'Copy input', run: () => copyOut(input) }] : []),
+        ...(out && out.textContent ? [{ label: 'Copy output', run: () => copyOut(out.textContent) }] : []),
+        ...(path ? [{ label: `Open ${base(path)}`, run: () => openFile(path) }] : []),
+      ];
+    }
+    const um = t.closest('.umsg');
+    if (um) {
+      const text = RAW.get(um) || um.innerText;
+      return [
+        { glyph: '⧉', label: 'Copy message', run: () => copyOut(text) },
+        ...(!C.watch ? [{ glyph: '↺', label: 'Edit and send again', hint: 'puts it back in the message box', run: () => { if (um.classList.contains('to-codex')) setTarget('comp', false); placeText(text, true); } },
+          { glyph: '❝', label: 'Quote it', run: () => placeText(`${quote(text)}\n\n`, false) }] : []),
+      ];
+    }
+    const turn = t.closest('.turn');
+    if (turn) {
+      const text = turnMarkdown(turn), prov = turn.dataset.prov || C.provider;
+      return [
+        ...(text ? [{ glyph: '⧉', label: 'Copy reply', run: () => copyOut(turn.querySelector('.final > .md') ? [...turn.querySelectorAll('.final > .md')].map(x => x.innerText.trim()).join('\n\n') : text) },
+          { label: 'Copy as Markdown', run: () => copyOut(text) }] : []),
+        ...(text && !C.watch ? [{ glyph: '❝', label: 'Quote in my message', run: () => placeText(`${quote(text)}\n\n`, false) }] : []),
+        ...(text && duo() ? [{ glyph: prov === 'codex' ? '✦' : '◆', label: prov === 'codex' ? 'Send to Claude' : 'Ask Codex about this', run: () => relay(turn) }] : []),
+        '-',
+        ...chatHeadItems().slice(0, 3),
+      ];
+    }
+    const crew = t.closest('[data-crew]');
+    if (crew) {
+      const src = crew.dataset.crew, name = PROV_NAME[provFor(src)];
+      return [
+        ...(duo() && C.target !== src ? [{ glyph: '➤', label: `Write to ${name}`, keys: 'Ctrl .', run: () => setTarget(src) }] : []),
+        ...modelItems(src),
+        ...(src === 'comp' && C.comp && !C.comp.ended ? ['-', { label: 'Stop the Codex helper', hint: 'your next message to Codex starts it again', danger: true, run: () => api('/api/chat/stop', { key: C.comp.key }) }] : []),
+      ];
+    }
+    if (t.closest('.c-head, #cFeed, .c-scroll')) return chatHeadItems();
+    return undefined;
+  }
+
   window.ChatUI = {
     open, openKey, watch, close, md, renderRail, refreshUsage, isViewing,
     accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
     showLedger: () => { const chat = $c('chat'); if (matchMedia('(max-width: 1320px)').matches) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
     sessionsChanged: () => { if (C.watch) refreshWatch(); },
     refreshCrew: () => { if (!$c('chat').hidden) renderCrew(); },
+    refreshFav: () => syncFav(),
+    sessionId: () => C.sessionId || (C.watch && C.watch.sessionId) || null,
+    contextItems,
+    find: q => openFind(q), exportChat, jumpLatest,
     // Ctrl+K: "Sonnet 5.5", "GPT-6-Luna"… for the chat you're in.
     modelItems: () => {
       if ($c('chat').hidden || C.watch) return [];

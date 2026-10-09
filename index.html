@@ -68,11 +68,14 @@
         <select id="cMode" class="c-mode" title="What Claude may do without asking"></select>
       </div>
       <div class="c-icons">
+      <button type="button" class="icon c-fav" id="cFav" data-c="fav" aria-pressed="false" aria-label="Pin to the sidebar" hidden>☆</button>
       <button type="button" class="icon" data-c="ledger" aria-label="Show or hide the ledger" title="Ledger: artifacts, files, commands and tasks"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="3" y="2.5" width="12" height="13" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 6h6M6 9h6M6 12h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
       <button type="button" class="icon" data-c="more" aria-haspopup="menu" aria-expanded="false" aria-label="More chat actions"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="4" cy="9" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="1.5" fill="currentColor"/><circle cx="14" cy="9" r="1.5" fill="currentColor"/></svg></button>
       </div>
     </header>
+    <div class="c-find" id="cFind" role="search" hidden><span class="glyph" aria-hidden="true">⌕</span><input id="cFindQ" type="search" placeholder="Find in this chat" aria-label="Find in this chat" autocomplete="off" spellcheck="false"><span class="cf-n" id="cFindN" aria-live="polite"></span><button type="button" class="icon" data-find="up" aria-label="Older match (Enter)" title="Older match (Enter)">↑</button><button type="button" class="icon" data-find="down" aria-label="Newer match (Shift+Enter)" title="Newer match (Shift+Enter)">↓</button><button type="button" class="icon" data-find="close" aria-label="Close (Esc)">✕</button></div>
     <div class="c-scroll" id="cScroll"><div class="c-feed" id="cFeed"></div></div>
+    <button type="button" class="c-jump" id="cJump" hidden></button>
     <div class="c-dock">
       <div class="c-pending" id="cPending" aria-live="polite"></div>
       <form class="c-compose" id="cCompose">

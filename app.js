@@ -23,6 +23,30 @@ try { S.pins = new Set(JSON.parse(store('pins') || '[]')); } catch { /* none */ 
 try { S.seen = JSON.parse(store('seen') || '{}') || {}; } catch { S.seen = {}; }
 S.recentProv = store('recentProv') || 'all';
 const savePins = () => store('pins', JSON.stringify([...S.pins]));
+// Favorite chats (pinned to the top of the sidebar), and sidebar sections you've folded away.
+try { S.favs = new Set(JSON.parse(store('favChats') || '[]')); } catch { S.favs = new Set(); }
+try { S.navFold = new Set(JSON.parse(store('navFold') || '[]')); } catch { S.navFold = new Set(); }
+function togglePin(cwd) {
+  const on = !S.pins.has(cwd);
+  if (on) S.pins.add(cwd); else S.pins.delete(cwd);
+  savePins(); renderNav(); if (S.view === 'folder' || S.view === 'hub') renderPage();
+  toast(on ? 'Pinned to the sidebar.' : 'Unpinned.', 1600);
+}
+function toggleFav(id) {
+  const k = String(id).toLowerCase(), on = !S.favs.has(k);
+  if (on) S.favs.add(k); else S.favs.delete(k);
+  store('favChats', JSON.stringify([...S.favs]));
+  renderNav(); if (window.ChatUI && ChatUI.refreshFav) ChatUI.refreshFav();
+  toast(on ? 'Pinned to the sidebar.' : 'Unpinned.', 1600);
+}
+const isFav = id => !!id && S.favs.has(String(id).toLowerCase());
+window.toggleFav = toggleFav; window.isFav = isFav;
+function openChatFromNav(id) {
+  const [s] = sessionById(id); if (!s) return toast('That chat isn’t in the list any more.');
+  if (liveOf(s.id)) return ChatUI.open({ sessionId: s.id });
+  if (isRunning(s.id)) return ChatUI.watch({ sessionId: s.id, source: 'terminal' });
+  return inApp() ? ChatUI.open({ sessionId: s.id }) : openDrawer(s.id);
+}
 
 async function api(p, body) {
   let r;
@@ -359,6 +383,14 @@ function renderNav() {
       ${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}<span class="count">${x.list.length}</span></button>`;
   };
   const claude = group('claude'), codexF = group('codex');
+  // Pinned: projects and favorite chats, at the top.
+  const pinnedP = [...S.pins].map(cwd => S.projects.find(p => p.cwd === cwd)).filter(Boolean);
+  const pinnedC = [...S.favs].map(id => sessionById(id)).filter(([s2]) => s2);
+  const chatDot = id => { const x = S.activity.find(y => y.sessionId && y.sessionId.toLowerCase() === id.toLowerCase()); if (!x) return ''; const st = statusOf(x); return NEEDS.has(st) || st === 'reply' ? '<span class="gilt-dot nav-dot" title="Waiting for you"></span>' : st === 'working' ? '<span class="ember-dot nav-dot" title="At work"></span>' : ''; };
+  const fold = (id, label, count, cls = '') => `<button class="nav-h prov ${cls} fold" data-fold="${id}" aria-expanded="${!S.navFold.has(id)}"><span class="pmark" aria-hidden="true"></span>${label}<span class="count">${count}</span><span class="fold-c" aria-hidden="true">▾</span></button>`;
+  const pinnedHtml = pinnedP.length || pinnedC.length ? `${fold('pinned', 'Pinned', pinnedP.length + pinnedC.length, 'pinned')}
+    ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}"><span class="glyph" aria-hidden="true">★</span><span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
+      + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${isCodex(c) ? 'codex' : ''}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t">${esc(c.title)}<small>${esc(p.name)}${isCodex(c) ? ' · Codex' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
   const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0);
   const showCodex = S.codex && S.codex.enabled;
   const fresh = S.projects.filter(p => !p.sessions.length);
@@ -375,10 +407,11 @@ function renderNav() {
     <button class="nav-i" data-view="palette" aria-current="${S.view === 'search'}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t">Search every chat</span><span class="count">Ctrl K</span></button>
     <button class="nav-i nav-new" data-view="newproject"><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New project</span></button>
     ${fresh.length ? `<div class="nav-h prov fresh"><span class="pmark" aria-hidden="true"></span>No chats yet<span class="count">${fresh.length}</span></div>${fresh.map(p => `<button class="nav-i" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}"><span class="glyph" aria-hidden="true">${glyphFor(p.name)}</span><span class="ni-t">${esc(p.name)}</span><span class="tag ghost">New</span></button>`).join('')}` : ''}
-    <div class="nav-h prov claude"><span class="pmark" aria-hidden="true"></span>Claude Code<span class="count">${nClaude}</span></div>
-    ${claude.length ? claude.map(x => item(x, 'claude')).join('') : '<p class="nav-empty">No Claude Code chats yet.</p>'}
-    ${showCodex ? `<div class="nav-h prov codex"><span class="pmark" aria-hidden="true"></span>Codex<span class="count">${nCodex}</span></div>
-    ${codexF.length ? codexF.map(x => item(x, 'codex')).join('') : `<p class="nav-empty">${codexReady() ? 'No Codex chats yet. Start one with “New Codex chat” on the Codex card.' : 'Sign in on the Codex card to use Codex here.'}</p>`}` : ''}
+    ${pinnedHtml}
+    ${fold('claude', 'Claude Code', nClaude, 'claude')}
+    ${S.navFold.has('claude') ? '' : claude.length ? claude.map(x => item(x, 'claude')).join('') : '<p class="nav-empty">No Claude Code chats yet.</p>'}
+    ${showCodex ? `${fold('codex', 'Codex', nCodex, 'codex')}
+    ${S.navFold.has('codex') ? '' : codexF.length ? codexF.map(x => item(x, 'codex')).join('') : `<p class="nav-empty">${codexReady() ? 'No Codex chats yet. Start one with “New Codex chat” on the Codex card.' : 'Sign in on the Codex card to use Codex here.'}</p>`}` : ''}
     <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p>`;
 }
 
@@ -564,7 +597,7 @@ function dialShell(a, u, cur, blocked, locked, detail) {
   const org = a.signedIn && orgLabel(a) ? `<span class="eyebrow">${esc(orgLabel(a))}</span>` : '';
   const lockTitle = locked ? `Locked to ${[a.expectEmail, a.pinnedOrg && a.pinnedOrg.name].filter(Boolean).join(', ')}` : '';
   const checked = [u && u.at ? `Usage checked ${agoL(u.at)}` : '', a.verified ? `sign-in confirmed ${agoL(a.verifiedAt)}` : a.verifyError ? 'couldn’t confirm the sign-in' : ''].filter(Boolean).join(' · ');
-  return `<article class="dial-card ${cur ? 'current' : ''} ${blocked ? 'blocked' : ''}" style="--ring:${ringOf(a)}">
+  return `<article class="dial-card ${cur ? 'current' : ''} ${blocked ? 'blocked' : ''}" data-acct-card="${esc(a.id)}" style="--ring:${ringOf(a)}">
     <div class="dial-wrap">${dialSvg(u)}<div class="legend"><span><i class="l5"></i>5 hours</span><span><i class="lw"></i>week</span><span><i class="ln"></i>time passed</span></div></div>
     <div class="dc-body">
       <div class="dc-k">${plan}${org}</div>
@@ -688,7 +721,7 @@ function rowHtml(s, folderName, hit) {
   const sub = s.lastPrompt ? `You last asked: ${s.lastPrompt}` : (s.title !== s.firstPrompt ? `Started with: ${s.firstPrompt}` : '');
   const live = liveOf(s.id);
   const run = !live && isRunning(s.id);
-  const flags = (cx ? '<span class="tag codex">Codex</span>' : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
+  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
     : run ? '<span class="tag violet">In a terminal</span>' : (s.active ? '<span class="tag ghost">Just updated</span>' : ''));
   const primary = live ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Go back to this chat">Return</button>`
     : run ? `<button class="btn sm" data-watch="${esc(s.id)}" title="Read it live here while it runs in its terminal">Watch</button>`
@@ -822,17 +855,18 @@ function worldCard(p, i) {
   </article>`;
 }
 // New chat in a project: Claude or Codex, plain or starting from a saved prompt.
-function worldNewMenu(anchor, cwd) {
-  const p = S.projects.find(x => x.cwd === cwd); if (!p) return;
+function worldNewItems(cwd) {
+  const p = S.projects.find(x => x.cwd === cwd); if (!p) return [];
   const a = current();
-  showMenu(anchor, [
+  return [
     { label: `New Claude chat`, hint: `as ${a.name}`, disabled: !canLaunch(a), why: a.lockMessage || 'Sign in first', run: () => ChatUI.open({ cwd, mode: 'new' }) },
     ...(S.codex && S.codex.enabled ? [{ label: 'New Codex chat', hint: 'ChatGPT', disabled: !codexReady(), why: 'Sign in to Codex first', run: () => ChatUI.open({ cwd, mode: 'new', provider: 'codex' }) }] : []),
     '-',
     ...S.prompts.slice(0, 10).map(pr => ({ label: `Start with: ${pr.title}`, hint: pr.provider === 'codex' ? 'runs in Codex' : '', disabled: pr.provider === 'codex' ? !codexReady() : !canLaunch(a), run: () => startWithPrompt(cwd, pr) })),
     { label: 'Edit prompts…', run: openPromptEditor },
-  ]);
+  ];
 }
+function worldNewMenu(anchor, cwd) { const items = worldNewItems(cwd); if (items && items.length) showMenu(anchor, items); }
 
 /* ---------- the prompt book ---------- */
 const today8601 = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -1312,13 +1346,16 @@ function closeDrawer() {
 
 /* ---------- menus ---------- */
 let menuAnchor = null;
+// anchor: the button it belongs to, or { x, y } for a right-click menu at the pointer.
 function showMenu(anchor, items) {
   const m = $('menu');
   closeMenu();
-  m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}`}</button>`)).join('');
+  items = items.filter((it, i, all) => it !== '-' || (i > 0 && i < all.length - 1 && all[i - 1] !== '-'));
+  m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${it.glyph ? `<span class="m-g" aria-hidden="true">${esc(it.glyph)}</span>` : ''}<span class="m-l">${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</span>${it.keys ? `<kbd class="m-k">${esc(it.keys)}</kbd>` : ''}`}</button>`)).join('');
   m.hidden = false;
   placeAt(m, anchor);
-  menuAnchor = anchor; anchor.setAttribute('aria-expanded', 'true');
+  menuAnchor = anchor instanceof Element ? anchor : null;
+  if (menuAnchor) menuAnchor.setAttribute('aria-expanded', 'true');
   m.onclick = e => { const b = e.target.closest('button[data-i]'); if (!b || b.disabled) return; const it = items[+b.dataset.i]; closeMenu(true); wrap(it.run)(); };
   m.querySelector('button:not(:disabled)')?.focus();
 }
@@ -1326,7 +1363,8 @@ function showMenu(anchor, items) {
 // size, since the page is scaled by it.
 const uiScale = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--look-ui')) || 1;
 function placeAt(m, anchor, align = 'start') {
-  const z = uiScale(), r = anchor.getBoundingClientRect();
+  const z = uiScale();
+  const r = anchor instanceof Element ? anchor.getBoundingClientRect() : { left: anchor.x, right: anchor.x, top: anchor.y, bottom: anchor.y };
   const W = window.innerWidth, H = window.innerHeight;
   const w = m.offsetWidth * z, h = m.offsetHeight * z;
   let left = align === 'end' || r.left + w > W - 8 ? r.right - w : r.left;
@@ -1350,10 +1388,10 @@ $('menu').addEventListener('keydown', e => {
 document.addEventListener('mousedown', e => { if (!$('menu').hidden && !e.target.closest('#menu') && e.target.closest('[aria-haspopup]') !== menuAnchor) closeMenu(); });
 window.addEventListener('resize', () => closeMenu());
 
-function codexChatMenu(anchor, s) {
+function codexChatItems(s) {
   const ok = codexReady(), why = 'Sign in to Codex first';
   const live = liveOf(s.id);
-  showMenu(anchor, [
+  return [
     live ? { label: 'Return to this chat', run: () => ChatUI.open({ sessionId: s.id }) } : { label: 'Open in the chat window', hint: 'Codex', disabled: !ok, why, run: () => ChatUI.open({ sessionId: s.id }) },
     { label: 'Resume in a terminal', hint: 'codex resume', disabled: !ok || !!live, why: live ? 'It’s open in the chat window' : why, run: () => resume(s.id, 'resume') },
     { label: 'Open a copy in the chat window', hint: 'keeps the original', disabled: !ok, why, run: () => ChatUI.open({ sessionId: s.id, mode: 'fork' }) },
@@ -1363,15 +1401,16 @@ function codexChatMenu(anchor, s) {
     { label: 'Browse this chat’s folder', run: () => Viewer.open({ path: '.', session: s.id }) },
     { label: 'Rename chat', run: () => renameChat(s.id) },
     { label: 'Copy terminal command', run: () => copyCommand(s.id) },
-  ]);
+  ];
 }
-function chatMenu(anchor, id) {
-  const [s] = sessionById(id); if (!s) return;
-  if (isCodex(s)) return codexChatMenu(anchor, s);
+function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id)]); }
+function chatItems(id) {
+  const [s] = sessionById(id); if (!s) return [];
+  if (isCodex(s)) return codexChatItems(s);
   const a = current(); const ok = canLaunch(a);
   const why = !a.signedIn ? `Sign in to ${a.name} first` : (a.lockMessage || '');
   const live = liveOf(id), run = isRunning(id);
-  showMenu(anchor, [
+  return [
     live ? { label: 'Return to this chat', run: () => ChatUI.open({ sessionId: id }) }
       : { label: `Open in the chat window as ${a.name}`, disabled: !ok, why, run: () => ChatUI.open({ sessionId: id }) },
     ...(run && !live ? [{ label: 'Watch it live here', hint: 'read-only while it runs in its terminal', run: () => ChatUI.watch({ sessionId: id, source: 'terminal' }) }] : []),
@@ -1385,8 +1424,10 @@ function chatMenu(anchor, id) {
     { label: 'Rename chat', run: () => renameChat(id) },
     { label: 'Copy terminal command', run: () => copyCommand(id) },
     { label: 'Show transcript file', run: async () => { const r = await api('/api/reveal', { sessionId: id }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
-  ]);
+  ];
 }
+function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id)]); }
+const favItem = id => ({ glyph: isFav(id) ? '☆' : '★', label: isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => toggleFav(id) });
 
 function sealMenu(anchor) {
   showMenu(anchor, [
@@ -1405,9 +1446,9 @@ function sealMenu(anchor) {
   ]);
 }
 
-function accountMenu(anchor, id) {
+function accountItems(id) {
   const a = S.accounts.find(x => x.id === id) || current();
-  showMenu(anchor, [
+  return [
     { label: `Open claude.ai as ${a.name}`, hint: 'regular Claude chats, in its own window', run: () => openWeb(a.id) },
     '-',
     { label: 'Check sign-in now', run: async () => { await api('/api/accounts/verify', { account: a.id }); await reload(); toast(`Checked ${a.name} with Claude Code.`); } },
@@ -1416,8 +1457,9 @@ function accountMenu(anchor, id) {
     { label: 'Rename', run: () => accountAction('rename', a.id) },
     { label: 'Sign out', disabled: !a.signedIn, run: () => accountAction('signout', a.id) },
     ...(a.isDefault ? [] : ['-', { label: 'Remove from list', danger: true, run: () => accountAction('remove', a.id) }]),
-  ]);
+  ];
 }
+function accountMenu(anchor, id) { const items = accountItems(id); if (items && items.length) showMenu(anchor, items); }
 
 /* ---------- actions ---------- */
 function reportLaunch(r, msg) {
@@ -1853,6 +1895,7 @@ function palItems(q) {
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
     { glyph: '⚙', t: 'Setup and health', run: openSetup },
     { glyph: '◐', t: 'Appearance', s: 'themes, light or dark, text and interface size', run: () => openSetup('look') },
+    { glyph: '?', t: 'Keyboard shortcuts', run: () => openShortcuts() },
     { glyph: '◐', t: Look.isLight() ? 'Switch to dark mode' : 'Switch to light mode', run: () => Look.set({ mode: Look.isLight() ? 'dark' : 'light' }) },
     ...Look.THEMES.filter(t => t.id !== Look.get().theme).map(t => ({ glyph: '◉', t: `Theme: ${t.name}`, s: t.note, run: () => Look.set({ theme: t.id }) })),
     { glyph: '◈', t: 'Check usage for every account', run: () => refreshUsage() },
@@ -1871,7 +1914,16 @@ function palItems(q) {
   const prompts = worldsFor.filter(p => p.exists).flatMap(p => S.prompts.map(pr => ({ glyph: '❡', t: `${pr.title} in ${p.name}`, s: pr.provider === 'codex' ? 'Codex' : 'prompt', run: () => startWithPrompt(p.cwd, pr), text: `${pr.title} ${p.name} prompt start` })));
   const docs = Object.values(S.worlds).flatMap(w => { const p = S.projects.find(x => x.cwd === w.cwd); return p ? w.docs.slice(0, 60).map(d => ({ glyph: '❧', t: d.name, s: `${p.name} · ${agoL(d.mtime)}`, run: () => Viewer.open({ path: d.path, cwd: p.cwd }), text: `${d.rel} ${p.name}` })) : []; });
   const models = window.ChatUI && ChatUI.modelItems ? ChatUI.modelItems() : [];
+  // The chat you're in: find, export, pin.
+  const inChat = window.ChatUI && ChatUI.isOpen();
+  const sid = inChat && ChatUI.sessionId ? ChatUI.sessionId() : null;
+  const chatActs = inChat ? [
+    { glyph: '⌕', t: 'Find in this chat', s: 'Ctrl F', run: () => ChatUI.find(), text: 'find search this chat' },
+    { glyph: '❧', t: 'Export this chat as Markdown', run: () => ChatUI.exportChat(), text: 'export save download markdown chat' },
+    ...(sid ? [{ glyph: '★', t: isFav(sid) ? 'Unpin this chat from the sidebar' : 'Pin this chat to the sidebar', run: () => toggleFav(sid), text: 'pin favorite star this chat' }] : []),
+  ] : [];
   if (!q) {
+    add('This chat', chatActs);
     add('Running now', run);
     if (here) add(`Start ${here.name} with a prompt`, prompts.slice(0, S.prompts.length));
     add('Recent chats', chats.slice(0, 6));
@@ -1886,6 +1938,7 @@ function palItems(q) {
   add('Documents', rank(docs).slice(0, 5));
   add('Start with a prompt', rank(prompts).slice(0, 4));
   add('Actions', rank(acts).slice(0, 5));
+  add('This chat', rank(chatActs).slice(0, 3));
   add('Switch model in this chat', rank(models).slice(0, 6));
   add('Start a Codex chat', rank(cxNew).slice(0, 4));
   out.push({ g: 'Inside every message' }, { glyph: '❝', t: `Search every message for “${q}”`, s: 'full text', run: () => runSearch(q) });
@@ -2062,6 +2115,9 @@ const Viewer = (() => {
 /* ---------- clicks ---------- */
 $('nav').addEventListener('click', wrap(async e => {
   const seal = e.target.closest('#seal'); if (seal) return seal.getAttribute('aria-expanded') === 'true' ? closeMenu() : sealMenu(seal);
+  const f = e.target.closest('[data-fold]');
+  if (f) { const id = f.dataset.fold; if (S.navFold.has(id)) S.navFold.delete(id); else S.navFold.add(id); store('navFold', JSON.stringify([...S.navFold])); return renderNav(); }
+  const nc = e.target.closest('[data-navchat]'); if (nc) { document.body.classList.remove('nav-open'); return openChatFromNav(nc.dataset.navchat); }
   const b = e.target.closest('[data-view]'); if (!b) return;
   if (b.dataset.view === 'palette') { document.body.classList.remove('nav-open'); return openPalette(); }
   if (b.dataset.view === 'newproject') { document.body.classList.remove('nav-open'); return openNewProject(); }
@@ -2232,7 +2288,7 @@ $('page').addEventListener('keydown', e => {
 $('page').addEventListener('input', e => { if (e.target.id === 'docFilter') { S.docFilter = e.target.value; return filterDocs(); } if (e.target.matches('form.qr textarea')) { e.target.style.height = 'auto'; e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`; } });
 
 document.addEventListener('keydown', e => {
-  const typing = e.target.closest('input, select, textarea, [contenteditable]');
+  const typing = e.target instanceof Element && e.target.closest('input, select, textarea, [contenteditable]');
   if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); return $('palette').hidden ? openPalette() : closePalette(); }
   if (!$('palette').hidden || document.querySelector('dialog[open]')) return;
   if (e.key === '/' && !typing && !document.body.classList.contains('chat-open')) { e.preventDefault(); return openPalette(); }
@@ -2267,6 +2323,119 @@ function connectLive() {
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
 window.addEventListener('focus', () => { watchActivity(); renderLive(); });
+
+/* ---------- right-click (and long-press on a phone) ---------- */
+// Every chat, project, card and picture has its own menu; empty space gets the app's menu.
+// Shift+right-click still opens the browser's own menu, and text boxes keep theirs.
+async function copyText(text, what = 'Copied.') {
+  try { await navigator.clipboard.writeText(text); toast(what, 1600); } catch { prompt('Copy this:', text); }
+}
+function projectItems(cwd) {
+  const p = S.projects.find(x => x.cwd === cwd); if (!p) return [];
+  const a = current();
+  return [
+    { glyph: '❖', label: `Open ${p.name}`, run: () => go('folder', cwd) },
+    { glyph: S.pins.has(cwd) ? '☆' : '★', label: S.pins.has(cwd) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => togglePin(cwd) },
+    ...(p.sessions[0] && p.exists ? [{ glyph: '❝', label: 'Continue the latest chat', hint: p.sessions[0].title, run: () => ChatUI.open({ sessionId: p.sessions[0].id }) }] : []),
+    '-',
+    { glyph: '✦', label: 'New Claude chat', hint: `as ${a.name}`, disabled: !canLaunch(a) || !p.exists, why: a.lockMessage || 'Sign in first', run: () => ChatUI.open({ cwd, mode: 'new' }) },
+    ...(S.codex && S.codex.enabled ? [{ glyph: '◆', label: 'New Codex chat', disabled: !codexReady() || !p.exists, why: 'Sign in to Codex first', run: () => ChatUI.open({ cwd, mode: 'new', provider: 'codex' }) }] : []),
+    ...(S.prompts.length ? [{ glyph: '❡', label: 'Start with a prompt…', disabled: !p.exists, run: () => showMenu(Ctx.at, worldNewItems(cwd).filter(x => x !== '-' && /^Start with|Edit prompts/.test(x.label || ''))) }] : []),
+    '-',
+    { label: 'Show in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
+    { label: 'Browse files', disabled: !p.exists, run: () => Viewer.open({ path: cwd, cwd }) },
+    { label: 'Copy folder path', run: () => copyText(cwd) },
+    ...(p.added && !p.sessions.length ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd }); await loadSessions(); renderAll(); } }] : []),
+  ];
+}
+function activityItems(x) {
+  const st = statusOf(x);
+  return [
+    { glyph: '❝', label: x.source === 'app' ? 'Open the chat' : x.source === 'terminal' ? 'Watch it live' : 'Read it here', run: () => { markSeen(x); return openActivity(x); } },
+    ...(st === 'reply' ? [{ glyph: '✓', label: 'Mark as read', run: () => { markSeen(x); renderLive(true); renderNav(); } }] : []),
+    ...(x.source === 'app' && x.key && x.phase !== 'ended' ? [{ label: 'Stop this chat', danger: true, run: () => api('/api/chat/stop', { key: x.key }) }] : []),
+    ...(x.sessionId && !x.parentKey ? ['-', favItem(x.sessionId), ...chatItems(x.sessionId).filter(i => i === '-' || !/^(Return|Open in the chat window)/.test(i.label))] : []),
+    ...(x.sessionId ? ['-', { label: 'Copy chat ID', run: () => copyText(x.sessionId) }] : []),
+  ];
+}
+function appItems() {
+  const light = Look.isLight();
+  return [
+    { glyph: '✦', label: 'Search everything', keys: 'Ctrl K', run: () => openPalette() },
+    { glyph: '+', label: 'New project', run: () => openNewProject() },
+    { glyph: '◉', label: 'The hub', run: () => go('hub') },
+    { glyph: '✧', label: 'Recent chats', run: () => go('recent') },
+    '-',
+    { glyph: light ? '☾' : '☀', label: light ? 'Dark mode' : 'Light mode', run: () => Look.set({ mode: light ? 'dark' : 'light' }) },
+    { glyph: '◐', label: 'Appearance…', run: () => openSetup('look') },
+    { glyph: '⚙', label: 'Setup', run: () => openSetup() },
+    { glyph: '?', label: 'Keyboard shortcuts', keys: '?', run: () => openShortcuts() },
+    '-',
+    { label: 'Reload the window', keys: 'F5', run: () => location.reload() },
+  ];
+}
+function linkItems(a) {
+  const url = a.href;
+  return [
+    { glyph: '↗', label: 'Open link', hint: a.host, run: () => window.open(url, '_blank', 'noopener') },
+    { label: 'Copy link', run: () => copyText(url) },
+  ];
+}
+const Ctx = { at: null };
+function contextItems(t) {
+  // The chat window knows its own pieces (replies, code, pictures, files, the crew).
+  if (window.ChatUI && ChatUI.isOpen() && t.closest('#chat')) { const it = ChatUI.contextItems(t, Ctx.at); if (it) return it; }
+  const withFav = id => [favItem(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
+  const nc = t.closest('[data-navchat]'); if (nc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(nc.dataset.navchat) }, ...withFav(nc.dataset.navchat)];
+  const row = t.closest('[data-row]'); if (row) return withFav(row.dataset.row);
+  const pv = t.closest('[data-preview], [data-continue]'); if (pv) return withFav(pv.dataset.preview || pv.dataset.continue);
+  const card = t.closest('#awaitList > [data-k], #board > [data-k], #quietList > [data-k], #cRailList > [data-k]');
+  if (card) { const x = findActivity(card.dataset.k); if (x) return activityItems(x); }
+  const world = t.closest('#atlas > [data-k], [data-world], .nav-i[data-cwd]');
+  if (world) { const cwd = world.dataset.world || world.dataset.cwd || (world.dataset.k !== '+new' ? world.dataset.k : null); if (cwd) return projectItems(cwd); }
+  const acct = t.closest('[data-acct-card], [data-acct]'); const aid = acct && (acct.dataset.acctCard || acct.dataset.acct); if (aid && S.accounts.some(a => a.id === aid)) return accountItems(aid);
+  if (t.closest('.codex-card')) return null;
+  if (t.closest('#usechip')) { openAcctPop(); return []; }
+  const link = t.closest('a[href^="http"]'); if (link) return linkItems(link);
+  if (t.closest('dialog[open], .palette:not([hidden]), #acctPop')) return null;
+  return appItems();
+}
+document.addEventListener('contextmenu', e => {
+  if (e.shiftKey || e.defaultPrevented) return;
+  const t = e.target;
+  if (!(t instanceof Element) || t.closest('input, textarea, select, [contenteditable="true"]')) return;
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  // On a phone, a long press on text is for selecting it; only cards, pictures and controls get a menu.
+  if (coarse && !t.closest('[data-row], [data-k], [data-world], .world, .gen, .thumb, .crew, .ri, .af-file, .umsg, .turn .who, .tool > summary, .nav-i')) return;
+  Ctx.at = { x: e.clientX, y: e.clientY };
+  const items = contextItems(t);
+  if (items === null) return;
+  e.preventDefault();
+  if (items.length) showMenu(Ctx.at, items);
+});
+
+/* ---------- keyboard shortcuts sheet (press ?) ---------- */
+function openShortcuts() {
+  let d = $('keysDlg');
+  if (!d) {
+    document.body.insertAdjacentHTML('beforeend', `<dialog id="keysDlg" class="keys-dlg" aria-labelledby="keysTitle"><div class="setup-head"><h3 id="keysTitle">Keyboard shortcuts</h3><button class="icon" data-keys-close aria-label="Close">✕</button></div>
+      <div class="keys-body">${[
+        ['Anywhere', [['Ctrl K', 'Search chats, projects, documents, prompts and actions'], ['?', 'This list'], ['Right-click', 'Options for whatever you clicked (Shift for the browser’s menu)'], ['Esc', 'Close what’s open']]],
+        ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['Ctrl F', 'Find in this chat'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between running chats'], ['End', 'Jump to the latest message']]],
+        ['Pictures', [['← →', 'Step through a project’s pictures']]],
+      ].map(([h, rows]) => `<section><p class="d-h">${esc(h)}</p><dl>${rows.map(([k, v]) => `<dt><kbd class="kbd">${esc(k)}</kbd></dt><dd>${esc(v)}</dd>`).join('')}</dl></section>`).join('')}</div></dialog>`);
+    d = $('keysDlg');
+    d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-keys-close]')) d.close(); });
+  }
+  d.showModal();
+}
+document.addEventListener('keydown', e => {
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t instanceof Element && t.closest('input, textarea, select, [contenteditable="true"]')) return;
+  if (document.querySelector('dialog[open]')) return;
+  e.preventDefault(); openShortcuts();
+});
 
 // On a phone (through phone access), hide what only makes sense at the PC.
 if (window.REMOTE) document.body.classList.add('remote');

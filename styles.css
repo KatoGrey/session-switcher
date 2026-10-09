@@ -33,7 +33,8 @@
 }
 
 *{box-sizing:border-box}
-html,body{height:100%}
+html{height:100%}
+body{min-height:100%}
 body{margin:0;color:var(--parch);font:16px/1.6 var(--f-body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
   background:
     radial-gradient(1100px 520px at 78% -12%, rgb(var(--c-8c3a34) / .07), transparent 62%),
@@ -1262,7 +1263,7 @@ body.android .c-hint,body.android .rail-keys,body.android .seek .kbd{display:non
   .usechip{min-width:0;overflow:hidden}
 }
 @media (max-width:760px){
-  html,body{overflow-x:hidden}
+  html,body{overflow-x:clip}
   .shell,.page,.omen{overflow-x:clip}
 }
 @media (max-width:760px){
@@ -1519,3 +1520,77 @@ body{zoom:var(--look-ui,1)}
   .mp-h span:last-child{font-size:10px}
 }
 @media (max-width:980px){ body.chat-open .navtoggle{display:none} }
+
+/* ---------- 5.3: right-click menus, find, jump to latest, code colors, shortcuts ---------- */
+.menu button{flex-direction:row;align-items:center;gap:10px}
+.menu .m-g{flex:none;width:16px;text-align:center;color:var(--ash);font-size:13px}
+.menu .m-l{flex:1;min-width:0;display:flex;flex-direction:column}
+.menu .m-k{flex:none;margin-left:14px;font:500 10.5px var(--f-mono);color:var(--ash-2);letter-spacing:.04em;border:1px solid var(--seam-2);border-radius:4px;padding:2px 5px}
+.menu button[role="menuitemradio"]:not(.m-acct)::after{content:"";width:14px;flex:none}
+.menu button[role="menuitemradio"][aria-checked="true"]:not(.m-acct)::after{content:"✓";color:var(--gilt)}
+.menu button.danger .m-g{color:var(--ember-soft)}
+
+/* Find in this chat */
+.c-find{position:relative;z-index:6;align-self:flex-end;display:flex;align-items:center;gap:4px;margin:10px 20px -56px 0;padding:5px 5px 5px 12px;width:min(420px,calc(100% - 40px));
+  border:1px solid var(--seam-2);border-radius:10px;background:linear-gradient(180deg,var(--vellum-2),var(--vellum));box-shadow:0 18px 40px -18px rgb(var(--c-000000) / .9)}
+.motion .c-find:not([hidden]){animation:rise .14s cubic-bezier(.2,.7,.2,1)}
+.c-find .glyph{color:var(--ash)}
+.c-find input{flex:1;min-width:0;border:0;background:none;outline:none;color:var(--parch);font:15px var(--f-body);padding:5px 4px}
+.c-find input::-webkit-search-cancel-button{display:none}
+.cf-n{font:500 11px var(--f-mono);color:var(--ash);white-space:nowrap;padding:0 6px}
+.c-find .icon{width:30px;height:30px;font-size:13px}
+::highlight(find){background-color:rgb(var(--c-d9bf74) / .32);color:inherit}
+::highlight(find-cur){background-color:rgb(var(--c-d9bf74));color:rgb(var(--c-1a1405))}
+
+/* Jump to the latest message */
+.c-jump{position:relative;z-index:5;align-self:center;display:inline-flex;align-items:center;gap:8px;height:36px;margin:-50px 0 14px;padding:0 16px 0 13px;border:1px solid var(--seam-2);border-radius:999px;
+  background:linear-gradient(180deg,var(--vellum-3),var(--vellum-2));color:var(--parch-2);font:500 12.5px var(--f-mono);letter-spacing:.04em;box-shadow:0 14px 34px -14px rgb(var(--c-000000) / .9);cursor:pointer}
+.c-jump:hover{border-color:var(--ash-2);color:var(--parch)}
+.c-jump span{font-size:14px}
+.c-jump.has-new{border-color:rgb(var(--c-a5463f) / .7);color:var(--parch);box-shadow:0 0 0 3px rgb(var(--c-a5463f) / .15), 0 14px 34px -14px rgb(var(--c-000000) / .9)}
+.motion .c-jump:not([hidden]){animation:rise .18s cubic-bezier(.2,.7,.2,1)}
+
+/* When each reply came */
+.who-time{font:400 10px/1 var(--f-mono);letter-spacing:.04em;text-transform:none;color:var(--ash-2);opacity:0;transition:opacity .15s}
+.turn:hover .who-time,.turn:focus-within .who-time{opacity:1}
+@media (hover:none){.who-time{opacity:1}}
+
+/* Code colors (follow the theme) */
+.tk-k{color:var(--ember)}
+.tk-s{color:var(--gilt)}
+.tk-n{color:var(--codex-ink)}
+.tk-c{color:var(--ash-2);font-style:italic}
+.tk-f{color:var(--parch)}
+
+/* Keyboard shortcuts */
+dialog.keys-dlg{width:min(640px,calc(100vw - 32px))}
+.keys-body{padding:4px 22px 22px;max-height:70vh;overflow-y:auto}
+.keys-body dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 18px;margin:0 0 6px;align-items:center}
+.keys-body dt{white-space:nowrap}
+.keys-body dd{margin:0;color:var(--parch-2);font-size:15px}
+@media (max-width:760px){ .c-find{margin-right:10px;width:calc(100% - 20px)} }
+
+/* Sidebar: pinned projects and favorite chats, foldable sections */
+button.nav-h.fold{width:100%;background:none;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left;font:500 10.5px/1 var(--f-mono);letter-spacing:.24em;text-transform:uppercase}
+button.nav-h.fold:hover{color:var(--parch)}
+.fold-c{margin-left:8px;font-size:9px;letter-spacing:0;color:var(--ash-2);transition:transform .18s}
+button.nav-h.fold[aria-expanded="false"] .fold-c{transform:rotate(-90deg)}
+.nav-h.pinned{color:var(--gilt)}
+.nav-h.pinned .pmark{background:var(--gilt)}
+.nav-i.pin .glyph{color:var(--gilt)}
+.nav-chat .ni-t{display:flex;flex-direction:column;gap:1px;white-space:normal}
+.nav-chat .ni-t{overflow:hidden}
+.nav-chat .ni-t,.nav-chat .ni-t small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-chat .ni-t small{font:400 11px var(--f-mono);color:var(--ash-2);letter-spacing:.02em}
+.nav-chat .glyph{color:var(--ember)}
+.nav-chat.codex .glyph{color:var(--codex)}
+.nav-dot{flex:none;width:7px;height:7px;border-radius:50%}
+.c-fav{font-size:17px;color:var(--ash)}
+.c-fav[aria-pressed="true"]{color:var(--gilt)}
+.c-fav:hover{color:var(--gilt)}
+.r-fav{color:var(--gilt);font-size:13px;margin-right:2px}
+.c-skel{display:flex;flex-direction:column;gap:16px;padding:10px 0}
+.c-skel i{display:block;height:14px;border-radius:7px;width:72%;background:linear-gradient(90deg,var(--vellum-2),var(--vellum-3),var(--vellum-2)) 0 0/200% 100%;animation:skel 1.4s ease-in-out infinite}
+.c-skel i.u{align-self:flex-end;width:42%;height:38px;border-radius:14px}
+.c-skel i.s{width:48%}
+@keyframes skel{from{background-position:100% 0}to{background-position:-100% 0}}
