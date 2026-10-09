@@ -182,3 +182,32 @@ test('openclaw: injected scaffolding never becomes a title or a transcript line'
   const bad = await oc.archive([]);
   assert.equal(bad.ok, false);
 });
+
+test('openclaw: a follow-up turn is sent through the CLI and its reply comes back', async () => {
+  const { h } = home();
+  let sent = null, fileText = null;
+  const oc = createOpenClaw({ home: h, dataDir: tmp(), run: async (c, opts) => {
+    if (c.startsWith('openclaw sessions')) return { code: 0, stdout: JSON.stringify({ sessions: SESSIONS }), stderr: '' };
+    sent = c;
+    const f = /--message-file ('[^']+'|\S+)/.exec(c);
+    if (f) fileText = fs.readFileSync(f[1].replace(/^'|'$/g, ''), 'utf8');
+    return { code: 0, stdout: JSON.stringify({ result: { terminalReply: { disposition: 'visible', text: 'Done — archived nothing, answered everything.' } } }), stderr: '' };
+  } });
+  oc.sessions(0); await settle();
+  const r = await oc.sendMessage('agent:main:cron:nightly', 'Where did the night run get to?');
+  assert.equal(r.ok, true);
+  assert.equal(r.reply, 'Done — archived nothing, answered everything.');
+  assert.ok(sent.includes('--session-key agent:main:cron:nightly'), 'the session key reaches the CLI');
+  assert.equal(fileText, 'Where did the night run get to?', 'the message travels through a file, not the shell');
+  // Guards: unknown session, empty text.
+  assert.equal((await oc.sendMessage('agent:ghost:direct:x', 'hi')).ok, false);
+  assert.equal((await oc.sendMessage('agent:main:cron:nightly', '  ')).ok, false);
+  // A CLI failure is an error, not a throw.
+  const oc2 = createOpenClaw({ home: h, run: async c => (c.startsWith('openclaw sessions')
+    ? { code: 0, stdout: JSON.stringify({ sessions: SESSIONS }), stderr: '' }
+    : { code: 1, stdout: '', stderr: 'gateway went away' }) });
+  oc2.sessions(0); await settle();
+  const bad = await oc2.sendMessage('agent:main:cron:nightly', 'hello');
+  assert.equal(bad.ok, false);
+  assert.match(bad.error, /gateway went away/);
+});

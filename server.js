@@ -719,7 +719,7 @@ function stateFor() {
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/tools/copy', '/api/quit', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude']);
+const LOCAL_ONLY = new Set(['/api/tools/copy', '/api/quit', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
@@ -752,6 +752,12 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'POST /api/openclaw/archive') {
     const r = await openclaw.archive((Array.isArray(body.ids) && body.ids) || (body.id ? [body.id] : []));
     if (!r.ok) throw fail(500, `OpenClaw couldn’t archive that: ${r.error}`);
+    sessionsChanged();
+    return send(res, 200, r);
+  }
+  if (route === 'POST /api/openclaw/send') {
+    const r = await openclaw.sendMessage(String(body.id || ''), String(body.text || ''));
+    if (!r.ok) throw fail(400, `OpenClaw couldn’t send that: ${r.error}`);
     sessionsChanged();
     return send(res, 200, r);
   }

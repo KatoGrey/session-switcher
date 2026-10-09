@@ -239,9 +239,11 @@ async function watch({ sessionId, source = 'terminal' }) {
   headerAccount(C.info.accountId, C.info.accountId ? C.info.accountName : (oc ? `OpenClaw · ${PROV_NAME.openclaw}` : source === 'terminal' ? 'In a terminal' : 'In another app'));
   setState(source === 'terminal' ? 'watching' : 'readonly');
   $c('cMode').hidden = true;
-  $c('cCompose').hidden = true;
+  // An OpenClaw session is live AND writable: what you send becomes a follow-up turn in it.
+  $c('cCompose').hidden = !oc;
+  if (oc) { $c('cText').placeholder = `Write to ${PROV_NAME[C.provider]}…`; $c('cText').rows = 1; }
   $c('cWatch').hidden = false;
-  $c('cWatch').innerHTML = oc ? '<p><b>Read-only.</b> An OpenClaw agent’s session. It carries on in OpenClaw; new messages appear here by themselves.</p>'
+  $c('cWatch').innerHTML = oc ? '<p><b>Live.</b> This OpenClaw agent’s session carries on in OpenClaw; new messages appear here by themselves, and what you send becomes your next turn in it.</p>'
     : source === 'terminal'
     ? '<p><b>Watching live.</b> This chat is running in a terminal, so you can read along here and reply in its terminal window. New messages appear by themselves.</p><button type="button" class="btn" data-c="fork">Open a copy here</button>'
     : '<p><b>Read-only.</b> This chat was last used in another app, like the desktop app. Continue it here if it’s closed there.</p><button type="button" class="btn prime" data-c="takeover">Continue it here</button><button type="button" class="btn quiet" data-c="fork">Open a copy</button>';
@@ -341,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'attach': return attachMenu(c);
       case 'prompts': return c.getAttribute('aria-expanded') === 'true' ? closeMenu() : promptsMenu(c);
       case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
-      case 'stop': C.interruptedAt = Date.now(); return Promise.all(targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting')).map(x => api('/api/chat/interrupt', { key: x.key })));
+      case 'stop': if (C.provider === 'openclaw') return; C.interruptedAt = Date.now(); return Promise.all(targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting')).map(x => api('/api/chat/interrupt', { key: x.key })));
       case 'compact': return compactNow(c.dataset.src || 'main');
       case 'chgview': return viewChanges(c.closest('.chg'));
       case 'chgundo': return undoChanges(c.closest('.chg'));

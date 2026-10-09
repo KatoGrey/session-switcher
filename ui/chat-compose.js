@@ -236,6 +236,31 @@ function restoreDraft() {
 function clearDraft() { clearTimeout(draftTimer); const k = draftKey(); try { if (k) localStorage.removeItem(k); if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
 
 async function sendMessage() {
+  // An OpenClaw session: the message becomes a follow-up turn in that session (through
+  // the agent's own CLI; it carries on in OpenClaw). One at a time.
+  if (C.provider === 'openclaw' && C.watch && C.watch.sessionId) {
+    const text = $c('cText').value.trim();
+    if (!text) return;
+    $c('cText').value = ''; clearDraft();
+    const sid = C.watch.sessionId, gen = C.gen, id = C.watch.sessionId;
+    renderItem($c('cFeed'), { kind: 'user', text, at: new Date().toISOString(), images: [] }, true);
+    toBottom();
+    $c('cSend').disabled = true; setStatus('main', `Sending to ${PROV_NAME[C.provider]}…`);
+    setState('busy'); $c('cStop').hidden = true;
+    try {
+      const r = await api('/api/openclaw/send', { id: sid, text });
+      if (gen === C.gen && r.reply) { setStatus('main', ''); }
+    } catch (err) {
+      if (gen === C.gen) { toast(`OpenClaw couldn’t send that: ${err.message}`, 6000); }
+    } finally {
+      if (gen === C.gen) {
+        setState('readonly'); $c('cSend').disabled = false; setStatus('main', '');
+        refreshWatch();
+        $c('cText').focus();
+      }
+    }
+    return;
+  }
   const typed = $c('cText').value;
   let text = typed;
   if (!text.trim() && !C.attachments.length && !(C.files || []).length) return;
