@@ -217,3 +217,12 @@ test('Ollama: the week runs Monday to Monday UTC, and the estimate follows the l
   const nextWeek = lite.ollamaWeek([{ from: '2026-10-12T00:00:00Z', n: 4000 }], [reading], Date.parse('2026-10-12T12:00:00Z'));
   assert.equal(nextWeek.used, 10, 'a new week starts from zero at the same rate');
 });
+
+test('Lite page: data-open means "open this chat" and nothing else', () => {
+  // A folder's fold state once used data-open="true"; every click inside it then tried to open a
+  // chat called "true" and nothing happened.
+  for (const f of fs.readdirSync(path.join(__dirname, '..', 'ui-lite')).filter(n => n.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'ui-lite', f), 'utf8');
+    assert.ok(!/data-open="\$\{!*open\}"/.test(src), `${f} uses data-open for something other than a chat id`);
+  }
+});

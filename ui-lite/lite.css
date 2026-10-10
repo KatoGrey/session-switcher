@@ -104,7 +104,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .nav-i .lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav-i .n { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .folder-btn { font-weight: 500; color: var(--fg); }
-.folder[data-open="false"] .folder-items { display: none; }
+.folder[data-folded="true"] .folder-items { display: none; }
 .folder.empty .folder-btn { color: var(--muted); font-weight: 400; }
 .folder-items { display: flex; flex-direction: column; gap: 1px; }
 .chat-i { padding-left: var(--indent); }
@@ -739,3 +739,12 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .pd-form .linkish { font-size: 12px; }
 .pop .pd-form button { width: auto; flex: none; }
 .prow .prank:empty { visibility: hidden; }
+/* A project in the sidebar: the name opens it, the chevron folds its chats */
+.proj-row { display: flex; align-items: center; }
+.proj-row .proj-btn { flex: 1; min-width: 0; }
+.proj-chev { flex: none; width: 22px; height: 26px; border-radius: 6px; color: var(--muted); font-size: 14px; line-height: 26px; text-align: center; opacity: 0; transition: opacity .12s; }
+.proj-chev::before { content: "›"; display: inline-block; transform: rotate(90deg); transition: transform .12s; }
+.folder[data-folded="true"] .proj-chev::before { transform: none; }
+.proj-row:hover .proj-chev, .proj-chev:focus-visible, .folder[data-folded="true"] .proj-chev { opacity: 1; }
+.proj-chev:hover { color: var(--fg); background: var(--hover); }
+@media (hover: none) { .proj-chev { opacity: 1; } }
