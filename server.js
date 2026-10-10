@@ -911,7 +911,9 @@ const routines = routinesLib.createRoutines({
 // ---------- Switcher Lite (ui-lite/, at /lite): buckets, stages, plans; see lib/lite.js ----------
 const liteStore = liteLib.createLite({ dataDir: DATA_DIR, log });
 const liteRoutes = createLiteRoutes({
-  store: liteStore, config, acc, usage, log, broadcast,
+  store: liteStore, config, acc, usage, log, broadcast, dataDir: DATA_DIR,
+  codexMainHome: () => (config().codex && config().codex.home) || codexHomes.MAIN_HOME(),
+  codexHomeFor: id => { const x = codexById(id); return x && x.ACCOUNT.home ? x.ACCOUNT.home : null; },
   codexAll: () => codexAll(),
   sessionsWithCodex: () => sessionsWithCodex(),
   activityList: () => activityList(),
@@ -1028,7 +1030,7 @@ async function handleApi(req, res, url, remote = false) {
 
   if (route === 'POST /api/chat/upload') return uploadFile(req, res, url);
   if (url.pathname.startsWith('/api/lite/')) {
-    const out = await liteRoutes.handle(req.method, url.pathname, url, () => readBody(req));
+    const out = await liteRoutes.handle(req.method, url.pathname, url, () => readBody(req), req, remote);
     if (out === undefined) throw fail(404, 'Not found.');
     return send(res, 200, out);
   }
@@ -1997,6 +1999,12 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       return res.end(html);
     }
+    // Its service worker (at the root, so it can serve /lite) and the Home Screen manifest.
+    if (req.method === 'GET' && (url.pathname === '/lite-sw.js' || url.pathname === '/lite.webmanifest')) {
+      const sw = url.pathname === '/lite-sw.js';
+      res.writeHead(200, { 'Content-Type': sw ? 'text/javascript; charset=utf-8' : 'application/manifest+json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(fs.readFileSync(path.join(APP_DIR, 'ui-lite', sw ? 'sw.js' : 'manifest.json'), 'utf8'));
+    }
     if (req.method === 'GET' && /^\/ui-lite\/[a-z0-9-]+\.(js|css)$/.test(url.pathname)) {
       let text;
       try { text = fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1)), 'utf8'); } catch { res.writeHead(404); return res.end(); }
@@ -2034,6 +2042,13 @@ async function handleRequest(req, res, { remote = false } = {}) {
     if (url.pathname.startsWith('/api/')) {
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
       const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media') && url.searchParams.get('token') === TOKEN;
+      // Switcher Lite's gallery: a picture Codex generated (or its thumbnail), by thread and file name.
+      if (req.method === 'GET' && url.pathname === '/api/lite/gimg' && url.searchParams.get('token') === TOKEN) {
+        const q = url.searchParams, f = q.get('thumb') ? liteRoutes.images.thumbFor(q.get('thread'), q.get('file')) : liteRoutes.images.fileFor(q.get('thread'), q.get('file'));
+        if (!f) { res.writeHead(404); return res.end(); }
+        res.writeHead(200, { 'Content-Type': /\.jpe?g$/i.test(f) ? 'image/jpeg' : /\.webp$/i.test(f) ? 'image/webp' : 'image/png', 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+        return fs.createReadStream(f).pipe(res);
+      }
       if (imageGet && url.pathname === '/api/media') return sendMedia(req, res, url);
       if (req.headers['x-switcher-token'] !== TOKEN && !imageGet) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
       return await handleApi(req, res, url, remote);
