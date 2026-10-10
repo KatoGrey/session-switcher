@@ -239,7 +239,7 @@ function connectLive() {
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
   es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLive(); renderNav(); });
   es.addEventListener('routines', () => { if (window.Routines) Routines.changed(); });
-  es.addEventListener('organize', e => { try { S.org = JSON.parse(e.data); } catch { return; } renderNav(); renderLive(); if (window.ChatUI && ChatUI.refreshCrumb) ChatUI.refreshCrumb(); });
+  es.addEventListener('organize', e => { try { S.org = orgShape(JSON.parse(e.data)); } catch { return; } renderNav(); renderLive(); if (window.ChatUI && ChatUI.refreshCrumb) ChatUI.refreshCrumb(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);

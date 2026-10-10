@@ -12,7 +12,9 @@ const groupItem = id => ({ glyph: '▤', label: groupOfChat(id) ? `Move to anoth
 // PC (organize.json) so the phone sees the same.
 S.org = { groups: [], parents: {}, commander: {} };
 const lowId = s => String(s || '').toLowerCase();
-async function loadOrganize() { try { S.org = await api('/api/organize'); } catch { /* keep */ } }
+// Always the full shape, whatever came back (an older server, or a test stub, may leave parts out).
+const orgShape = o => ({ groups: [], parents: {}, commander: {}, ...(o && typeof o === 'object' ? o : {}) });
+async function loadOrganize() { try { S.org = orgShape(await api('/api/organize')); } catch { /* keep */ } }
 const actOf = id => S.activity.find(y => y.sessionId && lowId(y.sessionId) === lowId(id)) || null;
 // 'await' (needs you or replied), 'work' (at work) or null.
 function chatMood(id) { const x = actOf(id); if (!x) return null; const st = statusOf(x); return NEEDS.has(st) || st === 'reply' ? 'await' : st === 'working' ? 'work' : null; }
@@ -77,7 +79,7 @@ function groupCard(g) {
   </article>`;
 }
 
-async function orgDo(body) { const r = await api('/api/organize', body); S.org = { groups: r.groups, parents: r.parents, commander: r.commander }; renderNav(); renderLive(); return r; }
+async function orgDo(body) { const r = await api('/api/organize', body); S.org = orgShape({ groups: r.groups, parents: r.parents, commander: r.commander }); renderNav(); renderLive(); return r; }
 async function newGroup(chatId) {
   const name = await ask('New group', chatId ? 'Name the group. This chat moves into it, with its sub-sessions.' : 'Name the group. Then move chats into it from their right-click menu, or drag them onto it in the sidebar.', '', 'Create group');
   if (!name) return;
