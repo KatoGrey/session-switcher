@@ -180,10 +180,14 @@ function chatHead() {
 // A chat whose folder was deleted can't run until the folder is there again.
 function folderNotice() {
   const c = chatBy.get(CV.id);
-  if (!c || c.folderExists !== false || (CV.info && CV.info.state && CV.info.state !== 'ended')) return '';
-  const scratch = /[\\/]scratch-workspaces[\\/]/.test(c.cwd || '');
-  return `<div class="folder-gone" id="folderGone"><p><b>Its folder is gone.</b> ${scratch ? 'This chat ran in a Claude scratch folder, which was cleaned up.' : `<span class="mono">${esc((c.cwd || '').replace(/^\/Users\/[^/]+/, '~'))}</span> was deleted or moved.`} Make the folder again (empty) and the chat carries on with its whole history; any files that were in it are gone.</p>
-    ${c.worktree ? '<p>It ran in a worktree: rebuild that from its branch on the Archived page.</p>' : `<button class="btn sm prime" data-recreate="${esc(c.id)}">Make the folder again</button>`}</div>`;
+  const gone = c && (c.folderExists === false || (c.worktree && c.worktreeExists === false));
+  if (!gone || (CV.info && CV.info.state && CV.info.state !== 'ended')) return '';
+  const dir = c.runDir || c.cwd || '';
+  const scratch = /[\\/]scratch-workspaces[\\/]/.test(dir);
+  const where = scratch ? 'This chat ran in a Claude scratch folder, which was cleaned up.' : `It ran in <span class="mono">${esc(dir.replace(/^\/Users\/[^/]+/, '~'))}</span>, which was deleted or moved.`;
+  if (c.runIsWorktree) return `<div class="folder-gone" id="folderGone"><p><b>Its worktree is gone.</b> ${where} Archive the chat, then rebuild the worktree from its branch on the Archived page.</p></div>`;
+  return `<div class="folder-gone" id="folderGone"><p><b>Its folder is gone.</b> ${where} Make the folder again (empty) and the chat carries on with its whole history; files that were in that folder are gone${scratch ? ', but work it did in your repos is untouched' : ''}.</p>
+    <button class="btn sm prime" data-recreate="${esc(c.id)}">Make the folder again</button></div>`;
 }
 function chatView() {
   return `<div class="chat" id="chatView">${chatHead()}
