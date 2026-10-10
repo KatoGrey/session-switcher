@@ -231,6 +231,7 @@ function connectLive() {
   es.addEventListener('races', () => { loadRaces().catch(() => {}); });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
   es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLive(); renderNav(); });
+  es.addEventListener('routines', () => { if (window.Routines) Routines.changed(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
@@ -340,6 +341,7 @@ function appItems() {
     { glyph: '+', label: 'New project', run: () => openNewProject() },
     { glyph: '◉', label: 'The hub', run: () => go('hub') },
     { glyph: '✧', label: 'Recent chats', run: () => go('recent') },
+    { glyph: '⟳', label: 'Routines', run: () => go('routines') },
     '-',
     { glyph: light ? '☾' : '☀', label: light ? 'Dark mode' : 'Light mode', run: () => Look.set({ mode: light ? 'dark' : 'light' }) },
     { glyph: '◐', label: 'Appearance…', run: () => openSetup('look') },

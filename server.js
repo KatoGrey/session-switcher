@@ -31,6 +31,7 @@ const tasksLib = require('./lib/tasks');
 const raceLib = require('./lib/race');
 const pairsLib = require('./lib/pairs');
 const handover = require('./lib/handover');
+const routinesLib = require('./lib/routines');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -136,6 +137,7 @@ const chats = chatLib.createChatManager({
   },
   onActivity: chat => {
     scheduleActivity();
+    routines.onActivity(chat);
     // A finished turn changes the account's usage; check it shortly after.
     const f = chat.activity.finishedAt;
     if (f && finishedSeen.get(chat.key) !== f) {
@@ -800,11 +802,60 @@ function stateFor() {
   };
 }
 
+// ---------- routines ----------
+
+// Chats that start on their own (lib/routines.js). They open the same way the chat window opens one.
+async function routineChat({ account, cwd, sessionId, permissionMode, model, title }) {
+  const c = config();
+  const folder = path.basename(cwd.replace(/[\\/]+$/, '')) || cwd;
+  const live = sessionId && chats.bySession(sessionId);
+  if (live) return live;
+  if (isCodexAccount(account)) {
+    const inst = codexById(account);
+    requireCodexSignedIn(inst);
+    const chat = inst.open({ cfg: c, cwd, threadId: sessionId || null, mode: permissionMode, model: modelFits(inst, model) ? model : null, title, folder });
+    if (sessionId) sessions.recordLaunch(sessionId, inst.ACCOUNT, 'app');
+    return chat;
+  }
+  const a = acc.findAccount(c, account);
+  if (sessionId && running[sessionId.toLowerCase()]) throw fail(409, 'That chat is open in a terminal, so the routine left it alone.');
+  await guarded(a);
+  acc.prepareForLaunch(c, a);
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId: sessionId || null, permissionMode, model, title, folder });
+  if (sessionId) sessions.recordLaunch(sessionId, a, 'app');
+  return chat;
+}
+const routines = routinesLib.createRoutines({
+  dataDir: APP_DIR, log, broadcast,
+  prompts: () => projectInfo.prompts(),
+  startChat: routineChat,
+  accountInfo: id => {
+    if (isCodexAccount(id)) { const x = codexById(id); return x && { id, provider: 'codex', name: x.ACCOUNT.name, modes: codexLib.MODES.map(m => m.value) }; }
+    const a = config().accounts.find(x => x.id === id);
+    return a && { id, provider: 'claude', name: a.name, modes: chatLib.MODES };
+  },
+  // Usage right before a run, so a routine doesn't use up a nearly full window.
+  usageFor: async id => {
+    if (isCodexAccount(id)) { const x = codexById(id); if (!x) return null; await x.refreshUsage().catch(() => null); return { name: x.ACCOUNT.name, ...(usage.get(x.ACCOUNT.id) || {}) }; }
+    const a = config().accounts.find(x => x.id === id);
+    if (!a) return null;
+    const v = await usage.refresh(config(), a, { maxAgeMs: 10 * 60 * 1000 });
+    return { name: a.name, ...v };
+  },
+  // A chat a routine started is named after it, so it's easy to spot in the lists.
+  nameChat: async (chat, title) => {
+    if (chat.provider === 'codex') { await (codexById(chat.account.id) || codex).rename(chat.sessionId, title); codexSessions(0); return; }
+    for (let i = 0; i < 5; i++) {
+      try { sessions.rename(chat.sessionId, title); broadcast('sessions'); return; } catch { await new Promise(r => setTimeout(r, 2000)); }
+    }
+  },
+});
+
 // ---------- routes ----------
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/tools/copy', '/api/quit', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude']);
+const LOCAL_ONLY = new Set(['/api/routines/secret', '/api/tools/copy', '/api/quit', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
@@ -902,6 +953,11 @@ async function handleApi(req, res, url, remote = false) {
   }
 
   if (route === 'POST /api/chat/upload') return uploadFile(req, res, url);
+  if (url.pathname.startsWith('/api/routines')) {
+    const out = await routines.api(req.method, url.pathname, req.method === 'POST' ? await readBody(req) : null);
+    if (out === undefined) throw fail(404, 'Not found.');
+    return send(res, 200, out);
+  }
   if (req.method !== 'POST') throw fail(404, 'Not found.');
   const body = await readBody(req, url.pathname === '/api/chat/send' ? 40 * 1024 * 1024 : 65536);
 
@@ -1351,6 +1407,7 @@ async function handleApi(req, res, url, remote = false) {
       log('Quit from the app.');
       chatPrefs.flush();
       phone.stop();
+      routines.stop();
       stopForQuit();
       for (const x of codexAll()) x.stop(true);
       setTimeout(() => process.exit(0), 300);
@@ -1626,7 +1683,7 @@ server.on('error', err => {
 });
 process.on('uncaughtException', err => log(`Unexpected error: ${err.stack || err.message}`));
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } } setTimeout(() => process.exit(0), 300); });
-process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
+process.on('exit', () => { try { routines.stop(); } catch { /* not started */ } stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
 process.on('unhandledRejection', err => log(`Unexpected error: ${err && (err.stack || err.message)}`));
 
 server.listen(PORT, '127.0.0.1', () => {
@@ -1648,6 +1705,7 @@ server.listen(PORT, '127.0.0.1', () => {
     for (const x of codexAll()) x.refreshAccount().then(st => { if (st.signedIn) x.refreshUsage(); }).catch(() => {});
   }, 2500);
   startWatching();
+  routines.start();
   phone.sync().catch(err => log(`Phone access: ${err.message}`));
   sys.openAppWindow(appUrl, config().prefs);
 });

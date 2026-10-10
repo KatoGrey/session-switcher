@@ -173,6 +173,7 @@ function renderPage() {
   else if (S.view === 'recent') renderRecent();
   else if (S.view === 'folder') renderFolder();
   else if (S.view === 'search') renderSearch();
+  else if (S.view === 'routines') Routines.render();
 }
 function renderAll() { renderNav(); renderPage(); renderBar(); updateTitle(); }
 // Names the chat window uses.

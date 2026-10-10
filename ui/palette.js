@@ -17,6 +17,7 @@ function palItems(q) {
   const acts = [
     { glyph: '✦', t: 'Go to the hub', run: () => go('hub') },
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
+    { glyph: '⟳', t: 'Routines', s: 'chats that start on a schedule or when something new turns up', run: () => go('routines'), alias: 'schedule watch automation cron' },
     { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health' },
     { glyph: '✧', t: 'Take the tour', s: 'a minute on what’s where', run: () => startTour(), alias: 'tour help guide intro getting started' },
     { glyph: '⚑', t: 'Race Claude and Codex', s: 'the same task in two copies of a project; keep the better one', run: () => openRaceDialog(S.view === 'folder' ? S.folder : null), alias: 'race compete compare both versus head to head' },

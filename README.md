@@ -158,6 +158,24 @@ To change them, choose **Edit prompts…** from any of those menus. You can rena
 
 A new chat opens on its project: its banner, its name, and your prompts one click away.
 
+## Routines
+
+Routines are chats that start on their own. Open **Routines** in the sidebar, then **New routine** or **From a template**.
+
+- **On a schedule:** every day at a time, weekdays, every few hours or minutes, or a cron line (`0 9 * * 1-5` is 9:00 AM on weekdays).
+- **When something new turns up:**
+  - **A Slack channel:** each new top-level post starts a run (replies in threads don't). Give it the channel's ID (`C0123ABCD`, at the bottom of the channel's About) and a Slack app's bot token with `channels:history` (plus `groups:history` for a private channel, and `channels:read` if you want the channel's name shown). Invite the app to the channel. The token goes into the macOS Keychain (item “Session Switcher”, account `slack`), never into a file. To add it from a terminal instead: `security add-generic-password -U -s "Session Switcher" -a slack -w` (it asks for the token).
+  - **A command's output:** runs a command in the routine's folder every few minutes, and each new line starts a run. It covers a Discord bot, a CLI or a database query you already have. A line can be JSON, like `{"id": "123", "text": "…", "link": "https://…"}`; otherwise the line is the text, and its first web address is the link.
+  - An optional filter keeps only items that mention a word, or match a `/pattern/`.
+  - The first look only notes what's already there, so turning a watcher on doesn't start a chat for every old post. Items are remembered by id, so nothing runs twice. A watcher starts at most six chats an hour; the rest wait their turn.
+- Each routine has a folder, an account (any Claude or Codex account, including Ollama), a prompt (or a saved prompt; `{project}` and `{date}` work), a permission mode, and whether each run starts a new chat or continues one chat.
+- Runs happen in the app's own chat window, so they show under **At work** and **Awaiting you** like any chat. A watcher's run gets the new item's text and link in its first message.
+- Each routine keeps a history: when it ran, how it went, the last thing the chat said, and **Open chat**.
+- A run that was due while the Mac slept or the app was closed runs once when it's back, not once for every time it missed.
+- Before each run it checks the account's usage. If the five-hour window is more used than the routine allows (90% unless you change it), or the week is used up, it waits until the window resets and says so in the history.
+- Routines never post anywhere. Slack is only read, and every run is told to write any reply as a draft for you to send. Keep routines on **Ask before acting** if a chat has tools that could send messages.
+- Routines are kept in `routines.json`. Other code can make one through `POST /api/routines`.
+
 ## Handing it to someone else
 
 Session Switcher has nothing personal built in, so you can give it to anyone:
@@ -608,6 +626,7 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `sharecopy.js`: **Make a copy to share**.
   - `chatprefs.js`: remembered modes, models and effort, and each Claude chat's Codex helper.
   - `remote.js`: phone access (pairing, paired phones).
+  - `routines.js`: routines: schedules, watchers (Slack, commands) and their runs.
   - `files.js`: the file viewer (text, pictures, videos, sound, PDFs).
   - `system.js`: terminals and processes.
   - `health.js`: the Setup checks.
@@ -638,6 +657,7 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `prompts.json`: your prompts, once you edit them.
   - `chat-prefs.json`: the modes, models and effort you chose, and which Codex helper goes with which chat.
   - `devices.json`: phones you paired (hashed keys only).
+  - `routines.json`: your routines and their history (tokens stay in the Keychain).
   - `switcher.log`: the app's log.
 
 Session Switcher never edits your chat files.
