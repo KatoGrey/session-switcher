@@ -29,8 +29,15 @@ test('share copy: personal files stay out', () => {
 test('share copy: this repo’s own files are all safe to share', () => {
   const names = appFiles(APP).map(f => f.name);
   assert.ok(names.includes('server.js') && names.includes('index.html'));
-  for (const n of names) assert.match(n, /\.(js|html|css|md|vbs|bat|command|ico|icns|woff2|mp3|txt)$/i, `${n} has an unexpected type`);
+  for (const n of names) assert.match(n, /\.(js|html|css|md|vbs|bat|command|ico|icns|woff2|mp3|txt)$|^art\/[a-z0-9-]+\.webp$/i, `${n} has an unexpected type`);
+  assert.ok(!names.some(n => n.startsWith('art/src/')), 'originals and local previews stay out');
   assert.ok(!names.some(n => /\.json$|\.log$|\.bak$|keystore/i.test(n)), 'no settings, logs or keys');
+});
+
+test('share copy: theme paintings are included, originals and local concepts stay out', () => {
+  const dir = tmp();
+  for (const f of ['art/isekai-dark.webp', 'art/src/isekai-dark.png', 'art/src/preview.html', 'art/src/concepts/script.js', 'attachments/personal.webp', 'personal.webp']) put(dir, f);
+  assert.deepEqual(appFiles(dir).map(f => f.name), ['art/isekai-dark.webp']);
 });
 
 test('share copy: the Mac launcher unzips as runnable', () => {

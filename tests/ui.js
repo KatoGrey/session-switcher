@@ -964,6 +964,28 @@ module.exports = [
     },
   },
   {
+    name: 'performance',
+    // Left alone, the hub in every theme (and a chat window) settles: what moves is drawn by the graphics
+    // card, so the page isn't re-laid-out or re-styled every frame (each of those was a real CPU drain).
+    async run(t) {
+      const b = await t.open();
+      await b.send('Performance.enable');
+      const metrics = async () => { const r = await b.send('Performance.getMetrics'); const m = {}; for (const x of r.result.metrics) m[x.name] = x.value; return m; };
+      const busy = [];
+      const themes = await b.eval(`return Look.THEMES.map(x => x.id)`);
+      for (const [theme, chat] of [...themes.map(x => [x, false]), ['isekai', true], ['crimson', true]]) {
+        await b.eval(`Look.set({ theme: ${JSON.stringify(theme)}, mode: 'dark' }); ${chat ? `ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} });` : 'if (ChatUI.isOpen()) ChatUI.close();'} return 1`);
+        await sleep(1800);
+        const a = await metrics(); await sleep(2500); const z = await metrics();
+        const dt = z.Timestamp - a.Timestamp;
+        const layouts = (z.LayoutCount - a.LayoutCount) / dt, styles = (z.RecalcStyleCount - a.RecalcStyleCount) / dt;
+        if (layouts > 6 || styles > 12) busy.push(`${theme}${chat ? ' (chat)' : ''}: ${layouts.toFixed(1)} layouts/s, ${styles.toFixed(1)} style recalcs/s`);
+      }
+      t.check('every theme’s hub, and a chat, is quiet when left alone', !busy.length, busy);
+      await b.eval(`if (ChatUI.isOpen()) ChatUI.close(); Look.reset(); return 1`);
+    },
+  },
+  {
     name: 'welcome',
     // Back after a while: what happened meanwhile, and one click back to the chat you were last in.
     // And in a long chat, the map beside it: a mark per message you sent, click one to go there.
@@ -975,6 +997,10 @@ module.exports = [
       t.check('after two hours away, the hub says what happened meanwhile', w && /away 2h/.test(w.text) && /While you were away, .*needs your OK/.test(w.text), w);
       t.check('with the chats that came in, and a way back to the last one', w && w.chips >= 2 && w.back && /Back to “Tavern brawl encounter design”/.test(w.text), w);
       await t.shot(b, 'hub');
+      const partnerWelcome = await b.eval(`const previous = S.activity; try { S.activity = [{ key: 'welcome-owner', title: 'Owner', phase: 'idle' }, { key: 'welcome-partner', parentKey: 'welcome-owner', provider: 'codex', source: 'app', title: 'Partner reply', phase: 'idle', finishedAt: Date.now() }]; const el = document.createElement('div'); el.innerHTML = welcomeHtml(); return { text: el.textContent, chip: !!el.querySelector('[data-k="welcome-partner"]') }; } finally { S.activity = previous; }`);
+      t.check('welcome back includes an unread reply from the second assistant', /1 reply came in/.test(partnerWelcome.text) && partnerWelcome.chip, partnerWelcome);
+      const questionWelcome = await b.eval(`const previous = S.activity; try { S.activity = [{ key: 'welcome-question', title: 'A question', phase: 'waiting', pending: [{ question: true }] }, { key: 'welcome-terminal', title: 'Terminal', phase: 'waiting-terminal' }]; const el = document.createElement('div'); el.innerHTML = welcomeHtml(); return el.textContent; } finally { S.activity = previous; }`);
+      t.check('questions and terminal waits ask for attention, not an approval', /2 need your attention/.test(questionWelcome) && !/your OK/.test(questionWelcome), questionWelcome);
       t.check('a quick look away doesn’t bring it back', await b.eval(`dropWelcome(); localStorage.setItem('seen-at', String(Date.now() - 60e3)); checkAway(); await new Promise(r => setTimeout(r, 300)); return !document.querySelector('.welcome')`));
       await b.eval(`localStorage.setItem('seen-at', String(Date.now() - 3 * 3600e3)); checkAway(); return 1`); await sleep(400);
       await b.eval(`document.querySelector('[data-welcome="continue"]').click(); return 1`); await sleep(1500);

@@ -28,16 +28,18 @@ window.addEventListener('pagehide', noteSeen);
 function welcomeHtml() {
   const w = Welcome.card; if (!w) return '';
   const since = w.since;
-  const top = S.activity.filter(x => !x.parentKey);
-  const replies = top.filter(x => ownStatus(x) === 'reply' && (x.finishedAt || 0) >= since);
+  const replies = S.activity.filter(x => ownStatus(x) === 'reply' && (x.finishedAt || 0) >= since);
   const needs = S.activity.filter(x => NEEDS.has(ownStatus(x)));
+  const approvals = needs.filter(x => ownStatus(x) === 'approve');
+  const attention = needs.length - approvals.length;
   const working = atWork();
   const last = lastChat();
   const lastOk = last && allSessions().some(([s]) => s.id === last.sessionId);
   if (!replies.length && !needs.length && !working.length && !lastOk) return '';
   const bits = [];
   if (replies.length) bits.push(`<b>${replies.length}</b> ${replies.length === 1 ? 'reply came in' : 'replies came in'}`);
-  if (needs.length) bits.push(`<b>${needs.length}</b> ${needs.length === 1 ? 'needs your OK' : 'need your OK'}`);
+  if (approvals.length) bits.push(`<b>${approvals.length}</b> ${approvals.length === 1 ? 'needs your OK' : 'need your OK'}`);
+  if (attention) bits.push(`<b>${attention}</b> ${attention === 1 ? 'needs your attention' : 'need your attention'}`);
   if (working.length) bits.push(`<b>${working.length}</b> still at work`);
   const chips = [...needs, ...replies].slice(0, 4).map(x => `<button class="wb-chip ${NEEDS.has(ownStatus(x)) ? 'needs' : ''}" data-welcome="open" data-k="${esc(keyOf(x))}" title="${esc(x.folder || '')}"><span class="${NEEDS.has(ownStatus(x)) ? 'gilt-dot' : 'reply-dot'}" aria-hidden="true"></span>${esc(x.title || 'Untitled chat')}</button>`).join('');
   return `<section class="welcome" aria-label="Welcome back">
