@@ -3,7 +3,7 @@
    Needs you (Allow / Deny and quick replies on the row), Running, Waiting on others, Coming up
    (routines) and This week (the use-next order and each plan). */
 
-const CMD_CHIPS = ['Nudge anything stuck for 2+ days', 'Sort new chats into stages', 'What changed since yesterday?', 'Plan my hackathon weekend'];
+const CMD_CHIPS = ['Nudge anything stuck for 2+ days', 'Sort new chats by kind and status', 'What changed since yesterday?', 'Plan my hackathon weekend'];
 
 // A live entry as a chat row: the chat it belongs to, when the list has it.
 const titleOf = x => { const c = x.sessionId && chatBy.get(x.sessionId); return (c && c.title) || x.title || 'New chat'; };
@@ -63,18 +63,20 @@ function nowLiveHtml() {
     <section class="section"><div class="sec-h"><h2>${L('Running')}</h2><span class="n">${run.length}</span></div>
       <div class="rows">${run.map(runRow).join('') || '<p class="empty-note">Nothing is running.</p>'}</div></section>`;
 }
-const leadHtml = () => { const w = allChats().filter(c => stageOf(c) === 'waiting').length; return `${word(needList().length, 'needs you', 'need you')}, ${word(runList().length, 'running', 'running')}, ${word(w, 'waiting on someone', 'waiting on others')}.`; };
+const leadHtml = () => { const w = allChats().filter(c => c.waiting).length; return `${word(needList().length, 'needs you', 'need you')}, ${word(runList().length, 'running', 'running')}, ${word(w, 'waiting on someone', 'waiting on others')}.`; };
 function plansBoxHtml() {
   return `<div class="sec-h"><h2>This week</h2>${floorSeg()}<button class="hint" data-refreshplans="1">${S.plansRefreshing ? 'Checking…' : 'Check now'}</button></div>
       ${S.plans ? plansTable() : '<p class="empty-note">Reading your plans…</p>'}`;
 }
 function now() {
-  const waiting = allChats().filter(c => stageOf(c) === 'waiting').sort((a, b) => b.updated - a.updated);
+  const waiting = allChats().filter(c => c.waiting).sort((a, b) => b.updated - a.updated);
+  const foc = focusList();
   const ups = comingUp();
   return `<div class="wrap">
     <div class="page-h"><div class="proj-h" style="align-items:flex-start"><button class="iconbtn back" data-go="side" aria-label="Back">‹</button><div><h1>${L('Now')}</h1><p class="lead" id="nowLead">${leadHtml()}</p></div></div></div>
     ${commanderHtml()}
     <div id="nowLive" class="section-stack">${nowLiveHtml()}</div>
+    ${foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span><span class="hint">Your top few; <kbd>f</kbd> on any chat</span></div><div class="rows">${foc.map(c => rowHtml(c, { showProject: true, showStage: true })).join('')}</div></section>` : ''}
     <section class="section"><div class="sec-h"><h2>Waiting on others</h2><span class="n">${waiting.length}</span><span class="hint">Reminds you after two days</span></div>
       <div class="rows">${waiting.map(waitRow).join('') || '<p class="empty-note">Nothing is waiting on anyone. Press <kbd>w</kbd> on a chat to say who it’s waiting on.</p>'}</div></section>
     <section class="section"><div class="sec-h"><h2>Coming up</h2><label class="hint follow"><input type="checkbox" data-follow="1" ${S.lite.routinesFollow ? 'checked' : ''}> Follow the use-next order</label><a class="hint" href="/" style="margin-left:12px">Routines ›</a></div>

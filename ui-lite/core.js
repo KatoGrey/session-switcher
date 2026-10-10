@@ -9,11 +9,16 @@ const $ = id => document.getElementById(id);
 const DAY = 864e5;
 
 // Ryan's own Codex folders, plus Feature and Done. Keys 1–7 set them. Names never change between skins.
-const STAGES = [
-  { id: 'priority', name: 'Priority' }, { id: 'explore', name: 'Exploration' }, { id: 'feature', name: 'Feature' },
-  { id: 'bug', name: 'Bugs and polish' }, { id: 'waiting', name: 'Waiting' }, { id: 'final', name: 'Finish line' }, { id: 'done', name: 'Done' },
-].map((s, i) => ({ ...s, key: String(i + 1), c: `var(--st-${s.id})` }));
-const stageById = id => STAGES.find(s => s.id === id) || STAGES[2];
+// Where a chat is (keys 1–4). What kind of work it is, and the two flags (Focus, Waiting), sit apart
+// from it, so a bug can be explored and a chat can be your focus while it's building.
+const STATUSES = [
+  { id: 'exploring', name: 'Exploring', c: 'var(--st-explore)' }, { id: 'building', name: 'Building', c: 'var(--st-feature)' },
+  { id: 'finishing', name: 'Finishing', c: 'var(--st-final)' }, { id: 'done', name: 'Done', c: 'var(--st-done)' },
+].map((s, i) => ({ ...s, key: String(i + 1) }));
+const statusById = id => STATUSES.find(s => s.id === id) || STATUSES[1];
+// Set once. Feature is the plain default and carries no tag.
+const KINDS = [{ id: 'feature', name: 'Feature' }, { id: 'bug', name: 'Bug' }, { id: 'prototype', name: 'Prototype' }, { id: 'idea', name: 'Idea' }];
+const kindById = id => KINDS.find(k => k.id === id) || null;
 // Each skin renames a few places. Stage names stay put, so they always mean the same thing.
 const COPY = {
   imperial: { Now: 'Bridge', Projects: 'Systems', Routines: 'Standing orders', 'Needs you': 'Awaiting orders', Running: 'Units engaged', 'New chat': 'New directive', Recents: 'Fleet log', 'Search chats': 'Search fleet records' },
@@ -130,19 +135,24 @@ const projOf = c => projBy.get(c.project) || { key: c.project, name: 'Unknown', 
 const liveOf = c => liveBy.get(String(c.id).toLowerCase()) || null;
 const quietDays = () => (S.lite ? S.lite.quietDays : 4);
 const floor = () => (S.lite ? S.lite.plans.floor : 15);
-const stageOf = c => c.stage;
+const statusOf = c => c.status;
+const kindTag = c => (c.kind && c.kind !== 'feature' ? `<span class="tag kind-tag k-${c.kind}">${kindById(c.kind).name}</span>` : '');
+const focusStar = c => (c.focus ? '<span class="focus-star" title="Focus">★</span>' : '');
+const waitTag = c => (c.waiting ? `<span class="tag wait-tag">${esc(c.waitingOn || 'Waiting')}</span>` : '');
 // Needs you: asking for an OK or a question, or replied since you last looked.
 const replied = x => x && !x.working && !(x.pending || []).length && x.finishedAt && S.now - x.finishedAt < 12 * 3600e3 && x.finishedAt > (S.seen[x.sessionId || x.key] || 0) && x.phase !== 'ended';
 const asking = x => !!(x && (x.pending || []).length);
 const needsLive = x => asking(x) || replied(x);
 const needs = c => needsLive(liveOf(c));
 const running = c => { const x = liveOf(c); return !!(x && x.working); };
-// Quiet isn't a stage: nothing has moved for a few days. Chats asking for you, running or Waiting never go quiet.
-const isQuiet = c => S.now - c.updated > quietDays() * DAY && !needs(c) && !running(c) && stageOf(c) !== 'waiting';
+// Quiet isn't a status: nothing has moved for a few days. Chats asking for you, running, in Focus or Waiting never go quiet.
+const isQuiet = c => S.now - c.updated > quietDays() * DAY && !needs(c) && !running(c) && !c.waiting && !c.focus;
 const visible = c => !c.archived && !c.desktopArchived && !c.auto && !(projOf(c).archived);
 const allChats = () => S.chats.filter(visible);
 const inBucket = c => S.bucket === 'all' || (S.bucket === 'unsorted' ? !projOf(c).bucket : projOf(c).bucket === S.bucket);
-const live = cs => cs.filter(c => stageOf(c) !== 'done' && !isQuiet(c));
+const live = cs => cs.filter(c => statusOf(c) !== 'done' && !isQuiet(c));
+const focusList = () => allChats().filter(c => c.focus && statusOf(c) !== 'done').sort((a, b) => b.updated - a.updated);
+const bugList = () => allChats().filter(c => c.kind === 'bug');
 const chatsOfProject = k => allChats().filter(c => c.project === k);
 // What you've read is shared by every screen: kept here and on the Mac.
 let seenOut = new Set();
@@ -184,6 +194,7 @@ const IC = {
   broom: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.8 7.6 7.4M4 8.2l5.6 2.6-1.5 3.4c-1.8.4-4.3-.5-5.9-2.4Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>',
   gear: '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8ZM6.9 1.5h2.2l.4 1.8 1.2.7 1.8-.6 1.1 1.9-1.4 1.2v1.4l1.4 1.2-1.1 1.9-1.8-.6-1.2.7-.4 1.8H6.9l-.4-1.8-1.2-.7-1.8.6-1.1-1.9 1.4-1.2V7.1L2.4 5.9l1.1-1.9 1.8.6 1.2-.7Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   flag: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 14.5V2M3.5 2.5h8.5l-2 3 2 3H3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
+  bug: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="5" width="7" height="8.5" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6 5.2a2 2 0 0 1 4 0M8 8v5.3M2 8.5h2.5M11.5 8.5H14M2.8 4.5l2 1.5M13.2 4.5l-2 1.5M2.8 13l2-1.5M13.2 13l-2-1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
 };
 
 /* ---------- opening a chat in the full app's chat window ---------- */
@@ -235,17 +246,33 @@ function confirmBox({ title, body, yes = 'Go ahead', no = 'Cancel' }) {
 }
 
 /* ---------- changing things (each with Undo) ---------- */
+const changeWords = (ids, patch) => {
+  const n = ids.length === 1 ? '' : ` (${ids.length} chats)`;
+  if (patch.status) return `Moved to ${statusById(patch.status).name}${n}`;
+  if (patch.kind) return `Marked as ${kindById(patch.kind).name}${n}`;
+  if ('focus' in patch) return patch.focus ? `In Focus${n}` : `Out of Focus${n}`;
+  if (patch.waiting === false) return `No longer waiting${n}`;
+  return ids.length === 1 ? 'Moved 1 chat' : `Moved ${ids.length} chats`;
+};
 async function setChats(ids, patch, label) {
-  const prev = ids.map(id => { const c = chatBy.get(id) || {}; return { id, stage: c.guessed ? null : c.stage, waitingOn: c.waitingOn || '' }; });
+  // Undo puts back exactly what was there, guesses included (a guessed status goes back to a guess).
+  const prev = ids.map(id => { const c = chatBy.get(id) || {}, g = c.guessed || {}; return { id, patch: { status: g.status ? null : c.status, kind: g.kind ? null : c.kind || null, focus: !!c.focus, waiting: !!c.waiting, waitingOn: c.waitingOn || '', note: c.note || '', remindAt: c.remindAt || null } }; });
   await api('/api/lite/chats', { ids, patch });
   // Show it straight away; the server's own list follows.
-  for (const id of ids) { const c = chatBy.get(id); if (c && patch.stage !== undefined) { c.stage = patch.stage; c.guessed = false; } if (c && patch.waitingOn !== undefined) c.waitingOn = patch.waitingOn || null; if (c && patch.note !== undefined) c.note = patch.note || null; }
+  for (const id of ids) {
+    const c = chatBy.get(id); if (!c) continue;
+    for (const k of ['status', 'kind']) if (k in patch && patch[k]) { c[k] = patch[k]; c.guessed = { ...(c.guessed || {}), [k]: false }; }
+    for (const k of ['focus', 'waiting']) if (k in patch) c[k] = !!patch[k];
+    for (const k of ['waitingOn', 'note']) if (k in patch) c[k] = patch[k] || null;
+  }
   S.sel.clear(); sfx('slide'); render();
-  toast(label || `${ids.length === 1 ? 'Moved 1 chat' : `Moved ${ids.length} chats`}${patch.stage ? ` to ${stageById(patch.stage).name}` : ''}`, async () => {
-    for (const p of prev) await api('/api/lite/chats', { ids: [p.id], patch: { stage: p.stage, waitingOn: p.waitingOn } });
+  toast(label || changeWords(ids, patch), async () => {
+    for (const p of prev) await api('/api/lite/chats', { ids: [p.id], patch: p.patch });
     sfx('undo'); await loadState(); render();
   });
 }
+// f: Focus on, or off when every one of them is already in Focus.
+const toggleFocus = ids => setChats(ids, { focus: !ids.every(id => (chatBy.get(id) || {}).focus) });
 async function setLook(patch) {
   const j = await api('/api/lite/look', patch);
   Object.assign(S.lite.look, j.look); S.lite.plans.floor = j.floor; S.lite.quietDays = j.quietDays; S.lite.permissions = j.permissions; S.lite.routinesFollow = j.routinesFollow; S.lite.openLite = j.openLite;
@@ -262,7 +289,7 @@ function applyLook() {
 }
 
 /* ---------- archive (with a record, so Bring back puts it where it was) ---------- */
-const recordOf = c => ({ title: c.title, project: c.project, stage: c.guessed ? undefined : c.stage, model: c.model || undefined, branch: c.branch || undefined, worktree: c.worktree || undefined, provider: c.provider });
+const recordOf = c => ({ title: c.title, project: c.project, kind: c.guessed && c.guessed.kind ? undefined : c.kind || undefined, status: c.guessed && c.guessed.status ? undefined : c.status, model: c.model || undefined, branch: c.branch || undefined, worktree: c.worktree || undefined, provider: c.provider });
 async function archiveChats(ids) {
   const records = Object.fromEntries(ids.map(id => [id, recordOf(chatBy.get(id) || {})]));
   await api('/api/lite/archive', { chats: ids, records });
@@ -290,11 +317,12 @@ function askWaiting(ids) {
   root.innerHTML = `<div class="modal-back"><form class="modal" id="wForm"><h3>Waiting on…</h3><p>${ids.length > 1 ? `${ids.length} chats` : esc(c.title || '')}. A reminder comes after two days.</p>
     <input name="who" class="field" placeholder="Who (CQA, a dev, legal…)" value="${esc(c.waitingOn || '')}" aria-label="Who">
     <input name="note" class="field" placeholder="Note (optional): what you’re waiting for" value="${esc(c.note || '')}" aria-label="Note">
-    <div class="acts"><button class="btn" type="button" data-m="no">Cancel</button><button class="btn prime" type="submit">Set waiting</button></div></form></div>`;
+    <div class="acts">${ids.some(id => (chatBy.get(id) || {}).waiting) ? '<button class="btn" type="button" data-m="stop" style="margin-right:auto">Not waiting any more</button>' : ''}<button class="btn" type="button" data-m="no">Cancel</button><button class="btn prime" type="submit">Set waiting</button></div></form></div>`;
   const f = root.querySelector('#wForm');
   const close = () => { root.innerHTML = ''; };
   root.querySelector('[data-m="no"]').onclick = close;
+  const stop = root.querySelector('[data-m="stop"]'); if (stop) stop.onclick = wrap(async () => { close(); await setChats(ids, { waiting: false }); });
   f.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });
-  f.onsubmit = wrap(async e => { e.preventDefault(); close(); await setChats(ids, { stage: 'waiting', waitingOn: f.who.value.trim(), note: f.note.value.trim() }, `Waiting on ${f.who.value.trim() || 'someone'}. A reminder comes after two days.`); });
+  f.onsubmit = wrap(async e => { e.preventDefault(); close(); await setChats(ids, { waiting: true, waitingOn: f.who.value.trim(), note: f.note.value.trim() }, `Waiting on ${f.who.value.trim() || 'someone'}. A reminder comes after two days.`); });
   f.who.focus(); f.who.select();
 }

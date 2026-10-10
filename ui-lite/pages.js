@@ -1,32 +1,32 @@
 'use strict';
-/* Projects (cards by bucket; quiet ones fold into chips), a project's page (chats by stage), lists,
+/* Projects (cards by bucket; quiet ones fold into chips), a project's page (Focus, then chats by
+   status), Bugs (every bug, by status), lists,
    Archived, Clean up, Images, Alerts, and the menus for a chat or a project. */
 
-// Grouped views (a project's stage sections) leave the stage pill out: the heading says it.
-// Mixed lists (Recents, search) show it.
+// Grouped views (a project's status sections) leave the status pill out: the heading says it.
+// Mixed lists (Recents, search, Focus) show it.
 function rowHtml(c, { showProject = false, showStage = false } = {}) {
   const p = projOf(c);
-  const waitingNow = stageOf(c) === 'waiting' && c.waitingOn;
-  const sub = showProject ? `${esc(p.name)}${p.bucket ? ` · ${esc(bucketName(p.bucket))}` : ''}` : (stageOf(c) === 'waiting' && c.note ? esc(c.note) : '');
-  const st = stageById(stageOf(c));
+  const sub = showProject ? `${esc(p.name)}${p.bucket ? ` · ${esc(bucketName(p.bucket))}` : ''}` : (c.waiting && c.note ? esc(c.note) : '');
+  const st = statusById(statusOf(c));
   return `<div class="row ${c.parent && !showProject ? 'sub' : ''} ${isQuiet(c) ? 'is-quiet' : ''}" role="button" tabindex="-1" draggable="true" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" aria-selected="${S.sel.has(c.id)}">
     ${needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '<span></span>'}
-    <span class="t"><b>${esc(c.title)}</b>${sub ? `<small>${sub}</small>` : ''}</span>
-    <span class="side-tags">${waitingNow ? `<span class="tag wait-tag">${esc(c.waitingOn)}</span>` : ''}${c.provider === 'codex' ? '<span class="tag">Codex</span>' : ''}${showStage ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu"><span class="dot" style="background:${st.c}"></span>${st.name}</button>` : ''}</span>
+    <span class="t"><b>${focusStar(c)}${esc(c.title)}</b>${sub ? `<small>${sub}</small>` : ''}</span>
+    <span class="side-tags">${kindTag(c)}${waitTag(c)}${c.provider === 'codex' ? '<span class="tag">Codex</span>' : ''}${showStage ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu"><span class="dot" style="background:${st.c}"></span>${st.name}</button>` : ''}</span>
     <span class="when">${ago(c.updated)}</span>
     <button class="iconbtn rmenu" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" aria-label="Move or change">${IC.dots}</button>
   </div>`;
 }
-const selHint = () => '<p class="hint-line"><kbd>j</kbd> <kbd>k</kbd> to move, <kbd>↵</kbd> to open, <kbd>1</kbd>–<kbd>7</kbd> for a stage, <kbd>e</kbd> to archive, <kbd>x</kbd> to select. <kbd>?</kbd> shows them all.</p>';
+const selHint = () => '<p class="hint-line"><kbd>j</kbd> <kbd>k</kbd> to move, <kbd>↵</kbd> to open, <kbd>1</kbd>–<kbd>4</kbd> for status, <kbd>f</kbd> for Focus, <kbd>e</kbd> to archive, <kbd>x</kbd> to select. <kbd>?</kbd> shows them all.</p>';
 const BACK = '<button class="iconbtn back" data-go="side" aria-label="Back">‹</button>';
 
 function stageBar(cs) {
   const lv = live(cs); if (!lv.length) return '<div class="stagebar"></div>';
-  return `<div class="stagebar">${STAGES.filter(s => s.id !== 'done').map(s => { const n = lv.filter(c => stageOf(c) === s.id).length; return n ? `<i style="width:${100 * n / lv.length}%;background:${s.c}" title="${s.name}: ${n}"></i>` : ''; }).join('')}</div>`;
+  return `<div class="stagebar">${STATUSES.filter(s => s.id !== 'done').map(s => { const n = lv.filter(c => statusOf(c) === s.id).length; return n ? `<i style="width:${100 * n / lv.length}%;background:${s.c}" title="${s.name}: ${n}"></i>` : ''; }).join('')}</div>`;
 }
 function cardHtml(p) {
   const cs = chatsOfProject(p.key), lv = live(cs);
-  const w = lv.filter(c => stageOf(c) === 'waiting').length;
+  const w = lv.filter(c => c.waiting).length;
   const nd = cs.some(needs);
   const making = S.gen && S.gen[p.key];
   return `<button class="card ${nd ? 'needs' : ''}" draggable="true" data-project="${esc(p.key)}" data-cur="p:${esc(p.key)}">
@@ -44,7 +44,7 @@ function home() {
     const act = ps.filter(p => live(chatsOfProject(p.key)).length);
     const quiet = ps.filter(p => !live(chatsOfProject(p.key)).length);
     return `<section class="section" data-drop-bucket="${esc(b.id || '')}">
-      <div class="sec-h"><h2>${esc(b.name)}</h2><span class="n">${ps.length || ''}</span>${b.id === null ? '<span class="hint">Drag one onto a bucket, or right-click it</span>' : `<button class="hint" data-bstages="${esc(b.id)}" title="Whether chats in these projects are grouped by stage in the sidebar">${bucketStages(b.id) ? 'Stages shown' : 'No stages'}</button>`}</div>
+      <div class="sec-h"><h2>${esc(b.name)}</h2><span class="n">${ps.length || ''}</span>${b.id === null ? '<span class="hint">Drag one onto a bucket, or right-click it</span>' : `<button class="hint" data-bstages="${esc(b.id)}" title="Whether chats in these projects are grouped by status in the sidebar">${bucketStages(b.id) ? 'By status' : 'Plain list'}</button>`}</div>
       ${act.length ? `<div class="cards">${act.map(cardHtml).join('')}</div>` : ''}
       ${!ps.length ? '<div class="dropzone">Drag projects here</div>' : ''}
       ${quiet.length ? `<div class="quiet-line"><span class="why" title="No chat here has moved in ${quietDays()} days, or every chat is Done. A new chat or message brings it back up.">Quiet:</span>${quiet.map(p => `<button data-project="${esc(p.key)}" draggable="true" data-cur="p:${esc(p.key)}"><span class="thumb-xs" style="${artStyle(p)}"></span>${esc(p.name)}</button>`).join('')}</div>` : ''}
@@ -71,8 +71,10 @@ function project() {
   const p = projBy.get(S.project);
   if (!p) return `<div class="wrap"><p class="empty-note">That project isn’t in the list any more.</p></div>`;
   const cs = chatsOfProject(p.key).sort((x, y) => y.updated - x.updated);
-  const sections = STAGES.map(s => {
-    const all = cs.filter(c => stageOf(c) === s.id);
+  const foc = cs.filter(c => c.focus && statusOf(c) !== 'done');
+  const focusSec = foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span></div><div class="rows">${foc.map(c => rowHtml(c, { showStage: true })).join('')}</div></section>` : '';
+  const sections = focusSec + STATUSES.map(s => {
+    const all = cs.filter(c => statusOf(c) === s.id && !(c.focus && s.id !== 'done'));
     if (!all.length) return '';
     const folded = s.id === 'done' ? !S.more['p-done'] : false;
     const act = s.id === 'done' ? all : all.filter(c => !isQuiet(c)), quiet = s.id === 'done' ? [] : all.filter(isQuiet);
@@ -97,6 +99,20 @@ function project() {
   </div>`;
 }
 
+/* ---------- Bugs: every bug across projects, by status ---------- */
+function bugsView() {
+  const all = bugList().sort((x, y) => y.updated - x.updated);
+  const sections = STATUSES.map(s => {
+    const list = all.filter(c => statusOf(c) === s.id);
+    if (!list.length) return '';
+    const folded = s.id === 'done' && !S.more['b-done'];
+    return `<section class="section" data-drop-stage="${s.id}"><div class="sec-h">${s.id === 'done' ? `<button class="fold" data-bfold="1"><h2>${s.name}</h2><span class="n">${list.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${list.length}</span>`}</div>
+      ${folded ? '' : `<div class="rows">${list.map(c => rowHtml(c, { showProject: true })).join('')}</div>`}</section>`;
+  }).join('');
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Bugs</h1></div></div>
+    ${sections || '<p class="empty-note">No bugs. A chat becomes one from its menu (Kind → Bug), and new chats about fixing something are guessed as bugs.</p>'}${selHint()}</div>`;
+}
+
 /* ---------- Archived: out of every list, never deleted ---------- */
 function archivedView() {
   const recs = S.lite.archived.chats || {};
@@ -104,10 +120,10 @@ function archivedView() {
   const projs = S.projects.filter(p => p.archived);
   const wtLine = c => { const r = recs[c.id] || {}; if (!c.worktree && !r.worktree) return 'no worktree'; if (r.worktreeRemoved) return `worktree removed · branch ${r.branch || 'kept'}`; return c.worktreeExists === false ? 'worktree gone' : 'worktree on disk'; };
   return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Archived</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>
-    <p class="hint-line" style="margin-top:-12px">Out of every list, never deleted. Each keeps its project, stage, branch and worktree, so <b>Bring back</b> puts it where it was. A removed worktree can be rebuilt from its branch.</p>
+    <p class="hint-line" style="margin-top:-12px">Out of every list, never deleted. Each keeps its project, status, kind, branch and worktree, so <b>Bring back</b> puts it where it was. A removed worktree can be rebuilt from its branch.</p>
     ${projs.length ? `<section class="section"><div class="sec-h"><h2>Projects</h2><span class="n">${projs.length}</span></div><div class="rows">${projs.map(p => `<div class="row acts" data-cur="p:${esc(p.key)}"><span class="thumb-xs" style="${artStyle(p)};width:18px;height:18px;border-radius:4px"></span><span class="t"><b>${esc(p.name)}</b><small>${esc(p.cwd || '')}</small></span><span class="side-tags"></span><span></span><button class="btn" data-unarch-p="${esc(p.key)}">Bring back</button></div>`).join('')}</div></section>` : ''}
     <section class="section"><div class="sec-h"><h2>Chats</h2><span class="n">${chats.length}</span></div>
-      <div class="rows">${chats.map(c => { const r = recs[c.id] || {}; return `<div class="row acts" data-cur="${esc(c.id)}" data-open="${esc(c.id)}"><span></span><span class="t"><b>${esc(c.title)}</b><small>${esc(projOf(c).name)} · ${esc(stageById(r.stage || c.stage).name)} · ${esc(wtLine(c))}</small></span>
+      <div class="rows">${chats.map(c => { const r = recs[c.id] || {}; return `<div class="row acts" data-cur="${esc(c.id)}" data-open="${esc(c.id)}"><span></span><span class="t"><b>${esc(c.title)}</b><small>${esc(projOf(c).name)} · ${esc(statusById(r.status || c.status).name)}${(r.kind || c.kind) && (r.kind || c.kind) !== 'feature' ? ` · ${esc(kindById(r.kind || c.kind).name)}` : ''} · ${esc(wtLine(c))}</small></span>
         <span class="side-tags">${r.worktreeRemoved ? `<button class="btn sm" data-rebuild="${esc(c.id)}">Rebuild worktree</button>` : ''}</span><span class="when">${r.at ? ago(ms(r.at)) : ''}</span><button class="btn" data-unarch="${esc(c.id)}">Bring back</button></div>`; }).join('') || '<p class="empty-note">Nothing archived. Press <kbd>e</kbd> on a chat to archive it.</p>'}</div></section></div>`;
 }
 
@@ -275,12 +291,15 @@ function rowMenu(anchor, id, at) {
   const c = chatBy.get(id); if (!c) return;
   const ids = S.sel.has(id) && S.sel.size > 1 ? [...S.sel] : [id];
   pop(anchor, `<div class="ph">${ids.length > 1 ? `${ids.length} chats` : esc(c.title.slice(0, 60))}</div>
-    <button data-v="open">Open<kbd>↵</kbd></button><button data-v="full">Open in the full app</button><hr><div class="ph">Stage</div>
-    ${STAGES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && stageOf(c) === s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('')}
-    <hr><button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
+    <button data-v="open">Open<kbd>↵</kbd></button><button data-v="full">Open in the full app</button><hr><div class="ph">Status</div>
+    ${STATUSES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && statusOf(c) === s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('')}
+    <div class="ph">Kind</div><div class="kind-seg">${KINDS.map(k => `<button data-v="k:${k.id}" role="menuitemradio" aria-checked="${ids.length === 1 && c.kind === k.id}">${k.name}</button>`).join('')}</div>
+    <hr><button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
     if (v === 'open') return openChat(id);
     if (v === 'full') return openChat(id, { full: true });
-    if (v.startsWith('s:')) return wrap(setChats)(ids, { stage: v.slice(2) });
+    if (v.startsWith('s:')) return wrap(setChats)(ids, { status: v.slice(2) });
+    if (v.startsWith('k:')) return wrap(setChats)(ids, { kind: v.slice(2) });
+    if (v === 'focus') return wrap(toggleFocus)(ids);
     if (v === 'wait') return askWaiting(ids);
     if (v === 'arch') return wrap(archiveChats)(ids);
     if (v === 'proj') return pickProject(anchor, k => wrap(async () => { await setChats(ids, { project: k }, `Moved to ${(projBy.get(k) || {}).name || 'the project'}`); await loadState(); render(); })());
