@@ -748,3 +748,5 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .proj-row:hover .proj-chev, .proj-chev:focus-visible, .folder[data-folded="true"] .proj-chev { opacity: 1; }
 .proj-chev:hover { color: var(--fg); background: var(--hover); }
 @media (hover: none) { .proj-chev { opacity: 1; } }
+.folder-gone { max-width: 760px; width: calc(100% - 32px); margin: 0 auto 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--pane); font-size: 13px; color: var(--fg-2); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.folder-gone p { margin: 0; line-height: 1.45; }
