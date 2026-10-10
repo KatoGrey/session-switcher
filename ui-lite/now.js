@@ -96,6 +96,8 @@ function commanderAnswer() {
   const waiting = after.some(e => e.kind === 'permission') && !after.some(e => e.kind === 'permission_done');
   return { question, text: text + (live ? (text ? '\n\n' : '') + live : ''), steps, done, err, waiting };
 }
+// Just enough Markdown for the Commander's answers: bold, inline code and headings, escaped first.
+const mdLite = t => esc(t).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/^#{1,4} (.+)$/gm, '<b>$1</b>');
 function commanderHtml() {
   const a = commanderAnswer();
   const st = S.cmd.state;
@@ -105,7 +107,7 @@ function commanderHtml() {
     <div class="cmd-chips">${CMD_CHIPS.map(t => `<button type="button" class="chip" data-cmd="${esc(t)}">${esc(t)}</button>`).join('')}</div>
     ${S.cmd.error ? `<div class="cmd-answer"><p class="warn" style="color:var(--st-bug)">${esc(S.cmd.error)}</p></div>` : ''}
     ${a ? `<div class="cmd-answer"><div class="cmd-meta"><b>Commander</b><small>${esc(a.question.slice(0, 90))}${a.steps ? ` · ${a.steps} step${a.steps === 1 ? '' : 's'}` : ''}${a.done ? '' : ' · working…'}</small>${S.cmd.sessionId ? `<button type="button" class="linkish" data-open="${esc(S.cmd.sessionId)}">Open its chat</button>` : ''}</div>
-      ${a.waiting ? '<p>It’s asking to do something. Open its chat to allow it.</p>' : ''}${a.err ? `<p style="color:var(--st-bug)">${esc(a.err)}</p>` : ''}<div class="cmd-text">${esc(a.text || (a.done ? 'Done.' : '…'))}</div></div>` : ''}
+      ${a.waiting ? '<p>It’s asking to do something. Open its chat to allow it.</p>' : ''}${a.err ? `<p style="color:var(--st-bug)">${esc(a.err)}</p>` : ''}<div class="cmd-text">${mdLite(a.text || (a.done ? 'Done.' : '…'))}</div></div>` : ''}
   </form>`;
 }
 function cmdListen(key) {
