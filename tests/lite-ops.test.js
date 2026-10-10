@@ -61,6 +61,10 @@ test('Remove worktree: archived chats only, never with uncommitted changes; the 
   const st = lite.createLite({ dataDir: dir });
   const ops = createLiteOps({ dataDir: dir, store: st });
   await assert.rejects(ops.removeWorktree('c1', wt), /Archive the chat first/);
+  st.archive({ chats: ['c0'], records: { c0: { title: 'Another chat' } } });
+  await assert.rejects(ops.removeWorktree('c0', wt), /no worktree on record/, 'an archived chat can’t remove a worktree that isn’t its own');
+  st.archive({ chats: ['c2'], records: { c2: { title: 'Elsewhere', worktree: path.join(path.dirname(wt), 'other') } } });
+  await assert.rejects(ops.removeWorktree('c2', wt), /isn’t this chat’s worktree/);
   st.archive({ chats: ['c1'], records: { c1: { title: 'A chat', worktree: wt } } });
   write(path.join(wt, 'src/new.js'), 'uncommitted');
   await assert.rejects(ops.removeWorktree('c1', wt), /uncommitted/);
