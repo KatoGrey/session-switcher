@@ -39,7 +39,13 @@ function resetsCell(p) {
   return p.family === 'claude' ? '<button class="linkish dim" data-addreset="' + esc(p.id) + '" title="Claude Code doesn’t report manual resets; note yours here">+ add</button>' : '';
 }
 function planRow(p) {
-  if (p.unlimited) return `<div class="prow"><span class="prank"></span><span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span><span class="pnote">${p.broken ? `<span class="warn">${esc(p.broken)}</span>` : 'No usage limits reported'}</span></div>`;
+  if (p.unlimited) {
+    const r = p.requests;
+    const days = r && r.byDay && r.byDay.length ? r.byDay : null;
+    const max = days ? Math.max(1, ...days.map(d => d.n)) : 1;
+    const spark = days ? `<span class="ospark" title="${esc(days.map(d => `${wd(d.from)} ${d.n.toLocaleString()}`).join(' · '))}">${days.map(d => `<i style="height:${Math.max(8, Math.round(100 * d.n / max))}%"></i>`).join('')}</span>` : '';
+    return `<div class="prow"><span class="prank"></span><span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span><span class="pnote">${p.broken ? `<span class="warn">${esc(p.broken)}</span>` : r ? `<span>${r.day.toLocaleString()} requests in the last day · ${r.week.toLocaleString()} this week</span>${spark}` : 'No usage limits reported'}</span></div>`;
+  }
   if (p.broken) return `<div class="prow broken"><span class="prank"></span><span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span><span class="pnote"><span class="warn">${esc(p.broken.replace(/ Sign in from Setup in the full app\./, ''))}</span>${p.family === 'claude' ? `<button class="btn sm prime" data-signin="${esc(p.id)}">Sign in</button>` : ''}</span></div>`;
   if (typeof p.left !== 'number') return `<div class="prow"><span class="prank"></span><span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span><span class="pnote">${p.checking ? 'Checking…' : esc(p.error || 'No usage read yet')}</span></div>`;
   const fc = forecastShort(p);

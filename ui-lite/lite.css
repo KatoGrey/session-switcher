@@ -688,3 +688,5 @@ body.dropping .box::after { content: "Drop to add"; position: absolute; inset: 0
 .side-stage .label-dot { width: 7px; height: 7px; }
 .st-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; margin-left: -14px; margin-right: 6px; }
 .side-empty { color: var(--muted); font-size: 12.5px; padding: 6px 8px; margin: 0; }
+.ospark { display: inline-flex; align-items: flex-end; gap: 2px; height: 18px; }
+.ospark i { width: 5px; background: var(--st-explore); border-radius: 1px; opacity: .8; }
