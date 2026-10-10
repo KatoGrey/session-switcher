@@ -333,7 +333,18 @@ function applyDesktop(projects, byCwd) {
   }
   // Drop folders left empty by the moves above (their chats now show under their real project), and
   // the desktop app's own scratch workspaces once they hold no chats. Folders you added stay.
-  return projects.filter(p => p.sessions.length || p.added || (!emptied.has(p) && !/scratch-workspaces/.test(p.cwd) && !desktop.worktreeOwner(p.cwd, projectNamed)));
+  const kept = projects.filter(p => p.sessions.length || p.added || (!emptied.has(p) && !/scratch-workspaces/.test(p.cwd) && !desktop.worktreeOwner(p.cwd, projectNamed)));
+  // The desktop app's chats without a project run in scratch workspaces named like
+  // scratch-2026-10-06-00591c: show them as "No folder · Oct 6" (numbered when a day has several).
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const seenDay = new Map();
+  for (const p of kept.filter(x => /scratch-workspaces/.test(x.cwd)).sort((a, b) => (a.updated || 0) - (b.updated || 0))) {
+    const m = /scratch-(\d{4})-(\d{2})-(\d{2})/.exec(path.basename(String(p.cwd)));
+    const day = m ? `${MON[Number(m[2]) - 1]} ${Number(m[3])}` : '';
+    const n = (seenDay.get(day) || 0) + 1; seenDay.set(day, n);
+    p.name = `No folder${day ? ` · ${day}` : ''}${n > 1 ? ` (${n})` : ''}`;
+  }
+  return kept;
 }
 // A folder in the list (Claude Code, Codex, or created here), by its path.
 function projectAt(cwd) {
