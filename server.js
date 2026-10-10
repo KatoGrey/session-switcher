@@ -314,6 +314,7 @@ function applyDesktop(projects, byCwd) {
   const named = new Map();
   for (const p of projects) if (!desktop.isWorktree(p.cwd)) { const k = path.basename(String(p.cwd).replace(/[\\/]+$/, '')); named.set(k, named.has(k) ? false : p.cwd); }
   const projectNamed = n => named.get(n) || null;
+  const emptied = new Set();
   for (const p of projects.slice()) {
     const owner = desktop.worktreeOwner(p.cwd, projectNamed);
     const keep = [];
@@ -327,9 +328,12 @@ function applyDesktop(projects, byCwd) {
       if (home && normCwd(home) !== normCwd(p.cwd)) projectFor(home).sessions.push({ ...s, ranIn: p.cwd, folderExists: p.exists });
       else keep.push(s);
     }
+    if (p.sessions.length && !keep.length) emptied.add(p);
     p.sessions = keep;
   }
-  return projects.filter(p => p.sessions.length || p.added || !desktop.worktreeOwner(p.cwd, projectNamed));
+  // Drop folders left empty by the moves above (their chats now show under their real project), and
+  // the desktop app's own scratch workspaces once they hold no chats. Folders you added stay.
+  return projects.filter(p => p.sessions.length || p.added || (!emptied.has(p) && !/scratch-workspaces/.test(p.cwd) && !desktop.worktreeOwner(p.cwd, projectNamed)));
 }
 // A folder in the list (Claude Code, Codex, or created here), by its path.
 function projectAt(cwd) {
