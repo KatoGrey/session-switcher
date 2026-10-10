@@ -697,9 +697,14 @@ function rowHtml(s, folderName, hit) {
   const sub = oc ? s.preview || '' : s.lastPrompt ? `You last asked: ${s.lastPrompt}` : (s.title !== s.firstPrompt ? `Started with: ${s.firstPrompt}` : '');
   const live = liveOf(s.id);
   const run = !live && isRunning(s.id);
-  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (s.partner ? `<span class="tag line pair" title="${PROV_NAME[s.partner.provider]} works in this chat too">with ${PROV_NAME[s.partner.provider]}</span>` : '') + (oc ? `<span class="tag openclaw" title="An OpenClaw agent’s session, read-only here">OpenClaw · ${esc(s.agentName || 'Agent')}</span>` : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
+  const ocLive = oc && s.status === 'running' && !live;
+  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '')
+    + (s.partner ? `<span class="tag line pair" title="${PROV_NAME[s.partner.provider]} works in this chat too">with ${PROV_NAME[s.partner.provider]}</span>` : '')
+    + (oc ? `<span class="tag openclaw" title="An OpenClaw agent’s session, readable and writable here">OpenClaw · ${esc(s.agentName || 'Agent')}</span>` : '')
+    + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
+    : ocLive ? '<span class="tag line" title="This session is active in OpenClaw right now">Live now</span>'
     : run ? '<span class="tag violet">In a terminal</span>' : (s.active ? '<span class="tag ghost">Just updated</span>' : ''));
-  const primary = oc ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Read this session here (read-only)">Read</button>`
+  const primary = oc ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Read this session here; it carries on in OpenClaw">Read</button>`
     : live ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Go back to this chat">Return</button>`
     : run ? `<button class="btn sm" data-watch="${esc(s.id)}" title="Read it live here while it runs in its terminal">Watch</button>`
     : inApp() ? `<button class="btn sm" data-chat="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Open</button>`

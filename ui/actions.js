@@ -168,7 +168,16 @@ function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items &
 function chatItems(id) {
   const [s] = sessionById(id); if (!s) return [];
   if (isCodex(s)) return codexChatItems(s);
-  if (isOpenClaw(s)) return [{ glyph: '❝', label: 'Read it here', hint: 'read-only; it carries on in OpenClaw', run: () => ChatUI.open({ sessionId: id }) }];
+  if (isOpenClaw(s)) return [
+    { glyph: '❝', label: 'Read it here', hint: 'it carries on in OpenClaw; you can write to it here', run: () => ChatUI.open({ sessionId: id }) },
+    '-', 
+    { label: 'Refresh now', hint: 'reread the session list', run: () => loadSessions().then(renderAll) },
+    { glyph: '🗄', label: 'Archive in OpenClaw', hint: 'keeps it out of the active list; nothing is deleted', run: async () => {
+      if (!(await appConfirm(`Archive this session in OpenClaw?\n\n${s.title}\n\nIt leaves the active list; its transcript stays archived and searchable. This can't be undone from here.`, { ok: 'Archive' }))) return;
+      try { await api('/api/openclaw/archive', { id: s.id }); await loadSessions(); renderAll(); toast('Archived in OpenClaw.', 3000); }
+      catch (err) { toast(`Couldn’t archive: ${err.message}`, 6000); }
+    } },
+  ];
   const a = current(); const ok = canLaunch(a);
   const why = !a.signedIn ? `Sign in to ${a.name} first` : (a.lockMessage || '');
   const live = liveOf(id), run = isRunning(id);

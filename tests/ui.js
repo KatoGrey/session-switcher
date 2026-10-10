@@ -883,7 +883,7 @@ module.exports = [
       await t.shot(b, 'folder');
       await b.clickOn('[data-row="agent:main:discord:channel:42"] [data-chat]'); await sleep(1500);
       const v = await b.eval(`return { open: ChatUI.isOpen(), box: document.getElementById('cCompose').hidden, note: document.getElementById('cWatch').textContent, who: [...document.querySelectorAll('#cFeed .turn .who-n')].map(x => x.textContent), text: document.getElementById('cFeed').textContent, acct: document.getElementById('cAcct').textContent }`);
-      t.check('it opens to read, with no message box', v.open && v.box && /Read-only\. An OpenClaw agent’s session/.test(v.note), v);
+      t.check('it opens live, its message box ready', v.open && !v.box && /Live\. This OpenClaw agent’s session/.test(v.note), v);
       t.check('showing the conversation, in the agent’s name', v.who.includes('Nova') && /Which quests still need dialogue\?/.test(v.text) && /Cellar Rats/.test(v.text) && /OpenClaw · Nova/.test(v.acct), v);
       t.check('read from OpenClaw’s store', calls.some(([p, u]) => p === '/api/chat/history' && /provider=openclaw/.test(u)));
       t.check('and never started as a chat', !calls.some(([p]) => p === '/api/chat/open' || p === '/api/open'));
@@ -895,7 +895,7 @@ module.exports = [
       const p = await t.open({ openclaw: true, width: 412, height: 880, mobile: true });
       await p.eval(`ChatUI.open({ sessionId: 'agent:scout:cron:nightly' }); return 1`); await sleep(1500);
       const ph = await p.eval(`return { open: ChatUI.isOpen(), box: document.getElementById('cCompose').hidden, wide: document.scrollingElement.scrollWidth <= innerWidth + 1 }`);
-      t.check('on a phone too', ph.open && ph.box && ph.wide, ph);
+      t.check('on a phone too', ph.open && !ph.box && ph.wide, ph);
     },
   },
   {
