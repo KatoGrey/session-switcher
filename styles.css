@@ -1792,6 +1792,34 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .confirm-dlg h3{font-size:22px;margin-bottom:8px}
 .confirm-dlg p{margin:0 0 18px;color:var(--parch-2);white-space:pre-line}
 .confirm-dlg .d-row{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.choice-dlg .d-row .quiet{margin-right:auto}
+
+/* ---------- restart ---------- */
+/* the app's files changed since it started: one click brings the new version in */
+.updpill{display:inline-flex;align-items:center;gap:9px;height:36px;padding:0 6px 0 12px;border:1px solid rgb(var(--c-d9bf74) / .5);border-radius:999px;background:rgb(var(--c-d9bf74) / .1);color:var(--parch);font:600 13px/1 var(--f-body);white-space:nowrap;cursor:pointer;transition:background .2s,border-color .2s}
+.updpill:hover{background:rgb(var(--c-d9bf74) / .18);border-color:var(--gilt)}
+.updpill b{padding:6px 10px;border-radius:999px;background:var(--gilt);color:var(--gilt-ink);font:700 12px/1 var(--f-body)}
+.updpill .up-dot{width:7px;height:7px;border-radius:50%;background:var(--gilt);box-shadow:0 0 8px rgb(var(--c-d9bf74) / .8)}
+.motion .updpill .up-dot{animation:glint 1.6s ease-in-out infinite}
+.updpill{flex:none}
+@media (max-width:1500px){ .updpill{font-size:0;gap:7px;padding:0 4px 0 10px} }
+@media (max-width:760px){ .updpill .up-dot{display:none} .updpill{padding:0 3px;gap:0} }
+/* waiting for replies to finish */
+.restart-bar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 16px;border:1px solid rgb(var(--c-d9bf74) / .45);border-radius:999px;background:rgb(var(--c-141117) / .96);box-shadow:0 18px 40px -16px rgb(var(--c-000000));backdrop-filter:blur(8px);color:var(--parch-2);font-size:14px;max-width:calc(100vw - 24px)}
+.restart-bar .rb-dot{width:8px;height:8px;border-radius:50%;background:var(--gilt);flex:none}
+.motion .restart-bar .rb-dot{animation:glint 1.6s ease-in-out infinite}
+.restart-bar .rb-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.motion .restart-bar{animation:rb-in .35s cubic-bezier(.2,.8,.2,1)}
+@keyframes rb-in{from{opacity:0;transform:translate(-50%,12px)}}
+/* restarting: a calm veil until the new copy answers */
+.restarting{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:rgb(var(--c-0a090c) / .82);backdrop-filter:blur(10px)}
+.motion .restarting{animation:rs-in .3s ease}
+@keyframes rs-in{from{opacity:0}}
+.rs-card{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;color:var(--parch)}
+.rs-card b{font:700 24px/1.2 var(--f-display)}
+.rs-card span{color:var(--parch-2);font-size:15px}
+.rs-sigil{filter:drop-shadow(0 0 18px rgb(var(--c-a5463f) / .5))}
+.motion .rs-sigil{animation:turn 4s linear infinite}
 .btn.danger-prime{background:linear-gradient(180deg,rgb(var(--c-9a4038)),rgb(var(--c-6e2a25)));border-color:rgb(var(--c-cf8274) / .7);color:rgb(var(--c-f6ece2))}
 
 /* ---------- context: how full each chat is, and summarizing at a good moment ---------- */

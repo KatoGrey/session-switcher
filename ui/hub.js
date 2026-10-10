@@ -3,6 +3,8 @@
 
 /* ---------- top bar ---------- */
 function renderBar() {
+  $('updPill').hidden = !S.update || !!window.REMOTE;
+  renderRestartBar();
   const A = awaiting(), W = atWork();
   document.body.classList.toggle('working', W.length > 0);
   const p = $('pulse');

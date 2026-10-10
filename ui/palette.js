@@ -32,7 +32,7 @@ function palItems(q) {
     ...(S.codex && S.codex.enabled ? (S.codex.signedIn ? [{ glyph: '❖', t: 'Open chatgpt.com', s: 'regular ChatGPT', run: () => openWeb(S.codex.id) }, { glyph: '◈', t: 'Check Codex usage', run: () => refreshUsage(S.codex.id) }] : [{ glyph: '✥', t: 'Sign in to Codex with ChatGPT', run: codexSignIn }]) : []),
     { glyph: '✥', t: 'New project', s: 'make a folder and start a chat', run: () => openNewProject() },
     { glyph: '✥', t: 'Add an account', run: addAccount, alias: 'sign in login' },
-    ...(window.REMOTE ? [] : [{ glyph: '⏻', t: 'Quit Session Switcher', run: quitApp, alias: 'exit close stop app' }]),
+    ...(window.REMOTE ? [] : [{ glyph: '↻', t: 'Restart Session Switcher', s: S.update ? 'a new version is ready' : 'your chats come back where they were', run: restartApp, alias: 'reboot relaunch reload update' }, { glyph: '⏻', t: 'Quit Session Switcher', run: quitApp, alias: 'exit close stop app' }]),
   ].map(x => ({ ...x, text: `${x.t} ${x.alias || ''}` }));
   const claudeNew = canLaunch(current()) ? S.projects.filter(p => p.exists).map(p => ({ glyph: '✦', t: `New Claude chat in ${p.name}`, s: `as ${current().name}`, run: () => ChatUI.open({ cwd: p.cwd, mode: 'new' }), text: `new chat claude ${p.name}` })) : [];
   const pinItems = S.projects.map(p => ({ glyph: '★', t: `${S.pins.has(p.cwd) ? 'Unpin' : 'Pin'} ${p.name}`, s: 'in the sidebar', run: () => togglePin(p.cwd), text: `pin unpin favorite ${p.name}` }));

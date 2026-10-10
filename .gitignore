@@ -16,6 +16,7 @@ tasks.json
 races.json
 open-chats.json
 reopen.json
+restart.json
 switcher.log
 switcher.log.old
 *.corrupt-*

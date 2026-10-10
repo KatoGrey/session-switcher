@@ -231,6 +231,8 @@ function connectLive() {
   es.addEventListener('races', () => { loadRaces().catch(() => {}); });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
   es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLive(); renderNav(); });
+  es.addEventListener('restart', e => { try { S.restart = JSON.parse(e.data) || {}; } catch { return; } if (S.restart.restarting) restarting(S.pid); else renderRestartBar(); });
+  es.addEventListener('update', e => { try { S.update = !!JSON.parse(e.data).ready; } catch { return; } renderBar(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
@@ -281,6 +283,102 @@ function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false, escape
   });
 }
 window.appConfirm = appConfirm;
+// A question with more than two answers. Each button is { v, label, kind }; the 'prime' one is what
+// Enter does. Esc (or closing it) answers `escape`.
+function appChoice(text, buttons, { escape = '' } = {}) {
+  return new Promise(resolve => {
+    const d = document.createElement('dialog');
+    d.className = 'confirm-dlg choice-dlg';
+    d.innerHTML = `<form method="dialog"><h3></h3><p></p><div class="d-row">${buttons.map(b => `<button class="btn ${b.kind || ''}" value="${esc(b.v)}">${esc(b.label)}</button>`).join('')}</div></form>`;
+    const [q, ...rest] = String(text).split(/\n\n/);
+    d.querySelector('h3').textContent = q;
+    const p = d.querySelector('p'); p.textContent = rest.join('\n\n'); p.hidden = !rest.length;
+    let done = false;
+    const answer = v => { if (done) return; done = true; resolve(v); if (d.open) d.close(); d.remove(); };
+    d.querySelector('form').addEventListener('submit', e => { e.preventDefault(); answer(e.submitter ? e.submitter.value : escape); });
+    d.addEventListener('cancel', e => { e.preventDefault(); answer(escape); });
+    d.addEventListener('close', () => answer(escape));
+    document.body.appendChild(d);
+    d.showModal();
+    (d.querySelector('.btn.prime') || d.querySelector('.btn')).focus();
+  });
+}
+
+/* ---------- restart ----------
+   A fresh copy of the app takes over: the window shows that it's restarting, reconnects by itself
+   and reloads, and the chats that were open come back (the one you were in opens again). With chats
+   still working, it can wait until their replies finish. */
+const workingNow = () => Object.values(S.live || {}).filter(x => ['starting', 'busy', 'waiting'].includes(x.state)).length;
+async function restartApp() {
+  const n = workingNow(), update = S.update ? ' A new version is ready.' : '';
+  let when;
+  if (n) {
+    when = await appChoice(`Restart Session Switcher?${update}\n\n${n === 1 ? 'A chat is' : `${nword(n)} chats are`} still working. Restarting now stops ${n === 1 ? 'it' : 'them'} mid-reply (the conversation is kept); waiting lets ${n === 1 ? 'it' : 'them'} finish first. Either way the chats come back where they were.`,
+      [{ v: '', label: 'Cancel', kind: 'quiet' }, { v: 'now', label: 'Restart now' }, { v: 'idle', label: 'When replies finish', kind: 'prime' }]);
+  } else {
+    when = (await appConfirm(`Restart Session Switcher?${update}\n\nThe window reconnects by itself, and the chats open in it come back where they were.`, { ok: 'Restart' })) ? 'now' : '';
+  }
+  if (!when) return;
+  noteReturn();
+  const r = await api('/api/restart', { when });
+  if (r.restarting) restarting(S.pid);
+  else { S.restart = r; renderRestartBar(); }
+}
+// Where you were, so the window can take you back after it reloads.
+function noteReturn() {
+  const chat = window.ChatUI && ChatUI.isOpen() ? (C.sessionId || (C.watch && C.watch.sessionId) || null) : null;
+  store('restart-return', JSON.stringify({ at: Date.now(), chat, view: S.view, folder: S.folder || null }));
+}
+// "Restarting…" until the new copy answers, then a reload (it has a new token and maybe new code).
+function restarting(oldPid) {
+  if ($('restarting')) return;
+  if (!store('restart-return')) noteReturn();
+  document.querySelectorAll('dialog[open]').forEach(d => { try { d.close(); } catch { /* fine */ } });
+  document.body.insertAdjacentHTML('beforeend', `<div class="restarting" id="restarting" role="alert" aria-live="assertive"><div class="rs-card"><svg class="rs-sigil" width="64" height="64" aria-hidden="true"><use href="#sigil"/></svg><b>Restarting…</b><span id="rsLine">Your chats will be right back.</span></div></div>`);
+  const t0 = Date.now();
+  const poll = async () => {
+    try {
+      const v = await fetch('/api/version', { cache: 'no-store' }).then(res => res.json());
+      if (v && v.pid && v.pid !== oldPid) { location.reload(); return; }
+    } catch { /* between the two copies */ }
+    if (Date.now() - t0 > 45000 && !$('rsReload')) {
+      $('rsLine').innerHTML = 'It’s taking longer than usual. <button class="btn sm" id="rsReload">Reload</button>';
+      $('rsReload').addEventListener('click', () => location.reload());
+    }
+    setTimeout(poll, 400);
+  };
+  setTimeout(poll, 500);
+}
+// Waiting for replies to finish: a bar that says so, with Restart now and Cancel.
+function renderRestartBar() {
+  const r = S.restart || {};
+  let bar = $('restartBar');
+  if (!r.pending || window.REMOTE) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    document.body.insertAdjacentHTML('beforeend', '<div class="restart-bar" id="restartBar" role="status"><span class="rb-dot" aria-hidden="true"></span><span class="rb-t"></span><button class="btn sm" data-restart="now">Restart now</button><button class="btn quiet sm" data-restart="cancel">Cancel</button></div>');
+    bar = $('restartBar');
+    bar.addEventListener('click', wrap(async e => {
+      const b = e.target.closest('[data-restart]'); if (!b) return;
+      if (b.dataset.restart === 'now') noteReturn();
+      const res = await api('/api/restart', { when: b.dataset.restart });
+      if (res.restarting) restarting(S.pid); else { S.restart = res; renderRestartBar(); }
+    }));
+  }
+  const n = r.waitingOn || 0;
+  bar.querySelector('.rb-t').textContent = n ? `Restarting when replies finish · ${n === 1 ? 'one chat is' : `${nword(n, false)} chats are`} still working` : 'Restarting…';
+}
+// Back from a restart: the page you were on, and the chat you were in, open again.
+function backFromRestart() {
+  let r = null;
+  try { r = JSON.parse(store('restart-return') || 'null'); localStorage.removeItem('restart-return'); } catch { return; }
+  if (!r || !(Date.now() - r.at < 180000)) return;
+  if (r.view === 'folder' && r.folder && S.projects.some(p => p.cwd === r.folder)) go('folder', r.folder);
+  else if (r.view === 'recent') go('recent');
+  if (r.chat) setTimeout(() => ChatUI.open({ sessionId: r.chat }).catch(() => {}), 600);
+  toast(r.chat ? 'Restarted. Your chats are back, and here’s where you were.' : 'Restarted. Your chats are back.', 3500);
+}
+$('updPill').addEventListener('click', wrap(restartApp));
+
 async function quitApp() {
   if (!(await appConfirm('Quit Session Switcher?\n\nChats in terminals keep running; chats in its window stop. Start it again from its shortcut.', { ok: 'Quit', danger: true }))) return;
   await api('/api/quit', {}); document.body.innerHTML = '<p style="padding:40px;font-family:var(--f-body)">Session Switcher has quit. You can close this window.</p>';
@@ -347,6 +445,7 @@ function appItems() {
     { glyph: '?', label: 'Keyboard shortcuts', keys: '?', run: () => openShortcuts() },
     '-',
     { label: 'Reload the window', keys: 'F5', run: () => location.reload() },
+    ...(window.REMOTE ? [] : [{ glyph: '↻', label: 'Restart Session Switcher', hint: S.update ? 'a new version is ready' : 'chats come back', run: restartApp }]),
   ];
 }
 function linkItems(a) {
@@ -441,5 +540,6 @@ wrap(async () => {
   await Promise.all([reload(), loadPrompts()]); connectLive(); watchActivity(); loadHealth(false).catch(() => {}); loadTasks().catch(() => {}); loadRaces().catch(() => {});
   // A popped-out window opens straight into its chat.
   if (PAGE_ARGS.get('chat')) await ChatUI.open({ sessionId: PAGE_ARGS.get('chat') });
+  else if (store('restart-return')) backFromRestart();
   else maybeTour();
 })();

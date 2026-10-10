@@ -158,6 +158,39 @@ test('races: one can’t start without Codex, and nothing is left behind', async
   } finally { await s.stop(); }
 });
 
+test('restart: a new copy takes over (same port, new process, same build), the old one exits, and the old page is told to reload', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  const s = await startServer(dir);
+  let next = null;
+  try {
+    const before = (await s.call('/api/version')).json;
+    const st = (await s.call('/api/state')).json;
+    assert.equal(st.restart.pending, false);
+    assert.equal(typeof st.update, 'boolean');
+    // "When replies finish" with nothing working restarts at once.
+    const r = await s.call('/api/restart', { when: 'idle' });
+    assert.equal(r.json.restarting, true);
+    for (let i = 0; i < 120 && !next; i++) {
+      await new Promise(res => setTimeout(res, 250));
+      try { const v = await (await fetch(`${s.base}/api/version`)).json(); if (v.pid !== before.pid) next = v; } catch { /* between copies */ }
+    }
+    assert.ok(next, 'a new copy answered on the same port');
+    assert.equal(next.build, before.build);
+    assert.ok(!fs.existsSync(path.join(dir, 'restart.json')), 'the restart note is used up');
+    let oldAlive = true; try { process.kill(before.pid, 0); } catch { oldAlive = false; }
+    assert.equal(oldAlive, false, 'the old copy has exited');
+    // The page from before is out of date now (new token); a reload picks the new copy up.
+    assert.equal((await s.call('/api/state')).status, 403);
+  } finally {
+    if (next) {
+      const html = await (await fetch(`${s.base}/`)).text();
+      const token = html.match(/TOKEN = '([a-f0-9]+)'/)[1];
+      await fetch(`${s.base}/api/quit`, { method: 'POST', headers: { 'x-switcher-token': token, 'content-type': 'application/json' }, body: '{}' }).catch(() => {});
+      for (let i = 0; i < 40; i++) { try { process.kill(next.pid, 0); await new Promise(res => setTimeout(res, 100)); } catch { break; } }
+    } else await s.stop();
+  }
+});
+
 test('the themes’ paintings are served from art/ (WebP only), and nothing else there is', async () => {
   const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
   try {

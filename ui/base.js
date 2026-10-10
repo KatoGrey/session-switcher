@@ -415,7 +415,7 @@ function openActivity(x) {
 /* ---------- data ---------- */
 async function loadState() {
   const j = await api('/api/state');
-  S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null; S.reopen = j.reopen || [];
+  S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null; S.reopen = j.reopen || []; S.restart = j.restart || { pending: false }; S.update = !!j.update; S.pid = j.pid || null;
   const saved = store('acct');
   if (!S.accounts.some(a => a.id === S.acct)) S.acct = S.accounts.some(a => a.id === saved) ? saved : S.accounts[0].id;
 }

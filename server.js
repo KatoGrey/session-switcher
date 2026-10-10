@@ -44,6 +44,7 @@ const LOG_FILE = path.join(DATA_DIR, 'switcher.log');
 const TOKEN = crypto.randomBytes(24).toString('hex');
 // Which code this server is running, so a copy started later can tell if it's out of date.
 const BUILD = handover.buildId(APP_DIR);
+const { spawn } = require('child_process');
 const ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
 const EMAIL_RE = /^[A-Za-z0-9._+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const DESKTOP_MIN = '2.1.285';
@@ -95,17 +96,17 @@ const finishedSeen = new Map();
 const OPEN_FILE = path.join(DATA_DIR, 'open-chats.json');
 const REOPEN_FILE = path.join(DATA_DIR, 'reopen.json');
 let shuttingDown = false, openTimer = null;
+function writeOpenChats() {
+  const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId).map(c => ({
+    sessionId: c.sessionId, provider: c.provider || 'claude', accountId: c.accountId, accountName: c.accountName,
+    cwd: c.cwd, title: c.title || null, folder: c.folder || null,
+  }));
+  try { store.writeJsonAtomic(OPEN_FILE, { at: Date.now(), chats: list }); } catch (err) { log(`Couldn’t note the open chats: ${err.message}`); }
+}
 function saveOpenChats() {
   if (shuttingDown) return;
   clearTimeout(openTimer);
-  openTimer = setTimeout(() => {
-    if (shuttingDown) return;
-    const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId).map(c => ({
-      sessionId: c.sessionId, provider: c.provider || 'claude', accountId: c.accountId, accountName: c.accountName,
-      cwd: c.cwd, title: c.title || null, folder: c.folder || null,
-    }));
-    try { store.writeJsonAtomic(OPEN_FILE, { at: Date.now(), chats: list }); } catch (err) { log(`Couldn’t note the open chats: ${err.message}`); }
-  }, 1500);
+  openTimer = setTimeout(() => { if (!shuttingDown) writeOpenChats(); }, 1500);
 }
 // At start: last time's open chats become the ones to offer.
 try {
@@ -115,6 +116,19 @@ try {
   }
 } catch { /* nothing to offer */ }
 const toReopen = () => { const j = store.loadOwnJson(REOPEN_FILE, null, () => {}); return (j && Array.isArray(j.chats) ? j.chats : []).filter(c => c && c.sessionId); };
+// Started by Restart (in the last two minutes): the chats that were open are reopened straight away,
+// not offered, and nothing is left to offer.
+const RESTART_FILE = path.join(DATA_DIR, 'restart.json');
+const restarted = (() => {
+  try {
+    const j = JSON.parse(fs.readFileSync(RESTART_FILE, 'utf8'));
+    fs.unlinkSync(RESTART_FILE);
+    if (!j || !(Date.now() - j.at < 120000)) return null;
+    const list = toReopen();
+    try { fs.unlinkSync(REOPEN_FILE); } catch { /* nothing open */ }
+    return { ...j, chats: list };
+  } catch { return null; }
+})();
 function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.stopAll(); }
 
 const chats = chatLib.createChatManager({
@@ -796,7 +810,8 @@ function stateFor() {
     dryRun: sys.DRY_RUN, appVersion: APP_VERSION, platform: process.platform,
     index: sessions.progress,
     codex: codexPublic(),
-    reopen: toReopen(),
+    reopen: restarted ? [] : toReopen(),
+    restart: restartState(), update: newBuildReady(), pid: process.pid,
   };
 }
 
@@ -804,7 +819,7 @@ function stateFor() {
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/tools/copy', '/api/quit', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send']);
+const LOCAL_ONLY = new Set(['/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
@@ -913,16 +928,15 @@ async function handleApi(req, res, url, remote = false) {
       const list = toReopen();
       try { fs.unlinkSync(REOPEN_FILE); } catch { /* already gone */ }
       if (body.action !== 'reopen') return send(res, 200, { reopened: [], failed: [] });
-      const reopened = [], failed = [];
-      for (const c of list.filter(x => !body.only || body.only.includes(x.sessionId))) {
-        try {
-          if (chats.bySession(c.sessionId)) { reopened.push(c.sessionId); continue; }
-          await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true });
-          reopened.push(c.sessionId);
-        } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
-      }
-      log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} from last time${failed.length ? `; ${failed.length} couldn’t` : ''}.`);
-      return send(res, 200, { reopened, failed });
+      return send(res, 200, await reopenChats(list.filter(x => !body.only || body.only.includes(x.sessionId)), 'from last time'));
+    }
+    // Restart now, or once no chat in the window is working or waiting for an OK; or don't after all.
+    case '/api/restart': {
+      if (body.when === 'cancel') { cancelRestart(); return send(res, 200, restartState()); }
+      if (body.when === 'idle' && busyChats()) { restartWhenIdle(); return send(res, 200, restartState()); }
+      send(res, 200, { pending: false, restarting: true });
+      setTimeout(() => restartNow(body.when === 'idle' ? 'nothing was working' : 'from the app'), 50);
+      return;
     }
     case '/api/rules': {
       const paths = rulesPathsFor(body.cwd || null);
@@ -1372,6 +1386,73 @@ async function handleApi(req, res, url, remote = false) {
   throw fail(404, 'Not found.');
 }
 
+// ---------- restart ----------
+// A fresh copy of the app takes over from this one. This one notes the open chats and stops them (as
+// Quit does) and exits; the new copy waits for it to be gone, takes the port, and reopens those chats.
+// The window reconnects by itself. "When replies finish" waits until no chat in the window is
+// starting, working or waiting for an OK.
+let restartWait = null;
+const busyChats = () => Object.values(chats.live()).filter(c => ['starting', 'busy', 'waiting'].includes(c.state)).length;
+function restartState() { return restartWait ? { pending: true, waitingOn: busyChats(), since: restartWait.since } : { pending: false }; }
+function restartNow(why) {
+  if (shuttingDown) return;
+  log(`Restarting (${why}).`);
+  if (restartWait) { clearInterval(restartWait.timer); restartWait = null; }
+  writeOpenChats();
+  try { store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid }); } catch (err) { log(`Couldn’t note the restart: ${err.message}`); }
+  try {
+    const child = spawn(process.execPath, process.argv.slice(1), { cwd: process.cwd(), env: { ...process.env, SWITCHER_RESTART_FROM: String(process.pid) }, detached: true, stdio: 'ignore', windowsHide: true });
+    child.unref();
+  } catch (err) { log(`Couldn’t start the new copy: ${err.message}`); try { fs.unlinkSync(RESTART_FILE); } catch { /* fine */ } return; }
+  broadcast('restart', { pending: false, restarting: true });
+  chatPrefs.flush();
+  phone.stop();
+  stopForQuit();
+  for (const x of codexAll()) x.stop(true);
+  setTimeout(() => process.exit(0), 300);
+}
+function restartWhenIdle() {
+  if (restartWait) return;
+  let last = -1;
+  restartWait = {
+    since: Date.now(),
+    timer: setInterval(() => {
+      const n = busyChats();
+      if (!n) return restartNow('replies finished');
+      if (n !== last) { last = n; broadcast('restart', restartState()); }
+      return undefined;
+    }, 1000),
+  };
+  log('Will restart when replies finish.');
+  broadcast('restart', restartState());
+}
+function cancelRestart() {
+  if (!restartWait) return;
+  clearInterval(restartWait.timer); restartWait = null;
+  log('Restart called off.');
+  broadcast('restart', restartState());
+}
+// The app's files changed since it started (an update, say): a restart would bring in the new version.
+let diskBuild = { at: 0, id: BUILD };
+function newBuildReady() {
+  if (Date.now() - diskBuild.at > 20000) diskBuild = { at: Date.now(), id: handover.buildId(APP_DIR) };
+  return diskBuild.id !== BUILD;
+}
+setInterval(() => { const was = diskBuild.id !== BUILD; if (newBuildReady() !== was) broadcast('update', { ready: !was }); }, 60000).unref();
+// Reopens chats (each started again, resuming its conversation, as the account it ran as).
+async function reopenChats(list, what) {
+  const reopened = [], failed = [];
+  for (const c of list) {
+    try {
+      if (chats.bySession(c.sessionId)) { reopened.push(c.sessionId); continue; }
+      await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true });
+      reopened.push(c.sessionId);
+    } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
+  }
+  log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} ${what}${failed.length ? `; ${failed.length} couldn’t` : ''}.`);
+  return { reopened, failed };
+}
+
 // ---------- chat window ----------
 
 // "Attach file": anything that isn't an inline image (videos, PDFs, sound, documents) is saved in
@@ -1643,8 +1724,23 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopF
 process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
 process.on('unhandledRejection', err => log(`Unexpected error: ${err && (err.stack || err.message)}`));
 
-server.listen(PORT, '127.0.0.1', () => {
-  log(`Session Switcher ${APP_VERSION} running at ${appUrl}${sys.DRY_RUN ? ' (preview mode: nothing is launched)' : ''}`);
+// Started by Restart: the copy being replaced is still exiting, so wait for it (up to 20 s) first.
+const restartFrom = Number(process.env.SWITCHER_RESTART_FROM) || 0;
+delete process.env.SWITCHER_RESTART_FROM;
+function replacedGone() {
+  const until = Date.now() + 20000;
+  return new Promise(resolve => {
+    const tick = () => {
+      let alive = true;
+      try { process.kill(restartFrom, 0); } catch (err) { alive = err.code === 'EPERM'; }
+      if (!alive || Date.now() > until) return setTimeout(resolve, 150);
+      return setTimeout(tick, 120);
+    };
+    tick();
+  });
+}
+(restartFrom ? replacedGone() : Promise.resolve()).then(() => server.listen(PORT, '127.0.0.1', () => {
+  log(`Session Switcher ${APP_VERSION} running at ${appUrl}${sys.DRY_RUN ? ' (preview mode: nothing is launched)' : ''}${restartFrom ? ' (restarted)' : ''}`);
   handover.writeLock(PORT, { pid: process.pid, version: APP_VERSION, build: BUILD, dir: APP_DIR, token: TOKEN });
   console.log('Keep this window open while you use it, or use “Quit” in the app.');
   sys.cleanupLaunchScripts();
@@ -1656,12 +1752,15 @@ server.listen(PORT, '127.0.0.1', () => {
   }
   sessionsSig = sessionsSignature();
   sessions.refreshIndex();
-  pollAccounts(0).then(() => setTimeout(() => refreshAllUsage(0), 1500));
+  const accountsIn = pollAccounts(0);
+  accountsIn.then(() => setTimeout(() => refreshAllUsage(0), 1500));
+  if (restarted && restarted.chats.length) accountsIn.then(() => reopenChats(restarted.chats, 'after the restart')).catch(err => log(`Couldn’t reopen chats after the restart: ${err.message}`));
   if (config().codex.enabled) setTimeout(() => {
     codex.refreshAccount().then(() => codexSessions(0)).catch(() => {});
     for (const x of codexAll()) x.refreshAccount().then(st => { if (st.signedIn) x.refreshUsage(); }).catch(() => {});
   }, 2500);
   startWatching();
   phone.sync().catch(err => log(`Phone access: ${err.message}`));
-  sys.openAppWindow(appUrl, config().prefs);
-});
+  // After a restart the window that was open reconnects by itself.
+  if (!restartFrom) sys.openAppWindow(appUrl, config().prefs);
+}));

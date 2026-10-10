@@ -59,7 +59,7 @@ function renderSetup(j) {
       <button class="btn" data-fix="share-copy" title="A zip of the app for someone else, without your accounts, chats or settings">Make a copy to share</button>
       <button class="btn" data-fix="update-claude">Update Claude Code</button>
       <button class="btn" data-fix="tour">Show the tour</button>
-      <button class="btn danger" data-fix="quit">Quit Session Switcher</button>
+      <button class="btn" data-fix="restart">Restart</button><button class="btn danger" data-fix="quit">Quit Session Switcher</button>
     </div>
     <p class="ver">Session Switcher ${esc(j.appVersion)}. Your chats are read from your own .claude folder and never leave this PC.</p>`;
 }
@@ -222,6 +222,7 @@ $('setupBody').addEventListener('click', wrap(async e => {
   if (what === 'update-claude') { const r = await api('/api/update-claude', {}); return r.dryRun ? reportLaunch(r) : toast(`Updating Claude Code in a ${r.how}. Close it when it finishes, then reopen Setup.`, 8000); }
   if (what === 'share-copy') return shareCopy();
   if (what === 'shortcut') { const r = await api('/api/shortcut', {}); return toast(r.dryRun ? 'Would create a desktop shortcut.' : S.platform === 'darwin' ? 'Added “Session Switcher” to Applications in your home folder. Find it with Spotlight or Launchpad.' : 'Added “Claude Session Switcher” to your desktop.'); }
+  if (what === 'restart') { $('setup').close(); return restartApp(); }
   if (what === 'quit') return quitApp();
 }));
 

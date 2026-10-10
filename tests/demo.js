@@ -228,6 +228,8 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
       return { body: { servers, codexError: null, codexOn: true, copied: body.name } };
     }
     if (p === '/api/chat/review') { return { body: { id: `rv${++reviews}`, what: 'your uncommitted changes', base: body.base || null } }; }
+    // Restart, pretended: "now" says it's restarting; "idle" waits on one chat; "cancel" calls it off.
+    if (p === '/api/restart') return { body: body.when === 'now' ? { pending: false, restarting: true } : body.when === 'idle' ? { pending: true, waitingOn: 1, since: NOW } : { pending: false } };
     return { body: {} };
   });
 }

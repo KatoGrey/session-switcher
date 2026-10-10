@@ -964,6 +964,43 @@ module.exports = [
     },
   },
   {
+    name: 'restart',
+    // Restart: offered when a new version is ready, asks how when chats are working, waits for replies
+    // with a bar to restart now or cancel, shows that it's restarting, and comes back to the chat you were in.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`S.update = true; renderBar(); return 1`);
+      t.check('a new version ready shows a Restart pill', await b.eval(`return !document.getElementById('updPill').hidden && /Restart/.test(document.getElementById('updPill').textContent)`));
+      await b.eval(`document.getElementById('updPill').click(); return 1`); await sleep(300);
+      const q = await b.eval(`return document.getElementById('cfQ').textContent`);
+      t.check('it asks first, and says a new version is ready', /^Restart Session Switcher\? A new version is ready\./.test(q), q);
+      await b.eval(`document.getElementById('cfNo').click(); return 1`); await sleep(200);
+      // With a chat working: three answers.
+      await b.eval(`S.live = { x: { state: 'busy' } }; restartApp(); return 1`); await sleep(300);
+      const ch = await b.eval(`const d = document.querySelector('.choice-dlg[open]'); return d ? [...d.querySelectorAll('.btn')].map(x => x.textContent) : null`);
+      t.check('with a chat working it can wait for replies, restart now, or not', JSON.stringify(ch) === JSON.stringify(['Cancel', 'Restart now', 'When replies finish']), ch);
+      t.check('Enter waits for replies (the main answer)', await b.eval(`return document.activeElement.textContent === 'When replies finish'`));
+      await b.eval(`document.activeElement.click(); return 1`); await sleep(300);
+      const bar = await b.eval(`const el = document.getElementById('restartBar'); return el ? el.textContent : null`);
+      t.check('while it waits, a bar says so, with Restart now and Cancel', bar && /Restarting when replies finish/.test(bar) && /Restart now/.test(bar) && /Cancel/.test(bar), bar);
+      await t.shot(b, 'waiting');
+      await b.eval(`document.querySelector('#restartBar [data-restart="cancel"]').click(); return 1`); await sleep(300);
+      t.check('Cancel calls it off', await b.eval(`return !document.getElementById('restartBar')`));
+      // Restart now, from inside a chat: it shows that it's restarting and remembers where you were.
+      await b.eval(`S.live = {}; ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(1500);
+      await b.eval(`restartApp(); return 1`); await sleep(300);
+      await b.eval(`document.getElementById('cfYes').click(); return 1`); await sleep(400);
+      const rs = await b.eval(`return { veil: !!document.getElementById('restarting'), back: JSON.parse(localStorage.getItem('restart-return') || 'null') }`);
+      t.check('it shows that it’s restarting', rs.veil, rs);
+      t.check('and notes the chat you were in', rs.back && rs.back.chat === demo.ID['s-bard'], rs);
+      await t.shot(b, 'restarting');
+      // The new page: back in that chat.
+      await b.eval(`location.reload(); return 1`); await sleep(2500);
+      const back = await b.eval(`return { open: ChatUI.isOpen(), left: localStorage.getItem('restart-return') }`);
+      t.check('after the reload, the chat you were in opens again', back.open && back.left === null, back);
+    },
+  },
+  {
     name: 'anime',
     // Isekai, High Fantasy and Dungeon: their lettering, words, skies, logos and chimes, and hub scenes
     // that read the same counts as the headline.
