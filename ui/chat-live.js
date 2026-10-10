@@ -68,8 +68,32 @@ function flushLive() {
     });
   }
 }
+// The relay: with both assistants in a chat, a strip under the title shows what each is doing, and the
+// hand-over between them: the line flows while the second one is up next, and is lit once it has the
+// message. Click either side to write to it.
+const RELAY_WORD = { starting: 'Starting', busy: 'Working', waiting: 'Needs your OK', ready: 'Ready', ended: 'Stopped', off: 'Ready when you are' };
+function relaySide(src) {
+  const prov = provFor(src);
+  const st = src === 'comp' ? (C.comp && !C.comp.ended ? C.comp.state : 'off') : C.state;
+  const upNext = src === 'comp' && C.handoff && st !== 'busy';
+  const status = (src === 'comp' ? C.comp && C.comp.status : C.status) || '';
+  const word = upNext ? 'Up next' : st === 'busy' && status ? status : RELAY_WORD[st] || 'Ready';
+  const on = C.target === src || C.target === 'both';
+  return `<button type="button" class="cr-side ${prov}${st === 'busy' || st === 'starting' ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}${upNext ? ' next' : ''}${on ? ' on' : ''}" data-relay="${src}" aria-pressed="${on}" title="Write to ${PROV_NAME[prov]}"><span class="cr-dot" aria-hidden="true"></span><b>${PROV_NAME[prov]}</b><span class="cr-w">${esc(word)}</span></button>`;
+}
+function renderRelay() {
+  const box = $c('cRelay'); if (!box) return;
+  const show = duo() && !C.watch && !!C.key;
+  box.hidden = !show;
+  if (!show) { box.innerHTML = ''; return; }
+  const compBusy = C.comp && !C.comp.ended && C.comp.state === 'busy';
+  const link = C.handoff ? 'flow' : compBusy && C.target === 'both' ? 'lit' : '';
+  const h = `${relaySide('main')}<span class="cr-link ${link}" aria-hidden="true"><i></i></span>${relaySide('comp')}`;
+  if (box._h !== h) { box.innerHTML = h; box._h = h; }
+}
 function setState(s) {
   C.state = s;
+  renderRelay();
   const pill = $c('cState');
   pill.textContent = STATE_LABELS[s] || s;
   pill.className = `c-state ${s}`;
@@ -97,7 +121,7 @@ function syncSend() {
 }
 function setStatus(src, t) {
   if (src === 'comp') { if (C.comp) { C.comp.status = t; renderCrewSoon(); } return; }
-  $c('cStatus').textContent = t;
+  $c('cStatus').textContent = t; C.status = t; renderCrewSoon();
 }
 function handle(ev, src = 'main') {
   const box = src === 'comp' ? C.comp : C;
@@ -346,6 +370,7 @@ function renderCrew() {
   const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
   box.innerHTML = crewPill('main') + (two ? crewPill('comp') + `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : `Both: ${lead} answers, then ${mate} picks it up and builds on that`}"><span class="crew-n">Both</span></button>` : '');
   box.classList.toggle('duo', two);
+  renderRelay();
   $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · <b>@${partnerProv()}</b> or <b>@both</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;
   if (!two && C.target !== 'main') setTarget('main');
 }

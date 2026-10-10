@@ -72,7 +72,7 @@
   <div class="c-main">
     <header class="c-head">
       <button type="button" class="icon c-backm" data-c="rail" aria-label="Show open chats"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-      <div class="c-titles"><p class="eyebrow c-folder" id="cFolder"></p><h1 class="c-title" id="cTitle"></h1></div>
+      <div class="c-titles"><span class="c-crest" id="cCrest"></span><div class="c-tt"><p class="eyebrow c-folder" id="cFolder"></p><h1 class="c-title" id="cTitle"></h1></div></div>
       <div class="c-meta">
         <span class="c-acct" id="cAcct"></span>
         <span class="c-state" id="cState" aria-live="polite"></span>
@@ -85,6 +85,7 @@
       <button type="button" class="icon" data-c="more" aria-haspopup="menu" aria-expanded="false" aria-label="More chat actions"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="4" cy="9" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="1.5" fill="currentColor"/><circle cx="14" cy="9" r="1.5" fill="currentColor"/></svg></button>
       </div>
     </header>
+    <div class="c-relay" id="cRelay" role="status" aria-live="polite" hidden></div>
     <div class="c-find" id="cFind" role="search" hidden><span class="glyph" aria-hidden="true">⌕</span><input id="cFindQ" type="search" placeholder="Find in this chat" aria-label="Find in this chat" autocomplete="off" spellcheck="false"><span class="cf-n" id="cFindN" aria-live="polite"></span><button type="button" class="icon" data-find="up" aria-label="Older match (Enter)" title="Older match (Enter)">↑</button><button type="button" class="icon" data-find="down" aria-label="Newer match (Shift+Enter)" title="Newer match (Shift+Enter)">↓</button><button type="button" class="icon" data-find="close" aria-label="Close (Esc)">✕</button></div>
     <div class="c-scroll" id="cScroll"><div class="c-feed" id="cFeed"></div></div>
     <button type="button" class="c-jump" id="cJump" hidden></button>

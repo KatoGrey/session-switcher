@@ -114,7 +114,12 @@ mark{background:rgb(var(--c-d9bf74) / .26);color:var(--parch);border-radius:2px;
 .tag.line{background:none;color:var(--ember);box-shadow:inset 0 0 0 1px rgb(var(--c-cf8274) / .5)}
 .tag.violet{background:none;color:var(--violet);box-shadow:inset 0 0 0 1px rgb(var(--c-a58be8) / .45)}
 .count{font:500 12px/1 var(--f-label);color:var(--ash);font-variant-numeric:tabular-nums}
-.ember-dot{width:8px;height:8px;border-radius:50%;background:var(--crimson);box-shadow:0 0 0 0 rgb(var(--c-a5463f) / .7);animation:ember 1.8s ease-out infinite;flex:none}
+.ember-dot{width:8px;height:8px;border-radius:50%;background:var(--crimson);flex:none;position:relative}
+/* A working dot's ripple: a copy of the dot that grows and fades. Only transform and opacity change, so
+   the graphics card draws it; a pulsing shadow would repaint the page every frame. */
+@keyframes ripple{0%{transform:scale(1);opacity:.6}70%,100%{transform:scale(2.7);opacity:0}}
+:is(.ember-dot,.t-st.run,.w-title .live-dot,.crew.busy .crew-dot,.cr-side.busy .cr-dot)::after{content:"";position:absolute;inset:0;border-radius:inherit;background:inherit;opacity:0;pointer-events:none;animation:ripple 1.8s ease-out infinite}
+:is(.t-st.run,.w-title .live-dot,.crew.busy .crew-dot,.cr-side.busy .cr-dot){position:relative}
 .gilt-dot{width:8px;height:8px;border-radius:50%;background:var(--gilt);box-shadow:0 0 10px rgb(var(--c-d9bf74) / .75);animation:glint 1.6s ease-in-out infinite;flex:none}
 .ash-dot{width:7px;height:7px;border-radius:50%;background:var(--ash-2);flex:none}
 .violet-dot{width:7px;height:7px;border-radius:50%;background:var(--violet);flex:none;box-shadow:0 0 8px rgb(var(--c-a58be8) / .5)}
@@ -552,7 +557,7 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .c-acct .cu.hot{color:var(--ember-soft)}
 .c-state{display:inline-flex;align-items:center;gap:8px;font:500 10.5px/1 var(--f-label);letter-spacing:.16em;text-transform:uppercase;color:var(--ash);white-space:nowrap}
 .c-state::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ash-2)}
-.c-state.busy{color:var(--ember)}.c-state.busy::before{background:var(--crimson);animation:ember 1.8s ease-out infinite}
+.c-state.busy{color:var(--ember)}.c-state.busy::before{background:var(--crimson);animation:glint 1.6s ease-in-out infinite}
 .c-state.waiting{color:var(--gilt)}.c-state.waiting::before{background:var(--gilt);animation:glint 1.6s ease-in-out infinite}
 .c-state.ready{color:var(--parch-2)}.c-state.ready::before{background:rgb(var(--c-7fb79a))}
 .c-state.ended{color:var(--ash-2)}
@@ -630,7 +635,7 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .tool summary:hover{background:var(--vellum-2)}
 .tool[open] summary{background:var(--vellum-2)}
 .t-st{width:8px;height:8px;border-radius:50%;flex:none;background:var(--seam-2)}
-.t-st.ok{background:rgb(var(--c-7fb79a))}.t-st.err{background:var(--ember)}.t-st.run{background:var(--crimson);animation:ember 1.8s ease-out infinite}
+.t-st.ok{background:rgb(var(--c-7fb79a))}.t-st.err{background:var(--ember)}.t-st.run{background:var(--crimson)}
 .t-name{flex:none;font:600 10.5px/1 var(--f-label);letter-spacing:.14em;text-transform:uppercase;color:var(--parch-2);min-width:62px}
 .t-sum{flex:1;min-width:0;font:13px/1.4 var(--f-label);color:var(--ash);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .t-time{flex:none;font:400 11px var(--f-label);color:var(--gilt)}
@@ -868,7 +873,6 @@ dialog.cxdlg{width:min(520px,calc(100vw - 32px))}
 .w-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgb(var(--c-0a090c) / 0) 30%,rgb(var(--c-0a090c) / .55) 68%,rgb(var(--c-0a090c) / .92) 100%);pointer-events:none}
 .w-title{position:absolute;left:16px;right:16px;bottom:11px;display:flex;align-items:center;gap:10px;min-width:0}
 .w-name{font:800 23px/1.1 var(--f-display);letter-spacing:-.01em;color:var(--parch);text-shadow:0 2px 18px rgb(var(--c-000000) / .8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.w-title .live-dot{animation:ember 1.8s ease-out infinite}
 /* a project without art: a soft gradient of its own, with its initial */
 .w-glyph{position:absolute;inset:0;display:block;overflow:hidden;background:linear-gradient(160deg,rgb(var(--c-241e29)),rgb(var(--c-121015)))}
 .w-glyph::before{content:"";position:absolute;inset:-20%;
@@ -1198,8 +1202,6 @@ dialog.np-dlg{width:min(600px,calc(100vw - 32px));padding:0}
 .crew.codex.on{background:linear-gradient(180deg,rgb(var(--c-6f97d8) / .2),rgb(var(--c-4664a0) / .14));box-shadow:inset 0 0 0 1px rgb(var(--c-6f97d8) / .55)}
 .crew-dot{width:7px;height:7px;border-radius:50%;background:var(--crimson);flex:none}
 .crew.codex .crew-dot{background:var(--codex)}
-.crew.busy .crew-dot{animation:ember 1.8s ease-out infinite}
-.crew.codex.busy .crew-dot{animation:tide 1.8s ease-out infinite}
 .crew.waiting .crew-dot{background:var(--gilt);animation:glint 1.6s ease-in-out infinite}
 .crew-n{font:600 12px/1 var(--f-caps);letter-spacing:.06em}
 .crew.codex .crew-n{color:var(--codex-ink)}
@@ -1794,6 +1796,55 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .confirm-dlg .d-row{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .choice-dlg .d-row .quiet{margin-right:auto}
 
+/* ---------- nothing decorative runs where it can't be seen ----------
+   The hub and the sky behind it while a chat window covers them, and a hub scene scrolled out of view,
+   hold still (the top bar's dots keep going: they say something). */
+.chat-open :is(.page,.petals) *,.hero-off *{animation-play-state:paused !important}
+
+/* ---------- project crests: one emblem per project, wherever it appears ---------- */
+.crest{flex:none;display:inline-grid;place-items:center;width:var(--s);height:var(--s);border-radius:calc(var(--s) * .3);overflow:hidden;position:relative;vertical-align:middle;
+  background:radial-gradient(circle at 30% 22%,rgb(255 255 255 / .24),transparent 55%),linear-gradient(145deg,var(--a),var(--b));box-shadow:inset 0 0 0 1px rgb(255 255 255 / .16),0 2px 6px -2px rgb(0 0 0 / .55)}
+.crest b{font:400 calc(var(--s) * .52)/1 "Segoe UI Symbol","Noto Sans Symbols 2",serif;color:rgb(255 255 255 / .94);text-shadow:0 1px 2px rgb(0 0 0 / .4)}
+.crest.pic{background:var(--vellum-2)}
+.crest.pic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.nav-i .ni-crest{margin:-2px 0 -2px -2px}
+.o-where .o-crest{margin:-3px 8px 0 0}
+/* the chat list: the crest leads, the status dot sits on its corner */
+.ri .ri-crest{margin-top:1px}
+.ri .ri-crest + .ri-dot{position:absolute;left:33px;top:31px;margin:0;box-shadow:0 0 0 2.5px var(--abyss)}
+/* the chat's header: its project's crest beside the title */
+.c-titles{display:flex;align-items:center;gap:13px}
+.c-tt{min-width:0}
+.c-crest:empty{display:none}
+.c-crest .crest{box-shadow:inset 0 0 0 1px rgb(255 255 255 / .16),0 6px 16px -8px rgb(0 0 0 / .8)}
+@media (max-width:760px){ .c-crest{display:none} }
+
+/* ---------- the relay: Claude and Codex, and the hand-over between them ---------- */
+.c-relay{display:flex;align-items:center;justify-content:center;gap:12px;padding:7px 18px;border-bottom:1px solid var(--seam);background:rgb(var(--c-0e0c10) / .55)}
+.cr-side{display:inline-flex;align-items:center;gap:8px;min-width:0;max-width:44%;padding:5px 12px 5px 10px;border:1px solid transparent;border-radius:999px;background:none;color:var(--parch-2);font:500 13.5px/1.2 var(--f-body);cursor:pointer;transition:border-color .2s,background .2s}
+.cr-side:hover{background:rgb(var(--c-ede6d9) / .04)}
+.cr-side.on{border-color:var(--seam-2);background:rgb(var(--c-ede6d9) / .035)}
+.cr-side b{font:600 13px/1 var(--f-caps);letter-spacing:.04em;color:var(--parch);flex:none}
+.cr-side .cr-w{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;color:var(--ash)}
+.cr-side.busy .cr-w{color:var(--parch-2)}
+.cr-side.waiting .cr-w{color:var(--gilt)}
+.cr-side.next .cr-w{color:var(--parch-2);font-style:italic}
+.cr-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ash-2)}
+.cr-side.claude .cr-dot{background:var(--crimson)}
+.cr-side.codex .cr-dot{background:var(--codex)}
+.cr-side.waiting .cr-dot{background:var(--gilt)}
+.cr-side.next .cr-dot{background:none;box-shadow:inset 0 0 0 2px var(--codex)}
+.cr-side.next.claude .cr-dot{box-shadow:inset 0 0 0 2px var(--crimson)}
+.cr-link{position:relative;flex:1 1 60px;max-width:180px;height:2px;border-radius:2px;background:var(--seam-2)}
+.cr-link::after{content:"";position:absolute;right:-1px;top:50%;width:7px;height:7px;border-top:2px solid var(--seam-2);border-right:2px solid var(--seam-2);transform:translateY(-50%) rotate(45deg)}
+.cr-link.flow,.cr-link.lit{background:linear-gradient(90deg,var(--crimson),var(--codex))}
+.c-relay:has(.cr-side.codex:first-child) .cr-link:is(.flow,.lit){background:linear-gradient(90deg,var(--codex),var(--crimson))}
+.cr-link:is(.flow,.lit)::after{border-color:var(--parch-2)}
+.cr-link.flow i{position:absolute;inset:-2px 0;border-radius:3px;background:linear-gradient(90deg,transparent,rgb(255 255 255 / .85),transparent) 0 0/34% 100% no-repeat;opacity:.9}
+.motion .cr-link.flow i{animation:cr-flow 1.4s linear infinite}
+@keyframes cr-flow{from{background-position:-40% 0}to{background-position:140% 0}}
+@media (max-width:760px){ .c-relay{padding:6px 10px;gap:8px} .cr-side .cr-w{display:none} .cr-link{max-width:60px} }
+
 /* ---------- welcome back ---------- */
 .welcome{position:relative;display:flex;align-items:center;gap:18px 26px;flex-wrap:wrap;margin:0 0 18px;padding:16px 18px 16px 22px;border:1px solid rgb(var(--c-d9bf74) / .35);border-radius:var(--radius);
   background:radial-gradient(520px 160px at 0% 0%,rgb(var(--c-d9bf74) / .1),transparent 70%),linear-gradient(180deg,rgb(var(--c-1a161d)),rgb(var(--c-141117)));box-shadow:0 18px 40px -30px rgb(var(--c-000000))}
@@ -2101,6 +2152,7 @@ body.solo .c-head .icon.c-backm{display:none}
 [data-family="saga"] :is(.btn,.pulse,.usechip,.seek,.seal,.c-box,.drawer,.menu,.palette .pal-box,dialog,.lk-theme,.sw,.sw-card,.qr,.guard,.note,.headroom,.omen,.omen-in,.dial-card,.world,.world-new,.hero,.ububble,.livepill,.c-acct,.wn-plus,.kbd,.tag){border-radius:var(--radius)}
 [data-family="saga"] :is(.pulse,.usechip,.seek,.seal,.hero,.omen,.dial-card,.world,.btn,.livepill){box-shadow:none}
 [data-family="saga"] .hero-sigil,[data-family="saga"] .hero .stamp{display:none}
+[data-family="saga"] .ember-dot::after{display:none}
 [data-family="saga"] .bar .sigil{animation:none !important;filter:none}
 [data-family="saga"] .dial .rn{display:none}
 [data-family="saga"] :is(.dial .arc.hot,.dial .now){filter:none}
@@ -2265,9 +2317,11 @@ body.solo .c-head .icon.c-backm{display:none}
 [data-theme="rebel"] .motion .ha-floor{animation:trench-f 1.8s linear infinite}
 [data-theme="rebel"] .motion .ha-wall.l{animation:trench-l 1.8s linear infinite}
 [data-theme="rebel"] .motion .ha-wall.r{animation:trench-r 1.8s linear infinite}
-@keyframes trench-f{to{background-position:0 var(--gap),-1px 0}}
-@keyframes trench-l{to{background-position:var(--gap) 0,0 100%}}
-@keyframes trench-r{to{background-position:calc(var(--gap) * -1) 0,0 100%}}
+/* the run: each surface slides along itself by one stripe and starts over (moving the surface, not its
+   pattern, so the graphics card does it instead of repainting the trench every frame) */
+@keyframes trench-f{from{transform:rotateX(90deg) translateY(0)}to{transform:rotateX(90deg) translateY(var(--gap))}}
+@keyframes trench-l{from{transform:rotateY(-90deg) translateX(0)}to{transform:rotateY(-90deg) translateX(var(--gap))}}
+@keyframes trench-r{from{transform:rotateY(90deg) translateX(0)}to{transform:rotateY(90deg) translateX(calc(var(--gap) * -1))}}
 [data-theme="rebel"] .ha-reticle{position:absolute;z-index:1;left:50%;top:42%;width:46px;height:26px;transform:translate(-50%,-50%);
   background:linear-gradient(var(--gilt),var(--gilt)) 0 0/9px 2px no-repeat,linear-gradient(var(--gilt),var(--gilt)) 0 0/2px 9px no-repeat,
     linear-gradient(var(--gilt),var(--gilt)) 100% 0/9px 2px no-repeat,linear-gradient(var(--gilt),var(--gilt)) 100% 0/2px 9px no-repeat,
@@ -2359,6 +2413,7 @@ body.solo .c-head .icon.c-backm{display:none}
 [data-theme="malibu"] .gilt-dot{background:rgb(var(--mb-gold))}
 [data-theme="malibu"] :is(.ember-dot,.live-dot){background:rgb(var(--mb-hot));animation:none}
 [data-theme="malibu"] .motion .ember-dot{animation:mb-beat 1.6s ease-in-out infinite}
+[data-theme="malibu"] .ember-dot::after{display:none}
 @keyframes mb-beat{0%,60%,100%{transform:scale(1)}15%{transform:scale(1.28)}30%{transform:scale(1)}45%{transform:scale(1.16)}}
 /* section headings: script titles over a pink-to-peach rule */
 [data-theme="malibu"] .sec-h h2{font:400 clamp(26px,2.6vw,34px)/1.35 var(--f-display);letter-spacing:0;color:var(--crimson)}
@@ -2498,7 +2553,7 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 [data-family="anime"] .painted .an-scene{-webkit-mask:linear-gradient(90deg,transparent,#000 18%);mask:linear-gradient(90deg,transparent,#000 18%)}
 [data-theme="isekai"] .status.painted .ie-win{margin:0 auto 14px 14px}
 .an-star{fill:rgb(var(--an-star))}
-.motion .an-star{animation:an-twinkle 3.6s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
+.motion .an-stars-g{animation:an-twinkle 3.6s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
 @keyframes an-twinkle{0%,100%{opacity:.25}50%{opacity:1}}
 @keyframes an-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
 @keyframes an-spin{to{transform:rotate(360deg)}}
@@ -2602,7 +2657,7 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 [data-theme="isekai"] :is(.ember-dot,.live-dot){background:rgb(var(--an-glow));box-shadow:0 0 8px rgb(var(--an-glow) / .8);animation:none}
 [data-theme="isekai"] .motion .ember-dot{animation:ie-cast 1.6s ease-in-out infinite}
 [data-theme="isekai"] .reply-dot{background:none;box-shadow:inset 0 0 0 2px rgb(var(--an-gold)),0 0 8px rgb(var(--an-gold) / .5)}
-@keyframes ie-cast{0%,100%{box-shadow:0 0 4px rgb(var(--an-glow) / .6);opacity:.8}50%{box-shadow:0 0 14px rgb(var(--an-glow));opacity:1}}
+@keyframes ie-cast{0%,100%{opacity:.7}50%{opacity:1}}
 /* section headings: a system readout over a cyan-to-pink rule */
 [data-theme="isekai"] .sec-h h2{font:700 clamp(17px,1.7vw,22px)/1.2 var(--f-display);letter-spacing:.1em;text-transform:uppercase}
 [data-theme="isekai"] .sec-h::before{width:110px;height:2px;background:linear-gradient(90deg,rgb(var(--an-glow)),rgb(var(--an-pink)));box-shadow:0 0 10px rgb(var(--an-glow) / .7)}
@@ -2645,9 +2700,11 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 @keyframes ie-flow{to{stroke-dashoffset:-26}}
 [data-theme="isekai"] .ie-circle{fill:none;stroke:rgb(var(--an-glow) / .38);stroke-width:1.2;transition:stroke .6s}
 [data-theme="isekai"] .ie-circle .thin{stroke-width:.7}
-[data-theme="isekai"] .ie-circle .runes{stroke-width:4;stroke-dasharray:1.5 5}
+[data-theme="isekai"] .ie-circle .runes{stroke-width:3.2;stroke-dasharray:2 5.4}
 [data-theme="isekai"] .ie-circle.on{stroke:rgb(var(--an-glow));filter:drop-shadow(0 0 3px rgb(var(--an-glow)))}
-[data-theme="isekai"] .motion .ie-circle.on{animation:an-spin 14s linear infinite}
+/* only the rune ring turns: the circle and star keep strokes of even width as they're foreshortened,
+   which animating them would recompute every frame */
+[data-theme="isekai"] .motion .ie-circle.on .ie-runes{animation:an-spin 14s linear infinite}
 [data-theme="isekai"] .ie-mote{fill:rgb(var(--an-glow));filter:drop-shadow(0 0 2px rgb(var(--an-glow)))}
 [data-theme="isekai"] .motion .ie-mote{animation:an-rise 3.2s ease-out infinite;animation-delay:calc(var(--d) * -1)}
 [data-theme="isekai"] .ie-crystal{fill:rgb(var(--an-glow));filter:drop-shadow(0 0 5px rgb(var(--an-glow)))}
@@ -2757,6 +2814,7 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 [data-theme="highfantasy"] .reply-dot{background:rgb(var(--an-gold));-webkit-mask-image:var(--hf-star-o);mask-image:var(--hf-star-o)}
 [data-theme="highfantasy"] :is(.ember-dot,.live-dot){background:rgb(var(--an-emerald));animation:none}
 [data-theme="highfantasy"] .motion .ember-dot{animation:hf-glimmer 2.4s ease-in-out infinite}
+[data-theme="highfantasy"] .ember-dot::after,[data-theme="dungeon"] .ember-dot::after{display:none}
 @keyframes hf-glimmer{0%,100%{transform:scale(.8) rotate(0);opacity:.75}50%{transform:scale(1.15) rotate(45deg);opacity:1}}
 /* section headings: Cinzel Decorative over a gilded rule */
 [data-theme="highfantasy"] .sec-h h2{font:700 clamp(21px,2.1vw,27px)/1.25 var(--f-display);letter-spacing:.02em}
@@ -2890,8 +2948,12 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 [data-theme="dungeon"] *{scrollbar-color:rgb(var(--an-rust) / .55) transparent}
 [data-theme="dungeon"] .sigil{filter:drop-shadow(0 0 6px rgb(var(--an-ember) / .35))}
 /* the keyhole doesn't turn while chats work: it glows, like light behind the door */
-[data-theme="dungeon"] .motion.working .bar .sigil{animation:dg-door 2.6s ease-in-out infinite}
-@keyframes dg-door{0%,100%{filter:drop-shadow(0 0 4px rgb(var(--an-ember) / .3))}50%{filter:drop-shadow(0 0 13px rgb(var(--an-ember) / .85))}}
+/* (a soft light behind it that brightens and dims: an animated filter would repaint the bar every frame) */
+[data-theme="dungeon"] .motion.working .bar .sigil{animation:none}
+[data-theme="dungeon"] .brand{position:relative}
+[data-theme="dungeon"] .brand::before{content:"";position:absolute;left:-10px;top:50%;width:58px;height:58px;margin-top:-29px;border-radius:50%;background:radial-gradient(circle,rgb(var(--an-ember) / .55),rgb(var(--an-ember) / 0) 68%);opacity:0;pointer-events:none}
+[data-theme="dungeon"] .motion.working .brand::before{animation:dg-door 2.6s ease-in-out infinite}
+@keyframes dg-door{0%,100%{opacity:.25}50%{opacity:.9}}
 [data-theme="dungeon"] .bar{background:linear-gradient(180deg,rgb(var(--c-0e0c10) / .97),rgb(var(--c-0c0a0e) / .95));border-bottom:1px solid rgb(var(--an-rust) / .38);box-shadow:0 12px 30px -24px rgb(var(--an-ember) / .45)}
 [data-theme="dungeon"] .wordmark b{font:400 25px/1.05 var(--f-display);letter-spacing:.02em;color:rgb(var(--an-ember));text-shadow:0 0 16px rgb(var(--an-ember) / .4)}
 [data-theme="dungeon"] .wordmark small{font:italic 400 13.5px/1.2 var(--f-body);margin-top:2px}

@@ -43,7 +43,8 @@ function viewMap() {
   map.setAttribute('aria-valuetext', `${Math.round(fraction * 100)}% through the conversation`);
 }
 // Redrawn a moment after the chat changes (not on every streamed word).
-function mapSoon() { if (ChatMap.timer) return; ChatMap.timer = setTimeout(() => { ChatMap.timer = 0; requestAnimationFrame(drawMap); }, 450); }
+// While a reply streams in, less often still: it only nudges the marks.
+function mapSoon() { if (ChatMap.timer) return; ChatMap.timer = setTimeout(() => { ChatMap.timer = 0; requestAnimationFrame(drawMap); }, C.state === 'busy' ? 1200 : 450); }
 (function startMap() {
   const sc = $c('cScroll');
   sc.parentElement.insertAdjacentHTML('beforeend', '<div class="c-map" id="cMap" role="scrollbar" aria-label="Conversation map" aria-controls="cScroll" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" tabindex="0" hidden></div>');

@@ -22,14 +22,14 @@ function isViewing(x) {
 }
 function railItem(x) {
   // A pinned chat that isn't running: it stays listed, and a click opens it again.
-  if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}"><span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
   const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;   // w: the one the status is about
   const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (w.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
   const doing = w.phase === 'tool' && (w.detail || w.tool) ? `${VERB_NOW[w.tool] || 'Using'} ${w.detail || w.tool}` : w.phase === 'writing' ? 'Writing…' : w.phase === 'starting' ? 'Starting…' : 'Thinking…';
   let sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
   if (w !== x) sub = `${PROV_NAME[w.provider || 'claude']}: ${sub}`;
   else if (x.partner && (st === 'quiet' || st === 'reply')) sub += ` · with ${PROV_NAME[x.partner.provider || 'claude']}`;
-  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}" aria-current="${isViewing(x)}"><span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
 }
 // The rail: chats you pinned (they stay, running or not), then the rest of what's open, each list in
 // the order you dragged it into. Chats it hasn't placed yet keep their places after those.
@@ -270,7 +270,7 @@ function reset() {
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
   Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
-  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null;
+  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = '';
   Review.loop = null;
   closePick();
   $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
@@ -326,6 +326,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   noteLastChat(C.sessionId, (s && s.title) || info.title, p && p.name);
   C.title = info.title && info.title !== 'New chat' ? info.title : mode === 'new' ? 'New chat' : mode === 'fork' ? `${s ? s.title : 'Chat'} (copy)` : (s ? s.title : info.title || 'Chat');
   C.folder = info.folder || (p ? p.name : (cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() : ''));
+  $c('cCrest').innerHTML = crestHtml(p || (C.folder ? { name: C.folder, cwd: info.cwd || cwd } : null), 40);
   $c('cTitle').textContent = C.title;
   $c('cFolder').textContent = C.folder;
   headerAccount(info.accountId, info.accountName);
@@ -417,6 +418,7 @@ async function watch({ sessionId, source = 'terminal' }) {
   C.title = s ? s.title : 'Chat'; C.folder = p ? p.name : '';
   C.info = { cwd: p ? p.cwd : null, accountId: s && s.lastOpened ? s.lastOpened.account : null, accountName: s && s.lastOpened ? s.lastOpened.accountName : '' };
   $c('cTitle').textContent = C.title; $c('cFolder').textContent = C.folder;
+  $c('cCrest').innerHTML = crestHtml(p, 40);
   headerAccount(C.info.accountId, C.info.accountId ? C.info.accountName : (oc ? `OpenClaw · ${PROV_NAME.openclaw}` : source === 'terminal' ? 'In a terminal' : 'In another app'));
   setState(source === 'terminal' || source === 'openclaw' ? 'watching' : 'readonly');
   $c('cMode').hidden = true;
@@ -533,6 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
     if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
     const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
+    const rl = t.closest('[data-relay]'); if (rl) return setTarget(rl.dataset.relay);
     const crew = t.closest('[data-crew]');
     if (crew) { const src = crew.dataset.crew; if (src === 'both') return setTarget(C.target === 'both' ? 'main' : 'both'); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
     const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });

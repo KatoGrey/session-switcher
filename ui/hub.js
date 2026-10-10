@@ -56,7 +56,7 @@ function renderNav() {
     const firstProv = ['claude', 'codex', 'openclaw'].find(v => here.some(c => provOf(c) === v)) || 'claude';
     const cur = S.view === 'folder' && S.folder === x.p.cwd && (S.prov ? S.prov === prov : !S.pins.has(x.p.cwd) && prov === firstProv);
     return `<button class="nav-i ${prov}" data-view="folder" data-cwd="${esc(x.p.cwd)}" data-prov="${prov}" aria-current="${cur}">
-      <span class="glyph" aria-hidden="true">${glyphFor(x.p.name)}</span><span class="ni-t">${esc(x.p.name)}</span>
+      ${crestHtml(x.p, 20, 'ni-crest')}<span class="ni-t">${esc(x.p.name)}</span>
       ${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}<span class="count">${x.list.length}</span></button>`;
   };
   const claude = group('claude'), codexF = group('codex'), ocF = group('openclaw');
@@ -83,7 +83,7 @@ function renderNav() {
     <button class="nav-i" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">${esc(voice('Recent chats'))}</span><span class="count">${total}</span></button>
     <button class="nav-i" data-view="palette" aria-current="${S.view === 'search'}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t">${esc(voice('Search every chat'))}</span><span class="count">Ctrl K</span></button>
     <button class="nav-i nav-new" data-view="newproject"><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New project</span></button>
-    ${fresh.length ? `<div class="nav-h prov fresh"><span class="pmark" aria-hidden="true"></span>No chats yet<span class="count">${fresh.length}</span></div>${fresh.map(p => `<button class="nav-i" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}"><span class="glyph" aria-hidden="true">${glyphFor(p.name)}</span><span class="ni-t">${esc(p.name)}</span><span class="tag ghost">New</span></button>`).join('')}` : ''}
+    ${fresh.length ? `<div class="nav-h prov fresh"><span class="pmark" aria-hidden="true"></span>No chats yet<span class="count">${fresh.length}</span></div>${fresh.map(p => `<button class="nav-i" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${esc(p.name)}</span><span class="tag ghost">New</span></button>`).join('')}` : ''}
     ${pinnedHtml}
     ${fold('claude', 'Claude Code', nClaude, 'claude')}
     ${S.navFold.has('claude') ? '' : claude.length ? claude.map(x => item(x, 'claude')).join('') : '<p class="nav-empty">No Claude Code chats yet.</p>'}
@@ -221,7 +221,12 @@ function heroArt({ N, R, W, Q }) {
    is in view. Where the live parts sit on each painting is in PAINT_SPOTS. Until a painting has
    loaded, or without one, the scenery is drawn. Anything that moves only moves when motion is on. */
 const sparks = (seed, n, box) => { const r = seeded(seed); return Array.from({ length: n }, () => [Math.round(box[0] + r() * (box[2] - box[0])), Math.round(box[1] + r() * (box[3] - box[1])), +(0.5 + r() * 1.1).toFixed(2), +(r() * 4).toFixed(2)]); };
-const starsSvg = (seed, n, box, cls = 'an-star') => sparks(seed, n, box).map(([x, y, s, d]) => `<circle class="${cls}" cx="${x}" cy="${y}" r="${s}" style="--d:${d}s"/>`).join('');
+// Stars in three groups that twinkle in turn (three animations, not one per star).
+const starsSvg = (seed, n, box, cls = 'an-star') => {
+  const g = [[], [], []];
+  sparks(seed, n, box).forEach(([x, y, s], i) => g[i % 3].push(`<circle class="${cls}" cx="${x}" cy="${y}" r="${s}"/>`));
+  return g.map((list, i) => `<g class="an-stars-g" style="--d:${(i * 1.2).toFixed(1)}s">${list.join('')}</g>`).join('');
+};
 const pad2 = n => String(n).padStart(2, '0');
 
 // Where the live parts sit on each painting, in the scene's units (measured by Codex on the paintings).
@@ -306,7 +311,7 @@ function isekaiArt({ N, R, W, Q }) {
     </defs>
     ${P ? paintSvg(P) : drawn}
     <g transform="translate(${cx} ${cy}) scale(${k.toFixed(3)} ${(flat * k).toFixed(3)})"><g class="ie-circle${W ? ' on' : ''}">
-      <circle r="60" vector-effect="non-scaling-stroke"/><circle r="52" class="thin" vector-effect="non-scaling-stroke"/><circle r="56" class="runes" vector-effect="non-scaling-stroke"/>
+      <circle r="60" vector-effect="non-scaling-stroke"/><circle r="52" class="thin" vector-effect="non-scaling-stroke"/><g class="ie-runes"><circle r="56" class="runes"/></g>
       <path vector-effect="non-scaling-stroke" d="M0-46L39.8 23H-39.8ZM0 46L39.8-23H-39.8Z"/></g></g>
     <g class="ie-motes">${motes}</g>
     <g class="ie-crystals">${CRYSTALS.slice(0, Math.min(N + R, CRYSTALS.length)).map(crystal).join('')}</g>
@@ -456,7 +461,7 @@ function awaitCard(x) {
   return `<article class="omen summons ${NEEDS.has(st) ? 'needs' : 'reply'}"><div class="omen-in">
     <header class="o-top"><span class="${NEEDS.has(st) ? 'gilt-dot' : 'reply-dot'}" aria-hidden="true"></span>${esc(label)}${since}</header>
     <h3 class="o-title"><button data-a="open">${esc(x.title || 'New chat')}</button></h3>
-    <p class="o-where">${whereOf(x)}</p>
+    <p class="o-where">${crestHtml(projectOf(x), 18, 'o-crest')}${whereOf(x)}</p>
     ${body}
     <footer class="o-foot ${x.source === 'app' && st === 'reply' ? 'stack' : ''}">${acts}</footer>
   </div></article>`;
@@ -475,7 +480,7 @@ function workCard(x) {
   return `<article class="omen ${st === 'working' ? 'working' : st}"><div class="omen-in">
     <header class="o-top"><span class="${x.source === 'app' ? 'ember-dot' : 'violet-dot'}" aria-hidden="true"></span>${esc(label)}<span class="o-time" data-since="${since || ''}"></span></header>
     <h3 class="o-title"><button data-a="open">${esc(x.title || 'New chat')}</button></h3>
-    <p class="o-where">${whereOf(x)}</p>
+    <p class="o-where">${crestHtml(projectOf(x), 18, 'o-crest')}${whereOf(x)}</p>
     ${step}${line}
     <footer class="o-foot">${sparkSvg(x.spark)}<button class="btn quiet sm" data-a="open">${x.source === 'app' ? 'Open' : 'Watch'}</button></footer>
   </div></article>`;
@@ -747,6 +752,14 @@ async function reopenChats(yes) {
   toast(`${n ? `Reopened ${n} chat${n === 1 ? '' : 's'}; ${n === 1 ? 'it’s' : 'they’re'} in Active now.` : ''}${r.failed.length ? ` ${r.failed.length} couldn’t open: ${r.failed.map(f => `${f.title || 'a chat'} (${f.error})`).join('; ')}` : ''}`.trim(), r.failed.length ? 10000 : 5000);
 }
 
+// The hub scene holds still while it's scrolled out of view.
+let heroSeen = null;
+function watchHero() {
+  const el = $('heroSlot'); if (!el || !window.IntersectionObserver) return;
+  if (heroSeen) heroSeen.disconnect();
+  heroSeen = new IntersectionObserver(([e]) => el.classList.toggle('hero-off', !e.isIntersecting));
+  heroSeen.observe(el);
+}
 function renderHub() {
   const better = headroomPick();
   const recent = allSessions().slice(0, 1);
@@ -785,6 +798,7 @@ function renderHub() {
     ${S.dryRun ? '<p class="note">Preview mode: terminal buttons show what would run instead of opening one.</p>' : ''}`;
   renderHubLists();
   renderLive(true);
+  watchHero();
   if (!dialsDrawn && !renderHub.timer) renderHub.timer = setTimeout(() => { dialsDrawn = true; }, 2600);
   renderQueue(); renderRaces();
 }
@@ -847,6 +861,25 @@ function worldArt(p, w, cls = '', lazy = true) {
   const h = hash(p.name), a = TINTS[h % TINTS.length], b = TINTS[(h >>> 5) % TINTS.length === h % TINTS.length ? (h + 1) % TINTS.length : (h >>> 5) % TINTS.length];
   return `<span class="w-glyph ${cls}" style="--a:${a};--b:${b};--x:${18 + (h >>> 9) % 50}%;--y:${10 + (h >>> 13) % 50}%" aria-hidden="true"><b>${esc(initial(p.name))}</b></span>`;
 }
+// A project's crest, the same wherever the project appears: a picture of its own named crest, emblem,
+// icon or logo (Codex can make one), else its banner, else an emblem drawn from its name (its colors
+// and glyph). size is in pixels.
+const CREST_TINTS = ['a5463f', 'd9bf74', 'a58be8', 'cf8274', '6f97d8', '7fb79a'];
+const CREST_RE = /(^|[\\/])(crest|emblem|icon|logo)\.(png|webp|jpe?g)$/i;
+function crestHtml(p, size = 22, cls = '') {
+  if (!p || !p.name) return '';
+  const w = p.cwd ? S.worlds[p.cwd] : null;
+  const own = w && w.images ? w.images.find(im => CREST_RE.test(im.rel || im.name || '')) : null;
+  const pic = own ? own.path : w && w.banner;
+  // Its two colors follow the theme (each is one of the theme's own color variables).
+  const h = hash(p.name), n = CREST_TINTS.length, i = h % n, j = (h >>> 5) % n === i ? (i + 1) % n : (h >>> 5) % n;
+  const style = `--s:${size}px;--a:rgb(var(--c-${CREST_TINTS[i]}));--b:rgb(var(--c-${CREST_TINTS[j]}))`;
+  // A picture that won't load (moved, deleted) leaves the drawn emblem underneath.
+  const img = pic ? `<img src="${esc(imageSrc(pic, p.cwd))}" alt="" loading="lazy" decoding="async" onerror="this.parentNode.classList.remove('pic');this.remove()">` : '';
+  return `<span class="crest${pic ? ' pic' : ''} ${cls}" style="${style}" aria-hidden="true"><b>${glyphFor(p.name)}</b>${img}</span>`;
+}
+// The project a chat belongs to (or a stand-in with its folder's name, for the crest).
+const projectOf = x => (x && x.cwd && S.projects.find(p => p.cwd.toLowerCase() === String(x.cwd).toLowerCase())) || (x && x.folder ? { name: x.folder, cwd: x.cwd || null } : null);
 function worldCard(p, i) {
   const w = S.worlds[p.cwd];
   const nClaude = p.sessions.filter(x => provOf(x) === 'claude').length, nCodex = p.sessions.filter(isCodex).length, nOc = p.sessions.filter(isOpenClaw).length;
