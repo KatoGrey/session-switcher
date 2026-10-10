@@ -631,3 +631,8 @@ body.dropping .box::after { content: "Drop to add"; position: absolute; inset: 0
 .modal .ok { color: var(--fg); }
 .modal .warn { color: var(--st-bug); }
 @media (max-width: 760px) { .si-link { flex-wrap: wrap; } .si-link input { flex-basis: 100%; } }
+.si-wait { display: flex; gap: 8px; align-items: center; color: var(--fg-2); font-size: 13px; }
+.si-alt { color: var(--muted); font-size: 13px; }
+.si-alt summary { cursor: pointer; }
+.si-alt .si-link { margin-top: 8px; }
+.modal.signin p { margin: 0; }

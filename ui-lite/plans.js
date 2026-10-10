@@ -121,13 +121,14 @@ async function signInFlow(planId) {
     if (!r) { root.innerHTML = `<div class="modal-back"><div class="modal signin">${head}<p>Starting the sign-in…</p></div></div>`; return; }
     if (r.state === 'done') { root.innerHTML = `<div class="modal-back"><div class="modal signin">${head}<p class="ok">Signed in${r.signedInAs ? ` as <b>${esc(r.signedInAs)}</b>` : ''}. Its usage shows on Now in a moment.</p><div class="acts"><button class="btn prime" data-m="close">Done</button></div></div></div>`; return; }
     if (r.state === 'failed' || r.state === 'wrong' || !r.url) { root.innerHTML = `<div class="modal-back"><div class="modal signin">${head}<p class="warn">${esc(r.error || 'The sign-in didn’t start.')}</p><div class="acts"><button class="btn" data-m="close">Close</button><button class="btn prime" data-m="again">Start again</button></div></div></div>`; return; }
+    const manual = `<div class="si-link"><input id="siManual" readonly value="${esc(r.manualUrl || r.url)}" aria-label="Link for another device"><button type="button" class="btn" data-m="copym">Copy</button></div>
+          <div class="si-link"><input id="siCode" placeholder="Paste the code it shows" autocomplete="off" spellcheck="false" aria-label="Code"><button class="btn prime" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Checking…' : 'Finish'}</button></div>`;
     root.innerHTML = `<div class="modal-back"><form class="modal signin" id="siForm">${head}
-      <ol class="si-steps">
-        <li><span>Open this link in a browser signed in to <b>${esc(r.email || 'the right account')}</b> on claude.ai. If your browser is signed in to another account, use a private window.</span>
-          <div class="si-link"><input id="siUrl" readonly value="${esc(r.url)}" aria-label="Sign-in link"><button type="button" class="btn" data-m="copy">Copy link</button><a class="btn" href="${esc(r.url)}" target="_blank" rel="noopener">Open</a></div></li>
-        <li><span>Approve, then paste the code it shows.</span>
-          <div class="si-link"><input id="siCode" placeholder="Paste the code" autocomplete="off" spellcheck="false" aria-label="Code"><button class="btn prime" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Checking…' : 'Finish'}</button></div></li>
-      </ol>
+      ${r.auto ? `<p>Open this link <b>on this Mac</b>, in a browser signed in to <b>${esc(r.email || 'the right account')}</b> on claude.ai (if it’s signed in to another account, use a private window). Approve, and it finishes here by itself.</p>
+        <div class="si-link"><input id="siUrl" readonly value="${esc(r.url)}" aria-label="Sign-in link"><button type="button" class="btn" data-m="copy">Copy link</button><a class="btn prime" href="${esc(r.url)}" target="_blank" rel="noopener">Open</a></div>
+        <p class="si-wait">${r.state === 'checking' ? 'Checking the account…' : '<span class="live-dot"></span> Waiting for you to approve in the browser…'}</p>
+        <details class="si-alt"><summary>Signing in on another device, or it showed you a code?</summary>${manual}</details>`
+      : `<p>Open this link in a browser signed in to <b>${esc(r.email || 'the right account')}</b> on claude.ai (a private window if it’s signed in to another account), approve, then paste the code it shows.</p>${manual}`}
       <div class="acts"><button type="button" class="btn" data-m="close">Cancel</button></div></form></div>`;
   };
   let run = null;
@@ -138,15 +139,26 @@ async function signInFlow(planId) {
       const b = e.target.closest('[data-m]'); if (!b) return;
       if (b.dataset.m === 'close') { if (run && run.id && run.state !== 'done') api('/api/lite/signin/cancel', { id: run.id }).catch(() => {}); root.innerHTML = ''; loadPlans(true).then(renderPlansOnly).catch(() => {}); }
       if (b.dataset.m === 'again') startRun();
-      if (b.dataset.m === 'copy') {
-        const i = $('siUrl'); i.select();
+      if (b.dataset.m === 'copy' || b.dataset.m === 'copym') {
+        const i = $(b.dataset.m === 'copy' ? 'siUrl' : 'siManual'); i.select();
         try { await navigator.clipboard.writeText(i.value); b.textContent = 'Copied'; } catch { document.execCommand('copy'); b.textContent = 'Copied'; }
-        setTimeout(() => { b.textContent = 'Copy link'; }, 1600);
+        setTimeout(() => { b.textContent = b.dataset.m === 'copy' ? 'Copy link' : 'Copy'; }, 1600);
       }
     });
     const f = $('siForm');
+    // Approved in the browser on this Mac: the login finishes by itself; notice it here.
+    clearTimeout(signInFlow.poll);
+    if (f && run && run.id && run.auto) {
+      const poll = async () => {
+        if (!$('siForm')) return;
+        const st = await api(`/api/lite/signin?id=${run.id}`).catch(() => null);
+        if (st && st.state !== run.state) { const typed = $('siCode') ? $('siCode').value : ''; run = st; draw(run); wire(); if ($('siCode')) $('siCode').value = typed; if (run.state === 'done') { sfx('chip'); loadPlans(true).then(renderPlansOnly).catch(() => {}); } }
+        if (run.state === 'waiting' || run.state === 'checking') signInFlow.poll = setTimeout(poll, 1500);
+      };
+      signInFlow.poll = setTimeout(poll, 1500);
+    }
     if (f) {
-      $('siUrl').addEventListener('focus', e => e.target.select());
+      $('siUrl')?.addEventListener('focus', e => e.target.select());
       f.onsubmit = async e => {
         e.preventDefault();
         const code = $('siCode').value.trim(); if (!code) return $('siCode').focus();
