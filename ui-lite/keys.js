@@ -3,7 +3,7 @@
    row under it (or on the selection). g-chords jump between pages. ⌘K finds anything. ? shows it all. */
 
 const SHORTCUTS = [
-  ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g r', 'Recents'], ['g i', 'Images'], ['g a', 'Archived'], ['g c', 'Clean up'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
+  ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g r', 'Recents'], ['g i', 'Images'], ['g a', 'Archived'], ['g c', 'Clean up'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
   ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–7', 'Set the stage'], ['s', 'Stage menu'], ['w', 'Waiting on…'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
   ['In a chat', [['↵', 'Send'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['esc', 'Back to where you were']]],
 ];
@@ -58,6 +58,7 @@ function onKey(e) {
     case 'c': e.preventDefault(); return go('newchat', { ncProject: S.view === 'project' ? S.project : null });
     case '/': e.preventDefault(); $('q').focus(); return undefined;
     case '?': e.preventDefault(); return showShortcuts();
+    case 'z': if (lastUndo) { e.preventDefault(); const u = lastUndo; lastUndo = null; $('toastRoot').innerHTML = ''; return wrap(u)(); } return undefined;
     default: break;
   }
   if (S.view === 'chat') {

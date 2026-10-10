@@ -575,3 +575,4 @@ details.step li { overflow-wrap: anywhere; }
 .feed:focus { outline: none; }
 .row.acts { grid-template-columns: 8px minmax(0, 1fr) auto auto auto; }
 @media (max-width: 760px) { .row.acts { grid-template-columns: 8px minmax(0, 1fr) auto auto; } .row.acts .when { display: none; } }
+.toast kbd { background: transparent; color: inherit; border-color: color-mix(in srgb, var(--pane) 40%, transparent); }

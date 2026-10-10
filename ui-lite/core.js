@@ -193,7 +193,7 @@ let lastUndo = null;
 function toast(text, undo = null) {
   lastUndo = undo;
   const r = $('toastRoot');
-  r.innerHTML = `<div class="toast"><span>${esc(text)}</span>${undo ? '<button id="undoBtn">Undo</button>' : ''}</div>`;
+  r.innerHTML = `<div class="toast"><span>${esc(text)}</span>${undo ? '<button id="undoBtn">Undo <kbd>z</kbd></button>' : ''}</div>`;
   r.querySelector('#undoBtn')?.addEventListener('click', () => { const u = lastUndo; lastUndo = null; r.innerHTML = ''; if (u) wrap(u)(); });
   clearTimeout(toast.t); toast.t = setTimeout(() => { r.innerHTML = ''; lastUndo = null; }, 6000);
 }
