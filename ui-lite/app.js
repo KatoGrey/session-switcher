@@ -32,7 +32,7 @@ function renderSide() {
     const open = all.length && !S.folded[st.id];
     const showQuiet = S.more[st.id];
     const shown = act.slice(0, S.more['all-' + st.id] ? 400 : 12);
-    return `<div class="group folder ${act.length ? '' : 'empty'}" data-open="${!!open}">
+    return `<div class="group folder ${act.length ? '' : 'empty'}" data-folded="${!open}">
       <button class="nav-i folder-btn" data-fold="${st.id}" ${st.id === 'focus' ? 'data-drop-focus="1"' : `data-drop-stage="${st.id}"`} aria-expanded="${!!open}"><span class="ic"><span class="label-dot" style="background:${st.c}"></span></span><span class="lbl">${st.name}</span><span class="n">${act.length || ''}</span></button>
       <div class="folder-items">${shown.map(sideChat).join('')}${act.length > shown.length ? `<button class="nav-i chat-i quiet-toggle" data-more-all="${st.id}"><span class="lbl">${act.length - shown.length} more</span></button>` : ''}${quiet.length ? (showQuiet ? `<div class="quiet-chats">${quiet.slice(0, 60).map(sideChat).join('')}</div>` : '') + `<button class="nav-i chat-i quiet-toggle" data-more-st="${st.id}"><span class="lbl">${showQuiet ? 'Hide quiet' : `${quiet.length} quiet`}</span></button>` : ''}</div>
     </div>`;
@@ -77,7 +77,9 @@ function sideProjects(chats) {
       if (lv.length > limit) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}"><span class="lbl">${lv.length - limit} more</span></button>`;
       if (q.length) inner += `<button class="nav-i chat-i quiet-toggle" data-project="${esc(g.p.key)}"><span class="lbl">${q.length} quiet</span></button>`;
     }
-    return `<div class="group folder" data-open="${open}"><button class="nav-i folder-btn proj-btn" data-foldproj="${esc(g.p.key)}" aria-expanded="${open}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : `<span class="n">${lv.length || ''}</span>`}</button><div class="folder-items">${inner}</div></div>`;
+    // The name opens the project; the chevron beside it folds its chats away.
+    const here = S.view === 'project' && S.project === g.p.key;
+    return `<div class="group folder" data-folded="${!open}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-project="${esc(g.p.key)}" draggable="true" aria-current="${here}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : `<span class="n">${lv.length || ''}</span>`}</button><button class="proj-chev" data-foldproj="${esc(g.p.key)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} chats" title="${open ? 'Hide' : 'Show'} chats"></button></div><div class="folder-items">${inner}</div></div>`;
   };
   // With every bucket showing, projects sit under their bucket's name.
   let html = '';
