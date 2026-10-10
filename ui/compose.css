@@ -1,0 +1,147 @@
+/* The message box and model picker, pared down (in the spirit of Codex): one rounded box, icon
+   buttons, the model as plain text, a round send button, and a small menu for the model.
+   Loaded after styles.css, so it only overrides; every theme's colors still apply. */
+
+/* ---------- the dock and the box ---------- */
+.c-dock{border-top:0;background:linear-gradient(180deg,transparent,var(--abyss) 28%)}
+.c-compose{padding:6px 20px 14px}
+.c-box{border:1px solid var(--seam);border-radius:22px;background:var(--vellum);padding:10px 10px 8px 16px;box-shadow:0 10px 30px -18px rgb(var(--c-000000) / .9)}
+.c-box:focus-within{border-color:var(--seam-2);box-shadow:0 10px 30px -18px rgb(var(--c-000000) / .9)}
+.chat.to-codex .c-box,.chat.to-claude .c-box{border-color:var(--seam-2)}
+.c-box textarea{font:400 15px/1.5 var(--f-body);padding:2px 0 6px;min-height:24px}
+.c-box textarea::placeholder{font-style:normal;color:var(--ash-2)}
+.c-hint{display:none}
+.c-escarm{margin:6px 4px 0}
+
+/* ---------- the row under the text ---------- */
+#cCompose .c-row{gap:2px;min-height:34px;flex-wrap:nowrap}
+.c-row .c-ib{width:32px;height:32px;padding:0;justify-content:center;border:0;border-radius:50%;background:none;color:var(--ash);flex:none}
+.c-row .c-ib:hover{background:rgb(var(--c-ede6d9) / .06);color:var(--parch)}
+.c-row .c-ib span{display:none}
+.c-model{display:none !important}
+.c-status{font:400 12px var(--f-body);color:var(--ash-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+/* Who it goes to, and the model: plain text, no boxes. */
+.c-crew{display:flex;align-items:center;gap:2px;min-width:0;flex:0 1 auto;order:-1}
+.crew{gap:5px;padding:6px 9px;border-radius:999px;background:none;box-shadow:none;color:var(--ash);min-width:0}
+.crew:hover{background:rgb(var(--c-ede6d9) / .06);color:var(--parch)}
+.crew.on,.crew.codex.on{background:none;box-shadow:none;color:var(--parch)}
+.crew-n{font:500 13px/1 var(--f-body);letter-spacing:0;text-transform:none}
+.crew-m{font:400 13px/1.2 var(--f-body);color:inherit;max-width:none}
+.crew.on .crew-m{color:var(--parch)}
+.crew-dot{width:6px;height:6px}
+.crew-caret{font-size:9px;margin-left:0;color:var(--ash-2)}
+/* This chat's own assistant shows just its model; the name only matters when there are two. */
+.crew[data-crew="main"] .crew-n{display:none}
+.crew[data-crew="main"]:not(.busy):not(.waiting) .crew-dot{display:none}
+.c-crew.duo .crew[data-crew="main"] .crew-n{display:inline}
+.c-crew.duo .crew[data-crew="main"] .crew-dot{display:block}
+/* The partner, idle: just its name, quiet. Picked: a soft tint so you know where the message goes. */
+.crew[data-crew="comp"]:not(.on){color:var(--ash-2)}
+.crew[data-crew="comp"]:not(.on) .crew-m:empty{display:none}
+.c-crew.duo .crew[data-crew="comp"].on{background:var(--codex-soft)}
+.c-crew.duo .crew[data-crew="main"].on:not(:only-child){background:rgb(var(--c-ede6d9) / .06)}
+.crew.both{padding:6px 9px;color:var(--ash-2)}
+.crew.both.on{background:rgb(var(--c-ede6d9) / .08);color:var(--parch)}
+.crew.both .crew-n{font:500 12px/1 var(--f-body);letter-spacing:.02em;text-transform:none}
+.c-crew.duo .crew:not(.on) .crew-m{max-width:120px}
+
+/* Send and Stop: one round button on the right. */
+#cSend,#cStop{width:32px;height:32px;min-width:0;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;box-shadow:none}
+#cSend .ct,#cStop .ct{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+#cSend{background:var(--parch);border:0;color:var(--abyss)}
+#cSend:hover{filter:brightness(1.08)}
+#cSend:disabled{background:var(--seam-2);color:var(--ash-2);filter:none}
+#cSend.queue{background:var(--vellum-3);color:var(--parch);box-shadow:inset 0 0 0 1px var(--seam-2)}
+#cStop{background:var(--vellum-3);border:1px solid var(--seam-2);color:var(--parch)}
+#cStop:not([hidden]) + #cSend{margin-left:4px}
+
+/* ---------- the model picker: a small menu ---------- */
+.c-pick{left:20px;width:min(300px,calc(100% - 40px));max-height:min(460px,64vh);border:1px solid var(--seam-2);border-radius:14px;background:var(--vellum-2);box-shadow:0 22px 60px -20px rgb(var(--c-000000)), 0 0 0 1px rgb(var(--c-000000) / .35);padding:6px}
+.c-pick.codex{border-color:var(--seam-2)}
+.mp-top{display:flex;align-items:center;gap:8px;padding:4px 8px 6px;margin:0}
+.mp-title{margin:0;font:500 12px/1 var(--f-body);color:var(--ash-2);letter-spacing:0;text-transform:none}
+.mp-done{display:none}
+.mp-grab{display:none}
+.mp-tabs{display:flex;gap:2px;width:100%;padding:2px;border-radius:9px;background:rgb(var(--c-000000) / .25)}
+.mp-tabs button{flex:1;border:0;border-radius:7px;background:none;padding:6px 8px;font:500 12.5px/1.1 var(--f-body);color:var(--ash);display:flex;flex-direction:column;gap:2px;align-items:center}
+.mp-tabs button small{font-size:11px;color:var(--ash-2)}
+.mp-tabs button[aria-selected="true"]{background:var(--vellum-3);color:var(--parch)}
+.mp-h{margin:10px 8px 6px;font:500 11.5px/1 var(--f-body);letter-spacing:0;text-transform:none;color:var(--ash-2)}
+.c-pick.codex .mp-h{color:var(--ash-2)}
+.mp-h span{display:none}
+.mp-h .mp-t{display:inline}
+.mp-list{gap:1px}
+.mp-list button{flex-direction:row;align-items:center;gap:8px;padding:8px 10px;border:0;border-radius:8px}
+.mp-list button::before{display:none}
+.mp-list button[aria-checked="true"],.c-pick.codex .mp-list button[aria-checked="true"]{background:none;border:0}
+.mp-list button:hover,.mp-list button:focus-visible{background:rgb(var(--c-ede6d9) / .06);outline:none}
+.mp-list b{font:400 14px/1.3 var(--f-body);flex:1;min-width:0}
+.mp-list small{display:none}
+.mp-check{flex:none;opacity:0;color:var(--parch)}
+.mp-list button[aria-checked="true"] .mp-check{opacity:1}
+.mp-more summary{padding:7px 10px;font:400 12.5px var(--f-body);color:var(--ash-2);cursor:pointer;list-style:none}
+.mp-more summary::-webkit-details-marker{display:none}
+.mp-eff{gap:2px;padding:2px;margin:0 6px;border-radius:9px;background:rgb(var(--c-000000) / .25);flex-wrap:nowrap}
+.mp-eff button{flex:1;border:0;border-radius:7px;background:none;padding:6px 4px;font:500 12px/1 var(--f-body);color:var(--ash)}
+.mp-eff button:hover{color:var(--parch);border:0}
+.mp-eff button[aria-checked="true"],.c-pick.codex .mp-eff button[aria-checked="true"]{background:var(--vellum-3);border:0;color:var(--parch)}
+.mp-note{margin:8px 8px 2px;font-size:12px;color:var(--ash-2)}
+.mp-ctx{margin:10px 2px 2px;padding:9px 8px 4px;border-top:1px solid var(--seam)}
+.mp-ctx .mp-h{margin:0 0 7px;display:flex;justify-content:space-between}
+.mp-ctx .mp-h span{display:inline;color:var(--ash-2)}
+.mp-ctxrow{display:flex;align-items:center;gap:8px}
+.mp-ctxparts{flex:1;min-width:0;margin:0;font-size:11.5px;color:var(--ash-2)}
+.mp-ctxrow .btn{padding:5px 10px;font-size:12px}
+
+/* ---------- phones ---------- */
+@media (max-width:760px){
+  .c-compose{padding:4px 10px calc(10px + env(safe-area-inset-bottom))}
+  .c-box{border-radius:20px;padding:8px 6px 6px 14px}
+  .c-box textarea{font-size:16px}
+  .c-row .c-ib[data-c="prompts"]{display:none}
+  .crew-m{max-width:44vw}
+  .c-crew.duo .crew:not(.on) .crew-m{display:none}
+  .c-pick{left:0;right:0;width:auto;border-radius:16px 16px 0 0;padding:8px 8px calc(10px + env(safe-area-inset-bottom))}
+  .mp-grab{display:block}
+  .mp-list button{padding:11px 10px}
+  .mp-list b{font-size:15px}
+}
+
+/* Attach first, then the model, like Codex. */
+.c-row .c-ib[data-c="attach"]{order:-2}
+
+/* No frame around who-it-goes-to, and one line on every screen size. */
+#cCompose .c-crew{border:0;background:none;padding:0;border-radius:0;flex:0 1 auto;order:-1;max-width:100%}
+#cCompose .c-crew .crew{display:inline-flex;flex:0 1 auto;grid-template-areas:none;padding:6px 8px;border-radius:999px}
+#cCompose .c-crew .crew-m{flex:0 1 auto;min-width:0;font:400 13px/1.2 var(--f-body);max-width:none}
+#cCompose .c-crew .crew-n{font:500 13px/1 var(--f-body);letter-spacing:0;text-transform:none}
+#cCompose .crew.both{border:0;background:none}
+#cCompose .crew.both.on{background:rgb(var(--c-ede6d9) / .08)}
+#cCompose .crew.both .crew-n{font:500 12.5px/1 var(--f-body);letter-spacing:0;text-transform:none}
+@media (max-width:760px){
+  #cCompose .c-crew{flex:1 1 auto}
+  #cCompose .c-crew .crew{min-width:0}
+  #cCompose .c-crew .crew[data-crew="main"] .crew-m{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #cCompose .c-crew.duo .crew[data-crew="main"] .crew-n{display:none}
+  #cCompose .c-crew.duo .crew:not(.on) .crew-m{display:none}
+}
+
+/* ---------- the chat header: plain text, no pills or boxes ---------- */
+.c-acct{border:0;border-radius:0;padding:0;background:none;gap:6px;font:500 13px/1 var(--f-body);letter-spacing:0;text-transform:none}
+.c-acct *{font-family:var(--f-body);letter-spacing:0;text-transform:none}
+.c-state{font:400 12.5px/1 var(--f-body);letter-spacing:0;text-transform:none;color:var(--ash-2)}
+.c-mode{border:0;background:none;padding:4px 18px 4px 4px;font:400 13px var(--f-body);color:var(--ash);-webkit-appearance:none;appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ash-2) 50%),linear-gradient(135deg,var(--ash-2) 50%,transparent 50%);
+  background-position:calc(100% - 9px) 52%,calc(100% - 5px) 52%;background-size:4px 4px,4px 4px;background-repeat:no-repeat;cursor:pointer}
+.c-mode:hover{color:var(--parch)}
+
+/* ---------- under each reply: small text actions, no outlines ---------- */
+.ta{border:0;background:none;padding:4px 8px;border-radius:6px;font:400 12.5px/1 var(--f-body);letter-spacing:0;text-transform:none;color:var(--ash-2)}
+.ta:hover{background:rgb(var(--c-ede6d9) / .06);color:var(--parch)}
+.turn-foot .ta{min-height:0}
+@media (max-width:760px){
+  .c-acct{padding:0;font-size:13px}
+  .c-mode{padding:4px 18px 4px 2px;font-size:13px}
+  .turn-foot .ta{min-height:40px;padding:8px 10px;font-size:13.5px}
+}

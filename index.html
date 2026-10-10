@@ -14,6 +14,7 @@
 <link rel="preload" href="/fonts/playfair.woff2" as="font" type="font/woff2" crossorigin>
 <meta name="theme-color" content="#0a090c">
 <link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/ui/compose.css">
 <script src="/theme.js"></script>
 <script>window.TOKEN = '__TOKEN__'; window.REMOTE = __REMOTE__;</script>
 </head>
@@ -109,8 +110,8 @@
             <span class="c-status" id="cStatus" aria-live="polite"></span>
             <span class="spacer"></span>
             <span class="c-model" id="cModel" hidden></span>
-            <button type="button" class="btn sm" id="cStop" data-c="stop" hidden title="Stop Claude (Esc)">Stop</button>
-            <button type="submit" class="btn prime sm" id="cSend">Send</button>
+            <button type="button" class="btn sm" id="cStop" data-c="stop" hidden title="Stop Claude (Esc)" aria-label="Stop"><svg class="ci" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" rx="1.6" fill="currentColor"/></svg><span class="ct">Stop</span></button>
+            <button type="submit" class="btn prime sm" id="cSend" aria-label="Send" title="Send (Enter)"><svg class="ci" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="ct">Send</span></button>
           </div>
         </div>
         <p class="c-hint" id="cHint">Enter sends · Shift+Enter new line · / prompts · <b>/model</b> · Esc twice stops</p>

@@ -1427,6 +1427,8 @@ async function handleApi(req, res, url, remote = false) {
       if (body.terminal !== undefined) { if (!acc.TERMINALS.includes(body.terminal)) throw fail(400, 'Unknown terminal choice.'); p.terminal = body.terminal; }
       for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow']) if (typeof body[k] === 'boolean') p[k] = body[k];
       if (body.openIn !== undefined) { if (!['app', 'terminal'].includes(body.openIn)) throw fail(400, 'Unknown choice.'); p.openIn = body.openIn; }
+      if (body.claudeMode !== undefined) { if (!chatLib.MODES.includes(body.claudeMode)) throw fail(400, 'Unknown mode.'); p.claudeMode = body.claudeMode; }
+      if (body.codexMode !== undefined) { if (!codexLib.MODES.some(m => m.value === body.codexMode)) throw fail(400, 'Unknown mode.'); p.codexMode = body.codexMode; }
       if (body.claudeCommand !== undefined) {
         const cmd = String(body.claudeCommand).trim();
         if (!cmd || /["\r\n%&|<>^]/.test(cmd)) throw fail(400, `Enter the full path to ${sys.IS_WIN ? 'claude.exe' : 'claude'} (or just “claude”).`);
@@ -1962,7 +1964,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
       return res.end(data);
     }
     const STATIC = { '/theme.js': 'text/javascript', '/styles.css': 'text/css' };
-    const type = STATIC[url.pathname] || (/^\/ui\/[a-z0-9-]+\.js$/.test(url.pathname) ? 'text/javascript' : null);
+    const type = STATIC[url.pathname] || (/^\/ui\/[a-z0-9-]+\.js$/.test(url.pathname) ? 'text/javascript' : /^\/ui\/[a-z0-9-]+\.css$/.test(url.pathname) ? 'text/css' : null);
     if (req.method === 'GET' && type) {
       res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       return res.end(fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1)), 'utf8'));
