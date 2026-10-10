@@ -32,32 +32,46 @@ function forecastShort(p) {
   if (f.kind === 'onTarget') return { t: 'On target', k: 'good' };
   return { t: `${f.moreToUse}% to spare`, k: 'room' };
 }
-function resetsCell(p) {
-  const cr = creditsOf(p), mr = manualOf(p);
-  if (cr.length) return `<span class="chip-s first" title="${esc(cr.map(c => `Expires ${new Date(ms(c.expiresAt)).toLocaleString('en-US')}`).join('\n'))}">${cr.length} · ${esc(md(cr[0].expiresAt))}</span><button class="linkish" data-usereset="${esc(p.id)}">Use</button>`;
-  if (mr.length) return `<span class="chip-s" title="${esc(mr.map(m => `${m.expiresAt ? `Expires ${md(m.expiresAt)}` : 'No expiry'}${m.note ? ` · ${m.note}` : ''}`).join('\n'))}">${mr.length}${mr[0].expiresAt ? ` · ${esc(md(mr[0].expiresAt))}` : ''}</span><button class="linkish" data-addreset="${esc(p.id)}" title="Add another">+</button>`;
-  return p.family === 'claude' ? '<button class="linkish dim" data-addreset="' + esc(p.id) + '" title="Claude Code doesn’t report manual resets; note yours here">+ add</button>' : '';
+const exact = t => new Date(ms(t)).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const leftIn = t => { const h = Math.round(Math.max(0, (ms(t) - S.now) / 36e5)); return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d ${h % 24}h`; };
+function resetsCount(p) {
+  const n = creditsOf(p).length || (p.credits && p.credits.count) || manualOf(p).length;
+  return n ? `<span class="pcred" title="Manual resets on hand">${n} reset${n === 1 ? '' : 's'}</span>` : '';
 }
 function planRow(p) {
+  const head = `<span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span>`;
   if (p.unlimited) {
     const r = p.requests;
     const days = r && r.byDay && r.byDay.length ? r.byDay : null;
     const max = days ? Math.max(1, ...days.map(d => d.n)) : 1;
     const spark = days ? `<span class="ospark" title="${esc(days.map(d => `${wd(d.from)} ${d.n.toLocaleString()}`).join(' · '))}">${days.map(d => `<i style="height:${Math.max(8, Math.round(100 * d.n / max))}%"></i>`).join('')}</span>` : '';
-    return `<div class="prow"><span class="prank"></span><span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span><span class="pnote">${p.broken ? `<span class="warn">${esc(p.broken)}</span>` : r ? `<span>${r.day.toLocaleString()} requests in the last day · ${r.week.toLocaleString()} this week</span>${spark}` : 'No usage limits reported'}</span></div>`;
+    return `<div class="prow"><span class="prank"></span>${head}<span class="pnote">${p.broken ? `<span class="warn">${esc(p.broken)}</span>` : r ? `${spark}<span>${r.day.toLocaleString()} requests today · ${r.week.toLocaleString()} this week</span>` : 'No usage limits reported'}</span></div>`;
   }
-  if (p.broken) return `<div class="prow broken"><span class="prank"></span><span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span><span class="pnote"><span class="warn">${esc(p.broken.replace(/ Sign in from Setup in the full app\./, ''))}</span>${p.family === 'claude' ? `<button class="btn sm prime" data-signin="${esc(p.id)}">Sign in</button>` : ''}</span></div>`;
-  if (typeof p.left !== 'number') return `<div class="prow"><span class="prank"></span><span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span><span class="pnote">${p.checking ? 'Checking…' : esc(p.error || 'No usage read yet')}</span></div>`;
-  const fc = forecastShort(p);
-  return `<div class="prow ${p.rank === 1 ? 'next' : ''} ${p.left <= floor() ? 'low' : ''}">
-    <span class="prank" title="${p.rank ? `Use-next order for ${esc(famName(p.family))}` : 'At or below your floor'}">${p.rank || '–'}</span>
-    <span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}${p.fiveLeft !== null && p.fiveLeft !== undefined && p.family === 'claude' ? ` · 5h ${p.fiveLeft}%` : ''}</small></span>
+  if (p.broken) return `<div class="prow broken"><span class="prank"></span>${head}<span class="pnote"><span class="warn">${esc(p.broken.replace(/ Sign in from Setup in the full app\./, ''))}</span>${p.family === 'claude' ? `<button class="btn sm prime" data-signin="${esc(p.id)}">Sign in</button>` : ''}</span></div>`;
+  if (typeof p.left !== 'number') return `<div class="prow"><span class="prank"></span>${head}<span class="pnote">${p.checking ? 'Checking…' : esc(p.error || 'No usage read yet')}</span></div>`;
+  return `<button class="prow ${p.rank === 1 ? 'next' : ''} ${p.left <= floor() ? 'low' : ''}" data-plan="${esc(p.id)}" title="Details">
+    <span class="prank">${p.rank || '–'}</span>${head}
     <span class="pbar"><i style="width:${p.left}%"></i><s style="left:${floor()}%"></s></span>
     <span class="ppct">${p.left}%</span>
-    <span class="preset" title="${p.resetsAt ? esc(new Date(ms(p.resetsAt)).toLocaleString('en-US')) : ''}">${p.resetsAt ? `${esc(wd(p.resetsAt))} · ${esc(inWords(p.resetsAt).replace(/^in /, ''))}` : '—'}</span>
-    <span class="pfc ${fc.k}" title="${esc(forecastWords(p))}">${esc(fc.t)}</span>
-    <span class="pres">${resetsCell(p)}</span>
-  </div>`;
+    <span class="preset" title="${p.resetsAt ? `Resets ${esc(exact(p.resetsAt))}` : ''}">${p.resetsAt ? `<b>${esc(wd(p.resetsAt))}</b><small>${esc(leftIn(p.resetsAt))}</small>` : '<small>not started</small>'}</span>
+    <span class="pres">${resetsCount(p)}</span>
+  </button>`;
+}
+// A plan's details: exact times, the 5-hour window, the pace, and its manual resets.
+function planDetails(anchor, id) {
+  const p = planById(id); if (!p) return;
+  const cr = creditsOf(p), mr = manualOf(p);
+  const rows = [
+    ['Week', `${p.left}% left · resets ${p.resetsAt ? exact(p.resetsAt) : 'when first used'}`],
+    p.fiveLeft !== null && p.fiveLeft !== undefined ? ['5-hour window', `${p.fiveLeft}% left${p.fiveResetsAt ? ` · resets ${clock(p.fiveResetsAt)}` : ''}`] : null,
+    p.fableLeft !== null && p.fableLeft !== undefined ? ['Fable', `${p.fableLeft}% left this week`] : null,
+    p.forecast ? ['Pace', forecastWords(p)] : null,
+  ].filter(Boolean);
+  pop(anchor, `<div class="ph">${esc(p.label)} · ${esc(p.kind)}${p.rank ? ` · #${p.rank} in the use-next order` : ''}</div>
+    <div class="pd">${rows.map(([k, v]) => `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('')}</div>
+    ${cr.length ? `<hr><div class="ph">Manual resets</div><div class="pd">${cr.map(c => `<div><span>${esc(c.title || 'Full reset')}</span><span>expires ${esc(exact(c.expiresAt))}</span></div>`).join('')}</div><button data-v="use">Use one…<small>asks first</small></button>` : ''}
+    ${p.family === 'claude' ? `<hr><div class="ph">Manual resets (noted by hand)</div>${mr.length ? `<div class="pd">${mr.map(m => `<div><span>${esc(m.note || 'Reset')}</span><span>${m.expiresAt ? `expires ${esc(md(m.expiresAt))}` : 'no expiry'} <button class="linkish" data-delreset="${esc(m.id)}">remove</button></span></div>`).join('')}</div>` : ''}<button data-v="add">Add one…</button>` : ''}`,
+  v => { if (v === 'use') return wrap(useReset)(id); if (v === 'add') return addReset(id, anchor); return undefined; });
 }
 const famOrder = p => (p.family === 'chatgpt' ? 0 : p.family === 'claude' ? 1 : 2);
 function plansTable() {
