@@ -34,6 +34,8 @@ const pairsLib = require('./lib/pairs');
 const handover = require('./lib/handover');
 const routinesLib = require('./lib/routines');
 const organizeLib = require('./lib/organize');
+const liteLib = require('./lib/lite');
+const { createLiteRoutes } = require('./lib/lite-routes');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -883,14 +885,16 @@ async function routineChat({ account, cwd, sessionId, permissionMode, model, tit
 const routines = routinesLib.createRoutines({
   dataDir: DATA_DIR, log, broadcast,
   prompts: () => projectInfo.prompts(),
-  startChat: routineChat,
+  // With Switcher Lite's "follow the use-next order" on, a routine runs on that plan instead.
+  startChat: opts => routineChat({ ...opts, account: liteRoutes.routineAccount(opts.account) }),
   accountInfo: id => {
     if (isCodexAccount(id)) { const x = codexById(id); return x && { id, provider: 'codex', name: x.ACCOUNT.name, modes: codexLib.MODES.map(m => m.value) }; }
     const a = config().accounts.find(x => x.id === id);
     return a && { id, provider: 'claude', name: a.name, modes: chatLib.MODES };
   },
   // Usage right before a run, so a routine doesn't use up a nearly full window.
-  usageFor: async id => {
+  usageFor: async raw => {
+    const id = liteRoutes.routineAccount(raw);
     if (isCodexAccount(id)) { const x = codexById(id); if (!x) return null; await x.refreshUsage().catch(() => null); return { name: x.ACCOUNT.name, ...(usage.get(x.ACCOUNT.id) || {}) }; }
     const a = config().accounts.find(x => x.id === id);
     if (!a) return null;
@@ -904,6 +908,20 @@ const routines = routinesLib.createRoutines({
       try { sessions.rename(chat.sessionId, title); broadcast('sessions'); return; } catch { await new Promise(r => setTimeout(r, 2000)); }
     }
   },
+});
+
+// ---------- Switcher Lite (ui-lite/, at /lite): buckets, stages, plans; see lib/lite.js ----------
+const liteStore = liteLib.createLite({ dataDir: DATA_DIR, log });
+const liteRoutes = createLiteRoutes({
+  store: liteStore, config, acc, usage, log, broadcast, dataDir: DATA_DIR,
+  codexMainHome: () => (config().codex && config().codex.home) || codexHomes.MAIN_HOME(),
+  codexHomeFor: id => { const x = codexById(id); return x && x.ACCOUNT.home ? x.ACCOUNT.home : null; },
+  codexAll: () => codexAll(),
+  sessionsWithCodex: () => sessionsWithCodex(),
+  activityList: () => activityList(),
+  routinesList: () => routines.list(),
+  parentOf: id => organize.parentOf(id),
+  isCommanderId: id => isCommanderId(id),
 });
 
 // ---------- routes ----------
@@ -1013,6 +1031,11 @@ async function handleApi(req, res, url, remote = false) {
   }
 
   if (route === 'POST /api/chat/upload') return uploadFile(req, res, url);
+  if (url.pathname.startsWith('/api/lite/')) {
+    const out = await liteRoutes.handle(req.method, url.pathname, url, () => readBody(req), req, remote);
+    if (out === undefined) throw fail(404, 'Not found.');
+    return send(res, 200, out);
+  }
   if (url.pathname.startsWith('/api/routines')) {
     const out = await routines.api(req.method, url.pathname, req.method === 'POST' ? await readBody(req) : null);
     if (out === undefined) throw fail(404, 'Not found.');
@@ -1972,6 +1995,24 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       return res.end(html);
     }
+    // Switcher Lite: its own page and files, the same token and rules as the full app.
+    if (req.method === 'GET' && (url.pathname === '/lite' || url.pathname === '/lite/')) {
+      const html = fs.readFileSync(path.join(APP_DIR, 'ui-lite', 'index.html'), 'utf8').replace('__TOKEN__', TOKEN).replace('__REMOTE__', remote ? 'true' : 'false');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
+      return res.end(html);
+    }
+    // Its service worker (at the root, so it can serve /lite) and the Home Screen manifest.
+    if (req.method === 'GET' && (url.pathname === '/lite-sw.js' || url.pathname === '/lite.webmanifest')) {
+      const sw = url.pathname === '/lite-sw.js';
+      res.writeHead(200, { 'Content-Type': sw ? 'text/javascript; charset=utf-8' : 'application/manifest+json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(fs.readFileSync(path.join(APP_DIR, 'ui-lite', sw ? 'sw.js' : 'manifest.json'), 'utf8'));
+    }
+    if (req.method === 'GET' && /^\/ui-lite\/[a-z0-9-]+\.(js|css)$/.test(url.pathname)) {
+      let text;
+      try { text = fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1)), 'utf8'); } catch { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'Content-Type': `${url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript'}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(text);
+    }
     if (req.method === 'GET' && /^\/(fonts\/[a-z0-9-]+\.woff2|sounds\/[a-z0-9-]+\.mp3)$/.test(url.pathname)) {
       let data;
       try { data = fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1))); } catch { res.writeHead(404); return res.end(); }
@@ -2003,6 +2044,13 @@ async function handleRequest(req, res, { remote = false } = {}) {
     if (url.pathname.startsWith('/api/')) {
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
       const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media') && url.searchParams.get('token') === TOKEN;
+      // Switcher Lite's gallery: a picture Codex generated (or its thumbnail), by thread and file name.
+      if (req.method === 'GET' && url.pathname === '/api/lite/gimg' && url.searchParams.get('token') === TOKEN) {
+        const q = url.searchParams, f = q.get('thumb') ? liteRoutes.images.thumbFor(q.get('thread'), q.get('file')) : liteRoutes.images.fileFor(q.get('thread'), q.get('file'));
+        if (!f) { res.writeHead(404); return res.end(); }
+        res.writeHead(200, { 'Content-Type': /\.jpe?g$/i.test(f) ? 'image/jpeg' : /\.webp$/i.test(f) ? 'image/webp' : 'image/png', 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+        return fs.createReadStream(f).pipe(res);
+      }
       if (imageGet && url.pathname === '/api/media') return sendMedia(req, res, url);
       if (req.headers['x-switcher-token'] !== TOKEN && !imageGet) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
       return await handleApi(req, res, url, remote);
@@ -2066,6 +2114,7 @@ server.listen(PORT, '127.0.0.1', () => {
   }, 2500);
   startWatching();
   routines.start();
+  liteRoutes.startSampling();
   phone.sync().catch(err => log(`Phone access: ${err.message}`));
   sys.openAppWindow(appUrl, config().prefs);
 });

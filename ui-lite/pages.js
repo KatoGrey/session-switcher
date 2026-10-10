@@ -1,0 +1,322 @@
+'use strict';
+/* Projects (cards by bucket; quiet ones fold into chips), a project's page (chats by stage), lists,
+   Archived, Clean up, Images, Alerts, and the menus for a chat or a project. */
+
+// Grouped views (a project's stage sections) leave the stage pill out: the heading says it.
+// Mixed lists (Recents, search) show it.
+function rowHtml(c, { showProject = false, showStage = false } = {}) {
+  const p = projOf(c);
+  const waitingNow = stageOf(c) === 'waiting' && c.waitingOn;
+  const sub = showProject ? `${esc(p.name)}${p.bucket ? ` · ${esc(bucketName(p.bucket))}` : ''}` : (stageOf(c) === 'waiting' && c.note ? esc(c.note) : '');
+  const st = stageById(stageOf(c));
+  return `<div class="row ${c.parent && !showProject ? 'sub' : ''} ${isQuiet(c) ? 'is-quiet' : ''}" role="button" tabindex="-1" draggable="true" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" aria-selected="${S.sel.has(c.id)}">
+    ${needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '<span></span>'}
+    <span class="t"><b>${esc(c.title)}</b>${sub ? `<small>${sub}</small>` : ''}</span>
+    <span class="side-tags">${waitingNow ? `<span class="tag wait-tag">${esc(c.waitingOn)}</span>` : ''}${c.provider === 'codex' ? '<span class="tag">Codex</span>' : ''}${showStage ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu"><span class="dot" style="background:${st.c}"></span>${st.name}</button>` : ''}</span>
+    <span class="when">${ago(c.updated)}</span>
+    <button class="iconbtn rmenu" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" aria-label="Move or change">${IC.dots}</button>
+  </div>`;
+}
+const selHint = () => '<p class="hint-line"><kbd>j</kbd> <kbd>k</kbd> to move, <kbd>↵</kbd> to open, <kbd>1</kbd>–<kbd>7</kbd> for a stage, <kbd>e</kbd> to archive, <kbd>x</kbd> to select. <kbd>?</kbd> shows them all.</p>';
+const BACK = '<button class="iconbtn back" data-go="side" aria-label="Back">‹</button>';
+
+function stageBar(cs) {
+  const lv = live(cs); if (!lv.length) return '<div class="stagebar"></div>';
+  return `<div class="stagebar">${STAGES.filter(s => s.id !== 'done').map(s => { const n = lv.filter(c => stageOf(c) === s.id).length; return n ? `<i style="width:${100 * n / lv.length}%;background:${s.c}" title="${s.name}: ${n}"></i>` : ''; }).join('')}</div>`;
+}
+function cardHtml(p) {
+  const cs = chatsOfProject(p.key), lv = live(cs);
+  const w = lv.filter(c => stageOf(c) === 'waiting').length;
+  const nd = cs.some(needs);
+  const making = S.gen && S.gen[p.key];
+  return `<button class="card ${nd ? 'needs' : ''}" draggable="true" data-project="${esc(p.key)}" data-cur="p:${esc(p.key)}">
+    <span class="art ${making ? 'making' : ''}" style="${artStyle(p)}">${making ? '' : artInner(p)}</span>
+    <span class="body"><span class="name">${esc(p.name)}</span>${stageBar(cs)}
+      <span class="meta">${nd ? '<span class="dot needs-dot"></span>' : ''}<span>${lv.length} active${w ? ` · ${w} waiting` : ''}</span></span></span></button>`;
+}
+const projectsIn = b => S.projects.filter(p => !p.archived && (b === null ? !p.bucket : p.bucket === b));
+const hasChats = p => chatsOfProject(p.key).length > 0;
+function home() {
+  const groups = [...buckets().map(b => ({ id: b.id, name: b.name })), { id: null, name: 'Unsorted' }];
+  const sections = groups.map(b => {
+    const ps = projectsIn(b.id).filter(p => b.id !== null || hasChats(p)).sort((x, y) => y.updated - x.updated);
+    if (b.id === null && !ps.length) return '';
+    const act = ps.filter(p => live(chatsOfProject(p.key)).length);
+    const quiet = ps.filter(p => !live(chatsOfProject(p.key)).length);
+    return `<section class="section" data-drop-bucket="${esc(b.id || '')}">
+      <div class="sec-h"><h2>${esc(b.name)}</h2><span class="n">${ps.length || ''}</span>${b.id === null ? '<span class="hint">Drag one onto a bucket, or right-click it</span>' : ''}</div>
+      ${act.length ? `<div class="cards">${act.map(cardHtml).join('')}</div>` : ''}
+      ${!ps.length ? '<div class="dropzone">Drag projects here</div>' : ''}
+      ${quiet.length ? `<div class="quiet-line"><span class="why" title="No chat here has moved in ${quietDays()} days, or every chat is Done. A new chat or message brings it back up.">Quiet:</span>${quiet.map(p => `<button data-project="${esc(p.key)}" draggable="true" data-cur="p:${esc(p.key)}"><span class="thumb-xs" style="${artStyle(p)}"></span>${esc(p.name)}</button>`).join('')}</div>` : ''}
+    </section>`;
+  }).join('');
+  const setup = !buckets().length ? '<p class="lead">No buckets yet. Buckets say what a project is for (a product, games, personal apps). They live in lite.json in your data folder.</p>' : '';
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${L('Projects')}</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>${setup}${sections}
+    <p class="hint-line">Drag a project (card or quiet chip) onto another bucket to move it. Right-click one for its picture, bucket or archive.</p></div>`;
+}
+
+function listView(kind) {
+  const all = allChats();
+  let list, title;
+  if (kind === 'search') {
+    const q = S.q.toLowerCase();
+    list = all.filter(c => c.title.toLowerCase().includes(q) || projOf(c).name.toLowerCase().includes(q) || (c.firstPrompt || '').toLowerCase().includes(q)).sort((a, b) => b.updated - a.updated).slice(0, 80);
+    title = `Search: ${S.q}`;
+  } else { list = all.filter(inBucket).sort((a, b) => b.updated - a.updated).slice(0, 60); title = L('Recents'); }
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${esc(title)}</h1></div></div>
+    <div class="rows">${list.map(c => rowHtml(c, { showProject: true, showStage: true })).join('') || '<p class="empty-note">Nothing here.</p>'}</div>${selHint()}</div>`;
+}
+
+function project() {
+  const p = projBy.get(S.project);
+  if (!p) return `<div class="wrap"><p class="empty-note">That project isn’t in the list any more.</p></div>`;
+  const cs = chatsOfProject(p.key).sort((x, y) => y.updated - x.updated);
+  const sections = STAGES.map(s => {
+    const all = cs.filter(c => stageOf(c) === s.id);
+    if (!all.length) return '';
+    const folded = s.id === 'done' ? !S.more['p-done'] : false;
+    const act = s.id === 'done' ? all : all.filter(c => !isQuiet(c)), quiet = s.id === 'done' ? [] : all.filter(isQuiet);
+    const showQ = S.more['pq-' + s.id];
+    const shown = showQ ? [...act, ...quiet] : act;
+    return `<section class="section" data-drop-stage="${s.id}">
+      <div class="sec-h">${s.id === 'done' ? `<button class="fold" data-pfold="1"><h2>${s.name}</h2><span class="n">${all.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${act.length}</span>`}
+        ${quiet.length ? `<button class="hint" data-pq="${s.id}">${showQ ? 'Hide quiet' : `${quiet.length} quiet`}</button>` : ''}</div>
+      ${folded || !shown.length ? '' : `<div class="rows">${shown.map(c => rowHtml(c)).join('')}</div>`}
+    </section>`;
+  }).join('');
+  const autoN = S.chats.filter(c => c.project === p.key && c.auto).length;
+  return `<div class="wrap">
+    <div class="page-h">
+      <div class="proj-h">${BACK}<span class="art-s" style="${artStyle(p)}">${artInner(p)}</span>
+        <div style="min-width:0"><div class="crumb"><button data-go="home">${esc(bucketName(p.bucket))}</button><span>·</span><span class="mono">${esc((p.cwd || 'No folder').replace(/^\/Users\/[^/]+/, '~'))}${p.mono ? ` (${esc(p.name)} chats)` : ''}</span></div><h1>${esc(p.name)}</h1></div></div>
+      <div style="display:flex;gap:6px">${p.cwd ? `<button class="btn prime" data-newchat="${esc(p.key)}">${L('New chat')} <kbd>c</kbd></button>` : ''}<button class="iconbtn" data-projmenu="${esc(p.key)}" aria-haspopup="menu" aria-label="Project options">${IC.dots}</button></div>
+    </div>
+    ${sections || '<p class="empty-note">No chats here yet.</p>'}
+    ${autoN ? `<p class="hint-line">${autoN} automated Codex run${autoN === 1 ? '' : 's'} (started by scripts or other agents) are left out here.</p>` : ''}
+    ${selHint()}
+  </div>`;
+}
+
+/* ---------- Archived: out of every list, never deleted ---------- */
+function archivedView() {
+  const recs = S.lite.archived.chats || {};
+  const chats = S.chats.filter(c => c.archived).sort((a, b) => (ms((recs[b.id] || {}).at) || 0) - (ms((recs[a.id] || {}).at) || 0));
+  const projs = S.projects.filter(p => p.archived);
+  const wtLine = c => { const r = recs[c.id] || {}; if (!c.worktree && !r.worktree) return 'no worktree'; if (r.worktreeRemoved) return `worktree removed · branch ${r.branch || 'kept'}`; return c.worktreeExists === false ? 'worktree gone' : 'worktree on disk'; };
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Archived</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>
+    <p class="hint-line" style="margin-top:-12px">Out of every list, never deleted. Each keeps its project, stage, branch and worktree, so <b>Bring back</b> puts it where it was. A removed worktree can be rebuilt from its branch.</p>
+    ${projs.length ? `<section class="section"><div class="sec-h"><h2>Projects</h2><span class="n">${projs.length}</span></div><div class="rows">${projs.map(p => `<div class="row acts" data-cur="p:${esc(p.key)}"><span class="thumb-xs" style="${artStyle(p)};width:18px;height:18px;border-radius:4px"></span><span class="t"><b>${esc(p.name)}</b><small>${esc(p.cwd || '')}</small></span><span class="side-tags"></span><span></span><button class="btn" data-unarch-p="${esc(p.key)}">Bring back</button></div>`).join('')}</div></section>` : ''}
+    <section class="section"><div class="sec-h"><h2>Chats</h2><span class="n">${chats.length}</span></div>
+      <div class="rows">${chats.map(c => { const r = recs[c.id] || {}; return `<div class="row acts" data-cur="${esc(c.id)}" data-open="${esc(c.id)}"><span></span><span class="t"><b>${esc(c.title)}</b><small>${esc(projOf(c).name)} · ${esc(stageById(r.stage || c.stage).name)} · ${esc(wtLine(c))}</small></span>
+        <span class="side-tags">${r.worktreeRemoved ? `<button class="btn sm" data-rebuild="${esc(c.id)}">Rebuild worktree</button>` : ''}</span><span class="when">${r.at ? ago(ms(r.at)) : ''}</span><button class="btn" data-unarch="${esc(c.id)}">Bring back</button></div>`; }).join('') || '<p class="empty-note">Nothing archived. Press <kbd>e</kbd> on a chat to archive it.</p>'}</div></section></div>`;
+}
+
+/* ---------- Clean up ---------- */
+const gb = kb => (kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(kb > 10 * 1024 * 1024 ? 0 : 1)} GB` : `${Math.round(kb / 1024)} MB`);
+const slimmable = sp => { const arch = new Set(S.chats.filter(c => c.archived).map(c => c.id)); return sp.worktrees.filter(w => w.worktree && w.heavyKB > 0 && w.chats.every(id => { const c = chatBy.get(id); return !c || arch.has(id) || isQuiet(c); })); };
+const removableWts = sp => { const arch = new Set(S.chats.filter(c => c.archived).map(c => c.id)); return sp.worktrees.filter(w => w.worktree && w.chats.every(id => arch.has(id))); };
+function cleanupView() {
+  const sp = S.space || { worktrees: [], scanning: true };
+  const slim = slimmable(sp), slimKB = slim.reduce((n, w) => n + w.heavyKB, 0);
+  const removable = removableWts(sp);
+  const quiet = allChats().filter(isQuiet);
+  const top = sp.worktrees.filter(w => w.worktree).sort((a, b) => (b.kb || 0) - (a.kb || 0)).slice(0, 12);
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Clean up</h1></div>
+      <span class="crumb">Go quiet after <span class="seg" role="group" aria-label="Days before a chat goes quiet">${[2, 4, 7].map(d => `<button data-quietdays="${d}" aria-pressed="${quietDays() === d}">${d} days</button>`).join('')}</span></span></div>
+    <div class="plans" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
+      <div class="plan"><small>Chats’ worktrees on disk</small><span class="big-number">${sp.at ? gb(sp.totalKB) : '…'}</span><small>${sp.worktrees.filter(w => w.worktree).length} worktrees${sp.scanning ? ' · measuring…' : ''}</small></div>
+      <div class="plan"><small>Dependencies and build output</small><span class="big-number">${sp.at ? gb(sp.heavyKB) : '…'}</span><small>node_modules, .next, dist, build, caches (git-ignored only)</small></div>
+      <div class="plan"><small>From quiet or archived chats</small><span class="big-number">${sp.at ? gb(slimKB) : '…'}</span><small>${slim.length} worktrees can be slimmed</small></div>
+    </div>
+    <div class="rows clean">
+      <div class="clean-row"><span><b>Free space in ${slim.length} worktrees of quiet or archived chats</b><small>Removes git-ignored dependencies and build output only. Code, uncommitted changes, the branch and the chat all stay; reinstall dependencies when you pick it up again.</small></span><button class="btn prime" data-clean="slim" ${slim.length ? '' : 'disabled'}>Free ${sp.at ? gb(slimKB) : 'space'}</button></div>
+      <div class="clean-row"><span><b>Remove ${removable.length} worktrees of archived chats</b><small>Only ones with nothing uncommitted; any with changes are left. The branch stays, so Archived can rebuild it.</small></span><button class="btn" data-clean="wt" ${removable.length ? '' : 'disabled'}>Remove ${removable.length}</button></div>
+      <div class="clean-row"><span><b>Archive ${quiet.length} quiet chats</b><small>Chats that haven’t moved in ${quietDays()} days. They go to Archived with their record; nothing is deleted.</small></span><button class="btn" data-clean="quiet" ${quiet.length ? '' : 'disabled'}>Archive ${quiet.length}</button></div>
+    </div>
+    ${top.length ? `<section class="section"><div class="sec-h"><h2>Biggest worktrees</h2><button class="hint" data-rescan="1">${sp.scanning ? 'Measuring…' : 'Measure again'}</button></div><div class="rows">${top.map(w => { const c = chatBy.get(w.chats[0]); return `<div class="row acts" data-cur="w:${esc(w.path)}" ${c ? `data-open="${esc(c.id)}"` : ''}><span></span><span class="t"><b>${esc(c ? c.title : w.path.split('/').pop())}</b><small class="mono">${esc(w.path.replace(/^\/Users\/[^/]+/, '~'))}${w.branch ? ` · ${esc(w.branch)}` : ''}</small></span><span class="side-tags">${w.heavyKB ? `<span class="tag">${gb(w.heavyKB)} removable</span>` : ''}</span><span class="when">${gb(w.kb || 0)}</span>${w.heavyKB ? `<button class="btn sm" data-free="${esc(w.path)}">Free</button>` : '<span></span>'}</div>`; }).join('')}</div></section>` : sp.scanning ? '<p class="empty-note">Measuring worktrees… this takes a minute the first time.</p>' : ''}
+    <p class="hint-line">Nothing here runs on its own.</p></div>`;
+}
+async function loadSpace(fresh = false) {
+  S.space = await api(`/api/lite/space${fresh ? '?fresh=1' : ''}`);
+  if (S.space.scanning) setTimeout(() => { if (S.view === 'cleanup') loadSpace().then(render).catch(() => {}); }, 4000);
+}
+async function cleanAction(kind, b) {
+  const sp = S.space || { worktrees: [] };
+  if (kind === 'quiet') {
+    const ids = allChats().filter(isQuiet).map(c => c.id);
+    if (await confirmBox({ title: `Archive ${ids.length} quiet chats?`, body: 'They leave every list and go to Archived, with their record. Nothing is deleted, and Bring back puts each one where it was.', yes: 'Archive' })) await archiveChats(ids);
+    return;
+  }
+  if (kind === 'slim') {
+    const paths = slimmable(sp).map(w => w.path);
+    if (await confirmBox({ title: `Free space in ${paths.length} worktrees?`, body: 'Removes only git-ignored node_modules, build output and caches inside each worktree. Code, uncommitted changes, branches and chats stay.', yes: 'Free space' })) await freePaths(paths, b);
+    return;
+  }
+  if (kind === 'wt') {
+    const list = removableWts(sp);
+    if (!await confirmBox({ title: `Remove ${list.length} worktrees?`, body: 'Each is removed only if it has nothing uncommitted. Branches stay, and Archived can rebuild any of them.', yes: 'Remove' })) return;
+    b.disabled = true; let ok = 0, kept = 0;
+    for (const w of list) { try { await api('/api/lite/worktree/remove', { id: w.chats[0], path: w.path }); ok++; } catch { kept++; } }
+    sfx('shove'); toast(`Removed ${ok} worktree${ok === 1 ? '' : 's'}${kept ? `; kept ${kept} with changes` : ''}.`);
+    await loadState(); await loadSpace(); render();
+  }
+}
+async function freePaths(paths, b) {
+  if (b) { b.disabled = true; b.textContent = 'Freeing…'; }
+  const j = await api('/api/lite/free', { paths });
+  const kb = j.freed.reduce((n, x) => n + (x.kb || 0), 0);
+  sfx('shove'); toast(`Freed ${gb(kb)}.`);
+  await loadSpace(); render();
+}
+
+/* ---------- Images: everything Codex has drawn, and asking for more ---------- */
+function imagesView() {
+  const g = S.gallery || { images: [], jobs: [] };
+  const byThread = new Map(S.chats.map(c => [String(c.id).toLowerCase(), c]));
+  const working = g.jobs.filter(j => j.state === 'working');
+  const daysMap = new Map();
+  for (const im of g.images.slice(0, S.galleryN || 120)) { const d = new Date(im.at).toDateString(); if (!daysMap.has(d)) daysMap.set(d, []); daysMap.get(d).push(im); }
+  const tile = im => { const c = byThread.get(im.thread.toLowerCase()); return `<button class="gi" data-gimg="${esc(im.thread)}/${esc(im.file)}" data-cur="g:${esc(im.thread)}/${esc(im.file)}" title="${esc(c ? c.title : 'Codex')}"><img loading="lazy" decoding="async" alt="" src="/api/lite/gimg?token=${TOKEN}&thumb=1&thread=${encodeURIComponent(im.thread)}&file=${encodeURIComponent(im.file)}"><small>${esc(c ? (projOf(c).loose ? c.title : projOf(c).name) : clock(im.at))}</small></button>`; };
+  return `<div class="wrap" style="max-width:1180px"><div class="page-h"><div class="proj-h">${BACK}<h1>Images</h1></div><span class="n" style="color:var(--muted)">${g.images.length} drawn by Codex</span></div>
+    <form class="cmd gen-bar" id="genForm" autocomplete="off"><span class="cmd-ic">${IC.spark}</span><input id="genPrompt" placeholder="Describe a picture for Codex to draw…" aria-label="What to draw">
+      <span class="seg" role="group" aria-label="How many">${[1, 2, 4].map(n => `<button type="button" data-gen-n="${n}" aria-pressed="${(S.genN || 1) === n}">${n}</button>`).join('')}</span><button class="btn prime" type="submit">Draw</button>
+      <div class="cmd-chips"><small style="color:var(--muted)">GPT Image, on the use-next ChatGPT plan. Any chat can ask too: <code>node ~/Repos/GitHub/session-switcher/bin/switcher-image.js "…" --n 2 --out ./art</code></small></div></form>
+    ${working.map(j => `<div class="gen-job"><span class="live-dot"></span><span>Drawing ${j.n > 1 ? `${j.n} pictures` : 'a picture'}: “${esc(j.prompt.slice(0, 90))}” on ${esc(j.account)} · ${since(j.startedAt)}</span></div>`).join('')}
+    ${g.jobs.filter(j => j.state === 'failed' && S.now - (j.doneAt || 0) < 600e3).map(j => `<div class="gen-job err">Couldn’t draw “${esc(j.prompt.slice(0, 60))}”: ${esc(j.error || 'unknown')}</div>`).join('')}
+    ${[...daysMap].map(([d, list]) => `<section class="section"><div class="sec-h"><h2>${esc(new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }))}</h2><span class="n">${list.length}</span></div><div class="gallery">${list.map(tile).join('')}</div></section>`).join('') || '<p class="empty-note">No pictures yet.</p>'}
+    ${g.images.length > (S.galleryN || 120) ? '<button class="btn" data-gmore="1" style="align-self:center">Show more</button>' : ''}</div>`;
+}
+async function loadGallery() { S.gallery = await api('/api/lite/images'); }
+function showImage(key) {
+  const [thread, file] = key.split('/');
+  const c = S.chats.find(x => String(x.id).toLowerCase() === thread.toLowerCase());
+  const src = `/api/lite/gimg?token=${TOKEN}&thread=${encodeURIComponent(thread)}&file=${encodeURIComponent(file)}`;
+  const root = $('modalRoot');
+  root.innerHTML = `<div class="modal-back lightbox"><figure><img src="${src}" alt=""><figcaption>${c ? `<button class="linkish" data-open="${esc(c.id)}">${esc(c.title)}</button> · ${esc(projOf(c).name)}` : 'Drawn by Codex'} · <a class="linkish" href="${src}" target="_blank" rel="noopener">Full size</a></figcaption></figure></div>`;
+  root.querySelector('.modal-back').addEventListener('click', e => { if (!e.target.closest('figcaption') || e.target.closest('[data-open]')) root.innerHTML = ''; });
+}
+async function startGenerate(prompt, n) {
+  const j = await api('/api/lite/images/generate', { prompt, n });
+  S.gallery = S.gallery || { images: [], jobs: [] };
+  S.gallery.jobs.unshift(j.job); sfx('fan'); render();
+  const poll = async () => { await loadGallery(); if (S.view === 'images') render(); if (S.gallery.jobs.some(x => x.state === 'working')) setTimeout(poll, 4000); else sfx('card'); };
+  setTimeout(poll, 4000);
+}
+
+/* ---------- Alerts ---------- */
+const ALERTS = [
+  ['needs', 'Needs you', 'A chat wants your OK or asks a question.'],
+  ['reply', 'Finished a reply', 'A chat is done and waiting for you.'],
+  ['floor', 'Plan hit the floor', 'A plan drops to your floor; says which one is next.'],
+  ['reset', 'Manual reset about to lapse', 'A ChatGPT reset credit expires within two days.'],
+  ['quiet', 'Quiet hours', '10 PM to 7 AM, everything except Needs you waits.'],
+];
+function alertsView() {
+  const pu = S.push || { prefs: {} };
+  const can = 'serviceWorker' in navigator && 'PushManager' in window;
+  const secure = window.isSecureContext;
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Alerts</h1></div></div>
+    <section class="section"><div class="sec-h"><h2>Here</h2></div><div class="toggles">
+      <label class="toggle"><span><b>Sounds</b><small>A knock when a chat needs you, a card on the table when one replies, cards sliding as you sort.</small></span><input type="checkbox" data-pref="sound" ${prefs.sound ? 'checked' : ''}><span class="switch" aria-hidden="true"></span></label>
+      <label class="toggle"><span><b>Desktop notifications</b><small>Only while this window is in the background.</small></span><input type="checkbox" data-pref="notify" ${prefs.notify ? 'checked' : ''}><span class="switch" aria-hidden="true"></span></label></div></section>
+    <section class="section"><div class="sec-h"><h2>On your phone</h2><span class="n">${pu.devices ? `${pu.devices} device${pu.devices === 1 ? '' : 's'} signed up` : ''}</span></div>
+      <p class="hint-line" style="margin:0">Open <b>/lite</b> on your iPhone through the Tailscale address, add it to the Home Screen (Share → Add to Home Screen), pair it, and turn alerts on from that app. iPhone delivers web push only to Home Screen apps on a secure address.</p>
+      <div class="clean-row" style="border:1px solid var(--line);border-radius:var(--r)"><span><b>${pu.subscribed ? 'This device gets alerts' : 'This device doesn’t get alerts yet'}</b><small>${!can ? 'This browser can’t receive web push.' : !secure ? 'Needs the secure (https) address.' : pu.subscribed ? 'Turn off to stop them here.' : 'Asks for permission once.'}</small></span>
+        <span style="display:flex;gap:6px">${pu.devices ? '<button class="btn" data-push="test">Send a test</button>' : ''}${can && secure ? (pu.subscribed ? '<button class="btn" data-push="off">Turn off</button>' : '<button class="btn prime" data-push="on">Turn on</button>') : ''}</span></div>
+      <div class="toggles">${ALERTS.map(([k, t, d]) => `<label class="toggle"><span><b>${esc(t)}</b><small>${esc(d)}</small></span><input type="checkbox" data-pushpref="${k}" ${pu.prefs[k] ? 'checked' : ''}><span class="switch" aria-hidden="true"></span></label>`).join('')}</div></section>
+  </div>`;
+}
+async function loadPush() { S.push = await api('/api/lite/push'); }
+async function pushOn() {
+  const reg = await navigator.serviceWorker.register('/lite-sw.js', { scope: '/' });
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error('Notifications weren’t allowed. Allow them in Settings → Notifications for this app.');
+  const k = S.push.publicKey;
+  const key = Uint8Array.from(atob(k.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - k.length % 4) % 4)), ch => ch.charCodeAt(0));
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+  S.push = await api('/api/lite/push/subscribe', { subscription: sub.toJSON() });
+  toast('Alerts are on for this device.');
+}
+async function pushOff() {
+  const reg = await navigator.serviceWorker.getRegistration('/');
+  const sub = reg && await reg.pushManager.getSubscription();
+  if (sub) await sub.unsubscribe().catch(() => {});
+  S.push = await api('/api/lite/push/unsubscribe', {});
+}
+
+/* ---------- menus ---------- */
+function rowMenu(anchor, id, at) {
+  const c = chatBy.get(id); if (!c) return;
+  const ids = S.sel.has(id) && S.sel.size > 1 ? [...S.sel] : [id];
+  pop(anchor, `<div class="ph">${ids.length > 1 ? `${ids.length} chats` : esc(c.title.slice(0, 60))}</div>
+    <button data-v="open">Open<kbd>↵</kbd></button><button data-v="full">Open in the full app</button><hr><div class="ph">Stage</div>
+    ${STAGES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && stageOf(c) === s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('')}
+    <hr><button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
+    if (v === 'open') return openChat(id);
+    if (v === 'full') return openChat(id, { full: true });
+    if (v.startsWith('s:')) return wrap(setChats)(ids, { stage: v.slice(2) });
+    if (v === 'wait') return askWaiting(ids);
+    if (v === 'arch') return wrap(archiveChats)(ids);
+    if (v === 'proj') return pickProject(anchor, k => wrap(async () => { await setChats(ids, { project: k }, `Moved to ${(projBy.get(k) || {}).name || 'the project'}`); await loadState(); render(); })());
+    return undefined;
+  }, at);
+}
+function projMenu(anchor, k, at) {
+  const p = projBy.get(k); if (!p) return;
+  pop(anchor, `<div class="ph">${esc(p.name)}</div><button data-v="open">Open</button>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button><button data-v="img">Change picture…</button>' : ''}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`,
+    v => {
+      if (v === 'open') return go('project', { project: k });
+      if (v === 'new') return go('newchat', { ncProject: k });
+      if (v.startsWith('b:')) return wrap(setBucket)(k, v.slice(2) || null);
+      if (v === 'arch') return wrap(archiveProject)(k, !p.archived);
+      if (v === 'finder') return wrap(() => api('/api/reveal', { path: p.cwd }))();
+      if (v === 'img') return wrap(pictureMenu)(anchor, p, at);
+      return undefined;
+    }, at);
+}
+async function setBucket(k, b) {
+  const p = projBy.get(k); const prev = p.bucket;
+  if (prev === b) return;
+  await api('/api/lite/project', { key: k, patch: { bucket: b } });
+  p.bucket = b; sfx('slide'); render();
+  toast(`Moved ${p.name} to ${bucketName(b)}`, async () => { await api('/api/lite/project', { key: k, patch: { bucket: prev } }); p.bucket = prev; sfx('undo'); render(); });
+}
+// Pictures found in the folder, a plain tile, or one drawn by Codex for it.
+async function pictureMenu(anchor, p, at) {
+  const info = await api(`/api/project/info?cwd=${encodeURIComponent(p.cwd)}`);
+  const imgs = (info.images || []).slice(0, 12);
+  const src = f => `/api/image?token=${TOKEN}&cwd=${encodeURIComponent(p.cwd)}&path=${encodeURIComponent(f)}`;
+  pop(anchor, `<div class="ph">Picture for ${esc(p.name)}</div><div class="pick-art">${imgs.map((im, i) => `<button data-v="i:${i}" role="menuitemradio" aria-checked="${p.image === im.path}" style="background-image:url('${src(im.path)}')" aria-label="${esc(im.name || im.path)}"></button>`).join('')}<button data-v="none" role="menuitemradio" aria-checked="${!p.image}" style="background:linear-gradient(135deg, hsl(${hue(p.name)} 20% 42%), hsl(${(hue(p.name) + 40) % 360} 24% 28%))">Tile</button></div>${imgs.length ? '' : '<p class="ph">No pictures in this folder yet.</p>'}<hr><button data-v="gen">Draw one with Codex…<small>GPT Image</small></button>`,
+    v => {
+      if (v === 'gen') return genCover(anchor, p, at);
+      const image = v === 'none' ? null : imgs[Number(v.slice(2))].path;
+      return wrap(async () => { await api('/api/lite/project', { key: p.key, patch: { image } }); p.image = image; render(); toast(`New picture for ${p.name}`); })();
+    }, at);
+}
+function genCover(anchor, p, at) {
+  pop(anchor, `<div class="ph">Codex draws a cover for ${esc(p.name)}</div><div class="gen"><textarea id="coverPrompt" aria-label="What to draw">Key art for ${esc(p.name)}: wide 16:9, bold shapes, readable as a small thumbnail, no text.</textarea><button class="btn prime" data-v="go">Draw</button><small style="color:var(--muted)">On the use-next ChatGPT plan; saved in the project’s art/ folder and set as its picture.</small></div>`, v => {
+    if (v !== 'go') return undefined;
+    const prompt = ($('coverPrompt') || {}).value || `Key art for ${p.name}`;
+    return wrap(async () => {
+      S.gen = S.gen || {}; S.gen[p.key] = true; render(); sfx('fan');
+      const { job } = await api('/api/lite/images/generate', { prompt, n: 1, cwd: p.cwd, out: `${p.cwd}/art` });
+      toast(`Codex is drawing a cover for ${p.name}…`);
+      const poll = async () => {
+        const j = (await api(`/api/lite/images/job?id=${encodeURIComponent(job.id)}`)).job;
+        if (j.state === 'working') { setTimeout(poll, 4000); return; }
+        delete S.gen[p.key];
+        if (j.state === 'done' && j.saved && j.saved[0]) { await api('/api/lite/project', { key: p.key, patch: { image: j.saved[0] } }); p.image = j.saved[0]; sfx('card'); toast(`New cover for ${p.name}`); }
+        else toast(j.error || 'Codex didn’t draw it.');
+        render();
+      };
+      setTimeout(poll, 4000);
+    })();
+  }, at);
+  setTimeout(() => $('coverPrompt')?.focus(), 0);
+}
+function renderSel() {
+  const r = $('selRoot');
+  if (S.sel.size < 2) { r.innerHTML = ''; return; }
+  r.innerHTML = `<div class="selbar" role="toolbar" aria-label="Selected chats"><span class="n">${S.sel.size} selected</span>
+    <button data-selstage="1" aria-haspopup="menu">Stage ▾</button><button data-selwait="1">Waiting…</button><button data-selarch="1">Archive</button><button data-selclear="1">Clear</button></div>`;
+}

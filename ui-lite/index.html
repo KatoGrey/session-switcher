@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Switcher">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Switcher Lite</title>
+<link rel="manifest" href="/lite.webmanifest">
+<link id="favicon" rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6Z' fill='%233c6b52'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/ui-lite/lite.css">
+<script>window.TOKEN = '__TOKEN__'; window.REMOTE = __REMOTE__;</script>
+</head>
+<body>
+<div class="app">
+  <aside class="side" aria-label="Chats by stage">
+    <div class="side-top"><span class="brand" id="brand">Switcher</span><span class="conn" id="conn" title="Live updates"><span class="dot"></span></span></div>
+    <label class="search" for="q">
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2a5 5 0 1 0 3 9l3 3 1-1-3-3a5 5 0 0 0-4-8Zm0 1.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z" fill="currentColor"/></svg>
+      <input id="q" placeholder="Search chats" autocomplete="off" spellcheck="false">
+      <span class="mono">⌘K</span>
+    </label>
+    <div class="side-scroll" id="sideScroll"></div>
+    <div class="side-foot">
+      <button class="usage" id="usageBtn" data-go="now" aria-label="Plans and usage">
+        <span class="top"><span class="who" id="chipWho">This week</span><small id="chipNote"></small></span>
+        <span class="bar"><i id="chipBar" style="width:0%"></i></span>
+      </button>
+      <div class="foot-row">
+        <button class="nav-i" id="lookBtn" aria-haspopup="menu"><span class="lbl" style="text-align:center">Look</span></button>
+        <button class="nav-i" data-go="alerts"><span class="lbl" style="text-align:center">Alerts</span></button>
+        <a class="nav-i" id="fullBtn" href="/"><span class="lbl" style="text-align:center">Full app</span></a>
+      </div>
+    </div>
+  </aside>
+  <main class="main" id="main" tabindex="-1"></main>
+</div>
+<div id="popRoot"></div>
+<div id="selRoot"></div>
+<div id="modalRoot"></div>
+<div id="palRoot"></div>
+<div id="toastRoot" role="status" aria-live="polite"></div>
+<script src="/ui-lite/core.js"></script>
+<script src="/ui-lite/sfx.js"></script>
+<script src="/ui-lite/plans.js"></script>
+<script src="/ui-lite/now.js"></script>
+<script src="/ui-lite/chat.js"></script>
+<script src="/ui-lite/hack.js"></script>
+<script src="/ui-lite/pages.js"></script>
+<script src="/ui-lite/keys.js"></script>
+<script src="/ui-lite/app.js"></script>
+</body>
+</html>

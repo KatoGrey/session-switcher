@@ -1,0 +1,319 @@
+'use strict';
+/* The sidebar (pages, bucket switcher, stage labels with quiet folding), routing (with real browser
+   history, so back and forward work), redraws, and every click and drag on the page. */
+
+const VIEWS = ['triage', 'now', 'home', 'hack', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
+const small = () => matchMedia('(max-width: 760px)').matches;
+
+function sideChat(c) {
+  const marks = (stageOf(c) === 'waiting' && c.waitingOn ? `<span class="tag wait-tag">${esc(c.waitingOn)}</span>` : '') + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '');
+  return `<button class="nav-i chat-i" draggable="true" data-chat="${esc(c.id)}" aria-current="${S.view === 'chat' && String(CV.id).toLowerCase() === String(c.id).toLowerCase()}" title="${esc(c.title)} · ${esc(projOf(c).name)}"><span class="lbl">${esc(c.title)}</span>${marks}</button>`;
+}
+function renderSide() {
+  renderChip();
+  $('brand').textContent = L('Switcher');
+  $('q').placeholder = L('Search chats');
+  const b = buckets().find(x => x.id === S.bucket);
+  const chats = allChats().filter(inBucket).sort((x, y) => y.updated - x.updated);
+  const nNeed = S.live.filter(needsLive).length;
+  const nav = (view, icon, label, extra = '') => `<button class="nav-i" data-go="${view}" aria-current="${S.view === view}"><span class="ic">${icon}</span><span class="lbl">${label}</span>${extra}</button>`;
+  const top = `<div class="group">
+      ${nav('newchat', IC.pen, L('New chat'), '<kbd class="nav-k">c</kbd>')}
+      ${nav('now', IC.pulse, L('Now'), nNeed ? `<span class="badge">${nNeed}</span>` : '')}
+      ${nav('home', IC.grid, L('Projects'))}
+      ${nav('hack', IC.flag, 'Hackathon', `<span class="n">${esc(hackLabel())}</span>`)}
+    </div>
+    <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
+  const folders = STAGES.map(st => {
+    const all = chats.filter(c => stageOf(c) === st.id);
+    const act = all.filter(c => !isQuiet(c)), quiet = all.filter(isQuiet);
+    const open = all.length && !S.folded[st.id];
+    const showQuiet = S.more[st.id];
+    const shown = act.slice(0, S.more['all-' + st.id] ? 400 : 12);
+    return `<div class="group folder ${act.length ? '' : 'empty'}" data-open="${!!open}">
+      <button class="nav-i folder-btn" data-fold="${st.id}" data-drop-stage="${st.id}" aria-expanded="${!!open}"><span class="ic"><span class="label-dot" style="background:${st.c}"></span></span><span class="lbl">${st.name}</span><span class="n">${act.length || ''}</span></button>
+      <div class="folder-items">${shown.map(sideChat).join('')}${act.length > shown.length ? `<button class="nav-i chat-i quiet-toggle" data-more-all="${st.id}"><span class="lbl">${act.length - shown.length} more</span></button>` : ''}${quiet.length ? (showQuiet ? `<div class="quiet-chats">${quiet.slice(0, 60).map(sideChat).join('')}</div>` : '') + `<button class="nav-i chat-i quiet-toggle" data-more-st="${st.id}"><span class="lbl">${showQuiet ? 'Hide quiet' : `${quiet.length} quiet`}</span></button>` : ''}</div>
+    </div>`;
+  }).join('');
+  const nArch = S.chats.filter(c => c.archived).length + S.projects.filter(p => p.archived).length;
+  $('sideScroll').innerHTML = top + `<div class="group"><div class="side-h">Stages</div>${folders}</div>`
+    + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`;
+}
+
+const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
+function render() {
+  applyLook();
+  if (!S.loaded) { $('main').innerHTML = '<div class="wrap"><p class="empty-note">Loading your chats…</p></div>'; return; }
+  if (S.view === 'side' && !small()) { S.view = 'now'; document.body.classList.add('in-main'); }
+  renderSide(); renderSel(); updateBadge();
+  if (S.view === 'side') return;
+  const m = $('main');
+  // The chat and New chat pages are drawn once; after that only their parts change.
+  if (S.view === 'chat') { if (!$('chatView') || m.dataset.chat !== String(CV.id)) { m.innerHTML = chatView(); m.dataset.chat = String(CV.id); paintChat(); } else { const h = $('chatHead'); if (h) h.outerHTML = chatHead(); } return; }
+  if (S.view === 'newchat') { if (!m.querySelector('.newchat')) { m.innerHTML = newChatView(); delete m.dataset.chat; paintNewChat(); $('msgBox').focus(); } else paintNewChat(); return; }
+  delete m.dataset.chat;
+  const keep = m.scrollTop;
+  const typed = [...m.querySelectorAll('input[data-qr], #cmdInput, #genPrompt')].map(i => [i.dataset.qr || i.id, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
+  m.innerHTML = (VIEW_FN[S.view] || VIEW_FN.now)();
+  for (const [k, v, f] of typed) { const i = m.querySelector(`input[data-qr="${CSS.escape(k)}"]`) || $(k); if (i) { i.value = v; if (f) i.focus(); } }
+  m.scrollTop = keep;
+  keepCur();
+}
+// Live events redraw only what moves: the sidebar marks, Now's Needs you and Running, and the count.
+let markSig = '';
+function renderLive() {
+  if (!S.loaded) return;
+  renderSide(); updateBadge();
+  if (S.view === 'triage') { if (!document.activeElement || document.activeElement.id !== 'trBox') render(); return; }
+  if (S.view === 'now' && $('nowLive')) {
+    const el = $('nowLive');
+    const typed = [...el.querySelectorAll('input[data-qr]')].map(i => [i.dataset.qr, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
+    el.innerHTML = nowLiveHtml(); $('nowLead').innerHTML = leadHtml();
+    for (const [k, v, f] of typed) { const i = el.querySelector(`input[data-qr="${CSS.escape(k)}"]`); if (i) { i.value = v; if (f) i.focus(); } }
+    keepCur();
+    return;
+  }
+  const sig = S.live.map(x => `${x.sessionId}:${x.working ? 1 : 0}${needsLive(x) ? 1 : 0}`).join('|');
+  if (sig !== markSig && ['home', 'project', 'recent', 'search', 'hack'].includes(S.view)) { markSig = sig; renderWhenIdle(); }
+}
+function renderPlansOnly() {
+  renderChip();
+  if (S.view === 'now' && $('planBox')) $('planBox').innerHTML = plansBoxHtml();
+  else if (S.view === 'hack') render();
+}
+
+/* ---------- going places (browser history included) ---------- */
+function go(view, extra = {}, { push = true } = {}) {
+  if (view === 'back') { if (S.hist > 0) { history.back(); return; } view = 'now'; }
+  if (view === 'side' && !small()) view = 'now';
+  const prev = S.view;
+  if (view !== 'chat' && CV.es) { CV.es.close(); CV.es = null; }
+  if (view === 'newchat') { NC.project = extra.ncProject || (prev === 'project' ? S.project : NC.project); if (prev !== 'newchat') resetComposer(); }
+  S.view = view;
+  if (extra.project !== undefined) S.project = extra.project;
+  S.sel.clear(); cur = -1;
+  if (!['side', 'search', 'project', 'chat', 'newchat'].includes(view)) local.set('view', view);
+  document.body.classList.toggle('in-main', view !== 'side');
+  if (push) {
+    const st = { view, project: S.project, chat: extra.chat || null };
+    history.pushState(st, '', view === 'chat' && extra.chat ? `/lite?chat=${encodeURIComponent(extra.chat)}` : `/lite${view === 'now' ? '' : `?view=${view}`}`);
+    S.hist = (S.hist || 0) + 1;
+  }
+  const doIt = () => {
+    if (view === 'chat') { $('main').innerHTML = ''; CV.id = extra.chat || null; render(); openChatView(extra.chat, { key: extra.chatKey || null }); }
+    else render();
+    $('main').scrollTop = 0;
+  };
+  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches && prev !== view && !small() && !document.hidden) document.startViewTransition(doIt); else doIt();
+  if (view === 'now' || view === 'hack' || view === 'newchat') loadPlans(false).then(() => (S.view === 'newchat' ? paintNewChat() : renderPlansOnly())).catch(() => {});
+  if (view === 'cleanup') loadSpace().then(render).catch(err => toast(err.message));
+  if (view === 'images') loadGallery().then(() => { render(); if (extra.genOpen) $('genPrompt')?.focus(); }).catch(err => toast(err.message));
+  if (view === 'alerts') loadPush().then(render).catch(err => toast(err.message));
+}
+addEventListener('popstate', e => {
+  const st = e.state || { view: 'now' };
+  S.hist = Math.max(0, (S.hist || 0) - 1);
+  if (st.view === 'chat' && st.chat) go('chat', { chat: st.chat }, { push: false });
+  else go(st.view || 'now', { project: st.project }, { push: false });
+});
+
+/* ---------- clicks ---------- */
+document.addEventListener('click', e => {
+  const t = e.target;
+  const el = sel => t.closest(sel);
+  let b;
+  if (el('#palRoot')) return undefined;
+  if ((b = el('[data-go]'))) { if (b.tagName === 'A') return undefined; e.preventDefault(); return go(b.dataset.go); }
+  if ((b = el('[data-newchat]'))) { e.preventDefault(); return go('newchat', { ncProject: b.dataset.newchat || null }); }
+  if ((b = el('[data-perm]'))) {
+    e.stopPropagation(); b.disabled = true;
+    return wrap(async () => { await api('/api/chat/permission', { key: b.dataset.key, requestId: b.dataset.req, decision: b.dataset.perm }); sfx(b.dataset.perm === 'deny' ? 'shove' : 'chip'); toast(b.dataset.perm === 'deny' ? 'Denied.' : 'Allowed.'); await loadLive(); })();
+  }
+  if ((b = el('[data-perm-c]'))) { e.preventDefault(); return answerInChat(b.dataset.req, b.dataset.permC); }
+  if ((b = el('[data-answer]'))) {
+    e.preventDefault();
+    const p = CV.pending.get(b.dataset.answer); if (!p) return undefined;
+    const q = p.questions[Number(b.dataset.q)];
+    return answerInChat(p.requestId, 'allow', { [q.question]: q.options[Number(b.dataset.o)].label });
+  }
+  if ((b = el('[data-send]'))) return sendQuick(b.dataset.send);
+  if ((b = el('[data-dismiss]'))) { e.stopPropagation(); markSeen(b.dataset.dismiss); return renderLive(); }
+  if ((b = el('[data-earlier]'))) return wrap(loadEarlier)();
+  if ((b = el('[data-chatmenu]'))) return chatMenu(b);
+  if ((b = el('[data-barmodel]'))) return modelMenu(b);
+  if ((b = el('[data-bareffort]'))) return effortMenu(b);
+  if ((b = el('[data-chatsettings]'))) return settingsMenu(b);
+  if ((b = el('[data-attach]'))) { $('attIn')?.click(); return undefined; }
+  if ((b = el('[data-rmimg]'))) { const [im] = COMP.images.splice(Number(b.dataset.rmimg), 1); if (im && im.url) URL.revokeObjectURL(im.url); return paintAttachments(); }
+  if ((b = el('[data-rmfile]'))) { COMP.files.splice(Number(b.dataset.rmfile), 1); return paintAttachments(); }
+  if ((b = el('[data-zoom]'))) return showPicture(b.src);
+  if ((b = el('[data-stopchat]'))) return wrap(() => api('/api/chat/interrupt', { key: CV.key }))();
+  if ((b = el('[data-ncproject]'))) return pickProject(b, k => { NC.project = k; paintNewChat(); $('msgBox').focus(); });
+  if ((b = el('[data-ncwho]'))) return pop(b, `${[['claude', 'Claude'], ['codex', 'Codex'], ...(plans().some(p => p.family === 'ollama' && !p.broken) ? [['ollama', 'Codex on Ollama']] : [])].map(([v, n]) => { const a = accountFor(v), pl = a && planById(a); return `<button data-v="${v}" role="menuitemradio" aria-checked="${NC.who === v}">${n}<small>${pl ? `${esc(pl.label)}${typeof pl.left === 'number' ? ` · ${pl.left}%` : ''}` : ''}</small></button>`; }).join('')}`, v => { if (NC.who !== v) { COMP.model = null; COMP.effort = null; COMP.perm = null; } NC.who = v; paintNewChat(); $('msgBox').focus(); });
+  if ((b = el('[data-triage]'))) return startTriage();
+  if ((b = el('[data-tr]'))) { b.disabled = true; return wrap(triageAct)(b.dataset.tr); }
+  if ((b = el('[data-cmd]'))) { if ($('cmdInput')) $('cmdInput').value = b.dataset.cmd; return askCommander(b.dataset.cmd); }
+  if ((b = el('[data-floor]'))) return wrap(setLook)({ floor: Number(b.dataset.floor) });
+  if ((b = el('[data-quietdays]'))) return wrap(setLook)({ quietDays: Number(b.dataset.quietdays) });
+  if ((b = el('[data-refreshplans]'))) { S.plansRefreshing = true; renderPlansOnly(); return loadPlans(true).catch(err => toast(err.message)).finally(() => { S.plansRefreshing = false; renderPlansOnly(); }); }
+  if ((b = el('[data-usereset]'))) return wrap(useReset)(b.dataset.usereset);
+  if ((b = el('[data-addreset]'))) return addReset(b.dataset.addreset, b);
+  if ((b = el('[data-delreset]'))) return wrap(async () => { await api('/api/lite/reset/remove', { id: b.dataset.delreset }); await loadPlans(false); renderPlansOnly(); })();
+  if ((b = el('[data-hackdates]'))) return editHackDates();
+  if ((b = el('[data-delidea]'))) return wrap(saveIdeas)((S.lite.ideas || []).filter(i => i.id !== b.dataset.delidea));
+  if ((b = el('[data-unarch]'))) { e.stopPropagation(); return wrap(unarchiveChats)([b.dataset.unarch]); }
+  if ((b = el('[data-unarch-p]'))) return wrap(archiveProject)(b.dataset.unarchP, false);
+  if ((b = el('[data-rebuild]'))) { e.stopPropagation(); b.disabled = true; b.textContent = 'Rebuilding…'; return wrap(async () => { const r = await api('/api/lite/worktree/rebuild', { id: b.dataset.rebuild }); toast(r.installing ? 'Worktree is back; dependencies are installing in the background.' : 'Worktree is back.'); await loadState(); render(); })(); }
+  if ((b = el('[data-clean]'))) return wrap(cleanAction)(b.dataset.clean, b);
+  if ((b = el('[data-free]'))) { e.stopPropagation(); return wrap(freePaths)([b.dataset.free], b); }
+  if ((b = el('[data-rescan]'))) return wrap(async () => { await loadSpace(true); render(); })();
+  if ((b = el('[data-gimg]'))) return showImage(b.dataset.gimg);
+  if ((b = el('[data-gmore]'))) { S.galleryN = (S.galleryN || 120) + 120; return render(); }
+  if ((b = el('[data-gen-n]'))) { S.genN = Number(b.dataset.genN); return render(); }
+  if ((b = el('[data-push]'))) return wrap(async () => { if (b.dataset.push === 'on') await pushOn(); else if (b.dataset.push === 'off') await pushOff(); else { const r = await api('/api/lite/push/test', {}); toast(r.sent ? `Sent to ${r.sent} device${r.sent === 1 ? '' : 's'}.` : 'No device took it.'); } render(); })();
+  if ((b = el('[data-selstage]'))) return pop(b, STAGES.map(s => `<button data-v="${s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join(''), v => wrap(setChats)([...S.sel], { stage: v }));
+  if ((b = el('[data-selwait]'))) return askWaiting([...S.sel]);
+  if ((b = el('[data-selarch]'))) return wrap(archiveChats)([...S.sel]);
+  if ((b = el('[data-selclear]'))) { S.sel.clear(); return render(); }
+  if ((b = el('[data-rowmenu]'))) { e.stopPropagation(); return rowMenu(b, b.dataset.rowmenu); }
+  if ((b = el('[data-projmenu]'))) return projMenu(b, b.dataset.projmenu);
+  if ((b = el('[data-fold]'))) { S.folded[b.dataset.fold] = b.getAttribute('aria-expanded') === 'true'; local.set('folded', S.folded); return renderSide(); }
+  if ((b = el('[data-more-st]'))) { S.more[b.dataset.moreSt] = !S.more[b.dataset.moreSt]; return renderSide(); }
+  if ((b = el('[data-more-all]'))) { S.more['all-' + b.dataset.moreAll] = true; return renderSide(); }
+  if ((b = el('[data-pfold]'))) { S.more['p-done'] = !S.more['p-done']; return render(); }
+  if ((b = el('[data-pq]'))) { S.more['pq-' + b.dataset.pq] = !S.more['pq-' + b.dataset.pq]; return render(); }
+  if ((b = el('[data-pickbucket]'))) return pop(b, `${[['all', 'All buckets'], ...buckets().map(x => [x.id, x.name]), ['unsorted', 'Unsorted']].map(([id, n]) => `<button data-v="${esc(id)}" role="menuitemradio" aria-checked="${S.bucket === id}">${esc(n)}</button>`).join('')}`, v => { S.bucket = v; local.set('bucket', v); render(); });
+  if ((b = el('#lookBtn'))) return lookMenu(b);
+  if ((b = el('[data-open]'))) { if (el('input') || (el('button') && !el('button').dataset.open)) return undefined; return b.dataset.open ? openChat(b.dataset.open) : toast('That chat hasn’t started yet.'); }
+  if ((b = el('[data-project]'))) return go('project', { project: b.dataset.project });
+  if ((b = el('[data-chat]'))) {
+    const id = b.dataset.chat;
+    if (e.metaKey || e.ctrlKey) { if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); S.selAnchor = id; return render(); }
+    if (e.shiftKey && S.selAnchor) {
+      const list = [...document.querySelectorAll('#main [data-chat]')].map(x => x.dataset.chat);
+      const a = list.indexOf(S.selAnchor), z = list.indexOf(id);
+      if (a >= 0 && z >= 0) { for (const x of list.slice(Math.min(a, z), Math.max(a, z) + 1)) S.sel.add(x); return render(); }
+    }
+    return openChat(id);
+  }
+  return undefined;
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.follow) return wrap(async () => { await setLook({ routinesFollow: t.checked }); toast(t.checked ? 'Routines now run on the use-next plan of their family.' : 'Routines run on the plan each one names.'); })();
+  if (t.dataset.pref === 'sound') return setSound(t.checked);
+  if (t.dataset.pref === 'notify') return setNotify(t.checked).then(render);
+  if (t.dataset.pushpref) return wrap(async () => { S.push.prefs = (await api('/api/lite/push/prefs', { [t.dataset.pushpref]: t.checked })).prefs; })();
+  return undefined;
+});
+document.addEventListener('contextmenu', e => {
+  const r = e.target.closest('[data-chat]'), p = e.target.closest('[data-project]');
+  const at = { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY };
+  if (r) { e.preventDefault(); rowMenu(r, r.dataset.chat, at); } else if (p) { e.preventDefault(); projMenu(p, p.dataset.project, at); }
+});
+document.addEventListener('submit', e => {
+  if (e.target.id === 'trForm') { e.preventDefault(); return triageReply(); }
+  if (e.target.id === 'cmdForm') { e.preventDefault(); const v = $('cmdInput').value; $('cmdInput').value = ''; return askCommander(v); }
+  if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat(); }
+  if (e.target.id === 'genForm') { e.preventDefault(); const v = $('genPrompt').value.trim(); if (!v) return undefined; $('genPrompt').value = ''; return wrap(startGenerate)(v, S.genN || 1); }
+  if (e.target.dataset.addidea) { e.preventDefault(); const text = e.target.idea.value.trim(); if (!text) return undefined; return wrap(saveIdeas)([...(S.lite.ideas || []), { text }]); }
+  return undefined;
+});
+document.addEventListener('keydown', e => {
+  if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('composer').requestSubmit(); return; }
+  if (e.target.id === 'trBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); triageReply(); return; }
+  if (e.target.id === 'msgBox' && e.key.toLowerCase() === 'p' && (e.metaKey || e.ctrlKey) && S.view === 'newchat') { e.preventDefault(); document.querySelector('[data-ncproject]')?.click(); return; }
+  if (e.target.dataset && e.target.dataset.qr && e.key === 'Enter') { e.preventDefault(); sendQuick(e.target.dataset.qr); }
+}, true);
+document.addEventListener('input', e => { if (e.target.id === 'msgBox') autosize(e.target); });
+// Pictures and files: paste (several at once), drop anywhere on a chat, or pick with +.
+document.addEventListener('change', e => { if (e.target.id === 'attIn' && e.target.files.length) { addFiles([...e.target.files]); e.target.value = ''; } });
+document.addEventListener('paste', e => {
+  if (S.view !== 'chat' && S.view !== 'newchat') return;
+  const files = [...(e.clipboardData ? e.clipboardData.files : [])];
+  if (!files.length) return;
+  e.preventDefault(); addFiles(files);
+});
+const hasFiles = e => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+document.addEventListener('dragover', e => { if ((S.view === 'chat' || S.view === 'newchat') && hasFiles(e)) { e.preventDefault(); document.body.classList.add('dropping'); } });
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+document.addEventListener('drop', e => { document.body.classList.remove('dropping'); if ((S.view === 'chat' || S.view === 'newchat') && hasFiles(e)) { e.preventDefault(); addFiles([...e.dataTransfer.files]); } });
+function showPicture(src) {
+  const root = $('modalRoot');
+  root.innerHTML = `<div class="modal-back lightbox"><figure><img src="${src}" alt=""></figure></div>`;
+  root.querySelector('.modal-back').addEventListener('click', () => { root.innerHTML = ''; });
+}
+$('q').addEventListener('input', e => { S.q = e.target.value.trim(); if (S.q) { if (S.view !== 'search') go('search', {}, { push: false }); else render(); } else if (S.view === 'search') go('now', {}, { push: false }); });
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { const r = document.querySelector('#main [data-cur]'); if (r) { e.preventDefault(); r.click(); } } if (e.key === 'ArrowDown') { e.preventDefault(); e.target.blur(); setCur(0); } });
+
+async function sendQuick(key) {
+  const input = document.querySelector(`input[data-qr="${CSS.escape(key)}"]`);
+  const text = input && input.value.trim();
+  if (!text) return;
+  input.disabled = true;
+  try { await api('/api/chat/send', { key, text }); markSeen(input.dataset.id); sfx('slide'); toast('Sent.'); await loadLive(); }
+  catch (err) { toast(err.message); input.disabled = false; return; }
+  renderLive();
+}
+
+function lookMenu(anchor) {
+  const look = S.lite.look;
+  pop(anchor, `<div class="ph">Skin</div>${[['plain', 'Plain'], ['imperial', 'Imperial'], ['rebel', 'Rebel']].map(([v, n]) => `<button data-v="skin:${v}" role="menuitemradio" aria-checked="${look.skin === v}">${n}</button>`).join('')}
+    <hr><div class="ph">Light or dark</div>${[['system', 'Match device'], ['light', 'Light'], ['dark', 'Dark']].map(([v, n]) => `<button data-v="mode:${v}" role="menuitemradio" aria-checked="${look.mode === v}">${n}</button>`).join('')}
+    <hr><button data-v="sound" role="menuitemcheckbox" aria-checked="${prefs.sound}">Sounds</button><button data-v="alerts">Alerts…</button><button data-v="keys">Keyboard shortcuts<kbd>?</kbd></button>`,
+  v => {
+    if (v === 'sound') return setSound(!prefs.sound);
+    if (v === 'alerts') return go('alerts');
+    if (v === 'keys') return showShortcuts();
+    const [k, x] = v.split(':');
+    return wrap(setLook)(k === 'skin' ? { skin: x } : { mode: x });
+  });
+}
+
+/* ---------- dragging: chats onto a stage, projects onto a bucket ---------- */
+let drag = null;
+document.addEventListener('dragstart', e => {
+  const c = e.target.closest && e.target.closest('[data-chat]');
+  const p = !c && e.target.closest && e.target.closest('[data-project]');
+  if (c) drag = { chats: S.sel.has(c.dataset.chat) && S.sel.size > 1 ? [...S.sel] : [c.dataset.chat] };
+  else if (p) drag = { project: p.dataset.project };
+  else return;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', drag.chats ? drag.chats.join(',') : drag.project);
+});
+const dropZone = t => (drag && drag.chats ? t.closest && t.closest('[data-drop-stage]') : drag && drag.project ? t.closest && t.closest('[data-drop-bucket]') : null);
+document.addEventListener('dragover', e => {
+  const z = dropZone(e.target); if (!z) return;
+  e.preventDefault();
+  document.querySelectorAll('.drop-hot').forEach(x => x !== z && x.classList.remove('drop-hot'));
+  z.classList.add('drop-hot');
+});
+document.addEventListener('dragleave', e => { const z = dropZone(e.target); if (z && !z.contains(e.relatedTarget)) z.classList.remove('drop-hot'); });
+document.addEventListener('drop', e => {
+  const z = dropZone(e.target);
+  document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot'));
+  if (!z) return;
+  e.preventDefault();
+  const d = drag; drag = null;
+  if (d.chats) wrap(setChats)(d.chats, { stage: z.dataset.dropStage });
+  else wrap(setBucket)(d.project, z.dataset.dropBucket || null);
+});
+document.addEventListener('dragend', () => { drag = null; document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot')); });
+addEventListener('resize', () => { if (S.view === 'side' && !small()) render(); });
+
+/* ---------- start ---------- */
+(async () => {
+  applyLook();
+  const args = new URLSearchParams(location.search);
+  const v = args.get('view'), chatArg = args.get('chat');
+  S.view = chatArg ? 'chat' : v && VIEWS.includes(v) && !['project', 'search', 'chat'].includes(v) ? v : small() ? 'side' : (VIEWS.includes(S.view) && !['project', 'search', 'chat', 'newchat'].includes(S.view) ? S.view : 'now');
+  document.body.classList.toggle('in-main', S.view !== 'side');
+  history.replaceState({ view: S.view, chat: chatArg || null }, '', location.href);
+  render();
+  connect();
+  try { await loadState(); } catch (err) { $('main').innerHTML = `<div class="wrap"><p class="empty-note">${esc(err.message)}</p></div>`; return; }
+  if (chatArg) go('chat', { chat: chatArg }, { push: false }); else go(S.view, {}, { push: false });
+  loadPlans(false).then(renderPlansOnly).catch(err => toast(err.message));
+  api('/api/commander').then(c => { if (c.live && c.live.key) { S.cmd.sessionId = c.live.sessionId; cmdListen(c.live.key); } }).catch(() => {});
+  if ('serviceWorker' in navigator && window.isSecureContext && location.hostname !== '127.0.0.1') navigator.serviceWorker.register('/lite-sw.js', { scope: '/' }).catch(() => {});
+})();
