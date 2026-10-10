@@ -158,6 +158,8 @@ To change them, choose **Edit prompts…** from any of those menus. You can rena
 
 A new chat opens on its project: its banner, its name, and your prompts one click away.
 
+**Project crests:** choose **Project crest…** on a project page or in its right-click menu. Pick an existing picture, or edit the art direction under **Make a crest with Codex** and choose **Review prompt in Codex**. The prompt waits in the chat for you to send it. When Codex saves that image, it becomes the project's crest across the sidebar, project cards and chat header; existing artwork and the wide banner stay intact. Choosing **Use automatic crest** restores automatic selection. Named crests, emblems and logos in the project are recognised, including small icons. Generation needs image tools in your Codex session.
+
 ## Handing it to someone else
 
 Session Switcher has nothing personal built in, so you can give it to anyone:
@@ -441,6 +443,8 @@ Three worlds from an anime, each with a hand-painted scene in the hub that light
 Each count in the scene says what it counts ("need you", "working", "idle").
 
 **The paintings** were made by Codex with OpenAI's built-in image generator, one per theme and mode (the Dungeon's stays dark). Fires, lit windows, crystals, eyes and the magic circle are drawn on top of the painting, lined up with what's painted there, so they change with your chats; the painting and those parts scale and crop together, and a phone shows the whole painting. The app uses WebP copies in `art/` (about 600 KB for all five); the prompts Codex used are in `art/painting-prompts.json`, and the full-size originals stay out of the repo (`art/src/`). Until a painting has loaded, the scene is drawn as before.
+
+**Gentle depth:** separate painted foregrounds add clouds, foliage or close stonework. On a mouse-driven desktop the foreground moves a few pixels with the pointer, while the painting and its live lights move together. It settles when the pointer leaves and stays still on touch screens, with reduced motion, or when the hub is hidden. The three transparent WebPs add about 210 KB. Their prompts and the sample project crest's prompt are in `art/identity-depth-prompts.json`; the motion lives in `ui/scene-depth.js`. Missing foreground art leaves the base scene working normally.
 
 Each one also brings:
 

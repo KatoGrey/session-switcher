@@ -229,6 +229,7 @@ function connectLive() {
   es.addEventListener('running', e => { try { S.running = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); renderNav(); });
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
   es.addEventListener('races', () => { loadRaces().catch(() => {}); });
+  es.addEventListener('project-art', e => { try { const { cwd } = JSON.parse(e.data); if (window.ProjectArt) ProjectArt.refresh(cwd).catch(() => {}); } catch { /* invalid event */ } });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
   es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLive(); renderNav(); });
   es.addEventListener('restart', e => { try { S.restart = JSON.parse(e.data) || {}; } catch { return; } if (S.restart.restarting) restarting(S.pid); else { renderRestartBar(); if (S.restart.error) toast(S.restart.error, 9000); } });
@@ -409,6 +410,7 @@ function projectItems(cwd) {
     ...(S.codex && S.codex.enabled ? [{ glyph: '◆', label: 'New Codex chat', disabled: !codexReady() || !p.exists, why: 'Sign in to Codex first', run: () => ChatUI.open({ cwd, mode: 'new', provider: 'codex' }) }] : []),
     ...(S.prompts.length ? [{ glyph: '❡', label: 'Start with a prompt…', disabled: !p.exists, run: () => showMenu(Ctx.at, worldNewItems(cwd).filter(x => x !== '-' && /^Start with|Edit prompts/.test(x.label || ''))) }] : []),
     { glyph: '§', label: 'Rules and tools…', hint: 'CLAUDE.md · AGENTS.md · MCP', disabled: !p.exists, why: 'The folder is gone', run: () => openRules(cwd) },
+    { glyph: '❖', label: 'Project crest…', hint: 'choose a picture or make one with Codex', disabled: !p.exists, run: () => ProjectArt.open(cwd) },
     { glyph: '⏳', label: 'Queue a task here…', hint: 'starts when an account has room', disabled: !p.exists, why: 'The folder is gone', run: () => openTaskDialog(cwd) },
     ...(S.codex && S.codex.enabled ? [{ glyph: '⚑', label: 'Race Claude and Codex…', hint: 'same task, keep the better', disabled: !p.exists || !codexReady(), why: !p.exists ? 'The folder is gone' : 'Sign in to Codex first', run: () => openRaceDialog(cwd) }] : []),
     '-',

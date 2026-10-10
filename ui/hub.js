@@ -870,12 +870,14 @@ function crestHtml(p, size = 22, cls = '') {
   if (!p || !p.name) return '';
   const w = p.cwd ? S.worlds[p.cwd] : null;
   const own = w && w.images ? w.images.find(im => CREST_RE.test(im.rel || im.name || '')) : null;
-  const pic = own ? own.path : w && w.banner;
+  const pic = (w && w.crest) || (own ? own.path : w && w.banner);
   // Its two colors follow the theme (each is one of the theme's own color variables).
   const h = hash(p.name), n = CREST_TINTS.length, i = h % n, j = (h >>> 5) % n === i ? (i + 1) % n : (h >>> 5) % n;
   const style = `--s:${size}px;--a:rgb(var(--c-${CREST_TINTS[i]}));--b:rgb(var(--c-${CREST_TINTS[j]}))`;
   // A picture that won't load (moved, deleted) leaves the drawn emblem underneath.
-  const img = pic ? `<img src="${esc(imageSrc(pic, p.cwd))}" alt="" loading="lazy" decoding="async" onerror="this.parentNode.classList.remove('pic');this.remove()">` : '';
+  const meta = pic && w && w.images && w.images.find(im => im.path === pic);
+  const src = pic ? imageSrc(pic, p.cwd) + (meta ? `&v=${meta.mtime}-${meta.size}` : '') : '';
+  const img = pic ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" onerror="this.parentNode.classList.remove('pic');this.remove()">` : '';
   return `<span class="crest${pic ? ' pic' : ''} ${cls}" style="${style}" aria-hidden="true"><b>${glyphFor(p.name)}</b>${img}</span>`;
 }
 // The project a chat belongs to (or a stand-in with its folder's name, for the crest).
@@ -890,7 +892,7 @@ function worldCard(p, i) {
   const bits = [chatsToday ? plural(chatsToday, 'chat') : '', w && w.today.docs ? plural(w.today.docs, 'doc') : '', w && w.today.images ? plural(w.today.images, 'image') : ''].filter(Boolean);
   return `<article class="world ${live ? 'is-live' : ''}" style="--i:${Math.min(i, 12)}">
     <button class="w-art" data-world="${esc(p.cwd)}" aria-label="Open ${esc(p.name)}">${worldArt(p, w)}<span class="w-shade" aria-hidden="true"></span>
-      <span class="w-title"><span class="w-name">${esc(p.name)}</span>${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}</span></button>
+      <span class="w-title">${crestHtml(p, 30)}<span class="w-name">${esc(p.name)}</span>${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}</span></button>
     <div class="w-body">
       <p class="w-today ${bits.length ? 'on' : ''}">${bits.length ? `<span class="glyph" aria-hidden="true">✦</span>Today: ${esc(bits.join(', '))}` : p.sessions.length ? 'Quiet today' : 'New project'}</p>
       ${latest ? `<p class="w-last"><button class="linkish" data-preview="${esc(latest.id)}" title="${esc(latest.title)}">${esc(latest.title)}</button><span>${esc(agoL(latest.updated))}</span></p>` : `<p class="w-last quiet">No chats yet${p.added && p.updated ? `. Added ${esc(agoL(p.updated))}` : ''}.</p>`}

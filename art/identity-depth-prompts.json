@@ -1,0 +1,26 @@
+[
+  {
+    "asset": "studio-crest",
+    "mode": "built-in image_gen",
+    "prompt": "Use case: stylized-concept. Create one finished square painted project crest for Session Switcher, a personal workspace where two coding assistants share one conversation. A bold luminous open portal formed from two intertwined ribbons, one warm copper-gold and one cool cyan, above a tiny simple open book silhouette. Elegant anime fantasy enamel and painted metal, deep ink violet interior, restrained highlights, clean chunky shapes readable at 24 pixels, generous 15% transparent padding. No letters, words, people, faces, detailed circuit patterns, UI, border frame or watermark. A genuine transparent background, not a checkerboard drawn into the picture. Only one isolated emblem, centered, square canvas.",
+    "reference": null
+  },
+  {
+    "asset": "isekai-depth",
+    "mode": "built-in image_gen",
+    "prompt": "Use case: stylized-concept. Input image is a STYLE AND PALETTE REFERENCE ONLY. Generate a separate foreground cloud layer for this anime floating-island painting. Landscape 3:2 canvas. Actual transparent background with all of the upper 78% and the center completely transparent. Paint only a very soft close bank of pale blue-lilac clouds hugging the bottom edge, highest at the extreme left (up to 20% height), thinning towards the right (bottom 8% only). Soft lavender shadow and a few pearly cream highlights fit both twilight and morning. Clean painterly cloud shapes, translucent wisps blending into full transparency at their top edges. NO islands, moons, buildings, trees, stars, text or background sky. This is an isolated foreground overlay; never reproduce the reference scene. The bottom-right counts panel must remain readable: no bright clouds in rightmost 40%. Maintain exact 3:2 aspect ratio.",
+    "reference": "art/isekai-dark.webp"
+  },
+  {
+    "asset": "highfantasy-depth",
+    "mode": "built-in image_gen",
+    "prompt": "Use case: stylized-concept. Input image is a STYLE AND PALETTE REFERENCE ONLY. Generate a separate close foreground foliage layer for this anime high-fantasy citadel painting. Landscape 3:2 canvas, genuinely transparent background. Sparse elegant dark blue-green evergreen branches enter from the extreme upper-left and upper-right corners only, their tips restricted to the outer 14% width and upper 22% height. A tiny dark cluster of fern leaves in the bottom-left corner below 88% height. Everything else fully transparent. Painted anime background quality, soft cool teal rim light and restrained muted gold accents, dark enough to work over a night or dawn scene. Keep the entire center, moon area and bottom-right completely empty. NO castle, hills, moon, sky, buildings, glowing dots, figures, text or frame. Do not reproduce the reference painting. This asset is only isolated edge foliage with alpha transparency, landscape 3:2.",
+    "reference": "art/highfantasy-dark.webp"
+  },
+  {
+    "asset": "dungeon-depth",
+    "mode": "built-in image_gen",
+    "prompt": "Use case: stylized-concept. Input image is a STYLE AND PALETTE REFERENCE ONLY. Generate an isolated close foreground layer for this painted anime dungeon corridor. Landscape 3:2 with a genuinely transparent background. Only two narrow rough charcoal-blue stone edges at the extreme left and right, each taking no more than 7% of canvas width, like the very near sides of the doorway we stand in. Asymmetrical weathered stone, a few tiny muted moss leaves near lower-left. Dim cool blue highlights, subtle warm copper tint on inside edge, clean painterly texture. Entire central 86% MUST be fully transparent including all bottom-center and bottom-right, so the existing arch, torch flames and statistics remain clear. NO arch across the top, no floor, no wall behind, no torch, no flames, chains, creatures or text. Do not reproduce the reference scene. This is a parallax overlay with real alpha transparency, not a complete room.",
+    "reference": "art/dungeon-dark.webp"
+  }
+]

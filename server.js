@@ -873,6 +873,11 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, { scope: cwd ? 'project' : 'user', cwd, ...rulesLib.readRules(rulesPathsFor(cwd)) });
   }
   if (route === 'GET /api/tools') return send(res, 200, await toolsFor(url.searchParams.get('cwd') || null));
+  if (route === 'GET /api/project/crest-result') {
+    const p = projectAt(url.searchParams.get('cwd'));
+    if (!p || !p.exists) throw fail(404, 'That folder isn’t available.');
+    return send(res, 200, { image: projectsLib.crestResult(p.cwd, url.searchParams.get('name')) });
+  }
   if (route === 'GET /api/project/info') {
     const p = projectAt(url.searchParams.get('cwd'));
     if (!p) throw fail(404, 'That folder isn’t in the list.');
@@ -1151,6 +1156,13 @@ async function handleApi(req, res, url, remote = false) {
       inst.refreshAccount().then(st => { if (st.signedIn) inst.refreshUsage(); }).catch(() => {});
       broadcast('accounts');
       return send(res, 200, { codex: codexPublic() });
+    }
+    case '/api/project/crest': {
+      const p = projectAt(body.cwd);
+      if (!p || !p.exists) throw fail(404, 'That folder isn’t available.');
+      const w = projectInfo.setCrest(p.cwd, body.path || null);
+      broadcast('project-art', { cwd: p.cwd });
+      return send(res, 200, w);
     }
     case '/api/project/banner': {
       const p = projectAt(body.cwd);

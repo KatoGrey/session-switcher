@@ -81,7 +81,7 @@ function renderFolder() {
     <div class="wp-in"><p class="eyebrow ${prov || ''}">${prov === 'codex' ? 'Codex chats in this project' : prov === 'claude' ? 'Claude Code chats in this project' : prov === 'openclaw' ? 'OpenClaw sessions in this project' : 'Project'}</p><h1>${esc(p.name)}</h1></div>${hint}`;
   const subH = `<div class="wp-where"><p class="f-path">${esc(p.cwd)}${p.exists ? '' : ' (this folder no longer exists)'}</p>
       <p class="f-meta">${esc(meta[0].toUpperCase() + meta.slice(1))}.${esc(todayLine)}${other ? ` <button class="linkish" data-view="folder" data-cwd="${esc(p.cwd)}" data-prov="${otherProv}">${other === 1 ? `1 ${otherName} ${otherWord}` : `${other} ${otherName} ${otherWord}s`} here too</button>` : ''}</p></div>
-    <div class="wp-tools"><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin' : 'Pin to top'}</button></div>`;
+    <div class="wp-tools"><button class="btn quiet sm" data-project-crest="${esc(p.cwd)}" ${p.exists ? '' : 'disabled'}>Project crest…</button><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin' : 'Pin to top'}</button></div>`;
   const off = !canLaunch(a) || !p.exists;
   const cxOff = !codexReady() || !p.exists;
   const cxWhy = S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first';
