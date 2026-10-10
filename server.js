@@ -34,6 +34,8 @@ const pairsLib = require('./lib/pairs');
 const handover = require('./lib/handover');
 const routinesLib = require('./lib/routines');
 const organizeLib = require('./lib/organize');
+const liteLib = require('./lib/lite');
+const { createLiteRoutes } = require('./lib/lite-routes');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -906,6 +908,18 @@ const routines = routinesLib.createRoutines({
   },
 });
 
+// ---------- Switcher Lite (ui-lite/, at /lite): buckets, stages, plans; see lib/lite.js ----------
+const liteStore = liteLib.createLite({ dataDir: DATA_DIR, log });
+const liteRoutes = createLiteRoutes({
+  store: liteStore, config, acc, usage, log, broadcast,
+  codexAll: () => codexAll(),
+  sessionsWithCodex: () => sessionsWithCodex(),
+  activityList: () => activityList(),
+  routinesList: () => routines.list(),
+  parentOf: id => organize.parentOf(id),
+  isCommanderId: id => isCommanderId(id),
+});
+
 // ---------- routes ----------
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
@@ -1013,6 +1027,11 @@ async function handleApi(req, res, url, remote = false) {
   }
 
   if (route === 'POST /api/chat/upload') return uploadFile(req, res, url);
+  if (url.pathname.startsWith('/api/lite/')) {
+    const out = await liteRoutes.handle(req.method, url.pathname, url, () => readBody(req));
+    if (out === undefined) throw fail(404, 'Not found.');
+    return send(res, 200, out);
+  }
   if (url.pathname.startsWith('/api/routines')) {
     const out = await routines.api(req.method, url.pathname, req.method === 'POST' ? await readBody(req) : null);
     if (out === undefined) throw fail(404, 'Not found.');
@@ -1972,6 +1991,18 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       return res.end(html);
     }
+    // Switcher Lite: its own page and files, the same token and rules as the full app.
+    if (req.method === 'GET' && (url.pathname === '/lite' || url.pathname === '/lite/')) {
+      const html = fs.readFileSync(path.join(APP_DIR, 'ui-lite', 'index.html'), 'utf8').replace('__TOKEN__', TOKEN).replace('__REMOTE__', remote ? 'true' : 'false');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
+      return res.end(html);
+    }
+    if (req.method === 'GET' && /^\/ui-lite\/[a-z0-9-]+\.(js|css)$/.test(url.pathname)) {
+      let text;
+      try { text = fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1)), 'utf8'); } catch { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'Content-Type': `${url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript'}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(text);
+    }
     if (req.method === 'GET' && /^\/(fonts\/[a-z0-9-]+\.woff2|sounds\/[a-z0-9-]+\.mp3)$/.test(url.pathname)) {
       let data;
       try { data = fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1))); } catch { res.writeHead(404); return res.end(); }
@@ -2066,6 +2097,7 @@ server.listen(PORT, '127.0.0.1', () => {
   }, 2500);
   startWatching();
   routines.start();
+  liteRoutes.startSampling();
   phone.sync().catch(err => log(`Phone access: ${err.message}`));
   sys.openAppWindow(appUrl, config().prefs);
 });
