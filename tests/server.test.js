@@ -158,6 +158,23 @@ test('races: one can’t start without Codex, and nothing is left behind', async
   } finally { await s.stop(); }
 });
 
+test('the themes’ paintings are served from art/ (WebP only), and nothing else there is', async () => {
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
+  try {
+    const dir = path.join(__dirname, '..', 'art');
+    const one = (fs.existsSync(dir) ? fs.readdirSync(dir) : []).find(f => /^[a-z0-9-]+\.webp$/.test(f));
+    if (one) {
+      const ok = await fetch(`${s.base}/art/${one}`);
+      assert.equal(ok.status, 200);
+      assert.equal(ok.headers.get('content-type'), 'image/webp');
+    }
+    for (const bad of ['/art/none-such.webp', '/art/src/isekai-dark.png', '/art/../server.js', '/art/..%2fserver.js', '/art/x.png', '/art/spots.json']) {
+      const r = await fetch(`${s.base}${bad}`);
+      assert.notEqual(r.status, 200, `${bad} must not be served`);
+    }
+  } finally { await s.stop(); }
+});
+
 test('page scripts are served from ui/, and nothing else is', async () => {
   const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
   try {

@@ -109,7 +109,7 @@
     {
       id: 'isekai', name: 'Isekai', note: 'Summoned to another world: twilight, two moons, floating islands, and a status window where your plan is your HP and MP.', family: 'anime', sky: 'motes', art: 'status',
       accent: 196, sat: 1.5, gold: 46, goldSat: 1.1, surface: 238, surfSat: 1.9, ink: 222, inkSat: 0.35, codex: 278,
-      fonts: { display: ORBITRON, caps: ROUNDED, body: ROUNDED, label: ORBITRON },
+      fonts: { display: ORBITRON, caps: ROUNDED, body: ROUNDED, label: ROUNDED },
       emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--c-0a090c))"/><circle cx="20" cy="20" r="17" fill="none" style="stroke:rgb(var(--an-glow))" stroke-width="1.4"/><circle cx="20" cy="20" r="13.6" fill="none" style="stroke:rgb(var(--an-glow))" stroke-opacity=".55" stroke-width=".8" stroke-dasharray="1.2 2"/><path d="M20 7.5L30.8 26.2H9.2Z" fill="none" style="stroke:rgb(var(--an-glow))" stroke-width="1.2"/><path d="M20 32.5L9.2 13.8H30.8Z" fill="none" style="stroke:rgb(var(--an-glow))" stroke-width="1.2"/><circle cx="20" cy="20" r="3" style="fill:rgb(var(--an-gold))"/>',
       tones: { needs: [[1046.5, 0, 0.03], [1318.5, 0.06, 0.03], [1568, 0.12, 0.03], [2093, 0.18, 0.026]], reply: [[1568, 0, 0.028], [2093, 0.09, 0.022]], engage: [[523.3, 0, 0.026], [784, 0.06, 0.026], [1046.5, 0.12, 0.026], [1568, 0.18, 0.024], [2093, 0.24, 0.02]] },
       copy: { ...RITE, '✦': '◆',
@@ -127,7 +127,7 @@
     {
       id: 'highfantasy', name: 'High Fantasy', note: 'Emerald and gold under a great moon: a citadel lights a window for each chat at work and a beacon for each one that needs you.', family: 'anime', sky: 'fireflies', art: 'citadel',
       accent: 150, sat: 1.15, gold: 44, goldSat: 1.25, surface: 165, surfSat: 1.3, ink: 45, inkSat: 0.55, codex: 214,
-      fonts: { display: '"Cinzel Decorative", "Cinzel", Georgia, serif', caps: '"Cinzel", Georgia, serif', body: '"EB Garamond", "Iowan Old Style", Georgia, serif', label: '"Cinzel", Georgia, serif' },
+      fonts: { display: '"Cinzel Decorative", "Cinzel", Georgia, serif', caps: '"EB Garamond", "Iowan Old Style", Georgia, serif', body: '"EB Garamond", "Iowan Old Style", Georgia, serif', label: '"Cinzel", Georgia, serif' },
       emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--an-deep))"/><circle cx="20" cy="20" r="16.6" fill="none" style="stroke:rgb(var(--an-gold))" stroke-width="1"/><circle cx="20" cy="20" r="14.2" fill="none" style="stroke:rgb(var(--an-gold))" stroke-opacity=".4" stroke-width=".6"/><path d="M20.0 5.5L21.2 17.1L25.8 14.2L22.9 18.8L34.5 20.0L22.9 21.2L25.8 25.8L21.2 22.9L20.0 34.5L18.8 22.9L14.2 25.8L17.1 21.2L5.5 20.0L17.1 18.8L14.2 14.2L18.8 17.1Z" style="fill:rgb(var(--an-gold))"/><circle cx="20" cy="20" r="1.8" style="fill:rgb(var(--an-deep))"/>',
       tones: { needs: [[880, 0, 0.03], [1046.5, 0.12, 0.028], [1318.5, 0.24, 0.026], [1760, 0.36, 0.022]], reply: [[1318.5, 0, 0.026], [1760, 0.14, 0.02]], engage: [[440, 0, 0.03], [523.3, 0.08, 0.028], [659.3, 0.16, 0.027], [880, 0.24, 0.025], [1046.5, 0.32, 0.023], [1318.5, 0.4, 0.02]] },
       copy: { ...RITE, '✦': '✧',
@@ -145,7 +145,7 @@
     {
       id: 'dungeon', name: 'Dungeon', note: 'Torchlit stone, deep below: a torch for each chat at work, eyes in the dark for each one waiting on you, embers rising.', family: 'anime', sky: 'embers', art: 'delve',
       accent: 22, sat: 1.45, gold: 38, goldSat: 1.15, surface: 28, surfSat: 0.55, ink: 36, inkSat: 0.45, codex: 196,
-      fonts: { display: '"Pirata One", "Alegreya SC", Georgia, serif', caps: '"Alegreya SC", Georgia, serif', body: '"Alegreya", Georgia, serif', label: '"Alegreya SC", Georgia, serif' },
+      fonts: { display: '"Pirata One", "Alegreya SC", Georgia, serif', caps: '"Alegreya", Georgia, serif', body: '"Alegreya", Georgia, serif', label: '"Alegreya SC", Georgia, serif' },
       emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--an-iron))"/><circle cx="20" cy="20" r="15.6" fill="none" style="stroke:rgb(var(--an-rust))" stroke-width="1.6"/><circle cx="20" cy="6.6" r="1.3" style="fill:rgb(var(--an-rust))"/><circle cx="33.4" cy="20" r="1.3" style="fill:rgb(var(--an-rust))"/><circle cx="20" cy="33.4" r="1.3" style="fill:rgb(var(--an-rust))"/><circle cx="6.6" cy="20" r="1.3" style="fill:rgb(var(--an-rust))"/><circle cx="20" cy="17.2" r="4.4" style="fill:rgb(var(--c-050406));stroke:rgb(var(--an-ember))" stroke-width=".9"/><path d="M17.4 19.6h5.2l1.8 9.2h-8.8z" style="fill:rgb(var(--c-050406));stroke:rgb(var(--an-ember))" stroke-width=".9" stroke-linejoin="round"/><circle cx="20" cy="17.2" r="3.6" style="fill:rgb(var(--c-050406))"/>',
       tones: { needs: [[392, 0, 0.05], [523.3, 0.22, 0.045]], reply: [[659.3, 0, 0.035]], engage: [[196, 0, 0.06], [293.7, 0.32, 0.045]] },
       copy: { ...RITE, '✦': '◈',
