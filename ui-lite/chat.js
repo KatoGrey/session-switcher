@@ -237,25 +237,30 @@ function composerHtml({ fresh = false } = {}) {
 }
 // Models and efforts each assistant offers, remembered from the last chat that reported them, so
 // the chips work before a chat is running.
-const modelsFor = prov => local.get(`models:${prov}`, prov === 'claude' ? [{ value: 'opus', label: 'Opus' }, { value: 'sonnet', label: 'Sonnet' }] : []);
-const effortsFor = prov => local.get(`efforts:${prov}`, prov === 'codex' ? ['low', 'medium', 'high', 'xhigh'] : ['low', 'medium', 'high', 'xhigh', 'max']);
+// From the Mac (/api/lite/models: real names, and what a new chat gets by default); else what a
+// chat last reported.
+const MD = prov => (S.models && S.models[prov === 'ollama' ? 'ollama' : prov === 'codex' ? 'codex' : 'claude']) || null;
+const modelsFor = prov => (MD(prov) ? [...MD(prov).models, ...MD(prov).more] : local.get(`models:${prov}`, []));
+const effortsFor = prov => (MD(prov) && MD(prov).efforts) || local.get(`efforts:${prov}`, prov === 'claude' ? ['low', 'medium', 'high', 'xhigh', 'max'] : ['low', 'medium', 'high', 'xhigh']);
+function loadModels() { if (S.models || loadModels.p) return loadModels.p; loadModels.p = api('/api/lite/models').then(j => { S.models = j; if (S.view === 'newchat') paintNewChat(); else if (S.view === 'chat') paintBar(); }).catch(() => {}); return loadModels.p; }
 function rememberModels(prov, info) {
   if (info && Array.isArray(info.models) && info.models.length) local.set(`models:${prov}`, info.models.map(m => ({ value: m.value, label: m.label })).slice(0, 30));
   if (info && Array.isArray(info.efforts) && info.efforts.length) local.set(`efforts:${prov}`, info.efforts);
 }
 const provNow = () => (S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : NC.who === 'ollama' ? 'ollama' : 'codex') : CV.provider === 'codex' ? (CV.info && /ollama/i.test(CV.info.accountName || '') ? 'ollama' : 'codex') : 'claude');
 const prettyModel = m => String(m).replace(/^claude-/, '').replace(/-(\d)-(\d)/, ' $1.$2').replace(/\[1m\]$/, ' 1M').replace(/^(\w)/, c => c.toUpperCase());
-const modelLabel = (prov, v) => { const m = modelsFor(prov).find(x => x.value === v); return m ? m.label : prettyModel(v); };
+const modelLabel = (prov, v) => { const base = String(v).replace(/\[1m\]$/, ''); const m = modelsFor(prov).find(x => x.value === v || x.value === base); return m ? `${m.label}${/\[1m\]$/.test(v) ? ' 1M' : ''}` : prettyModel(v); };
 const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
 function toolsHtml({ fresh }) {
   const prov = provNow();
   const info = fresh ? null : CV.info;
   const model = (info && (info.replyModel || info.resolvedModel || info.model)) || COMP.model || (!fresh && chatBy.get(CV.id) && chatBy.get(CV.id).model) || null;
   const effort = (info && info.effort) || COMP.effort || null;
+  const md0 = MD(prov);
   const busy = !fresh && CV.busy;
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
-    <button type="button" class="model" data-barmodel="1" aria-haspopup="menu" title="Model">${esc(model ? modelLabel(prov, model) : 'Default model')}<span>▾</span></button>
-    <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : 'Effort')}<span>▾</span></button>
+    <button type="button" class="model" data-barmodel="1" aria-haspopup="menu" title="Model">${esc(model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model')}<span>▾</span></button>
+    <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
     ${busy ? '<button type="button" class="send stop" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
@@ -377,8 +382,12 @@ function modelMenu(anchor) {
   const running = S.view === 'chat' && CV.key && CV.info;
   const list = running && CV.info.models && CV.info.models.length ? CV.info.models : modelsFor(prov);
   const cur = running ? CV.info.model : COMP.model;
-  if (!list.length) return toast('Its models show once a chat on this assistant has run.');
-  pop(anchor, `<div class="ph">Model</div>${list.map(m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === cur}">${esc(m.label || prettyModel(m.value))}</button>`).join('')}`,
+  if (!list.length) { loadModels(); return toast('Reading the models; try again in a moment.'); }
+  const md0 = MD(prov);
+  const main = md0 && !running ? md0.models : list.filter(m => m.value !== 'default' && !/haiku/i.test(m.value)).slice(0, 6);
+  const more = md0 && !running ? md0.more : [];
+  const item = m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === cur}">${esc(m.label || prettyModel(m.value))}${m.note ? `<small>${esc(m.note.replace(/^[^·]*· /, '').slice(0, 34))}</small>` : ''}</button>`;
+  pop(anchor, `<div class="ph">Model${md0 && md0.defaultModel ? ` · default ${esc(md0.defaultModel)}` : ''}</div>${main.map(item).join('')}${more.length ? `<hr><div class="ph">More</div>${more.map(item).join('')}` : ''}`,
     v => { if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, model: v })); paintBar(); })(); COMP.model = v; return S.view === 'newchat' ? paintNewChat() : paintBar(); });
 }
 function effortMenu(anchor) {
@@ -386,7 +395,8 @@ function effortMenu(anchor) {
   const running = S.view === 'chat' && CV.key && CV.info;
   const list = running && CV.info.efforts && CV.info.efforts.length ? CV.info.efforts : effortsFor(prov);
   const cur = running ? CV.info.effort : COMP.effort;
-  pop(anchor, `<div class="ph">Effort</div>${list.map(e => `<button data-v="${esc(e)}" role="menuitemradio" aria-checked="${e === cur}">${esc(cap(e))}</button>`).join('')}`,
+  const md0 = MD(prov);
+  pop(anchor, `<div class="ph">Effort${md0 && md0.defaultEffort ? ` · default ${esc(cap(md0.defaultEffort))}` : ''}</div>${list.map(e => `<button data-v="${esc(e)}" role="menuitemradio" aria-checked="${e === cur}">${esc(cap(e))}</button>`).join('')}`,
     v => { if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, effort: v })); paintBar(); })(); COMP.effort = v; return S.view === 'newchat' ? paintNewChat() : paintBar(); });
 }
 // Conversation settings: how much it may do without asking. Your default is preselected.
@@ -405,11 +415,29 @@ function settingsMenu(anchor) {
 }
 
 /* ---------- New chat: the same input bar, centered ---------- */
-const NC = { project: null, who: 'claude' };
+// Who a new chat runs as: an assistant and an account. "Use next" (the default) follows the
+// use-next order; you can also pick a particular account.
+const NC = { project: null, who: 'claude', account: null };
 function accountFor(who) {
   if (who === 'ollama') { const o = plans().find(p => p.family === 'ollama' && !p.broken); return o ? o.id : null; }
+  if (S.view === 'newchat' && NC.who === who && NC.account) return NC.account;
   const p = useNext(who === 'claude' ? 'claude' : 'chatgpt');
   return p ? p.id : null;
+}
+function accountMenu(anchor) {
+  const row = (who, id, label, sub, checked) => `<button data-v="${who}:${id}" role="menuitemradio" aria-checked="${checked}">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+  const group = (who, fam, title) => {
+    const ps = plans().filter(p => p.family === fam && !p.broken && typeof p.left === 'number');
+    const nx = useNext(fam);
+    return `<div class="ph">${title}</div>${row(who, 'auto', `Use next${nx ? ` · ${nx.label}` : ''}`, nx ? `${nx.left}%` : '', NC.who === who && !NC.account)}${ps.map(p => row(who, p.id, p.label, `${p.left}% · ${wd(p.resetsAt) || ''}`, NC.who === who && NC.account === p.id)).join('')}`;
+  };
+  const ol = plans().find(p => p.family === 'ollama' && !p.broken);
+  pop(anchor, `${group('claude', 'claude', 'Claude')}<hr>${group('codex', 'chatgpt', 'ChatGPT (Codex)')}${ol ? `<hr>${row('ollama', 'auto', 'Ollama', 'no plan limits', NC.who === 'ollama')}` : ''}`, v => {
+    const [who, id] = v.split(':');
+    if (who !== NC.who) { COMP.model = null; COMP.effort = null; COMP.perm = null; }
+    NC.who = who; NC.account = id === 'auto' ? null : id;
+    paintNewChat(); $('msgBox')?.focus();
+  });
 }
 const ncProjects = () => S.projects.filter(p => p.cwd && p.exists && !p.archived && !p.loose).sort((a, b) => (b.bucket ? 1 : 0) - (a.bucket ? 1 : 0) || b.updated - a.updated);
 function newChatView() {
@@ -428,9 +456,10 @@ function paintNewChat() {
   const p = projBy.get(NC.project);
   const acc = accountFor(NC.who), plan = acc && planById(acc);
   $('ncChips').innerHTML = `<button type="button" class="chip big" data-ncproject="1">${p ? `<span class="thumb-xs" style="${artStyle(p)};width:16px;height:16px;border-radius:4px"></span>${esc(p.name)}` : 'Pick a project'} ▾</button>
-    <button type="button" class="chip big" data-ncwho="1">${NC.who === 'claude' ? 'Claude' : NC.who === 'ollama' ? 'Codex on Ollama' : 'Codex'}${plan && NC.who !== 'ollama' ? ` <small>${esc(plan.label)}${typeof plan.left === 'number' ? ` · ${plan.left}%` : ''}</small>` : ''} ▾</button>`;
+    <button type="button" class="chip big" data-ncwho="1">${NC.who === 'ollama' ? 'Ollama' : `${NC.who === 'claude' ? 'Claude' : 'ChatGPT'}${plan ? ` · ${esc(plan.label)}` : ''}`}${plan && NC.who !== 'ollama' ? ` <small>${NC.account ? '' : 'use next · '}${typeof plan.left === 'number' ? `${plan.left}%` : ''}</small>` : ''} ▾</button>`;
   $('barTools').innerHTML = toolsHtml({ fresh: true });
-  $('barHint').textContent = NC.who === 'ollama' ? 'On Ollama, outside your plan limits' : plan ? `On ${plan.label} ${famName(plan.family)}, next in the use-next order` : '';
+  $('barHint').textContent = '';
+  loadModels();
   paintAttachments();
 }
 async function startNewChat() {

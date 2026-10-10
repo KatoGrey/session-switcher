@@ -36,8 +36,60 @@ function renderSide() {
     </div>`;
   }).join('');
   const nArch = S.chats.filter(c => c.archived).length + S.projects.filter(p => p.archived).length;
-  $('sideScroll').innerHTML = top + `<div class="group"><div class="side-h">Stages</div>${folders}</div>`
+  const mode = S.sideMode || 'projects';
+  const modeSeg = `<span class="side-seg" role="group" aria-label="Sidebar shows"><button data-sidemode="projects" aria-pressed="${mode === 'projects'}">Projects</button><button data-sidemode="stages" aria-pressed="${mode === 'stages'}">Stages</button></span>`;
+  $('sideScroll').innerHTML = top + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders : sideProjects(chats)}</div>`
     + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`;
+}
+
+// The sidebar by project (the default): each project with its chats. In buckets where stages
+// matter (Voyage, AI Dungeon…), chats sit under small stage labels; elsewhere it's a plain recent
+// list. Quiet projects fold to one line at the end.
+S.sideMode = local.get('sideMode', 'projects');
+const bucketStages = id => { const b = buckets().find(x => x.id === id); return !b || b.stages !== false; };
+function sideProjects(chats) {
+  const byProj = new Map();
+  for (const c of chats) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
+  const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
+  const activeOf = g => g.cs.filter(c => stageOf(c) !== 'done' && !isQuiet(c));
+  const hot = g => g.cs.some(c => needs(c) || running(c)) ? 1 : 0;
+  const act = groups.filter(g => activeOf(g).length).sort((a, b) => hot(b) - hot(a) || Math.max(...b.cs.map(c => c.updated)) - Math.max(...a.cs.map(c => c.updated)));
+  const quiet = groups.filter(g => !activeOf(g).length);
+  const projRow = g => {
+    const lv = activeOf(g), q = g.cs.filter(c => isQuiet(c) && stageOf(c) !== 'done');
+    const open = !S.folded['p:' + g.p.key];
+    const nd = g.cs.some(needs), rn = g.cs.some(running);
+    let inner = '';
+    if (open) {
+      const limit = S.more['pall:' + g.p.key] ? 200 : 8;
+      if (bucketStages(g.p.bucket)) {
+        let n = 0;
+        for (const st of STAGES.filter(x => x.id !== 'done')) {
+          const list = lv.filter(c => stageOf(c) === st.id); if (!list.length || n >= limit) continue;
+          const take = list.slice(0, limit - n); n += take.length;
+          inner += `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(sideChat).join('')}`;
+        }
+      } else inner = lv.slice(0, limit).map(c => sideChatDot(c)).join('');
+      if (lv.length > limit) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}"><span class="lbl">${lv.length - limit} more</span></button>`;
+      if (q.length) inner += `<button class="nav-i chat-i quiet-toggle" data-project="${esc(g.p.key)}"><span class="lbl">${q.length} quiet</span></button>`;
+    }
+    return `<div class="group folder" data-open="${open}"><button class="nav-i folder-btn proj-btn" data-foldproj="${esc(g.p.key)}" aria-expanded="${open}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : `<span class="n">${lv.length || ''}</span>`}</button><div class="folder-items">${inner}</div></div>`;
+  };
+  // With every bucket showing, projects sit under their bucket's name.
+  let html = '';
+  if (S.bucket === 'all') {
+    for (const b of [...buckets(), { id: null, name: 'Unsorted' }]) {
+      const gs = act.filter(g => (g.p.bucket || null) === b.id);
+      if (gs.length) html += `<div class="side-bucket">${esc(b.name)}</div>${gs.map(projRow).join('')}`;
+    }
+  } else html = act.map(projRow).join('');
+  if (quiet.length) html += S.more.quietProj ? `<div class="side-bucket">Quiet</div>${quiet.map(g => `<button class="nav-i chat-i" data-project="${esc(g.p.key)}"><span class="lbl">${esc(g.p.name)}</span></button>`).join('')}<button class="nav-i chat-i quiet-toggle" data-quietproj="1"><span class="lbl">Hide quiet</span></button>` : `<button class="nav-i quiet-toggle" data-quietproj="1"><span class="lbl">${quiet.length} quiet project${quiet.length === 1 ? '' : 's'}</span></button>`;
+  return html || '<p class="side-empty">No chats here yet.</p>';
+}
+// In a project without stage labels, each chat carries its stage as a small dot.
+function sideChatDot(c) {
+  const st = stageById(stageOf(c));
+  return sideChat(c).replace('<span class="lbl">', `<span class="st-dot" style="background:${st.c}" title="${st.name}"></span><span class="lbl">`);
 }
 
 const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
@@ -58,6 +110,7 @@ function render() {
   for (const [k, v, f] of typed) { const i = m.querySelector(`input[data-qr="${CSS.escape(k)}"]`) || $(k); if (i) { i.value = v; if (f) i.focus(); } }
   m.scrollTop = keep;
   keepCur();
+  if (S.view === 'images') watchGallery();
 }
 // Live events redraw only what moves: the sidebar marks, Now's Needs you and Running, and the count.
 let markSig = '';
@@ -88,6 +141,7 @@ function go(view, extra = {}, { push = true } = {}) {
   if (view === 'side' && !small()) view = 'now';
   const prev = S.view;
   if (view !== 'chat' && CV.es) { CV.es.close(); CV.es = null; }
+  if (view === 'newchat' || view === 'chat') loadModels();
   if (view === 'newchat') { NC.project = extra.ncProject || (prev === 'project' ? S.project : NC.project); if (prev !== 'newchat') resetComposer(); }
   S.view = view;
   if (extra.project !== undefined) S.project = extra.project;
@@ -149,7 +203,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-zoom]'))) return showPicture(b.src);
   if ((b = el('[data-stopchat]'))) return wrap(() => api('/api/chat/interrupt', { key: CV.key }))();
   if ((b = el('[data-ncproject]'))) return pickProject(b, k => { NC.project = k; paintNewChat(); $('msgBox').focus(); });
-  if ((b = el('[data-ncwho]'))) return pop(b, `${[['claude', 'Claude'], ['codex', 'Codex'], ...(plans().some(p => p.family === 'ollama' && !p.broken) ? [['ollama', 'Codex on Ollama']] : [])].map(([v, n]) => { const a = accountFor(v), pl = a && planById(a); return `<button data-v="${v}" role="menuitemradio" aria-checked="${NC.who === v}">${n}<small>${pl ? `${esc(pl.label)}${typeof pl.left === 'number' ? ` · ${pl.left}%` : ''}` : ''}</small></button>`; }).join('')}`, v => { if (NC.who !== v) { COMP.model = null; COMP.effort = null; COMP.perm = null; } NC.who = v; paintNewChat(); $('msgBox').focus(); });
+  if ((b = el('[data-ncwho]'))) return accountMenu(b);
   if ((b = el('[data-triage]'))) return startTriage();
   if ((b = el('[data-tr]'))) { b.disabled = true; return wrap(triageAct)(b.dataset.tr); }
   if ((b = el('[data-cmd]'))) { if ($('cmdInput')) $('cmdInput').value = b.dataset.cmd; return askCommander(b.dataset.cmd); }
@@ -178,6 +232,11 @@ document.addEventListener('click', e => {
   if ((b = el('[data-selclear]'))) { S.sel.clear(); return render(); }
   if ((b = el('[data-rowmenu]'))) { e.stopPropagation(); return rowMenu(b, b.dataset.rowmenu); }
   if ((b = el('[data-projmenu]'))) return projMenu(b, b.dataset.projmenu);
+  if ((b = el('[data-bstages]'))) return wrap(async () => { const list = buckets().map(x => (x.id === b.dataset.bstages ? { ...x, stages: !bucketStages(x.id) } : x)); S.lite.buckets = (await api('/api/lite/buckets', { buckets: list })).buckets; render(); })();
+  if ((b = el('[data-sidemode]'))) { S.sideMode = b.dataset.sidemode; local.set('sideMode', S.sideMode); return renderSide(); }
+  if ((b = el('[data-foldproj]'))) { const k = 'p:' + b.dataset.foldproj; if (S.folded[k]) delete S.folded[k]; else S.folded[k] = true; local.set('folded', S.folded); return renderSide(); }
+  if ((b = el('[data-more-proj]'))) { S.more['pall:' + b.dataset.moreProj] = true; return renderSide(); }
+  if ((b = el('[data-quietproj]'))) { S.more.quietProj = !S.more.quietProj; return renderSide(); }
   if ((b = el('[data-fold]'))) { S.folded[b.dataset.fold] = b.getAttribute('aria-expanded') === 'true'; local.set('folded', S.folded); return renderSide(); }
   if ((b = el('[data-more-st]'))) { S.more[b.dataset.moreSt] = !S.more[b.dataset.moreSt]; return renderSide(); }
   if ((b = el('[data-more-all]'))) { S.more['all-' + b.dataset.moreAll] = true; return renderSide(); }
