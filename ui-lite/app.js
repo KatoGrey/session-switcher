@@ -230,6 +230,15 @@ document.addEventListener('click', e => {
   if ((b = el('[data-delidea]'))) return wrap(saveIdeas)((S.lite.ideas || []).filter(i => i.id !== b.dataset.delidea));
   if ((b = el('[data-unarch]'))) { e.stopPropagation(); return wrap(unarchiveChats)([b.dataset.unarch]); }
   if ((b = el('[data-unarch-p]'))) return wrap(archiveProject)(b.dataset.unarchP, false);
+  if ((b = el('[data-recreate]'))) {
+    b.disabled = true;
+    return wrap(async () => {
+      try { await api('/api/lite/folder/recreate', { id: b.dataset.recreate }); } finally { b.disabled = false; }
+      const c = chatBy.get(b.dataset.recreate); if (c) c.folderExists = true;
+      $('folderGone')?.remove(); sfx('slide'); toast('The folder is back (empty). Send your message and the chat carries on.'); $('msgBox')?.focus();
+      loadState().catch(() => {});
+    })();
+  }
   if ((b = el('[data-rebuild]'))) { e.stopPropagation(); b.disabled = true; b.textContent = 'Rebuilding…'; return wrap(async () => { const r = await api('/api/lite/worktree/rebuild', { id: b.dataset.rebuild }); toast(r.installing ? 'Worktree is back; dependencies are installing in the background.' : 'Worktree is back.'); await loadState(); render(); })(); }
   if ((b = el('[data-clean]'))) return wrap(cleanAction)(b.dataset.clean, b);
   if ((b = el('[data-free]'))) { e.stopPropagation(); return wrap(freePaths)([b.dataset.free], b); }

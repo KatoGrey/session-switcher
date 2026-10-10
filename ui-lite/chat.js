@@ -177,10 +177,18 @@ function chatHead() {
       ${st ? `${kindTag(c)}${waitTag(c)}<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>` : ''}
       <button class="iconbtn" data-chatmenu="1" aria-haspopup="menu" aria-label="More">${IC.dots}</button></div>`;
 }
+// A chat whose folder was deleted can't run until the folder is there again.
+function folderNotice() {
+  const c = chatBy.get(CV.id);
+  if (!c || c.folderExists !== false || (CV.info && CV.info.state && CV.info.state !== 'ended')) return '';
+  const scratch = /[\\/]scratch-workspaces[\\/]/.test(c.cwd || '');
+  return `<div class="folder-gone" id="folderGone"><p><b>Its folder is gone.</b> ${scratch ? 'This chat ran in a Claude scratch folder, which was cleaned up.' : `<span class="mono">${esc((c.cwd || '').replace(/^\/Users\/[^/]+/, '~'))}</span> was deleted or moved.`} Make the folder again (empty) and the chat carries on with its whole history; any files that were in it are gone.</p>
+    ${c.worktree ? '<p>It ran in a worktree: rebuild that from its branch on the Archived page.</p>' : `<button class="btn sm prime" data-recreate="${esc(c.id)}">Make the folder again</button>`}</div>`;
+}
 function chatView() {
   return `<div class="chat" id="chatView">${chatHead()}
     <div class="feed" id="feed" tabindex="-1"><div class="inner" id="feedInner"></div></div>
-    <div class="composer">${composerHtml()}</div>
+    ${folderNotice()}<div class="composer">${composerHtml()}</div>
   </div>`;
 }
 function paintChat() {
