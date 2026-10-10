@@ -102,13 +102,14 @@ function listen(key) {
   if (CV.es) CV.es.close();
   const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}`);
   CV.es = es;
-  es.addEventListener('hello', e => { try { CV.info = JSON.parse(e.data); CV.busy = ['busy', 'waiting', 'starting'].includes(CV.info.state); paintBar(); const h = $('chatHead'); if (h) h.outerHTML = chatHead(); } catch { /* fine */ } });
+  es.addEventListener('hello', e => { try { CV.info = JSON.parse(e.data); CV.busy = ['busy', 'waiting', 'starting'].includes(CV.info.state) || CV.sending; paintBar(); paintHead(); } catch { /* fine */ } });
   es.addEventListener('chat', e => { let ev; try { ev = JSON.parse(e.data); } catch { return; } onEvent(ev); });
 }
 function onEvent(ev) {
   switch (ev.kind) {
     case 'state':
-      CV.busy = ['busy', 'waiting', 'starting'].includes(ev.state);
+      // While a first message is on its way, the line under it stays up (no blink as it starts).
+      CV.busy = ['busy', 'waiting', 'starting'].includes(ev.state) || CV.sending;
       if (CV.info) CV.info.state = ev.state;
       if (ev.state === 'busy' && !CV.startedAt) CV.startedAt = Date.now();
       if (ev.state === 'ended') { CV.busy = false; CV.status = ''; if (CV.es) { CV.es.close(); CV.es = null; } CV.key = null; }
@@ -116,7 +117,14 @@ function onEvent(ev) {
     case 'init': if (ev.sessionId && !CV.id) CV.id = ev.sessionId; break;
     case 'model': if (CV.info) Object.assign(CV.info, ev); paintBar(); break;
     case 'status': if (ev.permissionMode && CV.info) { CV.info.permissionMode = ev.permissionMode; paintBar(); } break;
-    case 'user': CV.items.push(ev); CV.live = ''; CV.startedAt = Date.now(); appendItem(ev); break;
+    case 'user': {
+      // The message you just sent is already on screen; the real one takes its place quietly.
+      const same = x => String(x.text || '').trim() === String(ev.text || '').trim();
+      const i = CV.items.findIndex(x => x.onTheWay && same(x));
+      if (i >= 0) CV.items[i] = { ...ev, images: (CV.items[i].images || []).length ? CV.items[i].images : ev.images };
+      else CV.items.push(ev);
+      CV.live = ''; CV.startedAt = CV.startedAt || Date.now(); appendItem(ev); break;
+    }
     case 'delta': if (!ev.thinking) { CV.live += ev.text || ''; CV.status = 'Writing'; } else CV.status = 'Thinking'; paintLive(); paintStatus(); break;
     case 'assistant': { CV.live = ''; const last = CV.items[CV.items.length - 1]; if (last && last.kind === 'assistant' && last.mid === ev.mid) last.blocks = ev.blocks; else CV.items.push(ev); paintFeed(); const tool = (ev.blocks || []).filter(b => b.type === 'tool').pop(); if (tool) CV.status = `${tool.name}${tool.summary ? ` · ${tool.summary}` : ''}`; paintStatus(); break; }
     case 'tool_start': CV.status = `Using ${ev.name}`; paintStatus(); break;
@@ -148,23 +156,30 @@ function itemHtml(it) {
   if (it.kind === 'notice') return `<div class="notice ${esc(it.level || 'info')}">${esc(it.text || '')}</div>`;
   return '';
 }
-// Consecutive tool-only replies read as one step line; the text between them stays.
-function feedHtml() {
-  let html = '', tools = [];
-  const flushTools = () => { if (tools.length) { html += `<details class="step"><summary>${esc(stepLine(tools))}</summary><ul>${tools.map(t => `<li><b>${esc(t.name)}</b> ${esc(t.summary || '')}</li>`).join('')}</ul></details>`; tools = []; } };
+// Consecutive tool-only replies read as one step line; the text between them stays. Each message
+// (or run of steps) is one segment, so only what changed is redrawn.
+function feedSegments() {
+  const segs = []; let tools = [];
+  const flushTools = () => { if (tools.length) { segs.push(`<details class="step"><summary>${esc(stepLine(tools))}</summary><ul>${tools.map(t => `<li><b>${esc(t.name)}</b> ${esc(t.summary || '')}</li>`).join('')}</ul></details>`); tools = []; } };
   for (const it of CV.items) {
     if (it.kind === 'assistant') {
       const bl = it.blocks || [];
       const text = bl.filter(b => b.type === 'text').map(b => b.text).join('\n\n');
       tools.push(...bl.filter(b => b.type === 'tool'));
-      if (text) { flushTools(); html += `<div class="msg-ai">${mdHtml(text)}</div>`; }
+      if (text) { flushTools(); segs.push(`<div class="msg-ai">${mdHtml(text)}</div>`); }
       continue;
     }
     flushTools();
-    html += itemHtml(it);
+    segs.push(itemHtml(it));
   }
   flushTools();
-  return html;
+  return segs;
+}
+// The header only changes when what's in it does.
+function paintHead() {
+  const h = $('chatHead'); if (!h) return;
+  const n = chatHead(); if (h._h === n) return;
+  h.outerHTML = n; const nh = $('chatHead'); if (nh) nh._h = n;
 }
 
 function chatHead() {
@@ -197,17 +212,28 @@ function chatView() {
 }
 function paintChat() {
   if (S.view !== 'chat' || !$('chatView')) return;
+  const h = $('chatHead'); if (h && !h._h) h._h = chatHead();
   paintFeed(); paintPending(); paintBar(); paintStatus();
   const f = $('feed'); f.scrollTop = f.scrollHeight;
   if (!REMOTE && !matchMedia('(max-width: 760px)').matches) $('msgBox')?.focus();
 }
 const nearBottom = () => { const f = $('feed'); return !f || f.scrollHeight - f.scrollTop - f.clientHeight < 160; };
+// Messages already on screen stay as they are (pictures don't reload, open step lists stay open);
+// new ones are added at the end and only a segment that changed is swapped.
 function paintFeed() {
   const el = $('feedInner'); if (!el) return;
   const stick = nearBottom();
-  el.innerHTML = `${CV.cursor ? '<button class="linkish earlier" data-earlier="1">Earlier messages</button>' : ''}
-    ${CV.loading ? '<p class="empty-note">Loading…</p>' : CV.error ? `<p class="empty-note">${esc(CV.error)}</p>` : !CV.items.length ? '<p class="empty-note">Nothing here yet.</p>' : ''}
-    ${feedHtml()}<div id="liveText" class="msg-ai live"></div><div id="pendingBox"></div><div id="statusLine" class="step live-status"></div>`;
+  if (!$('feedSegs')) el.innerHTML = '<div id="feedTop" class="segs"></div><div id="feedSegs" class="segs"></div><div id="liveText" class="msg-ai live"></div><div id="pendingBox"></div><div id="statusLine" class="step live-status"></div>';
+  const top = `${CV.cursor ? '<button class="linkish earlier" data-earlier="1">Earlier messages</button>' : ''}${CV.loading ? '<p class="empty-note">Loading…</p>' : CV.error ? `<p class="empty-note">${esc(CV.error)}</p>` : !CV.items.length ? '<p class="empty-note">Nothing here yet.</p>' : ''}`;
+  const t = $('feedTop'); if (t._h !== top) { t.innerHTML = top; t._h = top; }
+  const box = $('feedSegs'), segs = feedSegments(), kids = box.children;
+  for (let i = 0; i < segs.length; i++) {
+    const k = kids[i];
+    if (k && k._h === segs[i]) continue;
+    const d = document.createElement('div'); d.className = 'segs'; d.innerHTML = segs[i]; d._h = segs[i];
+    if (k) box.replaceChild(d, k); else box.appendChild(d);
+  }
+  while (kids.length > segs.length) box.lastChild.remove();
   paintLive(); paintPending(); paintStatus();
   if (stick) $('feed').scrollTop = $('feed').scrollHeight;
 }
@@ -282,7 +308,7 @@ function paintBar() {
   if (CV.info) rememberModels(provNow(), CV.info);
   const ro = $('roNote');
   if (ro) { ro.hidden = !CV.readOnly; ro.textContent = CV.readOnly || ''; }
-  t.innerHTML = toolsHtml({ fresh: false });
+  const th = toolsHtml({ fresh: false }); if (t._h !== th) { t.innerHTML = th; t._h = th; }
   const box = $('msgBox'); if (box) box.disabled = !!CV.readOnly;
   paintAttachments();
 }
@@ -355,6 +381,13 @@ async function sendInChat() {
   if ((!text && !COMP.images.length && !COMP.files.length) || CV.sending) return;
   if (COMP.converting) return toast('One moment: a picture is still being prepared.');
   CV.sending = true;
+  // On screen at once: your message, and the line under it, while the chat starts up.
+  const images = imagesOut();
+  const local = { kind: 'user', text: withFiles(text), images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
+  CV.items.push(local);
+  box.value = ''; autosize(box);
+  if (!CV.busy) { CV.busy = true; CV.status = CV.key ? 'Sending' : 'Starting'; CV.startedAt = Date.now(); }
+  sfx('slide'); paintFeed(); paintStatus(); $('feed').scrollTop = $('feed').scrollHeight;
   try {
     if (!CV.key) {
       // First message: picked up here, always in your permission default (or what you chose for it
@@ -369,14 +402,19 @@ async function sendInChat() {
       if (COMP.effort) await api('/api/chat/model', { key: CV.key, effort: COMP.effort }).then(m => Object.assign(CV.info, m)).catch(() => {});
     }
     await uploadPending(CV.key);
-    const out = withFiles(text), images = imagesOut();
-    box.value = ''; autosize(box);
+    const out = withFiles(text); local.text = out;
     resetComposer(); paintAttachments();
     await api('/api/chat/send', { key: CV.key, text: out, ...(images.length ? { images } : {}) });
-    CV.busy = true; CV.startedAt = Date.now(); sfx('slide'); paintBar(); paintStatus();
-  } catch (err) { toast(err.message); } finally { CV.sending = false; }
+    CV.busy = true; if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
+  } catch (err) {
+    // Didn't go: the message comes back to the box, as you wrote it.
+    CV.items = CV.items.filter(x => x !== local);
+    if (!box.value) { box.value = text; autosize(box); }
+    CV.busy = false; CV.status = ''; paintFeed(); paintStatus();
+    toast(err.message);
+  } finally { CV.sending = false; }
 }
-const waitReady = () => new Promise(res => { const t0 = Date.now(); const tick = () => ((CV.info && CV.info.state && CV.info.state !== 'starting') || Date.now() - t0 > 45e3 ? res() : setTimeout(tick, 300)); tick(); });
+const waitReady = () => new Promise(res => { const t0 = Date.now(); const tick = () => ((CV.info && CV.info.state && CV.info.state !== 'starting') || Date.now() - t0 > 45e3 ? res() : setTimeout(tick, 100)); tick(); });
 
 function chatMenu(anchor) {
   const c = chatBy.get(CV.id);
