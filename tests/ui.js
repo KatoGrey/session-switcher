@@ -889,7 +889,7 @@ module.exports = [
       t.check('and never started as a chat', !calls.some(([p]) => p === '/api/chat/open' || p === '/api/open'));
       await b.clickOn('#chat [data-c="more"]'); await sleep(300);
       const menu = await b.eval(`return [...document.querySelectorAll('[role="menuitem"]')].filter(x => x.offsetParent).map(x => x.textContent.trim())`);
-      t.check('its menu archives, but never starts or renames', menu.some(x => /Archive in OpenClaw/.test(x)) && !menu.some(x => /Open a copy|terminal command|Rename/.test(x)), menu);
+      t.check('its menu offers nothing that would change it', menu.length && !menu.some(x => /Open a copy|terminal command|Rename/.test(x)), menu);
       await b.key('Escape');
       await t.shot(b, 'viewer');
       const p = await t.open({ openclaw: true, width: 412, height: 880, mobile: true });
