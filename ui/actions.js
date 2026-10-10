@@ -169,7 +169,7 @@ function chatItems(id) {
   const [s] = sessionById(id); if (!s) return [];
   if (isCodex(s)) return codexChatItems(s);
   if (isOpenClaw(s)) return [
-    { glyph: '❝', label: 'Read it here', hint: 'read-only; it carries on in OpenClaw', run: () => ChatUI.open({ sessionId: id }) },
+    { glyph: '❝', label: 'Read it here', hint: 'it carries on in OpenClaw; you can write to it here', run: () => ChatUI.open({ sessionId: id }) },
     '-', 
     { label: 'Refresh now', hint: 'reread the session list', run: () => loadSessions().then(renderAll) },
     { glyph: '🗄', label: 'Archive in OpenClaw', hint: 'keeps it out of the active list; nothing is deleted', run: async () => {

@@ -177,7 +177,7 @@ test('openclaw: injected scaffolding never becomes a title or a transcript line'
   assert.deepEqual(r.items.map(x => x.text), ['Please file the expense report.']);
   // Archive goes through the CLI and reports per-key results.
   const done = await oc.archive(['agent:main:cron:nightly']);
-  assert.ok(archived.includes("'agent:main:cron:nightly'"), 'the key reaches the CLI');
+  assert.ok(/--json .*agent:main:cron:nightly|agent:main:cron:nightly.*--json/.test(archived.replace(/'/g, '').replace(/"/g, '')) && archived.includes('agent:main:cron:nightly'), 'the key reaches the CLI, quoted for the platform');
   assert.deepEqual(done.results, [{ key: 'agent:main:cron:nightly', archived: true, error: null }]);
   const bad = await oc.archive([]);
   assert.equal(bad.ok, false);
@@ -189,8 +189,8 @@ test('openclaw: a follow-up turn is sent through the CLI and its reply comes bac
   const oc = createOpenClaw({ home: h, dataDir: tmp(), run: async (c, opts) => {
     if (c.startsWith('openclaw sessions')) return { code: 0, stdout: JSON.stringify({ sessions: SESSIONS }), stderr: '' };
     sent = c;
-    const f = /--message-file ('[^']+'|\S+)/.exec(c);
-    if (f) fileText = fs.readFileSync(f[1].replace(/^'|'$/g, ''), 'utf8');
+    const f = /--message-file ('[^']+'|"[^"]+"|\S+)/.exec(c);
+    if (f) fileText = fs.readFileSync(f[1].replace(/^'|'$/g, '').replace(/^"|"$/g, ''), 'utf8');
     return { code: 0, stdout: JSON.stringify({ result: { terminalReply: { disposition: 'visible', text: 'Done — archived nothing, answered everything.' } } }), stderr: '' };
   } });
   oc.sessions(0); await settle();
