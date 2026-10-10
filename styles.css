@@ -4,6 +4,47 @@
    action and work in progress, gilt only for "this needs you". */
 
 @font-face{font-family:"Cinzel";src:url(/fonts/cinzel.woff2) format("woff2");font-weight:400 900;font-display:swap}
+
+/* Theme Studio: art lives beside the words, with opaque reading surfaces in either mode. */
+.studio-entry{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:24px 0 16px;padding:22px;border:1px solid var(--seam-2);border-radius:12px;background:var(--vellum-2)}
+.studio-entry p{margin:6px 0 0;color:var(--ash);font:14px/1.5 var(--f-body)}
+.studio-dlg{width:min(1000px,calc(100vw - 28px));padding:0;max-height:90dvh}
+.studio-dlg .setup-body{max-height:calc(90dvh - 130px);overflow:auto;display:grid;gap:24px}
+.studio-dlg h2{margin:8px 0 12px;font:500 clamp(25px,3vw,36px)/1.15 var(--f-display);text-transform:none;letter-spacing:0}
+.studio-intro p,.studio-help{color:var(--ash);font:14px/1.6 var(--f-body);margin:6px 0}
+.studio-dlg h3{letter-spacing:0;text-transform:none}
+.studio-dlg form{display:grid;gap:16px;padding:22px;border:1px solid var(--seam-2);border-radius:12px;background:var(--vellum-2)}
+.studio-form-row{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.studio-dlg label{display:grid;gap:8px;font:600 14px/1.4 var(--f-body);color:var(--parch-2)}
+.studio-dlg :is(input,textarea,select){min-width:0;width:100%;box-sizing:border-box;border:1px solid var(--seam-2);border-radius:7px;padding:11px;color:var(--parch);background:var(--abyss);font:15px/1.5 var(--f-body)}
+.studio-dlg textarea{min-height:105px;resize:vertical}
+.studio-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.studio-actions>span{font:12px/1.4 var(--f-body);color:var(--ash)}
+.studio-dlg .btn{min-height:44px;white-space:normal}
+.studio-status{padding:0 28px 18px;margin:0;color:var(--parch-2);font:14px/1.5 var(--f-body)}
+.studio-status:empty{padding-bottom:10px}
+.studio-drafts{display:grid;gap:10px}
+.studio-drafts article{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:15px;padding:16px;border:1px solid var(--seam-2);border-radius:9px}
+.studio-drafts p,.studio-saved p{margin:5px 0 12px;color:var(--ash);font:13px/1.5 var(--f-body)}
+.studio-library,.studio-previews{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.studio-saved{overflow:hidden;border:1px solid var(--seam-2);border-radius:12px}.studio-saved>img{display:block;width:100%;aspect-ratio:3/2;object-fit:cover}.studio-saved>div{padding:18px}
+.studio-sample{min-width:0;overflow:hidden;border-radius:12px;background:var(--ss-bg);color:var(--ss-ink);font-family:var(--ss-body);border:1px solid var(--seam-2)}
+.studio-sample>img{width:100%;aspect-ratio:3/2;object-fit:cover;display:block}.studio-sample>div{padding:22px}
+.studio-sample h3{color:var(--ss-ink);font:500 24px/1.3 var(--ss-display);margin:10px 0}.studio-sample p{font:16px/1.6 var(--ss-body);color:var(--ss-ink)}
+.studio-sample small,.studio-mode{color:var(--ss-ash);font:12px/1.5 var(--ss-body)}
+.studio-sample-message{padding:16px;margin:18px 0;background:var(--ss-card);border-radius:8px}.studio-sample-message b{color:var(--ss-ink);font:600 14px/1.4 var(--ss-body)}.studio-sample-message p{margin:8px 0}
+[data-family="custom"] .hero:has(.studio-scene) .hero-in{padding-right:calc(min(50%,600px) + 24px)}
+[data-family="custom"] .hero-art.studio-scene{width:min(50%,600px);padding:0;gap:0;justify-content:flex-start}
+.studio-scene>img{width:100%;height:100%;object-fit:cover;display:block;mask-image:linear-gradient(90deg,transparent,#000 18%)}
+.studio-counts{position:absolute;bottom:14px;right:16px;display:flex;gap:24px;padding:12px 20px;border:1px solid var(--seam-2);border-radius:10px;background:var(--abyss);color:var(--ash);font:12px/1.3 var(--f-body)}
+.studio-counts span{display:grid;gap:3px;text-align:center}.studio-counts b{color:var(--parch);font:500 25px/1 var(--f-body)}
+[data-family="custom"] .hero-in{grid-template-columns:minmax(0,1fr)}
+[data-family="custom"] .hero .stamp{display:none}
+[data-family="custom"] .hero h1{font-size:clamp(28px,2.5vw,38px);line-height:1.12;text-transform:none}
+[data-family="custom"] .hero h1 em{font:500 20px/1.4 var(--f-body);color:var(--parch-2);letter-spacing:0;margin-top:12px}
+[data-family="custom"] .hero .eyebrow{font:500 11px/1.5 var(--f-label);letter-spacing:.12em}
+.lk-custom .sw{background:var(--sw-bg)}
+@media(max-width:700px){.studio-entry{align-items:flex-start;flex-direction:column}.studio-form-row,.studio-library,.studio-previews{grid-template-columns:1fr}.studio-dlg .setup-body{padding:18px}.studio-dlg form{padding:16px}.studio-dlg .setup-head{padding:18px}.studio-dlg h2{font-size:26px}[data-family="custom"] .hero:has(.studio-scene) .hero-in{padding-right:28px}[data-family="custom"] .hero-art.studio-scene{width:auto;height:auto;aspect-ratio:3/2;position:relative;margin:0 18px 18px}.studio-scene>img{mask-image:none}.studio-counts{gap:20px;bottom:10px;right:10px;padding:10px 16px}}
 @font-face{font-family:"Playfair Display";src:url(/fonts/playfair.woff2) format("woff2");font-weight:400 900;font-display:swap}
 @font-face{font-family:"Playfair Display";src:url(/fonts/playfair-italic.woff2) format("woff2");font-weight:400 900;font-style:italic;font-display:swap}
 @font-face{font-family:"JetBrains Mono";src:url(/fonts/jetbrains-mono.woff2) format("woff2");font-weight:100 800;font-display:swap}

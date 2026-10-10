@@ -14,7 +14,7 @@ const os = require('os');
 const path = require('path');
 const { launch, sleep } = require('./browser');
 const demo = require('./demo');
-const suites = [...require('./ui'), ...require('./project-art.ui')];
+const suites = [...require('./ui'), ...require('./project-art.ui'), ...require('./theme-studio.ui')];
 
 const APP = path.join(__dirname, '..');
 const only = process.argv.slice(2);

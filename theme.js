@@ -251,6 +251,38 @@
     }
   }
 
+  // Custom themes keep the same surface steps. Only their ink is nudged when a hue would make
+  // small labels difficult to read. The server and the browser use this exact same calculation.
+  const luminance = rgb => rgb.map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [.2126, .7152, .0722][i], 0);
+  const ratio = (a, b) => { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+  const READ_SURFACES = ['0a090c', '110e12', '17131a', '1a161d'];
+  const ACTION_BACKGROUNDS = ['8d3e37', '6c2e29', '9a463e', '78342e'];
+  function color(hex, t, light, contrast = false) {
+    const rgb = derive(hex, t, light, contrast);
+    if (t.family === 'custom' && ACTION_BACKGROUNDS.includes(hex)) {
+      for (let step = 0; step <= 100; step++) {
+        const corrected = rgb.map(v => Math.round(v * (1 - step / 100)));
+        if (ratio(corrected, [246, 236, 226]) >= 4.5) return corrected;
+      }
+    }
+    if (t.family !== 'custom' || ROLES[hex] !== 'ink') return rgb;
+    const target = ['ede6d9', 'e6dccb', 'e9e1d4', 'eadfce', 'cfc6b6'].includes(hex) ? 7 : 4.5;
+    const backgrounds = READ_SURFACES.map(c => derive(c, t, light, contrast));
+    for (let step = 0; step <= 100; step++) {
+      const corrected = rgb.map(v => Math.round(v + ((light ? 0 : 255) - v) * step / 100));
+      if (backgrounds.every(bg => ratio(corrected, bg) >= target)) return corrected;
+    }
+    return light ? [0, 0, 0] : [255, 255, 255];
+  }
+  function audit(t) {
+    return Object.fromEntries([false, true].map(light => [light ? 'light' : 'dark', {
+      faint: Math.min(...READ_SURFACES.map(bg => ratio(color('716a63', t, light), derive(bg, t, light, false)))),
+      body: Math.min(...READ_SURFACES.map(bg => ratio(color('ede6d9', t, light), derive(bg, t, light, false)))),
+      buttons: Math.min(...ACTION_BACKGROUNDS.map(bg => ratio(color(bg, t, light), [246, 236, 226]))),
+    }]));
+  }
+  if (typeof window === 'undefined') { module.exports = { audit, color, ratio }; return; }
+
   /* ---------- settings ---------- */
   const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: light)') : null;
   // Earlier names of the saga themes, so a saved choice still finds its theme.
@@ -270,7 +302,7 @@
     const original = t.id === 'crimson' && !light && !o.contrast;
     for (const c of COLORS) {
       if (original) st.removeProperty(`--c-${c}`);
-      else st.setProperty(`--c-${c}`, derive(c, t, light, o.contrast).join(' '));
+      else st.setProperty(`--c-${c}`, color(c, t, light, o.contrast).join(' '));
     }
     root.dataset.mode = light ? 'light' : 'dark';
     root.dataset.theme = t.id;
@@ -316,11 +348,17 @@
   function reset() { cur = { ...DEFAULTS }; try { localStorage.removeItem('look'); } catch { /* fine */ } apply(); }
   // A few colors of a theme, for its swatch in Setup.
   function swatch(id, light) {
-    const t = themeOf(id), c = hex => `rgb(${derive(hex, t, light, false).join(',')})`;
+    const t = themeOf(id), c = hex => `rgb(${color(hex, t, light, false).join(',')})`;
     return { bg: c('0a090c'), card: c('1a161d'), line: c('2c2632'), ink: c('ede6d9'), ash: c('9a928a'), accent: c('a5463f'), ember: c('cf8274'), gold: c('d9bf74'), codex: c('6f97d8') };
   }
   if (mq && mq.addEventListener) mq.addEventListener('change', () => { if (cur.mode === 'system') apply(); });
 
-  window.Look = { THEMES, DEFAULTS, get: () => ({ ...cur }), set, reset, apply, swatch, isLight, say, theme: () => themeOf(cur.theme) };
+  function custom(themes) {
+    for (let i = THEMES.length - 1; i >= 0; i--) if (THEMES[i].family === 'custom') THEMES.splice(i, 1);
+    THEMES.push(...themes);
+    if (cur.theme.startsWith('custom-') && !THEMES.some(t => t.id === cur.theme)) set({ theme: DEFAULTS.theme });
+    else apply();
+  }
+  window.Look = { THEMES, DEFAULTS, get: () => ({ ...cur }), set, reset, apply, swatch, isLight, say, custom, audit, color, theme: () => themeOf(cur.theme) };
   apply();
 })();

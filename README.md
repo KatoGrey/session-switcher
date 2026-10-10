@@ -396,6 +396,16 @@ Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in 
 
 Appearance is saved on each device, so your phone and your PC can look different.
 
+### Theme Studio: a world of your own
+
+Open **Setup → Appearance → Theme Studio**, name a world and describe the place you want to work in. Choose clear, storybook or rounded lettering, then **Review art brief in Codex**. Send the prepared brief in the chat to generate coordinated night and morning paintings and a palette drawn from them. This uses your normal Codex session and its image tools; no separate API key is needed. If image generation is unavailable in that session, the brief asks Codex to explain rather than make a placeholder.
+
+Return to Theme Studio and **Review** the finished draft. Both modes appear beside sample chat text before you choose **Save and use this world**. Small text is adjusted to at least 4.5:1 contrast, and body text to at least 7:1, against page and card surfaces in both modes. Controls keep their familiar wording. Paintings are compressed to WebP, with a 1600 × 1200 maximum, and have no continuous animation; live counts remain readable on a solid panel.
+
+Saved worlds are available to all paired devices, while each device chooses its own theme. A saved theme can be deleted from the Studio; devices using it return to Crimson when they receive the update. Drafts and original paintings stay in `theme-studio/jobs/`, and saved themes in `theme-studio/themes/`, under the app's data folder (`SWITCHER_DATA_DIR` when configured). Both are private, excluded from git and shared app copies, and their images require the app's authenticated route. An art brief opens in its own folder and can be resumed from the Studio.
+
+The sample **Lantern Tide** paintings were made with Codex's built-in image generation; their prompts are in `art/theme-studio-prompts.json`. The full-size sources stay local in `art/src/lantern-tide/`.
+
 ### Space saga themes
 
 Two more themes turn the hub into a command deck. Each has a light and a dark version, and Codex keeps its own color in both.

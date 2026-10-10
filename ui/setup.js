@@ -132,7 +132,9 @@ function renderLook() {
     <p class="d-h">Anime</p>
     <p class="lk-saga-note">Step into another world. Made for dark mode: each brings a painted scene in the hub that lights up with your chats, its own lettering, a living sky behind the hub, chimes and a few words of its own.</p>
     <div class="lk-themes" role="radiogroup" aria-label="Anime themes">${Look.THEMES.filter(t => t.family === 'anime').map(card).join('')}</div>
-    <p class="d-h">Text</p>
+    <div class="studio-entry"><div><b>Your worlds</b><p>Describe a place. Paint it with Codex. Make it your workspace.</p></div><button class="btn prime" data-studio-open>Theme Studio</button></div>
+    <div class="lk-themes" role="radiogroup" aria-label="Your themes">${Look.THEMES.filter(t => t.family === 'custom').map(card).join('')}</div>
+    <p class="d-h">Reading</p>
     <div class="lk-row"><label for="lkText"><b>Text size</b><small>Messages, documents and the message box</small></label>
       <div class="lk-range"><span class="a-sm" aria-hidden="true">A</span><input type="range" id="lkText" min="80" max="150" step="5" value="${o.text}" data-look="text"><span class="a-lg" aria-hidden="true">A</span><output id="lkTextV">${o.text}%</output></div></div>
     <div class="lk-row"><span><b>Reading font</b><small>Classic is the bookish serif; Modern and Clean are easier on small screens</small></span>

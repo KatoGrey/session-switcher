@@ -32,6 +32,7 @@ const raceLib = require('./lib/race');
 const pairsLib = require('./lib/pairs');
 const handover = require('./lib/handover');
 const restartLib = require('./lib/restart');
+const themeStudioLib = require('./lib/theme-studio');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -77,6 +78,7 @@ function save() {
 
 const sessions = createSessionStore({ root: path.join(config().mainConfigDir, 'projects'), dataDir: DATA_DIR, log });
 const projectInfo = projectsLib.createProjects({ dataDir: DATA_DIR, log });
+const themeStudio = themeStudioLib.createStudio(DATA_DIR);
 const chatPrefs = prefsLib.createChatPrefs({ dataDir: DATA_DIR, log });
 const openclaw = openclawLib.createOpenClaw({ log, run: sys.runCapture, found: async () => (await sys.whereIs('openclaw')).length > 0, dataDir: DATA_DIR });
 openclaw.onSessionsChanged(() => { forgetMerged(); broadcast('sessions'); });
@@ -273,6 +275,7 @@ function sessionsWithCodex() {
       return { ...p, sessions: list.sort((a, b) => b.updated - a.updated) };
     }) };
   }
+  value = { ...value, projects: value.projects.map(p => { const art = themeStudio.project(p.cwd); return art ? { ...p, name: `Theme Studio · ${art.name}` } : p; }) };
   mergedMemo = { at: Date.now(), value };
   return value;
 }
@@ -464,15 +467,16 @@ async function openChatInner(c, body) {
       if (mode === 'resume') { const live = chats.bySession(threadId); if (live) return attachedInfo(live); }
       if (mode === 'fork' && title) title = `${title} (copy)`;
     } else {
-      const p = projectAt(body.cwd) || raceCopyAt(body.cwd);
+      const p = projectAt(body.cwd) || raceCopyAt(body.cwd) || themeStudio.project(body.cwd);
       if (!p) throw fail(404, 'That folder isn’t in the list.');
       if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
       cwd = p.cwd;
     }
-    const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
+    const art = themeStudio.project(cwd);
+    const folder = art ? `Theme Studio · ${art.name}` : cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
     const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
     const model = [body.model, pref.model].find(m => m && modelFits(inst, m)) || null;
-    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || 'New Codex chat', folder });
+    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
     if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
     log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
     return { ...chat.info(), attached: false, remembered: !!pref.mode, companionThread: threadId && mode !== 'new' ? chatPrefs.companionOf(threadId) : null };
@@ -828,6 +832,14 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/phone') return send(res, 200, phone.status());
 
   if (route === 'GET /api/state') return send(res, 200, stateFor());
+  if (route === 'GET /api/themes') return send(res, 200, themeStudio.list());
+  if (route === 'GET /api/themes/job') return send(res, 200, themeStudio.job(url.searchParams.get('id')));
+  if (route === 'GET /api/themes/result') return send(res, 200, themeStudio.result(url.searchParams.get('id')));
+  if (route === 'GET /api/themes/art') {
+    const q = url.searchParams, art = themeStudio.asset(q.get('kind'), q.get('id'), q.get('mode'));
+    res.writeHead(200, { 'Content-Type': art.type, 'Cache-Control': q.get('kind') === 'themes' ? 'private, max-age=300' : 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return res.end(art.bytes);
+  }
   if (route === 'GET /api/sessions') return send(res, 200, { ...sessionsWithCodex(), running, live: chats.live() });
   if (route === 'GET /api/chat/history') {
     const id = url.searchParams.get('id'), q = url.searchParams;
@@ -930,11 +942,15 @@ async function handleApi(req, res, url, remote = false) {
 
   if (route === 'POST /api/chat/upload') return uploadFile(req, res, url);
   if (req.method !== 'POST') throw fail(404, 'Not found.');
-  const body = await readBody(req, url.pathname === '/api/chat/send' ? 40 * 1024 * 1024 : 65536);
+  const body = await readBody(req, url.pathname === '/api/chat/send' ? 40 * 1024 * 1024 : url.pathname === '/api/themes/save' ? 6 * 1024 * 1024 : 65536);
 
   if (url.pathname.startsWith('/api/chat/') && url.pathname !== '/api/chat/rename') return handleChat(req, res, url, body, c);
 
   switch (url.pathname) {
+    case '/api/themes/create': return send(res, 200, themeStudio.create(body));
+    case '/api/themes/save': { const theme = themeStudio.save(body); broadcast('themes'); return send(res, 200, { theme }); }
+    case '/api/themes/dismiss': themeStudio.dismiss(body.id); return send(res, 200, { ok: true });
+    case '/api/themes/delete': themeStudio.remove(body.id); broadcast('themes'); return send(res, 200, { ok: true });
     // Last time's open chats: reopened (each started again, as the account it ran as) or set aside.
     case '/api/reopen': {
       const list = toReopen();
@@ -1710,7 +1726,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
     if (req.method === 'GET' && url.pathname === '/api/version') return send(res, 200, { app: 'session-switcher', version: APP_VERSION, build: BUILD, pid: process.pid });
     if (url.pathname.startsWith('/api/')) {
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
-      const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media') && url.searchParams.get('token') === TOKEN;
+      const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media' || url.pathname === '/api/themes/art') && url.searchParams.get('token') === TOKEN;
       if (imageGet && url.pathname === '/api/media') return sendMedia(req, res, url);
       if (req.headers['x-switcher-token'] !== TOKEN && !imageGet) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
       return await handleApi(req, res, url, remote);

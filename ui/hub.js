@@ -161,6 +161,7 @@ function heroHtml() {
 // A saga theme's display in the hero, drawn from the same counts as the headline.
 function heroArt({ N, R, W, Q }) {
   const art = Look.theme().art;
+  if (art === 'painting' && window.ThemeStudio) return ThemeStudio.scene({ N, R, W, Q });
   const pad = n => String(n).padStart(2, '0');
   if (art === 'console') {
     // A bridge console: a wall of light panels, three readouts and a row of signal lamps (red: needs

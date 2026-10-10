@@ -229,6 +229,7 @@ function connectLive() {
   es.addEventListener('running', e => { try { S.running = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); renderNav(); });
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
   es.addEventListener('races', () => { loadRaces().catch(() => {}); });
+  es.addEventListener('themes', () => { if (window.ThemeStudio) ThemeStudio.refresh().catch(() => {}); });
   es.addEventListener('project-art', e => { try { const { cwd } = JSON.parse(e.data); if (window.ProjectArt) ProjectArt.refresh(cwd).catch(() => {}); } catch { /* invalid event */ } });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
   es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLive(); renderNav(); });

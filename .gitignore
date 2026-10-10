@@ -39,3 +39,4 @@ mobile/ios/**/xcuserdata/
 
 # The themes' paintings: full-size originals stay local; the app uses the WebP copies in art/
 art/src/
+theme-studio/
