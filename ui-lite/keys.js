@@ -87,6 +87,7 @@ function onKey(e) {
   if (/^[1-7]$/.test(e.key) && ids.length) { e.preventDefault(); keepCur.id = target.dataset.cur; return wrap(setChats)(ids, { stage: STAGES[Number(e.key) - 1].id }); }
   if (e.key === 's' && ids.length) { e.preventDefault(); return rowMenu(target, ids[0]); }
   if (e.key === 'w' && ids.length) { e.preventDefault(); return askWaiting(ids); }
+  if ((e.key === 'Backspace' || e.key === 'Delete') && target.dataset.idea) { e.preventDefault(); return wrap(saveIdeas)((S.lite.ideas || []).filter(i => i.id !== target.dataset.idea)); }
   if (e.key === 'e' && ids.length) { e.preventDefault(); return S.view === 'archived' ? wrap(unarchiveChats)(ids) : wrap(archiveChats)(ids); }
   const wrapEl = target.closest('.rowwrap');
   if ((e.key === 'a' || e.key === 'd') && wrapEl) { const b = wrapEl.querySelector(`[data-perm="${e.key === 'a' ? 'allow' : 'deny'}"]`); if (b) { e.preventDefault(); b.click(); } return undefined; }

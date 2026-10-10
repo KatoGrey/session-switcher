@@ -714,3 +714,9 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
   .pres:empty { display: none; }
   .pnote { grid-column: 2 / 5; }
 }
+.tile.idea { position: relative; cursor: grab; padding-right: 28px; }
+.tile-x { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 6px; color: var(--muted); font-size: 14px; line-height: 20px; text-align: center; opacity: 0; transition: opacity .12s; }
+.tile.idea:hover .tile-x, .tile.idea.cur .tile-x, .tile-x:focus-visible { opacity: 1; }
+.tile-x:hover { background: var(--hover); color: var(--fg); }
+@media (hover: none) { .tile-x { opacity: .7; } }
+[data-idea-drop].drop-hot { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
