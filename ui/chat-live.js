@@ -77,9 +77,10 @@ function relaySide(src) {
   const st = src === 'comp' ? (C.comp && !C.comp.ended ? C.comp.state : 'off') : C.state;
   const upNext = src === 'comp' && C.handoff && st !== 'busy';
   const status = (src === 'comp' ? C.comp && C.comp.status : C.status) || '';
-  const word = upNext ? 'Up next' : st === 'busy' && status ? status : RELAY_WORD[st] || 'Ready';
+  const done = st === 'ready' && C.justDone && C.justDone.src === src && Date.now() < C.justDone.until;
+  const word = upNext ? 'Up next' : st === 'busy' && status ? status : done ? 'Done' : RELAY_WORD[st] || 'Ready';
   const on = C.target === src || C.target === 'both';
-  return `<button type="button" class="cr-side ${prov}${st === 'busy' || st === 'starting' ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}${upNext ? ' next' : ''}${on ? ' on' : ''}" data-relay="${src}" aria-pressed="${on}" title="Write to ${PROV_NAME[prov]}"><span class="cr-dot" aria-hidden="true"></span><b>${PROV_NAME[prov]}</b><span class="cr-w">${esc(word)}</span></button>`;
+  return `<button type="button" class="cr-side ${prov}${st === 'busy' || st === 'starting' ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}${upNext ? ' next' : ''}${done ? ' done' : ''}${on ? ' on' : ''}" data-relay="${src}" aria-pressed="${on}" title="Write to ${PROV_NAME[prov]}"><span class="cr-dot" aria-hidden="true"></span><b>${PROV_NAME[prov]}</b><span class="cr-w">${esc(word)}</span></button>`;
 }
 function renderRelay() {
   const box = $c('cRelay'); if (!box) return;
@@ -87,9 +88,21 @@ function renderRelay() {
   box.hidden = !show;
   if (!show) { box.innerHTML = ''; return; }
   const compBusy = C.comp && !C.comp.ended && C.comp.state === 'busy';
-  const link = C.handoff ? 'flow' : compBusy && C.target === 'both' ? 'lit' : '';
+  const passing = C.passedAt && Date.now() - C.passedAt < 1300;
+  const link = C.handoff ? 'flow' : passing ? 'lit pass' : compBusy && C.target === 'both' ? 'lit' : '';
   const h = `${relaySide('main')}<span class="cr-link ${link}" aria-hidden="true"><i></i></span>${relaySide('comp')}`;
   if (box._h !== h) { box.innerHTML = h; box._h = h; }
+}
+// A reply landed: its side of the relay says Done for a moment, and the reply's last part glows once.
+function landed(src) {
+  if (!liveRender) return;
+  C.justDone = { src, until: Date.now() + 2600 };
+  renderRelay(); setTimeout(renderRelay, 2700);
+  if (!motionOk()) return;
+  const prov = provFor(src);
+  const turn = [...$c('cFeed').querySelectorAll('.turn')].filter(t => (t.dataset.prov || C.provider) === prov).pop();
+  const part = turn && [...turn.querySelectorAll('.part')].pop();
+  if (part) { part.classList.remove('landed'); void part.offsetWidth; part.classList.add('landed'); setTimeout(() => part.classList.remove('landed'), 1700); }
 }
 function setState(s) {
   C.state = s;
@@ -134,9 +147,13 @@ function handleEvent(ev, src) {
   const feed = $c('cFeed');
   const comp = src === 'comp';
   switch (ev.kind) {
-    case 'state':
-      if (comp) { C.comp.state = ev.state; if (ev.state !== 'busy') C.comp.status = ''; renderCrew(); syncSend(); break; }
-      setState(ev.state); if (ev.state !== 'busy') { $c('cStatus').textContent = ''; } renderCrew(); break;
+    case 'state': {
+      const was = comp ? C.comp.state : C.state;
+      if (comp) { C.comp.state = ev.state; if (ev.state !== 'busy') C.comp.status = ''; renderCrew(); syncSend(); }
+      else { setState(ev.state); if (ev.state !== 'busy') { $c('cStatus').textContent = ''; C.status = ''; } renderCrew(); }
+      if (was === 'busy' && ev.state === 'ready') landed(src);
+      break;
+    }
     case 'model': {
       C.mi[src] = ev;
       if (!comp) { C.model = modelLabel(ev); $c('cModel').textContent = C.model; }
@@ -162,7 +179,11 @@ function handleEvent(ev, src) {
     case 'undone': renderUndone(ev, src); break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
     // "Both": your message went to this one first; the other picks it up when it's done.
-    case 'handoff': C.handoff = ev.state === 'waiting' ? ev.to : null; if (ev.state === 'waiting') markBoth(ev.to); renderCrew(); break;
+    case 'handoff':
+      C.handoff = ev.state === 'waiting' ? ev.to : null;
+      if (ev.state === 'waiting') markBoth(ev.to);
+      if (ev.state === 'sent' && liveRender) { C.passedAt = Date.now(); setTimeout(renderRelay, 1400); }
+      renderCrew(); break;
     case 'stream_start': withStick(() => part(feed, ev.mid)); break;
     case 'delta':
       if (ev.thinking) { setStatus(src, 'Thinking…'); break; }
@@ -237,7 +258,7 @@ function addPermission(p, src = 'main') {
   if (box.querySelector(`[data-req="${CSS.escape(`${src}:${p.requestId}`)}"]`)) return;
   const card = document.createElement('div');
   const name = PROV_NAME[provFor(src)];
-  card.className = `perm ${provFor(src) === 'codex' ? 'codex' : ''}`;
+  card.className = `perm ${provFor(src) === 'codex' ? 'codex' : ''}${liveRender ? ' arrive' : ''}`;
   card.dataset.req = `${src}:${p.requestId}`;
   card._src = src;
   if (p.questions && p.questions.length) {
@@ -249,15 +270,19 @@ function addPermission(p, src = 'main') {
         <div class="perm-b"><button type="button" class="btn gilt" data-p="answer">Send answers</button><button type="button" class="btn" data-p="deny">Skip</button></div>`;
   } else {
     const v = p.view || {};
-    card.innerHTML = `<p class="perm-h">${name} wants to <b>${esc(verbFor(p))}</b>${v.summary && p.toolName !== 'Bash' ? `: <span class="perm-sum">${esc(v.summary)}</span>` : ''}</p>
+    // On a phone it reads as its own screen: whose project, the question, the exact command (with Copy),
+    // and the two answers in thumb reach, Always allow kept small beneath them.
+    const proj = typeof projectOf === 'function' ? projectOf({ cwd: C.info && C.info.cwd, folder: C.folder }) : null;
+    card.innerHTML = `<p class="perm-k">${proj ? crestHtml(proj, 22) : ''}<span>Needs your OK${C.folder ? ` · ${esc(C.folder)}` : ''}</span></p>
+        <p class="perm-h">${name} wants to <b>${esc(verbFor(p))}</b>${v.summary && p.toolName !== 'Bash' ? `: <span class="perm-sum">${esc(v.summary)}</span>` : ''}</p>
         ${p.title && p.title !== p.toolName ? `<p class="perm-r">${esc(p.title)}</p>` : ''}
         ${p.description ? `<p class="perm-r">${esc(p.description)}</p>` : ''}
         ${p.reason ? `<p class="perm-r">Why it’s asking: ${esc(p.reason)}</p>` : ''}
         ${p.blockedPath ? `<p class="perm-r">Outside your project: ${esc(p.blockedPath)}</p>` : ''}
-        <div class="perm-d">${toolDetail(v)}</div>
+        <div class="perm-d">${toolDetail(v)}${v.detailKind === 'command' && v.detail ? `<button type="button" class="ta perm-copy" data-copy="${esc(v.detail)}" title="Copy the command">Copy</button>` : ''}</div>
         <div class="perm-why" hidden><input type="text" class="why-t" placeholder="Optional: tell ${name} what to do instead" aria-label="What to do instead"></div>
         <div class="perm-b">
-          <button type="button" class="btn ${p.defaultToNo ? '' : 'gilt'}" data-p="allow">Allow</button>
+          <button type="button" class="btn ${p.defaultToNo ? '' : 'gilt'}" data-p="allow">${p.canAlways ? 'Allow once' : 'Allow'}</button>
           ${p.canAlways ? '<button type="button" class="btn" data-p="always" title="Don’t ask again for this kind of action in this project">Always allow</button>' : ''}
           <button type="button" class="btn ${p.defaultToNo ? 'gilt' : ''}" data-p="deny">Deny</button>
         </div>`;

@@ -964,6 +964,21 @@ module.exports = [
     },
   },
   {
+    name: 'moments',
+    // An approval arriving, a hand-over and a reply landing each get one brief motion, then it's still.
+    async run(t) {
+      const b = await t.open({ width: 1600, height: 900 });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(1800);
+      const ap = await b.eval(`handle({ kind: 'permission', requestId: 'm1', toolName: 'Bash', summary: 'Run the tests', detail: 'npm test' }); const c = document.querySelector('.perm[data-req="main:m1"]'); return { arrive: !!c && c.classList.contains('arrive'), anims: c ? c.getAnimations().map(a => a.animationName) : [] }`);
+      t.check('an approval rises in with one gold ping', ap.arrive && ap.anims.includes('perm-in') && ap.anims.includes('perm-ping'), ap);
+      const ho = await b.eval(`handle({ kind: 'handoff', to: 'codex', state: 'waiting' }); const flow = !!document.querySelector('.cr-link.flow'); handle({ kind: 'handoff', to: 'codex', state: 'sent' }); const pass = !!document.querySelector('.cr-link.pass'); await new Promise(r => setTimeout(r, 1600)); return { flow, pass, after: !!document.querySelector('.cr-link.pass') }`);
+      t.check('a hand-over: the line flows while it’s coming, a light runs along it once when it’s made', ho.flow && ho.pass && !ho.after, ho);
+      const done = await b.eval(`handle({ kind: 'state', state: 'busy' }); handle({ kind: 'state', state: 'ready' }); const side = document.querySelector('.cr-side.done'); const part = document.querySelector('.part.landed'); await new Promise(r => setTimeout(r, 2900)); return { side: side ? side.textContent : null, part: !!part, after: !!document.querySelector('.cr-side.done') }`);
+      t.check('a reply landing: “Done” for a moment on its side, and its last part glows once', done.side && /Done/.test(done.side) && done.part && !done.after, done);
+      t.check('replayed history doesn’t replay the moments', await b.eval(`liveRender = false; addPermission({ requestId: 'm2', toolName: 'Bash', summary: 'x' }); return !document.querySelector('.perm[data-req="main:m2"]').classList.contains('arrive')`));
+    },
+  },
+  {
     name: 'preview',
     // Beside the chat: a changed file's change, line by line, from a reply's bar or the ledger, and a
     // picture it made; closed with ✕.

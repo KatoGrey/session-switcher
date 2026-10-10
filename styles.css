@@ -686,6 +686,22 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .perm-why{margin-top:10px}
 .perm-why input,.other-t{width:100%;background:var(--abyss);border:1px solid var(--seam-2);border-radius:6px;padding:8px 11px;font:15px var(--f-body)}
 .perm-b{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.perm-k{display:none}
+.perm-d{position:relative}
+.perm-copy{position:absolute;top:6px;right:6px;opacity:.85}
+/* phones: an approval reads as its own screen, with its answers in thumb reach */
+@media (max-width:760px){
+  .perm{padding:14px 14px 12px;border-radius:14px}
+  .perm-k{display:flex;align-items:center;gap:8px;margin:0 0 8px;font:700 11px/1.2 var(--f-label);letter-spacing:.14em;text-transform:uppercase;color:var(--gilt)}
+  .perm.codex .perm-k{color:var(--codex-ink)}
+  .perm-h{font-size:18px;line-height:1.35}
+  .perm-d .t-in.cmd{font-size:14px;padding:12px 64px 12px 12px;white-space:pre-wrap;word-break:break-word}
+  .perm-b{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .perm-b .btn{min-height:50px;font-size:16.5px;border-radius:12px}
+  .perm-b [data-p="allow"]{order:1}
+  .perm-b [data-p="deny"]{order:2}
+  .perm-b [data-p="always"]{order:3;grid-column:1 / -1;min-height:36px;border:0;background:none;box-shadow:none;font-size:14.5px;color:var(--parch-2);text-decoration:underline;text-decoration-color:var(--seam-2);text-underline-offset:4px}
+}
 .q{border:0;margin:0 0 10px;padding:0}
 .q legend{font-weight:600;margin-bottom:8px;padding:0;font-size:16px}
 .q-h{display:inline-block;margin-right:8px;font:500 10px/1 var(--f-label);letter-spacing:.16em;text-transform:uppercase;color:var(--gilt);vertical-align:2px}
@@ -1876,6 +1892,25 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 /* in a reply's "Changed N files" bar, the names open the preview */
 .chg-fn{border:0;background:none;padding:0;color:var(--parch-2);font:inherit;text-decoration:underline;text-decoration-color:var(--seam-2);text-underline-offset:3px;cursor:pointer}
 .chg-fn:hover{color:var(--parch);text-decoration-color:var(--gilt)}
+
+/* ---------- moments: an approval arriving, a hand-over, a reply landing (once each, then still) ---------- */
+.motion .perm.arrive{animation:perm-in .45s cubic-bezier(.2,.8,.2,1) both,perm-ping 1.6s ease-out .4s 1}
+.motion .perm.codex.arrive{animation-name:perm-in,perm-ping-cx}
+@keyframes perm-in{from{opacity:0;transform:translateY(14px) scale(.985)}}
+@keyframes perm-ping{0%{box-shadow:0 0 0 0 rgb(var(--c-d9bf74) / .55)}100%{box-shadow:0 0 0 16px rgb(var(--c-d9bf74) / 0)}}
+@keyframes perm-ping-cx{0%{box-shadow:0 0 0 0 rgb(var(--c-6f97d8) / .55)}100%{box-shadow:0 0 0 16px rgb(var(--c-6f97d8) / 0)}}
+.motion .handover.fresh .ho-arrow{display:inline-block;animation:ho-in .6s cubic-bezier(.2,.8,.2,1) .1s both}
+@keyframes ho-in{from{opacity:0;transform:translateX(-18px)}}
+.part.landed{border-radius:10px}
+.motion .part.landed{animation:landed 1.6s ease-out}
+@keyframes landed{0%{background:rgb(var(--c-7fb79a) / 0)}18%{background:rgb(var(--c-7fb79a) / .09)}100%{background:rgb(var(--c-7fb79a) / 0)}}
+.cr-side.done .cr-w{color:rgb(var(--c-7fb79a))}
+.cr-side.done .cr-dot{background:rgb(var(--c-7fb79a))}
+.motion .cr-side.done{animation:cr-done .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes cr-done{40%{transform:scale(1.05)}}
+.cr-link.pass i{position:absolute;inset:-2px 0;border-radius:3px;background:linear-gradient(90deg,transparent,rgb(255 255 255 / .95),transparent) 0 0/30% 100% no-repeat;opacity:0}
+.motion .cr-link.pass i{animation:cr-pass 1s cubic-bezier(.4,0,.2,1) both}
+@keyframes cr-pass{0%{opacity:1;background-position:-40% 0}100%{opacity:1;background-position:140% 0}}
 
 /* ---------- welcome back ---------- */
 .welcome{position:relative;display:flex;align-items:center;gap:18px 26px;flex-wrap:wrap;margin:0 0 18px;padding:16px 18px 16px 22px;border:1px solid rgb(var(--c-d9bf74) / .35);border-radius:var(--radius);
