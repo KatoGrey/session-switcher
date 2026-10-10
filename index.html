@@ -48,13 +48,14 @@
 </header>
 
 <div class="shell">
+  <!-- Inside .shell on purpose: .shell is its own layer (z-index:1), so a backdrop outside it would cover the sidebar too. -->
+  <div id="navBack" class="nav-back" aria-hidden="true"></div>
   <nav class="nav" id="nav" aria-label="Views and folders"></nav>
   <main class="page" id="page"></main>
 </div>
 
 <aside id="drawer" class="drawer" hidden aria-label="Chat details" tabindex="-1"></aside>
 <div id="menuBack" class="menu-back" hidden></div>
-<div id="navBack" class="nav-back" aria-hidden="true"></div>
 <div id="menu" class="menu" role="menu" hidden></div>
 
 <section id="chat" class="chat" hidden aria-labelledby="cTitle">

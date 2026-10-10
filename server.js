@@ -19,6 +19,7 @@ const filesLib = require('./lib/files');
 const codexLib = require('./lib/codex');
 const openclawLib = require('./lib/openclaw');
 const codexHomes = require('./lib/codexhomes');
+const desktop = require('./lib/desktop');
 const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
@@ -274,8 +275,7 @@ function mergeSessions() {
   const cx = codexSessions();
   const oc = openclawSessions();
   const extra = projectInfo.added();
-  if (!cx.length && !oc.length && !extra.length) return base;
-  const projects = base.projects.map(p => ({ ...p, sessions: p.sessions.slice() }));
+  let projects = base.projects.map(p => ({ ...p, sessions: p.sessions.slice() }));
   const byCwd = new Map(projects.map(p => [normCwd(p.cwd), p]));
   for (const t of [...cx, ...oc]) {
     if (!t.cwd) continue;
@@ -292,9 +292,44 @@ function mergeSessions() {
     const np = { cwd: x.cwd, name: path.basename(x.cwd.replace(/[\\/]+$/, '')) || x.cwd, exists: x.exists, notes: 0, sessions: [], updated: x.created || 0, added: true };
     byCwd.set(normCwd(x.cwd), np); projects.push(np);
   }
+  projects = applyDesktop(projects, byCwd);
   for (const p of projects) { p.sessions.sort((a, b) => b.updated - a.updated); p.updated = p.sessions.length ? p.sessions[0].updated : (p.updated || 0); }
   projects.sort((a, b) => b.updated - a.updated);
   return { ...base, projects };
+}
+// Chats from the Claude desktop app keep the title you see there (unless you renamed them here),
+// and chats that ran in a worktree (<project>/.claude/worktrees/<name>) are listed under their
+// project, the way the desktop app lists them. Resuming still runs them in their own folder:
+// /api/open and /api/chat/open find a chat through sessions.find, which keeps its real folder.
+function applyDesktop(projects, byCwd) {
+  const projectFor = cwd => {
+    let p = byCwd.get(normCwd(cwd));
+    if (!p) {
+      p = { cwd, name: path.basename(String(cwd).replace(/[\\/]+$/, '')) || cwd, exists: fs.existsSync(cwd), notes: 0, sessions: [], updated: 0 };
+      byCwd.set(normCwd(cwd), p); projects.push(p);
+    }
+    return p;
+  };
+  // A deleted Codex worktree only has its folder's name left: it goes to the one project of that name.
+  const named = new Map();
+  for (const p of projects) if (!desktop.isWorktree(p.cwd)) { const k = path.basename(String(p.cwd).replace(/[\\/]+$/, '')); named.set(k, named.has(k) ? false : p.cwd); }
+  const projectNamed = n => named.get(n) || null;
+  for (const p of projects.slice()) {
+    const owner = desktop.worktreeOwner(p.cwd, projectNamed);
+    const keep = [];
+    for (const s of p.sessions) {
+      const d = s.provider === 'codex' ? null : desktop.get(s.id);
+      if (d) {
+        if (d.title && !s.renamed) s.title = d.title;
+        s.desktop = { archived: d.archived, parent: d.parentCli || null };
+      }
+      const home = (d && d.originCwd && normCwd(d.originCwd) !== normCwd(p.cwd) && !/scratch-workspaces/.test(d.originCwd) ? d.originCwd : null) || owner;
+      if (home && normCwd(home) !== normCwd(p.cwd)) projectFor(home).sessions.push({ ...s, ranIn: p.cwd, folderExists: p.exists });
+      else keep.push(s);
+    }
+    p.sessions = keep;
+  }
+  return projects.filter(p => p.sessions.length || p.added || !desktop.worktreeOwner(p.cwd, projectNamed));
 }
 // A folder in the list (Claude Code, Codex, or created here), by its path.
 function projectAt(cwd) {
@@ -1463,7 +1498,8 @@ const COMMANDER_DIR = path.join(DATA_DIR, 'commander');
 const MCP_SCRIPT = path.join(APP_DIR, 'lib', 'commander-mcp.js');
 const SAFE_ARG = /^[\w.:=\/-]+$/;
 const READ_TOOLS = ['mcp__switcher__list_sessions', 'mcp__switcher__read_session'];
-const orgView = () => { const v = organize.view(); v.commander.cwd = COMMANDER_DIR; return v; };
+// Sub-sessions you made here, plus the ones the Claude desktop app knows about (its own win).
+const orgView = () => { const v = organize.view(); v.parents = { ...desktop.parents(), ...v.parents }; v.commander.cwd = COMMANDER_DIR; return v; };
 const isCommanderId = id => !!id && String(organize.commander().sessionId || '').toLowerCase() === String(id).toLowerCase();
 function commanderLive() {
   for (const ch of chats.chats.values()) if (ch.isCommander && ch.state !== 'ended') return ch;

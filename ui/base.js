@@ -504,3 +504,24 @@ function flip(lists, mutate) {
     g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 200, easing: 'ease-in' }).finished.then(() => g.remove(), () => g.remove());
   }
 }
+
+// Any window (a <dialog>) closes, as Cancel, when you click outside it: on its dimmed backdrop.
+// Only when the press started outside too, so dragging out of a text box while selecting
+// doesn't close it. Windows that must stay put can opt out with data-stay.
+(() => {
+  let downOutside = null;
+  const outside = (d, e) => {
+    const r = d.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
+  document.addEventListener('pointerdown', e => {
+    const d = e.target instanceof HTMLDialogElement ? e.target : null;
+    downOutside = d && d.open && outside(d, e) ? d : null;
+  }, true);
+  document.addEventListener('click', e => {
+    const d = e.target instanceof HTMLDialogElement ? e.target : null;
+    const was = downOutside; downOutside = null;
+    if (!d || d !== was || !d.open || d.hasAttribute('data-stay') || !outside(d, e) || e.defaultPrevented) return;
+    d.close('cancel');
+  });
+})();
