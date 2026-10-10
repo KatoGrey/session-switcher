@@ -49,14 +49,39 @@ async function api(p, body) {
 }
 const wrap = fn => async (...a) => { try { return await fn(...a); } catch (err) { toast(err.message); return undefined; } };
 
-let loading = null;
+// Whole state (projects, chats, lite.json) only when chats or lite.json change; just the live list
+// (what's running or waiting on you) on every live event. Nothing redraws unless something changed.
+let loading = null, stateSig = '';
 function loadState() {
   if (loading) return loading;
-  loading = api('/api/lite/state').then(j => {
-    Object.assign(S, { lite: j.lite, projects: j.projects, chats: j.chats, live: j.live, routines: j.routines, now: j.now, appPermissions: j.appPermissions, permissionModes: j.permissionModes, loaded: true });
+  loading = fetch('/api/lite/state', { headers: { 'X-Switcher-Token': TOKEN } }).then(async r => {
+    if (r.status === 403) { location.reload(); return false; }
+    const text = await r.text();
+    if (!r.ok) throw new Error((JSON.parse(text || '{}').error) || r.statusText);
+    const j = JSON.parse(text);
+    const sig = text.replace(/"now":\d+/, '');
+    const changed = sig !== stateSig;
+    stateSig = sig;
+    Object.assign(S, { lite: j.lite, projects: j.projects, chats: j.chats, routines: j.routines, now: j.now, appPermissions: j.appPermissions, permissionModes: j.permissionModes, loaded: true });
+    setLive(j.live);
     index();
+    return changed;
   }).finally(() => { loading = null; });
   return loading;
+}
+let liveSig = '';
+function setLive(list) {
+  const sig = JSON.stringify(list);
+  if (sig === liveSig) return false;
+  const before = S.live;
+  liveSig = sig; S.live = list; index();
+  if (typeof onLiveChange === 'function') onLiveChange(before, list);
+  return true;
+}
+async function loadLive() {
+  const j = await api('/api/lite/live');
+  S.now = j.now;
+  if (setLive(j.live)) renderLive();
 }
 let plansLoading = null;
 function loadPlans(fresh = false) {
@@ -65,21 +90,28 @@ function loadPlans(fresh = false) {
   return plansLoading;
 }
 
-// Live updates: the full app's own event stream. Anything that changes chats, usage or lite.json
-// reloads the matching data (gently: at most every second or so).
-let reloadTimer = null, plansTimer = null;
-function soon(fn, which) {
-  if (which === 'plans') { clearTimeout(plansTimer); plansTimer = setTimeout(() => fn().then(render).catch(() => {}), 1500); return; }
-  clearTimeout(reloadTimer); reloadTimer = setTimeout(() => fn().then(render).catch(() => {}), 700);
-}
+// Live updates come over the full app's own event stream.
+const timers = {};
+const later = (name, ms, fn) => { clearTimeout(timers[name]); timers[name] = setTimeout(() => fn().catch(() => {}), ms); };
 function connect() {
   const es = new EventSource(`/api/events?token=${TOKEN}`);
   es.onopen = () => { S.connected = true; renderConn(); };
   es.onerror = () => { S.connected = false; renderConn(); };
-  for (const ev of ['sessions', 'live', 'activity', 'running', 'lite', 'organize', 'routines']) es.addEventListener(ev, () => soon(loadState));
-  for (const ev of ['usage', 'accounts']) es.addEventListener(ev, () => soon(() => loadPlans(false), 'plans'));
-  // Reply times and "how long ago" move on their own.
-  setInterval(() => { S.now = Date.now(); if (!document.hidden && !activeTyping()) render(); }, 30e3);
+  for (const ev of ['live', 'activity', 'running']) es.addEventListener(ev, () => later('live', 350, loadLive));
+  for (const ev of ['sessions', 'lite', 'organize', 'routines']) es.addEventListener(ev, () => later('state', 1200, async () => { if (await loadState()) renderWhenIdle(); }));
+  for (const ev of ['usage', 'accounts']) es.addEventListener(ev, () => later('plans', 1500, async () => { await loadPlans(false); renderPlansOnly(); }));
+  // "How long ago" moves on its own; only the live parts redraw for it.
+  setInterval(() => { S.now = Date.now(); if (!document.hidden) renderLive(); }, 30e3);
+}
+// Background changes never redraw under your pointer: they wait until you've been still a moment
+// and no menu or dialog is open.
+let touchAt = 0;
+for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel']) addEventListener(ev, () => { touchAt = Date.now(); }, { passive: true, capture: true });
+function renderWhenIdle() {
+  clearTimeout(renderWhenIdle.t);
+  const busy = Date.now() - touchAt < 1500 || $('popRoot').innerHTML || $('modalRoot').innerHTML || $('palRoot').innerHTML || drag;
+  if (busy) { renderWhenIdle.t = setTimeout(renderWhenIdle, 700); return; }
+  render();
 }
 const activeTyping = () => { const a = document.activeElement; return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && a.value; };
 function renderConn() { const c = $('conn'); c.classList.toggle('on', S.connected); c.title = S.connected ? 'Live: updates as chats move' : 'Not connected to your Mac'; }
@@ -138,13 +170,17 @@ const IC = {
   history: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.6h2.6M8 5v3.2l2 1.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   box: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12v3H2zM3 6.5v6h10v-6M6.5 9h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
   spark: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6Z" fill="currentColor"/></svg>',
+  image: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.3" r="1.2" fill="currentColor"/><path d="M2.5 12l3.8-3.6 2.6 2.4 2-1.8 2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
+  broom: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.8 7.6 7.4M4 8.2l5.6 2.6-1.5 3.4c-1.8.4-4.3-.5-5.9-2.4Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>',
   flag: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 14.5V2M3.5 2.5h8.5l-2 3 2 3H3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
 };
 
 /* ---------- opening a chat in the full app's chat window ---------- */
-function openChat(id) {
+// Inside Lite by default; { full: true } opens the full app's chat window (images, files, diffs).
+function openChat(id, { full = false } = {}) {
   if (!id) return;
   markSeen(id);
+  if (!full) { go('chat', { chat: id }); return; }
   const url = `/?chat=${encodeURIComponent(id)}&solo=1`;
   if (REMOTE || matchMedia('(max-width: 760px)').matches) { location.href = url; return; }
   const w = window.open(url, `ss-chat-${id}`, 'popup=yes,width=980,height=1040');
@@ -192,11 +228,11 @@ async function setChats(ids, patch, label) {
   const prev = ids.map(id => { const c = chatBy.get(id) || {}; return { id, stage: c.guessed ? null : c.stage, waitingOn: c.waitingOn || '' }; });
   await api('/api/lite/chats', { ids, patch });
   // Show it straight away; the server's own list follows.
-  for (const id of ids) { const c = chatBy.get(id); if (c && patch.stage !== undefined) { c.stage = patch.stage; c.guessed = false; } if (c && patch.waitingOn !== undefined) c.waitingOn = patch.waitingOn || null; }
-  S.sel.clear(); render();
+  for (const id of ids) { const c = chatBy.get(id); if (c && patch.stage !== undefined) { c.stage = patch.stage; c.guessed = false; } if (c && patch.waitingOn !== undefined) c.waitingOn = patch.waitingOn || null; if (c && patch.note !== undefined) c.note = patch.note || null; }
+  S.sel.clear(); sfx('slide'); render();
   toast(label || `${ids.length === 1 ? 'Moved 1 chat' : `Moved ${ids.length} chats`}${patch.stage ? ` to ${stageById(patch.stage).name}` : ''}`, async () => {
     for (const p of prev) await api('/api/lite/chats', { ids: [p.id], patch: { stage: p.stage, waitingOn: p.waitingOn } });
-    await loadState(); render();
+    sfx('undo'); await loadState(); render();
   });
 }
 async function setLook(patch) {
@@ -212,4 +248,42 @@ function applyLook() {
   const look = S.lite ? S.lite.look : { skin: local.get('skin', 'plain'), mode: local.get('mode', 'system') };
   root.dataset.skin = look.skin;
   if (look.mode === 'system') delete root.dataset.theme; else root.dataset.theme = look.mode;
+}
+
+/* ---------- archive (with a record, so Bring back puts it where it was) ---------- */
+const recordOf = c => ({ title: c.title, project: c.project, stage: c.guessed ? undefined : c.stage, model: c.model || undefined, branch: c.branch || undefined, worktree: c.worktree || undefined, provider: c.provider });
+async function archiveChats(ids) {
+  const records = Object.fromEntries(ids.map(id => [id, recordOf(chatBy.get(id) || {})]));
+  await api('/api/lite/archive', { chats: ids, records });
+  for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = true; }
+  S.sel.clear(); sfx('shove'); render();
+  toast(`Archived ${ids.length === 1 ? '1 chat' : `${ids.length} chats`}`, async () => { await api('/api/lite/archive', { chats: ids, on: false }); for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = false; } sfx('undo'); render(); });
+}
+async function unarchiveChats(ids) {
+  await api('/api/lite/archive', { chats: ids, on: false });
+  for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = false; }
+  sfx('slide'); await loadState(); render();
+  toast(`Brought back ${ids.length === 1 ? '1 chat' : `${ids.length} chats`}`);
+}
+async function archiveProject(k, on = true) {
+  await api('/api/lite/archive', { projects: [k], on });
+  const p = projBy.get(k); if (p) p.archived = on;
+  if (on && S.view === 'project' && S.project === k) go('home');
+  sfx(on ? 'shove' : 'slide'); render();
+  if (on) toast(`Archived ${p ? p.name : 'the project'}`, () => archiveProject(k, false));
+}
+// Waiting on someone: who, and an optional note. A reminder comes after two days.
+function askWaiting(ids) {
+  const c = chatBy.get(ids[0]) || {};
+  const root = $('modalRoot');
+  root.innerHTML = `<div class="modal-back"><form class="modal" id="wForm"><h3>Waiting on…</h3><p>${ids.length > 1 ? `${ids.length} chats` : esc(c.title || '')}. A reminder comes after two days.</p>
+    <input name="who" class="field" placeholder="Who (CQA, a dev, legal…)" value="${esc(c.waitingOn || '')}" aria-label="Who">
+    <input name="note" class="field" placeholder="Note (optional): what you’re waiting for" value="${esc(c.note || '')}" aria-label="Note">
+    <div class="acts"><button class="btn" type="button" data-m="no">Cancel</button><button class="btn prime" type="submit">Set waiting</button></div></form></div>`;
+  const f = root.querySelector('#wForm');
+  const close = () => { root.innerHTML = ''; };
+  root.querySelector('[data-m="no"]').onclick = close;
+  f.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });
+  f.onsubmit = wrap(async e => { e.preventDefault(); close(); await setChats(ids, { stage: 'waiting', waitingOn: f.who.value.trim(), note: f.note.value.trim() }, `Waiting on ${f.who.value.trim() || 'someone'}. A reminder comes after two days.`); });
+  f.who.focus(); f.who.select();
 }

@@ -9,7 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="Switcher">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Switcher Lite</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6Z' fill='%233c6b52'/%3E%3C/svg%3E">
+<link rel="manifest" href="/lite.webmanifest">
+<link id="favicon" rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6Z' fill='%233c6b52'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/ui-lite/lite.css">
 <script>window.TOKEN = '__TOKEN__'; window.REMOTE = __REMOTE__;</script>
 </head>
@@ -29,7 +30,8 @@
         <span class="bar"><i id="chipBar" style="width:0%"></i></span>
       </button>
       <div class="foot-row">
-        <button class="nav-i" id="lookBtn" aria-haspopup="menu"><span class="lbl" style="text-align:center">Appearance</span></button>
+        <button class="nav-i" id="lookBtn" aria-haspopup="menu"><span class="lbl" style="text-align:center">Look</span></button>
+        <button class="nav-i" data-go="alerts"><span class="lbl" style="text-align:center">Alerts</span></button>
         <a class="nav-i" id="fullBtn" href="/"><span class="lbl" style="text-align:center">Full app</span></a>
       </div>
     </div>
@@ -39,13 +41,16 @@
 <div id="popRoot"></div>
 <div id="selRoot"></div>
 <div id="modalRoot"></div>
+<div id="palRoot"></div>
 <div id="toastRoot" role="status" aria-live="polite"></div>
 <script src="/ui-lite/core.js"></script>
+<script src="/ui-lite/sfx.js"></script>
 <script src="/ui-lite/plans.js"></script>
 <script src="/ui-lite/now.js"></script>
+<script src="/ui-lite/chat.js"></script>
 <script src="/ui-lite/hack.js"></script>
 <script src="/ui-lite/pages.js"></script>
-<script src="/ui-lite/newchat.js"></script>
+<script src="/ui-lite/keys.js"></script>
 <script src="/ui-lite/app.js"></script>
 </body>
 </html>

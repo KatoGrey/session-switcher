@@ -12,15 +12,15 @@ const idOf = x => x.sessionId || x.key;
 
 function needsRow(x) {
   const id = idOf(x);
-  const head = `<div class="row" role="button" tabindex="0" data-open="${esc(x.sessionId || '')}"><span class="dot needs-dot" title="Needs you"></span>
+  const head = `<div class="row" role="button" tabindex="-1" data-open="${esc(x.sessionId || '')}" data-cur="n:${esc(id)}"><span class="dot needs-dot" title="Needs you"></span>
     <span class="t"><b>${esc(titleOf(x))}</b><small>${esc(whereOf(x))}${x.source !== 'app' ? ' · in another app' : ''}</small></span><span class="side-tags"></span><span class="when">${x.finishedAt ? ago(x.finishedAt) : ''}</span>
     <button class="iconbtn rmenu" data-dismiss="${esc(id)}" aria-label="Not now" title="Not now">×</button></div>`;
   let ask;
   const p = (x.pending || [])[0];
   if (p && p.question) ask = `<span class="q">Asks you a question${x.pending.length > 1 ? ` (and ${x.pending.length - 1} more)` : ''}.</span><button class="btn prime" data-open="${esc(x.sessionId || '')}">Open to answer</button>`;
-  else if (p && x.key) ask = `<code>${esc(p.detail || p.summary || p.toolName)}</code><button class="btn prime" data-perm="allow" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Allow</button>${p.canAlways ? `<button class="btn" data-perm="always" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Always allow</button>` : ''}<button class="btn" data-perm="deny" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Deny</button>`;
+  else if (p && x.key) ask = `<code>${esc(p.detail || p.summary || p.toolName)}</code><button class="btn prime" data-perm="allow" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Allow <kbd>a</kbd></button>${p.canAlways ? `<button class="btn" data-perm="always" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Always allow</button>` : ''}<button class="btn" data-perm="deny" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Deny <kbd>d</kbd></button>`;
   else if (p) ask = `<span class="q">Wants to use ${esc(p.toolName)}. It’s running in another app, so answer it there.</span>`;
-  else if (x.key && x.source === 'app') ask = `<span class="q">${esc(x.lastText || 'Replied.')}</span><input data-qr="${esc(x.key)}" data-id="${esc(id)}" placeholder="Reply without opening…" aria-label="Quick reply"><button class="btn" data-send="${esc(x.key)}">Send</button>`;
+  else if (x.key && x.source === 'app') ask = `<span class="q">${esc(x.lastText || 'Replied.')}</span><input data-qr="${esc(x.key)}" data-id="${esc(id)}" placeholder="Reply without opening… (r)" aria-label="Quick reply"><button class="btn" data-send="${esc(x.key)}">Send</button>`;
   else ask = `<span class="q">${esc(x.lastText || 'Replied.')}</span><button class="btn" data-open="${esc(x.sessionId || '')}">Open</button>`;
   return `<div class="rowwrap">${head}<div class="ask">${ask}</div></div>`;
 }
@@ -29,13 +29,13 @@ function runRow(x) {
   // mcp__Claude_Browser__browser_batch reads better as "Claude Browser: browser batch".
   const tool = String(x.tool || 'Working').replace(/^mcp__([^_]+(?:_[^_]+)*)__(.+)$/, (m, a, b) => `${a.replace(/_/g, ' ')}: ${b.replace(/_/g, ' ')}`);
   const step = x.phase === 'tool' ? `${tool}${x.detail ? ` · ${x.detail}` : ''}` : x.phase === 'writing' ? 'Writing' : x.phase === 'starting' ? 'Starting' : 'Thinking';
-  return `<div class="row" role="button" tabindex="0" data-open="${esc(x.sessionId || '')}"><span class="live-dot"></span><span class="t"><b>${esc(titleOf(x))}</b><small>${esc(step)} · ${esc(whereOf(x))}${x.accountName ? ` · <span class="acct">${esc(x.accountName)}</span>` : ''}</small></span><span class="side-tags"></span><span class="when">${x.turnStartedAt ? since(x.turnStartedAt) : ''}</span><span></span></div>`;
+  return `<div class="row" role="button" tabindex="-1" data-open="${esc(x.sessionId || '')}" data-cur="r:${esc(idOf(x))}"><span class="live-dot"></span><span class="t"><b>${esc(titleOf(x))}</b><small>${esc(step)} · ${esc(whereOf(x))}${x.accountName ? ` · <span class="acct">${esc(x.accountName)}</span>` : ''}</small></span><span class="side-tags"></span><span class="when">${x.turnStartedAt ? since(x.turnStartedAt) : ''}</span><span></span></div>`;
 }
 
 function waitRow(c) {
   const p = projOf(c);
   const due = c.remindAt && ms(c.remindAt) < S.now;
-  return `<div class="row" role="button" tabindex="0" data-chat="${esc(c.id)}"><span>${due ? '<span class="dot needs-dot" title="Time to check on it"></span>' : ''}</span>
+  return `<div class="row" role="button" tabindex="-1" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}"><span>${due ? '<span class="dot needs-dot" title="Time to check on it"></span>' : ''}</span>
     <span class="t"><b>${esc(c.title)}</b><small>${esc(c.note || `${p.name}${p.bucket ? ` · ${bucketName(p.bucket)}` : ''}`)}${due ? ' · two days, time to check' : ''}</small></span>
     <span class="side-tags">${c.waitingOn ? `<span class="tag wait-tag">${esc(c.waitingOn)}</span>` : ''}</span><span class="when">${ago(c.updated)}</span>
     <button class="iconbtn rmenu" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" aria-label="Move or change">${IC.dots}</button></div>`;
@@ -52,27 +52,35 @@ function comingUp() {
   return S.routines.filter(r => r.enabled).sort((a, b) => (a.nextAt || Infinity) - (b.nextAt || Infinity)).slice(0, 6);
 }
 
+const needList = () => S.live.filter(needsLive).sort((a, b) => Number(asking(b)) - Number(asking(a)) || (b.finishedAt || 0) - (a.finishedAt || 0));
+const runList = () => S.live.filter(x => x.working && !asking(x)).sort((a, b) => (a.turnStartedAt || 0) - (b.turnStartedAt || 0));
+// The part of Now that moves with every live event; redrawn on its own.
+function nowLiveHtml() {
+  const need = needList(), run = runList();
+  return `<section class="section"><div class="sec-h"><h2>${L('Needs you')}</h2><span class="n">${need.length}</span></div>
+      <div class="rows">${need.map(needsRow).join('') || '<p class="empty-note all-clear">All clear. Nothing needs you.</p>'}</div></section>
+    <section class="section"><div class="sec-h"><h2>${L('Running')}</h2><span class="n">${run.length}</span></div>
+      <div class="rows">${run.map(runRow).join('') || '<p class="empty-note">Nothing is running.</p>'}</div></section>`;
+}
+const leadHtml = () => { const w = allChats().filter(c => stageOf(c) === 'waiting').length; return `${word(needList().length, 'needs you', 'need you')}, ${word(runList().length, 'running', 'running')}, ${word(w, 'waiting on someone', 'waiting on others')}.`; };
+function plansBoxHtml() {
+  const nPlans = plans().filter(p => !p.unlimited).length;
+  return `<div class="sec-h"><h2>This week</h2><span class="n">${nPlans} plans${plans().some(p => p.unlimited) ? ' + Ollama' : ''} · soonest reset first</span><button class="hint" data-refreshplans="1">${S.plansRefreshing ? 'Checking…' : 'Check now'}</button></div>
+      ${S.plans ? orderHtml() + `<div class="plans">${[...plans()].sort((a, b) => (a.broken || a.unlimited ? 1 : 0) - (b.broken || b.unlimited ? 1 : 0) || (a.family === b.family ? 0 : a.family === 'chatgpt' ? -1 : 1) || (ms(a.resetsAt) || Infinity) - (ms(b.resetsAt) || Infinity)).map(planHtml).join('')}</div>` + creditsHtml() : '<p class="empty-note">Reading your plans…</p>'}
+      <p class="hint-line">Read from Claude Code and Codex${S.plans ? ` at ${esc(clock(S.plans.at))}` : ''}. Usage is sampled every hour; forecasts use the last day once there’s a day of samples, and this week’s average until then.</p>`;
+}
 function now() {
-  const lives = S.live;
-  const need = lives.filter(needsLive).sort((a, b) => Number(asking(b)) - Number(asking(a)) || (b.finishedAt || 0) - (a.finishedAt || 0));
-  const run = lives.filter(x => x.working && !asking(x)).sort((a, b) => (a.turnStartedAt || 0) - (b.turnStartedAt || 0));
   const waiting = allChats().filter(c => stageOf(c) === 'waiting').sort((a, b) => b.updated - a.updated);
   const ups = comingUp();
-  const nPlans = plans().filter(p => !p.unlimited).length;
   return `<div class="wrap">
-    <div class="page-h"><div class="proj-h" style="align-items:flex-start"><button class="iconbtn back" data-go="side" aria-label="Back">‹</button><div><h1>${L('Now')}</h1><p class="lead">${word(need.length, 'needs you', 'need you')}, ${word(run.length, 'running', 'running')}, ${word(waiting.length, 'waiting on someone', 'waiting on others')}.</p></div></div></div>
+    <div class="page-h"><div class="proj-h" style="align-items:flex-start"><button class="iconbtn back" data-go="side" aria-label="Back">‹</button><div><h1>${L('Now')}</h1><p class="lead" id="nowLead">${leadHtml()}</p></div></div></div>
     ${commanderHtml()}
-    <section class="section"><div class="sec-h"><h2>${L('Needs you')}</h2><span class="n">${need.length}</span></div>
-      <div class="rows">${need.map(needsRow).join('') || '<p class="empty-note">Nothing needs you.</p>'}</div></section>
-    <section class="section"><div class="sec-h"><h2>${L('Running')}</h2><span class="n">${run.length}</span></div>
-      <div class="rows">${run.map(runRow).join('') || '<p class="empty-note">Nothing is running.</p>'}</div></section>
+    <div id="nowLive" class="section-stack">${nowLiveHtml()}</div>
     <section class="section"><div class="sec-h"><h2>Waiting on others</h2><span class="n">${waiting.length}</span><span class="hint">Reminds you after two days</span></div>
-      <div class="rows">${waiting.map(waitRow).join('') || '<p class="empty-note">Nothing is waiting on anyone. Set a chat’s stage to Waiting and say who.</p>'}</div></section>
+      <div class="rows">${waiting.map(waitRow).join('') || '<p class="empty-note">Nothing is waiting on anyone. Press <kbd>w</kbd> on a chat to say who it’s waiting on.</p>'}</div></section>
     <section class="section"><div class="sec-h"><h2>Coming up</h2><a class="hint" href="/">Routines in the full app ›</a></div>
-      <div class="rows">${ups.map(r => `<div class="row" role="button" tabindex="0"><span class="dot" style="background:var(--st-final)"></span><span class="t"><b>${esc(r.name)}</b><small>${esc(r.when)} · runs on ${esc(routineRunsOn(r))}${r.last ? ` · last: ${esc(r.last.line)}` : ''}</small></span><span class="side-tags">${r.running ? '<span class="live-dot"></span>' : ''}</span><span class="when">${r.nextAt ? esc(inWords(r.nextAt)) : r.when ? 'watching' : ''}</span><span></span></div>`).join('') || '<p class="empty-note">No routines yet.</p>'}</div></section>
-    <section class="section"><div class="sec-h"><h2>This week</h2><span class="n">${nPlans} plans${plans().some(p => p.unlimited) ? ' + Ollama' : ''} · soonest reset first</span><button class="hint" data-refreshplans="1">${S.plansRefreshing ? 'Checking…' : 'Check now'}</button></div>
-      ${S.plans ? orderHtml() + `<div class="plans">${[...plans()].sort((a, b) => (a.broken || a.unlimited ? 1 : 0) - (b.broken || b.unlimited ? 1 : 0) || (a.family === b.family ? 0 : a.family === 'chatgpt' ? -1 : 1) || (ms(a.resetsAt) || Infinity) - (ms(b.resetsAt) || Infinity)).map(planHtml).join('')}</div>` + creditsHtml() : '<p class="empty-note">Reading your plans…</p>'}
-      <p class="hint-line">Read from Claude Code and Codex${S.plans ? ` at ${esc(clock(S.plans.at))}` : ''}. Usage is sampled every hour; forecasts use the last day once there’s a day of samples, and this week’s average until then.</p></section>
+      <div class="rows">${ups.map(r => `<div class="row"><span class="dot" style="background:var(--st-final)"></span><span class="t"><b>${esc(r.name)}</b><small>${esc(r.when)} · runs on ${esc(routineRunsOn(r))}${r.last ? ` · last: ${esc(r.last.line)}` : ''}</small></span><span class="side-tags">${r.running ? '<span class="live-dot"></span>' : ''}</span><span class="when">${r.nextAt ? esc(inWords(r.nextAt)) : r.when ? 'watching' : ''}</span><span></span></div>`).join('') || '<p class="empty-note">No routines yet.</p>'}</div></section>
+    <section class="section" id="planBox">${plansBoxHtml()}</section>
   </div>`;
 }
 
