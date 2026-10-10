@@ -885,14 +885,16 @@ async function routineChat({ account, cwd, sessionId, permissionMode, model, tit
 const routines = routinesLib.createRoutines({
   dataDir: DATA_DIR, log, broadcast,
   prompts: () => projectInfo.prompts(),
-  startChat: routineChat,
+  // With Switcher Lite's "follow the use-next order" on, a routine runs on that plan instead.
+  startChat: opts => routineChat({ ...opts, account: liteRoutes.routineAccount(opts.account) }),
   accountInfo: id => {
     if (isCodexAccount(id)) { const x = codexById(id); return x && { id, provider: 'codex', name: x.ACCOUNT.name, modes: codexLib.MODES.map(m => m.value) }; }
     const a = config().accounts.find(x => x.id === id);
     return a && { id, provider: 'claude', name: a.name, modes: chatLib.MODES };
   },
   // Usage right before a run, so a routine doesn't use up a nearly full window.
-  usageFor: async id => {
+  usageFor: async raw => {
+    const id = liteRoutes.routineAccount(raw);
     if (isCodexAccount(id)) { const x = codexById(id); if (!x) return null; await x.refreshUsage().catch(() => null); return { name: x.ACCOUNT.name, ...(usage.get(x.ACCOUNT.id) || {}) }; }
     const a = config().accounts.find(x => x.id === id);
     if (!a) return null;

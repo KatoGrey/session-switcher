@@ -2,7 +2,7 @@
 /* The sidebar (pages, bucket switcher, stage labels with quiet folding), routing (with real browser
    history, so back and forward work), redraws, and every click and drag on the page. */
 
-const VIEWS = ['now', 'home', 'hack', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
+const VIEWS = ['triage', 'now', 'home', 'hack', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
 const small = () => matchMedia('(max-width: 760px)').matches;
 
 function sideChat(c) {
@@ -40,7 +40,7 @@ function renderSide() {
     + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`;
 }
 
-const VIEW_FN = { now: () => now(), home: () => home(), hack: () => hackView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
+const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
 function render() {
   applyLook();
   if (!S.loaded) { $('main').innerHTML = '<div class="wrap"><p class="empty-note">Loading your chats…</p></div>'; return; }
@@ -64,6 +64,7 @@ let markSig = '';
 function renderLive() {
   if (!S.loaded) return;
   renderSide(); updateBadge();
+  if (S.view === 'triage') { if (!document.activeElement || document.activeElement.id !== 'trBox') render(); return; }
   if (S.view === 'now' && $('nowLive')) {
     const el = $('nowLive');
     const typed = [...el.querySelectorAll('input[data-qr]')].map(i => [i.dataset.qr, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
@@ -87,7 +88,7 @@ function go(view, extra = {}, { push = true } = {}) {
   if (view === 'side' && !small()) view = 'now';
   const prev = S.view;
   if (view !== 'chat' && CV.es) { CV.es.close(); CV.es = null; }
-  if (view === 'newchat') NC.project = extra.ncProject || (prev === 'project' ? S.project : NC.project);
+  if (view === 'newchat') { NC.project = extra.ncProject || (prev === 'project' ? S.project : NC.project); if (prev !== 'newchat') resetComposer(); }
   S.view = view;
   if (extra.project !== undefined) S.project = extra.project;
   S.sel.clear(); cur = -1;
@@ -140,11 +141,17 @@ document.addEventListener('click', e => {
   if ((b = el('[data-earlier]'))) return wrap(loadEarlier)();
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
   if ((b = el('[data-barmodel]'))) return modelMenu(b);
-  if ((b = el('[data-barperm]'))) return permMenu(b, { current: (CV.info && CV.info.permissionMode) || CV.perm, onPick: v => { if (CV.key) wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; paintBar(); })(); else { CV.perm = v; paintBar(); } } });
+  if ((b = el('[data-bareffort]'))) return effortMenu(b);
+  if ((b = el('[data-chatsettings]'))) return settingsMenu(b);
+  if ((b = el('[data-attach]'))) { $('attIn')?.click(); return undefined; }
+  if ((b = el('[data-rmimg]'))) { const [im] = COMP.images.splice(Number(b.dataset.rmimg), 1); if (im && im.url) URL.revokeObjectURL(im.url); return paintAttachments(); }
+  if ((b = el('[data-rmfile]'))) { COMP.files.splice(Number(b.dataset.rmfile), 1); return paintAttachments(); }
+  if ((b = el('[data-zoom]'))) return showPicture(b.src);
   if ((b = el('[data-stopchat]'))) return wrap(() => api('/api/chat/interrupt', { key: CV.key }))();
   if ((b = el('[data-ncproject]'))) return pickProject(b, k => { NC.project = k; paintNewChat(); $('msgBox').focus(); });
-  if ((b = el('[data-ncwho]'))) return pop(b, `${[['claude', 'Claude'], ['codex', 'Codex'], ...(plans().some(p => p.family === 'ollama' && !p.broken) ? [['ollama', 'Codex on Ollama']] : [])].map(([v, n]) => { const a = accountFor(v), pl = a && planById(a); return `<button data-v="${v}" role="menuitemradio" aria-checked="${NC.who === v}">${n}<small>${pl ? `${esc(pl.label)}${typeof pl.left === 'number' ? ` · ${pl.left}%` : ''}` : ''}</small></button>`; }).join('')}`, v => { NC.who = v; NC.perm = null; paintNewChat(); $('msgBox').focus(); });
-  if ((b = el('[data-ncperm]'))) { const prov = NC.who === 'claude' ? 'claude' : 'codex'; return permMenu(b, { provider: prov, current: NC.perm || permDefault(prov), onPick: v => { NC.perm = v; paintNewChat(); $('msgBox').focus(); } }); }
+  if ((b = el('[data-ncwho]'))) return pop(b, `${[['claude', 'Claude'], ['codex', 'Codex'], ...(plans().some(p => p.family === 'ollama' && !p.broken) ? [['ollama', 'Codex on Ollama']] : [])].map(([v, n]) => { const a = accountFor(v), pl = a && planById(a); return `<button data-v="${v}" role="menuitemradio" aria-checked="${NC.who === v}">${n}<small>${pl ? `${esc(pl.label)}${typeof pl.left === 'number' ? ` · ${pl.left}%` : ''}` : ''}</small></button>`; }).join('')}`, v => { if (NC.who !== v) { COMP.model = null; COMP.effort = null; COMP.perm = null; } NC.who = v; paintNewChat(); $('msgBox').focus(); });
+  if ((b = el('[data-triage]'))) return startTriage();
+  if ((b = el('[data-tr]'))) { b.disabled = true; return wrap(triageAct)(b.dataset.tr); }
   if ((b = el('[data-cmd]'))) { if ($('cmdInput')) $('cmdInput').value = b.dataset.cmd; return askCommander(b.dataset.cmd); }
   if ((b = el('[data-floor]'))) return wrap(setLook)({ floor: Number(b.dataset.floor) });
   if ((b = el('[data-quietdays]'))) return wrap(setLook)({ quietDays: Number(b.dataset.quietdays) });
@@ -193,6 +200,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t.dataset.follow) return wrap(async () => { await setLook({ routinesFollow: t.checked }); toast(t.checked ? 'Routines now run on the use-next plan of their family.' : 'Routines run on the plan each one names.'); })();
   if (t.dataset.pref === 'sound') return setSound(t.checked);
   if (t.dataset.pref === 'notify') return setNotify(t.checked).then(render);
   if (t.dataset.pushpref) return wrap(async () => { S.push.prefs = (await api('/api/lite/push/prefs', { [t.dataset.pushpref]: t.checked })).prefs; })();
@@ -204,6 +212,7 @@ document.addEventListener('contextmenu', e => {
   if (r) { e.preventDefault(); rowMenu(r, r.dataset.chat, at); } else if (p) { e.preventDefault(); projMenu(p, p.dataset.project, at); }
 });
 document.addEventListener('submit', e => {
+  if (e.target.id === 'trForm') { e.preventDefault(); return triageReply(); }
   if (e.target.id === 'cmdForm') { e.preventDefault(); const v = $('cmdInput').value; $('cmdInput').value = ''; return askCommander(v); }
   if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat(); }
   if (e.target.id === 'genForm') { e.preventDefault(); const v = $('genPrompt').value.trim(); if (!v) return undefined; $('genPrompt').value = ''; return wrap(startGenerate)(v, S.genN || 1); }
@@ -212,10 +221,28 @@ document.addEventListener('submit', e => {
 });
 document.addEventListener('keydown', e => {
   if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('composer').requestSubmit(); return; }
+  if (e.target.id === 'trBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); triageReply(); return; }
   if (e.target.id === 'msgBox' && e.key.toLowerCase() === 'p' && (e.metaKey || e.ctrlKey) && S.view === 'newchat') { e.preventDefault(); document.querySelector('[data-ncproject]')?.click(); return; }
   if (e.target.dataset && e.target.dataset.qr && e.key === 'Enter') { e.preventDefault(); sendQuick(e.target.dataset.qr); }
 }, true);
 document.addEventListener('input', e => { if (e.target.id === 'msgBox') autosize(e.target); });
+// Pictures and files: paste (several at once), drop anywhere on a chat, or pick with +.
+document.addEventListener('change', e => { if (e.target.id === 'attIn' && e.target.files.length) { addFiles([...e.target.files]); e.target.value = ''; } });
+document.addEventListener('paste', e => {
+  if (S.view !== 'chat' && S.view !== 'newchat') return;
+  const files = [...(e.clipboardData ? e.clipboardData.files : [])];
+  if (!files.length) return;
+  e.preventDefault(); addFiles(files);
+});
+const hasFiles = e => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+document.addEventListener('dragover', e => { if ((S.view === 'chat' || S.view === 'newchat') && hasFiles(e)) { e.preventDefault(); document.body.classList.add('dropping'); } });
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+document.addEventListener('drop', e => { document.body.classList.remove('dropping'); if ((S.view === 'chat' || S.view === 'newchat') && hasFiles(e)) { e.preventDefault(); addFiles([...e.dataTransfer.files]); } });
+function showPicture(src) {
+  const root = $('modalRoot');
+  root.innerHTML = `<div class="modal-back lightbox"><figure><img src="${src}" alt=""></figure></div>`;
+  root.querySelector('.modal-back').addEventListener('click', () => { root.innerHTML = ''; });
+}
 $('q').addEventListener('input', e => { S.q = e.target.value.trim(); if (S.q) { if (S.view !== 'search') go('search', {}, { push: false }); else render(); } else if (S.view === 'search') go('now', {}, { push: false }); });
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter') { const r = document.querySelector('#main [data-cur]'); if (r) { e.preventDefault(); r.click(); } } if (e.key === 'ArrowDown') { e.preventDefault(); e.target.blur(); setCur(0); } });
 

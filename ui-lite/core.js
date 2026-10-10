@@ -63,6 +63,7 @@ function loadState() {
     const changed = sig !== stateSig;
     stateSig = sig;
     Object.assign(S, { lite: j.lite, projects: j.projects, chats: j.chats, routines: j.routines, now: j.now, appPermissions: j.appPermissions, permissionModes: j.permissionModes, loaded: true });
+    for (const [k, v] of Object.entries(j.lite.seen || {})) if (!S.seen[k] || S.seen[k] < v) S.seen[k] = v;
     setLive(j.live);
     index();
     return changed;
@@ -143,7 +144,16 @@ const allChats = () => S.chats.filter(visible);
 const inBucket = c => S.bucket === 'all' || (S.bucket === 'unsorted' ? !projOf(c).bucket : projOf(c).bucket === S.bucket);
 const live = cs => cs.filter(c => stageOf(c) !== 'done' && !isQuiet(c));
 const chatsOfProject = k => allChats().filter(c => c.project === k);
-const markSeen = id => { if (!id) return; S.seen[id] = Date.now(); const cut = Date.now() - 3 * DAY; for (const k of Object.keys(S.seen)) if (S.seen[k] < cut) delete S.seen[k]; local.set('seen', S.seen); };
+// What you've read is shared by every screen: kept here and on the Mac.
+let seenOut = new Set();
+const markSeen = id => {
+  if (!id) return;
+  S.seen[id] = Date.now();
+  const cut = Date.now() - 3 * DAY; for (const k of Object.keys(S.seen)) if (S.seen[k] < cut) delete S.seen[k];
+  local.set('seen', S.seen);
+  seenOut.add(id); clearTimeout(markSeen.t);
+  markSeen.t = setTimeout(() => { const ids = [...seenOut]; seenOut = new Set(); api('/api/lite/seen', { ids }).catch(() => {}); }, 500);
+};
 
 /* ---------- words and pictures ---------- */
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -172,6 +182,7 @@ const IC = {
   spark: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6Z" fill="currentColor"/></svg>',
   image: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.3" r="1.2" fill="currentColor"/><path d="M2.5 12l3.8-3.6 2.6 2.4 2-1.8 2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
   broom: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.8 7.6 7.4M4 8.2l5.6 2.6-1.5 3.4c-1.8.4-4.3-.5-5.9-2.4Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>',
+  gear: '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8ZM6.9 1.5h2.2l.4 1.8 1.2.7 1.8-.6 1.1 1.9-1.4 1.2v1.4l1.4 1.2-1.1 1.9-1.8-.6-1.2.7-.4 1.8H6.9l-.4-1.8-1.2-.7-1.8.6-1.1-1.9 1.4-1.2V7.1L2.4 5.9l1.1-1.9 1.8.6 1.2-.7Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   flag: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 14.5V2M3.5 2.5h8.5l-2 3 2 3H3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
 };
 
@@ -237,7 +248,7 @@ async function setChats(ids, patch, label) {
 }
 async function setLook(patch) {
   const j = await api('/api/lite/look', patch);
-  Object.assign(S.lite.look, j.look); S.lite.plans.floor = j.floor; S.lite.quietDays = j.quietDays; S.lite.permissions = j.permissions;
+  Object.assign(S.lite.look, j.look); S.lite.plans.floor = j.floor; S.lite.quietDays = j.quietDays; S.lite.permissions = j.permissions; S.lite.routinesFollow = j.routinesFollow;
   if (patch.skin) local.set('skin', patch.skin);
   if (patch.mode) local.set('mode', patch.mode);
   if (patch.floor) await loadPlans(false);

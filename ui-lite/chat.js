@@ -62,7 +62,8 @@ function chatTitle() { const c = chatBy.get(CV.id); return c ? c.title : (CV.inf
 
 async function openChatView(id, { key = null } = {}) {
   if (CV.es) { CV.es.close(); CV.es = null; }
-  Object.assign(CV, { id, key, info: null, items: [], cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, perm: null, sending: false });
+  Object.assign(CV, { id, key, info: null, items: [], cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
+  resetComposer();
   const c = chatBy.get(id);
   CV.provider = c ? c.provider : 'claude';
   markSeen(id);
@@ -132,7 +133,10 @@ function itemHtml(it) {
   if (it.kind === 'user') {
     const text = String(it.text || '');
     const cmdr = /^From Commander:\s*/.test(text);
-    return `<div class="msg-you${cmdr ? ' from-cmdr' : ''}">${cmdr ? '<span class="tag">from Commander</span> ' : ''}${esc(text.replace(/^From Commander:\s*/, '')).replace(/\n/g, '<br>')}</div>`;
+    const pics = (it.images || []).map(i => i.src).concat((Array.isArray(it.imgRaw) ? it.imgRaw : []).filter(b => b && b.type === 'image' && b.source && b.source.data).map(b => `data:${b.source.media_type};base64,${b.source.data}`)).filter(src => /^data:image\/(png|jpeg|gif|webp);base64,/.test(src));
+    const shown = text.replace(/^From Commander:\s*/, '').split('\n').filter(l => !/^Attached file: `[^`]+`/.test(l.trim()));
+    const files = text.split('\n').map(l => /^Attached file: `([^`]+)`/.exec(l.trim())).filter(Boolean).map(m => m[1].split('/').pop());
+    return `<div class="msg-you${cmdr ? ' from-cmdr' : ''}">${pics.length ? `<div class="msg-pics">${pics.map(src => `<img src="${src}" alt="" data-zoom="1">`).join('')}</div>` : ''}${cmdr ? '<span class="tag">from Commander</span> ' : ''}${esc(shown.join('\n').trim()).replace(/\n/g, '<br>')}${files.length ? `<div class="msg-files">${files.map(f => `<span class="tag">${esc(f)}</span>`).join('')}</div>` : ''}</div>`;
   }
   if (it.kind === 'assistant') {
     const blocks = it.blocks || [];
@@ -216,54 +220,152 @@ function paintPending() {
 }
 const wantsTo = name => ({ Bash: 'run a command', PowerShell: 'run a command', Edit: 'edit a file', MultiEdit: 'edit a file', Write: 'create or overwrite a file', WebFetch: 'open a web page', WebSearch: 'search the web', NotebookEdit: 'edit a notebook' })[name] || `use ${String(name || 'a tool').replace(/^mcp__(.+?)__/, '$1: ')}`;
 
-/* ---------- the input bar ---------- */
+/* ---------- the input bar ----------
+   One box: what you type, the pictures and files going with it, and three quiet controls: + to add
+   (or paste, or drop, several at once), the model, and the effort. How much it may do without
+   asking lives in Conversation settings (the gear), and defaults to yours. */
+const COMP = { images: [], files: [], converting: 0, model: null, effort: null, perm: null };
+function resetComposer() { for (const i of COMP.images) if (i.url) URL.revokeObjectURL(i.url); Object.assign(COMP, { images: [], files: [], converting: 0, model: null, effort: null, perm: null }); }
 function composerHtml({ fresh = false } = {}) {
   return `<form class="box" id="composer" autocomplete="off">
     ${fresh ? '' : '<div class="readonly-note" id="roNote" hidden></div>'}
+    <div class="att-strip" id="attStrip" hidden></div>
     <textarea id="msgBox" rows="1" placeholder="${fresh ? 'What should it do?' : 'Reply…'}" aria-label="Message"></textarea>
     <div class="tools" id="barTools"></div>
+    <input type="file" id="attIn" multiple hidden>
   </form>`;
+}
+// Models and efforts each assistant offers, remembered from the last chat that reported them, so
+// the chips work before a chat is running.
+const modelsFor = prov => local.get(`models:${prov}`, prov === 'claude' ? [{ value: 'opus', label: 'Opus' }, { value: 'sonnet', label: 'Sonnet' }] : []);
+const effortsFor = prov => local.get(`efforts:${prov}`, prov === 'codex' ? ['low', 'medium', 'high', 'xhigh'] : ['low', 'medium', 'high', 'xhigh', 'max']);
+function rememberModels(prov, info) {
+  if (info && Array.isArray(info.models) && info.models.length) local.set(`models:${prov}`, info.models.map(m => ({ value: m.value, label: m.label })).slice(0, 30));
+  if (info && Array.isArray(info.efforts) && info.efforts.length) local.set(`efforts:${prov}`, info.efforts);
+}
+const provNow = () => (S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : NC.who === 'ollama' ? 'ollama' : 'codex') : CV.provider === 'codex' ? (CV.info && /ollama/i.test(CV.info.accountName || '') ? 'ollama' : 'codex') : 'claude');
+const prettyModel = m => String(m).replace(/^claude-/, '').replace(/-(\d)-(\d)/, ' $1.$2').replace(/\[1m\]$/, ' 1M').replace(/^(\w)/, c => c.toUpperCase());
+const modelLabel = (prov, v) => { const m = modelsFor(prov).find(x => x.value === v); return m ? m.label : prettyModel(v); };
+const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
+function toolsHtml({ fresh }) {
+  const prov = provNow();
+  const info = fresh ? null : CV.info;
+  const model = (info && (info.replyModel || info.resolvedModel || info.model)) || COMP.model || (!fresh && chatBy.get(CV.id) && chatBy.get(CV.id).model) || null;
+  const effort = (info && info.effort) || COMP.effort || null;
+  const busy = !fresh && CV.busy;
+  return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
+    <button type="button" class="model" data-barmodel="1" aria-haspopup="menu" title="Model">${esc(model ? modelLabel(prov, model) : 'Default model')}<span>▾</span></button>
+    <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : 'Effort')}<span>▾</span></button>
+    <span class="bar-hint" id="barHint"></span>
+    <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
+    ${busy ? '<button type="button" class="send stop" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
 }
 function paintBar() {
   const t = $('barTools'); if (!t || S.view !== 'chat') return;
-  const info = CV.info;
-  const mode = (info && info.permissionMode) || CV.perm || null;
-  const modelName = info && (info.replyModel || info.resolvedModel || info.model);
+  if (CV.info) rememberModels(provNow(), CV.info);
   const ro = $('roNote');
   if (ro) { ro.hidden = !CV.readOnly; ro.textContent = CV.readOnly || ''; }
-  t.innerHTML = `<button type="button" class="model" data-barmodel="1" aria-haspopup="menu" title="Model">${esc(modelName ? prettyModel(modelName) : CV.provider === 'codex' ? 'Codex' : 'Claude')}<span>▾</span></button>
-    <button type="button" class="model" data-barperm="1" aria-haspopup="menu" title="What it may do without asking">${esc(PERM_LABELS[mode] || (CV.key ? 'Permissions' : `${PERM_LABELS[permDefault(CV.provider)]}`))}<span>▾</span></button>
-    <span class="bar-hint"></span>
-    ${CV.busy ? '<button type="button" class="send stop" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button>' : '<button type="submit" class="send" aria-label="Send (↵)" title="Send (↵)">↑</button>'}`;
+  t.innerHTML = toolsHtml({ fresh: false });
   const box = $('msgBox'); if (box) box.disabled = !!CV.readOnly;
+  paintAttachments();
 }
-const prettyModel = m => String(m).replace(/^claude-/, '').replace(/-(\d)-(\d)/, ' $1.$2').replace(/\[1m\]$/, ' 1M').replace(/^(\w)/, c => c.toUpperCase());
 function autosize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 280) + 'px'; }
+
+/* ----- pictures and files ----- */
+const readData = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+// Over 5 MB or a type Claude can't take (HEIC, say): redrawn as a JPEG that fits.
+async function shrinkImage(f) {
+  try {
+    const bmp = await createImageBitmap(f);
+    const k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    if (bmp.close) bmp.close();
+    for (const q of [0.88, 0.8, 0.7]) { const out = await new Promise(res => c.toBlob(res, 'image/jpeg', q)); if (out && out.size <= 5 * 1024 * 1024) return out; }
+  } catch { /* not decodable here */ }
+  return null;
+}
+async function addImage(f) {
+  COMP.converting++; paintAttachments();
+  try {
+    let blob = f;
+    if (f.size > 5 * 1024 * 1024 || !/^image\/(png|jpeg|gif|webp)$/.test(f.type)) blob = await shrinkImage(f);
+    if (!blob) { addFile(f); return; }
+    COMP.images.push({ mediaType: blob.type || f.type, data: await readData(blob), url: URL.createObjectURL(blob), name: f.name || 'image' });
+  } finally { COMP.converting = Math.max(0, COMP.converting - 1); paintAttachments(); }
+}
+function addFile(f) {
+  if (f.size > 2 * 1024 * 1024 * 1024) { toast(`${f.name} is over 2 GB.`); return; }
+  COMP.files.push({ file: f, name: f.name || 'file', size: f.size, rel: null, error: null, progress: 0 });
+  paintAttachments();
+  if (CV.key && S.view === 'chat') uploadPending(CV.key).catch(() => {});
+}
+function addFiles(list) {
+  for (const f of list) {
+    if (/^image\//.test(f.type) && !/svg/.test(f.type)) { if (COMP.images.length + COMP.converting >= 10) { toast('Up to 10 pictures at a time.'); continue; } addImage(f).catch(() => addFile(f)); }
+    else addFile(f);
+  }
+  sfx('chip');
+  $('msgBox')?.focus();
+}
+const sizeText = n => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+function paintAttachments() {
+  const el = $('attStrip'); if (!el) return;
+  const n = COMP.images.length + COMP.files.length + COMP.converting;
+  el.hidden = !n;
+  el.innerHTML = `${COMP.images.map((im, i) => `<span class="att"><img src="${im.url}" alt=""><button type="button" data-rmimg="${i}" aria-label="Remove ${esc(im.name)}">×</button></span>`).join('')}${COMP.converting ? '<span class="att loading" aria-label="Preparing a picture"></span>' : ''}${COMP.files.map((f, i) => `<span class="att-file ${f.error ? 'err' : ''}" title="${esc(f.error || f.name)}"><b>${esc(f.name)}</b><small>${f.error ? 'failed' : f.rel ? sizeText(f.size) : f.progress ? `${Math.round(f.progress * 100)}%` : sizeText(f.size)}</small><button type="button" data-rmfile="${i}" aria-label="Remove ${esc(f.name)}">×</button></span>`).join('')}`;
+}
+// Files other than pictures go into the chat's folder (the full app's upload), then the message names them.
+function uploadOne(key, f) {
+  return new Promise(resolve => {
+    const x = new XMLHttpRequest();
+    x.open('POST', `/api/chat/upload?${new URLSearchParams({ key, name: f.name })}`);
+    x.setRequestHeader('X-Switcher-Token', TOKEN);
+    x.upload.onprogress = e => { if (e.lengthComputable) { f.progress = e.loaded / e.total; paintAttachments(); } };
+    x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch { /* not JSON */ } if (x.status === 200) { f.rel = j.rel; f.size = j.size || f.size; } else f.error = j.error || `Upload failed (${x.status}).`; paintAttachments(); resolve(); };
+    x.onerror = () => { f.error = 'The upload was interrupted.'; paintAttachments(); resolve(); };
+    x.send(f.file);
+  });
+}
+async function uploadPending(key) { for (const f of COMP.files) if (!f.rel && !f.error && !f.uploading) { f.uploading = true; await uploadOne(key, f); f.uploading = false; } }
+const fileLines = () => COMP.files.filter(f => f.rel).map(f => `Attached file: \`${f.rel}\` (${sizeText(f.size)})`).join('\n');
+const withFiles = text => { const l = fileLines(); return l ? `${text.replace(/\s+$/, '')}${text.trim() ? '\n\n' : ''}${l}` : text; };
+const imagesOut = () => COMP.images.map(i => ({ mediaType: i.mediaType, data: i.data }));
 
 async function sendInChat() {
   const box = $('msgBox'); const text = box.value.trim();
-  if (!text || CV.sending) return;
+  if ((!text && !COMP.images.length && !COMP.files.length) || CV.sending) return;
+  if (COMP.converting) return toast('One moment: a picture is still being prepared.');
   CV.sending = true;
   try {
     if (!CV.key) {
-      // First message: resume it here (as the account it last ran as), in your permission default
-      // unless you chose one for this chat before.
-      const info = await api('/api/chat/open', { sessionId: CV.id, mode: 'resume', ...(CV.provider === 'codex' ? { provider: 'codex' } : {}), ...(CV.perm ? { permissionMode: CV.perm } : {}) });
+      // First message: picked up here (as the account it last ran as), in your permission default
+      // unless this chat remembers its own, and on the model you picked if you did.
+      // Claude picks up on the use-next Claude plan (else the account it last ran as); Codex on its own.
+      const c = chatBy.get(CV.id);
+      const claudeAcct = CV.provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
+      const info = await api('/api/chat/open', { sessionId: CV.id, mode: 'resume', ...(CV.provider === 'codex' ? { provider: 'codex' } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), ...(COMP.perm ? { permissionMode: COMP.perm } : {}), ...(COMP.model ? { model: COMP.model } : {}) });
       CV.key = info.key; CV.info = info;
-      if (!CV.perm && !info.remembered && info.permissionMode !== permDefault(CV.provider)) await api('/api/chat/mode', { key: info.key, mode: permDefault(CV.provider) }).then(() => { CV.info.permissionMode = permDefault(CV.provider); }).catch(() => {});
+      if (!COMP.perm && !info.remembered && info.permissionMode !== permDefault(CV.provider)) await api('/api/chat/mode', { key: info.key, mode: permDefault(CV.provider) }).then(() => { CV.info.permissionMode = permDefault(CV.provider); }).catch(() => {});
       listen(info.key);
       await waitReady();
+      if (COMP.effort) await api('/api/chat/model', { key: CV.key, effort: COMP.effort }).then(m => Object.assign(CV.info, m)).catch(() => {});
     }
+    await uploadPending(CV.key);
+    const out = withFiles(text), images = imagesOut();
     box.value = ''; autosize(box);
-    await api('/api/chat/send', { key: CV.key, text });
-    CV.busy = true; CV.startedAt = Date.now(); paintBar(); paintStatus();
+    resetComposer(); paintAttachments();
+    await api('/api/chat/send', { key: CV.key, text: out, ...(images.length ? { images } : {}) });
+    CV.busy = true; CV.startedAt = Date.now(); sfx('slide'); paintBar(); paintStatus();
   } catch (err) { toast(err.message); } finally { CV.sending = false; }
 }
 const waitReady = () => new Promise(res => { const t0 = Date.now(); const tick = () => ((CV.info && CV.info.state && CV.info.state !== 'starting') || Date.now() - t0 > 45e3 ? res() : setTimeout(tick, 300)); tick(); });
 
 function chatMenu(anchor) {
   const c = chatBy.get(CV.id);
-  pop(anchor, `<button data-v="full">Open in the full app<small>images, files, diffs</small></button>${c ? '<button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="arch">Archive<kbd>e</kbd></button>' : ''}${CV.key ? '<hr><button data-v="stop">Stop it running here</button>' : ''}`, v => {
+  pop(anchor, `<button data-v="settings">Conversation settings…</button><button data-v="full">Open in the full app<small>diffs, files, history</small></button>${c ? '<hr><button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="arch">Archive<kbd>e</kbd></button>' : ''}${CV.key ? '<hr><button data-v="stop">Stop it running here</button>' : ''}`, v => {
+    if (v === 'settings') return settingsMenu(anchor);
     if (v === 'full') return openChat(CV.id, { full: true });
     if (v === 'wait') return askWaiting([CV.id]);
     if (v === 'arch') return wrap(archiveChats)([CV.id]).then(() => go('back'));
@@ -272,23 +374,39 @@ function chatMenu(anchor) {
   });
 }
 function modelMenu(anchor) {
-  const info = CV.info;
-  if (!CV.key || !info || !info.models || !info.models.length) return toast('Pick a model once the chat is running: send a message first.');
-  pop(anchor, `<div class="ph">Model</div>${info.models.map(m => { const v = typeof m === 'string' ? m : m.value || m.id; const label = typeof m === 'string' ? prettyModel(m) : m.label || m.displayName || prettyModel(v); return `<button data-v="${esc(v)}" role="menuitemradio" aria-checked="${v === info.model}">${esc(label)}</button>`; }).join('')}`,
-    v => wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, model: v })); paintBar(); })());
+  const prov = provNow();
+  const running = S.view === 'chat' && CV.key && CV.info;
+  const list = running && CV.info.models && CV.info.models.length ? CV.info.models : modelsFor(prov);
+  const cur = running ? CV.info.model : COMP.model;
+  if (!list.length) return toast('Its models show once a chat on this assistant has run.');
+  pop(anchor, `<div class="ph">Model</div>${list.map(m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === cur}">${esc(m.label || prettyModel(m.value))}</button>`).join('')}`,
+    v => { if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, model: v })); paintBar(); })(); COMP.model = v; return S.view === 'newchat' ? paintNewChat() : paintBar(); });
 }
-function permMenu(anchor, { provider = CV.provider, current = null, onPick } = {}) {
-  const modes = (S.permissionModes || {})[permFam(provider)] || [];
-  const def = permDefault(provider);
-  pop(anchor, `<div class="ph">What it may do without asking</div>${modes.map(m => `<button data-v="${esc(m)}" role="menuitemradio" aria-checked="${m === (current || def)}">${esc(PERM_LABELS[m] || m)}${m === def ? '<small>your default</small>' : ''}</button>`).join('')}<hr><button data-v="__default">Make the selected one my default</button>`,
+function effortMenu(anchor) {
+  const prov = provNow();
+  const running = S.view === 'chat' && CV.key && CV.info;
+  const list = running && CV.info.efforts && CV.info.efforts.length ? CV.info.efforts : effortsFor(prov);
+  const cur = running ? CV.info.effort : COMP.effort;
+  pop(anchor, `<div class="ph">Effort</div>${list.map(e => `<button data-v="${esc(e)}" role="menuitemradio" aria-checked="${e === cur}">${esc(cap(e))}</button>`).join('')}`,
+    v => { if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, effort: v })); paintBar(); })(); COMP.effort = v; return S.view === 'newchat' ? paintNewChat() : paintBar(); });
+}
+// Conversation settings: how much it may do without asking. Your default is preselected.
+function settingsMenu(anchor) {
+  const prov = permFam(S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : 'codex') : CV.provider);
+  const running = S.view === 'chat' && CV.key && CV.info;
+  const cur = (running && CV.info.permissionMode) || COMP.perm || permDefault(prov);
+  const modes = (S.permissionModes || {})[prov] || [];
+  const def = permDefault(prov);
+  pop(anchor, `<div class="ph">Conversation settings · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m)}" role="menuitemradio" aria-checked="${m === cur}">${esc(PERM_LABELS[m] || m)}${m === def ? '<small>your default</small>' : ''}</button>`).join('')}<hr><button data-v="__default">Make “${esc(PERM_LABELS[cur] || cur)}” my default</button>`,
     v => {
-      if (v === '__default') return wrap(setLook)({ permissions: { [permFam(provider)]: current || def } }).then(() => toast(`New ${permFam(provider) === 'claude' ? 'Claude' : 'Codex'} chats start in ${PERM_LABELS[current || def]}.`));
-      return onPick(v);
+      if (v === '__default') return wrap(setLook)({ permissions: { [prov]: cur } }).then(() => toast(`New ${prov === 'claude' ? 'Claude' : 'Codex'} chats start in ${PERM_LABELS[cur]}.`));
+      if (running) return wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; toast(`This chat: ${PERM_LABELS[v]}.`); })();
+      COMP.perm = v; toast(`This chat will start in ${PERM_LABELS[v]}.`); return undefined;
     });
 }
 
 /* ---------- New chat: the same input bar, centered ---------- */
-const NC = { project: null, who: 'claude', perm: null };
+const NC = { project: null, who: 'claude' };
 function accountFor(who) {
   if (who === 'ollama') { const o = plans().find(p => p.family === 'ollama' && !p.broken); return o ? o.id : null; }
   const p = useNext(who === 'claude' ? 'claude' : 'chatgpt');
@@ -302,48 +420,57 @@ function newChatView() {
     <h1 class="nc-h">What should we work on?</h1>
     <div class="nc-chips" id="ncChips"></div>
     ${composerHtml({ fresh: true })}
-    <p class="hint-line nc-foot"><kbd>↵</kbd> start · <kbd>⇧↵</kbd> new line · <kbd>⌘P</kbd> project · <kbd>esc</kbd> back</p>
+    <p class="hint-line nc-foot"><kbd>↵</kbd> start · <kbd>⇧↵</kbd> new line · <kbd>⌘P</kbd> project · paste or drop pictures · <kbd>esc</kbd> back</p>
   </div></div>`;
 }
 function paintNewChat() {
+  if (!$('ncChips')) return;
   const p = projBy.get(NC.project);
-  const prov = NC.who === 'claude' ? 'claude' : 'codex';
-  const perm = NC.perm || permDefault(prov);
   const acc = accountFor(NC.who), plan = acc && planById(acc);
   $('ncChips').innerHTML = `<button type="button" class="chip big" data-ncproject="1">${p ? `<span class="thumb-xs" style="${artStyle(p)};width:16px;height:16px;border-radius:4px"></span>${esc(p.name)}` : 'Pick a project'} ▾</button>
-    <button type="button" class="chip big" data-ncwho="1">${NC.who === 'claude' ? 'Claude' : NC.who === 'ollama' ? 'Codex on Ollama' : 'Codex'}${plan ? ` <small>${esc(plan.label)}${typeof plan.left === 'number' ? ` · ${plan.left}%` : ''}</small>` : ''} ▾</button>
-    <button type="button" class="chip big" data-ncperm="1">${esc(PERM_LABELS[perm] || perm)} ▾</button>`;
-  $('barTools').innerHTML = `<span class="bar-hint">${NC.who === 'ollama' ? 'Runs on Ollama, outside your plan limits' : plan ? `Runs on ${esc(plan.label)} ${esc(famName(plan.family))}, next in the use-next order` : 'Runs on the full app’s active account'}</span><button type="submit" class="send" aria-label="Start (↵)">↑</button>`;
+    <button type="button" class="chip big" data-ncwho="1">${NC.who === 'claude' ? 'Claude' : NC.who === 'ollama' ? 'Codex on Ollama' : 'Codex'}${plan && NC.who !== 'ollama' ? ` <small>${esc(plan.label)}${typeof plan.left === 'number' ? ` · ${plan.left}%` : ''}</small>` : ''} ▾</button>`;
+  $('barTools').innerHTML = toolsHtml({ fresh: true });
+  $('barHint').textContent = NC.who === 'ollama' ? 'On Ollama, outside your plan limits' : plan ? `On ${plan.label} ${famName(plan.family)}, next in the use-next order` : '';
+  paintAttachments();
 }
 async function startNewChat() {
   const box = $('msgBox'); const text = box.value.trim();
   const p = projBy.get(NC.project);
-  if (!text) return box.focus();
+  if (!text && !COMP.images.length) return box.focus();
   if (!p) return toast('Pick a project first.');
+  if (COMP.converting) return toast('One moment: a picture is still being prepared.');
   const prov = NC.who === 'claude' ? 'claude' : 'codex';
-  const perm = NC.perm || permDefault(prov);
+  const perm = COMP.perm || permDefault(prov);
   const send = $('composer').querySelector('.send'); if (send) send.disabled = true;
   box.disabled = true;
   try {
     const account = accountFor(NC.who);
-    const info = await api('/api/chat/open', { mode: 'new', cwd: p.cwd, provider: prov, ...(account ? { account } : {}), permissionMode: perm });
-    const id = await startAndSend(info.key, text);
-    NC.perm = null;
+    const info = await api('/api/chat/open', { mode: 'new', cwd: p.cwd, provider: prov, ...(account ? { account } : {}), permissionMode: perm, ...(COMP.model ? { model: COMP.model } : {}) });
+    const effort = COMP.effort, images = imagesOut(), hasFiles = COMP.files.length;
+    const id = await startAndSend(info.key, text, images, async () => {
+      if (effort) await api('/api/chat/model', { key: info.key, effort }).catch(() => {});
+      if (hasFiles) await uploadPending(info.key);
+      return withFiles(text);
+    });
+    resetComposer();
     go('chat', { chat: id || null, chatKey: info.key });
   } catch (err) { toast(err.message); box.disabled = false; if (send) send.disabled = false; }
 }
 // Waits for a new chat to be ready, sends its first message, and returns its id once it has one.
-function startAndSend(key, text) {
+function startAndSend(key, text, images = [], beforeSend = null) {
   return new Promise((resolve, reject) => {
     const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}`);
     let state = 'starting', id = null, sent = false;
     const finish = (err, v) => { clearTimeout(timer); es.close(); if (err) reject(err); else resolve(v); };
     const timer = setTimeout(() => finish(null, id), 60e3);
-    const maybeSend = () => {
+    const maybeSend = async () => {
       if (sent || state === 'starting') return;
       if (state === 'ended') { finish(new Error('The chat stopped as it started. Open the full app to see why.')); return; }
       sent = true;
-      api('/api/chat/send', { key, text }).catch(err => finish(err));
+      try {
+        const out = beforeSend ? await beforeSend() : text;
+        await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}) });
+      } catch (err) { finish(err); return; }
       if (id) finish(null, id);
     };
     es.addEventListener('hello', e => { try { const i = JSON.parse(e.data); state = i.state; id = i.sessionId || id; } catch { /* fine */ } maybeSend(); });

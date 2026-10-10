@@ -4,6 +4,7 @@
 
 const SHORTCUTS = [
   ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g r', 'Recents'], ['g i', 'Images'], ['g a', 'Archived'], ['g c', 'Clean up'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
+  ['Needs you', [['t', 'Triage: one at a time, the next opens by itself'], ['a / d', 'Allow / deny'], ['r', 'Reply'], ['e', 'Done'], ['o', 'Open the chat']]],
   ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–7', 'Set the stage'], ['s', 'Stage menu'], ['w', 'Waiting on…'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
   ['In a chat', [['↵', 'Send'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['esc', 'Back to where you were']]],
 ];
@@ -42,6 +43,7 @@ function onKey(e) {
     // One step at a time: the first Esc leaves the box (so single-key shortcuts work), the next goes back.
     if (typing) { if (e.target.value && S.view !== 'chat') return undefined; e.target.blur(); if (S.view === 'chat') $('feed')?.focus(); return undefined; }
     if (S.sel.size) { S.sel.clear(); return render(); }
+    if (S.view === 'triage') return go('now');
     if (S.view === 'chat' || S.view === 'newchat' || S.view === 'search' || S.view === 'project') return go('back');
     return undefined;
   }
@@ -49,6 +51,14 @@ function onKey(e) {
   if ($('modalRoot').innerHTML) return undefined;
   if (chord === 'g') { clearTimeout(chordTimer); chord = null; if (GO[e.key]) { e.preventDefault(); return go(GO[e.key]); } return undefined; }
   if (e.key === 'g') { chord = 'g'; chordTimer = setTimeout(() => { chord = null; }, 900); return undefined; }
+  if (S.view === 'triage') {
+    const map = { a: 'allow', d: 'deny', r: 'reply', e: 'done', o: 'open', Enter: 'open' };
+    if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); TR.i = Math.min(TR.i + 1, Math.max(0, trItems().length - 1)); TR.replying = false; return render(); }
+    if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); TR.i = Math.max(0, TR.i - 1); TR.replying = false; return render(); }
+    const b = map[e.key] && document.querySelector(`[data-tr="${map[e.key]}"]`);
+    if (b) { e.preventDefault(); b.click(); }
+    return undefined;
+  }
   const row = curRow();
   const hover = document.querySelector('[data-cur]:hover');
   const target = row || hover;
@@ -61,6 +71,7 @@ function onKey(e) {
     case 'z': if (lastUndo) { e.preventDefault(); const u = lastUndo; lastUndo = null; $('toastRoot').innerHTML = ''; return wrap(u)(); } return undefined;
     default: break;
   }
+  if (S.view === 'now' && e.key === 't' && needList().length) { e.preventDefault(); return startTriage(); }
   if (S.view === 'chat') {
     const p = [...CV.pending.values()][0];
     if (p && !p.questions && (e.key === 'a' || e.key === 'd')) { e.preventDefault(); return answerInChat(p.requestId, e.key === 'a' ? 'allow' : 'deny'); }

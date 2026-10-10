@@ -138,3 +138,32 @@ test('lite.json: stages, waiting with a reminder, buckets, archive records, usag
   assert.equal(again.get().look.skin, 'rebel', 'kept on disk');
   assert.equal(again.samplesFor('p').length, 2);
 });
+
+test('guesses: the model’s JSON is read even inside prose, and bad stages are dropped', () => {
+  const { parseGuesses, looksLikePrompt } = require('../lib/lite-guess');
+  const g = parseGuesses('Sure! ```json\n[{"id":"a","stage":"bug","title":"Fix discover spacing."},{"id":"b","stage":"later","title":"x"},{"id":"","stage":"bug"}]\n```');
+  assert.deepEqual(g, [{ id: 'a', stage: 'bug', title: 'Fix discover spacing' }, { id: 'b', stage: null, title: 'x' }]);
+  assert.deepEqual(parseGuesses('no json here'), []);
+  assert.ok(looksLikePrompt('You are reviewer "astra-6". Read the file and…'));
+  assert.ok(looksLikePrompt('Reply with just the word ready.'));
+  assert.ok(!looksLikePrompt('Alchemy release retro'));
+});
+
+test('seen and guesses are kept in lite.json; your stage still wins', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-lite-'));
+  const s = lite.createLite({ dataDir: dir });
+  s.setGuess('c1', { stage: 'bug', title: 'Fix the thing', by: 'm' });
+  s.setGuess('c2', { stage: 'nope', by: 'm' });
+  assert.equal(s.get().guess.c1.stage, 'bug');
+  assert.equal(s.get().guess.c2.stage, undefined, 'unknown stages aren’t kept');
+  s.setSeen(['c1'], 1000); s.setSeen(['c1'], 500);
+  assert.equal(s.get().seen.c1, undefined, 'older than two weeks is dropped');
+  s.setSeen(['c3']);
+  assert.ok(s.get().seen.c3 > Date.now() - 5000);
+  s.setLook({ routinesFollow: true });
+  assert.equal(s.get().routinesFollow, true);
+  await new Promise(r => setTimeout(r, 600));
+  const again = lite.createLite({ dataDir: dir });
+  assert.equal(again.get().guess.c1.title, 'Fix the thing');
+  assert.ok(again.get().seen.c3);
+});

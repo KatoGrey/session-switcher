@@ -46,6 +46,7 @@ function routineRunsOn(r) {
   const fam = r.provider === 'codex' ? 'chatgpt' : 'claude';
   const pinned = planById(r.account);
   if (pinned && pinned.family === 'ollama') return 'Ollama';
+  if (S.lite.routinesFollow && (!pinned || pinned.family === fam)) { const n = useNext(fam); if (n) return `${n.label} ${famName(fam)} (use next)`; }
   return pinned ? `${pinned.label} ${famName(pinned.family)}` : famName(fam);
 }
 function comingUp() {
@@ -57,7 +58,7 @@ const runList = () => S.live.filter(x => x.working && !asking(x)).sort((a, b) =>
 // The part of Now that moves with every live event; redrawn on its own.
 function nowLiveHtml() {
   const need = needList(), run = runList();
-  return `<section class="section"><div class="sec-h"><h2>${L('Needs you')}</h2><span class="n">${need.length}</span></div>
+  return `<section class="section"><div class="sec-h"><h2>${L('Needs you')}</h2><span class="n">${need.length}</span>${need.length ? '<button class="hint tr-start" data-triage="1">Triage, one at a time <kbd>t</kbd></button>' : ''}</div>
       <div class="rows">${need.map(needsRow).join('') || '<p class="empty-note all-clear">All clear. Nothing needs you.</p>'}</div></section>
     <section class="section"><div class="sec-h"><h2>${L('Running')}</h2><span class="n">${run.length}</span></div>
       <div class="rows">${run.map(runRow).join('') || '<p class="empty-note">Nothing is running.</p>'}</div></section>`;
@@ -78,7 +79,7 @@ function now() {
     <div id="nowLive" class="section-stack">${nowLiveHtml()}</div>
     <section class="section"><div class="sec-h"><h2>Waiting on others</h2><span class="n">${waiting.length}</span><span class="hint">Reminds you after two days</span></div>
       <div class="rows">${waiting.map(waitRow).join('') || '<p class="empty-note">Nothing is waiting on anyone. Press <kbd>w</kbd> on a chat to say who it’s waiting on.</p>'}</div></section>
-    <section class="section"><div class="sec-h"><h2>Coming up</h2><a class="hint" href="/">Routines in the full app ›</a></div>
+    <section class="section"><div class="sec-h"><h2>Coming up</h2><label class="hint follow"><input type="checkbox" data-follow="1" ${S.lite.routinesFollow ? 'checked' : ''}> Routines follow the use-next order</label><a class="hint" href="/" style="margin-left:12px">Routines ›</a></div>
       <div class="rows">${ups.map(r => `<div class="row"><span class="dot" style="background:var(--st-final)"></span><span class="t"><b>${esc(r.name)}</b><small>${esc(r.when)} · runs on ${esc(routineRunsOn(r))}${r.last ? ` · last: ${esc(r.last.line)}` : ''}</small></span><span class="side-tags">${r.running ? '<span class="live-dot"></span>' : ''}</span><span class="when">${r.nextAt ? esc(inWords(r.nextAt)) : r.when ? 'watching' : ''}</span><span></span></div>`).join('') || '<p class="empty-note">No routines yet.</p>'}</div></section>
     <section class="section" id="planBox">${plansBoxHtml()}</section>
   </div>`;
@@ -165,4 +166,70 @@ async function askCommander(text) {
     S.cmd.error = /isn’t signed in|sign in/i.test(err.message) ? `${err.message} The Commander runs as one of your Claude accounts; pick it in the full app’s Commander settings.` : err.message;
     renderCommander();
   }
+}
+
+/* ---------- Triage: Needs you, one at a time, until it's empty ----------
+   The queue is fixed when you start (new arrivals join the end); handling one opens the next. */
+const TR = { ids: [], i: 0, handled: 0, full: {}, replying: false };
+const trKey = x => x.sessionId || x.key;
+function startTriage() {
+  TR.ids = needList().map(trKey); TR.i = 0; TR.handled = 0; TR.replying = false;
+  go('triage');
+}
+function trItems() {
+  // Keep the order you started with, drop what's handled, append newcomers.
+  const live = new Map(S.live.filter(needsLive).map(x => [trKey(x), x]));
+  for (const k of live.keys()) if (!TR.ids.includes(k)) TR.ids.push(k);
+  TR.ids = TR.ids.filter(k => live.has(k));
+  if (TR.i >= TR.ids.length) TR.i = Math.max(0, TR.ids.length - 1);
+  return TR.ids.map(k => live.get(k));
+}
+function triageView() {
+  const items = trItems();
+  const x = items[TR.i];
+  if (!x) {
+    return `<div class="triage"><div class="tr-card done-card"><p class="tr-big">All clear.</p><p class="lead">${TR.handled ? `${TR.handled} handled.` : 'Nothing needs you.'} New requests knock when they arrive.</p><div class="tr-acts"><button class="btn prime" data-go="now">Back to ${L('Now')} <kbd>esc</kbd></button></div></div></div>`;
+  }
+  const p = (x.pending || [])[0];
+  const c = x.sessionId && chatBy.get(x.sessionId);
+  const proj = c ? projOf(c) : null;
+  const full = TR.full[trKey(x)];
+  if (!p && x.sessionId && full === undefined) { TR.full[trKey(x)] = null; api(`/api/chat/last-reply?id=${encodeURIComponent(x.sessionId)}`).then(j => { TR.full[trKey(x)] = j.text || ''; if (S.view === 'triage') render(); }).catch(() => {}); }
+  const body = p
+    ? (p.question ? `<p class="tr-what">Asks you a question.</p><p class="hint-line">Questions have choices; open the chat to answer.</p>` : `<p class="tr-what">Wants to ${esc(wantsTo(p.toolName))}</p>${p.detail || p.summary ? `<pre class="tr-code">${esc(p.detail || p.summary)}</pre>` : ''}`)
+    : `<div class="tr-reply msg-ai">${mdHtml(full || x.lastText || 'Finished its turn.')}</div>`;
+  const acts = p && !p.question && x.key
+    ? `<button class="btn prime" data-tr="allow">Allow <kbd>a</kbd></button>${p.canAlways ? '<button class="btn" data-tr="always">Always allow</button>' : ''}<button class="btn" data-tr="deny">Deny <kbd>d</kbd></button>`
+    : x.key && x.source === 'app' && !p ? '<button class="btn prime" data-tr="reply">Reply <kbd>r</kbd></button><button class="btn" data-tr="done">Done <kbd>e</kbd></button>' : '<button class="btn" data-tr="done">Done <kbd>e</kbd></button>';
+  return `<div class="triage">
+    <div class="tr-top"><span>${TR.i + 1} of ${items.length}</span><span class="tr-bar"><i style="width:${Math.round(100 * (TR.handled) / (TR.handled + items.length))}%"></i></span><button class="linkish" data-go="now">Exit <kbd>esc</kbd></button></div>
+    <div class="tr-card">
+      <div class="crumb">${proj ? `${esc(bucketName(proj.bucket))} › ${esc(proj.name)}` : esc(x.folder || '')}${x.accountName ? ` · ${esc(x.accountName)}` : ''}${x.finishedAt ? ` · ${ago(x.finishedAt)}` : ''}</div>
+      <h2 class="tr-title">${esc(titleOf(x))}</h2>
+      ${body}
+      ${TR.replying ? `<form class="box tr-box" id="trForm"><textarea id="trBox" rows="2" placeholder="Reply, then ↵ (it goes to the next one)"></textarea></form>` : ''}
+      <div class="tr-acts">${acts}<button class="btn" data-tr="open">Open <kbd>o</kbd></button><span class="tr-skip"><kbd>j</kbd> <kbd>k</kbd> skip</span></div>
+    </div></div>`;
+}
+async function triageAct(kind) {
+  const items = trItems(); const x = items[TR.i]; if (!x) return;
+  const p = (x.pending || [])[0];
+  if (kind === 'open') { if (x.sessionId) openChat(x.sessionId); return; }
+  if (kind === 'reply') { TR.replying = true; render(); $('trBox')?.focus(); return; }
+  if (['allow', 'always', 'deny'].includes(kind) && p && x.key) {
+    await api('/api/chat/permission', { key: x.key, requestId: p.requestId, decision: kind });
+    sfx(kind === 'deny' ? 'shove' : 'chip');
+  } else if (kind === 'done') { markSeen(trKey(x)); sfx('slide'); }
+  TR.handled++; TR.replying = false;
+  TR.ids = TR.ids.filter(k => k !== trKey(x));
+  if (!['allow', 'always', 'deny'].includes(kind)) markSeen(trKey(x));
+  await loadLive().catch(() => {});
+  render();
+}
+async function triageReply() {
+  const items = trItems(); const x = items[TR.i]; const box = $('trBox');
+  const text = box && box.value.trim(); if (!x || !text) return;
+  box.disabled = true;
+  try { await api('/api/chat/send', { key: x.key, text }); sfx('slide'); markSeen(trKey(x)); TR.handled++; TR.replying = false; TR.ids = TR.ids.filter(k => k !== trKey(x)); await loadLive().catch(() => {}); render(); }
+  catch (err) { toast(err.message); box.disabled = false; }
 }
