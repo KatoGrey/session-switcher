@@ -923,6 +923,69 @@ module.exports = [
     },
   },
   {
+    name: 'fonts',
+    // The font pack: ready-made sets, a pick per role, matched sizes, code ligatures on request, the
+    // credits, and every file served.
+    async run(t) {
+      const b = await t.open();
+      const cat = await b.eval(`return { n: Look.FAMILIES.filter(f => f.cat !== 'theme').length, sets: Look.FONT_SETS.length, files: Look.FAMILIES.flatMap(f => f.faces.map(x => x[0])) }`);
+      t.check('42 families to choose from, in 11 ready-made sets', cat.n === 42 && cat.sets === 11, cat);
+      const served = await b.eval(`const bad = []; for (const f of ${JSON.stringify(cat.files)}) { const r = await fetch('/fonts/' + f + '.woff2'); if (!r.ok || r.headers.get('content-type') !== 'font/woff2' || (await r.arrayBuffer()).byteLength < 2000) bad.push(f); } return bad`);
+      t.check('every font file is served', served.length === 0, served);
+      // The default look is untouched: Spectral replies, Playfair headings, JetBrains Mono code, no ligatures.
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2000);
+      const read = `await document.fonts.ready; const ff = s => { const e = document.querySelector(s); return e ? getComputedStyle(e).fontFamily : null; }; const code = document.querySelector('#cFeed .md code, #cFeed pre');
+        return { body: ff('#cFeed .md p'), code: code && getComputedStyle(code).fontFamily, liga: code && getComputedStyle(code).fontVariantLigatures, display: getComputedStyle(document.documentElement).getPropertyValue('--f-display').trim() }`;
+      const def = await b.eval(read);
+      t.check('out of the box: Spectral replies, Playfair headings, JetBrains Mono code', /^"?Spectral/.test(def.body) && /^"Playfair"/.test(def.display) && /^"?JetBrains Mono/.test(def.code), def);
+      t.check('code ligatures start off', def.liga === 'none', def);
+      // A set changes all three; its fonts load.
+      await b.eval(`Look.set({ fontSet: 'editorial' }); return 1`); await sleep(400);
+      const ed = await b.eval(read);
+      const edLoaded = await b.eval(`await document.fonts.load('16px "Fit Source Serif 4"'); await document.fonts.load('20px "Young Serif"'); await document.fonts.load('14px "Fit Google Sans Code"'); return ['16px "Fit Source Serif 4"', '20px "Young Serif"', '14px "Fit Google Sans Code"'].every(f => document.fonts.check(f))`);
+      t.check('a set changes replies, headings and code', /Source Serif 4/.test(ed.body) && /Young Serif/.test(ed.display) && /Google Sans Code/.test(ed.code), ed);
+      t.check('and its fonts load', edLoaded);
+      // A single pick wins over the set; reading fonts are scaled to match, headings aren't.
+      await b.eval(`Look.set({ fBody: 'eb-garamond', fHead: 'big-shoulders' }); return 1`); await sleep(300);
+      const pk = await b.eval(read);
+      const fit = await b.eval(`const r = [...document.getElementById('fontPack').sheet.cssRules].map(x => x.cssText); return { garamond: r.find(x => x.includes('"Fit EB Garamond"'))?.match(/size-adjust: ([\\d.]+)%/)?.[1], plex: r.some(x => x.includes('"Fit IBM Plex Sans"')), shoulders: r.some(x => x.includes('"Fit Big Shoulders"')) }`);
+      t.check('a single pick wins over the set', /Fit EB Garamond/.test(pk.body) && /Big Shoulders/.test(pk.display) && /Google Sans Code/.test(pk.code), pk);
+      t.check('small-lettered reading fonts are scaled up to match (EB Garamond 115%); the reference and headings aren’t', fit.garamond === '115' && !fit.plex && !fit.shoulders, fit);
+      t.check('Theme Studio and Setup share the same sets', await b.eval(`return Look.setFonts('storybook').body.includes('EB Garamond')`));
+      await b.eval(`Look.set({ liga: true }); return 1`); await sleep(200);
+      t.check('ligatures come on when asked for', (await b.eval(read)).liga === 'normal');
+      // Setup: the cards, the picks, and choosing a set clears the picks.
+      await b.eval(`ChatUI.close(); openSetup('look'); return 1`); await sleep(900);
+      await b.eval(`document.querySelector('.lk-fonts').scrollIntoView(); return 1`); await sleep(900);
+      const ui = await b.eval(`return { cards: document.querySelectorAll('.lk-set').length, checked: document.querySelector('.lk-set[aria-checked="true"]')?.dataset.v, picks: [...document.querySelectorAll('.lk-picks select')].map(s => s.value), options: [...document.querySelectorAll('#lk-fBody option, #lk-fHead option, #lk-fCode option')].length, credits: !!document.querySelector('[data-font-credits]') }`);
+      t.check('Setup shows the theme’s own fonts and every set, drawn in its own letters', ui.cards === 12 && ui.checked === 'editorial', ui);
+      t.check('with a pick for replies, headings and code', ui.picks.join() === 'eb-garamond,big-shoulders,' && ui.options > 42, ui);
+      await t.shot(b, 'setup');
+      await b.clickOn('.lk-set[data-v="scifi"]'); await sleep(500);
+      const sc = await b.eval(`const o = Look.get(); return { set: o.fontSet, picks: [o.fBody, o.fHead, o.fCode].join(), display: getComputedStyle(document.documentElement).getPropertyValue('--f-display').trim() }`);
+      t.check('choosing a set clears the single picks', sc.set === 'scifi' && sc.picks === ',,' && /Tektur/.test(sc.display), sc);
+      await b.eval(`const s = document.getElementById('lk-fCode'); s.value = 'cascadia-code'; s.dispatchEvent(new Event('change', { bubbles: true })); return 1`); await sleep(300);
+      t.check('a pick from the list applies at once', await b.eval(`return Look.get().fCode === 'cascadia-code' && getComputedStyle(document.documentElement).getPropertyValue('--f-mono').includes('Cascadia Code')`));
+      await b.clickOn('[data-font-credits]'); await sleep(900);
+      const cr = await b.eval(`const d = document.getElementById('fontsDlg'); return { open: d.open, items: d.querySelectorAll('.fonts-list li').length, ofl: d.querySelector('.fonts-ofl').textContent }`);
+      t.check('Fonts and licences lists every family with the licence and its notices', cr.open && cr.items === 46 && /SIL OPEN FONT LICENSE Version 1\.1/.test(cr.ofl) && /IBM Plex Sans: Copyright/.test(cr.ofl) && /Reserved Font Name "Plex"/.test(cr.ofl), { ...cr, ofl: cr.ofl.slice(0, 80) });
+      await t.shot(b, 'credits');
+      await b.eval(`document.getElementById('fontsDlg').close(); document.getElementById('setup').close(); return 1`);
+      await b.eval(`openPalette('fonts'); return 1`); await sleep(500);
+      const pal = await b.eval(`return document.getElementById('palette').textContent`);
+      await b.esc(); await sleep(200);
+      await b.eval(`openPalette('licence'); return 1`); await sleep(500);
+      const lic = await b.eval(`return document.getElementById('palette').textContent`);
+      t.check('Ctrl+K offers the font sets and the licences', /Fonts: Reading/.test(pal) && /Fonts and licences/.test(lic), lic.slice(0, 200));
+      await b.esc(); await sleep(200);
+      // The old reading-font choice carries over: Modern is the device's sans, Clean for headings too.
+      await b.eval(`localStorage.setItem('look', JSON.stringify({ theme: 'crimson', font: 'clean' })); location.reload(); return 1`); await sleep(2500);
+      const mg = await b.eval(`const o = Look.get(); return { body: o.fBody, head: o.fHead, font: 'font' in o, css: getComputedStyle(document.documentElement).getPropertyValue('--f-body').trim() }`);
+      t.check('the old Modern and Clean choices carry over', mg.body === 'system' && mg.head === 'system' && !mg.font && /Segoe UI/.test(mg.css), mg);
+      await b.eval(`Look.reset(); return 1`);
+    },
+  },
+  {
     name: 'malibu',
     // The glam theme: its own lettering, words, sunset, sparkles, hearts and chimes; light mode first.
     async run(t) {
@@ -1175,7 +1238,7 @@ module.exports = [
     async run(t) {
       const b = await t.open();
       const LOOKS = {
-        isekai: { fonts: ['20px Orbitron', '16px "M PLUS Rounded 1c"'], home: 'Guild hall', word: /another world/, sky: 'motes', emblem: 'an-glow' },
+        isekai: { fonts: ['20px Tektur', '16px "M PLUS Rounded 1c"'], home: 'Guild hall', word: /another world/, sky: 'motes', emblem: 'an-glow' },
         highfantasy: { fonts: ['700 20px "Cinzel Decorative"', '16px "EB Garamond"'], home: 'The great hall', word: /scribes of the realm/, sky: 'fireflies', emblem: 'M20.0 5.5' },
         dungeon: { fonts: ['20px "Pirata One"', '16px Alegreya', '16px "Alegreya SC"'], home: 'Camp', word: /deep below/, sky: 'embers', emblem: 'an-iron' },
       };

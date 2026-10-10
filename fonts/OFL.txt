@@ -1,22 +1,56 @@
-The typefaces in this folder are licensed under the SIL Open Font License 1.1.
-Cinzel, Playfair Display, JetBrains Mono and Spectral, via Fontsource (latin subsets).
-Inter, Michroma, Barlow, Barlow Condensed and Barlow Semi Condensed (the space saga themes), via Google Fonts (latin subsets).
-Pacifico and Nunito (the Malibu theme), via Google Fonts (latin subsets).
-Orbitron, M PLUS Rounded 1c, Cinzel Decorative, EB Garamond, Pirata One, Alegreya and Alegreya SC (the anime themes), via Google Fonts (latin subsets).
+The typefaces in this folder are licensed under the SIL Open Font License 1.1 (below).
 
-Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)
-Copyright 2011 The Michroma Project Authors (https://github.com/googlefonts/Michroma-font)
-Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow)
-Copyright 2018 The Pacifico Project Authors (https://github.com/googlefonts/Pacifico)
-Copyright 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito)
-Copyright 2018 The Orbitron Project Authors (https://github.com/theleagueof/orbitron), with Reserved Font Name: "Orbitron"
-Copyright 2016 The Rounded M+ Project Authors.
-Copyright (c) 2012 Natanael Gama (info@ndiscovered.com), with Reserved Font Name 'Cinzel'
-Copyright 2017 The EB Garamond Project Authors (https://github.com/octaviopardo/EBGaramond12)
-Copyright (c) 2012, Rodrigo Fuenzalida, Nicolas Massi (www.taip.com.ar / abc.taip.com.ar), with Reserved Font Name 'Pirata'
-Copyright 2011 The Alegreya Project Authors (https://github.com/huertatipografica/Alegreya)
+Families with a Reserved Font Name ship exactly as their authors made them, only compressed to
+WOFF2: IBM Plex Sans, Source Sans 3, Lora, Cascadia Code, Cinzel Decorative, Pirata One, Lexend
+and Andika (full files from github.com/google/fonts), Merriweather (its authors' web fonts,
+github.com/SorkinType/Merriweather) and OpenDyslexic (github.com/antijingoist/opendyslexic).
+JetBrains Mono, Spectral and Cinzel are latin subsets via Fontsource. Every other family is
+Google Fonts' latin file, with more scripts for Noto Sans, Tektur and Kalam. Archivo Condensed and
+Archivo SemiCondensed are Archivo, set at fixed widths by Google Fonts.
 
-Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-ExtraLightItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-Light.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-LightItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-Regular.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-Italic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-Medium.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-MediumItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-SemiBold.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-SemiBoldItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-Bold.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-BoldItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-ExtraBold.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral) Spectral-ExtraBoldItalic.ttf: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral)
+IBM Plex Sans: Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
+DM Sans: Copyright 2014 The DM Sans Project Authors (https://github.com/googlefonts/dm-fonts)
+Noto Sans: Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+Source Sans 3: Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries.
+Plus Jakarta Sans: Copyright 2020 The Plus Jakarta Sans Project Authors (https://github.com/tokotype/PlusJakartaSans)
+Onest: Copyright 2021 The Onest Project Authors (https://github.com/googlefonts/onest)
+Google Sans Flex: Copyright 2015 The Google Sans Flex Authors (https://github.com/googlefonts/googlesans-flex)
+Inter: Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)
+Nunito: Copyright 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito)
+Literata: Copyright 2017 The Literata Project Authors (https://github.com/googlefonts/literata)
+Source Serif 4: Copyright 2014 The Source Serif 4 Project Authors (https://github.com/adobe-fonts/source-serif)
+Merriweather: Copyright 2016 The Merriweather Project Authors (https://github.com/EbenSorkin/Merriweather), with Reserved Font Name "Merriweather".
+Lora: Copyright 2011 The Lora Project Authors (https://github.com/cyrealtype/Lora-Cyrillic), with Reserved Font Name "Lora".
+EB Garamond: Copyright 2017 The EB Garamond Project Authors (https://github.com/octaviopardo/EBGaramond12)
+Spectral: Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral)
+Alegreya and Alegreya SC: Copyright 2011 The Alegreya Project Authors (https://github.com/huertatipografica/Alegreya)
+JetBrains Mono: Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+Cascadia Code: Copyright (c) 2019 - Present, Microsoft Corporation, with Reserved Font Name Cascadia Code.
+Fira Code: Copyright 2014-2020 The Fira Code Project Authors (https://github.com/tonsky/FiraCode)
+Google Sans Code: Copyright 2025 The Google Sans Code Project Authors (github.com/googlefonts/googlesans-code)
+Victor Mono: Copyright 2023 The Victor Mono Project Authors (https://github.com/rubjo/victor-mono-font)
+Geist Mono: Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font.git)
+Atkinson Hyperlegible Mono: Copyright 2020-2024 The Atkinson Hyperlegible Mono Project Authors (https://github.com/googlefonts/atkinson-hyperlegible-next-mono)
+Archivo: Copyright 2020 The Archivo Project Authors (https://github.com/Omnibus-Type/Archivo)
+Big Shoulders: Copyright 2019 The Big Shoulders Project Authors (https://github.com/xotypeco/big_shoulders)
+Unbounded: Copyright 2022 The Unbounded Project Authors (https://github.com/googlefonts/unbounded)
+Playfair: Copyright 2005 The Playfair Project Authors (https://github.com/googlefonts/Playfair)
+Young Serif: Copyright 2023 The Young Serif Project Authors (https://github.com/noirblancrouge/YoungSerif)
+Cinzel: Copyright 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel)
+Cinzel Decorative: Copyright (c) 2012 Natanael Gama (info@ndiscovered.com), with Reserved Font Name 'Cinzel'
+Pirata One: Copyright (c) 2012, Rodrigo Fuenzalida, Nicolas Massi (www.taip.com.ar / abc.taip.com.ar), with Reserved Font Name 'Pirata'
+Michroma: Copyright 2011 The Michroma Project Authors (https://github.com/googlefonts/Michroma-font)
+Tektur: Copyright 2023 The Tektur Project Authors (https://www.github.com/hyvyys/Tektur)
+Silkscreen: Copyright 2001 The Silkscreen Project Authors (https://github.com/googlefonts/silkscreen)
+Caveat: Copyright 2014 The Caveat Project Authors (https://github.com/googlefonts/caveat)
+Patrick Hand: Copyright (c) 2010-2012 Patrick Wagesreiter (mail@patrickwagesreiter.at)
+Kalam: Copyright (c) 2014, Indian Type Foundry (info@indiantypefoundry.com).
+Pacifico: Copyright 2018 The Pacifico Project Authors (https://github.com/googlefonts/Pacifico)
+Atkinson Hyperlegible Next: Copyright 2020-2024 The Atkinson Hyperlegible Next Project Authors (https://github.com/googlefonts/atkinson-hyperlegible-next)
+Lexend: Copyright 2018 The Lexend Project Authors (https://github.com/googlefonts/lexend), with Reserved Font Name “RevReading Lexend”.
+OpenDyslexic: Copyright (c) 2019-07-29, Abbie Gonzalez (https://abbiecod.es|support@abbiecod.es), with Reserved Font Name OpenDyslexic. Copyright (c) 12/2012 - 2019
+Andika: Copyright (c) 2004-2022 SIL International (http://www.sil.org/) with Reserved Font Names "Andika" and "SIL".
+M PLUS Rounded 1c: Copyright 2016 The Rounded M+ Project Authors.
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

@@ -3,7 +3,6 @@
    A night edition of a living codex. Abyss and vellum panels, parchment type, crimson only for
    action and work in progress, gilt only for "this needs you". */
 
-@font-face{font-family:"Cinzel";src:url(/fonts/cinzel.woff2) format("woff2");font-weight:400 900;font-display:swap}
 
 /* Theme Studio: art lives beside the words, with opaque reading surfaces in either mode. */
 .studio-entry{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:24px 0 16px;padding:22px;border:1px solid var(--seam-2);border-radius:12px;background:var(--vellum-2)}
@@ -45,43 +44,6 @@
 [data-family="custom"] .hero .eyebrow{font:500 11px/1.5 var(--f-label);letter-spacing:.12em}
 .lk-custom .sw{background:var(--sw-bg)}
 @media(max-width:700px){.studio-entry{align-items:flex-start;flex-direction:column}.studio-form-row,.studio-library,.studio-previews{grid-template-columns:1fr}.studio-dlg .setup-body{padding:18px}.studio-dlg form{padding:16px}.studio-dlg .setup-head{padding:18px}.studio-dlg h2{font-size:26px}[data-family="custom"] .hero:has(.studio-scene) .hero-in{padding-right:28px}[data-family="custom"] .hero-art.studio-scene{width:auto;height:auto;aspect-ratio:3/2;position:relative;margin:0 18px 18px}.studio-scene>img{mask-image:none}.studio-counts{gap:20px;bottom:10px;right:10px;padding:10px 16px}}
-@font-face{font-family:"Playfair Display";src:url(/fonts/playfair.woff2) format("woff2");font-weight:400 900;font-display:swap}
-@font-face{font-family:"Playfair Display";src:url(/fonts/playfair-italic.woff2) format("woff2");font-weight:400 900;font-style:italic;font-display:swap}
-@font-face{font-family:"JetBrains Mono";src:url(/fonts/jetbrains-mono.woff2) format("woff2");font-weight:100 800;font-display:swap}
-@font-face{font-family:"Spectral";src:url(/fonts/spectral-400.woff2) format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"Spectral";src:url(/fonts/spectral-400-italic.woff2) format("woff2");font-weight:400;font-style:italic;font-display:swap}
-@font-face{font-family:"Spectral";src:url(/fonts/spectral-500.woff2) format("woff2");font-weight:500;font-display:swap}
-@font-face{font-family:"Spectral";src:url(/fonts/spectral-600.woff2) format("woff2");font-weight:600 700;font-display:swap}
-/* The space saga themes' lettering (loaded only when one of them is on) */
-@font-face{font-family:"Inter";src:url(/fonts/inter.woff2) format("woff2");font-weight:400 700;font-display:swap}
-@font-face{font-family:"Inter";src:url(/fonts/inter-italic.woff2) format("woff2");font-weight:400 700;font-style:italic;font-display:swap}
-@font-face{font-family:"Michroma";src:url(/fonts/michroma.woff2) format("woff2");font-weight:400 800;font-display:swap}
-@font-face{font-family:"Barlow";src:url(/fonts/barlow-400.woff2) format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"Barlow";src:url(/fonts/barlow-400-italic.woff2) format("woff2");font-weight:400;font-style:italic;font-display:swap}
-@font-face{font-family:"Barlow";src:url(/fonts/barlow-500.woff2) format("woff2");font-weight:500;font-display:swap}
-@font-face{font-family:"Barlow";src:url(/fonts/barlow-600.woff2) format("woff2");font-weight:600 800;font-display:swap}
-@font-face{font-family:"Barlow Condensed";src:url(/fonts/barlow-condensed-600.woff2) format("woff2");font-weight:500 600;font-display:swap}
-@font-face{font-family:"Barlow Condensed";src:url(/fonts/barlow-condensed-700.woff2) format("woff2");font-weight:700 900;font-display:swap}
-@font-face{font-family:"Barlow Semi Condensed";src:url(/fonts/barlow-semi-condensed-500.woff2) format("woff2");font-weight:400 500;font-display:swap}
-@font-face{font-family:"Barlow Semi Condensed";src:url(/fonts/barlow-semi-condensed-600.woff2) format("woff2");font-weight:600 800;font-display:swap}
-/* The Malibu theme's lettering (loaded only when it's on) */
-@font-face{font-family:"Pacifico";src:url(/fonts/pacifico.woff2) format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"Nunito";src:url(/fonts/nunito.woff2) format("woff2");font-weight:400 900;font-display:swap}
-@font-face{font-family:"Nunito";src:url(/fonts/nunito-italic.woff2) format("woff2");font-weight:400 900;font-style:italic;font-display:swap}
-/* the anime themes: Orbitron and M PLUS Rounded 1c (Isekai), Cinzel Decorative and EB Garamond (High Fantasy), Pirata One and Alegreya (Dungeon) */
-@font-face{font-family:"Orbitron";src:url(/fonts/orbitron.woff2) format("woff2");font-weight:400 900;font-display:swap}
-@font-face{font-family:"M PLUS Rounded 1c";src:url(/fonts/mplus-rounded-400.woff2) format("woff2");font-weight:400 500;font-display:swap}
-@font-face{font-family:"M PLUS Rounded 1c";src:url(/fonts/mplus-rounded-700.woff2) format("woff2");font-weight:600 700;font-display:swap}
-@font-face{font-family:"M PLUS Rounded 1c";src:url(/fonts/mplus-rounded-800.woff2) format("woff2");font-weight:800 900;font-display:swap}
-@font-face{font-family:"Cinzel Decorative";src:url(/fonts/cinzel-decorative-400.woff2) format("woff2");font-weight:400 600;font-display:swap}
-@font-face{font-family:"Cinzel Decorative";src:url(/fonts/cinzel-decorative-700.woff2) format("woff2");font-weight:700 900;font-display:swap}
-@font-face{font-family:"EB Garamond";src:url(/fonts/eb-garamond.woff2) format("woff2");font-weight:400 800;font-display:swap}
-@font-face{font-family:"EB Garamond";src:url(/fonts/eb-garamond-italic.woff2) format("woff2");font-weight:400 800;font-style:italic;font-display:swap}
-@font-face{font-family:"Pirata One";src:url(/fonts/pirata-one.woff2) format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"Alegreya";src:url(/fonts/alegreya.woff2) format("woff2");font-weight:400 900;font-display:swap}
-@font-face{font-family:"Alegreya";src:url(/fonts/alegreya-italic.woff2) format("woff2");font-weight:400 900;font-style:italic;font-display:swap}
-@font-face{font-family:"Alegreya SC";src:url(/fonts/alegreya-sc-400.woff2) format("woff2");font-weight:400 500;font-display:swap}
-@font-face{font-family:"Alegreya SC";src:url(/fonts/alegreya-sc-700.woff2) format("woff2");font-weight:600 900;font-display:swap}
 
 /* Every color the app uses, as "r g b". Themes (theme.js) override these. */
 :root{--c-000000:0 0 0;--c-3d1a18:61 26 24;--c-050406:5 4 6;--c-0a090c:10 9 12;--c-0b090d:11 9 13;--c-0b0a0d:11 10 13;--c-0c0a0e:12 10 14;--c-0d0b0f:13 11 15;--c-0e0c10:14 12 16;--c-0f0d11:15 13 17;--c-100e12:16 14 18;--c-110e12:17 14 18;--c-110f13:17 15 19;--c-120f14:18 15 20;--c-121014:18 16 20;--c-121015:18 16 21;--c-141117:20 17 23;--c-151116:21 17 22;--c-17131a:23 19 26;--c-18141b:24 20 27;--c-19151c:25 21 28;--c-1a1405:26 20 5;--c-1a161d:26 22 29;--c-1b1519:27 21 25;--c-1b171e:27 23 30;--c-1c181f:28 24 31;--c-1d1920:29 25 32;--c-221d26:34 29 38;--c-241e29:36 30 41;--c-241f28:36 31 40;--c-2a242e:42 36 46;--c-2b1615:43 22 21;--c-2c2632:44 38 50;--c-3c5a96:60 90 150;--c-3d3443:61 52 67;--c-4664a0:70 100 160;--c-46679f:70 103 159;--c-5072ab:80 114 171;--c-5e2622:94 38 34;--c-5f2a26:95 42 38;--c-5f86c6:95 134 198;--c-6a91d2:106 145 210;--c-6c2e29:108 46 41;--c-6d302b:109 48 43;--c-6e2a25:110 42 37;--c-6f97d8:111 151 216;--c-716a63:135 128 120;--c-781412:120 20 18;--c-78342e:120 52 46;--c-7a332d:122 51 45;--c-7a3530:122 53 48;--c-7d1513:125 21 19;--c-7fa3dc:127 163 220;--c-7fb79a:127 183 154;--c-8c3a34:140 58 52;--c-8d3e37:141 62 55;--c-94423b:148 66 59;--c-9a4038:154 64 56;--c-9a463e:154 70 62;--c-9a928a:154 146 138;--c-a5463f:165 70 63;--c-a5564d:165 86 77;--c-a58be8:165 139 232;--c-a8544b:168 84 75;--c-a98f45:169 143 69;--c-a9c3ef:169 195 239;--c-b0544b:176 84 75;--c-b8655b:184 101 91;--c-c9aa4c:201 170 76;--c-c9daf6:201 218 246;--c-c9e8d6:201 232 214;--c-cf8274:207 130 116;--c-cfc6b6:207 198 182;--c-d08072:208 128 114;--c-d4b557:212 181 87;--c-d68a7c:214 138 124;--c-d68c7d:214 140 125;--c-d8b7aa:216 183 170;--c-d8e4f8:216 228 248;--c-d9bf74:217 191 116;--c-dcc790:220 199 144;--c-e2a596:226 165 150;--c-e6d3a0:230 211 160;--c-e6dccb:230 220 203;--c-e7b2a8:231 178 168;--c-e9d283:233 210 131;--c-e9e1d4:233 225 212;--c-eadfce:234 223 206;--c-ede6d9:237 230 217;--c-efdcd3:239 220 211;--c-f0dc95:240 220 149;--c-f1dc92:241 220 146;--c-f1dfd6:241 223 214;--c-f3e2d8:243 226 216;--c-f6ece2:246 236 226;--c-f6efe3:246 239 227;--c-ffffff:255 255 255}
@@ -94,7 +56,7 @@
   --ember:rgb(var(--c-cf8274)); --ember-soft:rgb(var(--c-e2a596));
   --gilt:rgb(var(--c-d9bf74)); --gilt-2:rgb(var(--c-a98f45)); --gilt-ink:rgb(var(--c-1a1405));
   --violet:rgb(var(--c-a58be8));
-  --f-display:"Playfair Display", "Iowan Old Style", Georgia, serif;
+  --f-display:"Playfair", "Iowan Old Style", Georgia, serif;
   --f-caps:"Cinzel", "Trajan Pro", Georgia, serif;
   --f-body:"Spectral", "Iowan Old Style", Georgia, serif;
   --f-mono:"JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
@@ -1476,8 +1438,6 @@ body{zoom:var(--look-ui,1)}
 .lk-seg button small{font-size:12px;color:var(--ash-2)}
 .lk-seg button:hover{border-color:var(--ash-2)}
 .lk-seg button[aria-checked="true"]{border-color:var(--crimson);background:rgb(var(--c-8c3a34) / .2);color:var(--parch);box-shadow:0 0 0 3px rgb(var(--c-a5463f) / .14)}
-.fs-classic{font:600 17px "Playfair Display", Georgia, serif}
-.fs-modern{font:600 16px "Segoe UI",system-ui,sans-serif}
 .lk-themes{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:10px}
 .lk-theme{display:flex;flex-direction:column;gap:9px;padding:9px;border:1px solid var(--seam);border-radius:12px;background:var(--vellum);text-align:left;color:var(--parch);cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s}
 .lk-theme:hover{border-color:var(--seam-2);transform:translateY(-1px)}
@@ -1507,7 +1467,32 @@ body{zoom:var(--look-ui,1)}
 .lk-preview{display:flex;flex-direction:column;gap:12px;margin:8px 0 14px;padding:16px 18px 16px 34px;border:1px dashed var(--seam-2);border-radius:10px;background:var(--abyss)}
 .lk-preview .turn-act{display:none}
 .lk-preview .umsg{max-width:90%}
-@media (max-width:760px){ .lk-row{grid-template-columns:1fr} .lk-themes{grid-template-columns:repeat(2,minmax(0,1fr))} .stabs button{padding:6px 10px;font-size:13px} }
+/* Fonts: ready-made sets drawn in their own letters, then a pick per role. The block is laid out
+   only near the screen, so its fonts download when someone scrolls to it. */
+.lk-fonts{content-visibility:auto;contain-intrinsic-size:auto 640px}
+.lk-sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:10px;margin:0 0 16px}
+.lk-set{display:flex;flex-direction:column;gap:6px;min-width:0;padding:12px 14px;border:1px solid var(--seam);border-radius:12px;background:var(--vellum);text-align:left;color:var(--parch);cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s}
+.lk-set:hover{border-color:var(--seam-2);transform:translateY(-1px)}
+.lk-set[aria-checked="true"]{border-color:var(--crimson);box-shadow:0 0 0 2px var(--crimson)}
+.lk-set b{font:600 19px/1.2 var(--fs-h);overflow-wrap:anywhere}
+.lk-set span{font:400 14.5px/1.45 var(--fs-b);color:var(--parch-2)}
+.lk-set code{font:400 12.5px/1.4 var(--fs-c);color:var(--ash);font-variant-ligatures:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.look-liga .lk-set code{font-variant-ligatures:normal}
+.lk-set small{font:400 11.5px/1.35 var(--f-label);color:var(--ash-2);letter-spacing:.02em}
+.lk-picks select{width:100%;max-width:340px;background:var(--abyss);border:1px solid var(--seam-2);border-radius:7px;padding:8px 10px;font:14.5px var(--f-body);color:var(--parch)}
+.lk-credits{margin:4px 0 18px;font-size:14px}
+/* Code ligatures (=> drawn as one arrow) only when asked for. */
+:root:not(.look-liga) :is(code,pre,kbd,samp,.mono,.t-in,.t-out,.v-raw,.pv-diff){font-variant-ligatures:none}
+dialog.fonts-dlg{width:min(720px,calc(100vw - 32px));padding:0;max-height:calc(100vh - 40px)}
+dialog.fonts-dlg[open]{display:flex;flex-direction:column}
+.fonts-body{overflow:auto;padding:16px 24px 22px}
+.fonts-body > p{margin:0 0 14px;color:var(--ash);font-size:14.5px;line-height:1.5}
+.fonts-body h4{margin:16px 0 6px;font:600 11px/1 var(--f-label);letter-spacing:.16em;text-transform:uppercase;color:var(--gilt)}
+.fonts-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 16px;margin:0;padding:0;list-style:none}
+.fonts-list li{padding:4px 0;font-size:14px;color:var(--parch-2)}
+.fonts-list small{display:block;color:var(--ash-2);font-size:12px}
+.fonts-ofl{margin:18px 0 0;padding:12px 14px;max-height:340px;overflow:auto;border:1px solid var(--seam);border-radius:8px;background:var(--abyss);font:12px/1.55 var(--f-mono);color:var(--ash);white-space:pre-wrap}
+@media (max-width:760px){ .lk-row{grid-template-columns:1fr} .lk-themes{grid-template-columns:repeat(2,minmax(0,1fr))} .lk-sets{grid-template-columns:repeat(2,minmax(0,1fr))} .lk-picks select{max-width:none} .stabs button{padding:6px 10px;font-size:13px} }
 
 /* Attached files: in the message box, and in the conversation */
 .att.file{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:9px;min-width:190px;max-width:280px;height:64px;padding:0 30px 0 10px;border:1px solid var(--seam-2);border-radius:8px;background:var(--vellum);line-height:1.2;overflow:hidden}
@@ -2665,7 +2650,7 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
    Made for dark mode, drawn like an anime's world: glowing magic, gradient skies, rim light and
    drifting particles. Like the other themed looks, text and surfaces come from the --c-* variables
    (so light and dark, contrast and Codex's color keep working); --an-* and each theme's own prefix
-   (--ie-, --hf-, --dg-) are decoration only, "r g b". The display faces (Orbitron, Cinzel, Pirata One)
+   (--ie-, --hf-, --dg-) are decoration only, "r g b". The display faces (Tektur, Cinzel, Pirata One)
    are kept for big words; names, titles and labels people read all day are in each theme's reading face. */
 
 /* ---------- shared ---------- */
@@ -2753,7 +2738,7 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 .lk-anime .sw-card{background:color-mix(in srgb,var(--sw-card) 58%,transparent);backdrop-filter:blur(2px)}
 
 /* ==================== Isekai ====================
-   Another world at twilight: indigo glass, a cyan magic glow, sakura pink and gold. Orbitron for the
+   Another world at twilight: indigo glass, a cyan magic glow, sakura pink and gold. Tektur for the
    big words (a game's status screen), M PLUS Rounded for reading. Panels have the corner brackets of
    a system window; status dots are glowing diamonds. */
 [data-theme="isekai"]{--radius:10px;

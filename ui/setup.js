@@ -137,10 +137,9 @@ function renderLook() {
     <p class="d-h">Reading</p>
     <div class="lk-row"><label for="lkText"><b>Text size</b><small>Messages, documents and the message box</small></label>
       <div class="lk-range"><span class="a-sm" aria-hidden="true">A</span><input type="range" id="lkText" min="80" max="150" step="5" value="${o.text}" data-look="text"><span class="a-lg" aria-hidden="true">A</span><output id="lkTextV">${o.text}%</output></div></div>
-    <div class="lk-row"><span><b>Reading font</b><small>Classic is the bookish serif; Modern and Clean are easier on small screens</small></span>
-      ${seg('font', [['classic', '<span class="fs-classic">Aa</span> Classic'], ['modern', '<span class="fs-modern">Aa</span> Modern'], ['clean', '<span class="fs-modern">Aa</span> Clean', 'sans headings too']])}</div>
     <label class="toggle"><input type="checkbox" data-look="bold" ${o.bold ? 'checked' : ''}><span><b>Bold text</b><span>Heavier letters everywhere, easier to read at a glance.</span></span></label>
     <label class="toggle"><input type="checkbox" data-look="contrast" ${o.contrast ? 'checked' : ''}><span><b>Higher contrast</b><span>Brighter text and stronger accents.</span></span></label>
+    ${fontsHtml(o)}
     <p class="d-h">Interface</p>
     <div class="lk-row"><label for="lkUi"><b>Interface size</b><small>Scales everything: bars, buttons, cards and text</small></label>
       <div class="lk-range"><span class="a-sm" aria-hidden="true">▢</span><input type="range" id="lkUi" min="80" max="130" step="5" value="${o.ui}" data-look="ui"><span class="a-lg" aria-hidden="true">▢</span><output id="lkUiV">${o.ui}%</output></div></div>
@@ -151,6 +150,50 @@ function renderLook() {
     <div class="app-actions"><button class="btn" data-look-reset>Back to the original look</button></div>
     <p class="ver">Appearance is saved on this device, so your phone and your PC can each look their own way.</p>`;
 }
+// Fonts: ready-made sets first (each card drawn in its own fonts), then a pick per role.
+const FONT_GROUPS = { sans: 'Sans', serif: 'Serif', code: 'Code', display: 'Display', hand: 'Handwritten', easy: 'Easy reading' };
+const firstFont = s => (String(s || '').match(/^\s*"?([^",]+)"?/) || [, ''])[1].replace(/^Fit /, '');
+function fontsHtml(o) {
+  const tf = Look.theme().fonts || {};
+  const own = { display: tf.display || '"Playfair", Georgia, serif', body: tf.body || '"Spectral", Georgia, serif', mono: tf.mono || '"JetBrains Mono", monospace' };
+  const base = Look.setFonts(o.fontSet) || own;
+  const sets = [{ id: '', name: 'Your theme’s own', f: own }, ...Look.FONT_SETS.map(s => ({ ...s, f: Look.setFonts(s.id) }))];
+  const card = s => `<button type="button" class="lk-set" role="radio" aria-checked="${o.fontSet === s.id}" data-look="fontSet" data-v="${s.id}" style="--fs-h:${esc(s.f.display)};--fs-b:${esc(s.f.body)};--fs-c:${esc(s.f.mono)}">
+      <b>${esc(s.name)}</b><span>The bard tuned her lute; one more song.</span><code>if (ok !== false) =&gt; 0.15</code>
+      <small>${esc([...new Set([s.f.display, s.f.body, s.f.mono].map(firstFont))].join(' · '))}</small></button>`;
+  const opts = (k, cats, from) => `<option value=""${o[k] ? '' : ' selected'}>${esc(from)}</option><option value="system"${o[k] === 'system' ? ' selected' : ''}>This device’s own font</option>
+    ${cats.map(c => `<optgroup label="${FONT_GROUPS[c]}">${Look.FAMILIES.filter(f => f.cat === c).map(f => `<option value="${f.id}"${o[k] === f.id ? ' selected' : ''}>${esc(f.name)} · ${esc(f.role)}</option>`).join('')}</optgroup>`).join('')}`;
+  const from = o.fontSet ? `From the ${Look.FONT_SETS.find(s => s.id === o.fontSet)?.name || ''} set` : 'From your theme';
+  const pick = (k, label, hint, cats, slot) => `<div class="lk-row"><label for="lk-${k}"><b>${label}</b><small>${hint}</small></label><select id="lk-${k}" data-look="${k}">${opts(k, cats, `${from} (${firstFont(base[slot])})`)}</select></div>`;
+  return `<div class="lk-fonts"><p class="d-h">Fonts</p>
+    <p class="lk-saga-note">Pick a ready-made set, or choose each font yourself. All of them come with the app, free under the SIL Open Font License.</p>
+    <div class="lk-sets" role="radiogroup" aria-label="Font sets">${sets.map(card).join('')}</div>
+    <div class="lk-picks">
+      ${pick('fBody', 'Replies and documents', 'What you read most; sized to match each other', ['sans', 'serif', 'easy'], 'body')}
+      ${pick('fHead', 'Headings and names', 'Titles, project and chat names', ['display', 'serif', 'sans', 'hand', 'easy'], 'display')}
+      ${pick('fCode', 'Code', 'Code, diffs and commands', ['code'], 'mono')}
+    </div>
+    <label class="toggle"><input type="checkbox" data-look="liga" ${o.liga ? 'checked' : ''}><span><b>Code ligatures</b><span>Draw pairs like =&gt; and != as single symbols, in the code fonts that have them.</span></span></label>
+    <p class="lk-credits"><button type="button" class="linkish" data-font-credits>Fonts and licences</button></p></div>`;
+}
+// Every family with its role, and the licence with each family's copyright line (fonts/OFL.txt).
+async function fontCredits() {
+  let d = $('fontsDlg');
+  if (!d) {
+    document.body.insertAdjacentHTML('beforeend', `<dialog id="fontsDlg" class="fonts-dlg" aria-labelledby="fontsT"><div class="setup-head"><h3 id="fontsT">Fonts and licences</h3><button type="button" class="icon" data-fonts-close aria-label="Close">✕</button></div><div class="fonts-body"></div></dialog>`);
+    d = $('fontsDlg');
+    d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-fonts-close]')) d.close(); });
+  }
+  const groups = { ...FONT_GROUPS, theme: 'Used by themes' };
+  d.querySelector('.fonts-body').innerHTML = `<p>Every font here comes with the app and is free software under the SIL Open Font License 1.1. Fonts with a Reserved Font Name ship exactly as their authors made them. Each font downloads only when something you're looking at uses it.</p>
+    ${Object.entries(groups).map(([c, label]) => `<h4>${label}</h4><ul class="fonts-list">${Look.FAMILIES.filter(f => f.cat === c).map(f => `<li>${esc(f.name)}${f.role ? `<small>${esc(f.role)}</small>` : ''}</li>`).join('')}</ul>`).join('')}
+    <h4>Copyright notices and the licence</h4><pre class="fonts-ofl">Loading…</pre>`;
+  if (!d.open) d.showModal();
+  let text;
+  try { const r = await fetch('/fonts/OFL.txt'); if (!r.ok) throw new Error(); text = await r.text(); } catch { text = 'The licence and every copyright notice are in fonts/OFL.txt in the app’s folder.'; }
+  const pre = d.querySelector('.fonts-ofl'); if (pre) pre.textContent = text;
+}
+$('setupBody').addEventListener('click', e => { if (e.target.closest('[data-font-credits]')) fontCredits(); });
 $('setupBody').addEventListener('input', e => {
   const r = e.target.closest('input[type="range"][data-look]'); if (!r) return;
   Look.set({ [r.dataset.look]: Number(r.value) });
@@ -160,7 +203,8 @@ $('setupBody').addEventListener('click', e => {
   const b = e.target.closest('button[data-look]');
   if (b) {
     const engage = b.dataset.look === 'theme' && b.dataset.v !== Look.get().theme;
-    const change = () => { Look.set({ [b.dataset.look]: b.dataset.v }); renderLook(); };
+    // A font set replaces any single picks, so choosing one always shows that set.
+    const change = () => { Look.set(b.dataset.look === 'fontSet' ? { fontSet: b.dataset.v, fBody: '', fHead: '', fCode: '' } : { [b.dataset.look]: b.dataset.v }); renderLook(); };
     // A new theme, or light and dark, fades in over the old look instead of snapping.
     if ((b.dataset.look === 'theme' || b.dataset.look === 'mode') && b.dataset.v !== String(Look.get()[b.dataset.look]) && document.startViewTransition && motionOk()) {
       const root = document.documentElement;
@@ -176,6 +220,9 @@ $('setupBody').addEventListener('click', e => {
 $('setupBody').addEventListener('change', e => {
   const c = e.target.closest('input[type="checkbox"][data-look]');
   if (c) { Look.set({ [c.dataset.look]: c.checked }); e.stopImmediatePropagation(); }
+  // Font picks apply at once; the list keeps focus, so arrow keys can try one font after another.
+  const s = e.target.closest('select[data-look]');
+  if (s) { Look.set({ [s.dataset.look]: s.value }); e.stopImmediatePropagation(); }
 }, true);
 $('setupClose').addEventListener('click', () => $('setup').close());
 $('setupBody').addEventListener('click', e => {

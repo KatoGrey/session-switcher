@@ -1694,12 +1694,12 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       return res.end(html);
     }
-    // Fonts, sound cues and the themes' paintings (art/, WebP only; their originals in art/src/ stay unserved).
-    if (req.method === 'GET' && /^\/(fonts\/[a-z0-9-]+\.woff2|sounds\/[a-z0-9-]+\.mp3|art\/[a-z0-9-]+\.webp)$/.test(url.pathname)) {
+    // Fonts and their licence, sound cues and the themes' paintings (art/, WebP only; their originals in art/src/ stay unserved).
+    if (req.method === 'GET' && /^\/(fonts\/(?:[a-z0-9-]+\.woff2|OFL\.txt)|sounds\/[a-z0-9-]+\.mp3|art\/[a-z0-9-]+\.webp)$/.test(url.pathname)) {
       let data;
       try { data = fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1))); } catch { res.writeHead(404); return res.end(); }
       const ext = path.extname(url.pathname);
-      res.writeHead(200, { 'Content-Type': ext === '.mp3' ? 'audio/mpeg' : ext === '.webp' ? 'image/webp' : 'font/woff2', 'Cache-Control': 'max-age=604800', 'X-Content-Type-Options': 'nosniff' });
+      res.writeHead(200, { 'Content-Type': ext === '.mp3' ? 'audio/mpeg' : ext === '.webp' ? 'image/webp' : ext === '.txt' ? 'text/plain; charset=utf-8' : 'font/woff2', 'Cache-Control': 'max-age=604800', 'X-Content-Type-Options': 'nosniff' });
       return res.end(data);
     }
     const STATIC = { '/theme.js': 'text/javascript', '/styles.css': 'text/css' };

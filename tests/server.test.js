@@ -227,6 +227,28 @@ test('the themes’ paintings are served from art/ (WebP only), and nothing else
   } finally { await s.stop(); }
 });
 
+test('the font pack and its licence are served from fonts/, and nothing else there is', async () => {
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
+  try {
+    const { FAMILIES } = require('../theme');
+    for (const f of FAMILIES.flatMap(x => x.faces.map(fc => fc[0]))) {
+      const r = await fetch(`${s.base}/fonts/${f}.woff2`);
+      assert.equal(r.status, 200, `${f}.woff2`);
+      assert.equal(r.headers.get('content-type'), 'font/woff2');
+      assert.equal(Buffer.from(await r.arrayBuffer()).subarray(0, 4).toString('latin1'), 'wOF2', `${f}.woff2 is a WOFF2 file`);
+    }
+    const ofl = await fetch(`${s.base}/fonts/OFL.txt`);
+    assert.equal(ofl.status, 200);
+    assert.match(ofl.headers.get('content-type'), /^text\/plain/);
+    const text = await ofl.text();
+    for (const f of FAMILIES.filter(x => !/^Archivo |^Alegreya SC/.test(x.name))) assert.ok(text.includes(`${f.name}: Copyright`) || text.includes(`${f.name} and `), `OFL.txt has ${f.name}'s notice`);
+    for (const bad of ['/fonts/none-such.woff2', '/fonts/../server.js', '/fonts/..%2fserver.js', '/fonts/OFL.md', '/fonts/inter.ttf']) {
+      const r = await fetch(`${s.base}${bad}`);
+      assert.notEqual(r.status, 200, `${bad} must not be served`);
+    }
+  } finally { await s.stop(); }
+});
+
 test('page scripts are served from ui/, and nothing else is', async () => {
   const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
   try {

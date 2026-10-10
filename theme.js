@@ -19,7 +19,7 @@
      Kenney CC0) and its own words. Its `copy` map is keyed by the app's own English text; anything it
      leaves out reads as usual. {n} is a number in words. */
   const INTER = '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif';
-  const BARLOW = '"Barlow", system-ui, -apple-system, sans-serif';
+  const ARCHIVO = '"Archivo", system-ui, -apple-system, sans-serif';
   const SAGA = [
     {
       id: 'imperial', name: 'Imperial', note: 'A capital ship’s bridge: black glass, white light panels and red signal lamps. Clean and exact.', family: 'saga', sky: 'stars', art: 'console',
@@ -40,7 +40,7 @@
     {
       id: 'rebel', name: 'Rebel', note: 'A hard-worn hangar: scuffed metal, flight-suit orange, yellow deck lines and a targeting computer.', family: 'saga', sky: 'stars', art: 'trench',
       accent: 21, sat: 1.45, gold: 47, goldSat: 0.95, surface: 32, surfSat: 0.42, ink: 38, inkSat: 0.5, codex: 210,
-      fonts: { display: '"Barlow Condensed", ' + BARLOW, caps: '"Barlow Condensed", ' + BARLOW, body: BARLOW, label: '"Barlow Semi Condensed", ' + BARLOW },
+      fonts: { display: '"Archivo Condensed", ' + ARCHIVO, caps: '"Archivo Condensed", ' + ARCHIVO, body: ARCHIVO, label: '"Archivo SemiCondensed", ' + ARCHIVO },
       emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--c-a5463f))"/><circle cx="20" cy="20" r="15.4" fill="none" style="stroke:rgb(var(--c-f6efe3))" stroke-width="1.2"/><path d="M8.5 8.5L16.6 16.6M31.5 8.5L23.4 16.6M8.5 31.5L16.6 23.4M31.5 31.5L23.4 23.4" style="stroke:rgb(var(--c-f6efe3))" stroke-width="3" stroke-linecap="round"/><circle cx="20" cy="20" r="4.6" style="fill:rgb(var(--c-f6efe3))"/><circle cx="20" cy="20" r="1.8" style="fill:rgb(var(--c-a5463f))"/>',
       copy: {
         'Your move': 'Incoming', 'Awaiting you': 'Waiting on you', 'Right now': 'In flight', 'At work': 'Squadrons engaged',
@@ -102,14 +102,14 @@
                      work and a beacon for each one waiting on you; a dragon crosses the moon
        Dungeon       torchlit stone: a torch for each chat at work, eyes in the dark for each one
                      waiting on you, embers rising */
-  const ORBITRON = '"Orbitron", "Segoe UI", system-ui, sans-serif';
+  const TEKTUR = '"Tektur", "Segoe UI", system-ui, sans-serif';
   const ROUNDED = '"M PLUS Rounded 1c", "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif';
   const RITE = { '✦': '', 'Turned off automatically if Windows is set to reduce motion.': 'They hold still when your device is set to reduce motion.' };
   const ANIME = [
     {
       id: 'isekai', name: 'Isekai', note: 'Summoned to another world: twilight, two moons, floating islands, and a status window where your plan is your HP and MP.', family: 'anime', sky: 'motes', art: 'status', paint: { dark: 'isekai-dark', light: 'isekai-light' },
       accent: 196, sat: 1.5, gold: 46, goldSat: 1.1, surface: 238, surfSat: 1.9, ink: 222, inkSat: 0.35, codex: 278,
-      fonts: { display: ORBITRON, caps: ROUNDED, body: ROUNDED, label: ROUNDED },
+      fonts: { display: TEKTUR, caps: ROUNDED, body: ROUNDED, label: ROUNDED },
       emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--c-0a090c))"/><circle cx="20" cy="20" r="17" fill="none" style="stroke:rgb(var(--an-glow))" stroke-width="1.4"/><circle cx="20" cy="20" r="13.6" fill="none" style="stroke:rgb(var(--an-glow))" stroke-opacity=".55" stroke-width=".8" stroke-dasharray="1.2 2"/><path d="M20 7.5L30.8 26.2H9.2Z" fill="none" style="stroke:rgb(var(--an-glow))" stroke-width="1.2"/><path d="M20 32.5L9.2 13.8H30.8Z" fill="none" style="stroke:rgb(var(--an-glow))" stroke-width="1.2"/><circle cx="20" cy="20" r="3" style="fill:rgb(var(--an-gold))"/>',
       tones: { needs: [[1046.5, 0, 0.03], [1318.5, 0.06, 0.03], [1568, 0.12, 0.03], [2093, 0.18, 0.026]], reply: [[1568, 0, 0.028], [2093, 0.09, 0.022]], engage: [[523.3, 0, 0.026], [784, 0.06, 0.026], [1046.5, 0.12, 0.026], [1568, 0.18, 0.024], [2093, 0.24, 0.02]] },
       copy: { ...RITE, '✦': '◆',
@@ -177,12 +177,112 @@
     ...GLAM,
     ...ANIME,
   ];
-  const DEFAULTS = { theme: 'crimson', mode: 'dark', text: 100, ui: 100, font: 'classic', bold: false, contrast: false };
-  const FONTS = {
-    classic: null,
-    modern: { body: '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif' },
-    clean: { body: '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif', display: '"Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif', caps: '"Segoe UI", system-ui, -apple-system, Roboto, sans-serif' },
+  // fontSet: a ready-made set from FONT_SETS ('' keeps the theme's own); fBody, fHead and fCode: single
+  // picks from FAMILIES that win over the set ('' keeps it, 'system' is the device's own font).
+  const DEFAULTS = { theme: 'crimson', mode: 'dark', text: 100, ui: 100, fontSet: '', fBody: '', fHead: '', fCode: '', liga: false, bold: false, contrast: false };
+
+  /* ---------- the font pack ----------
+     42 families to choose from in Setup, plus four that only themes use. All are under the SIL Open
+     Font License (fonts/OFL.txt, shown in Setup → Fonts and licences). Families with a Reserved Font
+     Name (IBM Plex Sans, Source Sans 3, Merriweather, Lora, Cascadia Code, Cinzel Decorative, Pirata
+     One, Lexend, Andika, OpenDyslexic) ship as their authors' full files, only WOFF2-compressed; the others are Google
+     Fonts' latin files, plus more scripts where a face lists one. Each family is declared here once
+     and downloads only when something on the page uses it.
+     A face is [file in fonts/, weights, italic, script (a RANGE)]. x is the measured x-height as a
+     share of the font size: a reading or code font picked in Setup is scaled so its lowercase
+     matches IBM Plex Sans (JetBrains Mono for code), within 90–115%. Themes use the plain names, so
+     they keep their exact sizes. */
+  const RANGE = {
+    latin: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD',
+    ext: 'U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF',
+    cyrillic: 'U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116',
+    greek: 'U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF',
+    vietnamese: 'U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB',
+    devanagari: 'U+0900-097F, U+1CD0-1CF4, U+1CF7-1CF9, U+200C-200D, U+20A8, U+20B9, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF, U+11B00-11B0A',
   };
+  const FALLBACK = { sans: 'system-ui, -apple-system, "Segoe UI", sans-serif', serif: '"Iowan Old Style", Georgia, serif', mono: '"Cascadia Mono", Consolas, ui-monospace, monospace', hand: 'cursive' };
+  const roman = (file, w) => [[file, w], [`${file}-italic`, w, true]];
+  const FAMILIES = [
+    { id: 'ibm-plex-sans', name: 'IBM Plex Sans', cat: 'sans', fb: 'sans', x: .52, role: 'Clear everyday reading', faces: roman('ibm-plex-sans', '100 700') },
+    { id: 'dm-sans', name: 'DM Sans', cat: 'sans', fb: 'sans', x: .51, role: 'Compact, good at small sizes', faces: roman('dm-sans', '100 1000') },
+    { id: 'noto-sans', name: 'Noto Sans', cat: 'sans', fb: 'sans', x: .54, role: 'Many languages', faces: [['noto-sans', '100 900', false, 'latin'], ['noto-sans-italic', '100 900', true, 'latin'],
+      ...['ext', 'cyrillic', 'greek', 'vietnamese'].flatMap(s => [[`noto-sans-${s === 'ext' ? 'latin-ext' : s}`, '100 900', false, s], [`noto-sans-italic-${s === 'ext' ? 'latin-ext' : s}`, '100 900', true, s]])] },
+    { id: 'source-sans-3', name: 'Source Sans 3', cat: 'sans', fb: 'sans', x: .49, role: 'Partner to Source Serif 4', faces: roman('source-sans-3', '200 900') },
+    { id: 'plus-jakarta-sans', name: 'Plus Jakarta Sans', cat: 'sans', fb: 'sans', x: .54, role: 'Friendly and modern', faces: roman('plus-jakarta-sans', '200 800') },
+    { id: 'onest', name: 'Onest', cat: 'sans', fb: 'sans', x: .53, role: 'Crisp, for interfaces (no italics)', faces: [['onest', '100 900']] },
+    { id: 'google-sans-flex', name: 'Google Sans Flex', cat: 'sans', fb: 'sans', x: .51, role: 'Rounded geometric', faces: [['google-sans-flex', '400 700']] },
+    { id: 'inter', name: 'Inter', cat: 'sans', fb: 'sans', x: .55, role: 'The familiar neutral', faces: roman('inter', '400 700') },
+    { id: 'nunito', name: 'Nunito', cat: 'sans', fb: 'sans', x: .5, role: 'Rounded and soft', faces: roman('nunito', '400 900') },
+    { id: 'literata', name: 'Literata', cat: 'serif', fb: 'serif', x: .51, role: 'Made for long reading on screens', faces: roman('literata', '400 900') },
+    { id: 'source-serif-4', name: 'Source Serif 4', cat: 'serif', fb: 'serif', x: .5, role: 'Editorial, pairs with Source Sans 3', faces: roman('source-serif-4', '200 900') },
+    { id: 'merriweather', name: 'Merriweather', cat: 'serif', fb: 'serif', x: .56, role: 'Sturdy, good in dark mode', faces: [['merriweather-400', '400'], ['merriweather-400-italic', '400', true], ['merriweather-700', '700'], ['merriweather-700-italic', '700', true]] },
+    { id: 'lora', name: 'Lora', cat: 'serif', fb: 'serif', x: .5, role: 'Warm and calligraphic', faces: roman('lora', '400 700') },
+    { id: 'eb-garamond', name: 'EB Garamond', cat: 'serif', fb: 'serif', x: .41, role: 'Literary, old-style', faces: roman('eb-garamond', '400 800') },
+    { id: 'spectral', name: 'Spectral', cat: 'serif', fb: 'serif', x: .45, role: 'The app’s own bookish serif', faces: [['spectral-400', '400'], ['spectral-400-italic', '400', true], ['spectral-500', '500'], ['spectral-600', '600 700']] },
+    { id: 'alegreya', name: 'Alegreya', cat: 'serif', fb: 'serif', x: .46, role: 'Lively, literary', faces: roman('alegreya', '400 900') },
+    { id: 'jetbrains-mono', name: 'JetBrains Mono', cat: 'code', fb: 'mono', x: .55, role: 'Code, diffs and terminal output', faces: [['jetbrains-mono', '100 800']] },
+    { id: 'cascadia-code', name: 'Cascadia Code', cat: 'code', fb: 'mono', x: .52, role: 'Windows Terminal’s font', faces: roman('cascadia-code', '200 700') },
+    { id: 'fira-code', name: 'Fira Code', cat: 'code', fb: 'mono', x: .53, role: 'The ligature favourite', faces: [['fira-code', '300 700']] },
+    { id: 'google-sans-code', name: 'Google Sans Code', cat: 'code', fb: 'mono', x: .53, role: 'Fresh and neutral', faces: roman('google-sans-code', '300 800') },
+    { id: 'victor-mono', name: 'Victor Mono', cat: 'code', fb: 'mono', x: .62, role: 'Narrow, with a cursive italic', faces: roman('victor-mono', '100 700') },
+    { id: 'geist-mono', name: 'Geist Mono', cat: 'code', fb: 'mono', x: .53, role: 'Clean and modern', faces: [['geist-mono', '100 900']] },
+    { id: 'atkinson-mono', name: 'Atkinson Hyperlegible Mono', cat: 'code', fb: 'mono', x: .5, role: 'Code that’s easy to tell apart', faces: roman('atkinson-mono', '200 800') },
+    { id: 'archivo', name: 'Archivo', cat: 'display', fb: 'sans', role: 'Strong grotesque headings', faces: roman('archivo', '100 900') },
+    { id: 'big-shoulders', name: 'Big Shoulders', cat: 'display', fb: 'sans', role: 'Bold, condensed posters', faces: [['big-shoulders', '100 900']] },
+    { id: 'unbounded', name: 'Unbounded', cat: 'display', fb: 'sans', role: 'Wide and loud', faces: [['unbounded', '200 900']] },
+    { id: 'playfair', name: 'Playfair', cat: 'display', fb: 'serif', role: 'Elegant high contrast', faces: roman('playfair-2', '300 900') },
+    { id: 'young-serif', name: 'Young Serif', cat: 'display', fb: 'serif', role: 'Warm editorial titles', faces: [['young-serif', '400 900']] },
+    { id: 'cinzel', name: 'Cinzel', cat: 'display', fb: 'serif', role: 'Carved Roman capitals', faces: [['cinzel', '400 900']] },
+    { id: 'pirata-one', name: 'Pirata One', cat: 'display', fb: 'serif', role: 'Gothic and piratical', faces: [['pirata-one', '400']] },
+    { id: 'michroma', name: 'Michroma', cat: 'display', fb: 'sans', role: 'Wide sci-fi', faces: [['michroma', '400 800']] },
+    { id: 'tektur', name: 'Tektur', cat: 'display', fb: 'sans', role: 'Angular sci-fi', faces: [['tektur', '400 900', false, 'latin'], ['tektur-latin-ext', '400 900', false, 'ext'], ['tektur-cyrillic', '400 900', false, 'cyrillic'], ['tektur-greek', '400 900', false, 'greek']] },
+    { id: 'silkscreen', name: 'Silkscreen', cat: 'display', fb: 'sans', role: 'Retro pixels', faces: [['silkscreen-400', '400 600'], ['silkscreen-700', '700 900']] },
+    { id: 'caveat', name: 'Caveat', cat: 'hand', fb: 'hand', role: 'Quick handwritten notes', faces: [['caveat', '400 700']] },
+    { id: 'patrick-hand', name: 'Patrick Hand', cat: 'hand', fb: 'hand', role: 'Neat handwriting', faces: [['patrick-hand', '400 900']] },
+    { id: 'kalam', name: 'Kalam', cat: 'hand', fb: 'hand', role: 'Handwriting, Devanagari too', faces: [['kalam-400', '400 600', false, 'latin'], ['kalam-700', '700 900', false, 'latin'], ['kalam-400-devanagari', '400 600', false, 'devanagari'], ['kalam-700-devanagari', '700 900', false, 'devanagari']] },
+    { id: 'pacifico', name: 'Pacifico', cat: 'hand', fb: 'hand', role: 'Retro script', faces: [['pacifico', '400']] },
+    { id: 'atkinson-next', name: 'Atkinson Hyperlegible Next', cat: 'easy', fb: 'sans', x: .5, role: 'Letters made hard to confuse', faces: roman('atkinson-next', '200 800') },
+    { id: 'lexend', name: 'Lexend', cat: 'easy', fb: 'sans', x: .53, role: 'Wide and open (no italics)', faces: [['lexend', '100 900']] },
+    { id: 'opendyslexic', name: 'OpenDyslexic', cat: 'easy', fb: 'sans', x: .56, role: 'Weighted letters some people prefer', faces: [['opendyslexic-400', '400'], ['opendyslexic-400-italic', '400', true], ['opendyslexic-700', '700'], ['opendyslexic-700-italic', '700', true]] },
+    { id: 'andika', name: 'Andika', cat: 'easy', fb: 'sans', x: .5, role: 'Clear shapes for new readers', faces: [['andika-400', '400'], ['andika-400-italic', '400', true], ['andika-700', '700'], ['andika-700-italic', '700', true]] },
+    { id: 'mplus-rounded', name: 'M PLUS Rounded 1c', cat: 'easy', fb: 'sans', x: .52, role: 'Rounded, with Japanese', faces: [['mplus-rounded-400', '400 500'], ['mplus-rounded-700', '600 700'], ['mplus-rounded-800', '800 900']] },
+    // Only themes use these: Rebel's condensed lettering, and High Fantasy's and Dungeon's capitals.
+    { id: 'archivo-condensed', name: 'Archivo Condensed', cat: 'theme', fb: 'sans', faces: [['archivo-condensed', '100 900']] },
+    { id: 'archivo-semicondensed', name: 'Archivo SemiCondensed', cat: 'theme', fb: 'sans', faces: [['archivo-semicondensed', '100 900']] },
+    { id: 'cinzel-decorative', name: 'Cinzel Decorative', cat: 'theme', fb: 'serif', faces: [['cinzel-decorative-400', '400 600'], ['cinzel-decorative-700', '700 900']] },
+    { id: 'alegreya-sc', name: 'Alegreya SC', cat: 'theme', fb: 'serif', faces: [['alegreya-sc-400', '400 500'], ['alegreya-sc-700', '600 900']] },
+  ];
+  // Ready-made sets: headings (and names, unless caps says otherwise), reading and code. Theme Studio
+  // offers the same sets; 'storybook', 'clear' and 'rounded' keep the keys its saved worlds use.
+  const FONT_SETS = [
+    { id: 'clear', name: 'Clear', head: 'ibm-plex-sans', body: 'ibm-plex-sans', code: 'jetbrains-mono' },
+    { id: 'reading', name: 'Reading', head: 'literata', body: 'literata', code: 'jetbrains-mono' },
+    { id: 'easy', name: 'Easy reading', head: 'atkinson-next', body: 'atkinson-next', code: 'atkinson-mono' },
+    { id: 'editorial', name: 'Editorial', head: 'young-serif', body: 'source-serif-4', code: 'google-sans-code' },
+    { id: 'storybook', name: 'Fantasy', head: 'cinzel', body: 'eb-garamond', code: 'victor-mono' },
+    { id: 'scifi', name: 'Sci-fi', head: 'tektur', body: 'onest', code: 'geist-mono' },
+    { id: 'glam', name: 'Glam', head: 'playfair', body: 'plus-jakarta-sans', code: 'cascadia-code' },
+    { id: 'poster', name: 'Poster', head: 'big-shoulders', body: 'source-sans-3', code: 'fira-code' },
+    { id: 'pixel', name: 'Retro pixel', head: 'silkscreen', caps: 'dm-sans', body: 'dm-sans', code: 'jetbrains-mono' },
+    { id: 'loud', name: 'Loud and wide', head: 'unbounded', caps: 'noto-sans', body: 'noto-sans', code: 'google-sans-code' },
+    { id: 'rounded', name: 'Soft and rounded', head: 'mplus-rounded', body: 'nunito', code: 'jetbrains-mono' },
+  ];
+  const SYSTEM = { body: '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif', head: '"Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif', code: FALLBACK.mono };
+  const familyOf = id => FAMILIES.find(f => f.id === id);
+  // How much a picked reading or code font is scaled (size-adjust, in %).
+  const fitOf = f => (f && f.x ? Math.round(Math.min(115, Math.max(90, (f.cat === 'code' ? .55 : .52) / f.x * 100)) * 2) / 2 : 100);
+  // The CSS font stack for a family in a slot: reading and code use the scaled copy, headings the plain one.
+  function stack(id, slot) {
+    if (id === 'system') return SYSTEM[slot];
+    const f = familyOf(id); if (!f) return null;
+    const fit = slot === 'head' ? 100 : fitOf(f);
+    return `"${fit === 100 ? f.name : `Fit ${f.name}`}", ${FALLBACK[f.fb]}`;
+  }
+  // A set's fonts, as the theme fonts shape: { display, caps, body, mono }.
+  function setFonts(id) {
+    const s = FONT_SETS.find(x => x.id === id); if (!s) return null;
+    return { display: stack(s.head, 'head'), caps: stack(s.caps || s.head, 'head'), body: stack(s.body, 'body'), mono: stack(s.code, 'code') };
+  }
 
   /* ---------- color math ---------- */
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -281,7 +381,20 @@
       buttons: Math.min(...ACTION_BACKGROUNDS.map(bg => ratio(color(bg, t, light), [246, 236, 226]))),
     }]));
   }
-  if (typeof window === 'undefined') { module.exports = { audit, color, ratio }; return; }
+  if (typeof window === 'undefined') { module.exports = { audit, color, ratio, FAMILIES, FONT_SETS, setFonts }; return; }
+
+  // Every family's @font-face, plus a scaled copy ("Fit <name>") for the reading and code fonts.
+  (function fontFaces() {
+    const face = (fam, [file, w, italic, script], fit) => `@font-face{font-family:"${fam}";src:url(/fonts/${file}.woff2) format("woff2");font-weight:${w};${italic ? 'font-style:italic;' : ''}${script ? `unicode-range:${RANGE[script]};` : ''}${fit ? `size-adjust:${fit}%;` : ''}font-display:swap}`;
+    const css = [];
+    for (const f of FAMILIES) {
+      for (const fc of f.faces) css.push(face(f.name, fc));
+      const fit = fitOf(f);
+      if (fit !== 100) for (const fc of f.faces) css.push(face(`Fit ${f.name}`, fc, fit));
+    }
+    const el = document.createElement('style'); el.id = 'fontPack'; el.textContent = css.join('\n');
+    document.head.appendChild(el);
+  })();
 
   /* ---------- settings ---------- */
   const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: light)') : null;
@@ -290,6 +403,9 @@
   function load() {
     let o; try { o = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem('look') || '{}') || {}) }; } catch { o = { ...DEFAULTS }; }
     if (RENAMED[o.theme]) o.theme = RENAMED[o.theme];
+    // The old reading-font choice: Modern was the device's sans for replies, Clean for headings too.
+    if (o.font === 'modern' || o.font === 'clean') { o.fBody = o.fBody || 'system'; if (o.font === 'clean') o.fHead = o.fHead || 'system'; }
+    delete o.font;
     return o;
   }
   let cur = load();
@@ -307,9 +423,13 @@
     root.dataset.mode = light ? 'light' : 'dark';
     root.dataset.theme = t.id;
     st.colorScheme = light ? 'light' : 'dark';
-    // A theme's own fonts come first; Modern and Clean still swap the reading font (Clean the headings too).
-    const f = FONTS[o.font] || null, tf = t.fonts || {};
-    for (const [k, v] of [['--f-body', (f && f.body) || tf.body], ['--f-display', (f && f.display) || tf.display], ['--f-caps', (f && f.caps) || tf.caps], ['--f-label', tf.label]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
+    // Fonts: the theme's own lettering, then a font set from Setup, then single picks, each winning over the last.
+    const f = { ...(t.fonts || {}), ...(setFonts(o.fontSet) || {}) };
+    if (o.fBody) f.body = stack(o.fBody, 'body') || f.body;
+    if (o.fHead) f.display = f.caps = stack(o.fHead, 'head') || f.display;
+    if (o.fCode) f.mono = stack(o.fCode, 'code') || f.mono;
+    for (const [k, v] of [['--f-body', f.body], ['--f-display', f.display], ['--f-caps', f.caps], ['--f-label', f.label], ['--f-mono', f.mono]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
+    root.classList.toggle('look-liga', !!o.liga);
     if (t.family) root.dataset.family = t.family; else delete root.dataset.family;
     if (t.sky) root.dataset.sky = t.sky; else delete root.dataset.sky;
     if (t.art) root.dataset.art = t.art; else delete root.dataset.art;
@@ -320,8 +440,6 @@
     // Breakpoints see the window, not the scaled page, so a larger interface gets a compact top bar.
     root.classList.toggle('look-ui-big', (Number(o.ui) || 100) > 100);
     root.classList.toggle('look-contrast', !!o.contrast);
-    root.classList.toggle('look-font-' + (o.font || 'classic'), true);
-    for (const k of Object.keys(FONTS)) if (k !== o.font) root.classList.remove(`look-font-${k}`);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = `rgb(${derive('0a090c', t, light, false).join(',')})`;
     document.dispatchEvent(new CustomEvent('lookchange', { detail: o }));
@@ -359,6 +477,6 @@
     if (cur.theme.startsWith('custom-') && !THEMES.some(t => t.id === cur.theme)) set({ theme: DEFAULTS.theme });
     else apply();
   }
-  window.Look = { THEMES, DEFAULTS, get: () => ({ ...cur }), set, reset, apply, swatch, isLight, say, custom, audit, color, theme: () => themeOf(cur.theme) };
+  window.Look = { THEMES, DEFAULTS, FAMILIES, FONT_SETS, stack, setFonts, get: () => ({ ...cur }), set, reset, apply, swatch, isLight, say, custom, audit, color, theme: () => themeOf(cur.theme) };
   apply();
 })();

@@ -625,3 +625,18 @@ test('handover: the build fingerprint follows the code, not file dates', () => {
   put(dir, 'ui/base.js', 'b2');
   assert.notEqual(handover.buildId(dir), one);
 });
+
+/* ---------- the font pack ---------- */
+test('font pack: every face has its file, every set uses pack families, and fonts/ holds nothing extra', () => {
+  const { FAMILIES, FONT_SETS, setFonts } = require('../theme');
+  assert.equal(FAMILIES.filter(f => f.cat !== 'theme').length, 42);
+  const files = FAMILIES.flatMap(f => f.faces.map(fc => `${fc[0]}.woff2`));
+  for (const f of files) assert.ok(fs.existsSync(path.join(APP, 'fonts', f)), `fonts/${f} is missing`);
+  const extra = fs.readdirSync(path.join(APP, 'fonts')).filter(n => n.endsWith('.woff2') && !files.includes(n));
+  assert.deepEqual(extra, [], 'every font file belongs to a family');
+  const ids = new Set(FAMILIES.map(f => f.id));
+  for (const s of FONT_SETS) for (const k of ['head', 'body', 'code', 'caps']) if (s[k]) assert.ok(ids.has(s[k]), `${s.id}.${k} is ${s[k]}`);
+  // Theme Studio's saved worlds keep these keys.
+  for (const k of ['clear', 'storybook', 'rounded']) assert.ok(setFonts(k), k);
+  for (const f of FAMILIES.filter(x => ['sans', 'serif', 'code', 'easy'].includes(x.cat))) assert.ok(f.x > 0.3 && f.x < 0.7, `${f.name} has a measured x-height`);
+});

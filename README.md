@@ -389,7 +389,7 @@ Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in 
 - **Light or dark:** Dark, Light, or Match device (it follows Windows or Android).
 - **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus two space saga themes, Malibu and three anime themes (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
 - **Text size** (80–150%): messages, documents and the message box.
-- **Reading font:** Classic (the serif), Modern (a clean sans for reading), or Clean (sans headings too).
+- **Fonts:** a pack of 42 free fonts. Pick a ready-made set (Clear, Reading, Easy reading, Editorial, Fantasy, Sci-fi, Glam, Poster, Retro pixel, Loud and wide, Soft and rounded), each card drawn in its own letters, or choose the font for replies and documents, for headings and names, and for code yourself. Reading and code fonts are scaled so their lowercase letters match, which keeps the size you set the same whichever font you pick. **Code ligatures** (`=>` drawn as one arrow) are off until you turn them on. **Fonts and licences** lists every family with its licence.
 - **Bold text** and **Higher contrast**. Light themes keep small grey text (dates, hints, labels) dark enough to read.
 - **Interface size** (80–130%): scales everything at once. On smaller windows the top bar tucks away its smaller labels so nothing overlaps.
 - A live preview shows a reply and a message in your choices; **Back to the original look** undoes everything.
@@ -413,11 +413,11 @@ Two more themes turn the hub into a command deck. Each has a light and a dark ve
 | Theme | Feel | Lettering | In the hero |
 |---|---|---|---|
 | **Imperial** | A capital ship's bridge: black glass, white light panels, red signal lamps. Clean and exact. | Michroma titles, Inter for everything else | A wall of light panels over a console: readouts for orders, reports and units engaged, and a row of signal lamps (red needs your OK, white has replied, green is at work) |
-| **Rebel** | A hard-worn hangar: scuffed metal, flight-suit orange, squadron stripes, yellow deck lines | Barlow Condensed titles and names, Barlow for reading, Barlow Semi Condensed labels | A targeting computer flying down a trench, with readouts for waiting, in flight and standing by |
+| **Rebel** | A hard-worn hangar: scuffed metal, flight-suit orange, squadron stripes, yellow deck lines | Archivo Condensed titles and names, Archivo for reading, Archivo SemiCondensed labels | A targeting computer flying down a trench, with readouts for waiting, in flight and standing by |
 
 Beyond colors, a saga theme brings:
 
-- **Its own lettering, all of it readable:** a display face for titles, a reading face for messages and a label face for the small uppercase labels (monospace in the other themes; code stays monospace). **Modern** and **Clean** still swap the reading font (Clean the headings too).
+- **Its own lettering, all of it readable:** a display face for titles, a reading face for messages and a label face for the small uppercase labels (monospace in the other themes; code stays monospace). A font set or a font you pick in **Fonts** still wins over the theme's.
 - **A display in the hero** that reads the same live counts as the headline. Imperial's needs-you lamps pulse slowly and Rebel's trench scrolls; both hold still when **Animations** is off or your device asks for less motion.
 - **Its own panels and markings:** Imperial cards carry a lit edge in red (needs you) or white (at work), with rectangular signal lamps in place of dots. Rebel cards carry squadron stripes, with hazard stripes when a chat needs you. The default theme's ornaments (fleurons, the turning seal, dial numerals, painted project art) are left out, and project pictures are toned to match. Each theme has its own emblem in place of the seal.
 - **A few still stars** behind the hub in place of the petals. The petals switch turns them off, and its label changes with the theme.
@@ -446,7 +446,7 @@ Three worlds from an anime, each with a hand-painted scene in the hub that light
 
 | Theme | Feel | Lettering | The painted scene in the hero |
 |---|---|---|---|
-| **Isekai** | Summoned to another world: indigo glass, a cyan magic glow, sakura pink and gold | Orbitron for the big words, M PLUS Rounded for everything you read | Floating islands under two moons over a sea of clouds (twilight, or a bright morning in light mode). A crystal floats up for each chat waiting on you (gold when it needs your OK), and the magic circle glows and turns while chats are at work. A **status window**, in the quiet sky beside the island, reads the account you work as: HP is what's left of its five-hour window, MP what's left of its week, its level is how many chats you've had, its class comes from its plan |
+| **Isekai** | Summoned to another world: indigo glass, a cyan magic glow, sakura pink and gold | Tektur for the big words, M PLUS Rounded for everything you read | Floating islands under two moons over a sea of clouds (twilight, or a bright morning in light mode). A crystal floats up for each chat waiting on you (gold when it needs your OK), and the magic circle glows and turns while chats are at work. A **status window**, in the quiet sky beside the island, reads the account you work as: HP is what's left of its five-hour window, MP what's left of its week, its level is how many chats you've had, its class comes from its plan |
 | **High Fantasy** | Emerald and gold under a great moon | Cinzel Decorative and Cinzel for headlines and short labels, EB Garamond for titles, names and reading | A citadel on a cliff with snowy peaks behind (moonlight, or dawn in light mode). A window lights for each chat at work and a beacon burns for each one waiting on you (the terrace braziers first, then the outposts down the valley); a dragon crosses the moon now and then |
 | **Dungeon** | Torchlit stone deep below: iron, rust and ember light | Pirata One for the big words, Alegreya SC for labels, Alegreya for titles, names and reading | A stone archway into the dark: a torch on the wall catches fire for each chat at work, eyes open in the dark for each one waiting on you (gold when it needs your OK), and a chest sits ready for each one open and idle. It stays dark in light mode too, as a window underground |
 
@@ -646,7 +646,7 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `events.js`: clicks, the account dropdown, live updates, confirmations, right-click, the shortcuts sheet.
   - `chat-feed.js`, `chat-live.js`, `chat-compose.js`, `chat.js`: the chat window (drawing the conversation; live events, permissions and the crew; the message box; opening, closing and the rest).
 - `theme.js`: themes, light and dark, text and interface size. Every color in `styles.css` is a variable named after its original value (`--c-a5463f`), and each theme recolors them all from a few seed colors.
-- `fonts/`: the bundled typefaces (SIL Open Font License).
+- `fonts/`: the bundled font pack (SIL Open Font License; `fonts/OFL.txt` has every notice). The catalog, sets and size matching are in `theme.js`.
 - `mobile/android/`: the Android app (a small WebView remote) and its build script.
 - `mobile/ios/`: the iPhone app (a small WebView remote), as an XcodeGen project.
 - `Session Switcher.command`, `macos/`: the Mac launcher and the icon for the app it makes in Applications.
