@@ -540,6 +540,8 @@ window.__mobileBack = () => {
   if (!$('drawer').hidden) { closeDrawer(); return true; }
   if (window.ChatUI && ChatUI.back()) return true;
   if (document.body.classList.contains('nav-open')) { document.body.classList.remove('nav-open'); return true; }
+  // Then the page you came from (a project, recent chats, a search), and the hub after that.
+  if (goBackPage()) return true;
   if (S.view !== 'hub') { go('hub'); return true; }
   return false;
 };

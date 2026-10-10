@@ -181,7 +181,13 @@ function renderAll() { renderNav(); renderPage(); renderBar(); updateTitle(); }
 // Names the chat window uses.
 const renderSide = () => renderNav();
 const renderMain = () => renderPage();
+// Where you've been, so Back (a swipe from the left edge, or the phone's Back) returns to the page you
+// came from rather than straight to the hub.
+const Trail = [];
+const placeKey = x => `${x.view}|${x.folder || ''}|${x.prov || ''}`;
 function go(view, folder, prov) {
+  const here = { view: S.view, folder: S.folder, prov: S.prov }, there = { view, folder: folder !== undefined ? folder : S.folder, prov: view === 'folder' ? prov || null : S.prov };
+  if (!go.back && placeKey(here) !== placeKey(there)) { Trail.push(here); if (Trail.length > 40) Trail.shift(); if (typeof noteStep === 'function') noteStep(); }
   const from = S.view === 'folder' && !(window.ChatUI && ChatUI.isOpen()) ? S.folder : null;
   if (view === 'folder' && folder !== undefined && folder !== S.folder) S.worldTab = 'chats';
   // The state changes now; the page redraws inside the transition.
@@ -200,6 +206,18 @@ function go(view, folder, prov) {
   };
   const t = transition(run);
   return t ? t.updateCallbackDone.catch(() => {}) : Promise.resolve();
+}
+// Back to the page before this one (skipping any that are gone). False if there's nowhere to go back to.
+function goBackPage() {
+  const now = placeKey({ view: S.view, folder: S.folder, prov: S.prov });
+  while (Trail.length) {
+    const prev = Trail.pop();
+    if (placeKey(prev) === now || (prev.view === 'folder' && !S.projects.some(p => p.cwd === prev.folder))) continue;
+    go.back = true;
+    try { go(prev.view, prev.folder, prev.prov); } finally { go.back = false; }
+    return true;
+  }
+  return false;
 }
 // Go to the hub, then bring one of its sections into view.
 const hubTo = id => (S.view !== 'hub' || (window.ChatUI && ChatUI.isOpen()) ? go('hub') : Promise.resolve()).then(() => setTimeout(() => $(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30));

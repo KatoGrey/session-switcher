@@ -1984,6 +1984,12 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .ea-pic path.g[d$="z"]{fill:var(--gilt);stroke:none}
 .empty-art.painted .ea-pic img{width:128px;height:80px;object-fit:cover;border-radius:10px;box-shadow:0 10px 24px -14px rgb(var(--c-000000))}
 
+/* ---------- swipe back (phones): an arrow follows your finger in from the left edge ---------- */
+.swipe-back{position:fixed;left:0;z-index:300;display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:rgb(var(--c-1a161d) / .94);border:1px solid var(--seam-2);color:var(--parch);box-shadow:0 10px 26px -10px rgb(var(--c-000000));pointer-events:none;transform:translate(-34px,-50%) scale(.6);transition:background .15s,border-color .15s,color .15s}
+.swipe-back.ready{background:var(--gilt);border-color:var(--gilt);color:var(--gilt-ink)}
+.swipe-back.went{transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .26s ease;transform:translate(70px,-50%) scale(1);opacity:0}
+.swipe-back.gone{transition:transform .2s ease,opacity .2s ease;transform:translate(-46px,-50%) scale(.5);opacity:0}
+
 /* ---------- welcome back ---------- */
 .welcome{position:relative;display:flex;align-items:center;gap:18px 26px;flex-wrap:wrap;margin:0 0 18px;padding:16px 18px 16px 22px;border:1px solid rgb(var(--c-d9bf74) / .35);border-radius:var(--radius);
   background:radial-gradient(520px 160px at 0% 0%,rgb(var(--c-d9bf74) / .1),transparent 70%),linear-gradient(180deg,rgb(var(--c-1a161d)),rgb(var(--c-141117)));box-shadow:0 18px 40px -30px rgb(var(--c-000000))}

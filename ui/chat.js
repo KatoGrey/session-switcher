@@ -308,7 +308,7 @@ function show() {
   document.body.classList.remove('nav-open');
   if (!$c('drawer').hidden) $c('drawer').hidden = true;
   renderRail();
-  if (opening) growFrom(chat);
+  if (opening) { growFrom(chat); if (typeof noteStep === 'function') noteStep(); }
 }
 
 async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {}) {

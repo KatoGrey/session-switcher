@@ -964,6 +964,43 @@ module.exports = [
     },
   },
   {
+    name: 'phone back',
+    // On a phone: the menu panel takes taps (its backdrop used to cover it), Back steps back through the
+    // pages you came through (then the hub), and swiping in from the left edge goes back.
+    async run(t) {
+      const p = await t.open({ width: 412, height: 880, mobile: true });
+      const touch = async (type, x, y) => p.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+      const tap = async (x, y) => { await touch('touchStart', x, y); await sleep(40); await touch('touchEnd', x, y); };
+      await p.eval(`document.getElementById('navToggle').click(); return 1`); await sleep(500);
+      const at = await p.eval(`const nav = document.getElementById('nav'); const item = [...nav.querySelectorAll('.nav-i[data-view="recent"]')].find(x => x.offsetParent); const r = item.getBoundingClientRect(); const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { x: r.left + r.width / 2, y: r.top + r.height / 2, inNav: !!(el && nav.contains(el)) }`);
+      t.check('the open menu panel is on top of its backdrop', at.inNav, at);
+      await tap(at.x, at.y); await sleep(900);
+      t.check('tapping an item in it works (and closes it)', await p.eval(`return S.view === 'recent' && !document.body.classList.contains('nav-open')`));
+      // Back steps back through where you've been.
+      const cwd = await p.eval(`const cwd = S.projects[0].cwd; go('folder', cwd); return cwd`); await sleep(500);
+      await p.eval(`go('recent'); return 1`); await sleep(500);
+      await p.eval(`window.__mobileBack(); return 1`); await sleep(600);
+      t.check('Back goes to the page before (a project), not straight to the hub', await p.eval(`return S.view === 'folder' && S.folder === ${JSON.stringify(cwd)}`));
+      await p.eval(`window.__mobileBack(); return 1`); await sleep(600);
+      t.check('and Back again to the one before that', await p.eval(`return S.view === 'recent'`));
+      // A swipe in from the left edge goes back; the arrow follows the finger.
+      await touch('touchStart', 3, 420);
+      for (const x of [20, 45, 70, 95, 120]) { await touch('touchMove', x, 422); await sleep(16); }
+      const arrow = await p.eval(`const a = document.querySelector('.swipe-back'); return a ? a.className : null`);
+      await touch('touchEnd', 120, 422); await sleep(700);
+      t.check('swiping in from the left edge shows an arrow, lit once far enough', /ready/.test(arrow || ''), arrow);
+      t.check('and letting go goes back (from recent chats to the hub, where this started)', await p.eval(`return S.view === 'hub'`));
+      // A scroll that starts at the edge isn't a swipe.
+      await p.eval(`go('recent'); return 1`); await sleep(500);
+      await touch('touchStart', 3, 300); for (const y of [330, 380, 450]) { await touch('touchMove', 8, y); await sleep(16); } await touch('touchEnd', 8, 450); await sleep(500);
+      t.check('scrolling from the edge doesn’t go back', await p.eval(`return S.view === 'recent' && !document.querySelector('.swipe-back')`));
+      // In a chat, a swipe closes it.
+      await p.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(1500);
+      await touch('touchStart', 3, 500); for (const x of [30, 70, 110, 140]) { await touch('touchMove', x, 500); await sleep(16); } await touch('touchEnd', 140, 500); await sleep(800);
+      t.check('in a chat, swiping back closes it', await p.eval(`return !ChatUI.isOpen()`));
+    },
+  },
+  {
     name: 'today',
     // The day at a glance (a lane per project, a bar per busy quarter hour, click to open that chat), and
     // empty spots with a small picture (a theme's own painting when it brings one).
