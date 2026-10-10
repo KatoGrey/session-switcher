@@ -65,10 +65,8 @@ function nowLiveHtml() {
 }
 const leadHtml = () => { const w = allChats().filter(c => stageOf(c) === 'waiting').length; return `${word(needList().length, 'needs you', 'need you')}, ${word(runList().length, 'running', 'running')}, ${word(w, 'waiting on someone', 'waiting on others')}.`; };
 function plansBoxHtml() {
-  const nPlans = plans().filter(p => !p.unlimited).length;
-  return `<div class="sec-h"><h2>This week</h2><span class="n">${nPlans} plans${plans().some(p => p.unlimited) ? ' + Ollama' : ''} · soonest reset first</span><button class="hint" data-refreshplans="1">${S.plansRefreshing ? 'Checking…' : 'Check now'}</button></div>
-      ${S.plans ? orderHtml() + `<div class="plans">${[...plans()].sort((a, b) => (a.broken || a.unlimited ? 1 : 0) - (b.broken || b.unlimited ? 1 : 0) || (a.family === b.family ? 0 : a.family === 'chatgpt' ? -1 : 1) || (ms(a.resetsAt) || Infinity) - (ms(b.resetsAt) || Infinity)).map(planHtml).join('')}</div>` + creditsHtml() : '<p class="empty-note">Reading your plans…</p>'}
-      <p class="hint-line">Read from Claude Code and Codex${S.plans ? ` at ${esc(clock(S.plans.at))}` : ''}. Usage is sampled every hour; forecasts use the last day once there’s a day of samples, and this week’s average until then.</p>`;
+  return `<div class="sec-h"><h2>This week</h2>${floorSeg()}<button class="hint" data-refreshplans="1">${S.plansRefreshing ? 'Checking…' : 'Check now'}</button></div>
+      ${S.plans ? plansTable() : '<p class="empty-note">Reading your plans…</p>'}`;
 }
 function now() {
   const waiting = allChats().filter(c => stageOf(c) === 'waiting').sort((a, b) => b.updated - a.updated);
@@ -79,7 +77,7 @@ function now() {
     <div id="nowLive" class="section-stack">${nowLiveHtml()}</div>
     <section class="section"><div class="sec-h"><h2>Waiting on others</h2><span class="n">${waiting.length}</span><span class="hint">Reminds you after two days</span></div>
       <div class="rows">${waiting.map(waitRow).join('') || '<p class="empty-note">Nothing is waiting on anyone. Press <kbd>w</kbd> on a chat to say who it’s waiting on.</p>'}</div></section>
-    <section class="section"><div class="sec-h"><h2>Coming up</h2><label class="hint follow"><input type="checkbox" data-follow="1" ${S.lite.routinesFollow ? 'checked' : ''}> Routines follow the use-next order</label><a class="hint" href="/" style="margin-left:12px">Routines ›</a></div>
+    <section class="section"><div class="sec-h"><h2>Coming up</h2><label class="hint follow"><input type="checkbox" data-follow="1" ${S.lite.routinesFollow ? 'checked' : ''}> Follow the use-next order</label><a class="hint" href="/" style="margin-left:12px">Routines ›</a></div>
       <div class="rows">${ups.map(r => `<div class="row"><span class="dot" style="background:var(--st-final)"></span><span class="t"><b>${esc(r.name)}</b><small>${esc(r.when)} · runs on ${esc(routineRunsOn(r))}${r.last ? ` · last: ${esc(r.last.line)}` : ''}</small></span><span class="side-tags">${r.running ? '<span class="live-dot"></span>' : ''}</span><span class="when">${r.nextAt ? esc(inWords(r.nextAt)) : r.when ? 'watching' : ''}</span><span></span></div>`).join('') || '<p class="empty-note">No routines yet.</p>'}</div></section>
     <section class="section" id="planBox">${plansBoxHtml()}</section>
   </div>`;

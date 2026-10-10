@@ -44,7 +44,7 @@ function home() {
     const act = ps.filter(p => live(chatsOfProject(p.key)).length);
     const quiet = ps.filter(p => !live(chatsOfProject(p.key)).length);
     return `<section class="section" data-drop-bucket="${esc(b.id || '')}">
-      <div class="sec-h"><h2>${esc(b.name)}</h2><span class="n">${ps.length || ''}</span>${b.id === null ? '<span class="hint">Drag one onto a bucket, or right-click it</span>' : ''}</div>
+      <div class="sec-h"><h2>${esc(b.name)}</h2><span class="n">${ps.length || ''}</span>${b.id === null ? '<span class="hint">Drag one onto a bucket, or right-click it</span>' : `<button class="hint" data-bstages="${esc(b.id)}" title="Whether chats in these projects are grouped by stage in the sidebar">${bucketStages(b.id) ? 'Stages shown' : 'No stages'}</button>`}</div>
       ${act.length ? `<div class="cards">${act.map(cardHtml).join('')}</div>` : ''}
       ${!ps.length ? '<div class="dropzone">Drag projects here</div>' : ''}
       ${quiet.length ? `<div class="quiet-line"><span class="why" title="No chat here has moved in ${quietDays()} days, or every chat is Done. A new chat or message brings it back up.">Quiet:</span>${quiet.map(p => `<button data-project="${esc(p.key)}" draggable="true" data-cur="p:${esc(p.key)}"><span class="thumb-xs" style="${artStyle(p)}"></span>${esc(p.name)}</button>`).join('')}</div>` : ''}
@@ -184,17 +184,43 @@ function imagesView() {
     ${working.map(j => `<div class="gen-job"><span class="live-dot"></span><span>Drawing ${j.n > 1 ? `${j.n} pictures` : 'a picture'}: “${esc(j.prompt.slice(0, 90))}” on ${esc(j.account)} · ${since(j.startedAt)}</span></div>`).join('')}
     ${g.jobs.filter(j => j.state === 'failed' && S.now - (j.doneAt || 0) < 600e3).map(j => `<div class="gen-job err">Couldn’t draw “${esc(j.prompt.slice(0, 60))}”: ${esc(j.error || 'unknown')}</div>`).join('')}
     ${[...daysMap].map(([d, list]) => `<section class="section"><div class="sec-h"><h2>${esc(new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }))}</h2><span class="n">${list.length}</span></div><div class="gallery">${list.map(tile).join('')}</div></section>`).join('') || '<p class="empty-note">No pictures yet.</p>'}
-    ${g.images.length > (S.galleryN || 120) ? '<button class="btn" data-gmore="1" style="align-self:center">Show more</button>' : ''}</div>`;
+    ${g.images.length > (S.galleryN || 120) ? '<div id="gMore" class="g-more" aria-hidden="true"></div>' : ''}</div>`;
 }
 async function loadGallery() { S.gallery = await api('/api/lite/images'); }
+// More pictures load as you scroll near the end.
+let gObs = null;
+function watchGallery() {
+  if (gObs) gObs.disconnect();
+  const el = $('gMore'); if (!el || !('IntersectionObserver' in window)) return;
+  gObs = new IntersectionObserver(es => { if (es.some(x => x.isIntersecting)) { gObs.disconnect(); S.galleryN = (S.galleryN || 120) + 120; render(); } }, { root: $('main'), rootMargin: '800px' });
+  gObs.observe(el);
+}
 function showImage(key) {
+  const list = (S.gallery ? S.gallery.images : []).slice(0, S.galleryN || 120).map(im => `${im.thread}/${im.file}`);
+  showImage.list = list; showImage.i = list.indexOf(key);
   const [thread, file] = key.split('/');
   const c = S.chats.find(x => String(x.id).toLowerCase() === thread.toLowerCase());
   const src = `/api/lite/gimg?token=${TOKEN}&thread=${encodeURIComponent(thread)}&file=${encodeURIComponent(file)}`;
   const root = $('modalRoot');
-  root.innerHTML = `<div class="modal-back lightbox"><figure><img src="${src}" alt=""><figcaption>${c ? `<button class="linkish" data-open="${esc(c.id)}">${esc(c.title)}</button> · ${esc(projOf(c).name)}` : 'Drawn by Codex'} · <a class="linkish" href="${src}" target="_blank" rel="noopener">Full size</a></figcaption></figure></div>`;
-  root.querySelector('.modal-back').addEventListener('click', e => { if (!e.target.closest('figcaption') || e.target.closest('[data-open]')) root.innerHTML = ''; });
+  const at = (S.gallery.images.find(im => im.thread === thread && im.file === file) || {}).at;
+  root.innerHTML = `<div class="modal-back lightbox" data-lightbox="1"><button class="lb-nav prev" data-lb="-1" aria-label="Previous (←)" ${showImage.i > 0 ? '' : 'disabled'}>‹</button><figure><img src="${src}" alt=""><figcaption>${c ? `<button class="linkish" data-open="${esc(c.id)}">${esc(c.title)}</button> · ${esc(projOf(c).name)}` : 'Drawn by Codex'}${at ? ` · ${esc(dayName(at))}` : ''} · <a class="linkish" href="${src}" target="_blank" rel="noopener">Full size</a> · ${showImage.i + 1} of ${list.length}</figcaption></figure><button class="lb-nav next" data-lb="1" aria-label="Next (→)" ${showImage.i < list.length - 1 ? '' : 'disabled'}>›</button></div>`;
+  root.querySelector('.modal-back').addEventListener('click', e => {
+    const nav = e.target.closest('[data-lb]');
+    if (nav) { e.stopPropagation(); return stepImage(Number(nav.dataset.lb)); }
+    if (!e.target.closest('figcaption') || e.target.closest('[data-open]')) root.innerHTML = '';
+    return undefined;
+  });
 }
+function stepImage(d) {
+  const list = showImage.list || []; const i = showImage.i + d;
+  if (i < 0 || i >= list.length) return;
+  showImage(list[i]);
+}
+addEventListener('keydown', e => {
+  if (!document.querySelector('[data-lightbox]')) return;
+  if (e.key === 'ArrowRight' || e.key === 'l') { e.preventDefault(); stepImage(1); }
+  if (e.key === 'ArrowLeft' || e.key === 'h') { e.preventDefault(); stepImage(-1); }
+}, true);
 async function startGenerate(prompt, n) {
   const j = await api('/api/lite/images/generate', { prompt, n });
   S.gallery = S.gallery || { images: [], jobs: [] };

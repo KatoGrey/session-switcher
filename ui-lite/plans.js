@@ -17,57 +17,59 @@ function forecastWords(p) {
   if (!f) return '';
   const r = Math.round(f.rate);
   const basis = f.source === 'day' ? 'Over the last day' : 'So far this week';
-  if (f.kind === 'untouched') return p.resetsAt ? `Untouched lately. All ${p.left}% resets ${wd(p.resetsAt)} unless you use it.` : `Untouched. Its week starts when you first use it.`;
+  if (f.kind === 'untouched') return p.left >= 100 ? `Untouched this week. All of it resets ${wd(p.resetsAt)} unless you use it.` : `Nothing used in the last day. ${p.left}% left resets ${wd(p.resetsAt)} unless you use it.`;
   if (f.kind === 'dry') { const gap = (ms(p.resetsAt) - f.dryAt) / DAY; return `${basis} it’s gone ${r}% a day: at that pace it runs dry ${dayName(f.dryAt)}, about ${gap < 1 ? `${Math.round(gap * 24)} hours` : `${Math.round(gap * 10) / 10} days`} before it resets.`; }
   if (f.kind === 'onTarget') return `${basis} it’s gone ${r}% a day: it lands near empty right as it resets ${wd(p.resetsAt)}. Good use.`;
   return `${basis} it’s gone ${r}% a day: about ${f.atReset}% would be left at reset, so ${f.moreToUse}% more to use by ${wd(p.resetsAt)}.`;
 }
 const creditsOf = p => (p.credits && p.credits.list ? p.credits.list : []);
 const manualOf = p => p.manualResets || [];
-
-function planHtml(p) {
-  if (p.unlimited) return `<div class="plan"><div class="top"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></div><small>${p.broken ? `<span class="warn">${esc(p.broken)}</span>` : 'Cloud models outside the weekly limits. ollama.com shows its own usage.'}</small></div>`;
-  if (p.broken) return `<div class="plan broken"><div class="top"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></div><small class="warn">${esc(p.broken.replace(/ Sign in from Setup in the full app\./, ''))}</small>${p.family === 'claude' ? `<button class="btn prime" data-signin="${esc(p.id)}" style="align-self:flex-start">Sign in${p.email ? '' : ''}</button>` : '<a class="btn" href="/" style="align-self:flex-start">Open Setup in the full app</a>'}</div>`;
-  if (typeof p.left !== 'number') return `<div class="plan"><div class="top"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></div><small class="checking">${p.checking ? 'Checking…' : p.error ? `<span class="err">${esc(p.error)}</span>` : 'No usage read yet.'}</small></div>`;
-  const r = p.rank, next = r === 1;
-  const fam = famName(p.family);
-  const extra = [p.fiveLeft !== null && p.fiveLeft !== undefined ? `5-hour ${p.fiveLeft}%` : '', p.fableLeft !== null && p.fableLeft !== undefined ? `Fable ${p.fableLeft}%` : ''].filter(Boolean).join(' · ');
+// Two to four words; the whole sentence is in the tooltip.
+function forecastShort(p) {
+  const f = p.forecast; if (!f) return { t: '', k: '' };
+  if (f.kind === 'untouched') return { t: p.left >= 100 ? 'Untouched' : f.source === 'day' ? 'Idle today' : 'Barely used', k: 'quiet' };
+  if (f.kind === 'dry') { const gap = (ms(p.resetsAt) - f.dryAt) / DAY; return { t: `Runs dry ${wd(f.dryAt)}${gap >= 1 ? `, ${Math.round(gap)}d early` : ''}`, k: 'bad' }; }
+  if (f.kind === 'onTarget') return { t: 'On target', k: 'good' };
+  return { t: `${f.moreToUse}% to spare`, k: 'room' };
+}
+function resetsCell(p) {
   const cr = creditsOf(p), mr = manualOf(p);
-  const resets = cr.length ? `${cr.length} manual reset${cr.length === 1 ? '' : 's'} · first expires ${esc(dayName(cr[0].expiresAt))}`
-    : p.credits && p.credits.count ? `${p.credits.count} manual resets`
-    : mr.length ? `${mr.length} manual reset${mr.length === 1 ? '' : 's'} added by you`
-    : p.family === 'claude' ? 'Resets: Claude Code doesn’t report them. <button class="linkish" data-addreset="' + esc(p.id) + '">Add yours</button>' : '';
-  return `<div class="plan ${next ? 'lean' : ''} ${p.left <= floor() ? 'low' : ''}">
-    <div class="top"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small>${r ? `<span class="rank" title="Use-next order for ${esc(fam)}">${next ? 'Use next' : `#${r}`}</span>` : '<span class="rank done">At floor</span>'}</div>
-    <div class="wk"><span class="bar"><i style="width:${p.left}%"></i><s style="left:${floor()}%"></s></span><span class="pct">${p.left}%</span></div>
-    <small>left this week · ${p.resetsAt ? `resets ${esc(dayName(p.resetsAt))}, ${inWords(p.resetsAt)}` : 'week starts when first used'}${extra ? ` · ${extra}` : ''}</small>
-    <small class="fc">${esc(forecastWords(p))}</small>
-    ${resets ? `<small class="cred">${resets}</small>` : ''}
+  if (cr.length) return `<span class="chip-s first" title="${esc(cr.map(c => `Expires ${new Date(ms(c.expiresAt)).toLocaleString('en-US')}`).join('\n'))}">${cr.length} · ${esc(md(cr[0].expiresAt))}</span><button class="linkish" data-usereset="${esc(p.id)}">Use</button>`;
+  if (mr.length) return `<span class="chip-s" title="${esc(mr.map(m => `${m.expiresAt ? `Expires ${md(m.expiresAt)}` : 'No expiry'}${m.note ? ` · ${m.note}` : ''}`).join('\n'))}">${mr.length}${mr[0].expiresAt ? ` · ${esc(md(mr[0].expiresAt))}` : ''}</span><button class="linkish" data-addreset="${esc(p.id)}" title="Add another">+</button>`;
+  return p.family === 'claude' ? '<button class="linkish dim" data-addreset="' + esc(p.id) + '" title="Claude Code doesn’t report manual resets; note yours here">+ add</button>' : '';
+}
+function planRow(p) {
+  if (p.unlimited) return `<div class="prow"><span class="prank"></span><span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span><span class="pnote">${p.broken ? `<span class="warn">${esc(p.broken)}</span>` : 'No usage limits reported'}</span></div>`;
+  if (p.broken) return `<div class="prow broken"><span class="prank"></span><span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span><span class="pnote"><span class="warn">${esc(p.broken.replace(/ Sign in from Setup in the full app\./, ''))}</span>${p.family === 'claude' ? `<button class="btn sm prime" data-signin="${esc(p.id)}">Sign in</button>` : ''}</span></div>`;
+  if (typeof p.left !== 'number') return `<div class="prow"><span class="prank"></span><span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span><span class="pnote">${p.checking ? 'Checking…' : esc(p.error || 'No usage read yet')}</span></div>`;
+  const fc = forecastShort(p);
+  return `<div class="prow ${p.rank === 1 ? 'next' : ''} ${p.left <= floor() ? 'low' : ''}">
+    <span class="prank" title="${p.rank ? `Use-next order for ${esc(famName(p.family))}` : 'At or below your floor'}">${p.rank || '–'}</span>
+    <span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}${p.fiveLeft !== null && p.fiveLeft !== undefined && p.family === 'claude' ? ` · 5h ${p.fiveLeft}%` : ''}</small></span>
+    <span class="pbar"><i style="width:${p.left}%"></i><s style="left:${floor()}%"></s></span>
+    <span class="ppct">${p.left}%</span>
+    <span class="preset" title="${p.resetsAt ? esc(new Date(ms(p.resetsAt)).toLocaleString('en-US')) : ''}">${p.resetsAt ? `${esc(wd(p.resetsAt))} · ${esc(inWords(p.resetsAt).replace(/^in /, ''))}` : '—'}</span>
+    <span class="pfc ${fc.k}" title="${esc(forecastWords(p))}">${esc(fc.t)}</span>
+    <span class="pres">${resetsCell(p)}</span>
   </div>`;
 }
-
+const famOrder = p => (p.family === 'chatgpt' ? 0 : p.family === 'claude' ? 1 : 2);
+function plansTable() {
+  const list = [...plans()].sort((a, b) => famOrder(a) - famOrder(b) || (a.rank || 99) - (b.rank || 99) || (a.broken ? 1 : 0) - (b.broken ? 1 : 0));
+  let html = '', last = null;
+  for (const p of list) {
+    const f = p.family === 'ollama' ? 'other' : p.family;
+    if (f !== last) { html += `<div class="pfam">${f === 'chatgpt' ? 'ChatGPT' : f === 'claude' ? 'Claude' : 'Other'}</div>`; last = f; }
+    html += planRow(p);
+  }
+  return `<div class="ptable">${html}</div>`;
+}
+// The use-next chain, one line per family (Hackathon fuel uses it too).
 function orderHtml() {
-  return `<div class="order">${FAMS.map(([f, name]) => { const o = orderOf(f); return `<div><span class="fam">${name}</span>${o.map((p, i) => `<span class="step-chip ${i === 0 ? 'on' : ''}"><b>${i + 1}</b> ${esc(p.label)} <small>${p.left}%${p.resetsAt ? ` · resets ${esc(wd(p.resetsAt))}` : ''}</small></span>`).join('<span class="arrow">›</span>') || '<small>Every plan is at the floor</small>'}</div>`; }).join('')}
-    <span class="crumb">Drain to <span class="seg" role="group" aria-label="Floor">${[10, 15, 20].map(d => `<button data-floor="${d}" aria-pressed="${floor() === d}">${d}%</button>`).join('')}</span> then move on</span></div>`;
+  return `<div class="order">${FAMS.map(([f, name]) => { const o = orderOf(f); return `<div><span class="fam">${name}</span>${o.map((p, i) => `<span class="step-chip ${i === 0 ? 'on' : ''}"><b>${i + 1}</b> ${esc(p.label)} <small>${p.left}%${p.resetsAt ? ` · ${esc(wd(p.resetsAt))}` : ''}</small></span>`).join('<span class="arrow">›</span>') || '<small>Every plan is at the floor</small>'}</div>`; }).join('')}</div>`;
 }
-
-function creditsHtml() {
-  const withCodex = plans().filter(p => creditsOf(p).length);
-  const claude = plans().filter(p => p.family === 'claude' && !p.broken);
-  const all = withCodex.flatMap(p => creditsOf(p).map(c => ({ p, c }))).sort((a, b) => ms(a.c.expiresAt) - ms(b.c.expiresAt));
-  const manual = plans().flatMap(p => manualOf(p).map(m => ({ p, m })));
-  if (!all.length && !claude.length) return '';
-  const first = all.length ? ms(all[0].c.expiresAt) : null;
-  const soon = first ? all.filter(x => ms(x.c.expiresAt) - first < DAY) : [];
-  const h = hackDates();
-  const plan = first ? `<p><b>${soon.length} expire${soon.length === 1 ? 's' : ''} ${esc(dayName(first))}</b>${soon.length > 1 ? `, one on each of ${esc(soon.map(x => x.p.label).join(', '))}` : ''}.${h && first > ms(h.end) && first - ms(h.end) < 10 * DAY ? ` That’s ${Math.round((first - ms(h.end)) / DAY)} days after the hackathon: when a ChatGPT plan hits ${floor()}% during it with days to go before its weekly reset, reset it with the credit that expires first.` : ''} “Use one” always spends the plan’s credit that expires first, and says when that would waste it.</p>` : '';
-  return `<div class="credits">
-    <div class="top"><b>Manual resets</b><small>${all.length} on ChatGPT${manual.length ? ` · ${manual.length} on Claude` : ' · Claude: add by hand'}</small></div>
-    ${plan}
-    <div class="credit-list">${withCodex.map(p => `<span><b>${esc(p.label)}</b> ${creditsOf(p).map((c, i) => `<span class="chip-s ${i === 0 ? 'first' : ''}" title="Expires ${esc(new Date(ms(c.expiresAt)).toLocaleString('en-US'))}">${esc(md(c.expiresAt))}</span>`).join('')}<button class="btn sm use" data-usereset="${esc(p.id)}">Use one…</button></span>`).join('')}
-      ${claude.map(p => `<span><b>${esc(p.label)} Claude</b> ${manualOf(p).map(m => `<span class="chip-s" title="${esc(m.note || 'Added by you')}">${m.expiresAt ? esc(md(m.expiresAt)) : 'no expiry'} <button class="linkish" data-delreset="${esc(m.id)}" aria-label="Remove">×</button></span>`).join('') || '<small style="color:var(--muted)">None recorded</small>'}<button class="btn sm use" data-addreset="${esc(p.id)}">Add a reset…</button></span>`).join('')}</div>
-  </div>`;
-}
+const floorSeg = () => `<span class="crumb">Drain to <span class="seg" role="group" aria-label="Floor">${[10, 15, 20].map(d => `<button data-floor="${d}" aria-pressed="${floor() === d}">${d}%</button>`).join('')}</span></span>`;
+function creditsHtml() { return ''; }
 
 // Spending a manual reset is real and can't be undone, so it says what it costs first.
 async function useReset(planId) {

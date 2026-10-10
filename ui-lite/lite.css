@@ -636,3 +636,55 @@ body.dropping .box::after { content: "Drop to add"; position: absolute; inset: 0
 .si-alt summary { cursor: pointer; }
 .si-alt .si-link { margin-top: 8px; }
 .modal.signin p { margin: 0; }
+
+/* ---------- This week: one row per plan ---------- */
+.ptable { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.pfam { font-size: 11.5px; color: var(--muted); padding: 8px 14px 4px; background: var(--bg); border-top: 1px solid var(--line); letter-spacing: .02em; }
+.pfam:first-child { border-top: 0; }
+.prow { display: grid; grid-template-columns: 22px minmax(120px, 1.2fr) minmax(80px, 1.4fr) 42px 92px minmax(96px, 1fr) minmax(90px, auto); gap: 12px; align-items: center; padding: 9px 14px; border-top: 1px solid var(--line); font-size: 13px; }
+.pfam + .prow { border-top: 0; }
+.prow.next { background: color-mix(in srgb, var(--accent) 6%, var(--pane)); }
+.prank { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--fg-2); background: var(--hover); font-variant-numeric: tabular-nums; }
+.prank:empty { background: none; }
+.prow.next .prank { background: var(--accent); color: var(--on-accent); }
+.pname { min-width: 0; display: flex; flex-direction: column; }
+.pname b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pname small { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pbar { position: relative; height: 6px; border-radius: 3px; background: var(--line-2); }
+.pbar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent); }
+.prow.low .pbar i { background: var(--st-bug); }
+.pbar s { position: absolute; top: -3px; bottom: -3px; width: 1.5px; background: var(--fg-2); opacity: .5; }
+.ppct { font: 600 14px/1 var(--f-head); font-variant-numeric: tabular-nums; text-align: right; }
+.preset { color: var(--fg-2); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pfc { font-size: 12.5px; color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
+.pfc.bad { color: var(--st-bug); } .pfc.good { color: var(--accent); } .pfc.quiet { color: var(--muted); }
+.pres { display: flex; gap: 6px; align-items: center; justify-content: flex-end; white-space: nowrap; }
+.linkish.dim { color: var(--muted); text-decoration: none; }
+.pnote { grid-column: 3 / -1; display: flex; gap: 10px; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12.5px; }
+.prow.broken .pnote .warn { color: var(--st-bug); }
+@media (max-width: 760px) {
+  .prow { grid-template-columns: 22px minmax(0, 1fr) 42px; row-gap: 6px; }
+  .pbar { grid-column: 2 / 4; grid-row: 2; }
+  .preset, .pfc { grid-column: 2 / 4; font-size: 12px; }
+  .preset { grid-row: 3; } .pfc { grid-row: 4; white-space: normal; }
+  .pres { grid-column: 2 / 4; grid-row: 5; justify-content: flex-start; }
+  .pres:empty { display: none; }
+  .pnote { grid-column: 2 / 4; }
+}
+.g-more { height: 1px; }
+.lb-nav { position: fixed; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border-radius: 10px; font-size: 30px; color: #eee; background: color-mix(in srgb, #000 35%, transparent); }
+.lb-nav.prev { left: 16px; } .lb-nav.next { right: 16px; }
+.lb-nav:disabled { opacity: .2; }
+
+/* ---------- sidebar by project ---------- */
+.side-h-row { display: flex; align-items: center; padding: 4px 6px 6px; }
+.side-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.side-seg button { font-size: 11.5px; padding: 3px 10px; color: var(--muted); }
+.side-seg button + button { border-left: 1px solid var(--line); }
+.side-seg button[aria-pressed="true"] { background: var(--pane); color: var(--fg); }
+.side-bucket { padding: 10px 8px 2px; font-size: 11px; color: var(--muted); letter-spacing: .02em; }
+.proj-btn .thumb-xs { width: 16px; height: 16px; border-radius: 4px; }
+.side-stage { display: flex; align-items: center; gap: 6px; padding: 5px 8px 1px var(--indent); font-size: 11px; color: var(--muted); }
+.side-stage .label-dot { width: 7px; height: 7px; }
+.st-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; margin-left: -14px; margin-right: 6px; }
+.side-empty { color: var(--muted); font-size: 12.5px; padding: 6px 8px; margin: 0; }
