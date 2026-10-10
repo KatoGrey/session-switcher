@@ -873,6 +873,13 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, { scope: cwd ? 'project' : 'user', cwd, ...rulesLib.readRules(rulesPathsFor(cwd)) });
   }
   if (route === 'GET /api/tools') return send(res, 200, await toolsFor(url.searchParams.get('cwd') || null));
+  // The day at a glance: when each chat was active since a moment (Claude's message by message, Codex's
+  // last activity), for the hub's Today strip.
+  if (route === 'GET /api/today') {
+    const since = Math.max(Number(url.searchParams.get('since')) || 0, Date.now() - 2 * 864e5);
+    const codexMarks = codexSessions().filter(x => x.updated >= since).map(x => ({ id: x.id, provider: 'codex', times: [x.updated] }));
+    return send(res, 200, { at: Date.now(), since, chats: [...sessions.activity(since).map(x => ({ ...x, provider: 'claude' })), ...codexMarks] });
+  }
   if (route === 'GET /api/project/crest-result') {
     const p = projectAt(url.searchParams.get('cwd'));
     if (!p || !p.exists) throw fail(404, 'That folder isn’t available.');

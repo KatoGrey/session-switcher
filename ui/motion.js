@@ -29,10 +29,11 @@ function renderLive(force) {
   // Only when it changed: redrawing restarts the scene's animations (a forced refresh needn't).
   if ($('heroSlot')._h !== heroKey) { $('heroSlot').innerHTML = heroNow; $('heroSlot')._h = heroKey; }
   renderWelcome();
+  loadToday(); renderToday();
   // A chat moving between the boards (it finished, or wants you) glides across; new ones fade in.
   flip([$('awaitList'), $('board'), $('quietList')], () => {
-    patch($('awaitList'), A, keyOf, awaitCard, '<p class="empty-line">Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.</p>');
-    patch($('board'), W, keyOf, workCard, `<p class="empty-line">${A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.'}</p>`);
+    patch($('awaitList'), A, keyOf, awaitCard, emptyArt('await', 'Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.'));
+    patch($('board'), W, keyOf, workCard, emptyArt('work', A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.'));
     patch($('quietList'), Q, keyOf, quietChip, '');
   });
   $('quietList').classList.toggle('has', Q.length > 0);
@@ -52,7 +53,7 @@ function renderRecent() {
   $('page').innerHTML = `<div id="guardSlot">${guardHtml()}</div>
     <header class="f-head"><div><p class="eyebrow">✧ Every folder</p><h1>Recent chats</h1><p class="f-meta">Your latest chats${f === 'codex' ? ' in Codex' : f === 'claude' ? ` in Claude Code, ready to open as ${esc(current().name)}` : f === 'openclaw' ? ' from OpenClaw agents, to read here' : ''}.</p></div>
       ${kinds.length > 1 ? `<div class="seg provseg" role="group" aria-label="Show">${tab('all', 'All', every.length)}${kinds.map(k => tab(k, PROV_TITLE[k], n[k])).join('')}</div>` : ''}</header>
-    ${all.length ? `<ul class="rows sec-gap">${all.slice(0, 60).map(([x, p]) => rowHtml(x, p.name)).join('')}</ul>` : '<p class="empty-line">Nothing here yet.</p>'}`;
+    ${all.length ? `<ul class="rows sec-gap">${all.slice(0, 60).map(([x, p]) => rowHtml(x, p.name)).join('')}</ul>` : emptyArt('chats', 'Nothing here yet.')}`;
 }
 // A project: its banner, then its chats, documents and pictures.
 function renderFolder() {
@@ -122,7 +123,7 @@ function renderWorldBody() {
     if (fresh || !$('wbList')) { box.innerHTML = '<div class="wb-top" id="wbTop"></div><div id="wbList"></div>'; box._h = null; }
     if ($('wbTop')._h !== seg) { $('wbTop').innerHTML = seg; $('wbTop')._h = seg; $('wbTop').hidden = !seg; }
     const lb = $('wbList');
-    if (!list.length) { lb.innerHTML = `<p class="empty-line">No ${prov === 'codex' ? 'Codex chats' : prov === 'claude' ? 'Claude Code chats' : 'chats'} in this project yet. Start one above, or start with a prompt.</p>`; return; }
+    if (!list.length) { lb.innerHTML = emptyArt('chats', `No ${prov === 'codex' ? 'Codex chats' : prov === 'claude' ? 'Claude Code chats' : 'chats'} in this project yet. Start one above, or start with a prompt.`); return; }
     if (!lb.querySelector(':scope > ul.rows')) lb.innerHTML = '<ul class="rows"></ul>';
     return patch(lb.firstElementChild, list, s => s.id, s => rowHtml(s, null));
   }
@@ -168,7 +169,7 @@ function renderSearch() {
   $('page').innerHTML = `<header class="f-head"><div><p class="eyebrow">❝ Search</p><h1>“${esc(S.q)}”</h1><p class="f-meta">${h ? (h.hits.length === 1 ? 'One chat mentions it.' : `${nword(h.hits.length)} chats mention it.`) : 'Searching…'}</p></div>
       <div class="f-act"><button class="btn" data-act="search-again">Search again</button><button class="btn quiet" data-view="hub">Back to the hub</button></div></header>
     ${pr && !pr.ready ? `<p class="progress">Still reading chats (${pr.done} of ${pr.total}); results may grow.</p>` : ''}
-    ${rows ? `<ul class="rows sec-gap">${rows}</ul>` : h ? '<p class="empty-line">Nothing matches. Search looks inside every message you and Claude wrote, plus titles and folder names.</p>' : ''}`;
+    ${rows ? `<ul class="rows sec-gap">${rows}</ul>` : h ? emptyArt('search', 'Nothing matches. Search looks inside every message you and Claude wrote, plus titles and folder names.') : ''}`;
 }
 function renderPage() {
   if (S.view === 'hub') renderHub();

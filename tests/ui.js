@@ -964,6 +964,30 @@ module.exports = [
     },
   },
   {
+    name: 'today',
+    // The day at a glance (a lane per project, a bar per busy quarter hour, click to open that chat), and
+    // empty spots with a small picture (a theme's own painting when it brings one).
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`loadToday(true); return 1`); await sleep(1200);
+      const d = await b.eval(`const s = document.getElementById('secToday'); return s ? { lanes: s.querySelectorAll('.td-lane').length, bars: s.querySelectorAll('.td-b').length, sum: s.querySelector('.td-sum').textContent, tip: (s.querySelector('.td-b') || {}).title || '', ticks: [...s.querySelectorAll('.td-ticks span')].map(x => x.textContent), crest: !!s.querySelector('.td-name .crest') } : null`);
+      t.check('the day at a glance: a lane per project, each with its crest', d && d.lanes >= 4 && d.crest, d);
+      t.check('it sums the day up, and each bar says what happened then', d && /\d+ chats in \d+ projects · \d+ messages/.test(d.sum) && /: \d+ messages?.*most in “/.test(d.tip), d);
+      t.check('hours along the top, ending at now', d && d.ticks.length >= 2 && d.ticks[d.ticks.length - 1] === 'now', d);
+      await b.eval(`document.getElementById('secToday').scrollIntoView(); return 1`); await sleep(300);
+      await t.shot(b, 'strip');
+      await b.eval(`document.querySelector('.td-b').click(); return 1`); await sleep(1500);
+      t.check('clicking a bar opens the chat that was busiest then', await b.eval(`return ChatUI.isOpen()`));
+      await b.eval(`ChatUI.close(); return 1`); await sleep(600);
+      // Empty spots get a picture.
+      const e = await b.eval(`S.activity = []; renderLive(true); await new Promise(r => setTimeout(r, 300)); return { await: !!document.querySelector('#awaitList .empty-art[data-kind="await"] svg'), work: !!document.querySelector('#board .empty-art[data-kind="work"] svg'), text: (document.querySelector('#awaitList .empty-line') || {}).textContent || '' }`);
+      t.check('nothing waiting, nothing working: a small picture and the usual words', e.await && e.work && /Nothing is waiting on you/.test(e.text), e);
+      const pic = await b.eval(`Look.set({ theme: 'isekai' }); Look.theme().empty = { await: 'isekai-dark' }; renderLive(true); await new Promise(r => setTimeout(r, 300)); const img = document.querySelector('#awaitList .empty-art.painted img'); const ok = img && img.getAttribute('src') === '/art/isekai-dark.webp'; delete Look.theme().empty; return !!ok`);
+      t.check('a theme that brings its own painting for an empty spot shows it', pic);
+      await b.eval(`Look.reset(); return 1`);
+    },
+  },
+  {
     name: 'moments',
     // An approval arriving, a hand-over and a reply landing each get one brief motion, then it's still.
     async run(t) {

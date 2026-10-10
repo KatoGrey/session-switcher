@@ -777,6 +777,7 @@ function renderHub() {
       <div class="board" id="board"></div>
       <div class="quietrow" id="quietList"></div>
     </section>
+    <div id="todaySlot"></div>
     <section class="sec" id="secRaces" hidden>
       ${secHead('Head to head', 'Races')}
       <ul class="races" id="raceList"></ul>
@@ -788,7 +789,7 @@ function renderHub() {
     <section class="sec" id="secWorlds">${secHead('By folder', 'Your projects', '<button class="btn sm" data-act="project-new">New project</button>')}<div class="atlas ${S.atlasEntered ? '' : 'enter'}" id="atlas"></div></section>
     <section class="sec">
       ${secHead('Pick up where you left off', 'Recent chats', `<button class="btn quiet sm" data-view="recent">All recent chats</button>`)}
-      ${recent.length ? '<ul class="rows" id="recentList"></ul>' : `<p class="empty-line">No chats yet. Start one with <button class="linkish" data-act="project-new">New project</button>, or open a folder in Claude Code once and its chats appear here.</p>`}
+      ${recent.length ? '<ul class="rows" id="recentList"></ul>' : emptyArt('chats', 'No chats yet. Start one with <button class="linkish" data-act="project-new">New project</button>, or open a folder in Claude Code once and its chats appear here.')}
     </section>
     <section class="sec" id="secAccounts">
       ${secHead('Your plans', 'Accounts and usage', `<button class="btn quiet sm" data-act="usage-all">Check all</button>`)}
