@@ -101,10 +101,29 @@ async function loadEarlier() {
 function listen(key) {
   if (CV.es) CV.es.close();
   const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}`);
-  CV.es = es;
-  es.addEventListener('hello', e => { try { CV.info = JSON.parse(e.data); CV.busy = ['busy', 'waiting', 'starting'].includes(CV.info.state) || CV.sending; paintBar(); paintHead(); } catch { /* fine */ } });
-  es.addEventListener('chat', e => { let ev; try { ev = JSON.parse(e.data); } catch { return; } onEvent(ev); });
+  CV.es = es; CV.lastEventAt = Date.now();
+  es.addEventListener('hello', e => { CV.lastEventAt = Date.now(); try { CV.info = JSON.parse(e.data); CV.busy = ['busy', 'waiting', 'starting'].includes(CV.info.state) || CV.sending; paintBar(); paintHead(); } catch { /* fine */ } });
+  es.addEventListener('chat', e => { CV.lastEventAt = Date.now(); let ev; try { ev = JSON.parse(e.data); } catch { return; } onEvent(ev); });
 }
+// While it works: the time under it ticks, and if the stream has gone quiet for a while, Lite asks
+// the server whether the chat actually finished; if it did, it catches up (attach and replay).
+let healBusy = false;
+setInterval(async () => {
+  if (S.view !== 'chat' || !CV.busy || CV.sending) return;
+  paintStatus();
+  if (!CV.key || healBusy || Date.now() - (CV.lastEventAt || 0) < 15000) return;
+  healBusy = true;
+  try {
+    const j = await api('/api/lite/live');
+    const x = (j.live || []).find(l => l.key === CV.key || (l.sessionId && String(l.sessionId).toLowerCase() === String(CV.id).toLowerCase()));
+    if (x && !x.working && !(x.pending || []).length && S.view === 'chat') {
+      const typed = $('msgBox') ? $('msgBox').value : '';
+      await openChatView(CV.id, { key: CV.key });
+      if (typed && $('msgBox') && !$('msgBox').value) { $('msgBox').value = typed; autosize($('msgBox')); }
+    }
+    else CV.lastEventAt = Date.now();
+  } catch { /* try again next time */ } finally { healBusy = false; }
+}, 5000);
 function onEvent(ev) {
   switch (ev.kind) {
     case 'state':
