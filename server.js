@@ -32,6 +32,7 @@ const raceLib = require('./lib/race');
 const pairsLib = require('./lib/pairs');
 const handover = require('./lib/handover');
 const routinesLib = require('./lib/routines');
+const organizeLib = require('./lib/organize');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -80,6 +81,7 @@ const projectInfo = projectsLib.createProjects({ dataDir: DATA_DIR, log });
 const chatPrefs = prefsLib.createChatPrefs({ dataDir: DATA_DIR, log });
 const openclaw = openclawLib.createOpenClaw({ log, run: sys.runCapture, found: async () => (await sys.whereIs('openclaw')).length > 0 });
 openclaw.onSessionsChanged(() => { forgetMerged(); broadcast('sessions'); });
+const organize = organizeLib.createOrganize({ dataDir: DATA_DIR, log });
 
 // ---------- live updates ----------
 
@@ -132,6 +134,9 @@ const chats = chatLib.createChatManager({
     if (chat.choices && Object.keys(chat.choices).length) chatPrefs.set({ sessionId: chat.sessionId }, chat.choices);
     if (chat.heardUntil) chatPrefs.setHeard(chat.sessionId, chat.heardUntil);
     pairs.link(chat);
+    if (chat.isCommander) { organize.setCommander({ sessionId: chat.sessionId }); broadcast('organize', orgView()); nameCommander(chat.sessionId); }
+    // A sub-session remembers the chat it was started from (and joins its group).
+    if (chat.parentSession) { try { organize.link(chat.sessionId, chat.parentSession); broadcast('organize', orgView()); } catch (err) { log(`Sub-session link: ${err.message}`); } }
     broadcast('live', chats.live());
     setTimeout(sessionsChanged, 1500);
   },
@@ -826,7 +831,7 @@ async function routineChat({ account, cwd, sessionId, permissionMode, model, tit
   return chat;
 }
 const routines = routinesLib.createRoutines({
-  dataDir: APP_DIR, log, broadcast,
+  dataDir: DATA_DIR, log, broadcast,
   prompts: () => projectInfo.prompts(),
   startChat: routineChat,
   accountInfo: id => {
@@ -860,7 +865,7 @@ const LOCAL_ONLY = new Set(['/api/routines/secret', '/api/tools/copy', '/api/qui
 async function handleApi(req, res, url, remote = false) {
   const c = config();
   const route = `${req.method} ${url.pathname}`;
-  if (remote && (LOCAL_ONLY.has(url.pathname) || url.pathname.startsWith('/api/phone'))) throw fail(403, 'That can only be done on the PC itself.');
+  if (remote && (LOCAL_ONLY.has(url.pathname) || url.pathname.startsWith('/api/phone') || url.pathname.startsWith('/api/commander/tool/'))) throw fail(403, 'That can only be done on the PC itself.');
   if (route === 'GET /api/phone') return send(res, 200, phone.status());
 
   if (route === 'GET /api/state') return send(res, 200, stateFor());
@@ -887,6 +892,11 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
   if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
+  if (route === 'GET /api/organize') return send(res, 200, orgView());
+  if (route === 'GET /api/commander') { const l = commanderLive(); return send(res, 200, { ...orgView().commander, live: l ? l.info() : null }); }
+  if (route === 'GET /api/commander/tool/sessions') return send(res, 200, commanderSessions(url.searchParams.get('filter') || 'active', url.searchParams.get('group') || ''));
+  if (route === 'GET /api/commander/tool/read') return send(res, 200, await commanderRead(url.searchParams.get('id'), url.searchParams.get('count')));
+  if (route === 'GET /api/chat/last-reply') return send(res, 200, { text: await lastReply(url.searchParams.get('id')) });
   if (route === 'GET /api/file') {
     const q = Object.fromEntries(url.searchParams);
     return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
@@ -1349,6 +1359,34 @@ async function handleApi(req, res, url, remote = false) {
       broadcast('sessions');
       return send(res, 200, { title });
     }
+    case '/api/commander/open': return send(res, 200, await openCommander(c, body));
+    case '/api/commander/settings': {
+      const ch = {};
+      if (body.accountId !== undefined) ch.accountId = acc.findAccount(c, body.accountId).id;
+      if (typeof body.allowApprove === 'boolean') ch.allowApprove = body.allowApprove;
+      organize.setCommander(ch);
+      log(`Commander settings: ${JSON.stringify(ch)}`);
+      broadcast('organize', orgView());
+      return send(res, 200, orgView().commander);
+    }
+    case '/api/commander/tool/send': return send(res, 200, await commanderSend(c, String(body.id || ''), body.text));
+    case '/api/commander/tool/answer': return send(res, 200, commanderAnswer(String(body.id || ''), { decision: body.decision, requestId: body.requestId ? String(body.requestId) : null, reason: typeof body.reason === 'string' ? body.reason.slice(0, 2000) : '' }));
+    case '/api/commander/tool/sub': return send(res, 200, await commanderSub(c, String(body.parent || ''), body.task, body.includeContext !== false));
+    case '/api/organize': {
+      // Groups you made: create, rename, reorder, collapse, remove, and moving chats between them.
+      const a = String(body.action || '');
+      let made = null;
+      if (a === 'create') { made = organize.create(body.name); if (body.chat) organize.move(body.chat, made.id); }
+      else if (a === 'rename') organize.rename(body.id, body.name);
+      else if (a === 'remove') organize.remove(body.id);
+      else if (a === 'collapse') organize.collapse(body.id, body.collapsed);
+      else if (a === 'reorder') organize.reorder(body.id, { step: body.step || 0, to: body.to });
+      else if (a === 'move') organize.move(body.chat, body.id || null);
+      else if (a === 'unlink') organize.unlink(body.chat);
+      else throw fail(400, 'Unknown change.');
+      broadcast('organize', orgView());
+      return send(res, 200, { ...orgView(), made });
+    }
     case '/api/prefs': {
       const p = c.prefs;
       if (body.terminal !== undefined) { if (!acc.TERMINALS.includes(body.terminal)) throw fail(400, 'Unknown terminal choice.'); p.terminal = body.terminal; }
@@ -1405,7 +1443,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/quit': {
       send(res, 200, { ok: true });
       log('Quit from the app.');
-      chatPrefs.flush();
+      chatPrefs.flush(); organize.flush();
       phone.stop();
       routines.stop();
       stopForQuit();
@@ -1415,6 +1453,250 @@ async function handleApi(req, res, url, remote = false) {
     }
   }
   throw fail(404, 'Not found.');
+}
+
+// ---------- the Commander ----------
+// One chat that can see and steer the others, through a small MCP server (lib/commander-mcp.js)
+// that calls the /api/commander/tool/* routes below with this launch's token. It runs in its own
+// folder (commander/, which holds its CLAUDE.md) as the Claude account Ryan picks.
+const COMMANDER_DIR = path.join(DATA_DIR, 'commander');
+const MCP_SCRIPT = path.join(APP_DIR, 'lib', 'commander-mcp.js');
+const SAFE_ARG = /^[\w.:=\/-]+$/;
+const READ_TOOLS = ['mcp__switcher__list_sessions', 'mcp__switcher__read_session'];
+const orgView = () => { const v = organize.view(); v.commander.cwd = COMMANDER_DIR; return v; };
+const isCommanderId = id => !!id && String(organize.commander().sessionId || '').toLowerCase() === String(id).toLowerCase();
+function commanderLive() {
+  for (const ch of chats.chats.values()) if (ch.isCommander && ch.state !== 'ended') return ch;
+  const id = organize.commander().sessionId;
+  return id ? chats.bySession(id) : null;
+}
+const COMMANDER_NOTES = `# Commander
+
+You are the Commander in Ryan's Session Switcher. Ryan runs many Claude Code and Codex chats at
+once; you watch them and help keep them moving. You don't work on code yourself here.
+
+Your tools (from the \`switcher\` MCP server):
+
+- \`list_sessions\`: every chat that's running or recently used, with its state (working, needs
+  approval, has a question, idle, waiting in its terminal, not running), group, parent chat and
+  last line. Start here.
+- \`read_session\`: a chat's latest messages. Read before you nudge.
+- \`send_message\`: nudge a chat. It arrives marked "From Commander", and the chat shows a note, so
+  Ryan can always see what you sent. Keep nudges short and specific ("Carry on with the plan you
+  proposed; run the tests when done."). It can't type into a chat running in a terminal.
+- \`answer_permission\`: allow or deny a waiting request. Only works when Ryan has turned it on;
+  otherwise tell him what's waiting.
+- \`start_sub_session\`: start a new chat linked to a parent chat, with a task.
+- \`create_routine\` appears only if Session Switcher has routines (scheduled prompts).
+
+How to work:
+
+- Say plainly what you did and what you found, chat by chat. Use the chats' titles, not ids.
+- Don't nudge a chat that is working; wait for it to finish its turn.
+- Ask Ryan before anything that would delete, publish, push, spend money or send messages to
+  people. When unsure, ask him instead of nudging.
+- Never approve a request Ryan hasn't allowed you to, and never claim a chat did something you
+  haven't read in it.
+`;
+// Writes the Commander's folder and its MCP config (with this launch's token; readable only by you).
+function writeCommanderFiles() {
+  fs.mkdirSync(COMMANDER_DIR, { recursive: true });
+  fs.writeFileSync(path.join(COMMANDER_DIR, 'CLAUDE.md'), COMMANDER_NOTES);
+  const dir = path.join(os.tmpdir(), 'claude-switcher');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `commander-mcp-${PORT}.json`);
+  const arg = file.replace(/\\/g, '/'); // Claude Code takes forward slashes on Windows too
+  if (!SAFE_ARG.test(arg)) throw fail(500, `The Commander’s settings file would be at ${file}, and that path has characters Session Switcher can’t pass to Claude Code.`);
+  const config = { mcpServers: { switcher: { type: 'stdio', command: process.execPath, args: [MCP_SCRIPT], env: { SWITCHER_URL: `http://127.0.0.1:${PORT}`, SWITCHER_TOKEN: TOKEN } } } };
+  fs.writeFileSync(file, JSON.stringify(config, null, 2), { mode: 0o600 });
+  try { fs.chmodSync(file, 0o600); } catch { /* best effort */ }
+  return arg;
+}
+// The Commander's chat is always called "Commander" (its transcript appears a moment after it starts).
+function nameCommander(id, tries = 8) {
+  setTimeout(() => {
+    try { if (sessions.find(id).session.title !== 'Commander') { sessions.rename(id, 'Commander'); broadcast('sessions'); } }
+    catch { if (tries > 1) nameCommander(id, tries - 1); }
+  }, 2500);
+}
+async function openCommander(c, body = {}) {
+  const live = commanderLive(); if (live) return attachedInfo(live);
+  const set = organize.commander();
+  const a = acc.findAccount(c, body.account || set.accountId || (mainAccount() && mainAccount().id));
+  await guarded(a);
+  acc.prepareForLaunch(c, a);
+  if (set.accountId !== a.id) organize.setCommander({ accountId: a.id });
+  const mcp = writeCommanderFiles();
+  let sessionId = body.fresh ? null : set.sessionId;
+  if (sessionId) { try { sessions.find(sessionId); } catch { sessionId = null; } }
+  const pref = chatPrefs.get({ sessionId, cwd: COMMANDER_DIR, provider: 'claude' });
+  const chat = chats.open({ cfg: c, account: a, cwd: COMMANDER_DIR, sessionId, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: 'Commander', folder: 'Commander', extraArgs: ['--mcp-config', mcp, '--allowedTools', ...READ_TOOLS] });
+  chat.isCommander = true;
+  if (sessionId) { sessions.recordLaunch(sessionId, a, 'app'); nameCommander(sessionId); }
+  log(`Commander: ${sessionId ? `resume ${sessionId}` : 'new'} as ${a.name}`);
+  broadcast('organize', orgView());
+  return { ...chat.info(), attached: false, commander: true };
+}
+
+// What a chat is doing, in words the Commander can act on.
+function stateWord(x) {
+  if (x.phase === 'waiting') return (x.pending || []).some(p => p.question) ? 'has a question' : 'needs approval';
+  if (x.phase === 'waiting-terminal') return 'waiting in its terminal';
+  if (['thinking', 'writing', 'tool', 'starting'].includes(x.phase)) return 'working';
+  if (x.phase === 'ended') return 'stopped';
+  return 'idle';
+}
+const iso = t => (t ? new Date(t).toISOString() : null);
+function commanderSessions(filter = 'active', groupName = '') {
+  const projects = sessionsWithCodex().projects;
+  const known = new Map();
+  for (const p of projects) for (const s of p.sessions) known.set(s.id.toLowerCase(), { s, p });
+  const view = orgView();
+  const groupName_ = id => { const g = organize.groupOf(id); return g ? g.name : null; };
+  const rows = new Map();
+  for (const x of activityList()) {
+    if (!x.sessionId || x.parentKey || isCommanderId(x.sessionId)) continue;
+    const k = x.sessionId.toLowerCase(), f = known.get(k);
+    rows.set(k, {
+      id: x.sessionId, title: (f && f.s.title) || x.title || 'New chat', folder: (f && f.p.name) || x.folder || null, cwd: (f && f.p.cwd) || x.cwd || null, assistant: x.provider === 'codex' ? 'Codex' : 'Claude',
+      state: stateWord(x), where: x.source === 'app' ? 'Session Switcher' : x.source === 'terminal' ? 'a terminal' : 'another app', account: x.accountName || null,
+      lastLine: chatLib.one(x.lastText || '', 400), lastPrompt: chatLib.one(x.lastPrompt || '', 200),
+      pending: (x.pending || []).map(p => ({ requestId: p.requestId, tool: p.toolName, summary: p.summary || null, question: !!p.question })),
+      updated: iso(x.lastEventAt), finishedTurnAt: iso(x.finishedAt),
+    });
+  }
+  const addKnown = id => {
+    const k = String(id).toLowerCase(), f = known.get(k);
+    if (rows.has(k) || !f || isCommanderId(id)) return;
+    rows.set(k, { id: f.s.id, title: f.s.title, folder: f.p.name, cwd: f.p.cwd, assistant: f.s.provider === 'codex' ? 'Codex' : 'Claude', state: 'not running', where: null, account: f.s.lastOpened ? f.s.lastOpened.accountName : null, lastLine: '', lastPrompt: f.s.lastPrompt || f.s.firstPrompt || '', pending: [], updated: iso(f.s.updated) });
+  };
+  for (const g of view.groups) g.chats.forEach(addKnown);
+  for (const [child, parent] of Object.entries(view.parents)) { addKnown(child); addKnown(parent); }
+  if (filter === 'all') [...known.values()].sort((a, b) => b.s.updated - a.s.updated).slice(0, 40).forEach(f => addKnown(f.s.id));
+  let out = [...rows.values()].map(r => ({ ...r, group: groupName_(r.id), parent: organize.parentOf(r.id), subSessions: organize.childrenOf(r.id) }));
+  const WAIT = ['needs approval', 'has a question', 'waiting in its terminal', 'idle'];
+  if (filter === 'working') out = out.filter(r => r.state === 'working');
+  else if (filter === 'waiting') out = out.filter(r => WAIT.includes(r.state) && r.state !== 'not running');
+  else if (filter === 'idle') out = out.filter(r => r.state === 'idle' || r.state === 'not running');
+  if (groupName) out = out.filter(r => r.group && r.group.toLowerCase() === String(groupName).toLowerCase());
+  const rank = r => (['needs approval', 'has a question', 'waiting in its terminal'].includes(r.state) ? 0 : r.state === 'idle' ? 1 : r.state === 'working' ? 2 : 3);
+  out.sort((a, b) => rank(a) - rank(b) || String(b.updated || '').localeCompare(String(a.updated || '')));
+  return { sessions: out, groups: view.groups.map(g => g.name), approvalsAllowed: !!organize.commander().allowApprove, at: new Date().toISOString() };
+}
+async function commanderRead(id, count) {
+  const n = Math.max(1, Math.min(14, Number(count) || 6));
+  if (isCommanderId(id)) throw fail(400, 'That’s the Commander itself.');
+  let p;
+  if (isCodexId(id)) { const cx = codexFind(id); p = { session: { id: cx.thread.id, title: cx.session ? cx.session.title : 'Codex chat', folder: cx.folder }, messages: await codex.preview(cx.thread.id).catch(() => []) }; }
+  else p = await sessions.preview(id);
+  const assistant = isCodexId(id) ? 'Codex' : 'Claude';
+  const x = activityList().find(y => y.sessionId && y.sessionId.toLowerCase() === p.session.id.toLowerCase());
+  return {
+    id: p.session.id, title: p.session.title, folder: p.session.folder, assistant, state: x ? stateWord(x) : 'not running',
+    group: (organize.groupOf(p.session.id) || {}).name || null, parent: organize.parentOf(p.session.id),
+    pending: x ? (x.pending || []).map(q => ({ requestId: q.requestId, tool: q.toolName, summary: q.summary || null, detail: q.detail || null, question: !!q.question })) : [],
+    messages: p.messages.slice(-n).map(m => (m.role === 'you' && /^From Commander:/.test(m.text) ? { from: 'Commander', at: m.at, text: m.text.replace(/^From Commander:\s*/, '') } : { from: m.role === 'you' ? 'Ryan' : assistant, at: m.at, text: m.text })),
+  };
+}
+// A chat the Commander can write to: running in the window, or opened there now.
+async function chatForCommander(c, id) {
+  if (isCommanderId(id)) throw fail(400, 'That’s the Commander itself.');
+  const live = chats.bySession(id);
+  if (live) return { chat: live, opened: false };
+  if (isCodexId(id)) {
+    const cx = codexFind(id);
+    if (!cx.exists) throw fail(400, `Its folder ${cx.cwd} no longer exists.`);
+    const inst = codexForThread(cx.thread.id);
+    requireCodexSignedIn(inst);
+    const pref = chatPrefs.get({ sessionId: cx.thread.id, cwd: cx.cwd, provider: 'codex' });
+    const chat = inst.open({ cfg: c, cwd: cx.cwd, threadId: cx.thread.id, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, title: (cx.session && cx.session.title) || 'Codex chat', folder: cx.folder });
+    sessions.recordLaunch(cx.thread.id, inst.ACCOUNT, 'app');
+    return { chat, opened: true };
+  }
+  const { project, session } = sessions.find(id);
+  if (!project.exists) throw fail(400, `Its folder ${project.cwd} no longer exists.`);
+  const now = await sys.runningSessions().catch(() => ({}));
+  running = now;
+  if (now[session.id.toLowerCase()]) throw fail(409, `“${session.title}” is running in a terminal, so the Commander can’t type into it. Tell Ryan instead.`);
+  const elsewhere = activityList().find(x => x.source === 'elsewhere' && x.sessionId && x.sessionId.toLowerCase() === session.id.toLowerCase());
+  if (elsewhere && stateWord(elsewhere) === 'working') throw fail(409, `“${session.title}” is working in another app (like the desktop app), so the Commander can’t open it here. Tell Ryan instead.`);
+  const a = await accountForCommander(c, session.id);
+  acc.prepareForLaunch(c, a);
+  const pref = chatPrefs.get({ sessionId: session.id, cwd: project.cwd, provider: 'claude' });
+  const chat = chats.open({ cfg: c, account: a, cwd: project.cwd, sessionId: session.id, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: session.title, folder: project.name });
+  sessions.recordLaunch(session.id, a, 'app');
+  return { chat, opened: true };
+}
+// The account a chat opens as for the Commander: the one it last ran as, else the Commander's own.
+async function accountForCommander(c, sessionId) {
+  const live = sessionId && chats.bySession(sessionId);
+  const last = sessionId && sessions.lastOpened(sessionId);
+  const ids = [live && live.account && live.account.id, last && last.account, organize.commander().accountId, mainAccount() && mainAccount().id];
+  let why = '';
+  for (const id of [...new Set(ids.filter(Boolean))]) {
+    const a = c.accounts.find(x => x.id === id); if (!a) continue;
+    try { await guarded(a); return a; } catch (err) { why = err.message; }
+  }
+  throw fail(409, `None of Ryan’s Claude accounts can open it right now. ${why}`);
+}
+const cmdNote = (chat, text) => chat.emit(chatLib.notice('commander', text));
+async function commanderSend(c, id, text) {
+  text = String(text || '').trim().slice(0, 20000);
+  if (!text) throw fail(400, 'Write the message to send.');
+  const { chat, opened } = await chatForCommander(c, id);
+  if (chat.pending && chat.pending.size) throw fail(409, `“${chat.title}” is waiting on a permission request. Answer it with answer_permission if Ryan allowed that, or tell Ryan.`);
+  const wasBusy = chat.state === 'busy';
+  cmdNote(chat, `The Commander ${opened ? 'opened this chat and ' : ''}sent the message below.`);
+  chat.send(`From Commander: ${text}`);
+  log(`Commander nudged ${chat.sessionId || id}: ${chatLib.one(text, 120)}`);
+  scheduleActivity();
+  return { ok: true, title: chat.title, opened, note: opened ? 'It wasn’t running, so it was opened in Session Switcher and the message was sent.' : wasBusy ? 'Sent. It was working, so it reads this after its current step.' : 'Sent.' };
+}
+function commanderAnswer(id, { decision, requestId, reason }) {
+  if (!organize.commander().allowApprove) throw fail(403, 'Ryan hasn’t allowed the Commander to answer permission requests. Tell him what’s waiting instead.');
+  if (!['allow', 'deny'].includes(decision)) throw fail(400, 'Choose allow or deny.');
+  const chat = chats.bySession(id);
+  if (!chat || !chat.pending.size) throw fail(404, 'Nothing is waiting for permission in that chat (only chats running in Session Switcher’s window can be answered).');
+  const rid = requestId || (chat.pending.size === 1 ? [...chat.pending.keys()][0] : null);
+  if (!rid) throw fail(400, 'More than one request is waiting; say which with request_id.');
+  const p = chat.pending.get(rid);
+  if (!p) throw fail(404, 'That request isn’t waiting any more.');
+  if (p.event.questions) throw fail(400, 'That’s a multiple-choice question for Ryan; the Commander can’t answer it. Tell Ryan.');
+  let what = (p.event.view && p.event.view.summary) || p.event.toolName;
+  if (/^(Write|Edit|MultiEdit|NotebookEdit|Read)$/.test(p.event.toolName) && what) what = path.basename(what);
+  cmdNote(chat, `The Commander ${decision === 'allow' ? 'allowed' : 'denied'}: ${p.event.toolName}${what && what !== p.event.toolName ? ` (${what})` : ''}${reason ? `. Why: ${reason}` : ''}.`);
+  chat.answer(rid, { decision, message: decision === 'deny' ? `From Commander: ${reason || 'Not now.'}` : '' });
+  log(`Commander ${decision === 'allow' ? 'allowed' : 'denied'} ${p.event.toolName} in ${chat.sessionId}`);
+  return { ok: true, title: chat.title, decision };
+}
+async function commanderSub(c, parentId, task, includeContext = true) {
+  task = String(task || '').trim().slice(0, 20000);
+  if (!task) throw fail(400, 'Say what the sub-session should do.');
+  const pid = parentFor(parentId);
+  let cwd, folder, title, chat;
+  if (isCodexId(pid)) {
+    const cx = codexFind(pid); cwd = cx.cwd; folder = cx.folder; title = cx.session ? cx.session.title : 'a Codex chat';
+    if (!cx.exists) throw fail(400, `Its folder ${cwd} no longer exists.`);
+    const inst = codexForThread(pid); requireCodexSignedIn(inst);
+    const pref = chatPrefs.get({ cwd, provider: 'codex' });
+    chat = inst.open({ cfg: c, cwd, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, title: 'New Codex chat', folder });
+  } else {
+    const { project, session } = sessions.find(pid); cwd = project.cwd; folder = project.name; title = session.title;
+    if (!project.exists) throw fail(400, `Its folder ${cwd} no longer exists.`);
+    const a = await accountForCommander(c, pid);
+    acc.prepareForLaunch(c, a);
+    const pref = chatPrefs.get({ cwd, provider: 'claude' });
+    chat = chats.open({ cfg: c, account: a, cwd, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: 'New chat', folder });
+  }
+  chat.parentSession = pid;
+  const last = includeContext ? await lastReply(pid).catch(() => '') : '';
+  cmdNote(chat, 'The Commander started this sub-session and sent it the task below.');
+  chat.send(`From Commander: ${task}\n\nContext: you’re a sub-session of “${title}”, another chat in this folder.${last ? ` Its latest reply:\n\n${last.split('\n').map(l => `> ${l}`).join('\n')}` : ''}`);
+  const parentLive = chats.bySession(pid);
+  if (parentLive) cmdNote(parentLive, `The Commander started a sub-session from this chat: ${chatLib.one(task, 160)}`);
+  log(`Commander started a sub-session of ${pid}: ${chatLib.one(task, 120)}`);
+  for (let i = 0; i < 40 && !chat.sessionId && chat.state !== 'ended'; i++) await new Promise(r => setTimeout(r, 500));
+  return { ok: true, session: chat.sessionId || null, folder, note: chat.sessionId ? 'Started, and the task was sent.' : 'Started; it shows in list_sessions once it has an id.' };
 }
 
 // ---------- chat window ----------
@@ -1486,7 +1768,14 @@ function validImages(images) {
 
 async function handleChat(req, res, url, body, c) {
   switch (url.pathname) {
-    case '/api/chat/open': return send(res, 200, await openChat(c, body));
+    case '/api/chat/open': {
+      // The Commander's own chat reopens through its own route (it needs its tools).
+      if ((body.mode || 'resume') === 'resume' && isCommanderId(body.sessionId)) return send(res, 200, await openCommander(c, {}));
+      const info = await openChat(c, body);
+      // A sub-session remembers the chat it was started from once it has an id (see onSession).
+      if (body.mode === 'new' && body.parent && info && info.key) { try { chats.get(info.key).parentSession = parentFor(body.parent); } catch { /* it ended already */ } }
+      return send(res, 200, info);
+    }
     case '/api/chat/attach': return send(res, 200, attachedInfo(chats.get(body.key)));
     case '/api/chat/send': {
       // to: 'partner' (the other assistant in this chat, started if need be), 'both' (they take
@@ -1573,6 +1862,24 @@ async function handleChat(req, res, url, body, c) {
   throw fail(404, 'Not found.');
 }
 
+// The chat a new sub-session is started from: any chat in the list, by id.
+function parentFor(id) {
+  if (isCodexId(id)) return codexFind(id).thread.id;
+  return sessions.find(id).session.id;
+}
+// What a chat last said, in full (up to a few thousand characters), for a sub-session's brief.
+async function lastReply(id, max = 6000) {
+  let items = [];
+  if (isCodexId(id)) items = (await codex.history(id, null, null)).items || [];
+  else items = (await chatLib.readHistory(sessions.fileFor(id), { limit: 30 })).items;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.kind !== 'assistant') continue;
+    const text = (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim();
+    if (text) return text.length > max ? `${text.slice(0, max)}…` : text;
+  }
+  return '';
+}
 // A running chat's details for the window, with its paired Codex helper's id if it has one.
 function attachedInfo(chat) {
   return { ...chat.info(), attached: true, companionThread: chat.sessionId && !chat.parentKey ? chatPrefs.companionOf(chat.sessionId) : null };
@@ -1683,7 +1990,7 @@ server.on('error', err => {
 });
 process.on('uncaughtException', err => log(`Unexpected error: ${err.stack || err.message}`));
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } } setTimeout(() => process.exit(0), 300); });
-process.on('exit', () => { try { routines.stop(); } catch { /* not started */ } stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
+process.on('exit', () => { try { routines.stop(); } catch { /* not started */ } stopForQuit(); try { chatPrefs.flush(); organize.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
 process.on('unhandledRejection', err => log(`Unexpected error: ${err && (err.stack || err.message)}`));
 
 server.listen(PORT, '127.0.0.1', () => {

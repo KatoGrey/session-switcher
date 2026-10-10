@@ -164,7 +164,7 @@ function codexChatItems(s) {
     { label: 'Copy terminal command', run: () => copyCommand(s.id) },
   ];
 }
-function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id)]); }
+function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id), ...orgItems(s.id)]); }
 function chatItems(id) {
   const [s] = sessionById(id); if (!s) return [];
   if (isCodex(s)) return codexChatItems(s);
@@ -190,7 +190,7 @@ function chatItems(id) {
     { label: 'Show transcript file', run: async () => { const r = await api('/api/reveal', { sessionId: id }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
   ];
 }
-function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id)]); }
+function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id), ...orgItems(id)]); }
 const favItem = id => ({ glyph: isFav(id) ? '☆' : '★', label: isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => toggleFav(id) });
 
 function sealMenu(anchor) {

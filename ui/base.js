@@ -348,7 +348,7 @@ function wantsTo(p) {
     case 'Write': return 'Wants to write a file';
     case 'WebFetch': return 'Wants to open a web page';
     case 'WebSearch': return 'Wants to search the web';
-    default: return `Wants to use ${p.toolName}`;
+    default: return window.CMDR_TOOLS && CMDR_TOOLS[p.toolName] ? `Wants to ${CMDR_TOOLS[p.toolName]}` : `Wants to use ${p.toolName}`;
   }
 }
 function whereOf(x) {
@@ -428,7 +428,7 @@ async function loadActivity() { const j = await api('/api/activity'); S.activity
 async function loadUsage() { const j = await api('/api/usage'); S.usage = j.usage || {}; }
 async function reload() {
   await loadState();
-  await Promise.all([loadSessions(), loadActivity().catch(() => {}), loadUsage().catch(() => {})]);
+  await Promise.all([loadSessions(), loadActivity().catch(() => {}), loadUsage().catch(() => {}), loadOrganize()]);
   renderAll();
   if (S.drawerId) openDrawer(S.drawerId, true);
 }

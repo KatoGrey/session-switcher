@@ -32,6 +32,7 @@ function renderLive(force) {
     patch($('awaitList'), A, keyOf, awaitCard, '<p class="empty-line">Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.</p>');
     patch($('board'), W, keyOf, workCard, `<p class="empty-line">${A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.'}</p>`);
     patch($('quietList'), Q, keyOf, quietChip, '');
+  if ($('secGroups')) { $('secGroups').hidden = !S.org.groups.length; patch($('gcards'), S.org.groups, g => g.id, groupCard, ''); }
   });
   $('quietList').classList.toggle('has', Q.length > 0);
   const dials = S.accounts.map(a => ({ a }));

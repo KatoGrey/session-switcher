@@ -205,7 +205,7 @@ function verbFor(p) {
     case 'Write': return 'create or overwrite a file';
     case 'WebFetch': return 'open a web page';
     case 'WebSearch': return 'search the web';
-    default: return `use ${p.toolName}`;
+    default: return (window.CMDR_TOOLS && window.CMDR_TOOLS[p.toolName]) || `use ${p.toolName}`;
   }
 }
 function addPermission(p, src = 'main') {

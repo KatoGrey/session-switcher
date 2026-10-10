@@ -9,6 +9,8 @@ worlds.json
 prompts.json
 routines.json
 chat-prefs.json
+organize.json
+commander/
 pairs.json
 devices.json
 tasks.json
