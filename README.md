@@ -404,7 +404,7 @@ Return to Theme Studio and **Review** the finished draft. Both modes appear besi
 
 Saved worlds are available to all paired devices, while each device chooses its own theme. A saved theme can be deleted from the Studio; devices using it return to Crimson when they receive the update. Drafts and original paintings stay in `theme-studio/jobs/`, and saved themes in `theme-studio/themes/`, under the app's data folder (`SWITCHER_DATA_DIR` when configured). Both are private, excluded from git and shared app copies, and their images require the app's authenticated route. An art brief opens in its own folder and can be resumed from the Studio.
 
-The sample **Lantern Tide** paintings were made with Codex's built-in image generation; their prompts are in `art/theme-studio-prompts.json`. The full-size sources stay local in `art/src/lantern-tide/`.
+The sample **Lantern Tide** paintings were made with Codex's built-in image generation; their prompts are in `art/theme-studio-prompts.json`. The full-size sources stay local in `art/src/lantern-tide/`. Screenshots: [`theme-studio-preview.jpg`](docs/themes/theme-studio-preview.jpg), [`theme-studio-hub-dark.jpg`](docs/themes/theme-studio-hub-dark.jpg) and [`theme-studio-phone.jpg`](docs/themes/theme-studio-phone.jpg).
 
 ### Space saga themes
 
