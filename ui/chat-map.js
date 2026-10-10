@@ -33,18 +33,32 @@ function drawMap() {
 }
 function viewMap() {
   const map = $c('cMap'), sc = $c('cScroll'), v = map && !map.hidden && map.querySelector('.cm-view'); if (!v) return;
-  const len = sc.clientHeight - 24, H = sc.scrollHeight;
-  v.style.transform = `translateY(${((sc.scrollTop / H) * len).toFixed(1)}px)`;
-  v.style.height = `${Math.max(16, (sc.clientHeight / H) * len).toFixed(1)}px`;
+  const len = sc.clientHeight - 24, H = sc.scrollHeight, max = Math.max(0, H - sc.clientHeight);
+  const thumb = Math.min(len, Math.max(16, (sc.clientHeight / H) * len));
+  const fraction = max ? Math.max(0, Math.min(1, sc.scrollTop / max)) : 0;
+  v.style.transform = `translateY(${(fraction * (len - thumb)).toFixed(1)}px)`;
+  v.style.height = `${thumb.toFixed(1)}px`;
+  map.setAttribute('aria-valuemax', String(max));
+  map.setAttribute('aria-valuenow', String(Math.round(sc.scrollTop)));
+  map.setAttribute('aria-valuetext', `${Math.round(fraction * 100)}% through the conversation`);
 }
 // Redrawn a moment after the chat changes (not on every streamed word).
 function mapSoon() { if (ChatMap.timer) return; ChatMap.timer = setTimeout(() => { ChatMap.timer = 0; requestAnimationFrame(drawMap); }, 450); }
 (function startMap() {
   const sc = $c('cScroll');
-  sc.parentElement.insertAdjacentHTML('beforeend', '<div class="c-map" id="cMap" aria-hidden="true" hidden></div>');
+  sc.parentElement.insertAdjacentHTML('beforeend', '<div class="c-map" id="cMap" role="scrollbar" aria-label="Conversation map" aria-controls="cScroll" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" tabindex="0" hidden></div>');
   new MutationObserver(mapSoon).observe($c('cFeed'), { childList: true, subtree: true });
-  new ResizeObserver(mapSoon).observe(sc);
+  const resized = new ResizeObserver(mapSoon);
+  resized.observe(sc);
+  // Images and fonts can change message heights without a DOM mutation or resizing the scroller.
+  resized.observe($c('cFeed'));
   sc.addEventListener('scroll', () => requestAnimationFrame(viewMap), { passive: true });
+  $c('cMap').addEventListener('keydown', e => {
+    const steps = { ArrowUp: -48, ArrowDown: 48, PageUp: -sc.clientHeight * .8, PageDown: sc.clientHeight * .8 };
+    if (e.key !== 'Home' && e.key !== 'End' && !(e.key in steps)) return;
+    e.preventDefault(); e.stopPropagation();
+    sc.scrollTo({ top: e.key === 'Home' ? 0 : e.key === 'End' ? sc.scrollHeight : sc.scrollTop + steps[e.key], behavior: motionOk() ? 'smooth' : 'auto' });
+  });
   $c('cMap').addEventListener('click', e => {
     const m = e.target.dataset && e.target.dataset.i !== undefined ? ChatMap.marks[+e.target.dataset.i] : null;
     const smooth = motionOk() ? 'smooth' : 'auto';

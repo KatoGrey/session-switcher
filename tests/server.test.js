@@ -11,10 +11,10 @@ const APP = path.join(__dirname, '..');
 const freePort = () => new Promise(res => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => res(port)); }); });
 
 // home: a throwaway home folder, for tests that write where Claude Code and Codex keep their own files.
-async function startServer(dataDir, { home = null } = {}) {
+async function startServer(dataDir, { home = null, preload = null } = {}) {
   const port = await freePort();
   const homeEnv = home ? { HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'), CLAUDE_CONFIG_DIR: '' } : {};
-  const proc = spawn(process.execPath, ['server.js'], {
+  const proc = spawn(process.execPath, [...(preload ? ['--require', preload] : []), 'server.js'], {
     cwd: APP, stdio: 'ignore',
     env: { ...process.env, ...homeEnv, SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
   });
@@ -167,6 +167,8 @@ test('restart: a new copy takes over (same port, new process, same build), the o
     const st = (await s.call('/api/state')).json;
     assert.equal(st.restart.pending, false);
     assert.equal(typeof st.update, 'boolean');
+    assert.equal((await s.call('/api/restart', { when: 'typo' })).status, 400, 'an invalid request does not stop the app');
+    assert.equal((await s.call('/api/version')).json.pid, before.pid);
     // "When replies finish" with nothing working restarts at once.
     const r = await s.call('/api/restart', { when: 'idle' });
     assert.equal(r.json.restarting, true);
@@ -189,6 +191,23 @@ test('restart: a new copy takes over (same port, new process, same build), the o
       for (let i = 0; i < 40; i++) { try { process.kill(next.pid, 0); await new Promise(res => setTimeout(res, 100)); } catch { break; } }
     } else await s.stop();
   }
+});
+
+test('restart: a replacement initialization failure leaves the current app usable', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  const preload = path.join(dir, 'fail-replacement.cjs');
+  fs.writeFileSync(preload, `require(${JSON.stringify(path.join(APP, 'lib', 'restart.js'))}).startReplacement = async () => { throw new Error('Replacement failed to initialize (test)'); };`);
+  const s = await startServer(dir, { preload });
+  try {
+    const before = (await s.call('/api/version')).json;
+    const r = await s.call('/api/restart', { when: 'now' });
+    assert.equal(r.status, 503);
+    assert.match(r.json.error, /Replacement failed to initialize/);
+    assert.equal((await s.call('/api/version')).json.pid, before.pid, 'the old process is still serving');
+    assert.equal((await s.call('/api/state')).status, 200, 'the existing window token still works');
+    assert.equal(fs.existsSync(path.join(dir, 'restart.json')), false, 'no stale restart marker');
+    assert.equal((await s.call('/api/state')).json.restart.pending, false);
+  } finally { await s.stop(); }
 });
 
 test('the themes’ paintings are served from art/ (WebP only), and nothing else there is', async () => {

@@ -987,6 +987,15 @@ module.exports = [
       await t.shot(b, 'map');
       const jump = await b.eval(`const sc = document.getElementById('cScroll'); sc.scrollTop = sc.scrollHeight; await new Promise(r => setTimeout(r, 200)); const before = sc.scrollTop; document.querySelector('#cMap .cm.you').click(); await new Promise(r => setTimeout(r, 900)); return { before, after: sc.scrollTop }`);
       t.check('clicking a mark goes to that message', jump.after < jump.before - 200, jump);
+      // A loaded image can increase the feed's height without adding any DOM nodes.
+      const resized = await b.eval(`const f = document.getElementById('cFeed'); const spacer = document.createElement('div'); spacer.style.height = '1px'; f.prepend(spacer); await new Promise(r => setTimeout(r, 800)); const before = parseFloat(document.querySelector('#cMap .cm.you').style.top); spacer.style.height = '2400px'; await new Promise(r => setTimeout(r, 900)); const after = parseFloat(document.querySelector('#cMap .cm.you').style.top); spacer.remove(); return { before, after }`);
+      t.check('the map follows content growth, including images loading', resized.after > resized.before + 5, resized);
+      await b.eval(`Local.motion = false; applyMotion(); const spacer = document.createElement('div'); spacer.style.height = '100000px'; document.getElementById('cFeed').append(spacer); return 1`); await sleep(900);
+      await b.eval(`document.getElementById('cMap').focus(); return 1`); await b.key('End', 'End', 35); await sleep(300);
+      const end = await b.eval(`const map = document.getElementById('cMap'), v = map.querySelector('.cm-view'), sc = document.getElementById('cScroll'); return { end: sc.scrollHeight - sc.clientHeight - sc.scrollTop, bottom: v.getBoundingClientRect().bottom - map.getBoundingClientRect().bottom, role: map.getAttribute('role') }`);
+      t.check('the map works from the keyboard and its thumb stays inside a very long chat', end.end < 2 && end.bottom <= 1 && end.role === 'scrollbar', end);
+      await b.key('Home', 'Home', 36); await sleep(300);
+      t.check('Home on the map returns to the start', await b.eval(`return document.getElementById('cScroll').scrollTop < 2 && /0%/.test(document.getElementById('cMap').getAttribute('aria-valuetext'))`));
       await b.eval(`localStorage.removeItem('seen-at'); localStorage.removeItem('last-chat'); return 1`);
     },
   },
@@ -1010,20 +1019,25 @@ module.exports = [
       await b.eval(`document.activeElement.click(); return 1`); await sleep(300);
       const bar = await b.eval(`const el = document.getElementById('restartBar'); return el ? el.textContent : null`);
       t.check('while it waits, a bar says so, with Restart now and Cancel', bar && /Restarting when replies finish/.test(bar) && /Restart now/.test(bar) && /Cancel/.test(bar), bar);
+      t.check('waiting does not freeze a return location before the restart happens', await b.eval(`return sessionStorage.getItem('restart-return') === null`));
       await t.shot(b, 'waiting');
+      await b.eval(`sessionStorage.setItem('restart-return', JSON.stringify({ at: Date.now(), chat: 'old-chat' })); return 1`);
       await b.eval(`document.querySelector('#restartBar [data-restart="cancel"]').click(); return 1`); await sleep(300);
       t.check('Cancel calls it off', await b.eval(`return !document.getElementById('restartBar')`));
+      t.check('Cancel also clears an old return note', await b.eval(`return sessionStorage.getItem('restart-return') === null`));
       // Restart now, from inside a chat: it shows that it's restarting and remembers where you were.
       await b.eval(`S.live = {}; ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(1500);
+      await b.eval(`sessionStorage.setItem('restart-return', JSON.stringify({ at: Date.now() - 10 * 60e3, chat: 'old-chat', view: 'hub' })); return 1`);
       await b.eval(`restartApp(); return 1`); await sleep(300);
       await b.eval(`document.getElementById('cfYes').click(); return 1`); await sleep(400);
-      const rs = await b.eval(`return { veil: !!document.getElementById('restarting'), back: JSON.parse(localStorage.getItem('restart-return') || 'null') }`);
+      const rs = await b.eval(`return { veil: !!document.getElementById('restarting'), back: JSON.parse(sessionStorage.getItem('restart-return') || 'null'), shared: localStorage.getItem('restart-return') }`);
       t.check('it shows that it’s restarting', rs.veil, rs);
       t.check('and notes the chat you were in', rs.back && rs.back.chat === demo.ID['s-bard'], rs);
+      t.check('the return note belongs to this window, not every open window', rs.shared === null, rs);
       await t.shot(b, 'restarting');
       // The new page: back in that chat.
       await b.eval(`location.reload(); return 1`); await sleep(2500);
-      const back = await b.eval(`return { open: ChatUI.isOpen(), left: localStorage.getItem('restart-return') }`);
+      const back = await b.eval(`return { open: ChatUI.isOpen(), left: sessionStorage.getItem('restart-return') }`);
       t.check('after the reload, the chat you were in opens again', back.open && back.left === null, back);
     },
   },

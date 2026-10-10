@@ -31,6 +31,7 @@ const tasksLib = require('./lib/tasks');
 const raceLib = require('./lib/race');
 const pairsLib = require('./lib/pairs');
 const handover = require('./lib/handover');
+const restartLib = require('./lib/restart');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -44,7 +45,6 @@ const LOG_FILE = path.join(DATA_DIR, 'switcher.log');
 const TOKEN = crypto.randomBytes(24).toString('hex');
 // Which code this server is running, so a copy started later can tell if it's out of date.
 const BUILD = handover.buildId(APP_DIR);
-const { spawn } = require('child_process');
 const ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
 const EMAIL_RE = /^[A-Za-z0-9._+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const DESKTOP_MIN = '2.1.285';
@@ -101,7 +101,7 @@ function writeOpenChats() {
     sessionId: c.sessionId, provider: c.provider || 'claude', accountId: c.accountId, accountName: c.accountName,
     cwd: c.cwd, title: c.title || null, folder: c.folder || null,
   }));
-  try { store.writeJsonAtomic(OPEN_FILE, { at: Date.now(), chats: list }); } catch (err) { log(`Couldn’t note the open chats: ${err.message}`); }
+  try { store.writeJsonAtomic(OPEN_FILE, { at: Date.now(), chats: list }); return true; } catch (err) { log(`Couldn’t note the open chats: ${err.message}`); return false; }
 }
 function saveOpenChats() {
   if (shuttingDown) return;
@@ -932,11 +932,12 @@ async function handleApi(req, res, url, remote = false) {
     }
     // Restart now, or once no chat in the window is working or waiting for an OK; or don't after all.
     case '/api/restart': {
+      if (!['now', 'idle', 'cancel'].includes(body.when)) throw fail(400, 'Choose now, idle or cancel.');
+      if (restartStarting || shuttingDown) throw fail(409, 'Restart is already in progress.');
       if (body.when === 'cancel') { cancelRestart(); return send(res, 200, restartState()); }
       if (body.when === 'idle' && busyChats()) { restartWhenIdle(); return send(res, 200, restartState()); }
-      send(res, 200, { pending: false, restarting: true });
-      setTimeout(() => restartNow(body.when === 'idle' ? 'nothing was working' : 'from the app'), 50);
-      return;
+      if (!(await restartNow(body.when === 'idle' ? 'nothing was working' : 'from the app'))) throw fail(503, restartError || 'Could not restart. This copy is still running.');
+      return send(res, 200, { pending: false, restarting: true });
     }
     case '/api/rules': {
       const paths = rulesPathsFor(body.cwd || null);
@@ -1391,25 +1392,35 @@ async function handleApi(req, res, url, remote = false) {
 // Quit does) and exits; the new copy waits for it to be gone, takes the port, and reopens those chats.
 // The window reconnects by itself. "When replies finish" waits until no chat in the window is
 // starting, working or waiting for an OK.
-let restartWait = null;
+let restartWait = null, restartStarting = false, restartError = null;
 const busyChats = () => Object.values(chats.live()).filter(c => ['starting', 'busy', 'waiting'].includes(c.state)).length;
 function restartState() { return restartWait ? { pending: true, waitingOn: busyChats(), since: restartWait.since } : { pending: false }; }
-function restartNow(why) {
-  if (shuttingDown) return;
+async function restartNow(why) {
+  if (shuttingDown || restartStarting) return false;
+  restartStarting = true; restartError = null;
   log(`Restarting (${why}).`);
   if (restartWait) { clearInterval(restartWait.timer); restartWait = null; }
-  writeOpenChats();
-  try { store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid }); } catch (err) { log(`Couldn’t note the restart: ${err.message}`); }
   try {
-    const child = spawn(process.execPath, process.argv.slice(1), { cwd: process.cwd(), env: { ...process.env, SWITCHER_RESTART_FROM: String(process.pid) }, detached: true, stdio: 'ignore', windowsHide: true });
-    child.unref();
-  } catch (err) { log(`Couldn’t start the new copy: ${err.message}`); try { fs.unlinkSync(RESTART_FILE); } catch { /* fine */ } return; }
+    chatPrefs.flush();
+    if (!writeOpenChats()) throw new Error('Could not save the open chats.');
+    store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid });
+    await restartLib.startReplacement({ executable: process.execPath, args: process.argv.slice(1), cwd: process.cwd(), env: { ...process.env, SWITCHER_RESTART_FROM: String(process.pid) } });
+  } catch (err) {
+    restartStarting = false;
+    restartError = `Couldn’t start the new copy: ${err.message}`;
+    log(restartError);
+    try { fs.unlinkSync(RESTART_FILE); } catch { /* already consumed */ }
+    writeOpenChats();
+    broadcast('restart', { pending: false, error: restartError });
+    return false;
+  }
   broadcast('restart', { pending: false, restarting: true });
   chatPrefs.flush();
   phone.stop();
   stopForQuit();
   for (const x of codexAll()) x.stop(true);
   setTimeout(() => process.exit(0), 300);
+  return true;
 }
 function restartWhenIdle() {
   if (restartWait) return;
@@ -1729,16 +1740,18 @@ const restartFrom = Number(process.env.SWITCHER_RESTART_FROM) || 0;
 delete process.env.SWITCHER_RESTART_FROM;
 function replacedGone() {
   const until = Date.now() + 20000;
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     const tick = () => {
       let alive = true;
       try { process.kill(restartFrom, 0); } catch (err) { alive = err.code === 'EPERM'; }
-      if (!alive || Date.now() > until) return setTimeout(resolve, 150);
+      if (!alive) return setTimeout(resolve, 150);
+      if (Date.now() > until) return reject(new Error('The previous copy did not exit; leaving it running.'));
       return setTimeout(tick, 120);
     };
     tick();
   });
 }
+if (restartFrom && process.send) process.send({ type: restartLib.READY, pid: process.pid });
 (restartFrom ? replacedGone() : Promise.resolve()).then(() => server.listen(PORT, '127.0.0.1', () => {
   log(`Session Switcher ${APP_VERSION} running at ${appUrl}${sys.DRY_RUN ? ' (preview mode: nothing is launched)' : ''}${restartFrom ? ' (restarted)' : ''}`);
   handover.writeLock(PORT, { pid: process.pid, version: APP_VERSION, build: BUILD, dir: APP_DIR, token: TOKEN });
@@ -1763,4 +1776,4 @@ function replacedGone() {
   phone.sync().catch(err => log(`Phone access: ${err.message}`));
   // After a restart the window that was open reconnects by itself.
   if (!restartFrom) sys.openAppWindow(appUrl, config().prefs);
-}));
+})).catch(err => { log(`Couldn’t take over after restart: ${err.message}`); process.exit(1); });
