@@ -623,3 +623,11 @@ body.dropping .box::after { content: "Drop to add"; position: absolute; inset: 0
 .model { white-space: nowrap; }
 @media (max-width: 760px) { .bar-hint { display: none; } .nc-h { font-size: 22px; } .nc-chips { justify-content: flex-start; } .newchat { place-items: start stretch; padding: 16px; } }
 @media (max-width: 760px) { .tools .gear { margin-left: auto; } .nc-inner > .back { align-self: flex-start; margin: -4px 0 -6px -6px; } }
+.modal.signin { max-width: 560px; }
+.si-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 14px; color: var(--fg-2); }
+.si-steps li > span { display: block; margin-bottom: 8px; }
+.si-link { display: flex; gap: 6px; }
+.si-link input { flex: 1; min-width: 0; font: 12.5px var(--f-mono); padding: 7px 9px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg); color: var(--fg); }
+.modal .ok { color: var(--fg); }
+.modal .warn { color: var(--st-bug); }
+@media (max-width: 760px) { .si-link { flex-wrap: wrap; } .si-link input { flex-basis: 100%; } }

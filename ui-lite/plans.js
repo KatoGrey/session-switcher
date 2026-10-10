@@ -27,7 +27,7 @@ const manualOf = p => p.manualResets || [];
 
 function planHtml(p) {
   if (p.unlimited) return `<div class="plan"><div class="top"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></div><small>${p.broken ? `<span class="warn">${esc(p.broken)}</span>` : 'Cloud models outside the weekly limits. ollama.com shows its own usage.'}</small></div>`;
-  if (p.broken) return `<div class="plan broken"><div class="top"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></div><small class="warn">${esc(p.broken)}</small><a class="btn" href="/" style="align-self:flex-start">Open Setup in the full app</a></div>`;
+  if (p.broken) return `<div class="plan broken"><div class="top"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></div><small class="warn">${esc(p.broken.replace(/ Sign in from Setup in the full app\./, ''))}</small>${p.family === 'claude' ? `<button class="btn prime" data-signin="${esc(p.id)}" style="align-self:flex-start">Sign in${p.email ? '' : ''}</button>` : '<a class="btn" href="/" style="align-self:flex-start">Open Setup in the full app</a>'}</div>`;
   if (typeof p.left !== 'number') return `<div class="plan"><div class="top"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></div><small class="checking">${p.checking ? 'Checking…' : p.error ? `<span class="err">${esc(p.error)}</span>` : 'No usage read yet.'}</small></div>`;
   const r = p.rank, next = r === 1;
   const fam = famName(p.family);
@@ -108,4 +108,54 @@ function renderChip() {
   $('chipNote').textContent = `${p.label} ${famName(p.family)} · ${p.left}%${p.resetsAt ? ` · ${wd(p.resetsAt)}` : ''}`;
   $('usageBtn').title = `Use next: ${p.label} ${famName(p.family)}, ${p.left}% left${p.resetsAt ? `, resets ${dayName(p.resetsAt)}` : ''}`;
   $('chipBar').style.width = p.left + '%';
+}
+
+/* ---------- signing a Claude account in, without a terminal ----------
+   Lite runs the login in the background; you open its link in a browser signed in to the right
+   claude.ai account (a private window is safest), then paste the code it shows. */
+async function signInFlow(planId) {
+  const p = planById(planId) || { label: 'this account' };
+  const root = $('modalRoot');
+  const draw = (r, busy) => {
+    const head = `<h3>Sign in ${esc(p.label)} Claude${r && r.email ? ` · ${esc(r.email)}` : ''}</h3>`;
+    if (!r) { root.innerHTML = `<div class="modal-back"><div class="modal signin">${head}<p>Starting the sign-in…</p></div></div>`; return; }
+    if (r.state === 'done') { root.innerHTML = `<div class="modal-back"><div class="modal signin">${head}<p class="ok">Signed in${r.signedInAs ? ` as <b>${esc(r.signedInAs)}</b>` : ''}. Its usage shows on Now in a moment.</p><div class="acts"><button class="btn prime" data-m="close">Done</button></div></div></div>`; return; }
+    if (r.state === 'failed' || r.state === 'wrong' || !r.url) { root.innerHTML = `<div class="modal-back"><div class="modal signin">${head}<p class="warn">${esc(r.error || 'The sign-in didn’t start.')}</p><div class="acts"><button class="btn" data-m="close">Close</button><button class="btn prime" data-m="again">Start again</button></div></div></div>`; return; }
+    root.innerHTML = `<div class="modal-back"><form class="modal signin" id="siForm">${head}
+      <ol class="si-steps">
+        <li><span>Open this link in a browser signed in to <b>${esc(r.email || 'the right account')}</b> on claude.ai. If your browser is signed in to another account, use a private window.</span>
+          <div class="si-link"><input id="siUrl" readonly value="${esc(r.url)}" aria-label="Sign-in link"><button type="button" class="btn" data-m="copy">Copy link</button><a class="btn" href="${esc(r.url)}" target="_blank" rel="noopener">Open</a></div></li>
+        <li><span>Approve, then paste the code it shows.</span>
+          <div class="si-link"><input id="siCode" placeholder="Paste the code" autocomplete="off" spellcheck="false" aria-label="Code"><button class="btn prime" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Checking…' : 'Finish'}</button></div></li>
+      </ol>
+      <div class="acts"><button type="button" class="btn" data-m="close">Cancel</button></div></form></div>`;
+  };
+  let run = null;
+  const startRun = async () => { draw(null); run = await api('/api/lite/signin/start', { account: planId }).catch(err => ({ state: 'failed', error: err.message })); draw(run); wire(); };
+  const wire = () => {
+    const back = root.querySelector('.modal-back'); if (!back) return;
+    back.addEventListener('click', async e => {
+      const b = e.target.closest('[data-m]'); if (!b) return;
+      if (b.dataset.m === 'close') { if (run && run.id && run.state !== 'done') api('/api/lite/signin/cancel', { id: run.id }).catch(() => {}); root.innerHTML = ''; loadPlans(true).then(renderPlansOnly).catch(() => {}); }
+      if (b.dataset.m === 'again') startRun();
+      if (b.dataset.m === 'copy') {
+        const i = $('siUrl'); i.select();
+        try { await navigator.clipboard.writeText(i.value); b.textContent = 'Copied'; } catch { document.execCommand('copy'); b.textContent = 'Copied'; }
+        setTimeout(() => { b.textContent = 'Copy link'; }, 1600);
+      }
+    });
+    const f = $('siForm');
+    if (f) {
+      $('siUrl').addEventListener('focus', e => e.target.select());
+      f.onsubmit = async e => {
+        e.preventDefault();
+        const code = $('siCode').value.trim(); if (!code) return $('siCode').focus();
+        draw(run, true);
+        run = await api('/api/lite/signin/code', { id: run.id, code }).catch(err => ({ ...run, state: 'failed', error: err.message }));
+        draw(run); wire();
+        if (run.state === 'done') { sfx('chip'); loadPlans(true).then(renderPlansOnly).catch(() => {}); }
+      };
+    }
+  };
+  await startRun();
 }
