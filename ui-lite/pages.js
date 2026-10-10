@@ -289,7 +289,7 @@ function rowMenu(anchor, id, at) {
 }
 function projMenu(anchor, k, at) {
   const p = projBy.get(k); if (!p) return;
-  pop(anchor, `<div class="ph">${esc(p.name)}</div><button data-v="open">Open</button>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button><button data-v="img">Change picture…</button>' : ''}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`,
+  pop(anchor, `<div class="ph">${esc(p.name)}</div><button data-v="open">Open</button>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button><button data-v="img">Change picture…</button>' : ''}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`,
     v => {
       if (v === 'open') return go('project', { project: k });
       if (v === 'new') return go('newchat', { ncProject: k });
@@ -297,8 +297,23 @@ function projMenu(anchor, k, at) {
       if (v === 'arch') return wrap(archiveProject)(k, !p.archived);
       if (v === 'finder') return wrap(() => api('/api/reveal', { path: p.cwd }))();
       if (v === 'img') return wrap(pictureMenu)(anchor, p, at);
+      if (v === 'rename') return renameProject(p);
+      if (v === 'merge') return pickProject(anchor, t => wrap(async () => {
+        if (t === k) return;
+        await api('/api/lite/project', { key: k, patch: { into: t } });
+        sfx('slide'); await loadState(); if (S.view === 'project' && S.project === k) go('project', { project: t }); else render();
+        toast(`Merged ${p.name} into ${(projBy.get(t) || {}).name || 'the project'}`, async () => { await api('/api/lite/project', { key: k, patch: { into: null } }); await loadState(); render(); });
+      })());
       return undefined;
     }, at);
+}
+function renameProject(p) {
+  const root = $('modalRoot');
+  root.innerHTML = `<div class="modal-back"><form class="modal" id="rnForm"><h3>Rename ${esc(p.name)}</h3><input name="n" class="field" value="${esc(p.name)}" aria-label="Name"><div class="acts"><button class="btn" type="button" data-m="no">Cancel</button><button class="btn prime" type="submit">Rename</button></div></form></div>`;
+  const f = root.querySelector('#rnForm');
+  root.querySelector('[data-m="no"]').onclick = () => { root.innerHTML = ''; };
+  f.onsubmit = wrap(async e => { e.preventDefault(); const n = f.n.value.trim(); root.innerHTML = ''; await api('/api/lite/project', { key: p.key, patch: { name: n } }); await loadState(); render(); });
+  f.n.focus(); f.n.select();
 }
 async function setBucket(k, b) {
   const p = projBy.get(k); const prev = p.bucket;
