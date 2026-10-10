@@ -436,7 +436,7 @@ Three worlds from an anime, each with a hand-painted scene in the hub that light
 
 Each count in the scene says what it counts ("need you", "working", "idle").
 
-**The paintings** were made by Codex with OpenAI's built-in image generator, one per theme and mode (the Dungeon's stays dark). Fires, lit windows, crystals, eyes and the magic circle are drawn on top of the painting, lined up with what's painted there, so they change with your chats; the painting and those parts scale and crop together, and a phone shows the whole painting. The app uses WebP copies in `art/` (about 600 KB for all five); the prompts are in `art/prompts.json`, and the full-size originals stay out of the repo (`art/src/`). Until a painting has loaded, the scene is drawn as before.
+**The paintings** were made by Codex with OpenAI's built-in image generator, one per theme and mode (the Dungeon's stays dark). Fires, lit windows, crystals, eyes and the magic circle are drawn on top of the painting, lined up with what's painted there, so they change with your chats; the painting and those parts scale and crop together, and a phone shows the whole painting. The app uses WebP copies in `art/` (about 600 KB for all five); the prompts Codex used are in `art/painting-prompts.json`, and the full-size originals stay out of the repo (`art/src/`). Until a painting has loaded, the scene is drawn as before.
 
 Each one also brings:
 

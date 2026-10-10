@@ -213,7 +213,7 @@ function heroArt({ N, R, W, Q }) {
 /* ---------- the anime themes' scenes ----------
    Each is an SVG (400 × 240, cropped to fit) that reads the same counts as the headline: N need your
    OK, R have replied, W are at work, Q are open and idle. A theme can bring paintings (art/<name>.webp,
-   one per mode; made by Codex, the originals are in art/src/ with their prompts): a painting takes the
+   one per mode; made by Codex; their prompts are in art/painting-prompts.json): a painting takes the
    place of the drawn scenery inside the same SVG, so it scales and crops exactly as the live parts on
    top of it do. A painting is 3:2, so it spans y -13.3 to 253.3 in the same units, and the whole of it
    is in view. Where the live parts sit on each painting is in PAINT_SPOTS. Until a painting has
