@@ -1846,6 +1846,37 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 @keyframes cr-flow{from{background-position:-40% 0}to{background-position:140% 0}}
 @media (max-width:760px){ .c-relay{padding:6px 10px;gap:8px} .cr-side .cr-w{display:none} .cr-link{max-width:60px} }
 
+/* ---------- the preview beside the chat (top of the ledger) ---------- */
+.lg-pv:empty{display:none}
+.pv{margin:0 0 16px;border:1px solid var(--seam-2);border-radius:10px;background:rgb(var(--c-0a090c) / .55);overflow:hidden}
+.pv-h{display:flex;align-items:center;gap:8px;padding:8px 6px 8px 12px;border-bottom:1px solid var(--seam)}
+.pv-ico{color:var(--gilt);flex:none}
+.pv-t{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.pv-t b{font:600 14px/1.2 var(--f-caps);letter-spacing:.02em;color:var(--parch);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-t small{font:400 12px/1.2 var(--f-body);color:var(--ash)}
+.pv-t .d-add{color:rgb(var(--c-7fb79a));font-style:normal}
+.pv-t .d-del{color:var(--ember);font-style:normal}
+.pv-x{width:28px;height:28px;color:var(--ash)}
+.pv-diff{max-height:min(52vh,460px);overflow:auto;font:12.5px/1.55 var(--f-mono);padding:4px 0}
+.pv-r{display:grid;grid-template-columns:30px 30px minmax(0,1fr);align-items:baseline}
+.pv-r i{font-style:normal;text-align:right;padding-right:6px;color:var(--ash-2);font-size:11px;user-select:none}
+.pv-r code{white-space:pre;padding:0 10px 0 4px;color:var(--parch-2);overflow:visible}
+.pv-r.add{background:rgb(var(--c-7fb79a) / .12)}
+.pv-r.add code{color:var(--parch)}
+.pv-r.del{background:rgb(var(--c-cf8274) / .12)}
+.pv-r.del code{color:var(--parch-2);text-decoration:line-through;text-decoration-color:rgb(var(--c-cf8274) / .45)}
+.pv-r.hunk{margin-top:4px;background:rgb(var(--c-6f97d8) / .08)}
+.pv-r.hunk code{color:var(--ash);font-style:italic}
+.pv-r.hunk:first-child{margin-top:0}
+.pv-img{display:block;width:100%;padding:8px;border:0;background:none;cursor:zoom-in}
+.pv-img img{display:block;width:100%;max-height:340px;object-fit:contain;border-radius:6px}
+.pv-note{margin:0;padding:12px;color:var(--ash);font-size:13.5px}
+.pv-gone,.pv-img.broken{display:none}
+.pv-img.broken + .pv-gone{display:block}
+/* in a reply's "Changed N files" bar, the names open the preview */
+.chg-fn{border:0;background:none;padding:0;color:var(--parch-2);font:inherit;text-decoration:underline;text-decoration-color:var(--seam-2);text-underline-offset:3px;cursor:pointer}
+.chg-fn:hover{color:var(--parch);text-decoration-color:var(--gilt)}
+
 /* ---------- welcome back ---------- */
 .welcome{position:relative;display:flex;align-items:center;gap:18px 26px;flex-wrap:wrap;margin:0 0 18px;padding:16px 18px 16px 22px;border:1px solid rgb(var(--c-d9bf74) / .35);border-radius:var(--radius);
   background:radial-gradient(520px 160px at 0% 0%,rgb(var(--c-d9bf74) / .1),transparent 70%),linear-gradient(180deg,rgb(var(--c-1a161d)),rgb(var(--c-141117)));box-shadow:0 18px 40px -30px rgb(var(--c-000000))}

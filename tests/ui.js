@@ -964,6 +964,31 @@ module.exports = [
     },
   },
   {
+    name: 'preview',
+    // Beside the chat: a changed file's change, line by line, from a reply's bar or the ledger, and a
+    // picture it made; closed with ✕.
+    async run(t) {
+      const b = await t.open({ width: 1600, height: 900 });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(1800);
+      await b.eval(`renderChanges({ turn: 3, files: [{ path: 'scripts/bard/songs.lua', add: 1, del: 1, status: 'modified' }] }, 'main'); return 1`); await sleep(200);
+      await b.eval(`document.querySelector('.chg .chg-fn').click(); return 1`); await sleep(800);
+      const d = await b.eval(`const rows = [...document.querySelectorAll('#cPreview .pv-r')].map(r => [r.className.replace('pv-r', '').trim(), ...[...r.querySelectorAll('i')].map(i => i.textContent), r.querySelector('code').textContent]); return { title: (document.querySelector('#cPreview .pv-t b') || {}).textContent, rows }`);
+      const del = d.rows.find(r => r[0] === 'del'), add = d.rows.find(r => r[0] === 'add');
+      t.check('a file named in a reply’s bar shows that change beside the chat', d.title === 'songs.lua' && del && add, d);
+      t.check('with line numbers: the removed line’s old number, the added line’s new one', del && del[1] === '13' && del[2] === '' && add && add[1] === '' && add[2] === '13' && /rally\.stacks = false/.test(add[3]), d);
+      t.check('no stray empty line at the end', d.rows.length && d.rows[d.rows.length - 1][3].trim() !== '', d.rows);
+      await t.shot(b, 'diff');
+      await b.eval(`document.querySelector('[data-pvclose]').click(); return 1`); await sleep(200);
+      t.check('✕ closes it', await b.eval(`return !document.querySelector('#cPreview .pv')`));
+      // From the ledger: files changed (the latest change) and pictures it made.
+      await b.eval(`const el = document.querySelector('#cLedgerBody [data-pv][data-kind="file"]'); el && el.click(); return 1`); await sleep(800);
+      t.check('a file under “Files changed” opens its latest change', await b.eval(`return document.querySelectorAll('#cPreview .pv-r.add').length > 0`));
+      await b.eval(`const el = document.querySelector('#cLedgerBody [data-pv][data-kind="image"]'); el && el.click(); return 1`); await sleep(500);
+      t.check('a picture under “Images it made” shows there (or says it can’t)', await b.eval(`return !!document.querySelector('#cPreview .pv-img img') && !!document.querySelector('#cPreview .pv-gone')`));
+      t.check('switching chats clears it', await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-brawl'])} }); await new Promise(r => setTimeout(r, 1500)); return !document.querySelector('#cPreview .pv')`));
+    },
+  },
+  {
     name: 'performance',
     // Left alone, the hub in every theme (and a chat window) settles: what moves is drawn by the graphics
     // card, so the page isn't re-laid-out or re-styled every frame (each of those was a real CPU drain).

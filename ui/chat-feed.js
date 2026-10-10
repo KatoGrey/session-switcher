@@ -211,7 +211,7 @@ function renderLedgerSoon() { if (!ledgerTimer) ledgerTimer = setTimeout(renderL
 const base = p => String(p).split(/[\\/]/).filter(Boolean).pop() || p;
 function renderLedger() {
   ledgerTimer = null;
-  const box = $c('cLedger'); if (!box || $c('chat').hidden) return;
+  const box = $c('cLedgerBody'); if (!box || $c('chat').hidden) return;
   const sec = (title, n, body) => `<p class="lg-h">${esc(title)}${n ? ` <span class="count">${n}</span>` : ''}</p>${body}`;
   const id = C.info && C.info.accountId;
   const a = id && acctById(id);
@@ -230,11 +230,11 @@ function renderLedger() {
   const arts = [...L.arts.entries()].reverse();
   if (arts.length) html += sec('Artifacts', arts.length, `<ul class="lg-list">${arts.map(([u, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">✦</span><span class="lg-t"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">${esc(t)}</a></span></li>`).join('')}</ul>`);
   const imgs = [...L.images.entries()].reverse();
-  if (imgs.length) html += sec('Images it made', imgs.length, `<ul class="lg-list">${imgs.map(([p, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">❖</span><span class="lg-t"><button class="linkish" data-file="${esc(p)}" title="${esc(p)}">${esc(t.length > 60 ? `${t.slice(0, 59)}…` : t)}</button></span></li>`).join('')}</ul>`);
+  if (imgs.length) html += sec('Images it made', imgs.length, `<ul class="lg-list">${imgs.map(([p, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">❖</span><span class="lg-t"><button class="linkish" data-pv="${esc(p)}" data-kind="image" title="Preview ${esc(p)}">${esc(t.length > 60 ? `${t.slice(0, 59)}…` : t)}</button></span></li>`).join('')}</ul>`);
   const links = [...L.links.entries()].reverse().slice(0, 30);
   if (links.length) html += sec('Files it pointed to', links.length, `<ul class="lg-list">${links.map(([p, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${/[\\/]$/.test(p) ? '❖' : '✧'}</span><span class="lg-t"><button class="linkish" data-file="${esc(p)}" title="${esc(p)}">${esc(t === p ? base(p) : t)}</button></span></li>`).join('')}</ul>`);
   const files = [...L.files.entries()].reverse().slice(0, 40);
-  if (files.length) html += sec('Files changed', files.length, `<ul class="lg-list">${files.map(([p, f]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${f.verb === 'wrote' ? '✥' : '◈'}</span><span class="lg-t"><button class="linkish" data-file="${esc(p)}" title="${esc(p)}">${esc(base(p))}</button></span><span class="lg-m">${f.verb}${f.n > 1 ? ` ×${f.n}` : ''}</span></li>`).join('')}</ul>`);
+  if (files.length) html += sec('Files changed', files.length, `<ul class="lg-list">${files.map(([p, f]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${f.verb === 'wrote' ? '✥' : '◈'}</span><span class="lg-t"><button class="linkish" data-pv="${esc(p)}" data-kind="file" title="See what changed in ${esc(p)}">${esc(base(p))}</button></span><span class="lg-m">${f.verb}${f.n > 1 ? ` ×${f.n}` : ''}</span></li>`).join('')}</ul>`);
   const tasks = L.todos ? L.todos.map(t => ({ subject: t.content, status: t.status })) : [...L.tasks.values()];
   if (tasks.length) {
     const done = tasks.filter(t => t.status === 'completed').length;

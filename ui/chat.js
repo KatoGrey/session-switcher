@@ -270,7 +270,8 @@ function reset() {
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
   Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
-  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = '';
+  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
+  closePreview();
   Review.loop = null;
   closePick();
   $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
@@ -512,6 +513,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $c('cRail').addEventListener('click', e => { if (Date.now() - Rail.dropped < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
   chat.addEventListener('click', wrap(async e => {
     const t = e.target;
+    const pv = t.closest('[data-pv]');
+    if (pv) { const at = pv.dataset.turn ? { turn: +pv.dataset.turn, src: pv.dataset.src || 'main', path: pv.dataset.pv } : null; if (at) { const ev = (pv.closest('.chg') || {})._ev; const f = ev && ev.files.find(x => x.path === at.path); if (f) Object.assign(at, { add: f.add, del: f.del, status: f.status }); } return showPreview(pv.dataset.pv, pv.dataset.kind, at); }
+    const po = t.closest('[data-pvopen]'); if (po) return openFile(po.dataset.pvopen);
+    if (t.closest('[data-pvclose]')) return closePreview();
     const fl = t.closest('.flink[data-path], [data-file]');
     if (fl) { e.preventDefault(); return openFile(fl.dataset.path || fl.dataset.file); }
     const rv = t.closest('[data-reveal]');

@@ -3,16 +3,18 @@
    changes, and Undo, which puts those files back as they were before it. The one whose changes were
    undone hears about it with your next message (in its catch-up), so it doesn't build on them. */
 
-const fileLine = f => `${esc(base(f.path))}${f.status === 'added' ? ' <small>new</small>' : f.status === 'deleted' ? ' <small>deleted</small>' : f.add !== null ? ` <small><i class="d-add">+${f.add}</i> <i class="d-del">−${f.del}</i></small>` : ''}`;
+// In a reply's bar each file name opens that reply's change to it in the preview.
+const fileLine = (f, ev, src) => `${ev ? `<button type="button" class="chg-fn" data-pv="${esc(f.path)}" data-kind="file" data-turn="${ev.turn}" data-src="${src}" title="See what changed in ${esc(f.path)}">${esc(base(f.path))}</button>` : esc(base(f.path))}${f.status === 'added' ? ' <small>new</small>' : f.status === 'deleted' ? ' <small>deleted</small>' : f.add !== null ? ` <small><i class="d-add">+${f.add}</i> <i class="d-del">−${f.del}</i></small>` : ''}`;
 
 function changesBar(ev, src) {
   const n = ev.files.length + (ev.more || 0);
   return `<div class="chg" data-src="${src}" data-turn="${ev.turn}">
     <span class="chg-h">Changed ${n} file${n === 1 ? '' : 's'}</span>
-    <span class="chg-f">${ev.files.slice(0, 4).map(fileLine).join(' · ')}${n > 4 ? ` · and ${n - 4} more` : ''}</span>
+    <span class="chg-f">${ev.files.slice(0, 4).map(f => fileLine(f, ev, src)).join(' · ')}${n > 4 ? ` · and ${n - 4} more` : ''}</span>
     <span class="chg-b"><button type="button" class="ta" data-c="chgview">See the changes</button><button type="button" class="ta" data-c="chgundo" title="Puts these files back as they were before this reply">Undo</button></span></div>`;
 }
 function renderChanges(ev, src) {
+  noteChanges(ev, src);
   const prov = provFor(src);
   const turn = [...$c('cFeed').querySelectorAll('.turn')].filter(t => (t.dataset.prov || C.provider) === prov).pop();
   if (!turn || turn.querySelector(`.chg[data-turn="${ev.turn}"][data-src="${src}"]`)) return;
