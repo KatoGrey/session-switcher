@@ -2071,7 +2071,9 @@ const server = http.createServer((req, res) => { handleRequest(req, res); });
 const phone = remoteLib.createRemote({ dataDir: DATA_DIR, appDir: APP_DIR, version: APP_VERSION, log, getPrefs: () => config().prefs, handle: handleRequest });
 
 const appUrl = `http://127.0.0.1:${PORT}/`;
-const openRunning = () => { console.log(`Already running at ${appUrl}. Opening it.`); sys.openAppWindow(appUrl, config().prefs).finally(() => setTimeout(() => process.exit(0), 800)); };
+// The page the app window opens on: Switcher Lite, if lite.json says so (Look → "Open Lite on start").
+const startUrl = () => { try { return liteStore.get().openLite ? `${appUrl}lite` : appUrl; } catch { return appUrl; } };
+const openRunning = () => { console.log(`Already running at ${appUrl}. Opening it.`); sys.openAppWindow(startUrl(), config().prefs).finally(() => setTimeout(() => process.exit(0), 800)); };
 let handedOver = false;
 server.on('error', err => {
   if (err.code === 'EADDRINUSE' && !handedOver) {
@@ -2119,5 +2121,5 @@ server.listen(PORT, '127.0.0.1', () => {
   routines.start();
   liteRoutes.startSampling();
   phone.sync().catch(err => log(`Phone access: ${err.message}`));
-  sys.openAppWindow(appUrl, config().prefs);
+  sys.openAppWindow(startUrl(), config().prefs);
 });

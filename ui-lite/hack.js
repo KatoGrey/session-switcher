@@ -49,7 +49,7 @@ function hackView() {
       ${S.plans ? orderHtml() : ''}</section>
     <section class="section"><div class="sec-h"><h2>Board</h2><span class="n">${chats.length} chat${chats.length === 1 ? '' : 's'} · ${projs.length} project${projs.length === 1 ? '' : 's'}</span><span class="hint">Drag cards between columns; they’re the same stages as everywhere else</span></div>
       <div class="board">
-        <div class="col"><div class="col-h"><span class="label-dot" style="background:var(--muted)"></span>Ideas<span class="n">${ideas.length || ''}</span></div>${ideas.map(i => `<div class="tile idea">${esc(i.text)}<small><button class="linkish" data-delidea="${esc(i.id)}">Remove</button></small></div>`).join('')}<form class="add" data-addidea="1"><input name="idea" placeholder="+ Add an idea" aria-label="Add an idea"></form></div>
+        <div class="col" data-idea-drop="1"><div class="col-h"><span class="label-dot" style="background:var(--muted)"></span>Ideas<span class="n">${ideas.length || ''}</span></div>${ideas.map(i => `<div class="tile idea" draggable="true" data-idea="${esc(i.id)}" data-cur="i:${esc(i.id)}" title="Drag onto a stage to start it as a chat">${esc(i.text)}<button class="tile-x" data-delidea="${esc(i.id)}" aria-label="Remove this idea" title="Remove">×</button></div>`).join('')}<form class="add" data-addidea="1"><input name="idea" placeholder="+ Add an idea" aria-label="Add an idea"></form></div>
         ${cols.map(st => { const list = chats.filter(c => stageOf(c) === st.id).sort((a, b) => b.updated - a.updated); return `<div class="col" data-drop-stage="${st.id}"><div class="col-h"><span class="label-dot" style="background:${st.c}"></span>${st.name}<span class="n">${list.length || ''}</span></div>${list.map(c => `<div class="tile" draggable="true" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" role="button" tabindex="-1">${needs(c) ? '<span class="dot needs-dot" style="display:inline-block;margin-right:6px"></span>' : ''}${esc(c.title)}<small>${esc(projOf(c).name)} · ${ago(c.updated)}</small></div>`).join('')}</div>`; }).join('')}
       </div></section>
     <p class="hint-line">Move a project into the Hackathon bucket (Projects page) and its chats land on this board.</p>
@@ -74,4 +74,21 @@ async function editHackDates() {
 async function saveIdeas(ideas) {
   const j = await api('/api/lite/hackathon', { ideas });
   S.lite.ideas = j.ideas; render();
+}
+// An idea dragged onto a stage starts as a chat: New chat, with the idea typed in, in a Hackathon project.
+async function startIdea(id) {
+  const before = (S.lite.ideas || []).slice();
+  const idea = before.find(i => i.id === id); if (!idea) return;
+  await saveIdeas(before.filter(i => i.id !== id));
+  sfx('slide');
+  go('newchat', { ncProject: (hackProjects().find(p => p.cwd && p.exists) || {}).key || null, prefill: idea.text });
+  toast('Started from the idea; it left the Ideas column.', async () => { await saveIdeas(before); });
+}
+async function moveIdea(id, beforeId) {
+  const list = (S.lite.ideas || []).slice();
+  const i = list.findIndex(x => x.id === id); if (i < 0) return;
+  const [it] = list.splice(i, 1);
+  const j = beforeId ? list.findIndex(x => x.id === beforeId) : -1;
+  list.splice(j < 0 ? list.length : j, 0, it);
+  await saveIdeas(list); sfx('slide');
 }

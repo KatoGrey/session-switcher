@@ -248,7 +248,7 @@ async function setChats(ids, patch, label) {
 }
 async function setLook(patch) {
   const j = await api('/api/lite/look', patch);
-  Object.assign(S.lite.look, j.look); S.lite.plans.floor = j.floor; S.lite.quietDays = j.quietDays; S.lite.permissions = j.permissions; S.lite.routinesFollow = j.routinesFollow;
+  Object.assign(S.lite.look, j.look); S.lite.plans.floor = j.floor; S.lite.quietDays = j.quietDays; S.lite.permissions = j.permissions; S.lite.routinesFollow = j.routinesFollow; S.lite.openLite = j.openLite;
   if (patch.skin) local.set('skin', patch.skin);
   if (patch.mode) local.set('mode', patch.mode);
   if (patch.floor) await loadPlans(false);

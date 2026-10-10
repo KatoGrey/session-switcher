@@ -102,7 +102,11 @@ function render() {
   const m = $('main');
   // The chat and New chat pages are drawn once; after that only their parts change.
   if (S.view === 'chat') { if (!$('chatView') || m.dataset.chat !== String(CV.id)) { m.innerHTML = chatView(); m.dataset.chat = String(CV.id); paintChat(); } else { const h = $('chatHead'); if (h) h.outerHTML = chatHead(); } return; }
-  if (S.view === 'newchat') { if (!m.querySelector('.newchat')) { m.innerHTML = newChatView(); delete m.dataset.chat; paintNewChat(); $('msgBox').focus(); } else paintNewChat(); return; }
+  if (S.view === 'newchat') {
+    if (!m.querySelector('.newchat')) { m.innerHTML = newChatView(); delete m.dataset.chat; paintNewChat(); $('msgBox').focus(); } else paintNewChat();
+    if (NC.prefill) { $('msgBox').value = NC.prefill; autosize($('msgBox')); NC.prefill = null; }
+    return;
+  }
   delete m.dataset.chat;
   const keep = m.scrollTop;
   const typed = [...m.querySelectorAll('input[data-qr], #cmdInput, #genPrompt')].map(i => [i.dataset.qr || i.id, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
@@ -142,7 +146,7 @@ function go(view, extra = {}, { push = true } = {}) {
   const prev = S.view;
   if (view !== 'chat' && CV.es) { CV.es.close(); CV.es = null; }
   if (view === 'newchat' || view === 'chat') loadModels();
-  if (view === 'newchat') { NC.project = extra.ncProject || (prev === 'project' ? S.project : NC.project); if (prev !== 'newchat') resetComposer(); }
+  if (view === 'newchat') { NC.project = extra.ncProject || (prev === 'project' ? S.project : NC.project); if (prev !== 'newchat') resetComposer(); NC.prefill = extra.prefill || null; }
   S.view = view;
   if (extra.project !== undefined) S.project = extra.project;
   S.sel.clear(); cur = -1;
@@ -321,9 +325,10 @@ function lookMenu(anchor) {
   const look = S.lite.look;
   pop(anchor, `<div class="ph">Skin</div>${[['plain', 'Plain'], ['imperial', 'Imperial'], ['rebel', 'Rebel']].map(([v, n]) => `<button data-v="skin:${v}" role="menuitemradio" aria-checked="${look.skin === v}">${n}</button>`).join('')}
     <hr><div class="ph">Light or dark</div>${[['system', 'Match device'], ['light', 'Light'], ['dark', 'Dark']].map(([v, n]) => `<button data-v="mode:${v}" role="menuitemradio" aria-checked="${look.mode === v}">${n}</button>`).join('')}
-    <hr><button data-v="sound" role="menuitemcheckbox" aria-checked="${prefs.sound}">Sounds</button><button data-v="alerts">Alerts…</button><button data-v="keys">Keyboard shortcuts<kbd>?</kbd></button>`,
+    <hr><button data-v="sound" role="menuitemcheckbox" aria-checked="${prefs.sound}">Sounds</button><button data-v="openLite" role="menuitemcheckbox" aria-checked="${!!S.lite.openLite}">Open Lite when the app starts</button><button data-v="alerts">Alerts…</button><button data-v="keys">Keyboard shortcuts<kbd>?</kbd></button>`,
   v => {
     if (v === 'sound') return setSound(!prefs.sound);
+    if (v === 'openLite') return wrap(setLook)({ openLite: !S.lite.openLite }).then(() => toast(S.lite.openLite ? 'The app opens on Lite from now on.' : 'The app opens on the full Switcher from now on.'));
     if (v === 'alerts') return go('alerts');
     if (v === 'keys') return showShortcuts();
     const [k, x] = v.split(':');
@@ -336,13 +341,15 @@ let drag = null;
 document.addEventListener('dragstart', e => {
   const c = e.target.closest && e.target.closest('[data-chat]');
   const p = !c && e.target.closest && e.target.closest('[data-project]');
-  if (c) drag = { chats: S.sel.has(c.dataset.chat) && S.sel.size > 1 ? [...S.sel] : [c.dataset.chat] };
+  const idea = e.target.closest && e.target.closest('[data-idea]');
+  if (idea) drag = { idea: idea.dataset.idea };
+  else if (c) drag = { chats: S.sel.has(c.dataset.chat) && S.sel.size > 1 ? [...S.sel] : [c.dataset.chat] };
   else if (p) drag = { project: p.dataset.project };
   else return;
   e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', drag.chats ? drag.chats.join(',') : drag.project);
+  e.dataTransfer.setData('text/plain', drag.chats ? drag.chats.join(',') : drag.project || drag.idea);
 });
-const dropZone = t => (drag && drag.chats ? t.closest && t.closest('[data-drop-stage]') : drag && drag.project ? t.closest && t.closest('[data-drop-bucket]') : null);
+const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? t.closest('[data-drop-stage]') : drag && drag.project ? t.closest('[data-drop-bucket]') : null);
 document.addEventListener('dragover', e => {
   const z = dropZone(e.target); if (!z) return;
   e.preventDefault();
@@ -356,7 +363,8 @@ document.addEventListener('drop', e => {
   if (!z) return;
   e.preventDefault();
   const d = drag; drag = null;
-  if (d.chats) wrap(setChats)(d.chats, { stage: z.dataset.dropStage });
+  if (d.idea) { if (z.dataset.ideaDrop) { const over = e.target.closest('[data-idea]'); wrap(moveIdea)(d.idea, over && over.dataset.idea !== d.idea ? over.dataset.idea : null); } else wrap(startIdea)(d.idea); }
+  else if (d.chats) wrap(setChats)(d.chats, { stage: z.dataset.dropStage });
   else wrap(setBucket)(d.project, z.dataset.dropBucket || null);
 });
 document.addEventListener('dragend', () => { drag = null; document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot')); });
