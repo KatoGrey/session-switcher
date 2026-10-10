@@ -253,7 +253,7 @@ function shareCopy() {
       <h3 id="shTitle">Make a copy to share</h3>
       <p class="sh-p">A zip of Session Switcher for someone else. It has the app only: none of your accounts, sign-ins, chats, chat names, banners or projects go in it. They unzip it and double-click <b>Claude Switcher.vbs</b>, then sign in with their own accounts.</p>
       <label class="toggle"><input type="checkbox" id="shPrompts"><span><b>Include my prompts</b><span id="shCount"></span></span></label>
-      <div class="d-row"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn prime" value="ok" id="shGo">Make the copy</button></div>
+      <div class="d-row"><button type="button" class="btn" data-close-dlg>Cancel</button><button class="btn prime" value="ok" id="shGo">Make the copy</button></div>
     </form></dialog>`);
     $('shareDlg').addEventListener('close', wrap(async () => {
       if ($('shareDlg').returnValue !== 'ok') return;

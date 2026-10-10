@@ -230,7 +230,7 @@ function connectLive() {
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
   es.addEventListener('races', () => { loadRaces().catch(() => {}); });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
-  es.addEventListener('activity', e => { try { S.activity = keepOrder('running', JSON.parse(e.data).list || [], activityIds); } catch { return; } watchActivity(); renderLive(); renderNav(); });
+  es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLive(); renderNav(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
@@ -238,7 +238,24 @@ window.addEventListener('focus', () => { watchActivity(); renderLive(); });
 
 /* ---------- confirmations ---------- */
 // Asks before something that's hard to undo. The first paragraph is the question; the rest explains.
-function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false } = {}) {
+// Enter does a dialog's main thing wherever the cursor is: in a name box, on a checkbox, or nowhere in
+// particular (and Ctrl+Enter from a box where Enter starts a new line). Buttons and links keep their own
+// Enter, so Enter on Cancel still cancels. A dialog with more than one main button (Setup) is left be.
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing || e.shiftKey || e.altKey || e.defaultPrevented) return;
+  const t = e.target, d = t instanceof Element ? t.closest('dialog[open]') : null;
+  if (!d || t.closest('button, a[href], summary, select, [contenteditable="true"], [role="menu"], input[type="range"], input[type="file"]')) return;
+  if (t.matches('textarea') && !(e.ctrlKey || e.metaKey)) return;
+  const scope = t.closest('form') || d;
+  const go = [...scope.querySelectorAll('.btn.prime, .btn.danger-prime, [data-primary]')].filter(b => !b.disabled && b.offsetParent && b.closest('dialog') === d);
+  if (go.length !== 1) return;
+  e.preventDefault();
+  go[0].click();
+}, true);
+// A Cancel that isn't a form button, so Enter in a form never lands on it.
+document.addEventListener('click', e => { const b = e.target instanceof Element && e.target.closest('[data-close-dlg]'); if (b) b.closest('dialog').close('cancel'); });
+// escape: what Esc answers (no, unless a question needs Esc to mean "neither").
+function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false, escape = false } = {}) {
   let d = $('confirmDlg');
   if (!d) {
     document.body.insertAdjacentHTML('beforeend', `<dialog id="confirmDlg" class="confirm-dlg"><form method="dialog"><h3 id="cfQ"></h3><p id="cfX"></p><div class="d-row"><button class="btn" value="cancel" id="cfNo"></button><button class="btn prime" value="ok" id="cfYes"></button></div></form></dialog>`);
@@ -247,18 +264,19 @@ function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false } = {})
     const answer = v => { const r = d._resolve; d._resolve = null; if (r) r(v); };
     d.querySelector('form').addEventListener('submit', e => answer(e.submitter?.value === 'ok'));
     // Esc answers this question only, never the dialog underneath it.
-    d.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); answer(false); d.close('cancel'); } });
+    d.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); answer(d._escape); d.close('cancel'); } });
     d.addEventListener('close', () => { if (!d.open) answer(d.returnValue === 'ok'); });
   }
   const [q, ...rest] = String(text).split(/\n\n/);
   $('cfQ').textContent = q; $('cfX').textContent = rest.join('\n\n'); $('cfX').hidden = !rest.length;
-  $('cfYes').textContent = ok; $('cfNo').textContent = cancel;
+  $('cfYes').textContent = ok; $('cfNo').textContent = cancel; d._escape = escape;
   $('cfYes').className = `btn ${danger ? 'danger-prime' : 'prime'}`;
   d.returnValue = '';
   if (d._resolve) d._resolve(false);
   return new Promise(resolve => {
     d._resolve = resolve;
     if (!d.open) d.showModal();
+    // Enter answers yes, except where yes can't be taken back: those start on Cancel.
     $(danger ? 'cfNo' : 'cfYes').focus();
   });
 }
@@ -271,9 +289,6 @@ async function quitApp() {
 /* ---------- right-click (and long-press on a phone) ---------- */
 // Every chat, project, card and picture has its own menu; empty space gets the app's menu.
 // Shift+right-click still opens the browser's own menu, and text boxes keep theirs.
-async function copyText(text, what = 'Copied.') {
-  try { await navigator.clipboard.writeText(text); toast(what, 1600); } catch { prompt('Copy this:', text); }
-}
 function projectItems(cwd) {
   const p = S.projects.find(x => x.cwd === cwd); if (!p) return [];
   const a = current();
@@ -300,10 +315,23 @@ function activityItems(x) {
   return [
     { glyph: '❝', label: x.source === 'app' ? 'Open the chat' : x.source === 'terminal' ? 'Watch it live' : 'Read it here', run: () => { markSeen(x); return openActivity(x); } },
     ...(st === 'reply' ? [{ glyph: '✓', label: 'Mark as read', run: () => { markSeen(x); renderLive(true); renderNav(); } }] : []),
-    ...(x.source === 'app' && x.key && x.phase !== 'ended' ? [{ label: 'Stop this chat', danger: true, run: () => api('/api/chat/stop', { key: x.key }) }] : []),
+    { glyph: '✕', label: 'Close', hint: x.source === 'terminal' ? 'it keeps running in its terminal' : x.source === 'elsewhere' ? 'it stays in the other app' : x.phase === 'ended' ? '' : 'open it again any time', run: () => closeActivity(x) },
     ...(x.sessionId && !x.parentKey ? ['-', favItem(x.sessionId), ...chatItems(x.sessionId).filter(i => i === '-' || !/^(Return|Open in the chat window)/.test(i.label))] : []),
     ...(x.sessionId ? ['-', { label: 'Copy chat ID', run: () => copyText(x.sessionId) }] : []),
   ];
+}
+// Takes a chat off the lists. One this app runs is stopped (open it again and it picks up where it
+// left off); one in a terminal or another app keeps running there. Closing the chat you're in moves
+// you to the next one.
+async function closeActivity(x) {
+  const st = statusOf(x), app = x.source === 'app' && !!x.key && x.phase !== 'ended';
+  // Busy (it, or its partner): say who, since closing stops both.
+  const who = PROV_NAME[(x.partner && ownStatus(x) !== st ? x.partner : x).provider || 'claude'];
+  if (app && (st === 'working' || NEEDS.has(st)) && !(await appConfirm(`Close this chat?\n\n${who} is in the middle of it; closing stops ${x.partner ? 'both of them' : 'it'} now. The conversation is kept, and you can open it again.`, { ok: 'Stop and close', danger: true }))) return;
+  const next = window.ChatUI && !x.parentKey && ChatUI.isViewing(x) ? ChatUI.neighbor(x) : undefined;
+  closeOff(x);
+  if (next) openActivity(next); else if (next === null) ChatUI.close();
+  if (app) await api('/api/chat/stop', { key: x.key });
 }
 function appItems() {
   const light = Look.isLight();
@@ -336,7 +364,7 @@ function contextItems(t) {
   const nc = t.closest('[data-navchat]'); if (nc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(nc.dataset.navchat) }, ...withFav(nc.dataset.navchat)];
   const row = t.closest('[data-row]'); if (row) return withFav(row.dataset.row);
   const pv = t.closest('[data-preview], [data-continue]'); if (pv) return withFav(pv.dataset.preview || pv.dataset.continue);
-  const card = t.closest('#awaitList > [data-k], #board > [data-k], #quietList > [data-k], #cRailList > [data-k]');
+  const card = t.closest('#awaitList > [data-k], #board > [data-k], #quietList > [data-k], #cPinList > [data-k], #cRailList > [data-k]');
   if (card) { const x = findActivity(card.dataset.k); if (x) return activityItems(x); }
   const world = t.closest('#atlas > [data-k], [data-world], .nav-i[data-cwd]');
   if (world) { const cwd = world.dataset.world || world.dataset.cwd || (world.dataset.k !== '+new' ? world.dataset.k : null); if (cwd) return projectItems(cwd); }
@@ -369,7 +397,7 @@ function openShortcuts() {
     document.body.insertAdjacentHTML('beforeend', `<dialog id="keysDlg" class="keys-dlg" aria-labelledby="keysTitle"><div class="setup-head"><h3 id="keysTitle">Keyboard shortcuts</h3><button class="icon" data-keys-close aria-label="Close">✕</button></div>
       <div class="keys-body">${[
         ['Anywhere', [['Ctrl K', 'Search chats, projects, documents, prompts and actions'], ['?', 'This list'], ['Right-click', 'Options for whatever you clicked (Shift for the browser’s menu)'], ['Esc', 'Close what’s open']]],
-        ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['Ctrl F', 'Find in this chat'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between running chats'], ['End', 'Jump to the latest message']]],
+        ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['Ctrl F', 'Find in this chat'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between open chats'], ['Alt Shift ↑ ↓', 'Move the chat you’re in up or down the list'], ['End', 'Jump to the latest message']]],
         ['Pictures', [['← →', 'Step through a project’s pictures']]],
       ].map(([h, rows]) => `<section><p class="d-h">${esc(h)}</p><dl>${rows.map(([k, v]) => `<dt><kbd class="kbd">${esc(k)}</kbd></dt><dd>${esc(v)}</dd>`).join('')}</dl></section>`).join('')}</div></dialog>`);
     d = $('keysDlg');

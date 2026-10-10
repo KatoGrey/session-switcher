@@ -29,6 +29,8 @@ const store = require('./lib/store');
 const { listFiles } = require('./lib/filelist');
 const tasksLib = require('./lib/tasks');
 const raceLib = require('./lib/race');
+const pairsLib = require('./lib/pairs');
+const handover = require('./lib/handover');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -40,6 +42,8 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const CONFIG_FILE = path.join(DATA_DIR, 'accounts.json');
 const LOG_FILE = path.join(DATA_DIR, 'switcher.log');
 const TOKEN = crypto.randomBytes(24).toString('hex');
+// Which code this server is running, so a copy started later can tell if it's out of date.
+const BUILD = handover.buildId(APP_DIR);
 const ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
 const EMAIL_RE = /^[A-Za-z0-9._+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const DESKTOP_MIN = '2.1.285';
@@ -115,12 +119,18 @@ function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.sto
 
 const chats = chatLib.createChatManager({
   log,
-  onChange: () => { broadcast('live', chats.live()); scheduleActivity(); saveOpenChats(); },
+  onChange: chat => {
+    // A partner doesn't outlive its chat: it would be left running with no window to show it.
+    if (chat && chat.state === 'ended' && chat.companionKey) { const p = pairs.partnerOf(chat); if (p && p.state !== 'ended') p.stop(); }
+    broadcast('live', chats.live()); scheduleActivity(); saveOpenChats();
+  },
   onSession: chat => {
     if (chat.provider !== 'codex') sessions.recordLaunch(chat.sessionId, chat.account, chat.fork ? 'fork' : 'app');
-    // Choices made before the chat had an id, and a Codex helper paired before then, are kept now.
+    // Choices made before the chat had an id, a partner paired before then, and when it last caught
+    // up on that partner, are kept now.
     if (chat.choices && Object.keys(chat.choices).length) chatPrefs.set({ sessionId: chat.sessionId }, chat.choices);
-    linkCompanion(chat);
+    if (chat.heardUntil) chatPrefs.setHeard(chat.sessionId, chat.heardUntil);
+    pairs.link(chat);
     broadcast('live', chats.live());
     setTimeout(sessionsChanged, 1500);
   },
@@ -136,12 +146,38 @@ const chats = chatLib.createChatManager({
   onRateLimit: (chat, info) => usage.fromRateLimit(chat.account.id, info),
 });
 
-// A Claude chat and its Codex helper remember each other once both have ids.
-function linkCompanion(chat) {
-  let parent = null, helper = null;
-  try { if (chat.parentKey) { parent = chats.get(chat.parentKey); helper = chat; } else if (chat.companionKey) { parent = chat; helper = chats.get(chat.companionKey); } } catch { return; }
-  if (parent && helper && parent.sessionId && helper.sessionId) chatPrefs.link(parent.sessionId, helper.sessionId);
-}
+// ---------- Claude and Codex in one chat (lib/pairs.js; what each is told: lib/duo.js) ----------
+const pairs = pairsLib.createPairs({
+  chats, prefs: chatPrefs, log,
+  onPaired: () => { broadcast('live', chats.live()); scheduleActivity(); },
+  transcript: async (provider, id, until) => (provider === 'codex' ? (await codex.history(id, null, until)).items : (await chatLib.readHistory(sessions.fileFor(id), { until, limit: 80 })).items),
+  lastChanged: (provider, id) => {
+    try {
+      if (provider === 'codex') { const x = codex.cached(sessions.lastOpened).find(t => t.id === id); return x ? x.updated || 0 : 0; }
+      return sessions.find(id).session.updated || 0;
+    } catch { return 0; }
+  },
+  // Claude in a Codex chat runs as the account you're working as (or the one it last ran as); Codex in
+  // a Claude chat resumes its thread even when Codex's own list hasn't caught up yet.
+  startPartner: async (lead, { remembered, accountId }) => {
+    const c = config();
+    if ((lead.provider || 'claude') === 'codex') {
+      let sessionId = null;
+      if (remembered) { try { sessionId = sessions.find(remembered).session.id; } catch { /* that conversation is gone */ } }
+      const last = sessionId && sessions.lastOpened(sessionId);
+      const a = acc.findAccount(c, accountId && !isCodexAccount(accountId) ? accountId : (last && !isCodexAccount(last.account) ? last.account : null));
+      await guarded(a);
+      acc.prepareForLaunch(c, a);
+      const pref = chatPrefs.get({ sessionId, cwd: lead.cwd, provider: 'claude' });
+      return chats.open({ cfg: c, account: a, cwd: lead.cwd, sessionId, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: `Claude · ${lead.title || 'New chat'}`, folder: lead.folder });
+    }
+    let inst = await codexChecked(codexForThread(remembered));
+    if (!inst.publicState().signedIn) inst = await codexChecked(codexActive());
+    requireCodexSignedIn(inst);
+    const pref = chatPrefs.get({ sessionId: remembered, cwd: lead.cwd, provider: 'codex' });
+    return inst.open({ cfg: c, cwd: lead.cwd, threadId: remembered || null, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, companion: true, title: `Codex · ${lead.title || 'New chat'}`, folder: lead.folder });
+  },
+});
 
 // Plan usage per account (5-hour and weekly windows with reset times).
 const usage = usageLib.createUsage({ log, chats, onChange: () => { scheduleUsageBroadcast(); queueOnUsage(); } });
@@ -204,7 +240,25 @@ function sessionsWithCodex() {
   if (mergedMemo && Date.now() - mergedMemo.at < 1000) return mergedMemo.value;
   const merged = mergeSessions();
   // A race's copies aren't projects of yours: their chats live on the race's card.
-  const value = merged.projects.some(p => raceLib.isRaceDir(p.cwd)) ? { ...merged, projects: merged.projects.filter(p => !raceLib.isRaceDir(p.cwd)) } : merged;
+  let value = merged.projects.some(p => raceLib.isRaceDir(p.cwd)) ? { ...merged, projects: merged.projects.filter(p => !raceLib.isRaceDir(p.cwd)) } : merged;
+  // A partner's conversation lives inside the chat it belongs to: that chat's row says who's in it.
+  const partners = chatPrefs.partners();
+  if (partners.size) {
+    const leads = new Map();
+    for (const [pid, lid] of partners) leads.set(String(lid).toLowerCase(), pid);
+    value = { ...value, projects: value.projects.map(p => {
+      if (!p.sessions.some(x => partners.has(x.id.toLowerCase()) || leads.has(x.id.toLowerCase()))) return p;
+      const byId = new Map(p.sessions.map(x => [x.id.toLowerCase(), x]));
+      const list = [];
+      for (const x of p.sessions) {
+        const id = x.id.toLowerCase();
+        if (partners.has(id) && byId.has(String(partners.get(id)).toLowerCase())) continue;
+        const pid = leads.get(id), mate = pid && byId.get(pid.toLowerCase());
+        list.push(pid ? { ...x, partner: { id: pid, provider: mate ? (mate.provider || 'claude') : ((x.provider || 'claude') === 'codex' ? 'claude' : 'codex') }, updated: Math.max(x.updated, mate ? mate.updated : 0) } : x);
+      }
+      return { ...p, sessions: list.sort((a, b) => b.updated - a.updated) };
+    }) };
+  }
   mergedMemo = { at: Date.now(), value };
   return value;
 }
@@ -358,9 +412,33 @@ async function startRace({ cwd, prompt, accountId }) {
 async function stopRacers(r) { for (const k of Object.values(r.keys || {})) { try { await chats.get(k).stop(); } catch { /* already stopped */ } } }
 
 // Opens a chat in the app window (or attaches to it if it's already running here), returning its info.
-async function openChat(c, body) {
+// Two opens of the same conversation at once (a double click, the phone and the PC) start it once.
+const opening = new Map();
+function openChat(c, body) {
+  const id = (!body.mode || body.mode === 'resume') && body.sessionId ? String(body.sessionId).toLowerCase() : null;
+  if (!id) return openChatNow(c, body);
+  if (opening.has(id)) return opening.get(id).catch(() => null).then(() => { const live = chats.bySession(id); return live ? attachedInfo(live) : openChat(c, body); });
+  const p = openChatNow(c, body);
+  opening.set(id, p);
+  p.then(() => opening.delete(id), () => opening.delete(id));
+  return p;
+}
+async function openChatNow(c, body) {
+  // A partner's conversation opens inside the chat it belongs to.
+  const lead = (!body.mode || body.mode === 'resume') && body.sessionId ? chatPrefs.parentOf(body.sessionId) : null;
+  if (lead && !body.alone && !body.viaPartner) {
+    const live = chats.bySession(lead);
+    if (live) return attachedInfo(live);
+    if (isCodexId(lead) || (() => { try { return !!sessions.find(lead); } catch { return false; } })()) return openChat(c, { ...body, sessionId: lead, viaPartner: true, provider: isCodexId(lead) ? 'codex' : undefined });
+  }
+  const info = await openChatInner(c, body);
+  // Its partner from an earlier run, if that's still running, is its partner again.
+  try { const chat = chats.get(info.key); if (pairs.adopt(chat)) return { ...chat.info(), attached: info.attached, companionThread: info.companionThread }; } catch { /* not running */ }
+  return info;
+}
+async function openChatInner(c, body) {
   if (body.provider === 'codex' || (body.mode !== 'new' && isCodexId(body.sessionId))) {
-    const inst = body.mode === 'new' ? (codexById(body.account) || codexActive()) : codexForThread(body.sessionId, body.account);
+    const inst = await codexChecked(body.mode === 'new' ? (codexById(body.account) || codexActive()) : codexForThread(body.sessionId, body.account));
     requireCodexSignedIn(inst);
     const mode = ['resume', 'fork', 'new'].includes(body.mode) ? body.mode : 'resume';
     let cwd, threadId = null, title = null;
@@ -383,7 +461,7 @@ async function openChat(c, body) {
     const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || 'New Codex chat', folder });
     if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
     log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
-    return { ...chat.info(), attached: false, remembered: !!pref.mode };
+    return { ...chat.info(), attached: false, remembered: !!pref.mode, companionThread: threadId && mode !== 'new' ? chatPrefs.companionOf(threadId) : null };
   }
   const a = acc.findAccount(c, body.account);
   const mode = ['resume', 'fork', 'new'].includes(body.mode) ? body.mode : 'resume';
@@ -420,7 +498,7 @@ async function openChat(c, body) {
   const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder });
   if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
   log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
-  return { ...chat.info(), attached: false, remembered: !!pref.mode && !body.permissionMode, companionThread: sessionId && mode === 'resume' ? chatPrefs.companionOf(sessionId) : null };
+  return { ...chat.info(), attached: false, remembered: !!pref.mode && !body.permissionMode, companionThread: sessionId && mode !== 'new' ? chatPrefs.companionOf(sessionId) : null };
 
 }
 
@@ -508,6 +586,11 @@ async function startReview(chat, files, base) {
   return { id, what: t.what, base: t.base };
 }
 
+// Right after the app starts, Codex's sign-in hasn't been checked yet; check it before saying it isn't.
+async function codexChecked(inst = codexActive()) {
+  if (!inst.publicState().checked) await inst.refreshAccount().catch(() => null);
+  return inst;
+}
 function requireCodexSignedIn(inst = codexActive()) {
   const st = inst.publicState();
   if (!st.enabled) throw fail(409, 'Codex is turned off in Setup.');
@@ -573,6 +656,8 @@ function activityList() {
     for (const s of p.sessions) {
       const id = s.id.toLowerCase();
       if (seen.has(id)) continue;
+      // A partner's conversation belongs to its chat; it isn't a chat of its own here either.
+      if (chatPrefs.parentOf(id)) continue;
       const pids = running[id] || null;
       const age = now - s.updated;
       // Chats elsewhere (like the desktop app) stay listed for a while after Claude replies, so a reply
@@ -1028,7 +1113,7 @@ async function handleApi(req, res, url, remote = false) {
       const list = c.codexAccounts || [];
       const x = list.find(a => a.id === body.id);
       if (!x) throw fail(404, 'That Codex account isn’t in the list.');
-      if (chats.live().some(l => l.accountId === x.id && l.state !== 'ended')) throw fail(409, 'A chat is running as this account. Stop it first.');
+      if (Object.values(chats.live()).some(l => l.accountId === x.id && l.state !== 'ended')) throw fail(409, 'A chat is running as this account. Stop it first.');
       c.codexAccounts = list.filter(a => a.id !== x.id);
       if (c.codexActive === x.id) delete c.codexActive;
       save(); codexAll(); usage.forget(x.id);
@@ -1279,7 +1364,7 @@ async function handleApi(req, res, url, remote = false) {
       chatPrefs.flush();
       phone.stop();
       stopForQuit();
-      for (const x of codexAll()) x.stop();
+      for (const x of codexAll()) x.stop(true);
       setTimeout(() => process.exit(0), 300);
       return;
     }
@@ -1359,13 +1444,16 @@ async function handleChat(req, res, url, body, c) {
     case '/api/chat/open': return send(res, 200, await openChat(c, body));
     case '/api/chat/attach': return send(res, 200, attachedInfo(chats.get(body.key)));
     case '/api/chat/send': {
+      // to: 'partner' (the other assistant in this chat, started if need be), 'both' (they take
+      // turns), or the chat `key` itself.
       const text = typeof body.text === 'string' ? body.text.slice(0, 200000) : '';
       const images = validImages(body.images);
       if (!text.trim() && !images.length) throw fail(400, 'Type a message or attach an image.');
-      const chat = chats.get(body.key);
-      await chat.beforeTurn();   // a snapshot first, so its reply's changes can be shown and undone
-      chat.send(text, images);
-      return send(res, 200, { ok: true });
+      const chat = chats.get(body.key), lead = pairs.leadOf(chat);
+      if (body.to === 'both') { await pairs.sendBoth(lead, text, images, { accountId: body.account }); return send(res, 200, { ok: true }); }
+      const target = body.to === 'partner' ? await pairs.ensure(lead, { accountId: body.account }) : chat;
+      await pairs.send(target, text, images);
+      return send(res, 200, { ok: true, key: target.key });
     }
     case '/api/chat/permission': {
       const decision = ['allow', 'always', 'deny'].includes(body.decision) ? body.decision : null;
@@ -1381,7 +1469,11 @@ async function handleChat(req, res, url, body, c) {
     }
     case '/api/chat/interrupt': await chats.get(body.key).interrupt(); return send(res, 200, { ok: true });
     case '/api/chat/compact': await chats.get(body.key).compact(); return send(res, 200, { ok: true });
-    case '/api/chat/undo': return send(res, 200, await chats.get(body.key).undoTurn(body.turn, !!body.force));
+    case '/api/chat/undo': {
+      const chat = chats.get(body.key), r = await chat.undoTurn(body.turn, !!body.force);
+      if (r && r.restored && r.restored.length) (chat.undoneFiles || (chat.undoneFiles = [])).push(r.restored);
+      return send(res, 200, r);
+    }
     case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base));
     case '/api/chat/mode': {
       const chat = chats.get(body.key);
@@ -1398,20 +1490,9 @@ async function handleChat(req, res, url, body, c) {
       return send(res, 200, chat.modelInfo());
     }
     case '/api/chat/companion': {
-      // Codex, working inside a Claude chat: one helper per chat, in the same folder, remembered.
-      const chat = chats.get(body.key);
-      if (chat.provider === 'codex') throw fail(400, 'This is already a Codex chat.');
-      if (chat.companionKey) { try { const h = chats.get(chat.companionKey); if (h.state !== 'ended') return send(res, 200, h.info()); } catch { /* start a new one */ } }
-      const threadId = chat.sessionId ? chatPrefs.companionOf(chat.sessionId) : null;
-      const known = threadId && codex.known(threadId);
-      const inst = codexForThread(known ? threadId : null);
-      requireCodexSignedIn(inst);
-      const pref = chatPrefs.get({ sessionId: threadId, cwd: chat.cwd, provider: 'codex' });
-      const helper = inst.open({ cfg: c, cwd: chat.cwd, threadId: known ? threadId : null, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, companion: true, title: `Codex · ${chat.title || 'New chat'}`, folder: chat.folder });
-      helper.parentKey = chat.key; chat.companionKey = helper.key;
-      log(`Codex helper for ${chat.sessionId || chat.key}: ${known ? `resume ${threadId}` : 'new'}`);
-      broadcast('live', chats.live()); scheduleActivity();
-      return send(res, 200, helper.info());
+      // The other assistant, working inside this chat (Codex in a Claude chat, Claude in a Codex chat).
+      const lead = pairs.leadOf(chats.get(body.key));
+      return send(res, 200, (await pairs.ensure(lead, { accountId: body.account })).info());
     }
     case '/api/chat/stop': {
       const chat = chats.get(body.key);
@@ -1449,7 +1530,7 @@ async function handleChat(req, res, url, body, c) {
 
 // A running chat's details for the window, with its paired Codex helper's id if it has one.
 function attachedInfo(chat) {
-  return { ...chat.info(), attached: true, companionThread: chat.provider !== 'codex' && chat.sessionId ? chatPrefs.companionOf(chat.sessionId) : null };
+  return { ...chat.info(), attached: true, companionThread: chat.sessionId && !chat.parentKey ? chatPrefs.companionOf(chat.sessionId) : null };
 }
 // Remembers what you chose for a chat, and as its project's default for new chats.
 function remember(chat, changes) {
@@ -1512,6 +1593,8 @@ async function handleRequest(req, res, { remote = false } = {}) {
       pollRunning();
       return;
     }
+    // Asked by a copy that's starting up: is this the same app and the same code? Nothing private.
+    if (req.method === 'GET' && url.pathname === '/api/version') return send(res, 200, { app: 'session-switcher', version: APP_VERSION, build: BUILD, pid: process.pid });
     if (url.pathname.startsWith('/api/')) {
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
       const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media') && url.searchParams.get('token') === TOKEN;
@@ -1532,22 +1615,35 @@ const server = http.createServer((req, res) => { handleRequest(req, res); });
 const phone = remoteLib.createRemote({ dataDir: DATA_DIR, appDir: APP_DIR, version: APP_VERSION, log, getPrefs: () => config().prefs, handle: handleRequest });
 
 const appUrl = `http://127.0.0.1:${PORT}/`;
+const openRunning = () => { console.log(`Already running at ${appUrl}. Opening it.`); sys.openAppWindow(appUrl, config().prefs).finally(() => setTimeout(() => process.exit(0), 800)); };
+let handedOver = false;
 server.on('error', err => {
-  if (err.code === 'EADDRINUSE') {
-    console.log(`Already running at ${appUrl}. Opening it.`);
-    sys.openAppWindow(appUrl, config().prefs).finally(() => setTimeout(() => process.exit(0), 800));
+  if (err.code === 'EADDRINUSE' && !handedOver) {
+    // Something is on the port. If it's this same build, bring its window up. If it's an older
+    // copy, or one started before an update, replace it, so the window isn't stuck on old code.
+    handedOver = true;
+    handover.takeOver({ port: PORT, version: APP_VERSION, build: BUILD, appDir: APP_DIR, sys, log })
+      .then(next => {
+        if (next === 'start') return server.listen(PORT, '127.0.0.1');
+        if (next === 'busy') log(`Another program is using port ${PORT}. Close it, or set SWITCHER_PORT to start Session Switcher on a different port.`);
+        return openRunning();
+      })
+      .catch(e => { log(`Couldn’t check the copy that’s running: ${e.message}`); openRunning(); });
+  } else if (err.code === 'EADDRINUSE') {
+    openRunning();
   } else {
     log(`Server error: ${err.stack || err.message}`);
     process.exit(1);
   }
 });
 process.on('uncaughtException', err => log(`Unexpected error: ${err.stack || err.message}`));
-for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); setTimeout(() => process.exit(0), 300); });
-process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } });
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } } setTimeout(() => process.exit(0), 300); });
+process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
 process.on('unhandledRejection', err => log(`Unexpected error: ${err && (err.stack || err.message)}`));
 
 server.listen(PORT, '127.0.0.1', () => {
   log(`Session Switcher ${APP_VERSION} running at ${appUrl}${sys.DRY_RUN ? ' (preview mode: nothing is launched)' : ''}`);
+  handover.writeLock(PORT, { pid: process.pid, version: APP_VERSION, build: BUILD, dir: APP_DIR, token: TOKEN });
   console.log('Keep this window open while you use it, or use “Quit” in the app.');
   sys.cleanupLaunchScripts();
   for (const a of config().accounts) {

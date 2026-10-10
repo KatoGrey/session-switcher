@@ -21,23 +21,168 @@ function isViewing(x) {
   return !!(sid && x.sessionId && x.sessionId.toLowerCase() === String(sid).toLowerCase());
 }
 function railItem(x) {
-  const st = statusOf(x);
-  const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (x.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
-  const doing = x.phase === 'tool' && (x.detail || x.tool) ? `${VERB_NOW[x.tool] || 'Using'} ${x.detail || x.tool}` : x.phase === 'writing' ? 'Writing…' : x.phase === 'starting' ? 'Starting…' : 'Thinking…';
-  const sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
+  // A pinned chat that isn't running: it stays listed, and a click opens it again.
+  if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}"><span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;   // w: the one the status is about
+  const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (w.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
+  const doing = w.phase === 'tool' && (w.detail || w.tool) ? `${VERB_NOW[w.tool] || 'Using'} ${w.detail || w.tool}` : w.phase === 'writing' ? 'Writing…' : w.phase === 'starting' ? 'Starting…' : 'Thinking…';
+  let sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
+  if (w !== x) sub = `${PROV_NAME[w.provider || 'claude']}: ${sub}`;
+  else if (x.partner && (st === 'quiet' || st === 'reply')) sub += ` · with ${PROV_NAME[x.partner.provider || 'claude']}`;
   return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}" aria-current="${isViewing(x)}"><span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
 }
+// The rail: chats you pinned (they stay, running or not), then the rest of what's open, each list in
+// the order you dragged it into. Chats it hasn't placed yet keep their places after those.
+let railOrder = []; try { railOrder = JSON.parse(store('railOrder') || '[]'); } catch { /* none yet */ }
+const railId = x => (x.sessionId ? `s:${String(x.sessionId).toLowerCase()}` : x.key);
+const railKey = x => (x.pinnedOnly ? `pin:${railId(x)}` : keyOf(x));
+function inRailOrder(list) {
+  const pos = new Map(railOrder.map((id, i) => [id, i]));
+  const at = x => { for (const id of activityIds(x)) if (id && pos.has(id)) return pos.get(id); return Infinity; };
+  return list.map((x, i) => [at(x), i, x]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(r => r[2]);
+}
+function railRows() {
+  const open = S.activity.filter(x => !x.parentKey);
+  const pinned = open.filter(x => isFav(x.sessionId)), active = open.filter(x => !isFav(x.sessionId));
+  for (const id of S.favs) {
+    if (pinned.some(x => String(x.sessionId).toLowerCase() === id)) continue;
+    const [s, p] = sessionById(id);
+    if (s) pinned.push({ pinnedOnly: true, sessionId: s.id, title: s.title, folder: p.name });
+  }
+  return { pinned: inRailOrder(pinned), active: inRailOrder(active) };
+}
+const railOpen = () => { const { pinned, active } = railRows(); return [...pinned, ...active].filter(x => !x.pinnedOnly); };
 function renderRail() {
-  if ($c('chat').hidden) return;
-  const list = S.activity.filter(x => !x.parentKey);
-  $c('cRailCount').textContent = list.length ? String(list.length) : '';
-  patch($c('cRailList'), list, keyOf, railItem, '<li class="ri-empty">Only this chat is open.</li>');
+  if ($c('chat').hidden || (Rail.drag && Rail.drag.on)) return;
+  const { pinned, active } = railRows();
+  $c('cPinH').hidden = !pinned.length;
+  $c('cPinCount').textContent = pinned.length ? String(pinned.length) : '';
+  $c('cRailCount').textContent = active.length ? String(active.length) : '';
+  // Changes glide: a pinned chat rises into Pinned, a closed one fades where it stood, a new one fades in.
+  flip([$c('cPinList'), $c('cRailList')], () => {
+    patch($c('cPinList'), pinned, railKey, railItem);
+    patch($c('cRailList'), active, railKey, railItem, `<li class="ri-empty">${pinned.length ? 'Nothing else is open.' : 'Only this chat is open.'}</li>`);
+  });
 }
 function switchRail(step) {
-  const list = S.activity.filter(x => !x.parentKey); if (!list.length) return;
+  const list = railOpen(); if (!list.length) return;
   const i = list.findIndex(isViewing);
   const next = list[(i + step + list.length) % list.length];
   if (next && !isViewing(next)) openActivity(next);
+}
+// Where to go when the chat you're in is closed: the next open one down the list, else the one above.
+function railNeighbor(x) {
+  const list = railOpen(), i = list.findIndex(y => keyOf(y) === keyOf(x));
+  return list[i + 1] || list[i - 1] || null;
+}
+// Remembers the order the lists are in now, after a drag or Alt+Shift+↑/↓.
+function saveRailOrder() {
+  const ids = [...$c('cPinList').children, ...$c('cRailList').children].map(li => li.dataset.k).filter(Boolean)
+    .map(k => { if (k.startsWith('pin:')) return k.slice(4); const x = findActivity(k); return x ? railId(x) : null; }).filter(Boolean);
+  railOrder = [...ids, ...railOrder.filter(id => !ids.includes(id))].slice(0, 200);
+  store('railOrder', JSON.stringify(railOrder));
+  $c('cPinList')._sig = $c('cRailList')._sig = '';
+  renderRail();
+}
+// Alt+Shift+↑/↓: the chat you're in trades places with its neighbor, both gliding.
+function moveInRail(step) {
+  const li = [...$c('cPinList').children, ...$c('cRailList').children].find(el => el.querySelector('.ri[aria-current="true"]'));
+  const sib = li && (step < 0 ? li.previousElementSibling : li.nextElementSibling);
+  if (!sib || !sib.dataset.k) return;
+  flip([li.parentElement], () => { if (step < 0) sib.before(li); else sib.after(li); });
+  saveRailOrder();
+}
+// Drag a chat up or down its list (with a mouse or pen; on a touch screen a drag scrolls). Nothing in
+// the list moves until you let go: the chat lifts and follows the pointer, the others slide aside to
+// open its new place, and on release it settles into it. Esc puts it back. Near the list's top or
+// bottom edge, the list scrolls.
+const Rail = { drag: null, dropped: 0 };
+function railDown(e) {
+  const ri = e.target.closest('#cPinList .ri, #cRailList .ri');
+  if (!ri || e.button !== 0 || e.pointerType === 'touch' || Rail.drag) return;
+  const li = ri.closest('li');
+  Rail.drag = { li, list: li.parentElement, x0: e.clientX, y0: e.clientY, y: e.clientY, id: e.pointerId, on: false };
+}
+function railStart(d) {
+  d.items = [...d.list.children].filter(el => el.dataset.k && !el.classList.contains('flip-ghost'));
+  for (const el of d.items) for (const a of el.getAnimations()) a.finish();
+  d.from = d.to = d.items.indexOf(d.li);
+  d.scroller = d.list.closest('.rail-scroll');
+  d.s0 = d.scroller ? d.scroller.scrollTop : 0;
+  // Where each chat sits in the list (these don't change as the list scrolls).
+  d.tops = d.items.map(el => el.offsetTop); d.hs = d.items.map(el => el.offsetHeight);
+  const n = d.items.length;
+  d.step = n < 2 ? d.hs[d.from] : d.from < n - 1 ? d.tops[d.from + 1] - d.tops[d.from] : d.tops[d.from] - d.tops[d.from - 1];
+  d.on = true;
+  d.li.classList.add('dragging');
+  for (const el of d.items) if (el !== d.li) el.classList.add('making-room');
+  document.body.classList.add('rail-dragging');
+  try { d.li.setPointerCapture(d.id); } catch { /* fine without */ }
+  d.raf = requestAnimationFrame(() => railScroll(d));
+}
+function railPlace(d) {
+  const scrolled = d.scroller ? d.scroller.scrollTop - d.s0 : 0, last = d.tops.length - 1;
+  // It follows the pointer, though not far past either end of its list.
+  const dy = Math.max(d.tops[0] - d.tops[d.from] - 10, Math.min(d.tops[last] - d.tops[d.from] + 10, d.y - d.y0 + scrolled));
+  d.li.style.transform = `translateY(${dy}px) scale(1.02)`;
+  // Its new place: past the middle of each chat it has crossed.
+  const mid = d.tops[d.from] + dy + d.hs[d.from] / 2;
+  let to = 0;
+  d.items.forEach((el, i) => { if (i !== d.from && d.tops[i] + d.hs[i] / 2 < mid) to++; });
+  if (to === d.to) return;
+  d.to = to;
+  d.items.forEach((el, i) => {
+    if (i === d.from) return;
+    const shift = d.from < to && i > d.from && i <= to ? -d.step : to < d.from && i >= to && i < d.from ? d.step : 0;
+    el.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
+}
+function railMove(e) {
+  const d = Rail.drag; if (!d || e.pointerId !== d.id || d.settling) return;
+  d.y = e.clientY;
+  if (!d.on) { if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 5) return; railStart(d); }
+  e.preventDefault();
+  railPlace(d);
+}
+function railScroll(d) {
+  if (Rail.drag !== d || d.settling) return;
+  const s = d.scroller;
+  if (s && s.scrollHeight > s.clientHeight) {
+    const r = s.getBoundingClientRect(), edge = 40;
+    const v = d.y < r.top + edge ? -Math.ceil((r.top + edge - d.y) / 5) : d.y > r.bottom - edge ? Math.ceil((d.y - r.bottom + edge) / 5) : 0;
+    if (v) { const was = s.scrollTop; s.scrollTop += v; if (s.scrollTop !== was) railPlace(d); }
+  }
+  d.raf = requestAnimationFrame(() => railScroll(d));
+}
+function railUp(e) {
+  const d = Rail.drag; if (!d || e.pointerId !== d.id || d.settling) return;
+  if (!d.on) { Rail.drag = null; return; }
+  Rail.dropped = Date.now();
+  railSettle(d, e.type === 'pointerup');
+}
+// Letting go: the chat settles into its new place (or back into its old one), and only then does the
+// list really change, to just where everything already appears to be.
+function railSettle(d, keep) {
+  d.settling = true;
+  cancelAnimationFrame(d.raf);
+  try { d.li.releasePointerCapture(d.id); } catch { /* not captured */ }
+  const to = keep ? d.to : d.from, li = d.li;
+  const end = to > d.from ? d.tops[to] + d.hs[to] - d.tops[d.from] - d.hs[d.from] : d.tops[to] - d.tops[d.from];
+  li.classList.add('settling');
+  li.style.transform = `translateY(${end}px)`;
+  if (!keep) for (const el of d.items) if (el !== li) el.style.transform = '';
+  const done = () => {
+    if (d.finished) return;
+    d.finished = true;
+    for (const el of d.items) { el.classList.remove('making-room', 'dragging', 'settling'); el.style.transform = ''; }
+    const moved = keep && to !== d.from;
+    if (moved) { const others = d.items.filter(el => el !== li); if (to < others.length) others[to].before(li); else others[others.length - 1].after(li); }
+    document.body.classList.remove('rail-dragging');
+    Rail.drag = null;
+    if (moved) saveRailOrder(); else { $c('cPinList')._sig = $c('cRailList')._sig = ''; renderRail(); }
+  };
+  li.addEventListener('transitionend', e => { if (e.target === li && e.propertyName === 'transform') done(); });
+  setTimeout(done, 380);
 }
 
 /* ---------- open / close ---------- */
@@ -56,9 +201,9 @@ async function loadHistory(before) {
   C.historyStart = h.start;
   C.historyCursor = h.cursor || null;
   let rows = h.items.map(it => ({ it, prov: C.provider }));
-  // A Claude chat's Codex helper: its earlier messages slot in among Claude's by time.
-  if (before === undefined && C.compThread && C.provider === 'claude') {
-    try { rows = mergeHelper(rows, (await api(`/api/chat/history?${new URLSearchParams({ id: C.compThread, provider: 'codex' })}`)).items); } catch { /* shown without them */ }
+  // The partner's earlier messages (Codex in a Claude chat, or Claude in a Codex chat) slot in by time.
+  if (before === undefined && C.compThread) {
+    try { rows = mergeHelper(rows, (await api(`/api/chat/history?${new URLSearchParams({ id: C.compThread, provider: partnerProv() })}`)).items); } catch { /* shown without them */ }
     if (gen !== C.gen) return null;
   }
   const tmp = document.createElement('div');
@@ -81,11 +226,14 @@ async function settle() {
 }
 
 function mergeHelper(rows, items) {
-  // The helper's turns, each starting at your message; ones from a helper still running come live.
+  // The partner's turns, each starting at your message; ones from a partner still running come live.
+  // Codex keeps a turn's time to the second, so its turn counts from the end of that second (a turn
+  // handed over within a second of the other's reply still comes after it).
   const cutoff = C.comp && C.comp.startedAt ? Date.parse(C.comp.startedAt) : Infinity;
+  const late = partnerProv() === 'codex' ? 999 : 0;
   const groups = [];
   for (const it of items) {
-    if (it.kind === 'user' || !groups.length) groups.push({ t: it.at ? Date.parse(it.at) : -Infinity, items: [] });
+    if (it.kind === 'user' || !groups.length) groups.push({ t: it.at ? Date.parse(it.at) + late : -Infinity, items: [] });
     groups[groups.length - 1].items.push(it);
   }
   const keep = groups.filter(g => !(g.t >= cutoff));
@@ -93,10 +241,10 @@ function mergeHelper(rows, items) {
   let gi = 0, last = -Infinity;
   for (const r of rows) {
     const t = r.it.at ? Date.parse(r.it.at) : last; last = t;
-    while (gi < keep.length && keep[gi].t <= t) out.push(...keep[gi++].items.map(it => ({ it, prov: 'codex' })));
+    while (gi < keep.length && keep[gi].t <= t) out.push(...keep[gi++].items.map(it => ({ it, prov: partnerProv() })));
     out.push(r);
   }
-  while (gi < keep.length) out.push(...keep[gi++].items.map(it => ({ it, prov: 'codex' })));
+  while (gi < keep.length) out.push(...keep[gi++].items.map(it => ({ it, prov: partnerProv() })));
   return out;
 }
 
@@ -122,7 +270,7 @@ function reset() {
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
   Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
-  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.undoNotes = { main: [], comp: [] };
+  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null;
   Review.loop = null;
   closePick();
   $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
@@ -154,7 +302,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   if (info.modes) modeOptions(info.modes);
   if (info.models && info.models.length) C.mi.main = info;
   C.compThread = info.companionThread || null;
-  if (info.companionKey && C.provider === 'claude') { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { /* the helper has stopped */ } }
+  if (info.companionKey) { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { /* the helper has stopped */ } }
   if (gen !== C.gen) return;
   setTarget('main', false);
   $c('chat').classList.toggle('codex', C.provider === 'codex');
@@ -186,12 +334,28 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   $c('cText').focus();
 }
 
-async function open({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '' } = {}) {
+async function open({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false } = {}) {
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
   const [known] = sessionId ? findSession(sessionId) : [null];
   // An OpenClaw agent's session is read here; it carries on in OpenClaw.
   if (known && known.provider === 'openclaw') return watch({ sessionId: known.id, source: 'openclaw' });
   const prov = provider || (known && known.provider) || 'claude';
+  // One chat per project: a new Codex chat where a Claude chat is open (or the other way round) adds
+  // that one to the open chat instead, unless you'd rather have a separate chat. Esc does neither.
+  if (mode === 'new' && cwd && !separate) {
+    const same = d => String(d || '').replace(/[\\/]+$/, '').toLowerCase();
+    const here = S.activity.find(x => x.source === 'app' && !x.parentKey && x.phase !== 'ended' && same(x.cwd) === same(cwd) && (x.provider || 'claude') !== prov);
+    if (here) {
+      const name = PROV_NAME[prov];
+      const join = await window.appConfirm(`Add ${name} to “${here.title || 'the open chat'}”?\n\nThat chat is already open in this project. ${name} joins it and reads everything in it, so the work stays in one place.`, { ok: `Add ${name} to it`, cancel: `Start a separate ${name} chat`, escape: null });
+      if (join === null) return undefined;
+      if (!join) return open({ sessionId, cwd, mode, force, accountId, provider, initialText, separate: true });
+      await openKey(here.key);
+      setTarget('comp');
+      if (initialText) placeText(initialText, true);
+      return undefined;
+    }
+  }
   // A new Claude chat about to open as an account that's out of usage: offer the one with room.
   if (mode === 'new' && prov === 'claude' && !accountId && a) {
     const alt = await roomierAccount(a);
@@ -294,12 +458,39 @@ function close(silent) {
   if (!silent) loadSessions().then(() => { renderSide(); renderMain(); }).catch(() => {});
 }
 
+/* ---------- selecting ---------- */
+// Select all (a phone's, or Ctrl+A) takes the whole page: the header, every button, the message box.
+// In a chat it keeps to what you were in instead: the code block, else the message. Once that's all
+// selected, Select all again takes the whole conversation (still not the page around it).
+const Sel = { in: null, whole: false };
+const selHost = n => { const el = n && (n.nodeType === 1 ? n : n.parentElement); return el ? el.closest('#cFeed pre, #cFeed .md, #cFeed .ububble') : null; };
+const flat = s => s.replace(/\s+/g, ' ').trim();
+function onSelection() {
+  if ($c('chat').hidden) return;
+  const sel = document.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const r = sel.getRangeAt(0), a = selHost(r.startContainer);
+  if (a && a === selHost(r.endContainer)) { Sel.in = a; Sel.whole = !r.collapsed && flat(r.toString()) === flat(a.textContent); return; }
+  if (r.collapsed) { Sel.in = null; return; }
+  // A selection that runs from the chat's header to its message box is Select all.
+  const head = $c('chat').querySelector('.c-head'), foot = $c('cCompose');
+  if (!Sel.in || !Sel.in.isConnected || !r.intersectsNode(head) || !r.intersectsNode(foot)) return;
+  sel.selectAllChildren(Sel.whole ? $c('cFeed') : Sel.in);
+}
+document.addEventListener('selectionchange', onSelection);
+
 /* ---------- events ---------- */
 function lightbox(src) { $c('cLight').querySelector('img').src = src; $c('cLight').hidden = false; $c('cLight').focus(); }
 function openFile(p) { return Viewer.open({ path: p, key: C.key, session: C.sessionId || (C.watch && C.watch.sessionId), cwd: C.info && C.info.cwd }); }
 
 document.addEventListener('DOMContentLoaded', () => {
   const chat = $c('chat');
+  $c('cRail').addEventListener('pointerdown', railDown);
+  document.addEventListener('pointermove', railMove);
+  document.addEventListener('pointerup', railUp);
+  document.addEventListener('pointercancel', railUp);
+  // The click at the end of a drag doesn't open the chat that was dragged.
+  $c('cRail').addEventListener('click', e => { if (Date.now() - Rail.dropped < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
   chat.addEventListener('click', wrap(async e => {
     const t = e.target;
     const fl = t.closest('.flink[data-path], [data-file]');
@@ -307,12 +498,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const rv = t.closest('[data-reveal]');
     if (rv) { const r = await api('/api/reveal', { path: rv.dataset.reveal, key: C.key, session: C.sessionId }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
     const cp = t.closest('[data-copy]');
-    if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copy); toast('Copied.', 1500); } catch { prompt('Copy this:', cp.dataset.copy); } return; }
+    if (cp) return copyText(cp.dataset.copy);
     const ri = t.closest('.ri');
+    if (ri && ri.dataset.navchat) {
+      // A pinned chat that's closed: open it again, in this window (or watch it, if it's in a terminal).
+      const id = ri.dataset.navchat;
+      chat.classList.remove('show-rail'); S.closed.delete(`s:${id.toLowerCase()}`);
+      if (isViewing({ sessionId: id })) return;
+      return isRunning(id) ? watch({ sessionId: id, source: 'terminal' }) : open({ sessionId: id });
+    }
     if (ri) { const li = ri.closest('li'); const x = li && findActivity(li.dataset.k); chat.classList.remove('show-rail'); if (x && !isViewing(x)) return openActivity(x); return; }
     const thumb = t.closest('.thumb'); if (thumb) return lightbox(thumb.dataset.full);
     const cc = t.closest('.code-copy');
-    if (cc) { try { await navigator.clipboard.writeText(cc.closest('.code').querySelector('code').textContent); cc.textContent = 'Copied'; setTimeout(() => { cc.textContent = 'Copy'; }, 1500); } catch { toast('Couldn’t copy.'); } return; }
+    if (cc) return copyText(cc.closest('.code').querySelector('code').textContent, null).then(ok => { if (ok) copiedButton(cc); });
     const more = t.closest('.tg-more'); if (more) { const g = more.closest('.tools'); g.classList.toggle('open'); updateGroup(g); return; }
     const rm = t.closest('[data-rm]'); if (rm) { const [a] = C.attachments.splice(+rm.dataset.rm, 1); if (a && a.url) URL.revokeObjectURL(a.url); renderAttachments(); return; }
     const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
@@ -355,10 +553,10 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
       case 'copyturn': {
-        const turn = c.closest('.turn');
-        const text = [...turn.querySelectorAll('.final > .md')].map(x => x.innerText.trim()).filter(Boolean).join('\n\n');
-        try { await navigator.clipboard.writeText(text); toast('Copied.', 1500); } catch { toast('Couldn’t copy.'); }
-        return undefined;
+        // The reply as written (Markdown), not as shown: headings, lists and code fences come along.
+        const text = turnMarkdown(c.closest('.turn'));
+        if (!text) { toast('This reply has no text to copy yet.', 2500); return undefined; }
+        return copyText(text, null).then(ok => { if (ok) copiedButton(c); });
       }
       case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return open({ sessionId: id, mode: 'resume', accountId: provider === 'codex' ? null : accountId, provider }); }
       case 'fork': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'fork' }); }
@@ -367,7 +565,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { glyph: '⧉', label: 'Open a copy here', hint: 'keeps the original', run: () => open({ sessionId: C.watch.sessionId, mode: 'fork' }) },
         '-',
         ...chatHeadItems(),
-        { label: 'Copy terminal command', run: async () => { const r = await api('/api/command', { account: S.acct, sessionId: C.watch.sessionId }); try { await navigator.clipboard.writeText(r.command); toast('Copied.'); } catch { prompt('Copy this command:', r.command); } } },
+        { label: 'Copy terminal command', run: async () => { const r = await api('/api/command', { account: S.acct, sessionId: C.watch.sessionId }); return copyText(r.command, 'Copied the command.'); } },
       ] : [
         ...chatHeadItems().filter(x => x === '-' || !/^Stop this chat/.test(x.label)),
         '-',
@@ -376,7 +574,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const key = C.key; close(); const r = await api('/api/chat/handoff', { key });
           toast(r.dryRun ? `Would open a ${r.how}:\n${r.script}` : `Continuing in a ${r.how}.`, 7000);
         } },
-        { label: 'Copy terminal command', disabled: !C.sessionId, run: async () => { const r = await api('/api/command', { account: C.info.accountId, sessionId: C.sessionId }); try { await navigator.clipboard.writeText(r.command); toast('Copied.'); } catch { prompt('Copy this command:', r.command); } } },
+        { label: 'Copy terminal command', disabled: !C.sessionId, run: async () => { const r = await api('/api/command', { account: C.info.accountId, sessionId: C.sessionId }); return copyText(r.command, 'Copied the command.'); } },
         '-',
         stopItem(),
       ]);
@@ -452,14 +650,22 @@ document.addEventListener('DOMContentLoaded', () => {
   $c('pickBack').addEventListener('pointerdown', e => e.preventDefault());
   $c('pickBack').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closePick(); });
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && Rail.drag && Rail.drag.on && !Rail.drag.settling) { e.preventDefault(); e.stopPropagation(); Rail.dropped = Date.now(); railSettle(Rail.drag, false); return; }
     if (e.key === 'Escape' && !$c('cLight').hidden) { $c('cLight').hidden = true; e.stopPropagation(); return; }
     if ($c('chat').hidden) return;
-    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); switchRail(e.key === 'ArrowDown' ? 1 : -1); }
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); (e.shiftKey ? moveInRail : switchRail)(e.key === 'ArrowDown' ? 1 : -1); }
   }, true);
 });
 
 /* ---------- right-click inside the chat ---------- */
-async function copyOut(text, what = 'Copied.') { try { await navigator.clipboard.writeText(text); toast(what, 1500); } catch { prompt('Copy this:', text); } }
+const copyOut = (text, what = 'Copied.') => copyText(text, what);
+// A Copy button says so for a moment once it has copied.
+function copiedButton(b) {
+  clearTimeout(b._copied);
+  if (!b.dataset.label) b.dataset.label = b.textContent;
+  b.textContent = 'Copied ✓'; b.classList.add('copied');
+  b._copied = setTimeout(() => { b.textContent = b.dataset.label; b.classList.remove('copied'); }, 1600);
+}
 const quote = text => text.trim().split('\n').map(l => `> ${l}`).join('\n');
 async function copyImage(src) {
   try {
@@ -470,7 +676,7 @@ async function copyImage(src) {
     }
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
     toast('Picture copied.', 1500);
-  } catch { toast('This picture can’t be copied here. Use “Show in folder” instead.'); }
+  } catch { toast(window.REMOTE || !window.isSecureContext ? 'Press and hold the picture to copy or save it.' : 'This picture can’t be copied here. Use “Show in folder” instead.'); }
 }
 function modelItems(src) {
   const name = PROV_NAME[provFor(src)];
@@ -524,7 +730,7 @@ function chatContextItems(t, at) {
     return [
       { glyph: '⧉', label: 'Copy', keys: 'Ctrl C', run: () => copyOut(picked) },
       ...(!C.watch ? [{ glyph: '❝', label: 'Quote in my message', run: () => placeText(`${quote(picked)}\n\n`, false) }] : []),
-      ...(duo() ? [{ glyph: '◆', label: C.target === 'comp' ? 'Ask Claude about this' : 'Ask Codex about this', run: () => { setTarget(C.target === 'comp' ? 'main' : 'comp', false); placeText(`${quote(picked)}\n\n`, false); } }] : []),
+      ...(duo() ? [{ glyph: '◆', label: `Ask ${PROV_NAME[C.target === 'comp' ? C.provider : partnerProv()]} about this`, run: () => { setTarget(C.target === 'comp' ? 'main' : 'comp', false); placeText(`${quote(picked)}\n\n`, false); } }] : []),
       { glyph: '⌕', label: `Find “${short}” in this chat`, run: () => openFind(picked) },
       { glyph: '✦', label: `Search every chat for “${short}”`, run: () => openPalette(picked) },
     ];
@@ -579,7 +785,7 @@ function chatContextItems(t, at) {
     const text = RAW.get(um) || um.innerText;
     return [
       { glyph: '⧉', label: 'Copy message', run: () => copyOut(text) },
-      ...(!C.watch ? [{ glyph: '↺', label: 'Edit and send again', hint: 'puts it back in the message box', run: () => { if (um.classList.contains('to-codex')) setTarget('comp', false); placeText(text, true); } },
+      ...(!C.watch ? [{ glyph: '↺', label: 'Edit and send again', hint: 'puts it back in the message box', run: () => { if (um.classList.contains('to-partner')) setTarget('comp', false); placeText(text, true); } },
         { glyph: '❝', label: 'Quote it', run: () => placeText(`${quote(text)}\n\n`, false) }] : []),
     ];
   }
@@ -590,7 +796,7 @@ function chatContextItems(t, at) {
       ...(text ? [{ glyph: '⧉', label: 'Copy reply', run: () => copyOut(turn.querySelector('.final > .md') ? [...turn.querySelectorAll('.final > .md')].map(x => x.innerText.trim()).join('\n\n') : text) },
         { label: 'Copy as Markdown', run: () => copyOut(text) }] : []),
       ...(text && !C.watch ? [{ glyph: '❝', label: 'Quote in my message', run: () => placeText(`${quote(text)}\n\n`, false) }] : []),
-      ...(text && duo() ? [{ glyph: prov === 'codex' ? '✦' : '◆', label: prov === 'codex' ? 'Send to Claude' : 'Ask Codex about this', run: () => relay(turn) }] : []),
+      ...(text && duo() ? [{ glyph: prov === 'codex' ? '✦' : '◆', label: prov === C.provider ? `Ask ${PROV_NAME[partnerProv()]} about this` : `Send to ${PROV_NAME[C.provider]}`, run: () => relay(turn) }] : []),
       '-',
       ...chatHeadItems().filter(x => x !== '-' && /^(Find|Jump)/.test(x.label)),
     ];
@@ -602,7 +808,7 @@ function chatContextItems(t, at) {
     return [
       ...(duo() && C.target !== src ? [{ glyph: '➤', label: `Write to ${name}`, keys: 'Ctrl .', run: () => setTarget(src) }] : []),
       ...modelItems(src),
-      ...(src === 'comp' && C.comp && !C.comp.ended ? ['-', { label: 'Stop the Codex helper', hint: 'your next message to Codex starts it again', danger: true, run: () => api('/api/chat/stop', { key: C.comp.key }) }] : []),
+      ...(src === 'comp' && C.comp && !C.comp.ended ? ['-', { label: `Stop ${PROV_NAME[partnerProv()]} in this chat`, hint: `your next message to ${PROV_NAME[partnerProv()]} starts it again`, danger: true, run: () => api('/api/chat/stop', { key: C.comp.key }) }] : []),
     ];
   }
   if (t.closest('.c-head, #cFeed, .c-scroll')) return chatHeadItems();
@@ -610,7 +816,7 @@ function chatContextItems(t, at) {
 }
 
 window.ChatUI = {
-  open, openKey, watch, close, md, renderRail, refreshUsage: refreshChatUsage, isViewing,
+  open, openKey, watch, close, md, renderRail, refreshUsage: refreshChatUsage, isViewing, neighbor: railNeighbor,
   accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
   showLedger: () => { const chat = $c('chat'); if (matchMedia('(max-width: 1320px)').matches) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
   sessionsChanged: () => { if (C.watch) refreshWatch(); },
@@ -626,7 +832,7 @@ window.ChatUI = {
     if (reviewAvailable() && C.state !== 'ended') out.push({ glyph: '◆', t: 'Have Codex review this chat’s changes', s: 'in a read-only sandbox', run: () => startReview(), text: 'review code codex check changes second opinion bugs' });
     for (const src of duo() ? ['main', 'comp'] : ['main']) {
       const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
-      if (src === 'comp' && (!mi || !mi.models)) { out.push({ glyph: '◆', t: `Choose Codex’s model…`, s: 'Codex helper', run: () => openPick('comp'), text: 'codex model switch effort' }); continue; }
+      if (src === 'comp' && (!mi || !mi.models)) { out.push({ glyph: '◆', t: `Choose ${name}’s model…`, s: `${name}, in this chat`, run: () => openPick('comp'), text: `${name.toLowerCase()} model switch effort` }); continue; }
       if (C.ctx[src]) out.push({ glyph: '⇲', t: `${name}: summarize the conversation now`, s: ctxLine(src), run: () => compactNow(src), text: `${name} summarize compact context full memory` });
       for (const m of (mi && mi.models) || []) if (m.value !== mi.model) out.push({ glyph: src === 'comp' ? '◆' : '✦', t: `${name}: ${m.label}`, s: m.description, run: () => pickModel(src, { model: m.value }), text: `model switch ${name} ${m.label} ${m.value}` });
       for (const e of (mi && (((mi.models || []).find(x => x.value === mi.model) || {}).efforts || mi.efforts)) || []) if (e !== mi.effort) out.push({ glyph: '◈', t: `${name}: ${e} effort`, run: () => pickModel(src, { effort: e }), text: `effort ${name} ${e} think` });

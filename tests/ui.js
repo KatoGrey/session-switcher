@@ -49,6 +49,20 @@ module.exports = [
       await b.eval(`window._r = 'pending'; appConfirm('Go?', { ok: 'Go' }).then(v => window._r = v); return 1`); await sleep(150);
       await b.clickOn('#cfYes');
       t.check('confirm: OK answers yes', (await b.eval(`return window._r`)) === true);
+      // Enter confirms: an ordinary question, and a box asking for a name (it used to land on Cancel).
+      const enter = async () => { await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' }); await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); await sleep(200); };
+      await b.eval(`window._r = 'pending'; appConfirm('Go on?', { ok: 'Go on' }).then(v => window._r = v); return 1`); await sleep(150);
+      await enter();
+      t.check('confirm: Enter answers yes', (await b.eval(`return window._r`)) === true);
+      await b.eval(`window._r = 'pending'; ask('Rename chat', 'A new name.', 'Old name', 'Rename', { maxLength: 120 }).then(v => window._r = v); return 1`); await sleep(150);
+      await b.send('Input.insertText', { text: 'New name' }); await sleep(50);
+      await enter();
+      t.check('rename: Enter renames', (await b.eval(`return window._r`)) === 'New name', await b.eval(`return window._r`));
+      await b.eval(`window._r = 'pending'; ask('Rename chat', 'A new name.', '', 'Rename').then(v => window._r = v); return 1`); await sleep(150);
+      await enter();
+      t.check('rename: Enter on an empty name keeps asking', (await b.eval(`return window._r === 'pending' && document.getElementById('dlg').open`)));
+      await b.clickOn('#dlg [data-close-dlg]'); await sleep(200);
+      t.check('rename: Cancel still cancels', (await b.eval(`return window._r === null && !document.getElementById('dlg').open`)));
     },
   },
   {
@@ -266,42 +280,42 @@ module.exports = [
       const sends = () => calls.filter(([p]) => p === '/api/chat/send').map(([, body]) => body);
       const type = async text => { await b.eval(`const ta = document.getElementById('cText'); ta.focus(); ta.value = ${JSON.stringify(text)}; ta.dispatchEvent(new Event('input', { bubbles: true })); return 1`); await b.key('Enter', 'Enter', 13); await sleep(500); };
 
-      // Codex made the key art since Claude last spoke: writing to Claude brings it along.
+      // Writing to Claude: your words, as you wrote them. The app itself catches Claude up (lib/pairs.js).
       await type('Thanks! Use that art in the patch notes.');
       let s = sends().at(-1);
-      t.check('Claude is caught up on what Codex did', s && s.key === 'k-bard' && /^<shared-context items="2">/.test(s.text) && /The user, to Codex:/.test(s.text) && /Codex:\nHere it is\./.test(s.text), s && s.text.slice(0, 300));
-      t.check('and what you wrote comes after it', s && s.text.endsWith('</shared-context>\n\nThanks! Use that art in the patch notes.'));
-      // As the chat shows it: only your words, with the catch-up folded away.
-      await b.eval(`handle({ kind: 'user', text: ${JSON.stringify(s.text)}, at: new Date().toISOString(), seq: 300 }); return 1`); await sleep(300);
+      t.check('a message to Claude goes as you wrote it', s && s.key === 'k-bard' && !s.to && s.text === 'Thanks! Use that art in the patch notes.', s);
+      // As the chat shows it once caught up: only your words, with the catch-up folded away.
+      const caught = '<shared-context items="2">\nYou and Codex share this chat; the user sees you both. Since you last caught up:\n\nThe user, to Codex:\nMake the key art.\n\nCodex:\nHere it is.\n</shared-context>\n\nThanks! Use that art in the patch notes.';
+      await b.eval(`handle({ kind: 'user', text: ${JSON.stringify(caught)}, at: new Date().toISOString(), seq: 300 }); return 1`); await sleep(300);
       const um = await b.eval(`const u = [...document.querySelectorAll('.umsg')].pop(); return { bubble: u.querySelector('.ububble').textContent.trim(), fold: u.querySelector('details.shared summary')?.textContent, raw: RAW.get(u) }`);
       t.check('the chat shows only your words', um.bubble === 'Thanks! Use that art in the patch notes.' && um.raw === 'Thanks! Use that art in the patch notes.', um);
       t.check('with a fold-out saying what was shared', um.fold === 'Claude was caught up on 2 messages', um.fold);
       await t.shot(b, 'caught-up');
 
-      // Claude suggests work for Codex; you switch to Codex and just say "do 2".
-      await b.eval(`handle({ kind: 'assistant', mid: 'm9', at: new Date().toISOString(), model: 'claude-opus-5-5', seq: 301, blocks: [
-        { type: 'tool', id: 't9', name: 'Edit', summary: 'notes/PATCH-1.4.md', meta: { path: 'notes/PATCH-1.4.md' }, detail: '', detailKind: 'text', result: { text: 'ok', isError: false, images: [] } },
-        { type: 'text', text: 'Codex could take two jobs: 1. a 512px icon of the bard, 2. a quick load test of songs.lua.' }] }); return 1`); await sleep(300);
+      // Switching to Codex: the message goes to this chat's partner (started if need be).
       await b.clickOn('[data-crew="comp"]'); await sleep(300);
       await type('Do number 2, please.');
       s = sends().at(-1);
-      t.check('Codex sees Claude’s suggestion (and what it changed)', s && s.key === 'k-bard-cx' && /Claude:\nCodex could take two jobs/.test(s.text) && /\(Claude changed notes\/PATCH-1\.4\.md\.\)/.test(s.text) && /The user, to Claude:\nThanks! Use that art/.test(s.text), s && s.text.slice(0, 400));
-      t.check('without repeating what Codex already said', s && !/Codex:\nHere it is/.test(s.text));
+      t.check('a message to Codex goes to this chat’s partner', s && s.key === 'k-bard' && s.to === 'partner' && s.text === 'Do number 2, please.', s);
+      await type('@claude what do you think?');
+      s = sends().at(-1);
+      t.check('@claude sends just that one to Claude', s && s.key === 'k-bard' && !s.to && s.text === 'what do you think?', s);
 
-      // Both: one message, each caught up on its own; drawn once.
-      await b.eval(`handle({ kind: 'user', text: ${JSON.stringify(s.text)}, at: new Date().toISOString(), seq: 302 }, 'comp'); handle({ kind: 'assistant', mid: 'cx9', at: new Date().toISOString(), seq: 303, blocks: [{ type: 'text', text: 'Load test done: 2,000 songs in 41 ms.' }] }, 'comp'); return 1`); await sleep(300);
+      // Both: they take turns. One message; Claude answers, then Codex picks it up and builds on it.
       await b.clickOn('[data-crew="both"]'); await sleep(300);
       const tgt = await b.eval(`return { target: C.target, ph: document.getElementById('cText').placeholder, on: [...document.querySelectorAll('.crew.on')].map(x => x.dataset.crew).join() }`);
-      t.check('“Both” writes to Claude and Codex', tgt.target === 'both' && /Claude and Codex/.test(tgt.ph) && tgt.on === 'main,comp,both', tgt);
+      t.check('“Both”: Claude answers, then Codex builds on it', tgt.target === 'both' && /Claude answers, then Codex builds on it/.test(tgt.ph) && tgt.on === 'main,comp,both', tgt);
       const n0 = sends().length;
       await type('Plan the 1.4 release together.');
-      const two = sends().slice(n0);
-      t.check('one message goes to each', two.length === 2 && two.some(x => x.key === 'k-bard') && two.some(x => x.key === 'k-bard-cx'), two.map(x => x.key));
-      const toClaude = two.find(x => x.key === 'k-bard'), toCodex = two.find(x => x.key === 'k-bard-cx');
-      t.check('each caught up on what it missed', /Codex:\nLoad test done/.test(toClaude.text) && !/Codex:\nLoad test done/.test(toCodex.text) && toCodex.text === 'Plan the 1.4 release together.', [toClaude.text.slice(0, 200), toCodex.text.slice(0, 200)]);
-      await b.eval(`const at = new Date().toISOString(); handle({ kind: 'user', text: ${JSON.stringify(toClaude.text)}, at, seq: 304 }); handle({ kind: 'user', text: ${JSON.stringify(toCodex.text)}, at, seq: 305 }, 'comp'); return 1`); await sleep(300);
-      const last = await b.eval(`const u = [...document.querySelectorAll('.umsg')].filter(x => /Plan the 1.4 release/.test(x.textContent)); return { n: u.length, tag: u[0] && u[0].querySelector('.to-tag')?.textContent, both: u[0] && u[0].classList.contains('to-both') }`);
-      t.check('and it shows once: “to Claude & Codex”', last.n === 1 && last.both && last.tag === 'to Claude & Codex', last);
+      const both = sends().slice(n0);
+      t.check('one message, sent once for them to take turns', both.length === 1 && both[0].to === 'both' && both[0].key === 'k-bard' && both[0].text === 'Plan the 1.4 release together.', both);
+      await b.eval(`handle({ kind: 'user', text: 'Plan the 1.4 release together.', at: new Date().toISOString(), seq: 301 }); handle({ kind: 'handoff', to: 'codex', state: 'waiting', seq: 302 }); return 1`); await sleep(300);
+      const wait = await b.eval(`const u = [...document.querySelectorAll('.umsg')].pop(); return { tag: u.querySelector('.to-tag')?.textContent, next: document.querySelector('[data-crew="comp"] .crew-m')?.textContent }`);
+      t.check('it says Claude first, then Codex, and Codex is up next', wait.tag === 'to Claude, then Codex' && /up next/.test(wait.next || ''), wait);
+      const relayed = '<shared-context items="1">\nYou and Claude share this chat; the user sees you both. Since you last caught up:\n\nClaude:\nShip on Friday.\n\nThe user sent the message below to both of you, and Claude answered it first (above). Build on that answer (check it, add what it missed, do your part) rather than repeating it.\n</shared-context>\n\nPlan the 1.4 release together.';
+      await b.eval(`handle({ kind: 'assistant', mid: 'm10', at: new Date().toISOString(), model: 'claude-opus-5-5', seq: 303, blocks: [{ type: 'text', text: 'Ship on Friday.' }] }); handle({ kind: 'handoff', to: 'codex', state: 'sent', seq: 304 }); handle({ kind: 'user', relay: true, text: ${JSON.stringify(relayed)}, at: new Date().toISOString(), seq: 305 }, 'comp'); return 1`); await sleep(300);
+      const ho = await b.eval(`return { handover: !!document.querySelector('.handover[data-prov="codex"]'), text: (document.querySelector('.handover')?.textContent || '').replace(/\\s+/g, ' ').trim(), dupes: [...document.querySelectorAll('.umsg')].filter(x => /Plan the 1.4 release/.test(x.textContent)).length, next: document.querySelector('[data-crew="comp"] .crew-m')?.textContent }`);
+      t.check('then “Codex takes it from here”, not your message again', ho.handover && /Codex takes it from here/.test(ho.text) && ho.dupes === 1 && !/up next/.test(ho.next || ''), ho);
       await t.shot(b, 'both');
 
       // Esc twice stops both.
@@ -344,6 +358,171 @@ module.exports = [
       const n0 = await nav();
       await b.eval(`S.projects = S.projects.slice().reverse(); renderNav(); return 1`); await sleep(200);
       t.check('the sidebar’s projects don’t swap places either', n0.length >= 3 && JSON.stringify(await nav()) === JSON.stringify(n0), [n0, await nav()]);
+    },
+  },
+  {
+    name: 'rail',
+    // The chat window's list on the left: what's open now, chats pinned there, drag to reorder, right-click to close.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, url, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const names = list => b.eval(`return [...document.querySelectorAll('#${list} .ri-n')].map(x => x.textContent.trim().slice(0, 18))`);
+      const push = list => b.eval(`es.dispatchEvent(new MessageEvent('activity', { data: JSON.stringify({ list: ${JSON.stringify(list)} }) })); await new Promise(r => setTimeout(r, 300)); return 1`);
+      const at = (list, i) => b.eval(`const q = document.querySelectorAll('#${list} .ri')[${i}].getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]`);
+      const find = async (list, re) => at(list, (await names(list)).findIndex(n => re.test(n)));
+      const menu = () => b.eval(`return [...document.querySelectorAll('#menu .m-l')].map(x => x.firstChild.textContent.trim())`);
+      const pick = label => b.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => x.querySelector('.m-l')?.firstChild.textContent.trim() === ${JSON.stringify(label)}).click(); await new Promise(r => setTimeout(r, 400)); return 1`);
+      const viewing = () => b.eval(`return ChatUI.isOpen() ? String(ChatUI.sessionId() || '').toLowerCase() : 'closed'`);
+      const now = await b.eval(`return S.activity.map(x => ({ ...x }))`);
+
+      t.check('the list is called Active now', /^Active now/.test(await b.eval(`return document.getElementById('cActH').textContent.trim()`)));
+      const before = await names('cRailList');
+      t.check('every open chat is in it', before.length === 4, before);
+
+      // Drag the last one to the top.
+      const from = await at('cRailList', before.length - 1), to = await at('cRailList', 0);
+      const mouse = (type, x, y, buttons) => b.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons, clickCount: 1 });
+      await mouse('mouseMoved', from[0], from[1], 0); await mouse('mousePressed', from[0], from[1], 1);
+      for (let i = 1; i <= 10; i++) { await mouse('mouseMoved', from[0], from[1] + (to[1] - 14 - from[1]) * i / 10, 1); await sleep(30); }
+      await sleep(250);
+      const mid = await b.eval(`const lis = [...document.querySelectorAll('#cRailList > li')]; return { order: lis.map(li => li.querySelector('.ri-n').textContent.trim().slice(0, 18)), lifted: lis.some(li => li.classList.contains('dragging') && /translateY/.test(li.style.transform)), room: lis.filter(li => !li.classList.contains('dragging') && /translateY/.test(li.style.transform)).length }`);
+      t.check('while dragging, the chat follows the pointer and the others make room', JSON.stringify(mid.order) === JSON.stringify(before) && mid.lifted && mid.room === before.length - 1, mid);
+      await t.shot(b, 'dragging');
+      await mouse('mouseReleased', from[0], to[1] - 14, 0); await sleep(700);
+      const dragged = await names('cRailList');
+      t.check('dragging moves a chat', dragged.length === before.length && dragged[0] === before.at(-1), dragged);
+      t.check('and doesn’t open it', (await viewing()) === demo.ID['s-bard'].toLowerCase());
+      await push(now.slice().reverse().map((x, i) => ({ ...x, lastEventAt: Date.now() - i * 1000 })));
+      t.check('the order you chose stays while chats work', JSON.stringify(await names('cRailList')) === JSON.stringify(dragged), await names('cRailList'));
+      t.check('and is remembered', (JSON.parse(await b.eval(`return localStorage.getItem('railOrder')`)) || []).length >= 4);
+      // Esc while dragging puts the chat back where it was.
+      const e0 = await names('cRailList'), p0 = await at('cRailList', 0);
+      await mouse('mouseMoved', p0[0], p0[1], 0); await mouse('mousePressed', p0[0], p0[1], 1);
+      for (let i = 1; i <= 6; i++) { await mouse('mouseMoved', p0[0], p0[1] + i * 20, 1); await sleep(30); }
+      await b.key('Escape', 'Escape', 27); await sleep(150);
+      await mouse('mouseReleased', p0[0], p0[1], 0); await sleep(500);
+      t.check('Esc puts a dragged chat back', JSON.stringify(await names('cRailList')) === JSON.stringify(e0) && (await viewing()) === demo.ID['s-bard'].toLowerCase(), await names('cRailList'));
+      await b.eval(`document.getElementById('cText').blur(); return 1`);
+      await b.key('ArrowUp', 'ArrowUp', 38, 1 | 8); await sleep(200);
+      const moved = await names('cRailList'), was = dragged.findIndex(n => /^Balance pass/.test(n));
+      t.check('Alt+Shift+↑ moves the chat you’re in up one', was > 0 && moved.findIndex(n => /^Balance pass/.test(n)) === was - 1, [dragged, moved]);
+
+      // Right-click: pin one, and it stays even after it stops.
+      let p = await find('cRailList', /^Tavern brawl/);
+      await b.click(p[0], p[1], 'right');
+      const items = await menu();
+      t.check('right-click offers Pin and Close', items.includes('Pin to the sidebar') && items.includes('Close'), items);
+      await pick('Pin to the sidebar');
+      t.check('a pinned chat moves up to Pinned', (await names('cPinList')).some(n => /^Tavern brawl/.test(n)) && !(await names('cRailList')).some(n => /^Tavern brawl/.test(n)), [await names('cPinList'), await names('cRailList')]);
+      t.check('Pinned has its own heading', await b.eval(`return !document.getElementById('cPinH').hidden`));
+      await t.shot(b, 'pinned');
+      await push(now.filter(x => x.key !== 'k-brawl'));
+      const pin = () => b.eval(`const el = document.querySelector('#cPinList .ri'); return el && { n: el.querySelector('.ri-n').textContent, s: el.querySelector('.ri-s').textContent }`);
+      const p1 = await pin();
+      t.check('and stays there when it’s no longer running', !!p1 && /^Tavern brawl/.test(p1.n) && /^Closed/.test(p1.s), p1);
+
+      // Close: a chat in a terminal leaves the list (it keeps running there) until it does something new.
+      await push(now);
+      p = await find('cRailList', /^Route-finding/);
+      await b.click(p[0], p[1], 'right'); await pick('Close');
+      t.check('Close takes a chat off the list', !(await names('cRailList')).some(n => /^Route-finding/.test(n)), await names('cRailList'));
+      await push(now);
+      t.check('it stays off while nothing new happens in it', !(await names('cRailList')).some(n => /^Route-finding/.test(n)));
+      await push(now.map(x => (x.sessionId === demo.ID['s-route'] ? { ...x, lastEventAt: Date.now() + 5000 } : x)));
+      t.check('and comes back when something does', (await names('cRailList')).some(n => /^Route-finding/.test(n)));
+
+      // Closing a chat this app runs stops it; a pinned one stays pinned, closed.
+      p = await at('cPinList', 0);
+      await b.click(p[0], p[1], 'right'); await pick('Close');
+      t.check('closing a chat stops it', calls.some(([q, body]) => q === '/api/chat/stop' && body.key === 'k-brawl'), calls.filter(([q]) => /stop/.test(q)));
+      const p2 = await pin();
+      t.check('a pinned chat stays in the list, closed', !!p2 && /^Closed/.test(p2.s), p2);
+      p = await at('cPinList', 0);
+      await b.click(p[0], p[1], 'right'); await pick('Unpin from the sidebar');
+      t.check('unpinned and closed, it’s gone', (await names('cPinList')).length === 0 && await b.eval(`return document.getElementById('cPinH').hidden`));
+
+      // Closing the chat you're in moves you to the next one.
+      await push(now.map(x => (x.key === 'k-bard' ? { ...x, phase: 'idle', state: 'ready', finishedAt: Date.now() } : x)));
+      p = await find('cRailList', /^Balance pass/);
+      await b.click(p[0], p[1], 'right'); await pick('Close'); await sleep(300);
+      // Its Codex partner is still at work, so it asks first, and says who.
+      const q = await b.eval(`return document.getElementById('confirmDlg')?.open ? cfX.textContent : ''`);
+      t.check('closing a chat whose partner is at work asks first, naming it', /^Codex is in the middle of it; closing stops both of them now\./.test(q), q);
+      await b.clickOn('#cfYes'); await sleep(1200);
+      t.check('closing the chat you’re in moves on to another', calls.some(([q, body]) => q === '/api/chat/stop' && body.key === 'k-bard') && (await viewing()) !== demo.ID['s-bard'].toLowerCase(), await viewing());
+      await t.shot(b, 'rail');
+    },
+  },
+  {
+    name: 'one chat per project',
+    // Starting Codex where a Claude chat is open adds Codex to that chat (unless you'd rather not).
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      const bard = demo.projects.find(p => p.name === 'Starfall Tavern').cwd;
+      const ask = async () => { await b.eval(`window._done = false; ChatUI.open({ cwd: ${JSON.stringify(bard)}, mode: 'new', provider: 'codex' }).then(() => { window._done = true; }); return 1`); await sleep(400); return b.eval(`return document.getElementById('confirmDlg')?.open ? cfQ.textContent + ' | ' + cfYes.textContent + ' | ' + cfNo.textContent : ''`); };
+      const q = await ask();
+      t.check('a new Codex chat where a Claude chat is open offers to join it', /^Add Codex to “(Tavern brawl|Balance pass)[^”]*”\? \| Add Codex to it \| Start a separate Codex chat$/.test(q), q);
+      await b.esc(); await sleep(400);
+      t.check('Esc does neither', !calls.some(([p]) => p === '/api/chat/open' || p === '/api/chat/attach') && !(await b.eval(`return ChatUI.isOpen()`)));
+      await ask(); await b.clickOn('#cfYes'); await sleep(1500);
+      const j = await b.eval(`return { open: ChatUI.isOpen(), target: C.target }`);
+      const joined = calls.find(([p]) => p === '/api/chat/attach');
+      t.check('joining opens that chat, writing to Codex', j.open && joined && ['k-brawl', 'k-bard'].includes(joined[1].key) && j.target === 'comp' && !calls.some(([p, body]) => p === '/api/chat/open' && body.mode === 'new'), [j, joined]);
+      await b.eval(`ChatUI.close(); return 1`); await sleep(400);
+      await ask(); await b.clickOn('#cfNo'); await sleep(1200);
+      t.check('or a separate Codex chat, if you’d rather', calls.some(([p, body]) => p === '/api/chat/open' && body.mode === 'new' && body.provider === 'codex'));
+    },
+  },
+  {
+    name: 'copying',
+    // On a phone, through phone access: plain http, where the clipboard API is refused.
+    async run(t) {
+      const b = await t.open({ width: 412, height: 880, mobile: true });
+      await b.eval(`ChatUI.watch({ sessionId: ${JSON.stringify(demo.ID['s-brawl'])}, source: 'terminal' }); return 1`); await sleep(2200);
+      // Like a phone on http: no clipboard API. The older copy command records what it copied.
+      await b.eval(`Object.defineProperty(window, 'isSecureContext', { value: false, configurable: true });
+        window._ok = true; document.execCommand = cmd => { if (cmd !== 'copy') return false; const a = document.activeElement; window._copied = a && a.value !== undefined ? a.value.slice(a.selectionStart, a.selectionEnd) : String(getSelection()); return window._ok; };
+        return 1`);
+      const code = await b.eval(`return document.querySelector('#cFeed .code code').textContent`);
+      await b.eval(`document.querySelector('#cFeed .code').scrollIntoView({ block: 'center' }); return 1`); await sleep(300);
+      const cc = await b.eval(`const q = document.querySelector('#cFeed .code-copy').getBoundingClientRect(); return { h: q.height, w: q.width }`);
+      t.check('a code block’s Copy is big enough to tap', cc.h >= 34 && cc.w >= 60, cc);
+      await b.clickOn('#cFeed .code-copy');
+      t.check('it copies the code where the clipboard API is refused', (await b.eval(`return window._copied`)) === code, await b.eval(`return window._copied`));
+      t.check('and says so', /Copied/.test(await b.eval(`return document.querySelector('#cFeed .code-copy').textContent`)));
+
+      // A reply's buttons sit under it, roomy; the one beside the name is hidden.
+      const foot = await b.eval(`const tn = [...document.querySelectorAll('#cFeed .turn')].find(x => x.querySelector('.final .md')); const f = tn.querySelector('.turn-foot'), top = tn.querySelector('.who .turn-act');
+        const fy = f.getBoundingClientRect().top, below = [...tn.children].filter(x => x !== f && getComputedStyle(x).display !== 'none').every(x => x.getBoundingClientRect().bottom <= fy + 1);
+        return { shown: getComputedStyle(f).display !== 'none', last: below, topHidden: getComputedStyle(top).display === 'none', h: Math.min(...[...f.querySelectorAll('.ta')].filter(x => x.offsetParent).map(x => x.getBoundingClientRect().height)) }`);
+      t.check('a reply’s buttons sit under it on a phone', foot.shown && foot.last && foot.topHidden, foot);
+      t.check('big enough to tap', foot.h >= 36, foot);
+      await b.eval(`window._copied = ''; return 1`);
+      await b.eval(`const tn = [...document.querySelectorAll('#cFeed .turn')].find(x => x.querySelector('.final .md')); tn.querySelector('.turn-foot').scrollIntoView({ block: 'center' }); return 1`); await sleep(300);
+      const fb = await b.eval(`const tn = [...document.querySelectorAll('#cFeed .turn')].find(x => x.querySelector('.final .md')); const q = tn.querySelector('.turn-foot [data-c="copyturn"]').getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]`);
+      await b.click(fb[0], fb[1]);
+      const md = await b.eval(`return window._copied`);
+      t.check('Copy copies the reply as written (Markdown), not the buttons around it', /```lua/.test(md) && !/\\bCopy\\b/.test(md.replace(/Copy this/g, '')), md.slice(0, 160));
+
+      // When even the older command is refused, the text opens in a sheet, selected, to copy by hand.
+      await b.eval(`window._ok = false; return 1`);
+      await b.click(fb[0], fb[1]); await sleep(300);
+      const sheet = await b.eval(`const d = document.getElementById('copyDlg'), ta = document.getElementById('copyTa'); return { open: !!(d && d.open), all: ta && ta.selectionStart === 0 && ta.selectionEnd === ta.value.length && ta.value.length > 20 }`);
+      t.check('when a device refuses even that, the text opens in a sheet, selected', sheet.open && sheet.all, sheet);
+      await t.shot(b, 'sheet');
+      await b.eval(`document.getElementById('copyDlg').close(); return 1`);
+
+      // Select all keeps to the code block you're in, then the conversation, never the whole page.
+      await b.eval(`delete document.execCommand; return 1`);
+      const sel = () => b.eval(`return String(getSelection())`);
+      await b.eval(`const c = document.querySelector('#cFeed .code code'); const r = document.createRange(); r.setStart(c.firstChild.firstChild || c.firstChild, 1); r.collapse(true); getSelection().removeAllRanges(); getSelection().addRange(r); await new Promise(r => setTimeout(r, 100)); document.execCommand('selectAll'); await new Promise(r => setTimeout(r, 200)); return 1`);
+      t.check('Select all in a code block selects just the code', (await sel()).trim() === code.trim(), (await sel()).slice(0, 120));
+      await b.eval(`document.execCommand('selectAll'); await new Promise(r => setTimeout(r, 200)); return 1`);
+      const all = await sel(), title = await b.eval(`return document.getElementById('cTitle').textContent`);
+      t.check('again, the whole conversation and not the page around it', all.includes(code.trim()) && /Harvest Festival/.test(all) && !all.includes(title) && !/Watching live/.test(all), all.slice(0, 120));
+      await b.eval(`getSelection().removeAllRanges(); return 1`);
     },
   },
   {
@@ -619,10 +798,8 @@ module.exports = [
       await b.eval(`const ta = document.getElementById('cText'); ta.focus(); ta.value = 'Try a gentler fix.'; return 1`);
       await b.key('Enter', 'Enter', 13); await sleep(500);
       const sent = calls.filter(([p]) => p === '/api/chat/send').at(-1);
-      t.check('your next message tells Claude what was undone', sent && /^<shared-context items="\d+">/.test(sent[1].text) && /The user undid the file changes from your earlier reply: scripts\/bard\/songs\.lua, data\/balance\/party\.json, notes\/rally\.md are back as before it\./.test(sent[1].text) && sent[1].text.endsWith('Try a gentler fix.'), sent && sent[1].text.slice(0, 300));
-      await b.eval(`const ta = document.getElementById('cText'); ta.value = 'And another thing.'; return 1`);
-      await b.key('Enter', 'Enter', 13); await sleep(500);
-      t.check('only once', !/undid the file changes/.test(calls.filter(([p]) => p === '/api/chat/send').at(-1)[1].text));
+      // The app itself tells Claude what was undone, with this message (see the pairs tests).
+      t.check('your next message goes as you wrote it', sent && sent[1].text === 'Try a gentler fix.', sent && sent[1]);
     },
   },
   {
@@ -675,7 +852,7 @@ module.exports = [
       await b.clickOn('[data-act="reopen"]'); await sleep(600);
       t.check('one click reopens them', calls.some(([p, body]) => p === '/api/reopen' && body.action === 'reopen'));
       t.check('and the offer goes away', !(await b.eval(`return !!document.querySelector('.reopen')`)));
-      t.check('saying where they are', /Reopened 2 chats; they’re in Running now\./.test(await b.eval(`return document.getElementById('toast').textContent`)));
+      t.check('saying where they are', /Reopened 2 chats; they’re in Active now\./.test(await b.eval(`return document.getElementById('toast').textContent`)));
     },
   },
   {
@@ -746,11 +923,122 @@ module.exports = [
     },
   },
   {
+    name: 'malibu',
+    // The glam theme: its own lettering, words, sunset, sparkles, hearts and chimes; light mode first.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`Look.set({ theme: 'malibu', mode: 'light' }); return 1`); await sleep(1500);
+      const h = await b.eval(`await document.fonts.ready; const dot = getComputedStyle(document.querySelector('.gilt-dot, .ember-dot')); return {
+        fonts: document.fonts.check('20px Pacifico') && document.fonts.check('16px Nunito'),
+        home: [...document.querySelectorAll('.nav-i .ni-t')].some(x => x.textContent === 'Home'),
+        word: document.querySelector('.wordmark small').textContent,
+        scene: !!document.querySelector('.hero-art.sunset svg.mb-scene'),
+        hearts: document.querySelectorAll('.mb-hearts path').length,
+        counts: [...document.querySelectorAll('.sunset .ha-read b')].map(x => +x.textContent),
+        sky: !!document.querySelector('#petals .sky-sparkles'),
+        heartDot: /svg/.test(dot.maskImage || dot.webkitMaskImage || ''),
+        emblem: document.getElementById('sigil').innerHTML.includes('mb-hot') }`);
+      t.check('its lettering loads', h.fonts, h);
+      t.check('it speaks its own words', h.home && /all dolled up/.test(h.word), h);
+      t.check('the hero has the sunset', h.scene, h);
+      t.check('a heart in the sky for each chat waiting on you', h.counts.length === 3 && h.hearts === Math.min(h.counts[0], 7), h);
+      t.check('sparkles behind the hub', h.sky, h);
+      t.check('status dots are hearts', h.heartDot, h);
+      t.check('the logo is a heart', h.emblem, h);
+      t.check('it chimes with its own notes, not sound files', await b.eval(`return Array.isArray(Look.theme().tones.needs) && !Look.theme().sfx`));
+      await t.shot(b, 'hub-light');
+      await b.eval(`openSetup('look'); return 1`); await sleep(800);
+      t.check('Setup lists it under Glam', await b.eval(`return [...document.querySelectorAll('[aria-label="Glam themes"] .lk-theme')].map(x => x.dataset.v).join() === 'malibu'`));
+      await t.shot(b, 'setup');
+      await b.eval(`document.getElementById('setup').close(); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2000);
+      await t.shot(b, 'chat-light');
+      await b.eval(`Look.set({ mode: 'dark' }); return 1`); await sleep(600);
+      await t.shot(b, 'chat-dark');
+      await b.eval(`ChatUI.close(); return 1`); await sleep(1000);
+      await t.shot(b, 'hub-dark');
+      const p = await t.open({ width: 412, height: 880, mobile: true });
+      await p.eval(`Look.set({ theme: 'malibu', mode: 'light' }); return 1`); await sleep(1200);
+      t.check('on a phone, nothing scrolls sideways', await p.eval(`return document.scrollingElement.scrollWidth <= innerWidth + 1`));
+      await t.shot(p, 'phone');
+      await b.eval(`Look.reset(); return 1`); await p.eval(`Look.reset(); return 1`);
+    },
+  },
+  {
+    name: 'anime',
+    // Isekai, High Fantasy and Dungeon: their lettering, words, skies, logos and chimes, and hub scenes
+    // that read the same counts as the headline.
+    async run(t) {
+      const b = await t.open();
+      const LOOKS = {
+        isekai: { fonts: ['20px Orbitron', '16px "M PLUS Rounded 1c"'], home: 'Guild hall', word: /another world/, sky: 'motes', emblem: 'an-glow' },
+        highfantasy: { fonts: ['700 20px "Cinzel Decorative"', '16px "EB Garamond"'], home: 'The great hall', word: /scribes of the realm/, sky: 'fireflies', emblem: 'M20.0 5.5' },
+        dungeon: { fonts: ['20px "Pirata One"', '16px Alegreya', '16px "Alegreya SC"'], home: 'Camp', word: /deep below/, sky: 'embers', emblem: 'an-iron' },
+      };
+      for (const [id, want] of Object.entries(LOOKS)) {
+        await b.eval(`Look.set({ theme: ${JSON.stringify(id)}, mode: 'dark' }); return 1`); await sleep(1500);
+        const h = await b.eval(`await document.fonts.ready; const dot = getComputedStyle(document.querySelector('.gilt-dot, .ember-dot')); return {
+          fonts: ${JSON.stringify(want.fonts)}.every(f => document.fonts.check(f)),
+          home: [...document.querySelectorAll('.nav-i .ni-t')].some(x => x.textContent === ${JSON.stringify(want.home)}),
+          word: document.querySelector('.wordmark small').textContent,
+          sky: !!document.querySelector('#petals .sky-glow.${want.sky}'),
+          dot: /svg/.test(dot.maskImage || dot.webkitMaskImage || '') || dot.transform !== 'none',
+          emblem: document.getElementById('sigil').innerHTML.includes(${JSON.stringify(want.emblem)}),
+          tones: Array.isArray(Look.theme().tones.needs) && Array.isArray(Look.theme().tones.engage) && !Look.theme().sfx,
+          clockless: !/data-clock>[^<]/.test(document.getElementById('heroSlot')._h || '') }`);
+        t.check(`${id}: its lettering loads`, h.fonts, h);
+        t.check(`${id}: it speaks its own words`, h.home && want.word.test(h.word), h);
+        t.check(`${id}: its sky drifts behind the hub`, h.sky, h);
+        t.check(`${id}: status dots take its shape`, h.dot, h);
+        t.check(`${id}: the logo is its emblem`, h.emblem, h);
+        t.check(`${id}: it chimes with its own notes (choosing it too)`, h.tones, h);
+        t.check(`${id}: a new minute alone doesn’t redraw the hero`, h.clockless, h);
+        await t.shot(b, `${id}-hub`);
+      }
+      // The scenes read the counts: Isekai's crystals and magic circle, High Fantasy's windows and
+      // beacons, the Dungeon's torches, eyes and chests.
+      await b.eval(`Look.set({ theme: 'isekai' }); return 1`); await sleep(600);
+      const ie = await b.eval(`const n = [...document.querySelectorAll('.ie-sk b')].map(x => +x.textContent), hp = document.querySelector('.ie-bar.hp');
+        return { n, crystals: document.querySelectorAll('.ie-crystal').length, on: !!document.querySelector('.ie-circle.on'), hp: hp.querySelector('em').textContent, width: hp.querySelector('i b').style.width, lv: +document.querySelector('.ie-lv b').textContent }`);
+      t.check('isekai: a crystal floats up for each chat waiting on you', ie.n.length === 3 && ie.crystals === Math.min(ie.n[0], 6), ie);
+      t.check('isekai: the magic circle glows while chats are at work', ie.on === ie.n[1] > 0, ie);
+      t.check('isekai: HP is the five-hour window left', /^\d+%$/.test(ie.hp) && ie.width === ie.hp && ie.lv >= 1, ie);
+      await b.eval(`Look.set({ theme: 'highfantasy' }); return 1`); await sleep(600);
+      const hf = await b.eval(`return { n: [...document.querySelectorAll('.citadel .ha-read b')].map(x => +x.textContent), lit: document.querySelectorAll('.hf-win.lit').length, beacons: document.querySelectorAll('.hf-beacon').length, dragon: !!document.querySelector('.hf-dragon') }`);
+      t.check('high fantasy: a window lights for each chat at work, a beacon for each one waiting', hf.n.length === 3 && hf.lit === Math.min(hf.n[1], 9) && hf.beacons === Math.min(hf.n[0], 6) && hf.dragon, hf);
+      await b.eval(`Look.set({ theme: 'dungeon' }); return 1`); await sleep(600);
+      const dg = await b.eval(`return { n: [...document.querySelectorAll('.delve .ha-read b')].map(x => +x.textContent), torches: document.querySelectorAll('.dg-torch.lit').length, eyes: document.querySelectorAll('.dg-eyes').length, chests: document.querySelectorAll('.dg-chest').length }`);
+      t.check('dungeon: a torch for each chat at work, eyes for each one waiting, a chest for each one idle', dg.n.length === 3 && dg.torches === Math.min(dg.n[1], 4) && dg.eyes === Math.min(dg.n[0], 6) && dg.chests === Math.min(dg.n[2], 2), dg);
+      await b.eval(`openSetup('look'); return 1`); await sleep(800);
+      t.check('Setup lists them under Anime', await b.eval(`return [...document.querySelectorAll('[aria-label="Anime themes"] .lk-theme')].map(x => x.dataset.v).join() === 'isekai,highfantasy,dungeon'`));
+      await t.shot(b, 'setup');
+      // While a reply is being written, light runs along the top of the message box.
+      await b.eval(`document.getElementById('setup').close(); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2000);
+      const band = await b.eval(`const was = C.state; setState('busy'); const on = document.getElementById('chat').classList.contains('is-working'); setState('ready'); const off = !document.getElementById('chat').classList.contains('is-working'); setState(was); return { on, off }`);
+      t.check('a band of light runs along the message box while it writes', band.on && band.off, band);
+      await t.shot(b, 'dungeon-chat');
+      await b.eval(`ChatUI.close(); return 1`);
+      const p = await t.open({ width: 412, height: 880, mobile: true });
+      for (const id of Object.keys(LOOKS)) {
+        await p.eval(`Look.set({ theme: ${JSON.stringify(id)}, mode: 'dark' }); return 1`); await sleep(900);
+        t.check(`${id}: on a phone, nothing scrolls sideways`, await p.eval(`return document.scrollingElement.scrollWidth <= innerWidth + 1`));
+        const fits = await p.eval(`const w = document.querySelector('.ie-win, .hero-art .ha-read'), a = document.querySelector('.hero-art'); const r = w.getBoundingClientRect(), q = a.getBoundingClientRect(); return r.right <= q.right + 1 && w.scrollWidth <= w.clientWidth + 1`);
+        t.check(`${id}: on a phone, the scene's readout fits`, fits);
+      }
+      await t.shot(p, 'phone');
+      await b.eval(`Look.reset(); return 1`); await p.eval(`Look.reset(); return 1`);
+    },
+  },
+  {
     name: 'phone',
     async run(t) {
       const b = await t.open({ width: 412, height: 880, mobile: true });
       t.check('nothing scrolls sideways', await b.eval(`return document.scrollingElement.scrollWidth <= innerWidth + 1`));
+      // Closed, the menu sits just off the left edge; its shadow mustn't spill onto the page (a grey band in light mode).
+      await b.eval(`Look.set({ mode: 'light' }); return 1`); await sleep(300);
+      t.check('the closed menu casts no shadow onto the page', await b.eval(`return getComputedStyle(document.querySelector('.nav')).boxShadow === 'none'`));
+      await b.eval(`Look.reset(); return 1`);
       await b.eval(`document.getElementById('navToggle').click(); return 1`); await sleep(400);
+      t.check('the open menu does', await b.eval(`return getComputedStyle(document.querySelector('.nav')).boxShadow !== 'none'`));
       const n = await b.eval(`const s = getComputedStyle(document.querySelector('.nav')); return { open: document.body.classList.contains('nav-open'), back: getComputedStyle(navBack).display, solid: /gradient/.test(s.backgroundImage) || !/rgba\\(.*, 0(\\.\\d+)?\\)$/.test(s.backgroundColor) }`);
       t.check('the menu opens over a backdrop, on a solid background', n.open && n.back !== 'none' && n.solid, n);
       await t.shot(b, 'phone-nav');
@@ -759,6 +1047,7 @@ module.exports = [
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
       const c = await b.eval(`return { bar: getComputedStyle(document.querySelector('.bar')).display, top: document.querySelector('.chat').getBoundingClientRect().top, wide: document.scrollingElement.scrollWidth <= innerWidth + 1 }`);
       t.check('a chat uses the whole screen', c.bar === 'none' && c.top < 2 && c.wide, c);
+      t.check('the closed chat list casts no shadow either', await b.eval(`return getComputedStyle(document.getElementById('cRail')).boxShadow === 'none'`));
       await t.shot(b, 'phone-chat');
     },
   },
@@ -768,7 +1057,8 @@ module.exports = [
     async run(t) {
       const b = await t.open({ demo: false });
       t.check('the hub loads', await b.eval(`return !!document.querySelector('.nav-i') && !!document.getElementById('page').children.length`));
-      await b.eval(`openSetup(); return 1`); await sleep(2500);
+      // The checks run real commands on this machine, after the app's own start-up work: wait for them, not a set time.
+      await b.eval(`openSetup(); const t0 = Date.now(); while (!document.querySelector('.checks li') && Date.now() - t0 < 20000) await new Promise(r => setTimeout(r, 200)); return Date.now() - t0`);
       const st = await b.eval(`const ids = [...document.querySelectorAll('.setup-toc a')].map(a => a.getAttribute('href')); return { ids, missing: ids.filter(h => !document.querySelector(h)), checks: document.querySelectorAll('.checks li').length, quit: document.querySelector('[data-fix="quit"]')?.className || '' }`);
       t.check('Setup runs its checks', st.checks >= 3, st);
       t.check('Setup quick links all lead somewhere', st.ids.length >= 5 && !st.missing.length, st);

@@ -28,8 +28,7 @@ function renderUndone(ev, src) {
     bar.querySelector('.chg-h').textContent = r ? `Undone: ${r} file${r === 1 ? '' : 's'} put back` : 'Nothing was undone';
     if (!kept.length) bar.querySelector('[data-c="chgundo"]')?.remove();
   }
-  // Its next message says so, so it doesn't build on what isn't there any more.
-  if (r) (C.undoNotes[src] = C.undoNotes[src] || []).push(ev.restored);
+  // The app tells it so with your next message (lib/pairs.js), so it doesn't build on what isn't there.
 }
 
 async function undoChanges(bar, force = false) {

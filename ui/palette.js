@@ -13,7 +13,7 @@ function score(text, q) {
 function palItems(q) {
   const out = [];
   const add = (g, list) => { if (list.length) out.push({ g }, ...list); };
-  const run = S.activity.map(x => ({ glyph: NEEDS.has(statusOf(x)) || statusOf(x) === 'reply' ? '✦' : '◉', t: x.title || 'New chat', s: `${{ approve: 'needs your OK', question: 'has a question', 'terminal-wait': 'waiting in its terminal', reply: 'your turn', working: 'at work', quiet: 'open', ended: 'stopped' }[statusOf(x)]}${x.folder ? ` · ${x.folder}` : ''}`, run: () => openActivity(x), text: `${x.title} ${x.folder}` }));
+  const run = S.activity.filter(x => !x.parentKey).map(x => ({ glyph: NEEDS.has(statusOf(x)) || statusOf(x) === 'reply' ? '✦' : '◉', t: x.title || 'New chat', s: `${{ approve: 'needs your OK', question: 'has a question', 'terminal-wait': 'waiting in its terminal', reply: 'your turn', working: 'at work', quiet: 'open', ended: 'stopped' }[statusOf(x)]}${x.folder ? ` · ${x.folder}` : ''}`, run: () => openActivity(x), text: `${x.title} ${x.folder}` }));
   const acts = [
     { glyph: '✦', t: 'Go to the hub', run: () => go('hub') },
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
@@ -55,7 +55,7 @@ function palItems(q) {
   ] : [];
   if (!q) {
     add('This chat', chatActs);
-    add('Running now', run);
+    add('Active now', run);
     if (here) add(`Start ${here.name} with a prompt`, prompts.slice(0, S.prompts.length));
     add('Recent chats', chats.slice(0, 6));
     add('Projects', folders.slice(0, 6));
@@ -63,7 +63,7 @@ function palItems(q) {
     return out;
   }
   const rank = list => list.map(x => ({ x, s: score(x.text, q) })).filter(r => r.s >= 0).sort((a, b) => b.s - a.s).map(r => r.x);
-  add('Running now', rank(run).slice(0, 5));
+  add('Active now', rank(run).slice(0, 5));
   add('Chats', rank(chats).slice(0, 8));
   add('Projects', rank(folders).slice(0, 5));
   add('Documents', rank(docs).slice(0, 5));
@@ -241,8 +241,8 @@ const Viewer = (() => {
       }
       case 'rendered': V.raw = false; return render();
       case 'raw': V.raw = true; return render();
-      case 'copy': try { await navigator.clipboard.writeText(f.text); b.textContent = 'Copied'; setTimeout(() => { b.textContent = `Copy ${f.markdown ? 'markdown' : 'text'}`; }, 1600); } catch { toast('Couldn’t copy. Select the text and press Ctrl+C instead.'); } return undefined;
-      case 'copypath': try { await navigator.clipboard.writeText(f.path); toast('Copied the path.', 2000); } catch { prompt('Copy this path:', f.path); } return undefined;
+      case 'copy': return copyText(f.text, null).then(ok => { if (ok) { b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = `Copy ${f.markdown ? 'markdown' : 'text'}`; }, 1600); } });
+      case 'copypath': return copyText(f.path, 'Copied the path.');
       case 'reveal': { const r = await api('/api/reveal', { path: f.path, ...V.ctx }); if (r.dryRun) toast(`Would run: ${r.script}`); return undefined; }
       default: return undefined;
     }

@@ -287,20 +287,16 @@ async function sendMessage() {
   // "@codex …", "@claude …" or "@both …" sends just this message to that one (or both).
   let target = duo() && (C.target === 'comp' || C.target === 'both') ? C.target : 'main';
   const at = duo() && text.match(/^\s*@(codex|claude|both)\b[:,]?\s*/i);
-  if (at) { const w = at[1].toLowerCase(); target = w === 'codex' ? 'comp' : w === 'both' ? 'both' : 'main'; text = text.slice(at[0].length); }
+  if (at) { const w = at[1].toLowerCase(); target = w === 'both' ? 'both' : w === C.provider ? 'main' : 'comp'; text = text.slice(at[0].length); }
   if (target !== 'comp' && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
   const images = C.attachments.slice();
   $c('cSend').disabled = true;
   try {
-    // Each one is caught up on what it missed (worked out before either message goes).
-    const forMain = (duo() || C.undoNotes.main.length) && target !== 'comp' ? withCatchUp('main', text) : text;
-    const forComp = (duo() || C.undoNotes.comp.length) && target !== 'main' ? withCatchUp('comp', text) : text;
-    if (target === 'both') {
-      const comp = await ensureCompanion();
-      await Promise.all([api('/api/chat/send', { key: C.key, text: forMain, images }), api('/api/chat/send', { key: comp.key, text: forComp, images })]);
-    } else if (target === 'comp') await api('/api/chat/send', { key: (await ensureCompanion()).key, text: forComp, images });
-    else await api('/api/chat/send', { key: C.key, text: forMain, images });
+    // The app catches each one up on what it missed (lib/pairs.js); with Both they take turns.
+    const r = await api('/api/chat/send', { key: C.key, text, images, ...(target === 'main' ? {} : { to: target === 'both' ? 'both' : 'partner', account: S.acct }) });
     clear();
+    // Follow the partner's replies here (it may only just have started).
+    if (target !== 'main' && !(C.comp && !C.comp.ended && (!r || !r.key || C.comp.key === r.key))) ensureCompanion().catch(() => {});
   } finally { $c('cSend').disabled = false; $c('cText').focus(); }
 }
 function modeOptions(list) {

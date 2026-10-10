@@ -10,12 +10,14 @@ const C = {
   // How full each one's context window is (see setCtx), and whether we've offered to summarize.
   ctx: { main: null, comp: null }, ctxWarned: {},
   // Files put back with Undo, for each one's next catch-up.
-  undoNotes: { main: [], comp: [] },
 };
 const PROV_NAME = { claude: 'Claude', codex: 'Codex', openclaw: 'OpenClaw' };
 const codexOK = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
-const duo = () => !C.watch && C.provider === 'claude' && (codexOK() || !!C.comp);
-const provFor = src => (src === 'comp' ? 'codex' : C.provider);
+// The other assistant in this chat: Codex in a Claude chat, Claude in a Codex chat.
+const partnerProv = () => (C.provider === 'codex' ? 'claude' : 'codex');
+const partnerOK = () => (partnerProv() === 'codex' ? codexOK() : !!(typeof current === 'function' && current() && canLaunch(current())));
+const duo = () => !C.watch && (C.provider === 'claude' || C.provider === 'codex') && (partnerOK() || !!C.comp);
+const provFor = src => (src === 'comp' ? partnerProv() : C.provider);
 const keyFor = src => (src === 'comp' ? C.comp && C.comp.key : C.key);
 const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Skip all checks', dontAsk: 'Never ask' };
 const STATE_LABELS = { starting: 'Starting', ready: 'Ready', busy: 'Working', waiting: 'Needs your OK', ended: 'Stopped', watching: 'Watching live', readonly: 'Read-only' };
@@ -220,7 +222,7 @@ function renderLedger() {
         ${C.watch ? `<dt>Running</dt><dd>${C.watch.source === 'terminal' ? 'In a terminal' : C.watch.source === 'openclaw' ? 'In OpenClaw' : 'In another app'}</dd>` : ''}
         ${C.model ? `<dt>Model</dt><dd>${esc(C.model)}${C.mi.main && C.mi.main.effort ? ` · ${esc(C.mi.main.effort)} effort` : ''}</dd>` : ''}
         ${C.ctx.main ? `<dt>Context</dt><dd>${esc(ctxLine('main'))}</dd>` : ''}
-        ${C.comp && C.mi.comp ? `<dt>Codex helper</dt><dd>${esc(modelLabel(C.mi.comp))}${C.mi.comp.effort ? ` · ${esc(C.mi.comp.effort)}` : ''}</dd>` : ''}
+        ${C.comp && C.mi.comp ? `<dt>With ${PROV_NAME[partnerProv()]}</dt><dd>${esc(modelLabel(C.mi.comp))}${C.mi.comp.effort ? ` · ${esc(C.mi.comp.effort)}` : ''}</dd>` : ''}
         ${C.info && C.info.permissionMode ? `<dt>Mode</dt><dd>${esc(($c('cMode').selectedOptions[0] || {}).textContent || $c('cMode').value)}</dd>` : ''}
         ${C.info && C.info.cwd ? `<dt>Folder</dt><dd><button class="linkish" data-file="." title="${esc(C.info.cwd)}">${esc(C.info.cwd)}</button></dd>` : ''}
         ${C.sessionId ? `<dt>Chat ID</dt><dd><button class="linkish" data-copy="${esc(C.sessionId)}" title="Copy the chat ID">${esc(C.sessionId.slice(0, 8))}…</button></dd>` : ''}
@@ -401,11 +403,13 @@ function lastTurn(root, make) {
   const t = document.createElement('div');
   t.className = liveRender ? 'turn fresh' : 'turn';
   t.dataset.prov = prov;
-  const relay = C.provider === 'claude' && (codexOK() || C.compThread || C.comp);
-  t.innerHTML = `<div class="who"><span class="who-n">${PROV_NAME[prov]}</span><span class="who-m"></span><span class="turn-act">
-      <button type="button" class="ta" data-c="copyturn" title="Copy this reply">Copy</button>
+  const relay = duo(), mine = prov === C.provider, them = PROV_NAME[mine ? partnerProv() : C.provider];
+  const acts = `<button type="button" class="ta" data-c="copyturn" title="Copy this reply, as Markdown">Copy</button>
       ${prov === 'claude' && C.provider === 'claude' && codexOK() ? '<button type="button" class="ta rv" data-c="review" title="Codex reviews the changes so far, in a read-only sandbox">Review with Codex</button>' : ''}
-      ${relay ? `<button type="button" class="ta relay" data-c="relay" title="${prov === 'codex' ? 'Quote this to Claude' : 'Quote this to Codex, for an image, a test or a second opinion'}">${prov === 'codex' ? 'Send to Claude' : 'Ask Codex'}</button>` : ''}</span></div>`;
+      ${relay ? `<button type="button" class="ta relay" data-c="relay" title="Quote this to ${them}${mine && them === 'Codex' ? ', for an image, a test or a second opinion' : ''}">${mine ? `Ask ${them}` : `Send to ${them}`}</button>` : ''}`;
+  // The same buttons twice: beside the name (with a mouse, on hover) and under the reply (on a phone,
+  // where you finish reading; it stays last however the reply grows).
+  t.innerHTML = `<div class="who"><span class="who-n">${PROV_NAME[prov]}</span><span class="who-m"></span><span class="turn-act">${acts}</span></div><div class="turn-foot">${acts}</div>`;
   root.appendChild(t);
   return t;
 }
@@ -480,20 +484,23 @@ const shortTime = t => new Date(t).toLocaleTimeString(undefined, { hour: 'numeri
 function renderItem(root, it, live) {
   if (it.kind === 'user') {
     const d = document.createElement('div');
-    const toCodex = provNow() === 'codex' && C.provider !== 'codex';
-    d.className = `${liveRender ? 'umsg fresh' : 'umsg'}${toCodex ? ' to-codex' : ''}`;
-    // "Attached file: `path` (info)" lines become players and file cards.
+    // From the partner's side: your message to Codex in a Claude chat (or to Claude in a Codex chat).
+    const toPartner = provNow() !== C.provider;
     const sh = splitShared(it.text);
+    // "Both": your message, passed on once the first one answered it. A hand-over, not your words again.
+    if (toPartner && (it.relay || /sent the message below to both of you/.test(sh.context))) { root.insertAdjacentHTML('beforeend', handoverHtml(provNow(), sh)); return; }
+    d.className = `${liveRender ? 'umsg fresh' : 'umsg'}${toPartner ? ` to-partner to-${provNow()}` : ''}`;
+    // "Attached file: `path` (info)" lines become players and file cards.
     const at = it.at ? Date.parse(it.at) : Date.now();
-    if (C.provider === 'claude' && joinBoth(root, toCodex, sh.own, at)) return;
+    if (joinBoth(root, toPartner, sh.own, at)) return;
     const files = [];
     const text = sh.own.split('\n').filter(l => { const m = l.trim().match(ATTACH_LINE); if (m) files.push([m[1], m[2] || '']); return !m; }).join('\n').trim();
     RAW.set(d, sh.own);
     d._at = at;
-    d.innerHTML = `${toCodex ? '<span class="to-tag">to Codex</span>' : ''}${sh.context ? `<details class="shared"><summary>${toCodex ? 'Codex' : PROV_NAME[C.provider]} was caught up on ${sh.items ? `${sh.items} message${sh.items === 1 ? '' : 's'}` : 'the conversation'}</summary><div class="sh-body">${plain(sh.context)}</div></details>` : ''}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
+    d.innerHTML = `${toPartner ? `<span class="to-tag">to ${PROV_NAME[provNow()]}</span>` : ''}${sh.context ? `<details class="shared"><summary>${PROV_NAME[provNow()]} was caught up on ${sh.items ? `${sh.items} message${sh.items === 1 ? '' : 's'}` : 'the conversation'}</summary><div class="sh-body">${plain(sh.context)}</div></details>` : ''}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
     root.appendChild(d);
   } else if (it.kind === 'assistant') {
-    const mi = C.mi[provNow() === 'codex' && C.provider !== 'codex' ? 'comp' : 'main'];
+    const mi = C.mi[provNow() !== C.provider ? 'comp' : 'main'];
     const model = it.model || (live && mi ? mi.replyModel || mi.resolvedModel || mi.model : null);
     const p = part(root, it.mid, model);
     const wm = p.closest('.turn').querySelector('.who-m');
@@ -531,7 +538,7 @@ function jumpLatest() { const s = scroller(); s.scrollTo({ top: s.scrollHeight, 
 function chatMarkdown() {
   const out = [`# ${C.title || 'Chat'}`, '', `_${[C.folder, C.model, new Date().toLocaleString()].filter(Boolean).join(' · ')}_`, ''];
   for (const el of $c('cFeed').children) {
-    if (el.classList.contains('umsg')) out.push(`**You${el.classList.contains('to-codex') ? ' → Codex' : ''}:**`, '', RAW.get(el) || el.innerText.trim(), '');
+    if (el.classList.contains('umsg')) out.push(`**You${el.classList.contains('to-partner') ? ` → ${PROV_NAME[partnerProv()]}` : ''}:**`, '', RAW.get(el) || el.innerText.trim(), '');
     else if (el.classList.contains('turn')) {
       const text = turnMarkdown(el);
       const steps = el.querySelectorAll('.tool').length;
@@ -573,7 +580,7 @@ function chatPage() {
   const parts = [];
   for (const el of $c('cFeed').children) {
     if (el.classList.contains('umsg')) {
-      const to = el.classList.contains('to-both') ? ' → Claude & Codex' : el.classList.contains('to-codex') ? ' → Codex' : '';
+      const to = el.classList.contains('to-both') ? ` → ${PROV_NAME[C.provider]} & ${PROV_NAME[partnerProv()]}` : el.classList.contains('to-partner') ? ` → ${PROV_NAME[partnerProv()]}` : '';
       const text = RAW.get(el) || el.innerText.trim();
       parts.push(`<section class="m you"><p class="who">You${esc(to)}</p><div class="body">${esc(text)}${el.querySelector('img') ? '\n(with a picture)' : ''}</div></section>`);
     } else if (el.classList.contains('turn')) {
@@ -603,7 +610,7 @@ function savePage() {
 function exportChat() {
   const text = chatMarkdown();
   const name = `${String(C.title || 'chat').replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'chat'}.md`;
-  if (window.Android) { navigator.clipboard.writeText(text).then(() => toast('Copied the chat as Markdown.'), () => toast('Couldn’t copy.')); return; }
+  if (window.Android) { copyText(text, 'Copied the chat as Markdown.'); return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
   a.download = name;

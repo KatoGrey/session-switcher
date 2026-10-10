@@ -1,5 +1,5 @@
 'use strict';
-/* Find in this chat, live events, permission requests and questions, and the crew (Claude, its Codex helper, and each one’s model). */
+/* Find in this chat, live events, permission requests and questions, and the crew (the chat's assistant, its partner, and each one’s model). */
 
 /* ---------- find in this chat (Ctrl+F) ---------- */
 const Find = { hits: [], i: -1 };
@@ -19,7 +19,7 @@ function runFind() {
   const q = $c('cFindQ').value.trim().toLowerCase();
   Find.hits = []; Find.i = -1;
   if (q.length >= 2) {
-    const walk = document.createTreeWalker($c('cFeed'), NodeFilter.SHOW_TEXT, { acceptNode: n => (n.parentElement.closest('.turn-act, .code-h, button.c-earlier, .c-welcome') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+    const walk = document.createTreeWalker($c('cFeed'), NodeFilter.SHOW_TEXT, { acceptNode: n => (n.parentElement.closest('.turn-act, .turn-foot, .code-h, button.c-earlier, .c-welcome') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
     let n;
     while ((n = walk.nextNode()) && Find.hits.length < 2000) {
       const t = n.nodeValue.toLowerCase();
@@ -86,8 +86,14 @@ function syncSend() {
   $c('cTyping').classList.toggle('codex', (C.target === 'comp' && duo()) || C.provider === 'codex');
   $c('cSend').textContent = busy ? 'Queue' : 'Send';
   $c('cSend').title = busy ? `${name} ${ts.length > 1 ? 'are' : 'is'} working; this will be sent when ready` : `Send to ${name}`;
-  $c('chat').classList.toggle('to-codex', C.target === 'comp' && duo());
+  $c('chat').classList.toggle('to-codex', C.target === 'comp' && duo() && partnerProv() === 'codex');
+  $c('chat').classList.toggle('to-claude', C.target === 'comp' && duo() && partnerProv() === 'claude');
   $c('chat').classList.toggle('to-both', C.target === 'both' && duo());
+  // While either of them is writing, a band of light runs along the top of the message box (Codex's
+  // color when only Codex is).
+  const writing = [C.state === 'busy' && C.provider, C.comp && !C.comp.ended && C.comp.state === 'busy' && partnerProv()].filter(Boolean);
+  $c('chat').classList.toggle('is-working', writing.length > 0);
+  $c('chat').classList.toggle('codex-working', writing.length > 0 && writing.every(p => p === 'codex'));
 }
 function setStatus(src, t) {
   if (src === 'comp') { if (C.comp) { C.comp.status = t; renderCrewSoon(); } return; }
@@ -131,6 +137,8 @@ function handleEvent(ev, src) {
     case 'changes': renderChanges(ev, src); break;
     case 'undone': renderUndone(ev, src); break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
+    // "Both": your message went to this one first; the other picks it up when it's done.
+    case 'handoff': C.handoff = ev.state === 'waiting' ? ev.to : null; if (ev.state === 'waiting') markBoth(ev.to); renderCrew(); break;
     case 'stream_start': withStick(() => part(feed, ev.mid)); break;
     case 'delta':
       if (ev.thinking) { setStatus(src, 'Thinking…'); break; }
@@ -172,14 +180,15 @@ function handleEvent(ev, src) {
         // The helper stopping doesn't end the Claude chat; your next message to Codex starts it again.
         C.comp.ended = true; C.comp.state = 'ended'; if (C.comp.es) C.comp.es.close();
         for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src === 'comp') card.remove();
-        if (!ev.stopped) withStick(() => renderItem(feed, { kind: 'notice', level: 'info', text: 'The Codex helper stopped. Your next message to Codex starts it again.' }));
+        if (!ev.stopped) withStick(() => renderItem(feed, { kind: 'notice', level: 'info', text: `${PROV_NAME[partnerProv()]} stopped. Your next message to ${PROV_NAME[partnerProv()]} starts it again.` }));
         renderCrew(); syncSend();
         break;
       }
       setState('ended');
       // The Codex helper may still be running and waiting on you; keep its cards.
       for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src !== 'comp') card.remove();
-      const why = ev.stopped ? 'This chat was stopped.' : ev.code ? 'Claude Code stopped unexpectedly.' : 'Claude Code finished and closed this chat.';
+      const tool = C.provider === 'codex' ? 'Codex' : 'Claude Code';
+      const why = ev.stopped ? 'This chat was stopped.' : ev.code ? `${tool} stopped unexpectedly.` : `${tool} finished and closed this chat.`;
       withStick(() => feed.insertAdjacentHTML('beforeend', `<div class="ended"><p><b>${why}</b> Your conversation is saved; start it again to keep going.</p>${ev.detail ? `<pre class="t-out err">${esc(ev.detail)}</pre>` : ''}<button type="button" class="btn prime" data-c="restart">Start again</button></div>`));
       toBottom();
       break;
@@ -321,7 +330,7 @@ function crewPill(src) {
   const status = src === 'comp' ? C.comp && C.comp.status : '';
   const label = mi ? `${modelLabel(mi)}${mi.effort ? ` · ${mi.effort}` : ''}` : src === 'comp' && st === 'off' ? 'ready when you are' : '…';
   const on = duo() ? C.target === src || C.target === 'both' : true;
-  const sub = st === 'waiting' ? 'needs your OK' : busy && status ? status : label;
+  const sub = st === 'waiting' ? 'needs your OK' : src === 'comp' && C.handoff ? 'up next…' : busy && status ? status : label;
   const tip = (on ? `${PROV_NAME[prov]}: choose its model and effort` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`)
     + (C.ctx[src] ? `\nContext: ${ctxLine(src)}` : '');
   const f = ctxFill(C.ctx[src]);
@@ -334,15 +343,18 @@ function renderCrew() {
   if (C.watch || !C.key) { box.innerHTML = ''; return; }
   const two = duo();
   const both = C.target === 'both';
-  box.innerHTML = crewPill('main') + (two ? crewPill('comp') + `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? 'Back to writing to Claude only' : 'Send your next message to Claude and Codex at once'}"><span class="crew-n">Both</span></button>` : '');
+  const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
+  box.innerHTML = crewPill('main') + (two ? crewPill('comp') + `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : `Both: ${lead} answers, then ${mate} picks it up and builds on that`}"><span class="crew-n">Both</span></button>` : '');
   box.classList.toggle('duo', two);
-  $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ' · <b>@codex</b> or <b>@both</b> · <b>Ctrl+.</b> switches' : ''} · Esc twice stops`;
+  $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · <b>@${partnerProv()}</b> or <b>@both</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;
   if (!two && C.target !== 'main') setTarget('main');
 }
 function setTarget(t, focus = true) {
   C.target = duo() && (t === 'comp' || t === 'both') ? t : 'main';
-  const name = C.target === 'both' ? 'Claude and Codex' : PROV_NAME[provFor(C.target)];
-  $c('cText').placeholder = C.target === 'comp' ? 'Ask Codex… an image, a quick test, a second opinion' : C.target === 'both' ? 'Write to Claude and Codex: both reply here…' : `Write to ${name}…`;
+  const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
+  const name = C.target === 'both' ? `${lead} and ${mate}` : PROV_NAME[provFor(C.target)];
+  $c('cText').placeholder = C.target === 'comp' ? (mate === 'Codex' ? 'Ask Codex… an image, a quick test, a second opinion' : 'Ask Claude… a plan, a review, a second opinion')
+    : C.target === 'both' ? `Write to ${lead} and ${mate}: ${lead} answers, then ${mate} builds on it…` : `Write to ${name}…`;
   $c('cText').setAttribute('aria-label', `Message ${name}`);
   renderCrew(); syncSend(); closePick();
   if (focus) $c('cText').focus();
@@ -478,14 +490,14 @@ function ensureCompanion() {
   if (C.comp && !C.comp.ended) return Promise.resolve(C.comp);
   if (C.compPending) return C.compPending;
   const gen = C.gen;
-  C.compPending = api('/api/chat/companion', { key: C.key })
+  C.compPending = api('/api/chat/companion', { key: C.key, account: S.acct })
     .then(info => { if (gen !== C.gen) throw new Error('You switched chats.'); attachComp(info); return C.comp; })
     .finally(() => { C.compPending = null; });
   return C.compPending;
 }
 function attachComp(info) {
   if (C.comp && C.comp.es) C.comp.es.close();
-  C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: false };
+  C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended' };
   if (info.models && info.models.length) C.mi.comp = info;
   if (info.context) C.ctx.comp = info.context;
   const key = info.key;
@@ -499,9 +511,9 @@ function attachComp(info) {
 // Quotes a reply to the other one: Claude's plan to Codex for an image, Codex's answer back to Claude.
 function relay(turn) {
   const from = turn.dataset.prov || C.provider;
-  const text = [...turn.querySelectorAll('.final > .md')].map(x => x.innerText.trim()).filter(Boolean).join('\n\n').slice(0, 6000);
+  const text = turnMarkdown(turn).slice(0, 6000);
   if (!text) { toast('There’s no text in that reply to pass on.'); return; }
-  setTarget(from === 'codex' ? 'main' : 'comp', false);
+  setTarget(from === C.provider ? 'comp' : 'main', false);
   placeText(`${PROV_NAME[from]} said:\n\n${text.split('\n').map(l => `> ${l}`).join('\n')}\n\n`, false);
 }
 async function giveImage(p) {
@@ -511,7 +523,7 @@ async function giveImage(p) {
   const data = await new Promise(res => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(blob); });
   C.attachments.push({ mediaType: blob.type, data: data.slice(data.indexOf(',') + 1) });
   renderAttachments();
-  setTarget('main', false);
+  setTarget(C.provider === 'claude' ? 'main' : 'comp', false);
   placeText(`Here’s the picture Codex made (saved at \`${p}\`). `, false);
 }
 

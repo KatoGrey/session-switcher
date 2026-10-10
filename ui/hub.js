@@ -103,7 +103,7 @@ function renderNav() {
 function heroHtml() {
   const a = current();
   const A = awaiting(), W = atWork().length;
-  const N = A.filter(x => NEEDS.has(statusOf(x))).length, R = A.length - N;
+  const N = A.filter(x => NEEDS.has(ownStatus(x))).length, R = A.length - N;
   const Q = quietOpen().filter(x => x.source === 'app' && x.phase !== 'ended').length;
   let h, em;
   if (A.length) {
@@ -138,7 +138,7 @@ function heroHtml() {
   const latest = allSessions().filter(([x]) => !isOpenClaw(x)).sort((x, y) => y[0].updated - x[0].updated)[0];
   const better = headroomPick();
   const acts = [];
-  if (first) acts.push(`<button class="btn gilt" data-hero="first">${NEEDS.has(statusOf(first)) ? 'Answer the first one' : 'Read the latest reply'}</button>`);
+  if (first) acts.push(`<button class="btn gilt" data-hero="first">${NEEDS.has(ownStatus(first)) ? 'Answer the first one' : 'Read the latest reply'}</button>`);
   if (better) acts.push(`<button class="btn" data-hero="switch" data-acct="${esc(better.a.id)}">Work as ${esc(better.a.name)}</button>`);
   if (!first && latest && canLaunch(a)) acts.push(`<button class="btn" data-hero="latest" data-sid="${esc(latest[0].id)}" title="${esc(latest[0].title)}">Continue “${esc(latest[0].title.length > 34 ? `${latest[0].title.slice(0, 33)}…` : latest[0].title)}”</button>`);
   const today = new Date();
@@ -173,7 +173,180 @@ function heroArt({ N, R, W, Q }) {
     return `<div class="hero-art trench" aria-hidden="true"><div class="ha-view"><div class="ha-floor"></div><div class="ha-wall l"></div><div class="ha-wall r"></div><i class="ha-reticle"></i></div>
       <div class="ha-read"><span class="${N + R ? 'hot' : ''}">Waiting<b>${pad(N + R)}</b></span><span>In flight<b>${pad(W)}</b></span><span>Standing by<b>${pad(Q)}</b></span></div></div>`;
   }
+  if (art === 'sunset') {
+    // Malibu: a striped sun setting into the sea between two palms. Hearts in the sky are chats
+    // waiting on you (gold: it needs your OK), twinkles are chats at work, pool floats are ones lounging.
+    const HEARTS = [[132, 58, 15], [176, 30, 12], [238, 44, 14], [284, 74, 11], [98, 92, 12], [212, 18, 10], [158, 88, 10]];
+    const TWINKLES = [[86, 40], [254, 100], [190, 66], [302, 30], [112, 22], [226, 122]];
+    const FLOATS = [[148, 204], [252, 216], [104, 224]];
+    const heart = (x, y, s, cls, i) => `<g transform="translate(${x} ${y}) scale(${(s / 24).toFixed(3)})"><path class="mb-float ${cls}" style="--d:${(i * 0.45).toFixed(2)}s" d="M12 21.5C5 16.6 1 12.7 1 7.6 1 4 3.8 1.2 7.2 1.2c2 0 3.8 1 4.8 2.6 1-1.6 2.8-2.6 4.8-2.6C20.2 1.2 23 4 23 7.6c0 5.1-4 9-11 13.9z"/></g>`;
+    const twinkle = ([x, y], i) => `<path class="mb-twinkle" style="--d:${(i * 0.6).toFixed(2)}s;transform-origin:${x}px ${y}px" d="M${x} ${y - 7}l1.8 5.2 5.2 1.8-5.2 1.8-1.8 5.2-1.8-5.2-5.2-1.8 5.2-1.8z"/>`;
+    const float = ([x, y], i) => `<g class="mb-bob" style="--d:${(i * 0.8).toFixed(2)}s"><ellipse cx="${x}" cy="${y}" rx="14" ry="4.6" class="mb-ring"/><ellipse cx="${x}" cy="${y}" rx="14" ry="4.6" class="mb-ring-s"/></g>`;
+    const hearts = Array.from({ length: Math.min(N + R, HEARTS.length) }, (_, i) => heart(...HEARTS[i], i < N ? 'gold' : 'pink', i)).join('');
+    return `<div class="hero-art sunset" aria-hidden="true"><svg class="mb-scene" viewBox="0 0 400 240" preserveAspectRatio="xMidYMax slice">
+      <defs>
+        <linearGradient id="mbSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="mb-sky1"/><stop offset=".62" class="mb-sky2"/><stop offset="1" class="mb-sky3"/></linearGradient>
+        <linearGradient id="mbSun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="mb-sun1"/><stop offset="1" class="mb-sun2"/></linearGradient>
+        <linearGradient id="mbSea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="mb-sea1"/><stop offset="1" class="mb-sea2"/></linearGradient>
+        <mask id="mbStripes"><rect width="400" height="240" fill="#fff"/><rect x="0" y="122" width="400" height="2.5" fill="#000"/><rect x="0" y="134" width="400" height="3.5" fill="#000"/><rect x="0" y="146" width="400" height="4.5" fill="#000"/><rect x="0" y="158" width="400" height="5.5" fill="#000"/></mask>
+        <clipPath id="mbAbove"><rect width="400" height="168"/></clipPath>
+        <g id="mbPalm"><path d="M346 240C344 190 336 130 326 76l6-1c11 53 20 113 26 165z"/><path d="M329 74c-29-14-54-8-71 12 24-12 46-14 71-8zM329 74c27-16 53-10 69 12-24-12-46-14-69-8zM329 74c-15-26-33-34-53-32 22 8 38 18 51 34zM329 74c13-28 31-36 51-34-20 10-36 20-49 36zM329 76c-17 6-29 22-33 40 10-16 20-28 35-37zM329 76c19 8 31 24 33 44-10-18-20-30-34-40z"/><circle cx="326" cy="81" r="3.6"/><circle cx="333.5" cy="82" r="3.6"/></g>
+      </defs>
+      <rect width="400" height="240" fill="url(#mbSky)"/>
+      <g class="mb-sparkles">${TWINKLES.slice(0, Math.min(W, TWINKLES.length)).map(twinkle).join('')}</g>
+      <circle cx="200" cy="150" r="62" fill="url(#mbSun)" mask="url(#mbStripes)" clip-path="url(#mbAbove)"/>
+      <rect y="168" width="400" height="72" fill="url(#mbSea)"/>
+      <g class="mb-glint"><rect x="152" y="174" width="96" height="3" rx="1.5"/><rect x="166" y="184" width="68" height="3" rx="1.5"/><rect x="178" y="194" width="44" height="3" rx="1.5"/><rect x="190" y="204" width="20" height="3" rx="1.5"/></g>
+      <path class="mb-wave" d="M-40 180q10-4 20 0t20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0M-40 214q10-4 20 0t20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0 20 0"/>
+      ${FLOATS.slice(0, Math.min(Q, FLOATS.length)).map(float).join('')}
+      <g class="mb-palms"><use href="#mbPalm" transform="translate(-30 0)"/><use href="#mbPalm" transform="translate(50 62) scale(-.72 .74) translate(-400 0)"/></g>
+      <g class="mb-hearts">${hearts}</g>
+    </svg>
+      <div class="ha-read"><span class="${N + R ? 'hot' : ''}"><b>${pad(N + R)}</b>For you</span><span><b>${pad(W)}</b>On it</span><span><b>${pad(Q)}</b>Chilling</span></div></div>`;
+  }
+  if (art === 'status') return isekaiArt({ N, R, W, Q });
+  if (art === 'citadel') return citadelArt({ N, R, W, Q });
+  if (art === 'delve') return delveArt({ N, R, W, Q });
   return '';
+}
+
+/* ---------- the anime themes' scenes ----------
+   Each is an SVG (400 × 240, cropped to fit) drawn in the theme's own colors (styles.css), and each
+   reads the same counts as the headline: N need your OK, R have replied, W are at work, Q are open
+   and idle. Anything that moves only moves when motion is on. */
+const sparks = (seed, n, box) => { const r = seeded(seed); return Array.from({ length: n }, () => [Math.round(box[0] + r() * (box[2] - box[0])), Math.round(box[1] + r() * (box[3] - box[1])), +(0.5 + r() * 1.1).toFixed(2), +(r() * 4).toFixed(2)]); };
+const starsSvg = (seed, n, box, cls = 'an-star') => sparks(seed, n, box).map(([x, y, s, d]) => `<circle class="${cls}" cx="${x}" cy="${y}" r="${s}" style="--d:${d}s"/>`).join('');
+const pad2 = n => String(n).padStart(2, '0');
+
+// Isekai: another world at twilight, two moons and floating islands over a sea of clouds. The magic
+// circle on the island turns while chats are at work (mana rises from it); a crystal floats up for each
+// chat waiting on you (gold: it needs your OK). The status window reads the account you work as: HP is
+// what's left of its five-hour window, MP what's left of its week, its level every chat you've had.
+function isekaiArt({ N, R, W, Q }) {
+  const a = current(), u = a && usageOf(a.id), d = u && u.data && u.data.available ? u.data : null;
+  const hp = d ? leftOf(d.fiveHour) : null, mp = d ? leftOf(d.week) : null;
+  const plan = (a && a.plan) || '';
+  const role = !a ? 'Wanderer' : /max/i.test(plan) ? 'Archmage' : /pro/i.test(plan) ? 'Mage' : /team|enterprise/i.test(plan) ? 'Guild mage' : 'Adventurer';
+  const CRYSTALS = [[96, 98], [146, 92], [72, 112], [170, 108], [120, 84], [52, 96]];
+  const crystal = ([x, y], i) => `<g class="ie-bob" style="--d:${(i * 0.7).toFixed(1)}s"><path class="ie-crystal${i < N ? ' gold' : ''}" d="M${x} ${y - 9}l5 9-5 9-5-9z"/><path class="ie-facet" d="M${x} ${y - 9}l2 9-2 9z"/></g>`;
+  const motes = Array.from({ length: Math.min(W * 3, 12) }, (_, i) => `<circle class="ie-mote" cx="${78 + ((i * 29) % 90)}" cy="${138 - (i % 3) * 3}" r="${(1.1 + (i % 3) * 0.45).toFixed(2)}" style="--d:${(i * 0.53).toFixed(2)}s"/>`).join('');
+  const bar = (k, v) => `<div class="ie-bar ${k}${v !== null && v <= 20 ? ' low' : ''}"><span>${k.toUpperCase()}</span><i><b style="width:${v ?? 0}%"></b></i><em>${v === null ? '–' : `${v}%`}</em></div>`;
+  return `<div class="hero-art status" aria-hidden="true"><svg class="an-scene" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="ieSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ie-sky1"/><stop offset=".58" class="ie-sky2"/><stop offset="1" class="ie-sky3"/></linearGradient>
+      <radialGradient id="ieMoon" cx=".38" cy=".34" r=".75"><stop offset="0" class="ie-moon1"/><stop offset="1" class="ie-moon2"/></radialGradient>
+      <radialGradient id="ieHalo"><stop offset="0" class="ie-halo"/><stop offset="1" class="ie-halo0"/></radialGradient>
+      <linearGradient id="ieFall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ie-fall1"/><stop offset="1" class="ie-fall0"/></linearGradient>
+      <linearGradient id="ieRock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ie-rock1"/><stop offset="1" class="ie-rock2"/></linearGradient>
+    </defs>
+    <rect width="400" height="240" fill="url(#ieSky)"/>
+    <g class="ie-stars">${starsSvg('ie-sky', 30, [8, 4, 396, 120])}</g>
+    <circle cx="104" cy="54" r="64" fill="url(#ieHalo)"/>
+    <circle cx="104" cy="54" r="25" fill="url(#ieMoon)"/>
+    <g class="ie-crater"><circle cx="96" cy="47" r="4.2"/><circle cx="113" cy="62" r="3"/><circle cx="110" cy="44" r="1.8"/><circle cx="94" cy="62" r="2.2"/></g>
+    <circle cx="172" cy="26" r="8.5" class="ie-moon-s"/>
+    <path class="ie-cloud far" d="M0 176q16-10 34-4 12-12 30-6 16-12 34-2 14-10 30-2 16-12 36-4 14-8 30 0 16-12 34-4 16-10 32 0 18-10 36-2 16-10 34-2 20-8 40 0V240H0z"/>
+    <g class="ie-isle"><path fill="url(#ieRock)" d="M232 54c8-4 34-4 42 0-3 5-8 7-11 14-3 6-6 12-9 22-3-9-6-15-10-20-5-6-10-10-12-16z"/><path class="ie-grass" d="M230 54c8-6 38-6 46 0-8 3-38 3-46 0z"/><path class="ie-tree" d="M262 52v-7m-4 0a4 4 0 1 1 8 0 4 4 0 1 1-8 0z"/></g>
+    <g class="ie-isle"><path fill="url(#ieRock)" d="M62 148c18-7 100-7 118 0-6 7-12 10-18 20-8 14-18 30-34 58-8-20-18-34-30-46-12-12-28-20-36-32z"/><path class="ie-strata" d="M74 160c30 4 70 4 96-2M92 176c20 3 44 3 62-1"/><path class="ie-grass" d="M58 148c20-9 104-9 124 0-20 5-104 5-124 0z"/>
+      <path class="ie-tower" d="M150 146v-26h9v26zM148 120l6.5-11 6.5 11z"/><rect class="ie-lamp" x="153" y="126" width="3" height="4" rx="1"/><path class="ie-tree" d="M80 146v-8"/><circle class="ie-tree-c" cx="80" cy="134" r="6"/><circle class="ie-tree-c" cx="88" cy="138" r="4.5"/></g>
+    <path class="ie-fall" stroke="url(#ieFall)" d="M175 150c3 18 3 50 1 90"/><path class="ie-fall-s" d="M175 150c3 18 3 50 1 90"/>
+    <g transform="translate(120 136) scale(1 .3)"><g class="ie-circle${W ? ' on' : ''}">
+      <circle r="60" vector-effect="non-scaling-stroke"/><circle r="52" class="thin" vector-effect="non-scaling-stroke"/><circle r="56" class="runes" vector-effect="non-scaling-stroke"/>
+      <path vector-effect="non-scaling-stroke" d="M0-46L39.8 23H-39.8ZM0 46L39.8-23H-39.8Z"/></g></g>
+    <g class="ie-motes">${motes}</g>
+    <g class="ie-crystals">${CRYSTALS.slice(0, Math.min(N + R, CRYSTALS.length)).map(crystal).join('')}</g>
+    <path class="ie-cloud" d="M-10 214q18-14 38-4 14-14 34-4 18-12 38 0 16-10 32 0 20-14 40-2 16-10 34 0 18-12 36-2 18-10 36 2 18-12 36-2 20-10 40 2V240H-10z"/>
+  </svg>
+  <div class="ie-win"><div class="ie-h"><b>Status</b><span>${esc(a ? a.name : '')}</span></div>
+    <div class="ie-lv"><span>Lv.</span><b>${levelOf(allSessions().length)}</b><em>${role}</em></div>
+    ${bar('hp', hp)}${bar('mp', mp)}
+    <div class="ie-sk"><span class="${N + R ? 'hot' : ''}">Summons<b>${pad2(N + R)}</b></span><span class="${W ? 'on' : ''}">Casting<b>${pad2(W)}</b></span><span>Resting<b>${pad2(Q)}</b></span></div></div></div>`;
+}
+const levelOf = chats => Math.min(999, Math.max(1, chats));
+
+// High Fantasy: a citadel on a cliff under a great moon, a dragon crossing it, beacons on the peaks. A
+// window lights for each chat at work; a beacon burns for each chat waiting on you (gold: it needs your
+// OK), the castle's own braziers first.
+function citadelArt({ N, R, W, Q }) {
+  const WINDOWS = [[258, 120], [252, 104], [264, 104], [228, 124], [292, 128], [252, 136], [264, 136], [228, 142], [292, 146]];
+  const BEACONS = [[240, 141], [278, 141], [198, 116], [330, 114], [86, 104], [142, 113]];
+  const win = ([x, y], i) => `<path class="hf-win${i < W ? ' lit' : ''}" style="--d:${(i * 0.9).toFixed(1)}s" d="M${x - 1.8} ${y + 7}v-5a1.8 1.8 0 0 1 3.6 0v5z"/>`;
+  const beacon = ([x, y], i) => `<g class="hf-beacon${i < N ? ' gold' : ''}" style="--d:${(i * 0.37).toFixed(2)}s"><circle cx="${x}" cy="${y - 4}" r="11" class="hf-bglow"/><path class="hf-flame" d="M${x} ${y - 10}c3 3 3.6 5.6 1.6 8.2-.5-1.6-1.2-2.2-1.6-2.4-.4.2-1.1.8-1.6 2.4-2-2.6-1.4-5.2 1.6-8.2z"/><path class="hf-brazier" d="M${x - 3} ${y - 2}h6l-1.6 3h-2.8z"/></g>`;
+  const flies = sparks('hf-flies', 9, [36, 176, 200, 232]).map(([x, y, s, d]) => `<circle class="hf-fly" cx="${x}" cy="${y}" r="${(s * 0.9).toFixed(2)}" style="--d:${d}s"/>`).join('');
+  return `<div class="hero-art citadel" aria-hidden="true"><svg class="an-scene" viewBox="0 0 400 240" preserveAspectRatio="xMidYMax slice">
+    <defs>
+      <linearGradient id="hfSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="hf-sky1"/><stop offset=".6" class="hf-sky2"/><stop offset="1" class="hf-sky3"/></linearGradient>
+      <radialGradient id="hfHalo"><stop offset="0" class="hf-halo"/><stop offset=".5" class="hf-halo5"/><stop offset="1" class="hf-halo0"/></radialGradient>
+      <radialGradient id="hfMoon" cx=".42" cy=".38" r=".7"><stop offset="0" class="hf-moon1"/><stop offset="1" class="hf-moon2"/></radialGradient>
+      <linearGradient id="hfMist" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="hf-mist0"/><stop offset="1" class="hf-mist1"/></linearGradient>
+    </defs>
+    <rect width="400" height="240" fill="url(#hfSky)"/>
+    <g class="hf-stars">${starsSvg('hf-sky', 34, [6, 4, 396, 110])}</g>
+    <circle cx="150" cy="66" r="96" fill="url(#hfHalo)"/>
+    <circle cx="150" cy="66" r="36" fill="url(#hfMoon)"/>
+    <g class="hf-maria"><circle cx="140" cy="56" r="7"/><circle cx="160" cy="76" r="5"/><circle cx="156" cy="52" r="3"/><circle cx="136" cy="78" r="3.4"/></g>
+    <g class="hf-dragon"><g transform="translate(112 38) scale(.62)">
+      <path class="far" d="M36 18L39 4 18 6Q22 10 24 12 27 11 29 14 32 13 34 17Z"/>
+      <path d="M0 27C10 27 18 22 28 21 32 20 36 18 40 18L46 3 22 0Q26 6 28 9 31 7 33 11 36 9 38 14L44 17C50 16 54 12 60 10L62 5 64 10 72 11 76 14 68 16C62 17 58 20 54 22L52 26 49 23C44 25 38 25 32 24L30 28 28 24C20 26 10 29 0 27Z"/></g></g>
+    <path class="hf-mt farthest" d="M0 136L22 122 48 128 70 112 104 124 124 104 156 120 184 106 216 124 246 98 276 118 312 102 344 120 372 108 400 116V240H0z"/>
+    <path class="hf-mt far" d="M0 150L30 130 52 140 86 106 112 130 142 115 170 136 198 118 232 140 262 112 298 134 330 116 362 138 400 124V240H0z"/>
+    <path class="hf-snow" d="${[[86, 106], [142, 115], [198, 118], [262, 112], [330, 116]].map(([x, y]) => `M${x - 9} ${y + 8.6}L${x} ${y}L${x + 8.6} ${y + 7.6}L${x + 4.6} ${y + 6}L${x + 1.4} ${y + 9}L${x - 2.6} ${y + 6.2}Z`).join('')}"/>
+    <path class="hf-mt mid" d="M0 182C34 164 66 172 98 160 128 150 158 172 188 164 200 162 206 168 212 172V240H0zM320 182C340 168 370 170 400 160V240H320z"/>
+    <path class="hf-cliff" d="M196 240L204 198 212 180 220 168H304L312 178 318 198 326 240z"/>
+    <path class="hf-crack" d="M232 178l-6 22 4 18M290 180l6 18-3 20M262 190l-2 30"/>
+    <g class="hf-castle">
+      <path d="M218 168v-22h4v-4h4v4h4v-4h4v4h4v-4h4v4h4v4h40v-4h4v4h4v-4h4v4h4v-4h4v4h2v22z"/>
+      <path d="M220 168v-56h16v56zM216 112l12-20 12 20zM284 168v-52h16v52zM280 116l12-20 12 20zM246 168v-72h24v72zM242 96l16-30 16 30z"/>
+      <path class="hf-roof" d="M216 112l12-20 12 20zM280 116l12-20 12 20zM242 96l16-30 16 30z"/>
+      <path class="hf-gate" d="M253 168v-9a5 5 0 0 1 10 0v9z"/>
+      <path class="hf-pole" d="M258 66V52"/><path class="hf-banner" d="M258 52.5l13 3.2-13 3.4z"/>
+    </g>
+    <g class="hf-wins">${WINDOWS.map(win).join('')}</g>
+    <g class="hf-beacons">${BEACONS.slice(0, Math.min(N + R, BEACONS.length)).map(beacon).join('')}</g>
+    <path class="hf-fall" d="M316 192c2 14 2 30 3 48"/><path class="hf-fall s" d="M316 192c2 14 2 30 3 48"/>
+    <rect y="186" width="400" height="54" fill="url(#hfMist)"/>
+    <g class="hf-flies">${flies}</g>
+  </svg>
+  <div class="ha-read"><span class="${N + R ? 'hot' : ''}"><b>${pad2(N + R)}</b>Heralds</span><span><b>${pad2(W)}</b>Quests</span><span><b>${pad2(Q)}</b>At rest</span></div></div>`;
+}
+
+// Dungeon: a torchlit archway into the dark. A torch burns for each chat at work, eyes open in the
+// dark for each chat waiting on you (gold: it needs your OK), and a chest sits ready for each one
+// open and idle.
+function delveArt({ N, R, W, Q }) {
+  const TORCHES = [[116, 122, 1], [284, 122, 1], [176, 156, 0.6], [224, 156, 0.6]];
+  const EYES = [[188, 186], [212, 170], [200, 200], [222, 192], [180, 166], [206, 150]];
+  const torch = ([x, y, s], i) => {
+    const lit = i < W;
+    return `<g class="dg-torch${lit ? ' lit' : ''}" transform="translate(${x} ${y}) scale(${s})" style="--d:${(i * 0.31).toFixed(2)}s">
+      ${lit ? '<circle class="dg-pool" r="58" cy="-22"/>' : ''}<path class="dg-sconce" d="M-6 6h12l-3 6h-6zM-1.5 6v-4"/><path class="dg-stick" d="M-2.4-14h4.8l-1 20h-2.8z"/>
+      ${lit ? `<path class="dg-flame" d="M0-36C7-27 8-20 3.5-15 2-13.5-2-13.5-3.5-15-8-20-7-27 0-36z"/><path class="dg-core" d="M0-27c3 4 3.4 7 1.4 9.4-.8.8-2 .8-2.8 0-2-2.4-1.6-5.4 1.4-9.4z"/>${[0, 1, 2].map(k => `<circle class="dg-ember" cx="${k * 3 - 3}" cy="-34" r="${(0.9 + k * 0.25).toFixed(2)}" style="--d:${(i * 0.4 + k * 0.6).toFixed(2)}s"/>`).join('')}` : ''}</g>`;
+  };
+  const eyes = ([x, y], i) => `<g class="dg-eyes${i < N ? ' gold' : ''}" style="--d:${(i * 1.3).toFixed(1)}s"><ellipse cx="${x - 3.6}" cy="${y}" rx="2.2" ry="1.3"/><ellipse cx="${x + 3.6}" cy="${y}" rx="2.2" ry="1.3"/></g>`;
+  const CHESTS = [[100, 218, 1], [124, 224, 0.8]];
+  const chest = ([x, y, k]) => `<g class="dg-chest" transform="translate(${x} ${y}) scale(${k})"><path class="dg-wood" d="M-14 0h28v-12h-28zM-14-12c0-8 28-8 28 0z"/><path class="dg-band" d="M-14-12h28M-8-17v17M8-17v17"/><rect class="dg-lock" x="-2.2" y="-14" width="4.4" height="5" rx="1"/><path class="dg-glint" d="M10-19l1 2.4 2.4 1-2.4 1-1 2.4-1-2.4-2.4-1 2.4-1z"/></g>`;
+  return `<div class="hero-art delve" aria-hidden="true"><svg class="an-scene" viewBox="0 0 400 240" preserveAspectRatio="xMidYMax slice">
+    <defs>
+      <pattern id="dgBrick" width="36" height="18" patternUnits="userSpaceOnUse"><rect width="36" height="18" class="dg-mortar"/><rect x="1" y="1" width="34" height="7.6" rx="1.2" class="dg-brick"/><rect x="-17" y="10" width="34" height="7.6" rx="1.2" class="dg-brick b"/><rect x="19" y="10" width="34" height="7.6" rx="1.2" class="dg-brick c"/></pattern>
+      <radialGradient id="dgDeep" cx=".5" cy=".62" r=".6"><stop offset="0" class="dg-deep0"/><stop offset="1" class="dg-deep1"/></radialGradient>
+      <radialGradient id="dgPool"><stop offset="0" class="dg-pool1"/><stop offset="1" class="dg-pool0"/></radialGradient>
+      <radialGradient id="dgVig" cx=".5" cy=".55" r=".75"><stop offset=".45" class="dg-vig0"/><stop offset="1" class="dg-vig1"/></radialGradient>
+      <linearGradient id="dgFlame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="dg-f1"/><stop offset="1" class="dg-f2"/></linearGradient>
+    </defs>
+    <rect width="400" height="240" fill="url(#dgBrick)"/>
+    <path class="dg-chain" d="M40 0v58M360 0v46"/>
+    <path fill="url(#dgDeep)" d="M146 240V122a54 54 0 0 1 108 0v118z"/>
+    <path class="dg-inner" d="M164 240v-108a36 36 0 0 1 72 0v108M178 240v-96a22 22 0 0 1 44 0v96"/>
+    <path class="dg-floorline" d="M146 240l38-58M254 240l-38-58M150 222h100M160 206h80"/>
+    <g class="dg-eyes-all">${EYES.slice(0, Math.min(N + R, EYES.length)).map(eyes).join('')}</g>
+    <path class="dg-arch" d="M140 122a60 60 0 0 1 120 0"/><path class="dg-jamb" d="M140 122v118M260 122v118"/>
+    <path class="dg-key" d="M193 56h14l-2 14h-10z"/>
+    <rect y="226" width="400" height="14" class="dg-floor"/>
+    ${TORCHES.map(torch).join('')}
+    ${CHESTS.slice(0, Math.min(Q, CHESTS.length)).map(chest).join('')}
+    <rect width="400" height="240" fill="url(#dgVig)"/>
+  </svg>
+  <div class="ha-read"><span class="${N + R ? 'hot' : ''}"><b>${pad2(N + R)}</b>Stirring</span><span><b>${pad2(W)}</b>Torches</span><span><b>${pad2(Q)}</b>Camped</span></div></div>`;
 }
 
 function guardHtml() {
@@ -187,7 +360,7 @@ function guardHtml() {
 }
 
 function awaitCard(x) {
-  const st = statusOf(x), k = keyOf(x);
+  const st = ownStatus(x), k = keyOf(x);
   const p = (x.pending || [])[0];
   const label = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: asked(x) ? 'Your turn · asked you something' : x.ok === false ? 'Your turn · stopped early' : 'Your turn' }[st];
   const since = st === 'reply' ? `<span class="o-time" data-ago="${x.finishedAt}"></span>` : `<span class="o-time">waiting <span data-since="${x.lastEventAt || Date.now()}"></span></span>`;
@@ -221,11 +394,14 @@ function awaitCard(x) {
 
 function workCard(x) {
   const st = statusOf(x);
-  const label = x.phase === 'starting' ? 'Starting' : x.phase === 'thinking' ? 'Thinking' : x.phase === 'writing' ? 'Writing' : x.source === 'terminal' ? 'Working in a terminal' : 'Working';
-  const since = x.turnStartedAt || x.lastEventAt;
-  const step = x.phase === 'tool' && (x.tool || x.detail) ? `<div class="o-step"><span class="v">${esc(VERB_NOW[x.tool] || 'Using')}</span><code>${esc(x.detail || x.tool || '')}</code></div>` : '';
-  const said = plainMd(lastLine(x.lastText));
-  const line = said ? `<p class="o-line">${esc(said)}</p>` : x.lastPrompt ? `<p class="o-line dim">You asked: ${esc(x.lastPrompt)}</p>` : '';
+  // At work because its partner is: the card tells what the partner is doing.
+  const w = x.partner && ownStatus(x) !== 'working' && ownStatus(x.partner) === 'working' ? x.partner : x;
+  const who = w !== x ? `${PROV_NAME[w.provider || 'claude']}: ` : '';
+  const label = who + (w.phase === 'starting' ? 'Starting' : w.phase === 'thinking' ? 'Thinking' : w.phase === 'writing' ? 'Writing' : w.source === 'terminal' ? 'Working in a terminal' : 'Working');
+  const since = w.turnStartedAt || w.lastEventAt;
+  const step = w.phase === 'tool' && (w.tool || w.detail) ? `<div class="o-step"><span class="v">${esc(VERB_NOW[w.tool] || 'Using')}</span><code>${esc(w.detail || w.tool || '')}</code></div>` : '';
+  const said = plainMd(lastLine(w.lastText));
+  const line = said ? `<p class="o-line">${esc(said)}</p>` : w.lastPrompt ? `<p class="o-line dim">You asked: ${esc(w.lastPrompt)}</p>` : '';
   return `<article class="omen ${st === 'working' ? 'working' : st}"><div class="omen-in">
     <header class="o-top"><span class="${x.source === 'app' ? 'ember-dot' : 'violet-dot'}" aria-hidden="true"></span>${esc(label)}<span class="o-time" data-since="${since || ''}"></span></header>
     <h3 class="o-title"><button data-a="open">${esc(x.title || 'New chat')}</button></h3>
@@ -364,7 +540,7 @@ async function codexSignIn(method = 'browser') {
       const b = e.target.closest('[data-cx]');
       if (!b) { if (e.target === $('cxdlg')) $('cxdlg').close(); return; }
       if (b.dataset.cx === 'close') return $('cxdlg').close();
-      if (b.dataset.cx === 'copy') { try { await navigator.clipboard.writeText(b.dataset.text); b.textContent = 'Copied'; setTimeout(() => { b.textContent = b.dataset.label; }, 1500); } catch { prompt('Copy this:', b.dataset.text); } return; }
+      if (b.dataset.cx === 'copy') { copyText(b.dataset.text, null).then(ok => { if (ok) { b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = b.dataset.label; }, 1500); } }); return; }
       if (b.dataset.cx === 'code') return codexSignIn('code');
       if (b.dataset.cx === 'browser') return codexSignIn('browser');
     }));
@@ -420,7 +596,7 @@ function codexNewMenu(anchor) {
   showMenu(anchor, folders.map(p => ({ label: p.name, hint: p.cwd, run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: 'codex' }) })));
 }
 async function addCodexAccount(kind) {
-  const name = (prompt(kind === 'ollama' ? 'Name for the Ollama account:' : 'Name for this Codex account (for example “Work” or “Personal”):', kind === 'ollama' ? 'Ollama' : '') || '').trim();
+  const name = ((await ask(kind === 'ollama' ? 'Add an Ollama account' : 'Add a Codex account', kind === 'ollama' ? 'A name for it, as it shows on its card.' : 'A name for it, as it shows on its card, for example “Work” or “Personal”.', kind === 'ollama' ? 'Ollama' : '', 'Add account')) || '').trim();
   if (!name) return;
   const r = await api('/api/codex/accounts', { name, kind });
   S.codex = r.codex; renderAll();
@@ -432,13 +608,13 @@ function codexMenu(anchor) {
   const extra = !c.main && c.id !== 'codex';
   showMenu(anchor, [
     { label: 'Check again', hint: 'sign-in, usage and chats', run: async () => { const r = await api('/api/codex/check', {}); S.codex = r.codex; S.usage = r.usage || S.usage; renderAll(); toast('Checked Codex.', 2000); } },
-    ...(S.codexAuthUrl && !c.signedIn ? [{ label: 'Copy the sign-in link', hint: 'for a private browser window', run: async () => { try { await navigator.clipboard.writeText(S.codexAuthUrl); toast('Copied.', 1500); } catch { prompt('Copy this link:', S.codexAuthUrl); } } }] : []),
+    ...(S.codexAuthUrl && !c.signedIn ? [{ label: 'Copy the sign-in link', hint: 'for a private browser window', run: () => copyText(S.codexAuthUrl, 'Copied the link.') }] : []),
     ...(c.signedIn && c.kind !== 'ollama' ? [{ label: 'Open chatgpt.com', hint: 'regular ChatGPT, in its own window', run: () => openWeb(c.id) }, { label: `Sign out of ${c.name || 'Codex'}`, run: async () => { if (!(await appConfirm(`Sign ${c.name || 'Codex'} out of its ChatGPT account?\n\nYour Codex chats stay on this computer.`, { ok: 'Sign out', danger: true }))) return; await api('/api/codex/logout', { account: c.id }); await reload(); toast(`${c.name || 'Codex'} is signed out.`); } }] : []),
     '-',
     { label: 'Add another Codex account', hint: 'a second ChatGPT sign-in; chats stay shared', run: () => addCodexAccount('chatgpt') },
     ...(codexAccts().some(x => x.kind === 'ollama') ? [] : [{ label: 'Add Ollama', hint: 'Codex with ollama.com cloud models', run: () => addCodexAccount('ollama') }]),
     ...(extra ? [
-      { label: 'Rename…', run: async () => { const n = (prompt('New name:', c.name) || '').trim(); if (!n || n === c.name) return; const r = await api('/api/codex/accounts/rename', { id: c.id, name: n }); S.codex = r.codex; renderAll(); } },
+      { label: 'Rename…', run: async () => { const n = ((await ask('Rename this account', 'Only changes the name shown here.', c.name, 'Rename')) || '').trim(); if (!n || n === c.name) return; const r = await api('/api/codex/accounts/rename', { id: c.id, name: n }); S.codex = r.codex; renderAll(); } },
       { label: 'Remove from the list', hint: 'its sign-in folder stays', run: async () => { if (!(await appConfirm(`Remove ${c.name} from Session Switcher?\n\nIts chats stay. Its sign-in stays in ~/.${c.id} if you add it again.`, { ok: 'Remove', danger: true }))) return; const r = await api('/api/codex/accounts/remove', { id: c.id }); S.codex = r.codex; renderAll(); } },
     ] : []),
     '-',
@@ -454,7 +630,10 @@ function rowHtml(s, folderName, hit) {
   const live = liveOf(s.id);
   const run = !live && isRunning(s.id);
   const ocLive = oc && s.status === 'running' && !live;
-  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '') + (oc ? `<span class="tag openclaw" title="An OpenClaw agent’s session, readable and writable here">OpenClaw · ${esc(s.agentName || 'Agent')}</span>` : '') + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
+  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '')
+    + (s.partner ? `<span class="tag line pair" title="${PROV_NAME[s.partner.provider]} works in this chat too">with ${PROV_NAME[s.partner.provider]}</span>` : '')
+    + (oc ? `<span class="tag openclaw" title="An OpenClaw agent’s session, readable and writable here">OpenClaw · ${esc(s.agentName || 'Agent')}</span>` : '')
+    + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
     : ocLive ? '<span class="tag line" title="This session is active in OpenClaw right now">Live now</span>'
     : run ? '<span class="tag violet">In a terminal</span>' : (s.active ? '<span class="tag ghost">Just updated</span>' : ''));
   const primary = oc ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Read this session here (read-only)">Read</button>`
@@ -495,7 +674,7 @@ async function reopenChats(yes) {
   if (!yes) return;
   await loadSessions().catch(() => {});
   const n = r.reopened.length;
-  toast(`${n ? `Reopened ${n} chat${n === 1 ? '' : 's'}; ${n === 1 ? 'it’s' : 'they’re'} in Running now.` : ''}${r.failed.length ? ` ${r.failed.length} couldn’t open: ${r.failed.map(f => `${f.title || 'a chat'} (${f.error})`).join('; ')}` : ''}`.trim(), r.failed.length ? 10000 : 5000);
+  toast(`${n ? `Reopened ${n} chat${n === 1 ? '' : 's'}; ${n === 1 ? 'it’s' : 'they’re'} in Active now.` : ''}${r.failed.length ? ` ${r.failed.length} couldn’t open: ${r.failed.map(f => `${f.title || 'a chat'} (${f.error})`).join('; ')}` : ''}`.trim(), r.failed.length ? 10000 : 5000);
 }
 
 function renderHub() {

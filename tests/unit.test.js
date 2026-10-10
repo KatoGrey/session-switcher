@@ -520,3 +520,101 @@ test('review: a clean review has no findings', () => {
   assert.equal(r.findings.length, 0);
   assert.match(r.overall, /didn’t find any issues/);
 });
+
+/* ---------- starting while another copy runs: never an old server behind new pages ---------- */
+const handover = require('../lib/handover');
+const http = require('http');
+// A stand-in for whatever is on the port. `answer` decides what /api/version returns.
+function fakeServer(answer) {
+  return new Promise(resolve => {
+    const srv = http.createServer((req, res) => {
+      if (req.url === '/api/quit' && req.method === 'POST') {
+        const ok = srv.token && req.headers['x-switcher-token'] === srv.token;
+        res.writeHead(ok ? 200 : 403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok }));
+        if (ok) srv.close();
+        return;
+      }
+      const [status, body] = answer();
+      res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(typeof body === 'string' ? body : JSON.stringify(body));
+    });
+    srv.listen(0, '127.0.0.1', () => resolve(srv));
+  });
+}
+const base = { version: '6.0.0', build: 'aaaa', appDir: path.join(os.tmpdir(), 'ss-app'), sys: {} };
+
+test('handover: the same build just brings its window up', async () => {
+  const srv = await fakeServer(() => [200, { app: 'session-switcher', version: '6.0.0', build: 'aaaa', pid: 1 }]);
+  const r = await handover.takeOver({ ...base, port: srv.address().port, owner: async () => assert.fail('nothing to stop') });
+  assert.equal(r, 'open'); srv.close();
+});
+
+test('handover: a copy started before an update asks it to quit, then starts', async () => {
+  const srv = await fakeServer(() => [200, { app: 'session-switcher', version: '6.0.0', build: 'old-build', pid: 4242 }]);
+  const port = srv.address().port;
+  srv.token = 'secret-token';
+  handover.writeLock(port, { pid: 4242, version: '6.0.0', build: 'old-build', token: 'secret-token' });
+  const r = await handover.takeOver({ ...base, port, owner: async () => assert.fail('it should be asked, not stopped') });
+  assert.equal(r, 'start');
+  try { fs.unlinkSync(handover.lockFile(port)); } catch { /* gone */ }
+});
+
+test('handover: an older copy without the check is stopped by its process', async () => {
+  const srv = await fakeServer(() => [403, { error: 'This page is out of date. Reload it.', reason: 'stale' }]);
+  let killed = null;
+  const r = await handover.takeOver({ ...base, port: srv.address().port, owner: async () => ({ pid: 777, name: 'node.exe', cmd: '"node" "C:\\Apps\\claude-switcher\\server.js"' }), kill: pid => { killed = pid; srv.close(); } });
+  assert.equal(killed, 777); assert.equal(r, 'start');
+});
+
+test('handover: a newer version running is left alone', async () => {
+  const srv = await fakeServer(() => [200, { app: 'session-switcher', version: '9.0.0', build: 'zzzz', pid: 1 }]);
+  const r = await handover.takeOver({ ...base, port: srv.address().port, owner: async () => assert.fail('never stop a newer copy') });
+  assert.equal(r, 'open'); srv.close();
+});
+
+test('handover: another program on the port is never stopped', async () => {
+  const srv = await fakeServer(() => [200, '<html>someone else</html>']);
+  let killed = false;
+  const r = await handover.takeOver({ ...base, port: srv.address().port, owner: async () => ({ pid: 5, name: 'python.exe', cmd: 'python -m http.server' }), kill: () => { killed = true; } });
+  assert.equal(r, 'busy'); assert.equal(killed, false); srv.close();
+});
+
+// Something on the port that takes the connection and hangs up without answering.
+const silentServer = () => new Promise(resolve => { const srv = require('net').createServer(s => s.destroy()); srv.listen(0, '127.0.0.1', () => resolve(srv)); });
+
+test('handover: a hung copy started as plain `node server.js` is known by its lock file', async () => {
+  const srv = await silentServer();
+  const port = srv.address().port;
+  handover.writeLock(port, { pid: 888, version: '6.0.0', build: 'old-build', dir: base.appDir, token: 't' });
+  let killed = null;
+  const r = await handover.takeOver({ ...base, port, owner: async () => ({ pid: 888, name: 'node', cmd: 'node server.js' }), kill: pid => { killed = pid; srv.close(); } });
+  assert.equal(killed, 888); assert.equal(r, 'start');
+  try { fs.unlinkSync(handover.lockFile(port)); } catch { /* gone */ }
+});
+
+test('handover: the same code that is only slow to answer is left running', async () => {
+  const srv = await silentServer();
+  const port = srv.address().port;
+  handover.writeLock(port, { pid: 889, version: '6.0.0', build: 'aaaa', dir: base.appDir, token: 't' });
+  const r = await handover.takeOver({ ...base, port, owner: async () => ({ pid: 889, name: 'node', cmd: 'node server.js' }), kill: () => assert.fail('never stop the same code') });
+  assert.equal(r, 'open'); srv.close();
+  try { fs.unlinkSync(handover.lockFile(port)); } catch { /* gone */ }
+});
+
+test('handover: a hung copy from another folder is not stopped', async () => {
+  const srv = await silentServer();
+  const port = srv.address().port;
+  handover.writeLock(port, { pid: 890, version: '6.0.0', build: 'old-build', dir: path.join(os.tmpdir(), 'elsewhere'), token: 't' });
+  const r = await handover.takeOver({ ...base, port, owner: async () => ({ pid: 890, name: 'node', cmd: 'node server.js' }), kill: () => assert.fail('not this folder’s copy') });
+  assert.equal(r, 'busy'); srv.close();
+  try { fs.unlinkSync(handover.lockFile(port)); } catch { /* gone */ }
+});
+
+test('handover: the build fingerprint follows the code, not file dates', () => {
+  const dir = tmp();
+  put(dir, 'server.js', 'a'); put(dir, 'ui/base.js', 'b');
+  const one = handover.buildId(dir);
+  fs.utimesSync(path.join(dir, 'ui/base.js'), new Date(2000, 1, 1), new Date(2000, 1, 1));
+  assert.equal(handover.buildId(dir), one);
+  put(dir, 'ui/base.js', 'b2');
+  assert.notEqual(handover.buildId(dir), one);
+});

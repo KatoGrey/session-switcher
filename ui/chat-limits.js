@@ -40,7 +40,7 @@ function renderLimit(ev) {
 
 // Your last message to Claude, to send again after switching.
 function lastToClaude() {
-  const u = [...$c('cFeed').querySelectorAll('.umsg:not(.to-codex)')].pop();
+  const u = [...$c('cFeed').querySelectorAll('.umsg:not(.to-partner)')].pop();
   return u ? (RAW.get(u) || '').trim() : '';
 }
 // The same conversation on another account: this chat stops, then resumes as that one, with your

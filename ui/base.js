@@ -44,7 +44,7 @@ function toggleFav(id) {
   const k = String(id).toLowerCase(), on = !S.favs.has(k);
   if (on) S.favs.add(k); else S.favs.delete(k);
   store('favChats', JSON.stringify([...S.favs]));
-  renderNav(); if (window.ChatUI && ChatUI.refreshFav) ChatUI.refreshFav();
+  renderNav(); if (window.ChatUI && ChatUI.refreshFav) { ChatUI.refreshFav(); ChatUI.renderRail(); }
   toast(on ? 'Pinned the chat to the sidebar.' : 'Unpinned the chat.', 4000, { label: 'Undo', run: () => toggleFav(id) });
 }
 const isFav = id => !!id && S.favs.has(String(id).toLowerCase());
@@ -84,6 +84,56 @@ function toast(msg, ms = 5000, action = null) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), action ? Math.max(ms, 6000) : ms);
 }
 function wrap(fn) { return async (...args) => { try { return await fn(...args); } catch (err) { if (err.message !== 'Reloading…') toast(err.message, 9000); if (err.reason) reload().catch(() => {}); } return undefined; }; }
+
+/* ---------- copying ---------- */
+// Copies text wherever the app runs. The clipboard API only works on a secure page (the PC's own
+// window); phone access is plain http on the home network, where phones refuse it. There the
+// browser's older copy command still works, and if even that's refused, a sheet opens with the text
+// selected, to copy by hand. Phones only allow copying during a tap, so call this straight from one.
+// what: the toast to show (null: none). Resolves true when it copied.
+function copyText(text, what = 'Copied.') {
+  text = String(text ?? '');
+  const done = () => { if (what) toast(what, 1600); return true; };
+  if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(done, () => (legacyCopy(text) ? done() : copySheet(text)));
+  }
+  return Promise.resolve(legacyCopy(text) ? done() : copySheet(text));
+}
+function legacyCopy(text) {
+  const active = document.activeElement, sel = document.getSelection(), ranges = [];
+  for (let i = 0; i < sel.rangeCount; i++) ranges.push(sel.getRangeAt(i));
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  // Out of sight; 16px so an iPhone doesn't zoom in on it.
+  ta.style.cssText = 'position:fixed;top:0;left:-9999px;width:2em;height:2em;padding:0;border:0;opacity:0;font-size:16px';
+  document.body.appendChild(ta);
+  let ok = false;
+  try { ta.focus({ preventScroll: true }); ta.select(); ta.setSelectionRange(0, text.length); ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  sel.removeAllRanges(); for (const r of ranges) sel.addRange(r);
+  if (active && active !== document.body && active.focus) active.focus({ preventScroll: true });
+  return ok;
+}
+// The last resort: the text in a sheet, selected. In a text box, a phone's Select all keeps to the box.
+function copySheet(text) {
+  let d = $('copyDlg');
+  if (!d) {
+    document.body.insertAdjacentHTML('beforeend', `<dialog id="copyDlg" class="copy-dlg" aria-labelledby="copyT"><div class="setup-head"><h3 id="copyT">Copy this</h3><button type="button" class="icon" data-copy-close aria-label="Close">✕</button></div>
+      <p class="copy-hint">This device didn’t let the app copy it for you. Press and hold the text, choose Select all, then Copy.</p><textarea id="copyTa" readonly spellcheck="false"></textarea>
+      <div class="d-row"><button type="button" class="btn" data-copy-all>Select all</button><button type="button" class="btn prime" data-copy-close>Done</button></div></dialog>`);
+    d = $('copyDlg');
+    d.addEventListener('click', e => {
+      if (e.target === d || e.target.closest('[data-copy-close]')) d.close();
+      else if (e.target.closest('[data-copy-all]')) { const ta = $('copyTa'); ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); }
+    });
+  }
+  const ta = $('copyTa');
+  ta.value = text;
+  if (!d.open) d.showModal();
+  ta.scrollTop = 0; ta.focus({ preventScroll: true }); ta.select(); ta.setSelectionRange(0, text.length);
+  return false;
+}
 
 // A saga theme's own words for a piece of text (theme.js); other themes keep the text as it is.
 const voice = (text, vars) => Look.say(text, vars);
@@ -259,8 +309,8 @@ function markSeen(x) {
   store('seen', JSON.stringify(S.seen));
   renderLive(); renderNav();
 }
-// approve | question | terminal-wait | reply | working | quiet | ended
-function statusOf(x) {
+// approve | question | terminal-wait | reply | working | quiet | ended: a chat on its own.
+function ownStatus(x) {
   if (x.phase === 'waiting') return (x.pending || []).some(p => p.question) ? 'question' : 'approve';
   if (x.phase === 'waiting-terminal') return 'terminal-wait';
   if (WORKING.has(x.phase)) return 'working';
@@ -268,11 +318,26 @@ function statusOf(x) {
   if (x.finishedAt && (x.source === 'app' || x.lastText) && !isSeen(x)) return 'reply';
   return 'quiet';
 }
+// A chat with its partner (Codex in it, or Claude): whichever of the two is further along the list
+// above, so a chat reads "at work" while its partner works, and "needs your OK" when its partner does.
+const STATUS_RANK = { approve: 0, question: 0, 'terminal-wait': 1, working: 2, reply: 3, quiet: 4, ended: 5 };
+function statusOf(x) {
+  const own = ownStatus(x), p = x.partner ? ownStatus(x.partner) : null;
+  return p && STATUS_RANK[p] < STATUS_RANK[own] ? p : own;
+}
+// Running chats get their partner attached (it stays a row of its own too, for the cards that ask you).
+function withPartners(list) {
+  for (const x of list) if (!x.parentKey) x.partner = (x.key && list.find(y => y.parentKey === x.key)) || null;
+  return list;
+}
 const NEEDS = new Set(['approve', 'question', 'terminal-wait']);
-const awaiting = () => S.activity.filter(x => NEEDS.has(statusOf(x)) || statusOf(x) === 'reply')
-  .sort((a, b) => (NEEDS.has(statusOf(b)) - NEEDS.has(statusOf(a))) || ((b.finishedAt || b.lastEventAt || 0) - (a.finishedAt || a.lastEventAt || 0)));
-const atWork = () => S.activity.filter(x => statusOf(x) === 'working');
-const quietOpen = () => S.activity.filter(x => statusOf(x) === 'quiet' || statusOf(x) === 'ended');
+const waitsOnYou = x => NEEDS.has(ownStatus(x)) || ownStatus(x) === 'reply';
+// Waiting on you: each one that asks (a partner too: its card has its question); at work and quiet:
+// each chat once, with its partner.
+const awaiting = () => S.activity.filter(waitsOnYou)
+  .sort((a, b) => (NEEDS.has(ownStatus(b)) - NEEDS.has(ownStatus(a))) || ((b.finishedAt || b.lastEventAt || 0) - (a.finishedAt || a.lastEventAt || 0)));
+const atWork = () => S.activity.filter(x => !x.parentKey && !waitsOnYou(x) && statusOf(x) === 'working');
+const quietOpen = () => S.activity.filter(x => !x.parentKey && !waitsOnYou(x) && (statusOf(x) === 'quiet' || statusOf(x) === 'ended'));
 const asked = x => /\?["”’)\]]*\s*$/.test(lastLine(x.lastText));
 const VERB_NOW = { Bash: 'Running', PowerShell: 'Running', Read: 'Reading', Write: 'Writing', Edit: 'Editing', MultiEdit: 'Editing', NotebookEdit: 'Editing', Glob: 'Finding', Grep: 'Searching', WebFetch: 'Fetching', WebSearch: 'Searching', Agent: 'Delegating', Task: 'Delegating', TodoWrite: 'Planning', TaskCreate: 'Planning', TaskUpdate: 'Planning', Artifact: 'Publishing', AskUserQuestion: 'Asking' };
 function wantsTo(p) {
@@ -321,9 +386,28 @@ function keepOrder(name, list, idsOf) {
 }
 const activityIds = x => [x.key, x.sessionId && `s:${String(x.sessionId).toLowerCase()}`];
 const findActivity = k => S.activity.find(x => keyOf(x) === k) || null;
+// Chats you closed stay off the lists: one this app ran for good (that run is over; opening it again
+// starts a new one), one in a terminal or another app until it does something new.
+S.closed = new Map();
+const closedKey = x => x.key || `s:${String(x.sessionId).toLowerCase()}`;
+function isClosed(x) {
+  if (x.parentKey && S.closed.has(x.parentKey)) return true;
+  const t = S.closed.get(closedKey(x));
+  return t !== undefined && !(!x.key && (x.lastEventAt || 0) > t);
+}
+const openOnly = list => list.filter(x => !isClosed(x));
+function closeOff(x) {
+  const now = Date.now();
+  for (const [k, t] of S.closed) if (now - t > 864e5) S.closed.delete(k);
+  S.closed.set(closedKey(x), now);
+  S.activity = openOnly(S.activity);
+  renderLive(); renderNav();
+}
 function openActivity(x) {
   if (!x) return;
-  markSeen(x);
+  markSeen(x); if (x.partner) markSeen(x.partner);
+  // A partner opens inside the chat it works in.
+  if (x.source === 'app' && x.parentKey) return ChatUI.openKey(x.parentKey);
   if (x.source === 'app') return ChatUI.openKey(x.key);
   return ChatUI.watch({ sessionId: x.sessionId, source: x.source });
 }
@@ -340,7 +424,7 @@ async function loadSessions() {
   S.projects = j.projects; S.root = j.root; S.running = j.running || {}; S.live = j.live || {};
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
-async function loadActivity() { const j = await api('/api/activity'); S.activity = keepOrder('running', j.list || [], activityIds); }
+async function loadActivity() { const j = await api('/api/activity'); S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }
 async function loadUsage() { const j = await api('/api/usage'); S.usage = j.usage || {}; }
 async function reload() {
   await loadState();
@@ -385,4 +469,38 @@ function patch(container, items, keyFn, htmlFn, emptyHtml = '') {
     prev = el;
   }
   for (const el of old.values()) el.remove();
+}
+// Animates a change to keyed lists (patch's data-k): what stays glides from where it was to where it is
+// now, even into another of the lists; what's new fades in; what's gone fades out where it stood. With
+// less motion asked for, the change just happens.
+const EASE = 'cubic-bezier(.2,.8,.2,1)';
+function flip(lists, mutate) {
+  lists = lists.filter(Boolean);
+  if (typeof motionOk !== 'function' || !motionOk() || document.hidden) return mutate();
+  const was = new Map();
+  for (const l of lists) for (const el of l.children) if (el.dataset && el.dataset.k) was.set(el.dataset.k, { el, r: el.getBoundingClientRect(), list: l });
+  mutate();
+  const now = new Set();
+  for (const l of lists) {
+    for (const el of l.children) {
+      if (!el.dataset || !el.dataset.k || el.classList.contains('flip-ghost')) continue;
+      now.add(el.dataset.k);
+      // One still gliding from an earlier change starts this one from where it appears to be now.
+      for (const a of el.getAnimations()) if (a.id === 'flip') a.cancel();
+      const w = was.get(el.dataset.k), r = el.getBoundingClientRect();
+      if (!w) { el.animate([{ opacity: 0, transform: 'translateY(-6px) scale(.97)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE, id: 'flip' }); continue; }
+      const dx = w.r.left - r.left, dy = w.r.top - r.top;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) el.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], { duration: 280, easing: EASE, id: 'flip' });
+    }
+  }
+  for (const [k, w] of was) {
+    if (now.has(k) || !w.r.height || !w.list.isConnected) continue;
+    // A stand-in where it was, fading out (the real one is gone already).
+    const g = w.el.cloneNode(true), box = w.list.getBoundingClientRect();
+    if (getComputedStyle(w.list).position === 'static') w.list.style.position = 'relative';
+    g.classList.add('flip-ghost'); g.removeAttribute('data-k'); g.setAttribute('aria-hidden', 'true');
+    Object.assign(g.style, { position: 'absolute', left: `${w.r.left - box.left + w.list.scrollLeft}px`, top: `${w.r.top - box.top + w.list.scrollTop}px`, width: `${w.r.width}px`, height: `${w.r.height}px`, margin: '0', pointerEvents: 'none' });
+    w.list.appendChild(g);
+    g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 200, easing: 'ease-in' }).finished.then(() => g.remove(), () => g.remove());
+  }
 }

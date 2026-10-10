@@ -13,6 +13,7 @@ Session Switcher lists every Claude Code chat on this computer (Windows or Mac),
 
 1. Unzip this folder somewhere permanent, for example `C:\Users\<you>\Apps\Session Switcher`.
    - Updating? Unzip over the old copy. Your `accounts.json`, `history.json`, `chat-names.json`, `projects.json`, `banners.json` and `prompts.json` are kept.
+   - You don't need to quit first. When you start it again, it sees that the copy still running is out of date, closes that one, and opens the new one. Chats running in the old window stop; they pick up where they left off when you open them again.
 2. Double-click **Claude Switcher.vbs**. It opens as its own window, with no console.
 3. Open **Setup** (the gear, top right) and click **Create desktop shortcut**.
 
@@ -81,7 +82,7 @@ The top bar is visible everywhere:
 
 The window title shows the count too, for example "(2) Session Switcher".
 
-The lists stay put while chats work: the sidebar's folders and the chat window's **Running now** keep their order, and a new one joins at the top, so nothing moves out from under your mouse.
+The lists stay put while chats work: the sidebar's folders and the chat window's **Active now** keep their order, and a new one joins at the end, so nothing moves out from under your mouse.
 
 The first time it opens, a short tour points out the main parts. **Take the tour** in Setup or `Ctrl+K` shows it again.
 
@@ -178,7 +179,10 @@ Sign-ins never live in the app's folder. Each Claude account signs in through it
 
 Click **Open** on any chat, or **New chat** in a folder. The chat runs in Session Switcher's own window, as the account you picked.
 
-- **Running now (left):** every running chat, for one-click switching. `Alt+↑` and `Alt+↓` move between them.
+- **Active now (left):** every open chat, for one-click switching: working, waiting for you, or ready for your next message. `Alt+↑` and `Alt+↓` move between them.
+  - **Drag** a chat up or down to put the list in your order (or `Alt+Shift+↑` / `Alt+Shift+↓` for the chat you're in). The order is remembered.
+  - **Right-click → Pin to the sidebar** keeps a chat at the top of the list, under **Pinned**, even after it stops; click it to open it again.
+  - **Right-click → Close** takes a chat off the list. One running here stops (open it again and it picks up where it left off; it asks first if the chat is mid-reply). One in a terminal or another app keeps running there, and comes back to the list if it does something new. Closing the chat you're in moves you to the next one.
 - **The conversation:**
   - Replies are formatted, with tables and copyable code.
   - Tool steps are compact rows that open to show the command, the edit or the output. Once a reply is done, its steps fold into one line ("Edited songs.lua · ran 2 commands · looked at 4 files"); click it to see them.
@@ -269,25 +273,29 @@ If [OpenClaw](https://openclaw.ai) is installed, its agents' sessions (Discord c
 
 ## Claude and Codex in one chat
 
-Inside any Claude chat you can bring in Codex as a helper, for example to make images for a project while Claude does the main work. You don't need a second window.
+Claude and Codex work in the same chat, either way round: bring Codex into a Claude chat (to make images for a project while Claude does the main work, say), or Claude into a Codex chat. One window, one conversation, both reading each other.
 
-- **The crew, under the message box:** two pills, **Claude** and **Codex**. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex).
-  - Click the other pill, or press `Ctrl+.`, to choose who your next message goes to. The box turns blue when you're writing to Codex.
-  - Or start a message with `@codex` (or `@claude`) to send just that one message.
-- **One feed:** Codex's replies appear in the same conversation, under its own name in blue. Messages you sent it are tagged **to Codex**. Pictures it makes appear as it makes them.
-- **One conversation:** whoever you write to first catches up on what it hasn't seen: what the other one said and changed, and what you said to it. In the feed that's a small fold-out ("Codex was caught up on 3 messages"), not text you wrote. So you can ask Claude for a plan, switch to Codex and say "do the second part", and Codex knows what that is.
-- **Both:** the **Both** pill (or `@both`) sends one message to each, and they both answer in the same feed.
+- **The crew, under the message box:** two pills, the chat's own assistant and its partner. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex).
+  - Click the other pill, or press `Ctrl+.`, to choose who your next message goes to. The box takes that one's color.
+  - Or start a message with `@codex` or `@claude` to send just that one message.
+- **One feed:** the partner's replies appear in the same conversation, under its own name and color. Messages you sent it are tagged **to Codex** (or **to Claude**). Pictures Codex makes appear as it makes them.
+- **They read each other:** before each message one of them gets, the app catches it up on what it hasn't seen: what the other one said and did (which files it changed, how many commands it ran), and what you said to the other. In the feed that's a small fold-out ("Codex was caught up on 3 messages"), not text you wrote. So you can ask Claude for a plan, switch to Codex and say "do the second part", and Codex knows what that is.
+  - The app works this out on the PC from the two conversations themselves, from the moment each one last caught up, so it's the same in every window and on your phone, and survives a reload or a restart. Nothing is told twice; a long stretch keeps the newest messages and says how many earlier ones it left out.
+  - Files you undo from a reply are mentioned to that one with your next message.
+- **Both: they take turns.** The **Both** pill (or `@both`) sends your message to the chat's own assistant first. When it has answered, the other one picks the same message up, already knowing that answer, and builds on it (checks it, adds what it missed, does its part) instead of starting over. Your message reads "to Claude, then Codex", the second one's pill says **up next** while it waits, and the feed marks where it **takes it from here**. They never edit files at the same time. Stopping the first one skips the hand-over.
+- **One chat per project:** starting a Codex chat in a project where a Claude chat is open (or the other way round) offers to add it to that chat instead, so the work stays in one place. **Start a separate chat** is still there if you want one.
+  - A partner's own conversation lives inside its chat: it isn't listed as a chat of its own, the chat's row says **with Codex**, and opening it (from search, a notification or a card) opens the chat it belongs to.
+  - On the hub and in the chat window's list, a chat reads as at work while its partner works, and as needing you when its partner does ("Codex: Needs your OK").
+- **Always there:** one partner per chat, never two processes on one conversation (a partner left running is picked up again, not started twice). It resumes its earlier conversation even before Codex's own list has caught up; if that conversation can't be picked up, it starts a new one, caught up on the chat, and says so. A partner never outlives its chat.
 - **Codex reviews Claude's work:** **Review with Codex** on a Claude reply (or **⋯** → **Have Codex review the changes**) has Codex look over the changes, read-only.
   - The findings appear as a card, each with its priority, file and lines. **All clear** when there are none.
   - **Ask Claude to fix this** on one finding, or **Fix and recheck until clean**: Claude fixes them all, then Codex reviews again, up to three rounds. **Stop after this** ends it early.
 - **Hand-offs:**
-  - **Ask Codex** on any Claude reply quotes it to Codex, for example Claude's description of a cover image.
-  - **Send to Claude** on a Codex reply quotes it back.
+  - **Ask Codex** on a reply quotes it to the partner (as Markdown), for example Claude's description of a cover image. **Send to Claude** on the partner's reply quotes it back.
   - **Give to Claude** on a picture Codex made attaches it to your next message to Claude, with where it's saved.
-- **It's remembered:** the helper is tied to the chat. Reopen the chat later and Codex's earlier messages appear in place, and your next message to Codex continues the same Codex conversation.
-- **What Codex is told:** that it works alongside Claude in the same folder, should keep replies short, and should save a copy of any image it makes inside the project folder.
-- **Approvals:** Codex's approval cards are blue and say "Codex wants to…", so you always know who's asking. Esc stops whichever one you're writing to.
-- The helper uses your Codex sign-in and its usage, and shows in the ledger and on the hub as "Codex · *chat name*". **Stop this chat** stops both.
+- **It's remembered:** the partner is tied to the chat. Reopen the chat later and the partner's earlier messages appear in place, and your next message to it continues the same conversation.
+- **Approvals:** each one's approval cards are in its own color and say who's asking ("Codex wants to…"). Esc stops whichever one you're writing to.
+- The partner uses its own sign-in and usage (Codex: your Codex account; Claude: the account you're working as) and shows in the ledger as **With Codex**. **Close** or **Stop this chat** stops both.
 
 ## Rules and tools
 
@@ -347,6 +355,9 @@ On the phone:
 - Big photos are shrunk to a sharp JPEG so they reach Claude as a picture. Videos and other files are saved in the project's `attachments` folder.
 - Menus and the model picker open as sheets from the bottom of the screen. Back closes whatever is open.
 - The **Claude** and **Codex** pills under the message box show each one's model, side by side, so you can see who you're writing to and switch with one tap.
+- **Copying works,** even though phone access is plain http, where phones don't let a page use the clipboard: every **Copy** falls back to the browser's own copy command, and if a phone refuses that too, the text opens in a sheet, already selected, to copy by hand.
+- A reply's buttons (**Copy**, **Ask Codex**, **Review with Codex**) sit in a row under it, where you finish reading, big enough for a thumb. **Copy** copies the reply as written, in Markdown, so lists, tables and code fences come along.
+- **Select all** keeps to what you're in: the code block, else the message. Select all again for the whole conversation; never the buttons and menus around it. Pressing and holding a code block selects all of it.
 - On a foldable, the cover screen gets a one-column layout, and the inner screen shows two columns of projects.
 
 To update the phone app, open the same `http://<your PC>:4788/get` page and install again. Your pairing is kept.
@@ -374,7 +385,7 @@ The Codex card does the same for **chatgpt.com**.
 Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in `Ctrl+K`):
 
 - **Light or dark:** Dark, Light, or Match device (it follows Windows or Android).
-- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus two space saga themes (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
+- **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus two space saga themes, Malibu and three anime themes (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
 - **Text size** (80–150%): messages, documents and the message box.
 - **Reading font:** Classic (the serif), Modern (a clean sans for reading), or Clean (sans headings too).
 - **Bold text** and **Higher contrast**. Light themes keep small grey text (dates, hints, labels) dark enough to read.
@@ -402,6 +413,42 @@ Beyond colors, a saga theme brings:
 - **Short sound cues** in place of the bell when a chat needs you or replies, plus one when you pick the theme. They follow the chime setting.
 
 Screenshots are in [`docs/themes/`](docs/themes/). They use made-up chats and projects, and the chat window is shown in its read-only watch view. The fonts are under the SIL Open Font License (`fonts/OFL.txt`). The sounds are from Kenney's CC0 packs; `sounds/LICENSE-kenney.txt` lists which pack and file each comes from.
+
+### Glam theme: Malibu
+
+Hot pink and pool blue at a beach house in the sun. Made for light mode; in dark mode the same pinks glow on plum at dusk. It's under **Glam** in **Setup → Appearance**.
+
+- **Lettering:** Pacifico, a bubbly retro script, for the logo, the hero and section titles; Nunito, soft and rounded, for reading and everything else.
+- **A sunset in the hero** that reads the live counts: a striped sun setting into the sea between two palms, a heart in the sky for each chat waiting on you (gold when it needs your OK, white when it has replied), a twinkle for each chat at work and a pool float for each one lounging. The waves roll, the hearts bob and the twinkles sparkle; all of it holds still when **Animations** is off or your device asks for less motion.
+- **Little hearts** in place of status dots; a working chat's heart beats.
+- **Sparkles** behind the hub in place of the petals (four-point sparkles and the odd heart, in pink, sunshine and pool blue), shimmering slowly.
+- **Pill buttons, stitched cards and pink speech bubbles,** a heart emblem with a sparkle in place of the seal, and a pink-to-peach rule under each section title.
+- **Its own words:** "Hello, gorgeous" over the sidebar, "Fresh gossip" for recent chats, "Your looks" for accounts (the current one is "Today's look"), "Who wore it better" for races, and headlines like "Two chats are ready for you, darling."
+- **Sweet chimes,** made on the spot rather than played from files: a rising twinkle when a chat needs you, three bright notes when one replies. They follow the chime setting.
+
+Screenshots: [`malibu-hub-light.jpg`](docs/themes/malibu-hub-light.jpg), [`malibu-hub-dark.jpg`](docs/themes/malibu-hub-dark.jpg), [`malibu-chat-light.jpg`](docs/themes/malibu-chat-light.jpg) and [`malibu-phone-light.jpg`](docs/themes/malibu-phone-light.jpg). Its words are in the theme's `copy` map in `theme.js`, its look in the Malibu section of `styles.css`.
+
+### Anime themes: Isekai, High Fantasy and Dungeon
+
+Three worlds drawn like an anime's: glowing magic, gradient skies, rim light and drifting particles. Made for dark mode (each has a light version too), under **Anime** in **Setup → Appearance**.
+
+| Theme | Feel | Lettering | In the hero |
+|---|---|---|---|
+| **Isekai** | Summoned to another world: indigo glass, a cyan magic glow, sakura pink and gold | Orbitron for the big words, M PLUS Rounded for reading | Floating islands under two moons over a sea of clouds. A crystal floats up for each chat waiting on you (gold when it needs your OK), and the magic circle glows and turns while chats are at work. A **status window** reads the account you work as: HP is what's left of its five-hour window, MP what's left of its week, its level is how many chats you've had, its class comes from its plan |
+| **High Fantasy** | Emerald and gold under a great moon | Cinzel Decorative and Cinzel for titles and names, EB Garamond for reading | A citadel on a cliff with snow on the peaks behind. A window lights for each chat at work and a beacon burns for each one waiting on you (the castle's braziers first, then the peaks); a dragon crosses the moon now and then |
+| **Dungeon** | Torchlit stone deep below: iron, rust and ember light | Pirata One for the big words, Alegreya SC for names and labels, Alegreya for reading | An archway into the dark: a torch burns for each chat at work, eyes open in the dark for each one waiting on you (gold when it needs your OK), and a chest sits ready for each one open and idle. It stays dark in light mode too, as a window underground |
+
+Each one also brings:
+
+- **A living sky** behind the hub in place of the petals: mana motes rising (Isekai), fireflies wandering and blinking (High Fantasy) or embers rising (Dungeon).
+- **Status dots in its own shape:** glowing diamonds, four-pointed stars that glimmer while a chat works, or little flames that flicker.
+- **Its own panels:** system-window corner brackets (Isekai), gilded hairlines and a gilded drop cap opening each reply (High Fantasy), an iron-bound frame with rivets (Dungeon). The logo becomes a magic circle, a compass star or a keyhole; the circle and the star turn while chats work, and the keyhole glows.
+- **Its own words,** for example "Awaiting you" becomes "Awaiting your command", "At your word" or "Answer the dark", and the hub is the "Guild hall", "The great hall" or "Camp".
+- **Chimes made on the spot:** a quick bright arpeggio, harp notes, or a low bell, plus a short flourish when you pick the theme. They follow the chime setting.
+
+Everything that moves holds still when **Animations** is off or your device asks for less motion. Small print (dates, paths, commands) stays in a plain reading face or monospace, never in the display lettering. Screenshots: [`isekai-hub-dark.jpg`](docs/themes/isekai-hub-dark.jpg), [`isekai-chat-dark.jpg`](docs/themes/isekai-chat-dark.jpg), [`highfantasy-hub-dark.jpg`](docs/themes/highfantasy-hub-dark.jpg), [`highfantasy-chat-dark.jpg`](docs/themes/highfantasy-chat-dark.jpg), [`dungeon-hub-dark.jpg`](docs/themes/dungeon-hub-dark.jpg), [`dungeon-chat-dark.jpg`](docs/themes/dungeon-chat-dark.jpg) and [`anime-phones-dark.jpg`](docs/themes/anime-phones-dark.jpg). Their words are in each theme's `copy` map in `theme.js`, their scenes in `ui/hub.js` and their look in the anime section of `styles.css`.
+
+**In every theme:** while Claude or Codex is writing, a band of light runs along the top of the message box (in Codex's color when only Codex is), and picking a new theme or switching light and dark fades the new look in rather than snapping.
 
 ## Alerts
 
@@ -432,7 +479,8 @@ Turn **Animations** off in Setup to keep everything still. It's also off automat
 | `Ctrl+K` or `/` | Jump to any chat, project, document, prompt or action, or search inside every message |
 | `/` in the message box | Pick a saved prompt |
 | `←` / `→` | Step through a project's pictures in the full-size view |
-| `Alt+↑` / `Alt+↓` | Switch between running chats in the chat window |
+| `Alt+↑` / `Alt+↓` | Switch between open chats in the chat window |
+| `Alt+Shift+↑` / `Alt+Shift+↓` | Move the chat you're in up or down that list |
 | `Enter` | Send. Use `Shift+Enter` for a new line |
 | `Esc` | Close what's open. While Claude or Codex is replying, press it twice to stop |
 | `Ctrl+F` | Find in this chat |
@@ -449,11 +497,11 @@ Right-click almost anything for what you can do with it. Shift+right-click still
 
 Menus get out of the way: a click anywhere else closes the menu (without also pressing whatever you clicked), and so do Esc, scrolling and switching windows. With one menu open, a click on another ⋯ or menu button opens that one straight away, and a right-click elsewhere opens the menu for that spot. From the keyboard, the Menu key opens the menu for whatever has focus; the arrows, Home and End move, and typing a letter jumps to the item that starts with it.
 
-- **A chat** (in a list, on a hub card, or pinned in the sidebar): open it, open a copy, resume in a terminal, rename, pin to the sidebar, copy its ID or terminal command, show its transcript.
+- **A chat** (in a list, on a hub card, or pinned in the sidebar): open it, close it (an open chat), open a copy, resume in a terminal, rename, pin to the sidebar, copy its ID or terminal command, show its transcript.
 - **A project** (its card, or its name in the sidebar): open it, pin it, continue the latest chat, start a new Claude or Codex chat, start with a prompt, show it in Explorer, browse its files, copy its path.
 - **An account card:** sign-in checks, usage, rename, sign out.
 - **Inside a chat:**
-  - **A reply:** copy it (as text or Markdown), quote it in your message, or hand it to Codex or Claude.
+  - **A reply:** copy it (as text or Markdown), quote it in your message, or hand it to Codex or Claude. Its own **Copy** button copies the Markdown.
   - **Your message:** copy it, quote it, or **Edit and send again**.
   - **Selected text:** copy, quote, ask the other assistant about it, find it in this chat, or search every chat for it.
   - **Code:** copy it, as Markdown too, or put it in your message.
@@ -462,13 +510,14 @@ Menus get out of the way: a click anywhere else closes the menu (without also pr
   - **A step** (a command, an edit): show its details, copy the command or its output.
   - **The Claude or Codex pill:** quick picks and the model picker.
   - **The chat itself:** find, jump to the latest message, export as Markdown, pin, rename, copy its ID, stop.
+- **Ctrl+A** in a chat selects the message (or code block) you clicked in, not the whole window; press it again for the whole conversation.
 - **Empty space:** search, new project, light or dark mode, appearance, setup, keyboard shortcuts.
 
 On a phone, a long press does the same on cards, pictures and controls.
 
 ## Pinned and favorites
 
-- Pin projects and chats to the top of the sidebar: right-click them and choose **Pin to the sidebar**, or click the ☆ in a chat's header.
+- Pin projects and chats to the top of the sidebar: right-click them and choose **Pin to the sidebar**, or click the ☆ in a chat's header. Pinned chats also stay at the top of the chat window's list, running or not.
 - Pinned chats show a gold dot when they're waiting for you and a pulsing one while they work. Pinned chats also get a ★ in lists.
 - Click a sidebar heading (**Pinned**, **Claude Code**, **Codex**) to fold it away. It stays folded.
 
@@ -605,5 +654,7 @@ Session Switcher never edits your chat files.
 - **Browser checks** (`tests/ui.js`): a headless browser clicks and types through menus, dialogs, the chat window, the model picker, every theme (light and dark, checking the text is readable) and the phone layout. They run against a made-up demo world (`tests/demo.js`), never your own chats.
 - The tests start their own copy of the app on a free port with a throwaway data folder, so they never touch the Session Switcher you're using.
 - `node tests/run.js chat menus` runs only the named browser checks; `SHOTS=folder` also saves screenshots.
+- **Claude and Codex together** (`tests/duo.test.js`, `tests/pairs.test.js`): what each one is told it missed, Both taking turns, one process per conversation, resuming after a restart, starting over when a conversation is gone, with stand-in chats.
+- **For real, by hand** (`node tests/real-duo.js`, not part of `npm test`): drives real Claude and Codex through the app, with your own sign-ins and a little of their usage (one-line replies, Claude on Haiku). Codex joins a Claude chat and reads it, Claude reads Codex back, Both takes turns, a restart picks up where it was, a Codex chat brings Claude in, a lost conversation starts over, and the window shows it all in one feed. It uses scratch projects in the temp folder and cleans up after itself, archiving its Codex conversations through Codex. `REAL_DUO_LOG=1` also prints the app's log.
 
 GitHub runs the same tests on Windows and on a Mac for every push and pull request.

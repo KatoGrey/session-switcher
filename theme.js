@@ -59,6 +59,109 @@
     Object.assign(t.copy, { '✦': '', 'Turned off automatically if Windows is set to reduce motion.': 'It never moves, so it stays on when your device is set to reduce motion.' });
   }
 
+  /* ---------- the glam themes ----------
+     Malibu: hot pink and pool blue at a beach house in the sun. A bubbly script for the big words, a
+     soft rounded face for reading, sparkles behind the hub, a sunset in the hero (hearts in the sky
+     for chats waiting on you, twinkles for ones at work, pool floats for ones lounging), little
+     hearts for status dots (a working chat's heart beats) and sweet chimes made on the spot (tones:
+     [frequency, start, volume] per note). Made for light mode; in dark mode it's neon on plum. */
+  const PACIFICO = '"Pacifico", "Brush Script MT", cursive';
+  const NUNITO = '"Nunito", system-ui, -apple-system, "Segoe UI", sans-serif';
+  const GLAM = [
+    {
+      id: 'malibu', name: 'Malibu', note: 'Hot pink and pool blue at a beach house in the sun: a sunset, sparkles and little hearts. Made for light mode.', family: 'glam', sky: 'sparkles', art: 'sunset',
+      accent: 330, sat: 1.7, gold: 44, goldSat: 1.1, surface: 333, surfSat: 1.6, ink: 330, inkSat: 0.75, codex: 186,
+      fonts: { display: PACIFICO, caps: NUNITO, body: NUNITO, label: NUNITO },
+      emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--mb-hot))"/><circle cx="20" cy="20" r="15.8" fill="none" style="stroke:rgb(var(--c-ffffff))" stroke-opacity=".55" stroke-width="1" stroke-dasharray="1.6 2.2"/><path d="M20 29.6C13.2 25.1 10.2 21.4 10.2 17.6c0-3 2.3-5.3 5.1-5.3 2 0 3.7 1.1 4.7 2.8 1-1.7 2.7-2.8 4.7-2.8 2.8 0 5.1 2.3 5.1 5.3 0 3.8-3 7.5-9.8 12z" style="fill:rgb(var(--c-ffffff))"/><path d="M14.4 16.4c.3-1.4 1.4-2.3 2.8-2.4" fill="none" style="stroke:rgb(var(--mb-hot))" stroke-opacity=".5" stroke-width="1.3" stroke-linecap="round"/><path d="M30.2 6.6l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z" style="fill:rgb(var(--mb-sun))"/>',
+      tones: {
+        needs: [[1318.5, 0, 0.032], [1661.2, 0.07, 0.03], [1975.5, 0.14, 0.028], [2637, 0.21, 0.024]],
+        reply: [[1174.7, 0, 0.03], [1568, 0.1, 0.028], [2093, 0.2, 0.02]],
+      },
+      copy: {
+        'Your move': 'Your turn to shine', 'Awaiting you': 'Ready for you', 'Right now': 'Busy, busy', 'At work': 'Making it happen',
+        'Head to head': 'Who wore it better', 'Races': 'Showdowns', 'Coming up': 'On the calendar', 'Queued': 'Up next',
+        'By folder': 'Room by room', 'Your projects': 'The beach house', 'Pick up where you left off': 'Catch up', 'Recent chats': 'Fresh gossip',
+        'Your plans': 'Closet space', 'Accounts and usage': 'Your looks', 'Begin': 'Hello, gorgeous', 'The hub': 'Home', 'Search every chat': 'Find anything',
+        'All quiet.': 'All caught up, gorgeous.', 'Pick up any chat below.': 'Pick a chat below and make it fabulous.', 'Nothing needs you yet.': 'Nothing needs you yet. Smoothie break?',
+        '{n} chat awaits you.': '{n} chat is ready for you, darling.', '{n} chats await you.': '{n} chats are ready for you, darling.',
+        '{n} chat at work.': '{n} chat is on it.', '{n} chats at work.': '{n} chats are on it.', 'Working as': 'Today’s look', '@where': 'Malibu',
+        'Claude & Codex, every chat and account in one place': 'Claude & Codex, all dolled up', 'Search every chat…': 'Find anything…',
+        'Drifting petals': 'Sparkles', 'A few slow petals behind the hub.': 'A sprinkle of sparkles behind the hub.', 'Show the drifting petals': 'Show the sparkles', 'Hide the drifting petals': 'Hide the sparkles',
+        '✦': '♥', 'Turned off automatically if Windows is set to reduce motion.': 'They hold still when your device is set to reduce motion.',
+      },
+    },
+  ];
+
+  /* ---------- the anime themes ----------
+     Made for dark mode (each has a light one too), drawn like an anime's world: glowing magic, gradient
+     skies, rim light and drifting particles. Each brings its own lettering, a living background, a scene
+     in the hub that reads your chats, its own shape for status dots, chimes and words:
+       Isekai        another world: twilight, two moons, floating islands, and a status window where
+                     your plan is your HP (the 5-hour window) and MP (the week)
+       High Fantasy  emerald and gold: a citadel under a great moon lights a window for each chat at
+                     work and a beacon for each one waiting on you; a dragon crosses the moon
+       Dungeon       torchlit stone: a torch for each chat at work, eyes in the dark for each one
+                     waiting on you, embers rising */
+  const ORBITRON = '"Orbitron", "Segoe UI", system-ui, sans-serif';
+  const ROUNDED = '"M PLUS Rounded 1c", "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif';
+  const RITE = { '✦': '', 'Turned off automatically if Windows is set to reduce motion.': 'They hold still when your device is set to reduce motion.' };
+  const ANIME = [
+    {
+      id: 'isekai', name: 'Isekai', note: 'Summoned to another world: twilight, two moons, floating islands, and a status window where your plan is your HP and MP.', family: 'anime', sky: 'motes', art: 'status',
+      accent: 196, sat: 1.5, gold: 46, goldSat: 1.1, surface: 238, surfSat: 1.9, ink: 222, inkSat: 0.35, codex: 278,
+      fonts: { display: ORBITRON, caps: ROUNDED, body: ROUNDED, label: ORBITRON },
+      emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--c-0a090c))"/><circle cx="20" cy="20" r="17" fill="none" style="stroke:rgb(var(--an-glow))" stroke-width="1.4"/><circle cx="20" cy="20" r="13.6" fill="none" style="stroke:rgb(var(--an-glow))" stroke-opacity=".55" stroke-width=".8" stroke-dasharray="1.2 2"/><path d="M20 7.5L30.8 26.2H9.2Z" fill="none" style="stroke:rgb(var(--an-glow))" stroke-width="1.2"/><path d="M20 32.5L9.2 13.8H30.8Z" fill="none" style="stroke:rgb(var(--an-glow))" stroke-width="1.2"/><circle cx="20" cy="20" r="3" style="fill:rgb(var(--an-gold))"/>',
+      tones: { needs: [[1046.5, 0, 0.03], [1318.5, 0.06, 0.03], [1568, 0.12, 0.03], [2093, 0.18, 0.026]], reply: [[1568, 0, 0.028], [2093, 0.09, 0.022]], engage: [[523.3, 0, 0.026], [784, 0.06, 0.026], [1046.5, 0.12, 0.026], [1568, 0.18, 0.024], [2093, 0.24, 0.02]] },
+      copy: { ...RITE, '✦': '◆',
+        'Your move': 'System notice', 'Awaiting you': 'Awaiting your command', 'Right now': 'Active skills', 'At work': 'Casting',
+        'Head to head': 'Duel', 'Races': 'Duels', 'Coming up': 'Scheduled', 'Queued': 'Quest board',
+        'By folder': 'Known worlds', 'Your projects': 'Worlds', 'Pick up where you left off': 'Save points', 'Recent chats': 'Adventure log',
+        'Your plans': 'Stamina and mana', 'Accounts and usage': 'Party status', 'Begin': 'Menu', 'The hub': 'Guild hall', 'Search every chat': 'Appraise everything',
+        'All quiet.': '[System] No new notifications.', 'Pick up any chat below.': 'Choose your next quest below.', 'Nothing needs you yet.': 'No decision is needed from you yet.',
+        '{n} chat awaits you.': '[System] {n} chat awaits your command.', '{n} chats await you.': '[System] {n} chats await your command.',
+        '{n} chat at work.': '[System] {n} skill is casting.', '{n} chats at work.': '[System] {n} skills are casting.', 'Working as': 'Adventurer', '@where': 'Another world',
+        'Claude & Codex, every chat and account in one place': 'Claude & Codex · your party in another world', 'Search every chat…': 'Appraise everything…',
+        'Drifting petals': 'Mana motes', 'A few slow petals behind the hub.': 'Motes of mana drifting up behind the hub.', 'Show the drifting petals': 'Show the mana motes', 'Hide the drifting petals': 'Hide the mana motes',
+      },
+    },
+    {
+      id: 'highfantasy', name: 'High Fantasy', note: 'Emerald and gold under a great moon: a citadel lights a window for each chat at work and a beacon for each one that needs you.', family: 'anime', sky: 'fireflies', art: 'citadel',
+      accent: 150, sat: 1.15, gold: 44, goldSat: 1.25, surface: 165, surfSat: 1.3, ink: 45, inkSat: 0.55, codex: 214,
+      fonts: { display: '"Cinzel Decorative", "Cinzel", Georgia, serif', caps: '"Cinzel", Georgia, serif', body: '"EB Garamond", "Iowan Old Style", Georgia, serif', label: '"Cinzel", Georgia, serif' },
+      emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--an-deep))"/><circle cx="20" cy="20" r="16.6" fill="none" style="stroke:rgb(var(--an-gold))" stroke-width="1"/><circle cx="20" cy="20" r="14.2" fill="none" style="stroke:rgb(var(--an-gold))" stroke-opacity=".4" stroke-width=".6"/><path d="M20.0 5.5L21.2 17.1L25.8 14.2L22.9 18.8L34.5 20.0L22.9 21.2L25.8 25.8L21.2 22.9L20.0 34.5L18.8 22.9L14.2 25.8L17.1 21.2L5.5 20.0L17.1 18.8L14.2 14.2L18.8 17.1Z" style="fill:rgb(var(--an-gold))"/><circle cx="20" cy="20" r="1.8" style="fill:rgb(var(--an-deep))"/>',
+      tones: { needs: [[880, 0, 0.03], [1046.5, 0.12, 0.028], [1318.5, 0.24, 0.026], [1760, 0.36, 0.022]], reply: [[1318.5, 0, 0.026], [1760, 0.14, 0.02]], engage: [[440, 0, 0.03], [523.3, 0.08, 0.028], [659.3, 0.16, 0.027], [880, 0.24, 0.025], [1046.5, 0.32, 0.023], [1318.5, 0.4, 0.02]] },
+      copy: { ...RITE, '✦': '✧',
+        'Your move': 'Your counsel is sought', 'Awaiting you': 'At your word', 'Right now': 'Afield', 'At work': 'Quests underway',
+        'Head to head': 'Trial by combat', 'Races': 'Trials', 'Coming up': 'Foretold', 'Queued': 'Awaiting the dawn',
+        'By folder': 'The realms', 'Your projects': 'Your realms', 'Pick up where you left off': 'Continue the tale', 'Recent chats': 'Chronicles',
+        'Your plans': 'The treasury', 'Accounts and usage': 'Your heralds', 'Begin': 'The citadel', 'The hub': 'The great hall', 'Search every chat': 'Search the archives',
+        'All quiet.': 'Peace in the realm.', 'Pick up any chat below.': 'Choose a chronicle to continue.', 'Nothing needs you yet.': 'None yet seek your counsel.',
+        '{n} chat awaits you.': '{n} herald awaits your word.', '{n} chats await you.': '{n} heralds await your word.',
+        '{n} chat at work.': '{n} quest is underway.', '{n} chats at work.': '{n} quests are underway.', 'Working as': 'Sworn to', '@where': 'The high realm',
+        'Claude & Codex, every chat and account in one place': 'Claude & Codex · scribes of the realm', 'Search every chat…': 'Search the archives…',
+        'Drifting petals': 'Fireflies', 'A few slow petals behind the hub.': 'Fireflies drifting in the dark behind the hub.', 'Show the drifting petals': 'Show the fireflies', 'Hide the drifting petals': 'Hide the fireflies',
+      },
+    },
+    {
+      id: 'dungeon', name: 'Dungeon', note: 'Torchlit stone, deep below: a torch for each chat at work, eyes in the dark for each one waiting on you, embers rising.', family: 'anime', sky: 'embers', art: 'delve',
+      accent: 22, sat: 1.45, gold: 38, goldSat: 1.15, surface: 28, surfSat: 0.55, ink: 36, inkSat: 0.45, codex: 196,
+      fonts: { display: '"Pirata One", "Alegreya SC", Georgia, serif', caps: '"Alegreya SC", Georgia, serif', body: '"Alegreya", Georgia, serif', label: '"Alegreya SC", Georgia, serif' },
+      emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--an-iron))"/><circle cx="20" cy="20" r="15.6" fill="none" style="stroke:rgb(var(--an-rust))" stroke-width="1.6"/><circle cx="20" cy="6.6" r="1.3" style="fill:rgb(var(--an-rust))"/><circle cx="33.4" cy="20" r="1.3" style="fill:rgb(var(--an-rust))"/><circle cx="20" cy="33.4" r="1.3" style="fill:rgb(var(--an-rust))"/><circle cx="6.6" cy="20" r="1.3" style="fill:rgb(var(--an-rust))"/><circle cx="20" cy="17.2" r="4.4" style="fill:rgb(var(--c-050406));stroke:rgb(var(--an-ember))" stroke-width=".9"/><path d="M17.4 19.6h5.2l1.8 9.2h-8.8z" style="fill:rgb(var(--c-050406));stroke:rgb(var(--an-ember))" stroke-width=".9" stroke-linejoin="round"/><circle cx="20" cy="17.2" r="3.6" style="fill:rgb(var(--c-050406))"/>',
+      tones: { needs: [[392, 0, 0.05], [523.3, 0.22, 0.045]], reply: [[659.3, 0, 0.035]], engage: [[196, 0, 0.06], [293.7, 0.32, 0.045]] },
+      copy: { ...RITE, '✦': '◈',
+        'Your move': 'Something stirs', 'Awaiting you': 'Answer the dark', 'Right now': 'Deeper down', 'At work': 'Delving',
+        'Head to head': 'Rival parties', 'Races': 'Rivals', 'Coming up': 'Next descent', 'Queued': 'Waiting at the gate',
+        'By folder': 'Every dungeon', 'Your projects': 'Dungeons', 'Pick up where you left off': 'Back into the dark', 'Recent chats': 'Delves',
+        'Your plans': 'Torches and rations', 'Accounts and usage': 'Provisions', 'Begin': 'The keep', 'The hub': 'Camp', 'Search every chat': 'Search the depths',
+        'All quiet.': 'The halls are silent.', 'Pick up any chat below.': 'Pick a delve below and go deeper.', 'Nothing needs you yet.': 'Nothing has found you yet.',
+        '{n} chat awaits you.': '{n} chat awaits you in the dark.', '{n} chats await you.': '{n} chats await you in the dark.',
+        '{n} chat at work.': '{n} torch burns below.', '{n} chats at work.': '{n} torches burn below.', 'Working as': 'Delving as', '@where': 'Floor B3',
+        'Claude & Codex, every chat and account in one place': 'Claude & Codex · a party of two, deep below', 'Search every chat…': 'Search the depths…',
+        'Drifting petals': 'Embers', 'A few slow petals behind the hub.': 'Embers rising slowly behind the hub.', 'Show the drifting petals': 'Show the embers', 'Hide the drifting petals': 'Hide the embers',
+      },
+    },
+  ];
+
   // accent: hue for the main color · sat: its strength · gold: hue for highlights · surface: hue
   // and strength of backgrounds · ink: hue of text · codex: hue that marks Codex.
   const THEMES = [
@@ -71,6 +174,8 @@
     { id: 'rose', name: 'Rose', note: 'Soft pink and blush.', accent: 336, sat: 1.1, gold: 38, surface: 320, surfSat: 1.1, ink: 20, codex: 212 },
     { id: 'graphite', name: 'Graphite', note: 'Quiet greys, no color cast.', accent: 212, sat: 0.32, gold: 45, surface: 220, surfSat: 0.35, ink: 220, codex: 212 },
     ...SAGA,
+    ...GLAM,
+    ...ANIME,
   ];
   const DEFAULTS = { theme: 'crimson', mode: 'dark', text: 100, ui: 100, font: 'classic', bold: false, contrast: false };
   const FONTS = {
