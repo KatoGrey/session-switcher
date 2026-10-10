@@ -157,6 +157,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-quietdays]'))) return wrap(setLook)({ quietDays: Number(b.dataset.quietdays) });
   if ((b = el('[data-refreshplans]'))) { S.plansRefreshing = true; renderPlansOnly(); return loadPlans(true).catch(err => toast(err.message)).finally(() => { S.plansRefreshing = false; renderPlansOnly(); }); }
   if ((b = el('[data-usereset]'))) return wrap(useReset)(b.dataset.usereset);
+  if ((b = el('[data-signin]'))) return signInFlow(b.dataset.signin);
   if ((b = el('[data-addreset]'))) return addReset(b.dataset.addreset, b);
   if ((b = el('[data-delreset]'))) return wrap(async () => { await api('/api/lite/reset/remove', { id: b.dataset.delreset }); await loadPlans(false); renderPlansOnly(); })();
   if ((b = el('[data-hackdates]'))) return editHackDates();

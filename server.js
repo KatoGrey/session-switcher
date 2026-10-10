@@ -914,6 +914,9 @@ const routines = routinesLib.createRoutines({
 const liteStore = liteLib.createLite({ dataDir: DATA_DIR, log });
 const liteRoutes = createLiteRoutes({
   store: liteStore, config, acc, usage, log, broadcast, dataDir: DATA_DIR,
+  // Signing in from Lite: afterwards, the same refresh the full app's sign-in does.
+  overrideVars: sys.OVERRIDE_VARS,
+  afterSignIn: a => { acc.forgetStatus(a.id); usage.forget(a.id); watchSignIn(a); for (const s of [5, 30, 90]) scheduleUsage(a.id, s * 1000); broadcast('accounts'); },
   codexMainHome: () => (config().codex && config().codex.home) || codexHomes.MAIN_HOME(),
   codexHomeFor: id => { const x = codexById(id); return x && x.ACCOUNT.home ? x.ACCOUNT.home : null; },
   codexAll: () => codexAll(),
