@@ -751,6 +751,7 @@ function renderHub() {
   const better = headroomPick();
   const recent = allSessions().slice(0, 1);
   $('page').innerHTML = `
+    <div id="welcomeSlot"></div>
     <div id="heroSlot">${heroHtml()}</div>
     <div id="reopenSlot">${reopenHtml()}</div>
     <div id="guardSlot">${guardHtml()}</div>

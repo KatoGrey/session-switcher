@@ -27,6 +27,7 @@ function renderLive(force) {
   // The clock ticks on its own, so a new minute alone doesn't redraw the hero (and restart its scene).
   const heroNow = heroHtml(), heroKey = heroNow.replace(/<span data-clock>[^<]*<\/span>/, '');
   if (force || $('heroSlot')._h !== heroKey) { $('heroSlot').innerHTML = heroNow; $('heroSlot')._h = heroKey; }
+  renderWelcome();
   // A chat moving between the boards (it finished, or wants you) glides across; new ones fade in.
   flip([$('awaitList'), $('board'), $('quietList')], () => {
     patch($('awaitList'), A, keyOf, awaitCard, '<p class="empty-line">Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.</p>');

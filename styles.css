@@ -1794,6 +1794,38 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .confirm-dlg .d-row{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .choice-dlg .d-row .quiet{margin-right:auto}
 
+/* ---------- welcome back ---------- */
+.welcome{position:relative;display:flex;align-items:center;gap:18px 26px;flex-wrap:wrap;margin:0 0 18px;padding:16px 18px 16px 22px;border:1px solid rgb(var(--c-d9bf74) / .35);border-radius:var(--radius);
+  background:radial-gradient(520px 160px at 0% 0%,rgb(var(--c-d9bf74) / .1),transparent 70%),linear-gradient(180deg,rgb(var(--c-1a161d)),rgb(var(--c-141117)));box-shadow:0 18px 40px -30px rgb(var(--c-000000))}
+.welcome::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:3px;background:linear-gradient(180deg,var(--gilt),var(--crimson))}
+.wb-in{flex:1 1 380px;min-width:0}
+.wb-h{margin:6px 0 0;font:600 18px/1.4 var(--f-body);color:var(--parch)}
+.wb-h b{color:var(--gilt);font-variant-numeric:tabular-nums}
+.wb-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.wb-chip{display:inline-flex;align-items:center;gap:8px;max-width:280px;padding:6px 12px 6px 10px;border:1px solid var(--seam-2);border-radius:999px;background:rgb(var(--c-0a090c) / .35);color:var(--parch-2);font:500 13.5px/1.2 var(--f-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.wb-chip:hover{border-color:var(--gilt);color:var(--parch);background:rgb(var(--c-d9bf74) / .08)}
+.wb-chip.needs{border-color:rgb(var(--c-d9bf74) / .55)}
+.wb-act{display:flex;align-items:center;gap:6px;margin-left:auto}
+.wb-x{color:var(--ash)}
+
+/* ---------- the conversation map ---------- */
+.c-map{position:absolute;right:14px;width:10px;z-index:4;cursor:pointer;border-radius:6px;background:rgb(var(--c-ede6d9) / .025);transition:background .2s,width .2s,right .2s}
+.c-map:hover{width:14px;right:12px;background:rgb(var(--c-ede6d9) / .06)}
+.c-map .cm-view{position:absolute;left:-1px;right:-1px;top:0;border-radius:4px;background:rgb(var(--c-ede6d9) / .07);border:1px solid rgb(var(--c-ede6d9) / .16);pointer-events:none}
+.c-map .cm{position:absolute;left:1px;right:1px;height:3px;margin-top:-1px;border-radius:2px;background:var(--crimson)}
+.c-map .cm.turn{left:3px;right:3px;height:2px;background:rgb(var(--c-ede6d9) / .14)}
+.c-map .cm.turn.codex{background:rgb(var(--c-6f97d8) / .32)}
+.c-map .cm.you{background:var(--ember);box-shadow:0 0 6px rgb(var(--c-cf8274) / .5)}
+.c-map .cm.you.to-partner{background:rgb(var(--c-6f97d8))}
+.c-map .cm.hand{height:4px;background:var(--gilt);box-shadow:0 0 6px rgb(var(--c-d9bf74) / .55)}
+.c-map .cm.pic{left:2px;right:auto;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:var(--violet)}
+.c-map .cm.warn{background:var(--gilt);opacity:.8}
+@container cmain (max-width:720px){ .c-map{display:none} }
+@media (max-width:760px){ .c-map{display:none} }
+/* where a jump from the map lands */
+.cm-flash{animation:cm-flash 1.1s ease-out}
+@keyframes cm-flash{0%{box-shadow:0 0 0 0 rgb(var(--c-d9bf74) / .5);border-radius:14px}100%{box-shadow:0 0 0 18px rgb(var(--c-d9bf74) / 0);border-radius:14px}}
+
 /* ---------- restart ---------- */
 /* the app's files changed since it started: one click brings the new version in */
 .updpill{display:inline-flex;align-items:center;gap:9px;height:36px;padding:0 6px 0 12px;border:1px solid rgb(var(--c-d9bf74) / .5);border-radius:999px;background:rgb(var(--c-d9bf74) / .1);color:var(--parch);font:600 13px/1 var(--f-body);white-space:nowrap;cursor:pointer;transition:background .2s,border-color .2s}

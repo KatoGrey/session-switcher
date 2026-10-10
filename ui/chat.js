@@ -282,8 +282,23 @@ function reset() {
   $c('cCompose').hidden = false; $c('cWatch').hidden = true; $c('cWatch').innerHTML = '';
   closeSlash(); Slash.dismissed = null;
 }
+// Opening a chat from a card or a row: the window grows out of what you clicked.
+let launchFrom = null;
+document.addEventListener('pointerdown', e => {
+  const el = e.target instanceof Element && e.target.closest('.omen, .qchip, .row, .wb-chip, .welcome, .dial-card, .pal-i, .nav-chat');
+  launchFrom = el ? { rect: el.getBoundingClientRect(), at: Date.now() } : null;
+}, true);
+function growFrom(chat) {
+  const p = launchFrom; launchFrom = null;
+  if (!p || Date.now() - p.at > 1500 || !motionOk()) return;
+  const r = chat.getBoundingClientRect(), s = p.rect;
+  if (!r.width || !r.height) return;
+  const px = n => `${Math.max(0, Math.round(n))}px`;
+  const from = `inset(${px(s.top - r.top)} ${px(r.right - s.right)} ${px(r.bottom - s.bottom)} ${px(s.left - r.left)} round 14px)`;
+  chat.animate([{ clipPath: from, opacity: 0.4 }, { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 }], { duration: 440, easing: 'cubic-bezier(.2,.8,.2,1)' });
+}
 function show() {
-  const chat = $c('chat');
+  const chat = $c('chat'), opening = chat.hidden;
   chat.hidden = false;
   chat.classList.remove('show-rail', 'show-ledger');
   let noLedger = false; try { noLedger = localStorage.getItem('ledger') === 'off'; } catch { /* default */ }
@@ -292,6 +307,7 @@ function show() {
   document.body.classList.remove('nav-open');
   if (!$c('drawer').hidden) $c('drawer').hidden = true;
   renderRail();
+  if (opening) growFrom(chat);
 }
 
 async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {}) {
@@ -307,6 +323,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   setTarget('main', false);
   $c('chat').classList.toggle('codex', C.provider === 'codex');
   const [s, p] = findSession(C.sessionId);
+  noteLastChat(C.sessionId, (s && s.title) || info.title, p && p.name);
   C.title = info.title && info.title !== 'New chat' ? info.title : mode === 'new' ? 'New chat' : mode === 'fork' ? `${s ? s.title : 'Chat'} (copy)` : (s ? s.title : info.title || 'Chat');
   C.folder = info.folder || (p ? p.name : (cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() : ''));
   $c('cTitle').textContent = C.title;

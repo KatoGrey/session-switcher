@@ -964,6 +964,33 @@ module.exports = [
     },
   },
   {
+    name: 'welcome',
+    // Back after a while: what happened meanwhile, and one click back to the chat you were last in.
+    // And in a long chat, the map beside it: a mark per message you sent, click one to go there.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`localStorage.setItem('seen-at', String(Date.now() - 2 * 3600e3)); localStorage.setItem('last-chat', JSON.stringify({ sessionId: ${JSON.stringify(demo.ID['s-brawl'])}, title: 'Tavern brawl encounter design', folder: 'Starfall Tavern', at: Date.now() - 2 * 3600e3 })); location.reload(); return 1`);
+      await sleep(2500);
+      const w = await b.eval(`const el = document.querySelector('.welcome'); return el ? { text: el.textContent.replace(/\\s+/g, ' '), chips: el.querySelectorAll('.wb-chip').length, back: !!el.querySelector('[data-welcome="continue"]') } : null`);
+      t.check('after two hours away, the hub says what happened meanwhile', w && /away 2h/.test(w.text) && /While you were away, .*needs your OK/.test(w.text), w);
+      t.check('with the chats that came in, and a way back to the last one', w && w.chips >= 2 && w.back && /Back to “Tavern brawl encounter design”/.test(w.text), w);
+      await t.shot(b, 'hub');
+      t.check('a quick look away doesn’t bring it back', await b.eval(`dropWelcome(); localStorage.setItem('seen-at', String(Date.now() - 60e3)); checkAway(); await new Promise(r => setTimeout(r, 300)); return !document.querySelector('.welcome')`));
+      await b.eval(`localStorage.setItem('seen-at', String(Date.now() - 3 * 3600e3)); checkAway(); return 1`); await sleep(400);
+      await b.eval(`document.querySelector('[data-welcome="continue"]').click(); return 1`); await sleep(1500);
+      t.check('“Back to …” opens that chat, and the card goes', await b.eval(`return ChatUI.isOpen() && !document.querySelector('.welcome')`));
+      // The map: a long chat gets one; each of your messages has a mark.
+      await b.eval(`const f = document.getElementById('cFeed'); for (let i = 0; i < 30; i++) { const d = document.createElement('div'); d.className = 'umsg'; d.innerHTML = '<div class="ububble"><div class="utext">Message number ' + i + '</div></div>'; f.appendChild(d); const t = document.createElement('div'); t.className = 'turn'; t.dataset.prov = i % 3 ? 'claude' : 'codex'; t.innerHTML = '<div class="part"><div class="final"><div class="md"><p>' + 'A reply. '.repeat(40) + '</p></div></div></div>'; f.appendChild(t); } return 1`);
+      await sleep(900);
+      const m = await b.eval(`const map = document.getElementById('cMap'); return { shown: !map.hidden, you: map.querySelectorAll('.cm.you').length, codex: map.querySelectorAll('.cm.turn.codex').length, tip: (map.querySelector('.cm.you') || {}).title }`);
+      t.check('a long chat gets a map, with a mark per message you sent', m.shown && m.you >= 30 && m.codex >= 10 && /^You: /.test(m.tip || ''), m);
+      await t.shot(b, 'map');
+      const jump = await b.eval(`const sc = document.getElementById('cScroll'); sc.scrollTop = sc.scrollHeight; await new Promise(r => setTimeout(r, 200)); const before = sc.scrollTop; document.querySelector('#cMap .cm.you').click(); await new Promise(r => setTimeout(r, 900)); return { before, after: sc.scrollTop }`);
+      t.check('clicking a mark goes to that message', jump.after < jump.before - 200, jump);
+      await b.eval(`localStorage.removeItem('seen-at'); localStorage.removeItem('last-chat'); return 1`);
+    },
+  },
+  {
     name: 'restart',
     // Restart: offered when a new version is ready, asks how when chats are working, waits for replies
     // with a bar to restart now or cancel, shows that it's restarting, and comes back to the chat you were in.
