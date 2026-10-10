@@ -91,10 +91,13 @@ test('Free space: only dependencies, build output and caches inside the worktree
   assert.deepEqual(lite.cleanupTargets(root, ['node_modules', 'src', 'dist', '../x/dist']), ['node_modules', 'dist']);
 });
 
-test('stage guesses and monorepo splits', () => {
-  assert.equal(lite.guessStage('Fix discover spacing'), 'bug');
-  assert.equal(lite.guessStage('Investigate Voyage Spanish language'), 'explore');
-  assert.equal(lite.guessStage('AI Dungeon 2D jukebox and tavern interactions'), 'feature');
+test('kind and status guesses, and monorepo splits', () => {
+  assert.equal(lite.guessKind('Fix discover spacing'), 'bug');
+  assert.equal(lite.guessKind('Prototype a 3D island'), 'prototype');
+  assert.equal(lite.guessKind('AI Dungeon 2D jukebox and tavern interactions'), null, 'no tag unless it says so');
+  assert.equal(lite.guessStatus('Investigate Voyage Spanish language'), 'exploring');
+  assert.equal(lite.guessStatus('AI Dungeon 2D jukebox and tavern interactions'), 'building');
+  assert.equal(lite.guessStatus('Write release notes for 1.4'), 'finishing');
   const rules = [{ project: 'voyage', match: 'voyage|character forge' }, { project: 'aid', match: 'ai dungeon|alchemy' }, { project: 'latitude', default: true }];
   assert.equal(lite.splitKey('/r/latitude', 'Explore Voyage daily challenges', rules), '/r/latitude#voyage');
   assert.equal(lite.splitKey('/r/latitude', 'Alchemy release retro', rules), '/r/latitude#aid');
@@ -104,7 +107,7 @@ test('stage guesses and monorepo splits', () => {
   assert.ok(!lite.isQuiet(NOW - 3 * D, NOW, 4));
 });
 
-test('lite.json: stages, waiting with a reminder, buckets, archive records, usage samples', () => {
+test('lite.json: kind, status, Focus, Waiting with a reminder, buckets, archive records, usage samples', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-lite-'));
   const s = lite.createLite({ dataDir: dir });
   assert.deepEqual(s.get().buckets, [], 'starts with nothing personal');
@@ -112,14 +115,23 @@ test('lite.json: stages, waiting with a reminder, buckets, archive records, usag
   assert.deepEqual(s.get().buckets.map(b => b.id), ['voyage', 'aid']);
   s.setProject('/r/latitude#voyage', { bucket: 'voyage' });
   assert.throws(() => s.setProject('/r/x', { bucket: 'nope' }), /doesn’t exist/);
-  const [w] = s.setChats(['c1'], { stage: 'waiting', waitingOn: 'CQA' });
+  s.setChats(['c1'], { status: 'building', kind: 'bug' });
+  const [w] = s.setChats(['c1'], { waiting: true, waitingOn: 'CQA' });
   assert.equal(w.waitingOn, 'CQA');
+  assert.equal(w.status, 'building', 'waiting keeps where the work is');
   assert.ok(Date.parse(w.remindAt) > Date.now() + 47 * H, 'reminds after two days');
-  s.setChats(['c1'], { stage: 'feature' });
+  s.setChats(['c1'], { focus: true });
+  assert.equal(s.get().chats.c1.focus, true);
+  assert.equal(s.get().chats.c1.waiting, true, 'Focus and Waiting sit together');
+  s.setChats(['c1'], { waiting: false });
   assert.equal(s.get().chats.c1.remindAt, undefined, 'no reminder once it isn’t waiting');
-  assert.throws(() => s.setChats(['c1'], { stage: 'later' }), /Unknown stage/);
-  s.archive({ chats: ['c1'], records: { c1: { title: 'A chat', branch: 'feat/x', worktree: '/r/wt', stage: 'feature' } } });
+  assert.throws(() => s.setChats(['c1'], { status: 'later' }), /Unknown status/);
+  assert.throws(() => s.setChats(['c1'], { kind: 'epic' }), /Unknown kind/);
+  s.setChats(['c2'], { stage: 'final' });
+  assert.equal(s.get().chats.c2.status, 'finishing', 'an old page sending a stage still lands right');
+  s.archive({ chats: ['c1'], records: { c1: { title: 'A chat', branch: 'feat/x', worktree: '/r/wt', status: 'building', kind: 'bug' } } });
   assert.equal(s.get().archived.chats.c1.branch, 'feat/x');
+  assert.equal(s.get().archived.chats.c1.kind, 'bug');
   s.archive({ chats: ['c1'] }, false);
   assert.equal(s.get().archived.chats.c1, undefined);
   assert.deepEqual(s.get().permissions, { claude: null, codex: null }, 'follows the full app until set');
@@ -139,23 +151,25 @@ test('lite.json: stages, waiting with a reminder, buckets, archive records, usag
   assert.equal(again.samplesFor('p').length, 2);
 });
 
-test('guesses: the model’s JSON is read even inside prose, and bad stages are dropped', () => {
+test('guesses: the model’s JSON is read even inside prose, and bad kinds or statuses are dropped', () => {
   const { parseGuesses, looksLikePrompt } = require('../lib/lite-guess');
-  const g = parseGuesses('Sure! ```json\n[{"id":"a","stage":"bug","title":"Fix discover spacing."},{"id":"b","stage":"later","title":"x"},{"id":"","stage":"bug"}]\n```');
-  assert.deepEqual(g, [{ id: 'a', stage: 'bug', title: 'Fix discover spacing' }, { id: 'b', stage: null, title: 'x' }]);
+  const g = parseGuesses('Sure! ```json\n[{"id":"a","kind":"bug","status":"building","title":"Fix discover spacing."},{"id":"b","kind":"epic","status":"later","title":"x"},{"id":"","kind":"bug"}]\n```');
+  assert.deepEqual(g, [{ id: 'a', kind: 'bug', status: 'building', title: 'Fix discover spacing' }, { id: 'b', kind: null, status: null, title: 'x' }]);
   assert.deepEqual(parseGuesses('no json here'), []);
   assert.ok(looksLikePrompt('You are reviewer "astra-6". Read the file and…'));
   assert.ok(looksLikePrompt('Reply with just the word ready.'));
   assert.ok(!looksLikePrompt('Alchemy release retro'));
 });
 
-test('seen and guesses are kept in lite.json; your stage still wins', async () => {
+test('seen and guesses are kept in lite.json; yours still wins', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-lite-'));
   const s = lite.createLite({ dataDir: dir });
-  s.setGuess('c1', { stage: 'bug', title: 'Fix the thing', by: 'm' });
-  s.setGuess('c2', { stage: 'nope', by: 'm' });
-  assert.equal(s.get().guess.c1.stage, 'bug');
-  assert.equal(s.get().guess.c2.stage, undefined, 'unknown stages aren’t kept');
+  s.setGuess('c1', { kind: 'bug', status: 'building', title: 'Fix the thing', by: 'm' });
+  s.setGuess('c2', { kind: 'nope', by: 'm' });
+  assert.equal(s.get().guess.c1.kind, 'bug');
+  assert.equal(s.get().guess.c2.kind, undefined, 'unknown kinds aren’t kept');
+  s.setGuess('c1', { status: 'finishing', by: 'git', keep: true });
+  assert.deepEqual([s.get().guess.c1.kind, s.get().guess.c1.status, s.get().guess.c1.title], ['bug', 'finishing', 'Fix the thing'], 'a pushed branch only moves the status');
   s.setSeen(['c1'], 1000); s.setSeen(['c1'], 500);
   assert.equal(s.get().seen.c1, undefined, 'older than two weeks is dropped');
   s.setSeen(['c3']);
@@ -166,4 +180,40 @@ test('seen and guesses are kept in lite.json; your stage still wins', async () =
   const again = lite.createLite({ dataDir: dir });
   assert.equal(again.get().guess.c1.title, 'Fix the thing');
   assert.ok(again.get().seen.c3);
+});
+
+test('old stages move onto kind, status, Focus and Waiting when lite.json loads', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-lite-'));
+  fs.writeFileSync(path.join(dir, 'lite.json'), JSON.stringify({
+    chats: { a: { stage: 'priority' }, b: { stage: 'bug' }, c: { stage: 'waiting', waitingOn: 'CQA', remindAt: '2026-10-12T00:00:00.000Z' }, d: { stage: 'final' }, e: { stage: 'explore', project: '/r/x' }, f: { stage: 'done' }, g: { stage: 'feature' } },
+    guess: { h: { stage: 'bug', title: 'Fix it', by: 'm' }, i: { stage: 'final', by: 'git' } },
+    archived: { chats: { j: { at: null, stage: 'bug', title: 'Old' } }, projects: [] },
+  }));
+  const s = lite.createLite({ dataDir: dir });
+  const c = s.get().chats;
+  assert.deepEqual(c.a, { focus: true });
+  assert.deepEqual(c.b, { kind: 'bug', status: 'building' });
+  assert.deepEqual(c.c, { waiting: true, waitingOn: 'CQA', remindAt: '2026-10-12T00:00:00.000Z' });
+  assert.deepEqual(c.d, { status: 'finishing' });
+  assert.deepEqual(c.e, { status: 'exploring', project: '/r/x' });
+  assert.deepEqual(c.f, { status: 'done' });
+  assert.deepEqual(c.g, { kind: 'feature', status: 'building' });
+  assert.deepEqual(s.get().guess.h, { kind: 'bug', status: 'building', title: 'Fix it', by: 'm' });
+  assert.equal(s.get().guess.i.status, 'finishing');
+  assert.equal(s.get().archived.chats.j.kind, 'bug');
+  assert.ok(Object.values(c).every(r => !('stage' in r)), 'the old key is gone');
+});
+
+test('Ollama: the week runs Monday to Monday UTC, and the estimate follows the last reading', () => {
+  const now = Date.parse('2026-10-10T22:30:00Z'); // a Saturday
+  const byDay = [['2026-10-04', 900], ['2026-10-05', 600], ['2026-10-06', 2400], ['2026-10-07', 1600], ['2026-10-08', 1600], ['2026-10-09', 2100], ['2026-10-10', 1700]].map(([d, n]) => ({ from: `${d}T00:00:00Z`, n }));
+  const none = lite.ollamaWeek(byDay, [], now);
+  assert.equal(none.startedAt, '2026-10-05T00:00:00.000Z');
+  assert.equal(none.resetsAt, '2026-10-12T00:00:00.000Z');
+  assert.equal(none.requests, 10000, 'Sunday’s requests belong to last week');
+  assert.equal(none.used, null, 'no estimate without a reading');
+  const reading = { at: '2026-10-10T20:00:00Z', pct: 20, requests: 8000, resetsAt: '2026-10-12T00:00:00Z' };
+  assert.equal(lite.ollamaWeek(byDay, [reading], now).used, 25, '2,000 more requests at 0.0025% each');
+  const nextWeek = lite.ollamaWeek([{ from: '2026-10-12T00:00:00Z', n: 4000 }], [reading], Date.parse('2026-10-12T12:00:00Z'));
+  assert.equal(nextWeek.used, 10, 'a new week starts from zero at the same rate');
 });

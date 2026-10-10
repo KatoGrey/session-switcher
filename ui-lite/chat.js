@@ -171,10 +171,10 @@ function chatHead() {
   const c = chatBy.get(CV.id);
   // A chat the list hasn't caught up with yet still shows where it runs.
   const p = c ? projOf(c) : CV.info && CV.info.cwd ? S.projects.find(x => x.cwd === CV.info.cwd && !x.key.includes('#')) || null : null;
-  const st = c ? stageById(stageOf(c)) : null;
+  const st = c ? statusById(statusOf(c)) : null;
   return `<div class="chat-h" id="chatHead"><button class="iconbtn back" data-go="back" aria-label="Back">‹</button>
       <div style="min-width:0;flex:1;display:flex;flex-direction:column"><div class="crumb">${p ? `<span>${esc(bucketName(p.bucket))}</span>›<button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div><span class="ttl" id="chatTitle">${esc(chatTitle())}</span></div>
-      ${st ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Stage (s)"><span class="dot" style="background:${st.c}"></span>${st.name}</button>` : ''}
+      ${st ? `${kindTag(c)}${waitTag(c)}<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>` : ''}
       <button class="iconbtn" data-chatmenu="1" aria-haspopup="menu" aria-label="More">${IC.dots}</button></div>`;
 }
 function chatView() {

@@ -10,7 +10,7 @@ const planById = id => plans().find(p => p.id === id);
 const orderOf = fam => (S.plans ? (S.plans.order[fam] || []).map(planById).filter(Boolean) : []);
 const useNext = fam => orderOf(fam)[0] || null;
 const metered = () => plans().filter(p => !p.unlimited && !p.broken && typeof p.left === 'number');
-const pLabel = p => `${p.label} ${famName(p.family)}`;
+const pLabel = p => (p.family === 'ollama' ? p.label : `${p.label} ${famName(p.family)}`);
 
 function forecastWords(p) {
   const f = p.forecast;
@@ -45,21 +45,39 @@ function planRow(p) {
     const days = r && r.byDay && r.byDay.length ? r.byDay : null;
     const max = days ? Math.max(1, ...days.map(d => d.n)) : 1;
     const spark = days ? `<span class="ospark" title="${esc(days.map(d => `${wd(d.from)} ${d.n.toLocaleString()}`).join(' · '))}">${days.map(d => `<i style="height:${Math.max(8, Math.round(100 * d.n / max))}%"></i>`).join('')}</span>` : '';
-    return `<div class="prow"><span class="prank"></span>${head}<span class="pnote">${p.broken ? `<span class="warn">${esc(p.broken)}</span>` : r ? `${spark}<span>${r.day.toLocaleString()} requests today · ${r.week.toLocaleString()} this week</span>` : 'No usage limits reported'}</span></div>`;
+    const tag = p.family === 'ollama' && !p.broken ? 'button' : 'div';
+    return `<${tag} class="prow" ${tag === 'button' ? `data-plan="${esc(p.id)}" title="Details"` : ''}><span class="prank"></span>${head}<span class="pnote">${p.broken ? `<span class="warn">${esc(p.broken)}</span>` : r ? `${spark}<span>${r.day.toLocaleString()} requests today · ${r.week.toLocaleString()} this week</span>` : 'No usage limits reported'}</span></${tag}>`;
   }
   if (p.broken) return `<div class="prow broken"><span class="prank"></span>${head}<span class="pnote"><span class="warn">${esc(p.broken.replace(/ Sign in from Setup in the full app\./, ''))}</span>${p.family === 'claude' ? `<button class="btn sm prime" data-signin="${esc(p.id)}">Sign in</button>` : ''}</span></div>`;
   if (typeof p.left !== 'number') return `<div class="prow"><span class="prank"></span>${head}<span class="pnote">${p.checking ? 'Checking…' : esc(p.error || 'No usage read yet')}</span></div>`;
   return `<button class="prow ${p.rank === 1 ? 'next' : ''} ${p.left <= floor() ? 'low' : ''}" data-plan="${esc(p.id)}" title="Details">
-    <span class="prank">${p.rank || '–'}</span>${head}
+    <span class="prank">${p.family === 'ollama' ? '' : p.rank || '–'}</span>${head}
     <span class="pbar"><i style="width:${p.left}%"></i><s style="left:${floor()}%"></s></span>
-    <span class="ppct">${p.left}%</span>
+    <span class="ppct" ${p.estimate ? 'title="Estimated from requests since the last reading of Ollama’s page"' : ''}>${p.estimate ? '≈' : ''}${p.left}%</span>
     <span class="preset" title="${p.resetsAt ? `Resets ${esc(exact(p.resetsAt))}` : ''}">${p.resetsAt ? `<b>${esc(wd(p.resetsAt))}</b><small>${esc(leftIn(p.resetsAt))}</small>` : '<small>not started</small>'}</span>
     <span class="pres">${resetsCount(p)}</span>
   </button>`;
 }
+// Ollama's details: the estimate, what it's based on, and a box to type what its page says now.
+function ollamaDetails(anchor, p) {
+  const e = p.estimate || {}, rd = e.reading, r = p.requests || {};
+  const rows = [
+    e.used !== null && e.used !== undefined ? ['Week', `≈ ${p.left}% left (${e.used}% used) · resets ${exact(e.resetsAt)}`] : ['Week', `resets ${e.resetsAt ? exact(e.resetsAt) : 'Monday 00:00 UTC'}`],
+    ['Requests', `${(e.requests || 0).toLocaleString()} this week · ${(r.day || 0).toLocaleString()} in the last day`],
+    rd ? ['Last reading', `${rd.pct}% used, ${exact(rd.at)}, at ${rd.requests.toLocaleString()} requests`] : ['Last reading', 'none yet'],
+    p.forecast ? ['Pace', forecastWords(p)] : null,
+  ].filter(Boolean);
+  pop(anchor, `<div class="ph">${esc(p.label)} · ${esc(p.kind)}</div>
+    <div class="pd">${rows.map(([k, v]) => `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('')}</div>
+    <p class="pd-note">Ollama only reports request counts to the app, so this is worked out from requests since you last read its page. Big models cost more per request than small ones, so it drifts; a reading now and then puts it right.</p>
+    <form class="pd-form" data-olread="1"><input name="pct" class="field" inputmode="decimal" placeholder="Weekly % used" aria-label="Weekly % used, from Ollama’s page"><button class="btn sm prime" type="submit">Save</button><a class="linkish" href="https://ollama.com/settings" target="_blank" rel="noopener">Open Ollama’s page ↗</a></form>`,
+  () => undefined);
+  document.querySelector('.pd-form input')?.focus();
+}
 // A plan's details: exact times, the 5-hour window, the pace, and its manual resets.
 function planDetails(anchor, id) {
   const p = planById(id); if (!p) return;
+  if (p.family === 'ollama') return ollamaDetails(anchor, p);
   const cr = creditsOf(p), mr = manualOf(p);
   const rows = [
     ['Week', `${p.left}% left · resets ${p.resetsAt ? exact(p.resetsAt) : 'when first used'}`],

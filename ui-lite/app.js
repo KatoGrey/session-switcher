@@ -1,13 +1,13 @@
 'use strict';
-/* The sidebar (pages, bucket switcher, stage labels with quiet folding), routing (with real browser
+/* The sidebar (pages, bucket switcher, status labels with quiet folding), routing (with real browser
    history, so back and forward work), redraws, and every click and drag on the page. */
 
-const VIEWS = ['triage', 'now', 'home', 'hack', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
+const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
 const small = () => matchMedia('(max-width: 760px)').matches;
 
 function sideChat(c) {
-  const marks = (stageOf(c) === 'waiting' && c.waitingOn ? `<span class="tag wait-tag">${esc(c.waitingOn)}</span>` : '') + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '');
-  return `<button class="nav-i chat-i" draggable="true" data-chat="${esc(c.id)}" aria-current="${S.view === 'chat' && String(CV.id).toLowerCase() === String(c.id).toLowerCase()}" title="${esc(c.title)} · ${esc(projOf(c).name)}"><span class="lbl">${esc(c.title)}</span>${marks}</button>`;
+  const marks = kindTag(c) + waitTag(c) + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '');
+  return `<button class="nav-i chat-i" draggable="true" data-chat="${esc(c.id)}" aria-current="${S.view === 'chat' && String(CV.id).toLowerCase() === String(c.id).toLowerCase()}" title="${esc(c.title)} · ${esc(projOf(c).name)}">${focusStar(c)}<span class="lbl">${esc(c.title)}</span>${marks}</button>`;
 }
 function renderSide() {
   renderChip();
@@ -22,28 +22,30 @@ function renderSide() {
       ${nav('now', IC.pulse, L('Now'), nNeed ? `<span class="badge">${nNeed}</span>` : '')}
       ${nav('home', IC.grid, L('Projects'))}
       ${nav('hack', IC.flag, 'Hackathon', `<span class="n">${esc(hackLabel())}</span>`)}
+      ${nav('bugs', IC.bug, 'Bugs', (n => (n ? `<span class="n">${n}</span>` : ''))(bugList().filter(c => statusOf(c) !== 'done').length))}
     </div>
     <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
-  const folders = STAGES.map(st => {
-    const all = chats.filter(c => stageOf(c) === st.id);
+  const focusSt = { id: 'focus', name: 'Focus', c: 'var(--st-priority)' };
+  const folders = [focusSt, ...STATUSES].map(st => {
+    const all = chats.filter(c => (st.id === 'focus' ? c.focus && statusOf(c) !== 'done' : statusOf(c) === st.id && !(c.focus && st.id !== 'done')));
     const act = all.filter(c => !isQuiet(c)), quiet = all.filter(isQuiet);
     const open = all.length && !S.folded[st.id];
     const showQuiet = S.more[st.id];
     const shown = act.slice(0, S.more['all-' + st.id] ? 400 : 12);
     return `<div class="group folder ${act.length ? '' : 'empty'}" data-open="${!!open}">
-      <button class="nav-i folder-btn" data-fold="${st.id}" data-drop-stage="${st.id}" aria-expanded="${!!open}"><span class="ic"><span class="label-dot" style="background:${st.c}"></span></span><span class="lbl">${st.name}</span><span class="n">${act.length || ''}</span></button>
+      <button class="nav-i folder-btn" data-fold="${st.id}" ${st.id === 'focus' ? 'data-drop-focus="1"' : `data-drop-stage="${st.id}"`} aria-expanded="${!!open}"><span class="ic"><span class="label-dot" style="background:${st.c}"></span></span><span class="lbl">${st.name}</span><span class="n">${act.length || ''}</span></button>
       <div class="folder-items">${shown.map(sideChat).join('')}${act.length > shown.length ? `<button class="nav-i chat-i quiet-toggle" data-more-all="${st.id}"><span class="lbl">${act.length - shown.length} more</span></button>` : ''}${quiet.length ? (showQuiet ? `<div class="quiet-chats">${quiet.slice(0, 60).map(sideChat).join('')}</div>` : '') + `<button class="nav-i chat-i quiet-toggle" data-more-st="${st.id}"><span class="lbl">${showQuiet ? 'Hide quiet' : `${quiet.length} quiet`}</span></button>` : ''}</div>
     </div>`;
   }).join('');
   const nArch = S.chats.filter(c => c.archived).length + S.projects.filter(p => p.archived).length;
   const mode = S.sideMode || 'projects';
-  const modeSeg = `<span class="side-seg" role="group" aria-label="Sidebar shows"><button data-sidemode="projects" aria-pressed="${mode === 'projects'}">Projects</button><button data-sidemode="stages" aria-pressed="${mode === 'stages'}">Stages</button></span>`;
+  const modeSeg = `<span class="side-seg" role="group" aria-label="Sidebar shows"><button data-sidemode="projects" aria-pressed="${mode === 'projects'}">Projects</button><button data-sidemode="stages" aria-pressed="${mode === 'stages'}">Status</button></span>`;
   $('sideScroll').innerHTML = top + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders : sideProjects(chats)}</div>`
     + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`;
 }
 
-// The sidebar by project (the default): each project with its chats. In buckets where stages
-// matter (Voyage, AI Dungeon…), chats sit under small stage labels; elsewhere it's a plain recent
+// The sidebar by project (the default): each project with its chats, Focus first. In buckets where
+// status matters (Latitude…), chats sit under small status labels; elsewhere it's a plain recent
 // list. Quiet projects fold to one line at the end.
 S.sideMode = local.get('sideMode', 'projects');
 const bucketStages = id => { const b = buckets().find(x => x.id === id); return !b || b.stages !== false; };
@@ -51,25 +53,27 @@ function sideProjects(chats) {
   const byProj = new Map();
   for (const c of chats) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
   const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
-  const activeOf = g => g.cs.filter(c => stageOf(c) !== 'done' && !isQuiet(c));
+  const activeOf = g => g.cs.filter(c => statusOf(c) !== 'done' && !isQuiet(c));
   const hot = g => g.cs.some(c => needs(c) || running(c)) ? 1 : 0;
   const act = groups.filter(g => activeOf(g).length).sort((a, b) => hot(b) - hot(a) || Math.max(...b.cs.map(c => c.updated)) - Math.max(...a.cs.map(c => c.updated)));
   const quiet = groups.filter(g => !activeOf(g).length);
   const projRow = g => {
-    const lv = activeOf(g), q = g.cs.filter(c => isQuiet(c) && stageOf(c) !== 'done');
+    const lv = activeOf(g), q = g.cs.filter(c => isQuiet(c) && statusOf(c) !== 'done');
     const open = !S.folded['p:' + g.p.key];
     const nd = g.cs.some(needs), rn = g.cs.some(running);
     let inner = '';
     if (open) {
       const limit = S.more['pall:' + g.p.key] ? 200 : 8;
+      const foc = lv.filter(c => c.focus), rest = lv.filter(c => !c.focus);
+      let n = foc.length;
+      inner = foc.map(c => sideChatDot(c)).join('');
       if (bucketStages(g.p.bucket)) {
-        let n = 0;
-        for (const st of STAGES.filter(x => x.id !== 'done')) {
-          const list = lv.filter(c => stageOf(c) === st.id); if (!list.length || n >= limit) continue;
+        for (const st of STATUSES.filter(x => x.id !== 'done')) {
+          const list = rest.filter(c => statusOf(c) === st.id); if (!list.length || n >= limit) continue;
           const take = list.slice(0, limit - n); n += take.length;
           inner += `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(sideChat).join('')}`;
         }
-      } else inner = lv.slice(0, limit).map(c => sideChatDot(c)).join('');
+      } else inner += rest.slice(0, Math.max(0, limit - n)).map(c => sideChatDot(c)).join('');
       if (lv.length > limit) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}"><span class="lbl">${lv.length - limit} more</span></button>`;
       if (q.length) inner += `<button class="nav-i chat-i quiet-toggle" data-project="${esc(g.p.key)}"><span class="lbl">${q.length} quiet</span></button>`;
     }
@@ -86,13 +90,14 @@ function sideProjects(chats) {
   if (quiet.length) html += S.more.quietProj ? `<div class="side-bucket">Quiet</div>${quiet.map(g => `<button class="nav-i chat-i" data-project="${esc(g.p.key)}"><span class="lbl">${esc(g.p.name)}</span></button>`).join('')}<button class="nav-i chat-i quiet-toggle" data-quietproj="1"><span class="lbl">Hide quiet</span></button>` : `<button class="nav-i quiet-toggle" data-quietproj="1"><span class="lbl">${quiet.length} quiet project${quiet.length === 1 ? '' : 's'}</span></button>`;
   return html || '<p class="side-empty">No chats here yet.</p>';
 }
-// In a project without stage labels, each chat carries its stage as a small dot.
+// In a project without status labels (and for Focus chats), each chat carries its status as a small dot.
 function sideChatDot(c) {
-  const st = stageById(stageOf(c));
+  if (c.focus) return sideChat(c);
+  const st = statusById(statusOf(c));
   return sideChat(c).replace('<span class="lbl">', `<span class="st-dot" style="background:${st.c}" title="${st.name}"></span><span class="lbl">`);
 }
 
-const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
+const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), bugs: () => bugsView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
 function render() {
   applyLook();
   if (!S.loaded) { $('main').innerHTML = '<div class="wrap"><p class="empty-note">Loading your chats…</p></div>'; return; }
@@ -231,7 +236,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-gmore]'))) { S.galleryN = (S.galleryN || 120) + 120; return render(); }
   if ((b = el('[data-gen-n]'))) { S.genN = Number(b.dataset.genN); return render(); }
   if ((b = el('[data-push]'))) return wrap(async () => { if (b.dataset.push === 'on') await pushOn(); else if (b.dataset.push === 'off') await pushOff(); else { const r = await api('/api/lite/push/test', {}); toast(r.sent ? `Sent to ${r.sent} device${r.sent === 1 ? '' : 's'}.` : 'No device took it.'); } render(); })();
-  if ((b = el('[data-selstage]'))) return pop(b, STAGES.map(s => `<button data-v="${s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join(''), v => wrap(setChats)([...S.sel], { stage: v }));
+  if ((b = el('[data-selstage]'))) return pop(b, STATUSES.map(s => `<button data-v="${s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('') + `<hr>${KINDS.map(k => `<button data-v="k:${k.id}">${k.name}</button>`).join('')}<hr><button data-v="focus">Focus<kbd>f</kbd></button>`, v => (v === 'focus' ? wrap(toggleFocus)([...S.sel]) : wrap(setChats)([...S.sel], v.startsWith('k:') ? { kind: v.slice(2) } : { status: v })));
   if ((b = el('[data-selwait]'))) return askWaiting([...S.sel]);
   if ((b = el('[data-selarch]'))) return wrap(archiveChats)([...S.sel]);
   if ((b = el('[data-selclear]'))) { S.sel.clear(); return render(); }
@@ -246,6 +251,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-more-st]'))) { S.more[b.dataset.moreSt] = !S.more[b.dataset.moreSt]; return renderSide(); }
   if ((b = el('[data-more-all]'))) { S.more['all-' + b.dataset.moreAll] = true; return renderSide(); }
   if ((b = el('[data-pfold]'))) { S.more['p-done'] = !S.more['p-done']; return render(); }
+  if ((b = el('[data-bfold]'))) { S.more['b-done'] = !S.more['b-done']; return render(); }
   if ((b = el('[data-pq]'))) { S.more['pq-' + b.dataset.pq] = !S.more['pq-' + b.dataset.pq]; return render(); }
   if ((b = el('[data-pickbucket]'))) return pop(b, `${[['all', 'All buckets'], ...buckets().map(x => [x.id, x.name]), ['unsorted', 'Unsorted']].map(([id, n]) => `<button data-v="${esc(id)}" role="menuitemradio" aria-checked="${S.bucket === id}">${esc(n)}</button>`).join('')}`, v => { S.bucket = v; local.set('bucket', v); render(); });
   if ((b = el('#lookBtn'))) return lookMenu(b);
@@ -281,6 +287,12 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'cmdForm') { e.preventDefault(); const v = $('cmdInput').value; $('cmdInput').value = ''; return askCommander(v); }
   if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat(); }
   if (e.target.id === 'genForm') { e.preventDefault(); const v = $('genPrompt').value.trim(); if (!v) return undefined; $('genPrompt').value = ''; return wrap(startGenerate)(v, S.genN || 1); }
+  if (e.target.dataset.olread) {
+    e.preventDefault();
+    const pct = Number(String(e.target.pct.value).replace('%', '').trim());
+    if (!(pct >= 0 && pct <= 100) || e.target.pct.value.trim() === '') { e.target.pct.focus(); return toast('Type the weekly % used from Ollama’s page, like 22.3.'); }
+    return wrap(async () => { closePop(); await api('/api/lite/ollama/reading', { pct }); await loadPlans(false); renderPlansOnly(); toast(`Saved: ${pct}% used. The estimate starts from here.`); })();
+  }
   if (e.target.dataset.addidea) { e.preventDefault(); const text = e.target.idea.value.trim(); if (!text) return undefined; return wrap(saveIdeas)([...(S.lite.ideas || []), { text }]); }
   return undefined;
 });
@@ -336,7 +348,7 @@ function lookMenu(anchor) {
   });
 }
 
-/* ---------- dragging: chats onto a stage, projects onto a bucket ---------- */
+/* ---------- dragging: chats onto a status (or Focus), projects onto a bucket ---------- */
 let drag = null;
 document.addEventListener('dragstart', e => {
   const c = e.target.closest && e.target.closest('[data-chat]');
@@ -349,7 +361,7 @@ document.addEventListener('dragstart', e => {
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', drag.chats ? drag.chats.join(',') : drag.project || drag.idea);
 });
-const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? t.closest('[data-drop-stage]') : drag && drag.project ? t.closest('[data-drop-bucket]') : null);
+const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? t.closest('[data-drop-bucket]') : null);
 document.addEventListener('dragover', e => {
   const z = dropZone(e.target); if (!z) return;
   e.preventDefault();
@@ -364,7 +376,7 @@ document.addEventListener('drop', e => {
   e.preventDefault();
   const d = drag; drag = null;
   if (d.idea) { if (z.dataset.ideaDrop) { const over = e.target.closest('[data-idea]'); wrap(moveIdea)(d.idea, over && over.dataset.idea !== d.idea ? over.dataset.idea : null); } else wrap(startIdea)(d.idea); }
-  else if (d.chats) wrap(setChats)(d.chats, { stage: z.dataset.dropStage });
+  else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : { status: z.dataset.dropStage });
   else wrap(setBucket)(d.project, z.dataset.dropBucket || null);
 });
 document.addEventListener('dragend', () => { drag = null; document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot')); });

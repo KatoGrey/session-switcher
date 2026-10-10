@@ -3,9 +3,9 @@
    row under it (or on the selection). g-chords jump between pages. ⌘K finds anything. ? shows it all. */
 
 const SHORTCUTS = [
-  ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g r', 'Recents'], ['g i', 'Images'], ['g a', 'Archived'], ['g c', 'Clean up'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
+  ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g b', 'Bugs'], ['g r', 'Recents'], ['g i', 'Images'], ['g a', 'Archived'], ['g c', 'Clean up'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
   ['Needs you', [['t', 'Triage: one at a time, the next opens by itself'], ['a / d', 'Allow / deny'], ['r', 'Reply'], ['e', 'Done'], ['o', 'Open the chat']]],
-  ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–7', 'Set the stage'], ['s', 'Stage menu'], ['w', 'Waiting on…'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
+  ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–4', 'Status: Exploring, Building, Finishing, Done'], ['f', 'Focus on / off'], ['w', 'Waiting on…'], ['s', 'Status, kind and more'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
   ['In a chat', [['↵', 'Send'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['esc', 'Back to where you were']]],
 ];
 
@@ -30,7 +30,7 @@ function keepCur() {
 const idsAt = el => { const id = el && (el.dataset.chat || el.dataset.open); return S.sel.size && id && S.sel.has(id) ? [...S.sel] : S.sel.size && !id ? [...S.sel] : id ? [id] : []; };
 
 let chord = null, chordTimer = null;
-const GO = { n: 'now', p: 'home', h: 'hack', r: 'recent', i: 'images', a: 'archived', c: 'cleanup' };
+const GO = { n: 'now', p: 'home', h: 'hack', b: 'bugs', r: 'recent', i: 'images', a: 'archived', c: 'cleanup' };
 function onKey(e) {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
   const mod = e.metaKey || e.ctrlKey;
@@ -78,13 +78,15 @@ function onKey(e) {
     if (e.key === 's') { const b = document.querySelector('.chat-h .stage'); if (b) { e.preventDefault(); b.click(); } }
     if (e.key === 'e' && CV.id && chatBy.get(CV.id)) { e.preventDefault(); return wrap(archiveChats)([CV.id]).then(() => go('back')); }
     if (e.key === 'w' && CV.id && chatBy.get(CV.id)) { e.preventDefault(); return askWaiting([CV.id]); }
+    if (e.key === 'f' && CV.id && chatBy.get(CV.id)) { e.preventDefault(); return wrap(toggleFocus)([CV.id]); }
     return undefined;
   }
   if (!target) return undefined;
   const ids = idsAt(target).filter(id => chatBy.get(id));
   if ((e.key === 'Enter' || e.key === 'o') && target) { e.preventDefault(); return target.click(); }
   if (e.key === 'x' && target.dataset.chat) { e.preventDefault(); const id = target.dataset.chat; if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); keepCur.id = target.dataset.cur; return render(); }
-  if (/^[1-7]$/.test(e.key) && ids.length) { e.preventDefault(); keepCur.id = target.dataset.cur; return wrap(setChats)(ids, { stage: STAGES[Number(e.key) - 1].id }); }
+  if (/^[1-4]$/.test(e.key) && ids.length) { e.preventDefault(); keepCur.id = target.dataset.cur; return wrap(setChats)(ids, { status: STATUSES[Number(e.key) - 1].id }); }
+  if (e.key === 'f' && ids.length) { e.preventDefault(); keepCur.id = target.dataset.cur; return wrap(toggleFocus)(ids); }
   if (e.key === 's' && ids.length) { e.preventDefault(); return rowMenu(target, ids[0]); }
   if (e.key === 'w' && ids.length) { e.preventDefault(); return askWaiting(ids); }
   if ((e.key === 'Backspace' || e.key === 'Delete') && target.dataset.idea) { e.preventDefault(); return wrap(saveIdeas)((S.lite.ideas || []).filter(i => i.id !== target.dataset.idea)); }
@@ -111,7 +113,7 @@ function score(text, q) {
 }
 function palItems(q) {
   const acts = [
-    { t: L('Now'), s: 'g n', run: () => go('now') }, { t: L('Projects'), s: 'g p', run: () => go('home') }, { t: 'Hackathon', s: 'g h', run: () => go('hack') },
+    { t: L('Now'), s: 'g n', run: () => go('now') }, { t: L('Projects'), s: 'g p', run: () => go('home') }, { t: 'Hackathon', s: 'g h', run: () => go('hack') }, { t: 'Bugs', s: 'g b', run: () => go('bugs') },
     { t: L('Recents'), s: 'g r', run: () => go('recent') }, { t: 'Images', s: 'g i', run: () => go('images'), alias: 'pictures gallery gpt image' }, { t: 'Archived', s: 'g a', run: () => go('archived') },
     { t: 'Clean up', s: 'g c · free space, worktrees', run: () => go('cleanup'), alias: 'disk space node_modules worktree' }, { t: 'Phone alerts', run: () => go('alerts'), alias: 'push notifications iphone' },
     { t: L('New chat'), s: 'c', run: () => go('newchat'), alias: 'start' },
@@ -124,7 +126,7 @@ function palItems(q) {
     { t: 'Keyboard shortcuts', s: '?', run: showShortcuts, alias: 'keys help hotkeys' },
     { t: 'Open the full app', run: () => { location.href = '/'; }, alias: 'tyler classic hub' },
   ].map(x => ({ ...x, kind: 'Go', text: `${x.t} ${x.alias || ''}` }));
-  const chats = allChats().sort((a, b) => b.updated - a.updated).map(c => ({ kind: 'Chat', t: c.title, s: `${projOf(c).name} · ${stageById(stageOf(c)).name} · ${ago(c.updated)}`, run: () => openChat(c.id), text: `${c.title} ${projOf(c).name}`, boost: needs(c) ? 25 : running(c) ? 15 : 0 }));
+  const chats = allChats().sort((a, b) => b.updated - a.updated).map(c => ({ kind: 'Chat', t: c.title, s: `${projOf(c).name} · ${statusById(statusOf(c)).name}${c.kind && c.kind !== 'feature' ? ` · ${kindById(c.kind).name}` : ''}${c.focus ? ' · Focus' : ''} · ${ago(c.updated)}`, run: () => openChat(c.id), text: `${c.title} ${projOf(c).name}`, boost: needs(c) ? 25 : running(c) ? 15 : 0 }));
   const projs = S.projects.filter(p => !p.archived && (p.bucket || chatsOfProject(p.key).length)).map(p => ({ kind: 'Project', t: p.name, s: bucketName(p.bucket), run: () => go('project', { project: p.key }), text: `${p.name} ${p.folder || ''}` }));
   const news = q ? S.projects.filter(p => p.cwd && p.exists && !p.archived && !p.loose).map(p => ({ kind: 'New chat', t: `New chat in ${p.name}`, run: () => go('newchat', { ncProject: p.key }), text: `new chat ${p.name}` })) : [];
   if (!q) return [...chats.filter(c => c.boost).slice(0, 6), ...acts.slice(0, 9), ...chats.filter(c => !c.boost).slice(0, 8)];

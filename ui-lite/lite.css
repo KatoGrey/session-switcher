@@ -720,3 +720,22 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .tile-x:hover { background: var(--hover); color: var(--fg); }
 @media (hover: none) { .tile-x { opacity: .7; } }
 [data-idea-drop].drop-hot { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+/* Kind, Focus and Waiting sit beside the status */
+.focus-star { color: var(--st-priority); font-size: 11px; margin-right: 5px; line-height: 1; }
+.nav-i .focus-star { margin-right: 2px; }
+.kind-tag { font-size: 10.5px; }
+.kind-tag.k-bug { color: var(--st-bug); border-color: color-mix(in srgb, var(--st-bug) 40%, transparent); }
+.kind-tag.k-prototype { color: var(--st-explore); border-color: color-mix(in srgb, var(--st-explore) 40%, transparent); }
+.kind-tag.k-idea { color: var(--st-waiting); border-color: color-mix(in srgb, var(--st-waiting) 40%, transparent); }
+.tile small .tag { margin-right: 6px; }
+.chat-h .tag { margin-right: 6px; }
+.kind-seg { display: flex; gap: 2px; padding: 2px 6px 6px; flex-wrap: wrap; }
+.kind-seg button { width: auto; padding: 3px 8px; border-radius: 6px; font-size: 12px; }
+.kind-seg button[aria-checked="true"] { background: var(--hover); color: var(--fg); }
+.kind-seg button[aria-checked="true"]::after { content: none; }
+.pd-note { margin: 6px 10px 4px; font-size: 12px; color: var(--muted); max-width: 340px; line-height: 1.4; }
+.pd-form { display: flex; gap: 6px; align-items: center; padding: 6px 10px 8px; flex-wrap: wrap; }
+.pd-form .field { width: 130px; margin: 0; }
+.pd-form .linkish { font-size: 12px; }
+.pop .pd-form button { width: auto; flex: none; }
+.prow .prank:empty { visibility: hidden; }
