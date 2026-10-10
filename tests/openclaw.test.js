@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { createOpenClaw, LIST_CMD } = require('../lib/openclaw');
+const { createOpenClaw, LIST_CMD, shq } = require('../lib/openclaw');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ss-oc-'));
 const settle = () => new Promise(r => setTimeout(r, 30));
@@ -210,4 +210,13 @@ test('openclaw: a follow-up turn is sent through the CLI and its reply comes bac
   const bad = await oc2.sendMessage('agent:main:cron:nightly', 'hello');
   assert.equal(bad.ok, false);
   assert.match(bad.error, /gateway went away/);
+});
+
+test('command words: quoted for the shell, and on Windows anything that could break out of quoting is refused', () => {
+  assert.equal(shq('agent:main:cron:nightly', true), 'agent:main:cron:nightly');
+  assert.equal(shq('C:/Users/me/My Data/msg.txt', true), '"C:/Users/me/My Data/msg.txt"');
+  assert.equal(shq('a & b', true), '"a & b"');
+  for (const bad of ['a" & calc & "', '%PATH%', 'x!y!', 'one\ntwo']) assert.throws(() => shq(bad, true), /safely on Windows/, bad);
+  assert.equal(shq("it's here", false), "'it'\\''s here'");
+  assert.equal(shq('%PATH%', false), "'%PATH%'");
 });
