@@ -618,3 +618,8 @@ body.dropping .box::after { content: "Drop to add"; position: absolute; inset: 0
 .tr-start kbd { margin-left: 4px; }
 @media (max-width: 760px) { .triage { padding: 16px 16px 96px; } .tr-skip { display: none; } }
 .follow { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; } .follow input { accent-color: var(--accent); }
+.newchat { grid-template-columns: minmax(0, 1fr); }
+.nc-inner, .box, .tools { min-width: 0; }
+.model { white-space: nowrap; }
+@media (max-width: 760px) { .bar-hint { display: none; } .nc-h { font-size: 22px; } .nc-chips { justify-content: flex-start; } .newchat { place-items: start stretch; padding: 16px; } }
+@media (max-width: 760px) { .tools .gear { margin-left: auto; } .nc-inner > .back { align-self: flex-start; margin: -4px 0 -6px -6px; } }

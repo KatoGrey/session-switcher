@@ -340,14 +340,13 @@ async function sendInChat() {
   CV.sending = true;
   try {
     if (!CV.key) {
-      // First message: picked up here (as the account it last ran as), in your permission default
-      // unless this chat remembers its own, and on the model you picked if you did.
+      // First message: picked up here, always in your permission default (or what you chose for it
+      // with the gear), and on the model you picked if you did.
       // Claude picks up on the use-next Claude plan (else the account it last ran as); Codex on its own.
       const c = chatBy.get(CV.id);
       const claudeAcct = CV.provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
-      const info = await api('/api/chat/open', { sessionId: CV.id, mode: 'resume', ...(CV.provider === 'codex' ? { provider: 'codex' } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), ...(COMP.perm ? { permissionMode: COMP.perm } : {}), ...(COMP.model ? { model: COMP.model } : {}) });
+      const info = await api('/api/chat/open', { sessionId: CV.id, mode: 'resume', ...(CV.provider === 'codex' ? { provider: 'codex' } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
       CV.key = info.key; CV.info = info;
-      if (!COMP.perm && !info.remembered && info.permissionMode !== permDefault(CV.provider)) await api('/api/chat/mode', { key: info.key, mode: permDefault(CV.provider) }).then(() => { CV.info.permissionMode = permDefault(CV.provider); }).catch(() => {});
       listen(info.key);
       await waitReady();
       if (COMP.effort) await api('/api/chat/model', { key: CV.key, effort: COMP.effort }).then(m => Object.assign(CV.info, m)).catch(() => {});
@@ -417,6 +416,7 @@ function newChatView() {
   const ps = ncProjects();
   if (!NC.project || !ps.some(p => p.key === NC.project)) NC.project = (ps[0] || {}).key || null;
   return `<div class="newchat"><div class="nc-inner">
+    <button class="iconbtn back" data-go="back" aria-label="Back">‹</button>
     <h1 class="nc-h">What should we work on?</h1>
     <div class="nc-chips" id="ncChips"></div>
     ${composerHtml({ fresh: true })}
