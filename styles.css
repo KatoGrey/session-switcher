@@ -2429,6 +2429,13 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 [data-family="anime"] .an-paint.fresh{animation:an-paint-in .9s ease both}
 @keyframes an-paint-in{from{opacity:0}to{opacity:1}}
 [data-family="anime"] .painted :is(.dg-pool,.hf-bglow,.hf-win.lit){mix-blend-mode:screen}
+/* a painting gets a wider panel, close to its own 3:2 shape, and is shown whole; the fade into the text
+   is on the picture only, so a readout over it stays crisp. Isekai's status window sits in the quiet
+   sky on the left, clear of the island. */
+[data-family="anime"] .hero-art.painted{width:min(48%,540px);-webkit-mask:none;mask:none}
+[data-family="anime"] .hero:has(.hero-art.painted) .hero-in{padding-right:calc(min(48%,540px) + 28px)}
+[data-family="anime"] .painted .an-scene{-webkit-mask:linear-gradient(90deg,transparent,#000 18%);mask:linear-gradient(90deg,transparent,#000 18%)}
+[data-theme="isekai"] .status.painted .ie-win{margin:0 auto 14px 14px}
 .an-star{fill:rgb(var(--an-star))}
 .motion .an-star{animation:an-twinkle 3.6s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
 @keyframes an-twinkle{0%,100%{opacity:.25}50%{opacity:1}}
@@ -2473,10 +2480,16 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 .lk-anime[data-v="highfantasy"] .lk-tn b{font-weight:700;font-size:16px}
 .lk-anime[data-v="dungeon"] .lk-tn b{font-size:21px}
 .lk-anime .sw-card{box-shadow:inset 0 2px 0 var(--sw-gold),0 0 14px -4px var(--sw-acc)}
-/* and a hint of each world's sky in its swatch */
-.lk-anime[data-v="isekai"] .sw{background-image:radial-gradient(60% 70% at 80% 0%,rgb(166 130 255 / .35),transparent),linear-gradient(180deg,transparent 55%,rgb(228 112 166 / .28))}
-.lk-anime[data-v="highfantasy"] .sw{background-image:radial-gradient(circle at 84% 22%,rgb(252 249 230 / .5) 0 7px,rgb(252 249 230 / .12) 8px,transparent 22px),linear-gradient(180deg,transparent 50%,rgb(40 84 88 / .4))}
-.lk-anime[data-v="dungeon"] .sw{background-image:radial-gradient(50% 60% at 50% 110%,rgb(255 146 58 / .3),transparent)}
+/* and its painting behind the preview */
+.lk-anime .sw{background-size:cover;background-position:62% 45%}
+.lk-anime .sw::before{display:none}
+.lk-anime[data-v="isekai"] .sw{background-image:url(/art/isekai-dark.webp)}
+.lk-anime[data-v="highfantasy"] .sw{background-image:url(/art/highfantasy-dark.webp)}
+.lk-anime[data-v="dungeon"] .sw{background-image:url(/art/dungeon-dark.webp);background-position:50% 40%}
+[data-mode="light"] .lk-anime[data-v="isekai"] .sw{background-image:url(/art/isekai-light.webp)}
+[data-mode="light"] .lk-anime[data-v="highfantasy"] .sw{background-image:url(/art/highfantasy-light.webp)}
+.lk-anime .sw-bar{background:rgb(0 0 0 / .35);backdrop-filter:blur(2px)}
+.lk-anime .sw-card{background:color-mix(in srgb,var(--sw-card) 58%,transparent);backdrop-filter:blur(2px)}
 
 /* ==================== Isekai ====================
    Another world at twilight: indigo glass, a cyan magic glow, sakura pink and gold. Orbitron for the
@@ -2729,10 +2742,21 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 [data-theme="highfantasy"] .hf-win{fill:rgb(var(--hf-roof) / .6);transition:fill .6s}
 [data-theme="highfantasy"] .hf-win.lit{fill:rgb(var(--hf-win));filter:drop-shadow(0 0 3px rgb(var(--hf-win)))}
 [data-theme="highfantasy"] .motion .hf-win.lit{animation:an-glow 3.2s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
-[data-theme="highfantasy"] .hf-bglow{fill:rgb(var(--hf-fire) / .22)}
-[data-theme="highfantasy"] .hf-flame{fill:rgb(var(--hf-fire));filter:drop-shadow(0 0 3px rgb(var(--hf-fire)))}
-[data-theme="highfantasy"] .hf-beacon.gold .hf-flame{fill:rgb(var(--hf-fire2));filter:drop-shadow(0 0 4px rgb(var(--hf-fire2)))}
-[data-theme="highfantasy"] .hf-beacon.gold .hf-bglow{fill:rgb(var(--hf-fire2) / .28)}
+/* beacons: a flame that's pale at its root and orange at its tips, in a soft glow */
+[data-theme="highfantasy"] .hf-glow1{stop-color:rgb(var(--hf-fire));stop-opacity:.42}
+[data-theme="highfantasy"] .hf-glow0{stop-color:rgb(var(--hf-fire));stop-opacity:0}
+[data-theme="highfantasy"] .hf-glowg1{stop-color:rgb(var(--hf-fire2));stop-opacity:.5}
+[data-theme="highfantasy"] .hf-glowg0{stop-color:rgb(var(--hf-fire2));stop-opacity:0}
+[data-theme="highfantasy"] .hf-fl1{stop-color:rgb(255 104 36)}
+[data-theme="highfantasy"] .hf-fl2{stop-color:rgb(var(--hf-fire))}
+[data-theme="highfantasy"] .hf-fl3{stop-color:rgb(255 236 180)}
+[data-theme="highfantasy"] .hf-flg1{stop-color:rgb(255 176 60)}
+[data-theme="highfantasy"] .hf-flg2{stop-color:rgb(var(--hf-fire2))}
+[data-theme="highfantasy"] .hf-flg3{stop-color:rgb(255 252 228)}
+[data-theme="highfantasy"] .hf-bglow{fill:url(#hfGlow)}
+[data-theme="highfantasy"] .hf-beacon.gold .hf-bglow{fill:url(#hfGlowG)}
+[data-theme="highfantasy"] .hf-flame{fill:url(#hfFlame);filter:drop-shadow(0 0 2px rgb(var(--hf-fire) / .9))}
+[data-theme="highfantasy"] .hf-beacon.gold .hf-flame{fill:url(#hfFlameG);filter:drop-shadow(0 0 2.5px rgb(var(--hf-fire2)))}
 [data-theme="highfantasy"] .hf-brazier{fill:rgb(var(--hf-castle))}
 [data-theme="highfantasy"] .motion .hf-flame{transform-box:fill-box;transform-origin:50% 100%;animation:an-flicker .9s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
 [data-theme="highfantasy"] .motion .hf-bglow{animation:an-glow 1.8s ease-in-out infinite;animation-delay:calc(var(--d) * -1)}
@@ -2927,6 +2951,13 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
   [data-theme="imperial"] .console{padding:0}
   [data-theme="malibu"] .hero-art.sunset{-webkit-mask:none;mask:none;border-radius:16px}
   [data-family="anime"] .hero-art{-webkit-mask:none;mask:none;border-radius:calc(var(--radius) - 2px);height:168px}
+  /* phones: the whole painting, and Isekai's status window just under it */
+  [data-family="anime"] .hero-art.painted{width:auto;height:auto;aspect-ratio:3 / 2}
+  [data-family="anime"] .hero:has(.hero-art.painted) .hero-in{padding-right:28px}
+  [data-family="anime"] .painted .an-scene{-webkit-mask:none;mask:none}
+  [data-theme="isekai"] .hero-art.status.painted{aspect-ratio:auto;display:block}
+  [data-theme="isekai"] .status.painted .an-scene{position:relative;display:block;height:auto;aspect-ratio:3 / 2}
+  [data-theme="isekai"] .status.painted .ie-win{margin:0;width:auto;border-width:1px 0 0;border-radius:0;box-shadow:inset 0 0 20px -10px rgb(var(--an-glow) / .7)}
   [data-theme="isekai"] .ie-win{margin:0 10px 10px auto;width:min(244px,calc(100% - 20px));padding:7px 10px}
   [data-theme="isekai"] .ie-sk{font-size:9.5px;gap:4px}
   [data-theme="isekai"] .ie-sk b{font-size:11.5px}

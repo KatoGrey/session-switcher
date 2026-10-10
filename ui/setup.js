@@ -130,7 +130,7 @@ function renderLook() {
     <p class="lk-saga-note">Sunshine, sparkles and a little pink. Brings its own lettering, sparkles behind the hub, sweet chimes and a few words of its own.</p>
     <div class="lk-themes" role="radiogroup" aria-label="Glam themes">${Look.THEMES.filter(t => t.family === 'glam').map(card).join('')}</div>
     <p class="d-h">Anime</p>
-    <p class="lk-saga-note">Step into another world. Made for dark mode: each brings its own lettering, a living sky behind the hub, a scene that reads your chats, chimes and a few words of its own.</p>
+    <p class="lk-saga-note">Step into another world. Made for dark mode: each brings a painted scene in the hub that lights up with your chats, its own lettering, a living sky behind the hub, chimes and a few words of its own.</p>
     <div class="lk-themes" role="radiogroup" aria-label="Anime themes">${Look.THEMES.filter(t => t.family === 'anime').map(card).join('')}</div>
     <p class="d-h">Text</p>
     <div class="lk-row"><label for="lkText"><b>Text size</b><small>Messages, documents and the message box</small></label>
@@ -321,10 +321,15 @@ function sayStatic() {
     el.textContent = voice(el.dataset.say);
   }
 }
-let lookTheme = Look.get().theme;
+let lookTheme = Look.get().theme, lookMode = document.documentElement.dataset.mode;
 document.addEventListener('lookchange', () => {
-  const th = Look.get().theme; if (th === lookTheme) return;
-  lookTheme = th;
+  const th = Look.get().theme, mode = document.documentElement.dataset.mode;
+  // Light and dark can each have their own painting in the hub's scene.
+  if (th === lookTheme) {
+    if (mode !== lookMode) { lookMode = mode; if (Look.theme().paint && S.view === 'hub' && $('heroSlot')) renderLive(true); }
+    return;
+  }
+  lookTheme = th; lookMode = mode;
   sayStatic(); petals(); renderLivePill(); renderAll();
 });
 

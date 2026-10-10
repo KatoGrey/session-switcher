@@ -994,6 +994,13 @@ module.exports = [
         t.check(`${id}: a new minute alone doesn’t redraw the hero`, h.clockless, h);
         await t.shot(b, `${id}-hub`);
       }
+      // Codex's paintings: each theme's for the mode (the Dungeon's stays dark), with the live parts on top.
+      for (const [id, mode, want] of [['isekai', 'dark', 'isekai-dark'], ['isekai', 'light', 'isekai-light'], ['highfantasy', 'dark', 'highfantasy-dark'], ['highfantasy', 'light', 'highfantasy-light'], ['dungeon', 'light', 'dungeon-dark']]) {
+        await b.eval(`Look.set({ theme: ${JSON.stringify(id)}, mode: ${JSON.stringify(mode)} }); return 1`); await sleep(1200);
+        const pt = await b.eval(`const im = document.querySelector('.hero-art.painted .an-paint'); return { href: im && im.getAttribute('href'), drawn: !!document.querySelector('.hero-art .ie-isle, .hero-art .hf-castle, .hero-art .dg-arch'), ok: im ? (await fetch(im.getAttribute('href'))).headers.get('content-type') : null }`);
+        t.check(`${id} ${mode}: Codex's painting is the scene`, pt.href === `/art/${want}.webp` && pt.ok === 'image/webp' && !pt.drawn, pt);
+      }
+      await b.eval(`Look.set({ mode: 'dark' }); return 1`);
       // The scenes read the counts: Isekai's crystals and magic circle, High Fantasy's windows and
       // beacons, the Dungeon's torches, eyes and chests.
       await b.eval(`Look.set({ theme: 'isekai' }); return 1`); await sleep(600);

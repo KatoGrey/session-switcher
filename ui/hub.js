@@ -213,16 +213,33 @@ function heroArt({ N, R, W, Q }) {
 /* ---------- the anime themes' scenes ----------
    Each is an SVG (400 × 240, cropped to fit) that reads the same counts as the headline: N need your
    OK, R have replied, W are at work, Q are open and idle. A theme can bring paintings (art/<name>.webp,
-   one per mode): a painting takes the place of the drawn scenery inside the same SVG, so it scales and
-   crops exactly as the live parts on top of it do. Where those sit on each painting is in PAINT_SPOTS.
-   Until a painting has loaded, or without one, the scenery is drawn. Anything that moves only moves
-   when motion is on. */
+   one per mode; made by Codex, the originals are in art/src/ with their prompts): a painting takes the
+   place of the drawn scenery inside the same SVG, so it scales and crops exactly as the live parts on
+   top of it do. A painting is 3:2, so it spans y -13.3 to 253.3 in the same units, and the whole of it
+   is in view. Where the live parts sit on each painting is in PAINT_SPOTS. Until a painting has
+   loaded, or without one, the scenery is drawn. Anything that moves only moves when motion is on. */
 const sparks = (seed, n, box) => { const r = seeded(seed); return Array.from({ length: n }, () => [Math.round(box[0] + r() * (box[2] - box[0])), Math.round(box[1] + r() * (box[3] - box[1])), +(0.5 + r() * 1.1).toFixed(2), +(r() * 4).toFixed(2)]); };
 const starsSvg = (seed, n, box, cls = 'an-star') => sparks(seed, n, box).map(([x, y, s, d]) => `<circle class="${cls}" cx="${x}" cy="${y}" r="${s}" style="--d:${d}s"/>`).join('');
 const pad2 = n => String(n).padStart(2, '0');
 
-// Where the live parts sit on each painting, in the scene's 400 × 240 units.
-const PAINT_SPOTS = {};
+// Where the live parts sit on each painting, in the scene's units (measured by Codex on the paintings).
+const PAINT_ISEKAI = { circle: [249.7, 119.2, 52.1, 0.16], crystals: [[209.6, 96.3], [227.3, 89.5], [245.8, 95.5], [197.7, 103.3], [263.8, 103.6], [236.5, 77]] };
+const PAINT_CITADEL = {
+    // windows as boxes [x, y, width, height]: the keep's middle one first, then the towers'
+    windows: [[258.3, 79.4, 1.6, 13], [217.4, 94.7, 3.6, 7.3], [318.2, 97.1, 3.6, 7], [254.9, 81.7, 1.6, 11.2], [261.7, 81.7, 1.6, 11.2], [217.4, 107.5, 3.6, 7.6], [318.2, 109.6, 3.6, 7.3], [217.4, 120.5, 3.6, 7.6], [318.2, 122.1, 3.6, 7.3]],
+    // beacons [x, rim y, size]: the terrace braziers first, then the outposts down the valley
+    beacons: [[238.3, 131.5, 1.39], [274.2, 131.5, 1.39], [193.5, 130.4, 1.11], [282.6, 156.2, 1.56], [320.3, 159.3, 1.25], [157, 153.6, 1.42]],
+    dragon: [154.2, 47.2, 0.4],
+  };
+const PAINT_SPOTS = {
+  'isekai-dark': PAINT_ISEKAI, 'isekai-light': PAINT_ISEKAI,
+  'highfantasy-dark': PAINT_CITADEL, 'highfantasy-light': PAINT_CITADEL,
+  'dungeon-dark': {
+    torches: [[157.6, 97.5, 1.05], [326.3, 97.5, 1.05], [209.4, 122.8, 0.48], [270.6, 122.8, 0.48]],
+    eyes: [[234.4, 111.7], [249, 119.7], [239.3, 131.7], [251.8, 143.4], [229.4, 149.7], [245.3, 155.4]],
+    chests: [[144.5, 197.6, 0.85], [165.1, 200.7, 0.68]],
+  },
+};
 const Paint = { ready: new Set(), asked: new Set(), fresh: null };
 // The theme's painting for this mode, once it has loaded (it's fetched the first time it's wanted, and
 // the hero redraws with it then).
@@ -242,8 +259,10 @@ function paintFor() {
 // The painting itself; it fades in the first time it appears.
 function paintSvg(P) {
   const fresh = Paint.fresh === P.url; if (fresh) Paint.fresh = null;
-  return `<image class="an-paint${fresh ? ' fresh' : ''}" href="${P.url}" width="400" height="240" preserveAspectRatio="xMidYMid slice"/>`;
+  return `<image class="an-paint${fresh ? ' fresh' : ''}" href="${P.url}" y="-13.333" width="400" height="266.667"/>`;
 }
+// The scene's SVG: a painting is shown whole (it's a little taller than the drawn scenery).
+const sceneSvg = (P, anchor = 'xMidYMid') => `<svg class="an-scene" viewBox="${P ? '0 -13.333 400 266.667' : '0 0 400 240'}" preserveAspectRatio="${P ? 'xMidYMid' : anchor} slice">`;
 // A scene's three counts, each with a plain word for what it counts.
 function sceneRead([need, work, idle], { N, R, W, Q }) {
   return `<div class="ha-read">${[[N + R, need, 'need you', 'hot'], [W, work, 'working', 'on'], [Q, idle, 'idle', '']].map(([n, l, s, c]) => `<span class="${n ? c : ''}"><b>${pad2(n)}</b><i>${l}<small>${s}</small></i></span>`).join('')}</div>`;
@@ -260,7 +279,7 @@ function isekaiArt({ N, R, W, Q }) {
   const role = !a ? 'Wanderer' : /max/i.test(plan) ? 'Archmage' : /pro/i.test(plan) ? 'Mage' : /team|enterprise/i.test(plan) ? 'Guild mage' : 'Adventurer';
   const P = paintFor(), sp = P ? P.spots : {};
   const CRYSTALS = sp.crystals || [[96, 98], [146, 92], [72, 112], [170, 108], [120, 84], [52, 96]];
-  const [cx, cy, cr] = sp.circle || [120, 136, 60], k = cr / 60;
+  const [cx, cy, cr, flat = 0.3] = sp.circle || [120, 136, 60], k = cr / 60;
   const crystal = ([x, y], i) => `<g class="ie-bob" style="--d:${(i * 0.7).toFixed(1)}s"><path class="ie-crystal${i < N ? ' gold' : ''}" d="M${x} ${y - 9}l5 9-5 9-5-9z"/><path class="ie-facet" d="M${x} ${y - 9}l2 9-2 9z"/></g>`;
   const motes = Array.from({ length: Math.min(W * 3, 12) }, (_, i) => `<circle class="ie-mote" cx="${(cx - 42 * k + ((i * 29) % 90) * k).toFixed(1)}" cy="${cy + 2 - (i % 3) * 3}" r="${(1.1 + (i % 3) * 0.45).toFixed(2)}" style="--d:${(i * 0.53).toFixed(2)}s"/>`).join('');
   const bar = (key, v) => `<div class="ie-bar ${key}${v !== null && v <= 20 ? ' low' : ''}"><span>${key.toUpperCase()}</span><i><b style="width:${v ?? 0}%"></b></i><em>${v === null ? '–' : `${v}%`}</em></div>`;
@@ -275,7 +294,7 @@ function isekaiArt({ N, R, W, Q }) {
     <g class="ie-isle"><path fill="url(#ieRock)" d="M62 148c18-7 100-7 118 0-6 7-12 10-18 20-8 14-18 30-34 58-8-20-18-34-30-46-12-12-28-20-36-32z"/><path class="ie-strata" d="M74 160c30 4 70 4 96-2M92 176c20 3 44 3 62-1"/><path class="ie-grass" d="M58 148c20-9 104-9 124 0-20 5-104 5-124 0z"/>
       <path class="ie-tower" d="M150 146v-26h9v26zM148 120l6.5-11 6.5 11z"/><rect class="ie-lamp" x="153" y="126" width="3" height="4" rx="1"/><path class="ie-tree" d="M80 146v-8"/><circle class="ie-tree-c" cx="80" cy="134" r="6"/><circle class="ie-tree-c" cx="88" cy="138" r="4.5"/></g>
     <path class="ie-fall" stroke="url(#ieFall)" d="M175 150c3 18 3 50 1 90"/><path class="ie-fall-s" d="M175 150c3 18 3 50 1 90"/>`;
-  return `<div class="hero-art status${P ? ' painted' : ''}" aria-hidden="true"><svg class="an-scene" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice">
+  return `<div class="hero-art status${P ? ' painted' : ''}" aria-hidden="true">${sceneSvg(P)}
     <defs>
       <linearGradient id="ieSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ie-sky1"/><stop offset=".58" class="ie-sky2"/><stop offset="1" class="ie-sky3"/></linearGradient>
       <radialGradient id="ieMoon" cx=".38" cy=".34" r=".75"><stop offset="0" class="ie-moon1"/><stop offset="1" class="ie-moon2"/></radialGradient>
@@ -284,7 +303,7 @@ function isekaiArt({ N, R, W, Q }) {
       <linearGradient id="ieRock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ie-rock1"/><stop offset="1" class="ie-rock2"/></linearGradient>
     </defs>
     ${P ? paintSvg(P) : drawn}
-    <g transform="translate(${cx} ${cy}) scale(${k.toFixed(3)} ${(0.3 * k).toFixed(3)})"><g class="ie-circle${W ? ' on' : ''}">
+    <g transform="translate(${cx} ${cy}) scale(${k.toFixed(3)} ${(flat * k).toFixed(3)})"><g class="ie-circle${W ? ' on' : ''}">
       <circle r="60" vector-effect="non-scaling-stroke"/><circle r="52" class="thin" vector-effect="non-scaling-stroke"/><circle r="56" class="runes" vector-effect="non-scaling-stroke"/>
       <path vector-effect="non-scaling-stroke" d="M0-46L39.8 23H-39.8ZM0 46L39.8-23H-39.8Z"/></g></g>
     <g class="ie-motes">${motes}</g>
@@ -307,8 +326,11 @@ function citadelArt({ N, R, W, Q }) {
   const BEACONS = sp.beacons || [[240, 141], [278, 141], [198, 116], [330, 114], [86, 104], [142, 113]];
   const [dx, dy, ds] = sp.dragon || [112, 38, 0.62];
   // On a painting its windows are painted dark, so only the lit ones are drawn.
-  const win = ([x, y], i) => (P && i >= W ? '' : `<path class="hf-win${i < W ? ' lit' : ''}" style="--d:${(i * 0.9).toFixed(1)}s" d="M${x - 1.8} ${y + 7}v-5a1.8 1.8 0 0 1 3.6 0v5z"/>`);
-  const beacon = ([x, y], i) => `<g class="hf-beacon${i < N ? ' gold' : ''}" style="--d:${(i * 0.37).toFixed(2)}s"><circle cx="${x}" cy="${y - 4}" r="11" class="hf-bglow"/><path class="hf-flame" d="M${x} ${y - 10}c3 3 3.6 5.6 1.6 8.2-.5-1.6-1.2-2.2-1.6-2.4-.4.2-1.1.8-1.6 2.4-2-2.6-1.4-5.2 1.6-8.2z"/>${P ? '' : `<path class="hf-brazier" d="M${x - 3} ${y - 2}h6l-1.6 3h-2.8z"/>`}</g>`;
+  // A window is [x, y] (drawn) or a box [x, y, width, height] (on a painting): an arch either way.
+  const arch = (x, y, w, h) => `M${x} ${y + h}V${(y + w / 2).toFixed(2)}a${w / 2} ${w / 2} 0 0 1 ${w} 0V${y + h}z`;
+  const win = ([x, y, w, h], i) => (P && i >= W ? '' : `<path class="hf-win${i < W ? ' lit' : ''}" style="--d:${(i * 0.9).toFixed(1)}s" d="${w ? arch(x, y, w, h) : arch(x - 1.8, y, 3.6, 7)}"/>`);
+  // A beacon is [x, y] or [x, rim y, size]; its flame stands on the bowl's rim.
+  const beacon = ([x, y, k = 1], i) => `<g class="hf-beacon${i < N ? ' gold' : ''}" style="--d:${(i * 0.37).toFixed(2)}s" transform="translate(${x} ${y + (P ? 0 : -2)}) scale(${k})"><circle cy="-3" r="13" class="hf-bglow"/><path class="hf-flame" d="M0-8c3 3 3.6 5.6 1.6 8.2-.5-1.6-1.2-2.2-1.6-2.4-.4.2-1.1.8-1.6 2.4-2-2.6-1.4-5.2 1.6-8.2z"/>${P ? '' : '<path class="hf-brazier" d="M-3 0h6l-1.6 3h-2.8z"/>'}</g>`;
   const flies = sparks('hf-flies', 9, [36, 176, 200, 232]).map(([x, y, s, d]) => `<circle class="hf-fly" cx="${x}" cy="${y}" r="${(s * 0.9).toFixed(2)}" style="--d:${d}s"/>`).join('');
   const sky = `<rect width="400" height="240" fill="url(#hfSky)"/>
     <g class="hf-stars">${starsSvg('hf-sky', 34, [6, 4, 396, 110])}</g>
@@ -331,12 +353,16 @@ function citadelArt({ N, R, W, Q }) {
   const dragon = `<g class="hf-dragon"><g transform="translate(${dx} ${dy}) scale(${ds})">
       <path class="far" d="M36 18L39 4 18 6Q22 10 24 12 27 11 29 14 32 13 34 17Z"/>
       <path d="M0 27C10 27 18 22 28 21 32 20 36 18 40 18L46 3 22 0Q26 6 28 9 31 7 33 11 36 9 38 14L44 17C50 16 54 12 60 10L62 5 64 10 72 11 76 14 68 16C62 17 58 20 54 22L52 26 49 23C44 25 38 25 32 24L30 28 28 24C20 26 10 29 0 27Z"/></g></g>`;
-  return `<div class="hero-art citadel${P ? ' painted' : ''}" aria-hidden="true"><svg class="an-scene" viewBox="0 0 400 240" preserveAspectRatio="${P ? 'xMidYMid' : 'xMidYMax'} slice">
+  return `<div class="hero-art citadel${P ? ' painted' : ''}" aria-hidden="true">${sceneSvg(P, 'xMidYMax')}
     <defs>
       <linearGradient id="hfSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="hf-sky1"/><stop offset=".6" class="hf-sky2"/><stop offset="1" class="hf-sky3"/></linearGradient>
       <radialGradient id="hfHalo"><stop offset="0" class="hf-halo"/><stop offset=".5" class="hf-halo5"/><stop offset="1" class="hf-halo0"/></radialGradient>
       <radialGradient id="hfMoon" cx=".42" cy=".38" r=".7"><stop offset="0" class="hf-moon1"/><stop offset="1" class="hf-moon2"/></radialGradient>
       <linearGradient id="hfMist" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="hf-mist0"/><stop offset="1" class="hf-mist1"/></linearGradient>
+      <radialGradient id="hfGlow"><stop offset="0" class="hf-glow1"/><stop offset="1" class="hf-glow0"/></radialGradient>
+      <radialGradient id="hfGlowG"><stop offset="0" class="hf-glowg1"/><stop offset="1" class="hf-glowg0"/></radialGradient>
+      <linearGradient id="hfFlame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="hf-fl1"/><stop offset=".55" class="hf-fl2"/><stop offset="1" class="hf-fl3"/></linearGradient>
+      <linearGradient id="hfFlameG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="hf-flg1"/><stop offset=".55" class="hf-flg2"/><stop offset="1" class="hf-flg3"/></linearGradient>
     </defs>
     ${P ? paintSvg(P) + dragon : sky + dragon + land}
     <g class="hf-wins">${WINDOWS.map(win).join('')}</g>
@@ -373,7 +399,7 @@ function delveArt({ N, R, W, Q }) {
   const front = `<path class="dg-arch" d="M140 122a60 60 0 0 1 120 0"/><path class="dg-jamb" d="M140 122v118M260 122v118"/>
     <path class="dg-key" d="M193 56h14l-2 14h-10z"/>
     <rect y="226" width="400" height="14" class="dg-floor"/>`;
-  return `<div class="hero-art delve${P ? ' painted' : ''}" aria-hidden="true"><svg class="an-scene" viewBox="0 0 400 240" preserveAspectRatio="${P ? 'xMidYMid' : 'xMidYMax'} slice">
+  return `<div class="hero-art delve${P ? ' painted' : ''}" aria-hidden="true">${sceneSvg(P, 'xMidYMax')}
     <defs>
       <pattern id="dgBrick" width="36" height="18" patternUnits="userSpaceOnUse"><rect width="36" height="18" class="dg-mortar"/><rect x="1" y="1" width="34" height="7.6" rx="1.2" class="dg-brick"/><rect x="-17" y="10" width="34" height="7.6" rx="1.2" class="dg-brick b"/><rect x="19" y="10" width="34" height="7.6" rx="1.2" class="dg-brick c"/></pattern>
       <radialGradient id="dgDeep" cx=".5" cy=".62" r=".6"><stop offset="0" class="dg-deep0"/><stop offset="1" class="dg-deep1"/></radialGradient>
