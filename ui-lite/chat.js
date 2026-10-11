@@ -62,7 +62,7 @@ function chatTitle() { const c = chatBy.get(CV.id); return c ? c.title : (CV.inf
 
 async function openChatView(id, { key = null, provider = null } = {}) {
   if (CV.es) { CV.es.close(); CV.es = null; }
-  Object.assign(CV, { id, key, info: null, items: [], cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
+  Object.assign(CV, { id, key, info: null, items: [], queue: [], cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
   resetComposer();
   const c = chatBy.get(id);
   CV.provider = provider || (c ? c.provider : 'claude');
@@ -150,7 +150,7 @@ function onEvent(ev) {
     case 'notice': CV.items.push(ev); appendItem(ev); break;
     case 'permission': CV.pending.set(ev.requestId, ev); paintPending(); break;
     case 'permission_cancel': case 'permission_done': CV.pending.delete(ev.requestId); paintPending(); break;
-    case 'result': CV.busy = false; CV.status = ''; CV.startedAt = 0; CV.live = ''; CV.thinking = ''; markSeen(CV.id); if (!ev.ok && (ev.errors || []).length) { const n = { kind: 'notice', level: 'warning', text: ev.errors.join(' ') }; CV.items.push(n); appendItem(n); } paintLive(); paintStatus(); paintBar(); break;
+    case 'result': CV.busy = false; CV.status = ''; CV.startedAt = 0; CV.live = ''; CV.thinking = ''; setTimeout(sendQueued, 300); markSeen(CV.id); if (!ev.ok && (ev.errors || []).length) { const n = { kind: 'notice', level: 'warning', text: ev.errors.join(' ') }; CV.items.push(n); appendItem(n); } paintLive(); paintStatus(); paintBar(); break;
     default: break;
   }
 }
@@ -241,7 +241,7 @@ function editTitleInline() {
 function chatView() {
   return `<div class="chat" id="chatView">${chatHead()}
     <div class="feed" id="feed" tabindex="-1"><div class="inner" id="feedInner"></div></div>
-    ${folderNotice()}<div class="composer">${composerHtml()}</div>
+    ${folderNotice()}<div class="queue-box" id="queueBox" hidden></div><div class="composer">${composerHtml()}</div>
   </div>`;
 }
 function paintChat() {
@@ -342,7 +342,7 @@ function toolsHtml({ fresh }) {
     <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
-    ${busy ? '<button type="button" class="send stop" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
+    ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button><button type="submit" class="send" aria-label="Steer (↵) · queue for after (⌥↵)" title="↵ tells it now (it reads this while it works) · ⌥↵ queues it for when it finishes">↑</button>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
 }
 function paintBar() {
   const t = $('barTools'); if (!t || S.view !== 'chat') return;
@@ -417,9 +417,39 @@ const fileLines = () => COMP.files.filter(f => f.rel).map(f => `Attached file: \
 const withFiles = text => { const l = fileLines(); return l ? `${text.replace(/\s+$/, '')}${text.trim() ? '\n\n' : ''}${l}` : text; };
 const imagesOut = () => COMP.images.map(i => ({ mediaType: i.mediaType, data: i.data }));
 
-async function sendInChat() {
+// While it works: ↵ steers (it reads the message now), ⌥↵ queues it for when the turn ends.
+CV.queue = [];
+function paintQueue() {
+  const el = $('queueBox'); if (!el) return;
+  el.innerHTML = (CV.queue || []).map((q, i) => `<div class="q-item"><span class="tag">Queued</span><span class="q-text">${esc(q.text.slice(0, 160))}${q.images.length ? ` · ${q.images.length} picture${q.images.length === 1 ? '' : 's'}` : ''}</span><button type="button" class="iconbtn" data-unqueue="${i}" aria-label="Remove from the queue">×</button></div>`).join('');
+  el.hidden = !(CV.queue || []).length;
+}
+async function sendQueued() {
+  if (!CV.queue || !CV.queue.length || !CV.key || CV.busy || CV.sending) return;
+  const q = CV.queue.shift(); paintQueue();
+  const box = $('msgBox'); const typed = box ? box.value : '';
+  if (box) box.value = q.text;
+  const saved = COMP.images; COMP.images = q.images;
+  await sendInChat({ fromQueue: true });
+  COMP.images = saved; if (box && !box.value) { box.value = typed; autosize(box); }
+}
+async function sendInChat({ fromQueue = false, queue = false } = {}) {
   const box = $('msgBox'); const text = box.value.trim();
   if ((!text && !COMP.images.length && !COMP.files.length) || CV.sending) return;
+  if (!fromQueue && CV.busy && CV.key) {
+    const images = imagesOut();
+    if (queue || COMP.queueNext) {
+      COMP.queueNext = false;
+      CV.queue.push({ text, images: COMP.images.slice() }); box.value = ''; autosize(box); resetComposer(); paintAttachments(); paintQueue(); sfx('chip');
+      return toast('Queued: it goes when this turn finishes.');
+    }
+    // Steer: on screen at once, and into the running turn.
+    const local = { kind: 'user', text, images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
+    CV.items.push(local); box.value = ''; autosize(box); resetComposer(); paintAttachments(); paintFeed(); sfx('slide');
+    try { await api('/api/lite/steer', { key: CV.key, text, ...(images.length ? { images } : {}) }); }
+    catch (err) { CV.items = CV.items.filter(x => x !== local); paintFeed(); if (!box.value) { box.value = text; autosize(box); } toast(err.message); }
+    return;
+  }
   if (COMP.converting) return toast('One moment: a picture is still being prepared.');
   CV.sending = true;
   // On screen at once: your message, and the line under it, while the chat starts up.

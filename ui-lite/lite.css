@@ -842,3 +842,10 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 }
 /* iOS draws its own grey fill in a focused text box; the input bar has its own look. */
 .box textarea { -webkit-appearance: none; appearance: none; background: transparent !important; border-radius: 0; }
+/* While it works: a small stop next to send, and messages queued for when it finishes */
+.box .stop-sm { width: 28px; height: 28px; border-radius: 8px; font-size: 10px; color: var(--fg-2); border: 1px solid var(--line-2); margin-right: 6px; }
+.box .stop-sm:hover { color: var(--fg); background: var(--hover); }
+.queue-box { max-width: 760px; width: calc(100% - 32px); margin: 0 auto 6px; display: flex; flex-direction: column; gap: 4px; }
+.queue-box[hidden] { display: none; }
+.q-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; border: 1px dashed var(--line-2); border-radius: 8px; font-size: 13px; color: var(--fg-2); background: var(--pane); }
+.q-item .q-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
