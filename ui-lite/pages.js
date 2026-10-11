@@ -234,10 +234,12 @@ function showImage(key) {
   const src = `/api/lite/gimg?token=${TOKEN}&thread=${encodeURIComponent(thread)}&file=${encodeURIComponent(file)}`;
   const root = $('modalRoot');
   const at = (S.gallery.images.find(im => im.thread === thread && im.file === file) || {}).at;
-  root.innerHTML = `<div class="modal-back lightbox" data-lightbox="1"><button class="lb-nav prev" data-lb="-1" aria-label="Previous (←)" ${showImage.i > 0 ? '' : 'disabled'}>‹</button><figure><img src="${src}" alt=""><figcaption>${c ? `<button class="linkish" data-open="${esc(c.id)}">${esc(c.title)}</button> · ${esc(projOf(c).name)}` : 'Drawn by Codex'}${at ? ` · ${esc(dayName(at))}` : ''} · <a class="linkish" href="${src}" target="_blank" rel="noopener">Full size</a> · ${showImage.i + 1} of ${list.length}</figcaption></figure><button class="lb-nav next" data-lb="1" aria-label="Next (→)" ${showImage.i < list.length - 1 ? '' : 'disabled'}>›</button></div>`;
+  root.innerHTML = `<div class="modal-back lightbox" data-lightbox="1"><button class="lb-nav prev" data-lb="-1" aria-label="Previous (←)" ${showImage.i > 0 ? '' : 'disabled'}>‹</button><figure><img src="${src}" alt=""><figcaption>${c ? `<button class="linkish" data-open="${esc(c.id)}">${esc(c.title)}</button> · ${esc(projOf(c).name)}` : 'Drawn by Codex'}${at ? ` · ${esc(dayName(at))}` : ''} · <a class="linkish" href="${src}" target="_blank" rel="noopener">Full size</a> · <button class="linkish" data-useimg="${esc(src)}">Use in a chat…</button> · ${showImage.i + 1} of ${list.length}</figcaption></figure><button class="lb-nav next" data-lb="1" aria-label="Next (→)" ${showImage.i < list.length - 1 ? '' : 'disabled'}>›</button></div>`;
   root.querySelector('.modal-back').addEventListener('click', e => {
     const nav = e.target.closest('[data-lb]');
     if (nav) { e.stopPropagation(); return stepImage(Number(nav.dataset.lb)); }
+    const use = e.target.closest('[data-useimg]');
+    if (use) { e.stopPropagation(); return pickChatFor(use, use.dataset.useimg); }
     if (!e.target.closest('figcaption') || e.target.closest('[data-open]')) root.innerHTML = '';
     return undefined;
   });
@@ -252,6 +254,18 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowRight' || e.key === 'l') { e.preventDefault(); stepImage(1); }
   if (e.key === 'ArrowLeft' || e.key === 'h') { e.preventDefault(); stepImage(-1); }
 }, true);
+// A picture from the gallery into a chat: pick the chat (or New chat), it opens with the picture in its message.
+function pickChatFor(anchor, src) {
+  const list = allChats().sort((a, b) => b.updated - a.updated);
+  const rowsFor = q => `<button data-v="__new">New chat<small>start one with it</small></button>${list.filter(c => !q || c.title.toLowerCase().includes(q)).slice(0, 30).map(c => `<button data-v="${esc(c.id)}">${esc(c.title.slice(0, 56))}<small>${esc(projOf(c).name)}</small></button>`).join('')}`;
+  pop(anchor, `<div class="ph">Put it in…</div><input class="pop-q" id="ucQ" placeholder="Type to filter" aria-label="Filter chats"><div id="ucList">${rowsFor('')}</div>`, v => wrap(async () => {
+    $('modalRoot').innerHTML = '';
+    if (v === '__new') go('newchat'); else openChat(v);
+    await new Promise(r => setTimeout(r, 900));
+    await addImageFromUrl(src);
+  })());
+  const q = $('ucQ'); if (q) { q.focus(); q.addEventListener('input', () => { $('ucList').innerHTML = rowsFor(q.value.trim().toLowerCase()); }); }
+}
 async function startGenerate(prompt, n) {
   const j = await api('/api/lite/images/generate', { prompt, n });
   S.gallery = S.gallery || { images: [], jobs: [] };

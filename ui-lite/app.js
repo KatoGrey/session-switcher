@@ -223,6 +223,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-dismiss]'))) { e.stopPropagation(); markSeen(b.dataset.dismiss); return renderLive(); }
   if ((b = el('[data-earlier]'))) return wrap(loadEarlier)();
   if ((b = el('[data-addimg]'))) return wrap(addImageFromUrl)(b.dataset.addimg);
+  if ((b = el('[data-chatpics]'))) return picturesMenu(b);
   if ((b = el('[data-unqueue]'))) { CV.queue.splice(Number(b.dataset.unqueue), 1); paintQueue(); return undefined; }
   if ((b = el('[data-rtnew]'))) return newRoutine(b.dataset.rtnew);
   if ((b = el('[data-rtmenu]'))) { e.stopPropagation(); return routineMenu(b, b.dataset.rtmenu); }
