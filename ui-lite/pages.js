@@ -294,8 +294,9 @@ function rowMenu(anchor, id, at) {
     <button data-v="open">Open<kbd>↵</kbd></button><button data-v="full">Open in the full app</button><hr><div class="ph">Status</div>
     ${STATUSES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && statusOf(c) === s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('')}
     <div class="ph">Kind</div><div class="kind-seg">${KINDS.map(k => `<button data-v="k:${k.id}" role="menuitemradio" aria-checked="${ids.length === 1 && c.kind === k.id}">${k.name}</button>`).join('')}</div>
-    <hr><button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
+    <hr><button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="rename">Rename…</button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
     if (v === 'open') return openChat(id);
+    if (v === 'rename') return askRename(id);
     if (v === 'full') return openChat(id, { full: true });
     if (v.startsWith('s:')) return wrap(setChats)(ids, { status: v.slice(2) });
     if (v.startsWith('k:')) return wrap(setChats)(ids, { kind: v.slice(2) });

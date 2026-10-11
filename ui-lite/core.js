@@ -271,6 +271,28 @@ async function setChats(ids, patch, label) {
     sfx('undo'); await loadState(); render();
   });
 }
+// Renaming a chat: Claude chats keep the name in Switcher's own list (Claude Desktop's sidebar keeps
+// its own title); Codex chats are renamed in Codex itself. Undo goes back to the name it had.
+async function renameChat(id, name) {
+  const c = chatBy.get(id);
+  const n = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!n || (c && n === c.title)) return;
+  const before = c ? c.fullTitle || c.title : '', shown = c ? c.title : '';
+  const j = await api('/api/chat/rename', { sessionId: id, name: n });
+  if (c) { c.title = j.title || n; c.fullTitle = c.title; }
+  sfx('card'); render(); if (typeof paintHead === 'function') paintHead();
+  toast(`Renamed to “${c ? c.title : n}”`, async () => { await api('/api/chat/rename', { sessionId: id, name: before }); if (c) { c.title = shown; c.fullTitle = before; } sfx('undo'); render(); if (typeof paintHead === 'function') paintHead(); });
+}
+function askRename(id) {
+  const c = chatBy.get(id); if (!c) return;
+  const root = $('modalRoot');
+  root.innerHTML = `<div class="modal-back"><form class="modal" id="rcForm"><h3>Rename chat</h3><input name="n" class="field" value="${esc(c.title)}" aria-label="Name"><div class="acts"><button class="btn" type="button" data-m="no">Cancel</button><button class="btn prime" type="submit">Rename</button></div></form></div>`;
+  const f = root.querySelector('#rcForm'), close = () => { root.innerHTML = ''; };
+  root.querySelector('[data-m="no"]').onclick = close;
+  f.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });
+  f.onsubmit = wrap(async e => { e.preventDefault(); const v = f.n.value; close(); await renameChat(id, v); });
+  f.n.focus(); f.n.select();
+}
 // f: Focus on, or off when every one of them is already in Focus.
 const toggleFocus = ids => setChats(ids, { focus: !ids.every(id => (chatBy.get(id) || {}).focus) });
 async function setLook(patch) {

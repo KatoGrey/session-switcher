@@ -207,7 +207,7 @@ function chatHead() {
   const p = c ? projOf(c) : CV.info && CV.info.cwd ? S.projects.find(x => x.cwd === CV.info.cwd && !x.key.includes('#')) || null : null;
   const st = c ? statusById(statusOf(c)) : null;
   return `<div class="chat-h" id="chatHead"><button class="iconbtn back" data-go="back" aria-label="Back">‹</button>
-      <div style="min-width:0;flex:1;display:flex;flex-direction:column"><div class="crumb">${p ? `<span>${esc(bucketName(p.bucket))}</span>›<button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div><span class="ttl" id="chatTitle">${esc(chatTitle())}</span></div>
+      <div style="min-width:0;flex:1;display:flex;flex-direction:column"><div class="crumb">${p ? `<span>${esc(bucketName(p.bucket))}</span>›<button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div>${c ? `<button class="ttl" id="chatTitle" data-renamechat="1" title="Rename">${esc(chatTitle())}</button>` : `<span class="ttl" id="chatTitle">${esc(chatTitle())}</span>`}</div>
       ${st ? `${kindTag(c)}${waitTag(c)}<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>` : ''}
       <button class="iconbtn" data-chatmenu="1" aria-haspopup="menu" aria-label="More">${IC.dots}</button></div>`;
 }
@@ -222,6 +222,21 @@ function folderNotice() {
   if (c.runIsWorktree) return `<div class="folder-gone" id="folderGone"><p><b>Its worktree is gone.</b> ${where} Archive the chat, then rebuild the worktree from its branch on the Archived page.</p></div>`;
   return `<div class="folder-gone" id="folderGone"><p><b>Its folder is gone.</b> ${where} Make the folder again (empty) and the chat carries on with its whole history; files that were in that folder are gone${scratch ? ', but work it did in your repos is untouched' : ''}.</p>
     <button class="btn sm prime" data-recreate="${esc(c.id)}">Make the folder again</button></div>`;
+}
+// Click the title to rename it in place: Enter or clicking away saves, Esc leaves it.
+function editTitleInline() {
+  const el = $('chatTitle'); const c = chatBy.get(CV.id); if (!el || !c) return;
+  const inp = document.createElement('input');
+  inp.className = 'ttl ttl-edit'; inp.value = c.title; inp.setAttribute('aria-label', 'Chat name'); inp.maxLength = 120;
+  el.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = save => {
+    if (done) return; done = true;
+    const v = inp.value, h = $('chatHead'); if (h) h._h = null; paintHead();
+    if (save) wrap(renameChat)(c.id, v);
+  };
+  inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } });
+  inp.addEventListener('blur', () => finish(true));
 }
 function chatView() {
   return `<div class="chat" id="chatView">${chatHead()}
@@ -437,8 +452,9 @@ const waitReady = () => new Promise(res => { const t0 = Date.now(); const tick =
 
 function chatMenu(anchor) {
   const c = chatBy.get(CV.id);
-  pop(anchor, `<button data-v="settings">Conversation settings…</button><button data-v="full">Open in the full app<small>diffs, files, history</small></button>${c ? '<hr><button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="arch">Archive<kbd>e</kbd></button>' : ''}${CV.key ? '<hr><button data-v="stop">Stop it running here</button>' : ''}`, v => {
+  pop(anchor, `${c ? '<button data-v="rename">Rename…</button>' : ''}<button data-v="settings">Conversation settings…</button><button data-v="full">Open in the full app<small>diffs, files, history</small></button>${c ? '<hr><button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="arch">Archive<kbd>e</kbd></button>' : ''}${CV.key ? '<hr><button data-v="stop">Stop it running here</button>' : ''}`, v => {
     if (v === 'settings') return settingsMenu(anchor);
+    if (v === 'rename') return editTitleInline();
     if (v === 'full') return openChat(CV.id, { full: true });
     if (v === 'wait') return askWaiting([CV.id]);
     if (v === 'arch') return wrap(archiveChats)([CV.id]).then(() => go('back'));

@@ -117,6 +117,7 @@ function palItems(q) {
     { t: L('Recents'), s: 'g r', run: () => go('recent') }, { t: 'Images', s: 'g i', run: () => go('images'), alias: 'pictures gallery gpt image' }, { t: 'Archived', s: 'g a', run: () => go('archived') },
     { t: 'Clean up', s: 'g c · free space, worktrees', run: () => go('cleanup'), alias: 'disk space node_modules worktree' }, { t: 'Phone alerts', run: () => go('alerts'), alias: 'push notifications iphone' },
     { t: L('New chat'), s: 'c', run: () => go('newchat'), alias: 'start' },
+    ...(S.view === 'chat' && chatBy.get(CV.id) ? [{ t: 'Rename this chat', s: 'or click its title', run: () => editTitleInline(), alias: 'title name' }] : []),
     { t: 'Generate images with Codex', s: 'GPT Image, on the use-next ChatGPT plan', run: () => go('images', { genOpen: true }), alias: 'draw picture art cover' },
     { t: 'Check plan usage now', run: () => { go('now'); loadPlans(true).then(renderPlansOnly).catch(err => toast(err.message)); }, alias: 'usage limits refresh' },
     { t: prefs.sound ? 'Turn sounds off' : 'Turn sounds on', run: () => setSound(!prefs.sound), alias: 'audio mute' },
