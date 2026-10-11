@@ -133,7 +133,7 @@ function onEvent(ev) {
       if (ev.state === 'busy' && !CV.startedAt) CV.startedAt = Date.now();
       if (ev.state === 'ended') { CV.busy = false; CV.status = ''; if (CV.es) { CV.es.close(); CV.es = null; } CV.key = null; }
       paintBar(); paintStatus(); break;
-    case 'init': if (ev.sessionId && !CV.id) CV.id = ev.sessionId; break;
+    case 'init': if (ev.sessionId && !CV.id) adoptChatId(ev.sessionId); break;
     case 'model': if (CV.info) Object.assign(CV.info, ev); paintBar(); break;
     case 'status': if (ev.permissionMode && CV.info) { CV.info.permissionMode = ev.permissionMode; paintBar(); } break;
     case 'user': {
@@ -555,20 +555,47 @@ async function startNewChat() {
   if (COMP.converting) return toast('One moment: a picture is still being prepared.');
   const prov = NC.who === 'claude' ? 'claude' : 'codex';
   const perm = COMP.perm || permDefault(prov);
-  const send = $('composer').querySelector('.send'); if (send) send.disabled = true;
-  box.disabled = true;
+  const account = accountFor(NC.who);
+  const model = COMP.model, effort = COMP.effort, images = imagesOut(), files = COMP.files.slice();
+  // Straight to the conversation: your message is on screen with Starting… under it while the chat
+  // starts, and everything else happens behind it.
+  const local = { kind: 'user', text: files.length ? `${text}${text ? '\n\n' : ''}${files.map(f => `Attached file: \`${f.name}\``).join('\n')}` : text, images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
+  resetComposer();
+  if (CV.es) { CV.es.close(); CV.es = null; }
+  const run = {};
+  Object.assign(CV, { run, id: null, key: null, info: { cwd: p.cwd, state: 'starting', title: 'New chat' }, items: [local], cursor: null, live: '', status: 'Starting', pending: new Map(), busy: true, startedAt: Date.now(), loading: false, error: null, readOnly: null, sending: true, provider: prov });
+  const mine = () => CV.run === run && S.view === 'chat';
+  sfx('slide');
+  go('chat', { draft: true }, { push: false });
   try {
-    const account = accountFor(NC.who);
-    const info = await api('/api/chat/open', { mode: 'new', cwd: p.cwd, provider: prov, ...(account ? { account } : {}), permissionMode: perm, ...(COMP.model ? { model: COMP.model } : {}) });
-    const effort = COMP.effort, images = imagesOut(), hasFiles = COMP.files.length;
+    const info = await api('/api/chat/open', { mode: 'new', cwd: p.cwd, provider: prov, ...(account ? { account } : {}), permissionMode: perm, ...(model ? { model } : {}) });
+    if (mine()) { CV.key = info.key; CV.info = { ...info, cwd: info.cwd || p.cwd }; listen(info.key); }
     const id = await startAndSend(info.key, text, images, async () => {
       if (effort) await api('/api/chat/model', { key: info.key, effort }).catch(() => {});
-      if (hasFiles) await uploadPending(info.key);
-      return withFiles(text);
+      for (const f of files) if (!f.rel && !f.error) await uploadOne(info.key, f);
+      const lines = files.filter(f => f.rel).map(f => `Attached file: \`${f.rel}\` (${sizeText(f.size)})`).join('\n');
+      const out = lines ? `${text}${text ? '\n\n' : ''}${lines}` : text;
+      local.text = out;
+      return out;
     });
-    resetComposer();
-    go('chat', { chat: id || null, chatKey: info.key });
-  } catch (err) { toast(err.message); box.disabled = false; if (send) send.disabled = false; }
+    if (mine()) { if (id) adoptChatId(id); CV.sending = false; if (CV.status === 'Starting') CV.status = ''; paintStatus(); paintBar(); }
+  } catch (err) {
+    toast(err.message);
+    if (CV.run !== run) return;
+    CV.sending = false; CV.busy = false;
+    // Didn't start: back to New chat with what you wrote.
+    go('newchat', { ncProject: p.key });
+    setTimeout(() => { const b = $('msgBox'); if (b && !b.value) { b.value = text; autosize(b); } }, 60);
+  }
+}
+// A new chat learns its id once it has started: the page, the address and the list follow along
+// without redrawing the conversation.
+function adoptChatId(id) {
+  if (!id || CV.id) return;
+  CV.id = id;
+  const m = $('main'); if (m && S.view === 'chat') m.dataset.chat = String(id);
+  try { history.replaceState({ view: 'chat', project: S.project, chat: id }, '', `/lite?chat=${encodeURIComponent(id)}`); } catch { /* fine */ }
+  markSeen(id);
 }
 // Waits for a new chat to be ready, sends its first message, and returns its id once it has one.
 function startAndSend(key, text, images = [], beforeSend = null) {

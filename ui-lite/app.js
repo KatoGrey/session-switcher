@@ -165,7 +165,8 @@ function go(view, extra = {}, { push = true } = {}) {
     S.hist = (S.hist || 0) + 1;
   }
   const doIt = () => {
-    if (view === 'chat') { $('main').innerHTML = ''; CV.id = extra.chat || null; render(); openChatView(extra.chat, { key: extra.chatKey || null }); }
+    if (view === 'chat' && extra.draft) { $('main').innerHTML = ''; render(); }
+    else if (view === 'chat') { $('main').innerHTML = ''; CV.id = extra.chat || null; render(); openChatView(extra.chat, { key: extra.chatKey || null }); }
     else render();
     $('main').scrollTop = 0;
   };
