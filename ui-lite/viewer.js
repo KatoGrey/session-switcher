@@ -69,7 +69,8 @@ function closeViewer() {
 }
 
 function viewerBody() {
-  if (VW.kind === 'url') return `<iframe class="vw-frame" src="${esc(VW.target)}" title="${esc(VW.target)}" referrerpolicy="no-referrer"></iframe>`;
+  // Sandboxed: the page runs and signs in, but can't take over Lite's own tab.
+  if (VW.kind === 'url') return `<iframe class="vw-frame" src="${esc(VW.target)}" title="${esc(VW.target)}" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"></iframe>`;
   if (VW.kind === 'list') {
     const list = VW.data || [];
     return `<div class="vw-pad">${list.length ? `<div class="vw-files">${list.map(f => `<button class="vw-file" data-viewfile="${esc(f.path)}"><b>${esc(baseName(f.path))}</b><small>${esc(f.how)} · ${esc(f.path)}</small></button>`).join('')}</div>` : '<p class="empty-note">This chat hasn’t read or changed any files yet.</p>'}</div>`;
@@ -155,8 +156,9 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); e.stopPropagation(); closeViewer();
   }
 }, true);
-// If this page isn't allowed to show a site (a Switcher that hasn't restarted onto this version,
-// or a site we didn't know refuses), open it in a tab instead of leaving a blank frame.
+// If Lite's own page isn't allowed to frame a site (a Switcher that hasn't restarted onto this
+// version), open it in a tab instead of leaving a blank frame. A site that refuses framing itself
+// can't be detected from here; it shows blank, and ↗ opens it in a tab.
 document.addEventListener('securitypolicyviolation', e => {
   if (!VW.open || VW.kind !== 'url' || !/^(frame-src|child-src|default-src)/.test(e.violatedDirective || '')) return;
   const url = VW.target; viewerBack();
