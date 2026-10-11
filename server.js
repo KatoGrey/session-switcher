@@ -924,6 +924,8 @@ const liteRoutes = createLiteRoutes({
   activityList: () => activityList(),
   routinesList: () => routines.list(),
   parentOf: id => organize.parentOf(id),
+  linkParent: (child, parent) => { organize.link(child, parent); broadcast('organize', orgView()); },
+  unlinkParent: child => { organize.unlink(child); broadcast('organize', orgView()); },
   isCommanderId: id => isCommanderId(id),
 });
 

@@ -250,3 +250,25 @@ test('Claude Desktop renames wait until the app is closed, and change only the t
   assert.equal(store.get().desktopRenames.c1, undefined, 'done, so no longer waiting');
   assert.throws(() => names.queue('nope', 'x'), /didn’t come from the Claude desktop app/);
 });
+
+test('families: sub-chats join their parent’s project and status unless you set your own', () => {
+  const g = { status: true, kind: true };
+  const chats = [
+    { id: 'P', parent: null, project: '/r/latitude#voyage', status: 'building', guessed: { status: false } },
+    { id: 'k1', parent: 'p', project: '~loose', status: 'exploring', guessed: g },
+    { id: 'k2', parent: 'P', project: '/r/other', status: 'exploring', guessed: { status: false } },
+    { id: 'g1', parent: 'k1', project: '~loose', status: 'finishing', guessed: g },
+    { id: 'orphan', parent: 'gone', project: '/r/x', status: 'building', guessed: g },
+    { id: 'a', parent: 'b', project: '/r/a', status: 'building', guessed: g },
+    { id: 'b', parent: 'a', project: '/r/b', status: 'building', guessed: g },
+  ];
+  chats.push({ id: 'k3', parent: 'P', project: '/r/bujo-app', status: 'building', guessed: g });
+  lite.families(chats, { k2: { project: '/r/other' } }, key => key === '~loose');
+  const by = Object.fromEntries(chats.map(c => [c.id, c]));
+  assert.deepEqual([by.k1.root, by.k1.depth, by.k1.project, by.k1.homeProject, by.k1.status], ['P', 1, '/r/latitude#voyage', '~loose', 'building']);
+  assert.deepEqual([by.g1.root, by.g1.depth, by.g1.project, by.g1.status], ['P', 2, '/r/latitude#voyage', 'building'], 'grandchildren follow too');
+  assert.deepEqual([by.k2.project, by.k2.status], ['/r/other', 'exploring'], 'a project or status you set stays');
+  assert.deepEqual([by.orphan.depth, by.orphan.project], [0, '/r/x'], 'a parent that isn’t listed leaves it alone');
+  assert.deepEqual([by.k3.project, by.k3.status, by.k3.root], ['/r/bujo-app', 'building', 'P'], 'work in a real repo stays in that project, still in the family');
+  assert.ok(by.a.depth <= 1 && by.b.depth <= 1, 'a loop doesn’t run away');
+});

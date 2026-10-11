@@ -756,3 +756,12 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .chat-h button.ttl:hover { background: var(--hover); }
 .chat-h .ttl-edit { font: inherit; font-weight: 500; color: var(--fg); background: var(--pane); border: 1px solid var(--accent); border-radius: 5px; padding: 1px 4px; margin-left: -5px; outline: none; width: 100%; max-width: 560px; }
 .chat-h button.ttl { align-self: flex-start; width: auto; }
+/* Families: sub-chats under their parent */
+.row.kid { padding-left: calc(14px + var(--d, 1) * 22px); }
+.row.fam-line { padding-left: calc(14px + var(--d, 1) * 22px); padding-top: 6px; padding-bottom: 6px; }
+.row.fam-line .t small { color: var(--muted); font-size: 12px; }
+.fam-caret { display: inline-block; width: 12px; color: var(--muted); transition: transform .12s; }
+[aria-expanded="true"] > .t .fam-caret, [aria-expanded="true"] .fam-caret { transform: rotate(90deg); }
+.chat-i.kid { padding-left: calc(var(--indent) + var(--d, 1) * 14px); }
+.fam-side { padding-left: calc(var(--indent) + var(--d, 1) * 14px); color: var(--muted); font-size: 12.5px; }
+.fam-side .lbl { color: var(--muted); }

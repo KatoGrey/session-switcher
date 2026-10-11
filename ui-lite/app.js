@@ -5,11 +5,20 @@
 const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
 const small = () => matchMedia('(max-width: 760px)').matches;
 
-function sideChat(c) {
+function sideChat(c, depth = 0) {
   const marks = kindTag(c) + waitTag(c) + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '');
-  return `<button class="nav-i chat-i" draggable="true" data-chat="${esc(c.id)}" aria-current="${S.view === 'chat' && String(CV.id).toLowerCase() === String(c.id).toLowerCase()}" title="${esc(c.title)} · ${esc(projOf(c).name)}">${focusStar(c)}<span class="lbl">${esc(c.title)}</span>${marks}</button>`;
+  return `<button class="nav-i chat-i${depth ? ' kid' : ''}" ${depth ? `style="--d:${depth}"` : ''} draggable="true" data-chat="${esc(c.id)}" aria-current="${S.view === 'chat' && String(CV.id).toLowerCase() === String(c.id).toLowerCase()}" title="${esc(c.title)} · ${esc(projOf(c).name)}">${focusStar(c)}<span class="lbl">${esc(c.title)}</span>${marks}</button>`;
+}
+// Under a top-level chat in the sidebar: one line for its sub-chats, opened in place.
+function sideFam(t, depth = 1) {
+  const kids = kidsOf(t.id); if (!kids.length) return '';
+  const all = descOf(t.id), open = famOpen(t.id);
+  const mark = all.some(needs) ? '<span class="dot needs-dot"></span>' : all.some(running) ? '<span class="live-dot"></span>' : '';
+  const line = `<button class="nav-i chat-i fam-side" style="--d:${depth}" data-fam="${esc(t.id)}" aria-expanded="${open}"><span class="lbl"><span class="fam-caret">›</span>${all.length} sub-chat${all.length === 1 ? '' : 's'}</span>${mark}</button>`;
+  return open ? line + kids.map(k => sideChat(k, depth) + sideFam(k, depth + 1)).join('') : line;
 }
 function renderSide() {
+  famMemo = null;
   renderChip();
   $('brand').textContent = L('Switcher');
   $('q').placeholder = L('Search chats');
@@ -27,14 +36,14 @@ function renderSide() {
     <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
   const focusSt = { id: 'focus', name: 'Focus', c: 'var(--st-priority)' };
   const folders = [focusSt, ...STATUSES].map(st => {
-    const all = chats.filter(c => (st.id === 'focus' ? c.focus && statusOf(c) !== 'done' : statusOf(c) === st.id && !(c.focus && st.id !== 'done')));
-    const act = all.filter(c => !isQuiet(c)), quiet = all.filter(isQuiet);
+    const all = chats.filter(c => (st.id === 'focus' ? c.focus && statusOf(c) !== 'done' : isTop(c) && statusOf(c) === st.id && !(c.focus && st.id !== 'done')));
+    const act = all.filter(c => !famQuiet(c)), quiet = all.filter(famQuiet);
     const open = all.length && !S.folded[st.id];
     const showQuiet = S.more[st.id];
     const shown = act.slice(0, S.more['all-' + st.id] ? 400 : 12);
     return `<div class="group folder ${act.length ? '' : 'empty'}" data-folded="${!open}">
       <button class="nav-i folder-btn" data-fold="${st.id}" ${st.id === 'focus' ? 'data-drop-focus="1"' : `data-drop-stage="${st.id}"`} aria-expanded="${!!open}"><span class="ic"><span class="label-dot" style="background:${st.c}"></span></span><span class="lbl">${st.name}</span><span class="n">${act.length || ''}</span></button>
-      <div class="folder-items">${shown.map(sideChat).join('')}${act.length > shown.length ? `<button class="nav-i chat-i quiet-toggle" data-more-all="${st.id}"><span class="lbl">${act.length - shown.length} more</span></button>` : ''}${quiet.length ? (showQuiet ? `<div class="quiet-chats">${quiet.slice(0, 60).map(sideChat).join('')}</div>` : '') + `<button class="nav-i chat-i quiet-toggle" data-more-st="${st.id}"><span class="lbl">${showQuiet ? 'Hide quiet' : `${quiet.length} quiet`}</span></button>` : ''}</div>
+      <div class="folder-items">${shown.map(c => sideChat(c) + (st.id === 'focus' ? '' : sideFam(c))).join('')}${act.length > shown.length ? `<button class="nav-i chat-i quiet-toggle" data-more-all="${st.id}"><span class="lbl">${act.length - shown.length} more</span></button>` : ''}${quiet.length ? (showQuiet ? `<div class="quiet-chats">${quiet.slice(0, 60).map(sideChat).join('')}</div>` : '') + `<button class="nav-i chat-i quiet-toggle" data-more-st="${st.id}"><span class="lbl">${showQuiet ? 'Hide quiet' : `${quiet.length} quiet`}</span></button>` : ''}</div>
     </div>`;
   }).join('');
   const nArch = S.chats.filter(c => c.archived).length + S.projects.filter(p => p.archived).length;
@@ -53,12 +62,12 @@ function sideProjects(chats) {
   const byProj = new Map();
   for (const c of chats) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
   const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
-  const activeOf = g => g.cs.filter(c => statusOf(c) !== 'done' && !isQuiet(c));
+  const activeOf = g => g.cs.filter(c => isTop(c) && statusOf(c) !== 'done' && !famQuiet(c));
   const hot = g => g.cs.some(c => needs(c) || running(c)) ? 1 : 0;
   const act = groups.filter(g => activeOf(g).length).sort((a, b) => hot(b) - hot(a) || Math.max(...b.cs.map(c => c.updated)) - Math.max(...a.cs.map(c => c.updated)));
   const quiet = groups.filter(g => !activeOf(g).length);
   const projRow = g => {
-    const lv = activeOf(g), q = g.cs.filter(c => isQuiet(c) && statusOf(c) !== 'done');
+    const lv = activeOf(g), q = g.cs.filter(c => isTop(c) && famQuiet(c) && statusOf(c) !== 'done');
     const open = !S.folded['p:' + g.p.key];
     const nd = g.cs.some(needs), rn = g.cs.some(running);
     let inner = '';
@@ -66,14 +75,14 @@ function sideProjects(chats) {
       const limit = S.more['pall:' + g.p.key] ? 200 : 8;
       const foc = lv.filter(c => c.focus), rest = lv.filter(c => !c.focus);
       let n = foc.length;
-      inner = foc.map(c => sideChatDot(c)).join('');
+      inner = foc.map(c => sideChatDot(c) + sideFam(c)).join('');
       if (bucketStages(g.p.bucket)) {
         for (const st of STATUSES.filter(x => x.id !== 'done')) {
           const list = rest.filter(c => statusOf(c) === st.id); if (!list.length || n >= limit) continue;
           const take = list.slice(0, limit - n); n += take.length;
-          inner += `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(sideChat).join('')}`;
+          inner += `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(c => sideChat(c) + sideFam(c)).join('')}`;
         }
-      } else inner += rest.slice(0, Math.max(0, limit - n)).map(c => sideChatDot(c)).join('');
+      } else inner += rest.slice(0, Math.max(0, limit - n)).map(c => sideChatDot(c) + sideFam(c)).join('');
       if (lv.length > limit) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}"><span class="lbl">${lv.length - limit} more</span></button>`;
       if (q.length) inner += `<button class="nav-i chat-i quiet-toggle" data-project="${esc(g.p.key)}"><span class="lbl">${q.length} quiet</span></button>`;
     }
@@ -101,6 +110,7 @@ function sideChatDot(c) {
 
 const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), bugs: () => bugsView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
 function render() {
+  famMemo = null;
   applyLook();
   if (!S.loaded) { $('main').innerHTML = '<div class="wrap"><p class="empty-note">Loading your chats…</p></div>'; return; }
   if (S.view === 'side' && !small()) { S.view = 'now'; document.body.classList.add('in-main'); }
@@ -205,6 +215,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-send]'))) return sendQuick(b.dataset.send);
   if ((b = el('[data-dismiss]'))) { e.stopPropagation(); markSeen(b.dataset.dismiss); return renderLive(); }
   if ((b = el('[data-earlier]'))) return wrap(loadEarlier)();
+  if ((b = el('[data-fam]'))) { e.stopPropagation(); toggleFam(b.dataset.fam); sfx('card'); return render(); }
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
   if ((b = el('[data-renamechat]'))) return editTitleInline();
   if ((b = el('[data-barmodel]'))) return modelMenu(b);
@@ -374,7 +385,9 @@ document.addEventListener('dragstart', e => {
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', drag.chats ? drag.chats.join(',') : drag.project || drag.idea);
 });
-const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? t.closest('[data-drop-bucket]') : null);
+// A chat dropped on another chat goes under it; on a heading or column, it changes status.
+const nestTarget = t => { const r = t.closest('[data-chat]'); return r && drag && drag.chats && !drag.chats.some(id => low(id) === low(r.dataset.chat)) ? r : null; };
+const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? t.closest('[data-drop-bucket]') : null);
 document.addEventListener('dragover', e => {
   const z = dropZone(e.target); if (!z) return;
   e.preventDefault();
@@ -389,6 +402,7 @@ document.addEventListener('drop', e => {
   e.preventDefault();
   const d = drag; drag = null;
   if (d.idea) { if (z.dataset.ideaDrop) { const over = e.target.closest('[data-idea]'); wrap(moveIdea)(d.idea, over && over.dataset.idea !== d.idea ? over.dataset.idea : null); } else wrap(startIdea)(d.idea); }
+  else if (d.chats && z.dataset.chat) wrap(nestChats)(d.chats, z.dataset.chat);
   else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : { status: z.dataset.dropStage });
   else wrap(setBucket)(d.project, z.dataset.dropBucket || null);
 });
