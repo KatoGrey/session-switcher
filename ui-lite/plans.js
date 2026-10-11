@@ -144,9 +144,9 @@ function addReset(planId, anchor) {
 function renderChip() {
   const p = useNext('chatgpt') || useNext('claude') || metered()[0];
   if (!p) { $('chipWho').textContent = 'This week'; $('chipNote').textContent = S.plans ? 'No plan has room above the floor' : 'Reading plans…'; $('chipBar').style.width = '0%'; return; }
-  $('chipWho').textContent = 'Use next';
+  $('chipWho').textContent = 'Current';
   $('chipNote').textContent = `${p.label} ${famName(p.family)} · ${p.left}%${p.resetsAt ? ` · ${wd(p.resetsAt)}` : ''}`;
-  $('usageBtn').title = `Use next: ${p.label} ${famName(p.family)}, ${p.left}% left${p.resetsAt ? `, resets ${dayName(p.resetsAt)}` : ''}`;
+  $('usageBtn').title = `Current plan (next in the use-next order): ${p.label} ${famName(p.family)}, ${p.left}% left${p.resetsAt ? `, resets ${dayName(p.resetsAt)}` : ''}`;
   $('chipBar').style.width = p.left + '%';
 }
 
