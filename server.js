@@ -927,9 +927,10 @@ const liteRoutes = createLiteRoutes({
   // Routines in Lite: a run's last reply (Ollama's Codex threads aren't in Codex's list, so the
   // provider is said), starting a bug chat from a routine's findings, and the routines API.
   lastReply: async (id, provider) => {
-    if (provider !== 'codex') return lastReply(id);
+    // The whole reply: a sweep can list many findings, and anything past a cut would be lost.
+    if (provider !== 'codex') return lastReply(id, 60000);
     const items = (await codex.history(id, null, null)).items || [];
-    for (let i = items.length - 1; i >= 0; i--) { const t = items[i].kind === 'assistant' ? (items[i].blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim() : ''; if (t) return t.slice(0, 6000); }
+    for (let i = items.length - 1; i >= 0; i--) { const t = items[i].kind === 'assistant' ? (items[i].blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim() : ''; if (t) return t.slice(0, 60000); }
     return '';
   },
   startEscalation: async ({ account, cwd, permissionMode, title, prompt }) => {
