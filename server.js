@@ -941,6 +941,11 @@ const liteRoutes = createLiteRoutes({
     return chat;
   },
   routinesApi: (route, body) => routines.api('POST', route, body),
+  // A bug chat Lite started gets its name once it has an id (as routines name theirs).
+  nameChat: async (chat, title) => {
+    if (chat.provider === 'codex') { await (codexById(chat.account.id) || codex).rename(chat.sessionId, title); codexSessions(0); return; }
+    for (let i = 0; i < 5; i++) { try { sessions.rename(chat.sessionId, title); broadcast('sessions'); return; } catch { await new Promise(r => setTimeout(r, 2000)); } }
+  },
   linkParent: (child, parent) => { organize.link(child, parent); broadcast('organize', orgView()); },
   unlinkParent: child => { organize.unlink(child); broadcast('organize', orgView()); },
   isCommanderId: id => isCommanderId(id),
