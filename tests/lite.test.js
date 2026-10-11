@@ -322,3 +322,24 @@ test('routines: one sweep can escalate several things, each with its own details
   assert.match(e[0].details, /Three reports/); assert.doesNotMatch(e[0].details, /Voice/);
   assert.match(e[1].details, /Two testers/); assert.doesNotMatch(e[1].details, /ALL CLEAR/);
 });
+
+test('pipeline: a PR’s column comes from its labels; checks fold to one word', () => {
+  const { stageOf, ciOf } = require('../lib/lite-pipeline');
+  const L = (...n) => n.map(name => ({ name }));
+  assert.equal(stageOf(null), 'working');
+  assert.equal(stageOf({ state: 'OPEN', labels: L('voyage-bug') }), 'pr');
+  assert.equal(stageOf({ state: 'OPEN', labels: L('voyage-bug', 'preview') }), 'preview');
+  assert.equal(stageOf({ state: 'OPEN', labels: L('preview', 'community-qa') }), 'testers');
+  assert.equal(stageOf({ state: 'MERGED', mergedAt: at(NOW - 2 * D) }, NOW), 'merged');
+  assert.equal(stageOf({ state: 'MERGED', mergedAt: at(NOW - 9 * D) }, NOW), null, 'old merges drop off');
+  assert.equal(stageOf({ state: 'CLOSED', labels: [] }), null);
+  assert.deepEqual(ciOf([]), { state: 'none', failing: [], pending: 0 });
+  assert.equal(ciOf([{ name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' }, { name: 'skip', status: 'COMPLETED', conclusion: 'SKIPPED' }]).state, 'passing');
+  assert.equal(ciOf([{ name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' }, { name: 'deploy', status: 'IN_PROGRESS' }]).state, 'pending');
+  assert.deepEqual(ciOf([{ name: 'lint', status: 'COMPLETED', conclusion: 'FAILURE' }, { context: 'ci/x', state: 'PENDING' }]), { state: 'failing', failing: ['lint'], pending: 1 });
+  // gh pr checks rows
+  assert.equal(ciOf([{ name: 'a', bucket: 'pass' }, { name: 'b', bucket: 'skipping' }]).state, 'passing');
+  assert.equal(ciOf([{ name: 'a', bucket: 'pass' }, { name: 'pr-policy', bucket: 'pending' }]).state, 'passing', 'a policy check waiting on ready-for-review doesn’t count');
+  assert.deepEqual(ciOf([{ name: 'a', bucket: 'pass' }, { name: 'build', bucket: 'pending' }]), { state: 'pending', failing: [], pending: 1 });
+  assert.deepEqual(ciOf([{ name: 'e2e', bucket: 'fail' }, { name: 'b', bucket: 'pending' }]), { state: 'failing', failing: ['e2e'], pending: 1 });
+});

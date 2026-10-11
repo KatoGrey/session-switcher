@@ -121,6 +121,7 @@ function render() {
   if (!S.loaded) { $('main').innerHTML = '<div class="wrap"><p class="empty-note">Loading your chats…</p></div>'; return; }
   if (S.view === 'side' && !small()) { S.view = 'now'; document.body.classList.add('in-main'); }
   renderSide(); renderSel(); updateBadge();
+  if (typeof paintViewer === 'function') paintViewer();
   if (S.view === 'side') return;
   const m = $('main');
   // The chat and New chat pages are drawn once; after that only their parts change.
@@ -233,6 +234,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-rtchat]'))) { readRoutineForm(); S.rtEdit.chat.mode = b.dataset.rtchat; return render(); }
   if ((b = el('[data-rt]'))) { S.more[`rt:${b.dataset.rt}`] = !S.more[`rt:${b.dataset.rt}`]; return render(); }
   if ((b = el('[data-fam]'))) { e.stopPropagation(); toggleFam(b.dataset.fam); sfx('card'); return render(); }
+  if ((b = el('[data-pipe-refresh]'))) { e.stopPropagation(); return loadPipeline(true); }
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
   if ((b = el('[data-renamechat]'))) return editTitleInline();
   if ((b = el('[data-barmodel]'))) return modelMenu(b);
@@ -297,7 +299,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-pq]'))) { S.more['pq-' + b.dataset.pq] = !S.more['pq-' + b.dataset.pq]; return render(); }
   if ((b = el('[data-pickbucket]'))) return pop(b, `${[['all', 'All buckets'], ...buckets().map(x => [x.id, x.name]), ['unsorted', 'Unsorted']].map(([id, n]) => `<button data-v="${esc(id)}" role="menuitemradio" aria-checked="${S.bucket === id}">${esc(n)}</button>`).join('')}`, v => { S.bucket = v; local.set('bucket', v); render(); });
   if ((b = el('#lookBtn'))) return lookMenu(b);
-  if ((b = el('[data-open]'))) { if (el('input') || (el('button') && !el('button').dataset.open)) return undefined; return b.dataset.open ? openChat(b.dataset.open) : toast('That chat hasn’t started yet.'); }
+  if ((b = el('[data-open]'))) { if (el('input') || el('a[href]') || (el('button') && !el('button').dataset.open)) return undefined; return b.dataset.open ? openChat(b.dataset.open) : toast('That chat hasn’t started yet.'); }
   if ((b = el('[data-project]'))) return go('project', { project: b.dataset.project });
   if ((b = el('[data-chat]'))) {
     const id = b.dataset.chat;

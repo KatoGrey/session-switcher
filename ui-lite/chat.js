@@ -17,10 +17,12 @@ function mdHtml(src) {
   const blocks = [];
   let t = String(src || '').replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (m, lang, code) => { blocks.push(`<pre><code>${esc(code.replace(/\n$/, ''))}</code></pre>`); return `\u0000${blocks.length - 1}\u0000`; });
   const inline = x => esc(x)
-    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/`([^`\n]+)`/g, (m, c) => `<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`)
     .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
     .replace(/(^|[^*\w])\*([^*\n]+)\*(?=[^*\w]|$)/g, '$1<i>$2</i>')
-    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`)
+    // A link to a file (a relative path, ~/…, /Users/…) opens it beside the chat.
+    .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : `<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`));
   const out = [];
   let list = null;
   const flush = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${i}</li>`).join('')}</${list.tag}>`); list = null; } };
@@ -169,7 +171,7 @@ function itemHtml(it) {
     const blocks = it.blocks || [];
     const tools = blocks.filter(b => b.type === 'tool');
     const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n\n');
-    const steps = tools.length ? `<details class="step"><summary>${esc(stepLine(tools))}</summary><ul>${tools.map(t => `<li><b>${esc(t.name)}</b> ${esc(t.summary || '')}</li>`).join('')}</ul></details>` : '';
+    const steps = tools.length ? `<details class="step"><summary>${esc(stepLine(tools))}</summary><ul>${tools.map(t => { const p = typeof toolPath === 'function' ? toolPath(t) : null; return `<li><b>${esc(t.name)}</b> ${p ? `<button class="linkish vpath-btn" data-viewfile="${esc(p)}" title="Open beside the chat">${esc(t.summary || p)}</button>` : esc(t.summary || '')}</li>`; }).join('')}</ul></details>` : '';
     return `${steps}${text ? `<div class="msg-ai">${mdHtml(text)}</div>` : ''}`;
   }
   if (it.kind === 'notice') return `<div class="notice ${esc(it.level || 'info')}">${esc(it.text || '')}</div>`;
@@ -247,6 +249,7 @@ function chatHead() {
       <div style="min-width:0;flex:1;display:flex;flex-direction:column"><div class="crumb">${p ? `<span>${esc(bucketName(p.bucket))}</span>›<button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div>${c ? `<button class="ttl" id="chatTitle" data-renamechat="1" title="Rename">${esc(chatTitle())}</button>` : `<span class="ttl" id="chatTitle">${esc(chatTitle())}</span>`}</div>
       ${st ? `${kindTag(c)}${waitTag(c)}<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>` : ''}
       ${(n => (n ? `<button class="iconbtn pics-btn" data-chatpics="1" aria-haspopup="menu" title="Pictures in this chat">${IC.image}<span>${n}</span></button>` : ''))(chatPictures().length)}
+      ${typeof chatFiles === 'function' && chatFiles().length ? `<button class="iconbtn files-btn" data-viewfiles="1" title="Files this chat read or changed (opens beside the chat)">Files</button>` : ''}
       <button class="iconbtn" data-chatmenu="1" aria-haspopup="menu" aria-label="More">${IC.dots}</button></div>`;
 }
 // A chat whose folder was deleted can't run until the folder is there again.
@@ -286,6 +289,7 @@ function paintChat() {
   if (S.view !== 'chat' || !$('chatView')) return;
   const h = $('chatHead'); if (h && !h._h) h._h = chatHead();
   paintFeed(); paintPending(); paintBar(); paintStatus();
+  if (typeof paintViewer === 'function') { if (VW.open && VW.chat !== CV.id) closeViewer(); else paintViewer(); }
   const f = $('feed'); f.scrollTop = f.scrollHeight;
   if (!REMOTE && !matchMedia('(max-width: 760px)').matches) $('msgBox')?.focus();
 }
