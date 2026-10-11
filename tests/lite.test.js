@@ -218,12 +218,15 @@ test('Ollama: the week runs Monday to Monday UTC, and the estimate follows the l
   assert.equal(nextWeek.used, 10, 'a new week starts from zero at the same rate');
 });
 
-test('Lite page: data-open means "open this chat" and nothing else', () => {
+test('Lite page: data-open and data-chat mean "open this chat" and nothing else', () => {
   // A folder's fold state once used data-open="true"; every click inside it then tried to open a
   // chat called "true" and nothing happened.
   for (const f of fs.readdirSync(path.join(__dirname, '..', 'ui-lite')).filter(n => n.endsWith('.js'))) {
     const src = fs.readFileSync(path.join(__dirname, '..', 'ui-lite', f), 'utf8');
     assert.ok(!/data-open="\$\{!*open\}"/.test(src), `${f} uses data-open for something other than a chat id`);
+    // The same clash once came from the main area keeping data-chat for the chat it shows: every
+    // click in a conversation re-opened it (and text couldn't be selected).
+    assert.ok(!/\bm\.dataset\.chat\b/.test(src), `${f} puts data-chat on the main area`);
   }
 });
 

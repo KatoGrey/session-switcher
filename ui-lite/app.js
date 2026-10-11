@@ -118,13 +118,13 @@ function render() {
   if (S.view === 'side') return;
   const m = $('main');
   // The chat and New chat pages are drawn once; after that only their parts change.
-  if (S.view === 'chat') { if (!$('chatView') || m.dataset.chat !== String(CV.id)) { m.innerHTML = chatView(); m.dataset.chat = String(CV.id); paintChat(); } else paintHead(); return; }
+  if (S.view === 'chat') { if (!$('chatView') || m.dataset.shownChat !== String(CV.id)) { m.innerHTML = chatView(); m.dataset.shownChat = String(CV.id); paintChat(); } else paintHead(); return; }
   if (S.view === 'newchat') {
-    if (!m.querySelector('.newchat')) { m.innerHTML = newChatView(); delete m.dataset.chat; paintNewChat(); $('msgBox').focus(); } else paintNewChat();
+    if (!m.querySelector('.newchat')) { m.innerHTML = newChatView(); delete m.dataset.shownChat; paintNewChat(); $('msgBox').focus(); } else paintNewChat();
     if (NC.prefill) { $('msgBox').value = NC.prefill; autosize($('msgBox')); NC.prefill = null; }
     return;
   }
-  delete m.dataset.chat;
+  delete m.dataset.shownChat;
   const keep = m.scrollTop;
   const typed = [...m.querySelectorAll('input[data-qr], #cmdInput, #genPrompt')].map(i => [i.dataset.qr || i.id, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
   m.innerHTML = (VIEW_FN[S.view] || VIEW_FN.now)();

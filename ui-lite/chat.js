@@ -595,7 +595,7 @@ async function startNewChat() {
 function adoptChatId(id) {
   if (!id || CV.id) return;
   CV.id = id;
-  const m = $('main'); if (m && S.view === 'chat') m.dataset.chat = String(id);
+  const m = $('main'); if (m && S.view === 'chat') m.dataset.shownChat = String(id);
   try { history.replaceState({ view: 'chat', project: S.project, chat: id }, '', `/lite?chat=${encodeURIComponent(id)}`); } catch { /* fine */ }
   markSeen(id);
 }
