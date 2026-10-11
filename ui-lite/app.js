@@ -381,6 +381,7 @@ function lookMenu(anchor) {
   const look = S.lite.look;
   pop(anchor, `<div class="ph">Skin</div>${[['plain', 'Plain'], ['imperial', 'Imperial'], ['rebel', 'Rebel']].map(([v, n]) => `<button data-v="skin:${v}" role="menuitemradio" aria-checked="${look.skin === v}">${n}</button>`).join('')}
     <hr><div class="ph">Light or dark</div>${[['system', 'Match device'], ['light', 'Light'], ['dark', 'Dark']].map(([v, n]) => `<button data-v="mode:${v}" role="menuitemradio" aria-checked="${look.mode === v}">${n}</button>`).join('')}
+    <hr><div class="ph">Drain each plan to (then the next takes over)</div><div class="kind-seg">${[10, 15, 20].map(d => `<button data-v="floor:${d}" role="menuitemradio" aria-checked="${floor() === d}">${d}%</button>`).join('')}</div>
     <hr><button data-v="sound" role="menuitemcheckbox" aria-checked="${prefs.sound}">Sounds</button><button data-v="openLite" role="menuitemcheckbox" aria-checked="${!!S.lite.openLite}">Open Lite when the app starts</button><button data-v="alerts">Alerts…</button><button data-v="keys">Keyboard shortcuts<kbd>?</kbd></button>`,
   v => {
     if (v === 'sound') return setSound(!prefs.sound);
@@ -388,6 +389,7 @@ function lookMenu(anchor) {
     if (v === 'alerts') return go('alerts');
     if (v === 'keys') return showShortcuts();
     const [k, x] = v.split(':');
+    if (k === 'floor') return wrap(setLook)({ floor: Number(x) }).then(() => toast(`Plans drain to ${x}% before the next one takes over.`));
     return wrap(setLook)(k === 'skin' ? { skin: x } : { mode: x });
   });
 }

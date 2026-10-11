@@ -856,3 +856,14 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .gen-fig .gen-act { display: flex; gap: 6px; }
 .gen-wait { display: flex; align-items: center; gap: 10px; height: 180px; justify-content: center; border: 1px dashed var(--line-2); border-radius: 10px; color: var(--muted); font-size: 13px; }
 .gen-wait.failed { height: auto; padding: 14px; color: var(--st-bug); border-style: solid; }
+/* This week: the refresh icon spins while it checks */
+.sec-h .iconbtn.refresh { margin-left: auto; color: var(--muted); }
+.sec-h .iconbtn.refresh:hover { color: var(--fg); }
+.iconbtn.refresh.spinning svg { animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* Phones: the % and the reset day each get the room they need (the Imperial digits are wide) */
+@media (max-width: 760px) {
+  .prow { grid-template-columns: 22px minmax(0, 1fr) auto minmax(60px, auto); column-gap: 10px; }
+  .ppct { font-size: 13px; }
+  .preset { text-align: right; }
+}
