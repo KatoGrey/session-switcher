@@ -167,6 +167,7 @@ function fontsHtml(o) {
   const pick = (k, label, hint, cats, slot) => `<div class="lk-row"><label for="lk-${k}"><b>${label}</b><small>${hint}</small></label><select id="lk-${k}" data-look="${k}">${opts(k, cats, `${from} (${firstFont(base[slot])})`)}</select></div>`;
   return `<div class="lk-fonts"><p class="d-h">Fonts</p>
     <p class="lk-saga-note">Pick a ready-made set, or choose each font yourself. All of them come with the app, free under the SIL Open Font License.</p>
+    ${Look.theme().family === 'saga' ? `<p class="lk-saga-note lk-keep">${esc(Look.theme().name)} keeps its own lettering. What you choose here applies in the other themes.</p>` : ''}
     <div class="lk-sets" role="radiogroup" aria-label="Font sets">${sets.map(card).join('')}</div>
     <div class="lk-picks">
       ${pick('fBody', 'Replies and documents', 'What you read most; sized to match each other', ['sans', 'serif', 'easy'], 'body')}

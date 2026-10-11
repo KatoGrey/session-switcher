@@ -389,7 +389,7 @@ Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in 
 - **Light or dark:** Dark, Light, or Match device (it follows Windows or Android).
 - **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus two space saga themes, Malibu and three anime themes (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
 - **Text size** (80–150%): messages, documents and the message box.
-- **Fonts:** a pack of 42 free fonts. Pick a ready-made set (Clear, Reading, Easy reading, Editorial, Fantasy, Sci-fi, Glam, Poster, Retro pixel, Loud and wide, Soft and rounded), each card drawn in its own letters, or choose the font for replies and documents, for headings and names, and for code yourself. Reading and code fonts are scaled so their lowercase letters match, which keeps the size you set the same whichever font you pick. **Code ligatures** (`=>` drawn as one arrow) are off until you turn them on. **Fonts and licences** lists every family with its licence.
+- **Fonts:** a pack of 42 free fonts. Pick a ready-made set (Clear, Reading, Easy reading, Editorial, Fantasy, Sci-fi, Glam, Poster, Retro pixel, Loud and wide, Soft and rounded), each card drawn in its own letters, or choose the font for replies and documents, for headings and names, and for code yourself. Reading and code fonts are scaled so their lowercase letters match, which keeps the size you set the same whichever font you pick. **Code ligatures** (`=>` drawn as one arrow) are off until you turn them on. **Fonts and licences** lists every family with its licence. The space saga themes (Imperial and Rebel) always keep their own lettering.
 - **Bold text** and **Higher contrast**. Light themes keep small grey text (dates, hints, labels) dark enough to read.
 - **Interface size** (80–130%): scales everything at once. On smaller windows the top bar tucks away its smaller labels so nothing overlaps.
 - A live preview shows a reply and a message in your choices; **Back to the original look** undoes everything.
@@ -413,7 +413,7 @@ Two more themes turn the hub into a command deck. Each has a light and a dark ve
 | Theme | Feel | Lettering | In the hero |
 |---|---|---|---|
 | **Imperial** | A capital ship's bridge: black glass, white light panels, red signal lamps. Clean and exact. | Michroma titles, Inter for everything else | A wall of light panels over a console: readouts for orders, reports and units engaged, and a row of signal lamps (red needs your OK, white has replied, green is at work) |
-| **Rebel** | A hard-worn hangar: scuffed metal, flight-suit orange, squadron stripes, yellow deck lines | Archivo Condensed titles and names, Archivo for reading, Archivo SemiCondensed labels | A targeting computer flying down a trench, with readouts for waiting, in flight and standing by |
+| **Rebel** | A hard-worn hangar: scuffed metal, flight-suit orange, squadron stripes, yellow deck lines | Barlow Condensed titles and names, Barlow for reading, Barlow Semi Condensed labels | A targeting computer flying down a trench, with readouts for waiting, in flight and standing by |
 
 Beyond colors, a saga theme brings:
 

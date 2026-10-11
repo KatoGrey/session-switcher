@@ -241,7 +241,10 @@ test('the font pack and its licence are served from fonts/, and nothing else the
     assert.equal(ofl.status, 200);
     assert.match(ofl.headers.get('content-type'), /^text\/plain/);
     const text = await ofl.text();
-    for (const f of FAMILIES.filter(x => !/^Archivo |^Alegreya SC/.test(x.name))) assert.ok(text.includes(`${f.name}: Copyright`) || text.includes(`${f.name} and `), `OFL.txt has ${f.name}'s notice`);
+    const notices = text.split('SIL OPEN FONT LICENSE')[0];
+    // Each family is named on a notice line, alone ("Inter: Copyright …") or with its relatives ("Alegreya and Alegreya SC: …").
+    const named = notices.split('\n').filter(l => /: Copyright/.test(l)).map(l => l.split(': Copyright')[0].split(/, | and /));
+    for (const f of FAMILIES) assert.ok(named.some(n => n.includes(f.name)), `OFL.txt has ${f.name}'s notice`);
     for (const bad of ['/fonts/none-such.woff2', '/fonts/../server.js', '/fonts/..%2fserver.js', '/fonts/OFL.md', '/fonts/inter.ttf']) {
       const r = await fetch(`${s.base}${bad}`);
       assert.notEqual(r.status, 200, `${bad} must not be served`);

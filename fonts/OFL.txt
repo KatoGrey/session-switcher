@@ -5,8 +5,7 @@ WOFF2: IBM Plex Sans, Source Sans 3, Lora, Cascadia Code, Cinzel Decorative, Pir
 and Andika (full files from github.com/google/fonts), Merriweather (its authors' web fonts,
 github.com/SorkinType/Merriweather) and OpenDyslexic (github.com/antijingoist/opendyslexic).
 JetBrains Mono, Spectral and Cinzel are latin subsets via Fontsource. Every other family is
-Google Fonts' latin file, with more scripts for Noto Sans, Tektur and Kalam. Archivo Condensed and
-Archivo SemiCondensed are Archivo, set at fixed widths by Google Fonts.
+Google Fonts' latin file, with more scripts for Noto Sans, Tektur and Kalam.
 
 IBM Plex Sans: Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
 DM Sans: Copyright 2014 The DM Sans Project Authors (https://github.com/googlefonts/dm-fonts)
@@ -32,6 +31,7 @@ Victor Mono: Copyright 2023 The Victor Mono Project Authors (https://github.com/
 Geist Mono: Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font.git)
 Atkinson Hyperlegible Mono: Copyright 2020-2024 The Atkinson Hyperlegible Mono Project Authors (https://github.com/googlefonts/atkinson-hyperlegible-next-mono)
 Archivo: Copyright 2020 The Archivo Project Authors (https://github.com/Omnibus-Type/Archivo)
+Barlow, Barlow Condensed and Barlow Semi Condensed: Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow)
 Big Shoulders: Copyright 2019 The Big Shoulders Project Authors (https://github.com/xotypeco/big_shoulders)
 Unbounded: Copyright 2022 The Unbounded Project Authors (https://github.com/googlefonts/unbounded)
 Playfair: Copyright 2005 The Playfair Project Authors (https://github.com/googlefonts/Playfair)

@@ -19,7 +19,7 @@
      Kenney CC0) and its own words. Its `copy` map is keyed by the app's own English text; anything it
      leaves out reads as usual. {n} is a number in words. */
   const INTER = '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif';
-  const ARCHIVO = '"Archivo", system-ui, -apple-system, sans-serif';
+  const BARLOW = '"Barlow", system-ui, -apple-system, sans-serif';
   const SAGA = [
     {
       id: 'imperial', name: 'Imperial', note: 'A capital ship’s bridge: black glass, white light panels and red signal lamps. Clean and exact.', family: 'saga', sky: 'stars', art: 'console',
@@ -40,7 +40,7 @@
     {
       id: 'rebel', name: 'Rebel', note: 'A hard-worn hangar: scuffed metal, flight-suit orange, yellow deck lines and a targeting computer.', family: 'saga', sky: 'stars', art: 'trench',
       accent: 21, sat: 1.45, gold: 47, goldSat: 0.95, surface: 32, surfSat: 0.42, ink: 38, inkSat: 0.5, codex: 210,
-      fonts: { display: '"Archivo Condensed", ' + ARCHIVO, caps: '"Archivo Condensed", ' + ARCHIVO, body: ARCHIVO, label: '"Archivo SemiCondensed", ' + ARCHIVO },
+      fonts: { display: '"Barlow Condensed", ' + BARLOW, caps: '"Barlow Condensed", ' + BARLOW, body: BARLOW, label: '"Barlow Semi Condensed", ' + BARLOW },
       emblem: '<circle cx="20" cy="20" r="18.6" style="fill:rgb(var(--c-a5463f))"/><circle cx="20" cy="20" r="15.4" fill="none" style="stroke:rgb(var(--c-f6efe3))" stroke-width="1.2"/><path d="M8.5 8.5L16.6 16.6M31.5 8.5L23.4 16.6M8.5 31.5L16.6 23.4M31.5 31.5L23.4 23.4" style="stroke:rgb(var(--c-f6efe3))" stroke-width="3" stroke-linecap="round"/><circle cx="20" cy="20" r="4.6" style="fill:rgb(var(--c-f6efe3))"/><circle cx="20" cy="20" r="1.8" style="fill:rgb(var(--c-a5463f))"/>',
       copy: {
         'Your move': 'Incoming', 'Awaiting you': 'Waiting on you', 'Right now': 'In flight', 'At work': 'Squadrons engaged',
@@ -182,7 +182,7 @@
   const DEFAULTS = { theme: 'crimson', mode: 'dark', text: 100, ui: 100, fontSet: '', fBody: '', fHead: '', fCode: '', liga: false, bold: false, contrast: false };
 
   /* ---------- the font pack ----------
-     42 families to choose from in Setup, plus four that only themes use. All are under the SIL Open
+     42 families to choose from in Setup, plus five that only themes use. All are under the SIL Open
      Font License (fonts/OFL.txt, shown in Setup → Fonts and licences). Families with a Reserved Font
      Name (IBM Plex Sans, Source Sans 3, Merriweather, Lora, Cascadia Code, Cinzel Decorative, Pirata
      One, Lexend, Andika, OpenDyslexic) ship as their authors' full files, only WOFF2-compressed; the others are Google
@@ -246,9 +246,10 @@
     { id: 'opendyslexic', name: 'OpenDyslexic', cat: 'easy', fb: 'sans', x: .56, role: 'Weighted letters some people prefer', faces: [['opendyslexic-400', '400'], ['opendyslexic-400-italic', '400', true], ['opendyslexic-700', '700'], ['opendyslexic-700-italic', '700', true]] },
     { id: 'andika', name: 'Andika', cat: 'easy', fb: 'sans', x: .5, role: 'Clear shapes for new readers', faces: [['andika-400', '400'], ['andika-400-italic', '400', true], ['andika-700', '700'], ['andika-700-italic', '700', true]] },
     { id: 'mplus-rounded', name: 'M PLUS Rounded 1c', cat: 'easy', fb: 'sans', x: .52, role: 'Rounded, with Japanese', faces: [['mplus-rounded-400', '400 500'], ['mplus-rounded-700', '600 700'], ['mplus-rounded-800', '800 900']] },
-    // Only themes use these: Rebel's condensed lettering, and High Fantasy's and Dungeon's capitals.
-    { id: 'archivo-condensed', name: 'Archivo Condensed', cat: 'theme', fb: 'sans', faces: [['archivo-condensed', '100 900']] },
-    { id: 'archivo-semicondensed', name: 'Archivo SemiCondensed', cat: 'theme', fb: 'sans', faces: [['archivo-semicondensed', '100 900']] },
+    // Only themes use these: Rebel's Barlow (Ryan's theme, as he made it), and High Fantasy's and Dungeon's capitals.
+    { id: 'barlow', name: 'Barlow', cat: 'theme', fb: 'sans', faces: [['barlow-400', '400'], ['barlow-400-italic', '400', true], ['barlow-500', '500'], ['barlow-600', '600 800']] },
+    { id: 'barlow-condensed', name: 'Barlow Condensed', cat: 'theme', fb: 'sans', faces: [['barlow-condensed-600', '500 600'], ['barlow-condensed-700', '700 900']] },
+    { id: 'barlow-semi-condensed', name: 'Barlow Semi Condensed', cat: 'theme', fb: 'sans', faces: [['barlow-semi-condensed-500', '400 500'], ['barlow-semi-condensed-600', '600 800']] },
     { id: 'cinzel-decorative', name: 'Cinzel Decorative', cat: 'theme', fb: 'serif', faces: [['cinzel-decorative-400', '400 600'], ['cinzel-decorative-700', '700 900']] },
     { id: 'alegreya-sc', name: 'Alegreya SC', cat: 'theme', fb: 'serif', faces: [['alegreya-sc-400', '400 500'], ['alegreya-sc-700', '600 900']] },
   ];
@@ -423,11 +424,15 @@
     root.dataset.mode = light ? 'light' : 'dark';
     root.dataset.theme = t.id;
     st.colorScheme = light ? 'light' : 'dark';
-    // Fonts: the theme's own lettering, then a font set from Setup, then single picks, each winning over the last.
-    const f = { ...(t.fonts || {}), ...(setFonts(o.fontSet) || {}) };
-    if (o.fBody) f.body = stack(o.fBody, 'body') || f.body;
-    if (o.fHead) f.display = f.caps = stack(o.fHead, 'head') || f.display;
-    if (o.fCode) f.mono = stack(o.fCode, 'code') || f.mono;
+    // Fonts: the theme's own lettering, then a font set from Setup, then single picks, each winning over
+    // the last. Ryan's space saga themes (Imperial, Rebel) always keep their own, as he made them.
+    const f = { ...(t.fonts || {}) };
+    if (t.family !== 'saga') {
+      Object.assign(f, setFonts(o.fontSet) || {});
+      if (o.fBody) f.body = stack(o.fBody, 'body') || f.body;
+      if (o.fHead) f.display = f.caps = stack(o.fHead, 'head') || f.display;
+      if (o.fCode) f.mono = stack(o.fCode, 'code') || f.mono;
+    }
     for (const [k, v] of [['--f-body', f.body], ['--f-display', f.display], ['--f-caps', f.caps], ['--f-label', f.label], ['--f-mono', f.mono]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
     root.classList.toggle('look-liga', !!o.liga);
     if (t.family) root.dataset.family = t.family; else delete root.dataset.family;

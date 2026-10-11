@@ -744,6 +744,7 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .lg-i:hover{background:var(--vellum)}
 .lg-i .glyph{flex:none;color:var(--crimson);font-size:11px;width:12px}
 .lg-i .lg-t{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lg-i .lg-t > .linkish{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .lg-i .lg-m{flex:none;font:400 10.5px var(--f-label);color:var(--ash-2)}
 .lg-i code{font:12px var(--f-mono);color:var(--parch-2)}
 .lg-i a{color:var(--gilt);text-decoration:none}
@@ -1481,6 +1482,7 @@ body{zoom:var(--look-ui,1)}
 .lk-set small{font:400 11.5px/1.35 var(--f-label);color:var(--ash-2);letter-spacing:.02em}
 .lk-picks select{width:100%;max-width:340px;background:var(--abyss);border:1px solid var(--seam-2);border-radius:7px;padding:8px 10px;font:14.5px var(--f-body);color:var(--parch)}
 .lk-credits{margin:4px 0 18px;font-size:14px}
+.lk-keep{color:var(--gilt)}
 /* Code ligatures (=> drawn as one arrow) only when asked for. */
 :root:not(.look-liga) :is(code,pre,kbd,samp,.mono,.t-in,.t-out,.v-raw,.pv-diff){font-variant-ligatures:none}
 dialog.fonts-dlg{width:min(720px,calc(100vw - 32px));padding:0;max-height:calc(100vh - 40px)}

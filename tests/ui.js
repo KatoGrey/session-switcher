@@ -951,6 +951,7 @@ module.exports = [
       const fit = await b.eval(`const r = [...document.getElementById('fontPack').sheet.cssRules].map(x => x.cssText); return { garamond: r.find(x => x.includes('"Fit EB Garamond"'))?.match(/size-adjust: ([\\d.]+)%/)?.[1], plex: r.some(x => x.includes('"Fit IBM Plex Sans"')), shoulders: r.some(x => x.includes('"Fit Big Shoulders"')) }`);
       t.check('a single pick wins over the set', /Fit EB Garamond/.test(pk.body) && /Big Shoulders/.test(pk.display) && /Google Sans Code/.test(pk.code), pk);
       t.check('small-lettered reading fonts are scaled up to match (EB Garamond 115%); the reference and headings aren’t', fit.garamond === '115' && !fit.plex && !fit.shoulders, fit);
+      t.check('Imperial and Rebel keep their own lettering under any set', await b.eval(`Look.set({ theme: 'rebel' }); const r = getComputedStyle(document.documentElement).getPropertyValue('--f-display'); Look.set({ theme: 'imperial' }); const i = getComputedStyle(document.documentElement).getPropertyValue('--f-display'); Look.set({ theme: 'crimson' }); return /Barlow Condensed/.test(r) && /Michroma/.test(i)`));
       t.check('Theme Studio and Setup share the same sets', await b.eval(`return Look.setFonts('storybook').body.includes('EB Garamond')`));
       await b.eval(`Look.set({ liga: true }); return 1`); await sleep(200);
       t.check('ligatures come on when asked for', (await b.eval(read)).liga === 'normal');
@@ -968,7 +969,7 @@ module.exports = [
       t.check('a pick from the list applies at once', await b.eval(`return Look.get().fCode === 'cascadia-code' && getComputedStyle(document.documentElement).getPropertyValue('--f-mono').includes('Cascadia Code')`));
       await b.clickOn('[data-font-credits]'); await sleep(900);
       const cr = await b.eval(`const d = document.getElementById('fontsDlg'); return { open: d.open, items: d.querySelectorAll('.fonts-list li').length, ofl: d.querySelector('.fonts-ofl').textContent }`);
-      t.check('Fonts and licences lists every family with the licence and its notices', cr.open && cr.items === 46 && /SIL OPEN FONT LICENSE Version 1\.1/.test(cr.ofl) && /IBM Plex Sans: Copyright/.test(cr.ofl) && /Reserved Font Name "Plex"/.test(cr.ofl), { ...cr, ofl: cr.ofl.slice(0, 80) });
+      t.check('Fonts and licences lists every family with the licence and its notices', cr.open && cr.items === 47 && /SIL OPEN FONT LICENSE Version 1\.1/.test(cr.ofl) && /IBM Plex Sans: Copyright/.test(cr.ofl) && /Reserved Font Name "Plex"/.test(cr.ofl), { ...cr, ofl: cr.ofl.slice(0, 80) });
       await t.shot(b, 'credits');
       await b.eval(`document.getElementById('fontsDlg').close(); document.getElementById('setup').close(); return 1`);
       await b.eval(`openPalette('fonts'); return 1`); await sleep(500);
@@ -979,6 +980,26 @@ module.exports = [
       t.check('Ctrl+K offers the font sets and the licences', /Fonts: Reading/.test(pal) && /Fonts and licences/.test(lic), lic.slice(0, 200));
       await b.esc(); await sleep(200);
       // The old reading-font choice carries over: Modern is the device's sans, Clean for headings too.
+      // Clean edges with the widest sets: hero text stays clear of the picture (Ryan's Imperial and
+      // Rebel are left as he made them), and long names in the chat's side panel end in "…".
+      const lay = await t.open({ width: 1180, height: 800 });
+      const over = [];
+      for (const theme of ['crimson', 'malibu', 'isekai', 'highfantasy', 'dungeon']) {
+        for (const set of ['', 'loud', 'pixel', 'scifi', 'easy']) {
+          over.push(...await lay.eval(`Look.set({ theme: ${JSON.stringify(theme)}, mode: 'dark', fontSet: ${JSON.stringify(set)} }); await document.fonts.ready; await new Promise(r => setTimeout(r, 200));
+            const art = document.querySelector('.hero .hero-art'); if (!art || !art.getBoundingClientRect().width || getComputedStyle(art).display === 'none') return [];
+            const a = art.getBoundingClientRect(), bad = [];
+            for (const el of document.querySelectorAll('.hero h1, .hero .eyebrow, .hero p, .hero-act')) {
+              const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n;
+              while ((n = w.nextNode())) { const rg = document.createRange(); rg.selectNodeContents(n); for (const r of rg.getClientRects()) if (r.width > 1 && r.right > a.left + 2 && r.left < a.right && r.bottom > a.top && r.top < a.bottom) bad.push(${JSON.stringify(theme)} + '/' + (${JSON.stringify(set)} || 'own') + ': ' + n.textContent.trim().slice(0, 30)); }
+            }
+            return bad`));
+        }
+      }
+      t.check('with any font set, hero text stays clear of the picture', over.length === 0, over.slice(0, 6));
+      await b.eval(`Look.set({ theme: 'crimson', fontSet: 'loud' }); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const led = await b.eval(`const l = [...document.querySelectorAll('.lg-i .lg-t > .linkish')].find(x => x.scrollWidth > x.clientWidth + 1); return l ? { ellipsis: getComputedStyle(l).textOverflow, inside: l.getBoundingClientRect().right <= l.closest('.lg-i').getBoundingClientRect().right + 1 } : null`);
+      t.check('a long name in the chat’s side panel ends in “…” inside its row', led && led.ellipsis === 'ellipsis' && led.inside, led);
       await b.eval(`localStorage.setItem('look', JSON.stringify({ theme: 'crimson', font: 'clean' })); location.reload(); return 1`); await sleep(2500);
       const mg = await b.eval(`const o = Look.get(); return { body: o.fBody, head: o.fHead, font: 'font' in o, css: getComputedStyle(document.documentElement).getPropertyValue('--f-body').trim() }`);
       t.check('the old Modern and Clean choices carry over', mg.body === 'system' && mg.head === 'system' && !mg.font && /Segoe UI/.test(mg.css), mg);
