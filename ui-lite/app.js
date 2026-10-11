@@ -222,6 +222,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-send]'))) return sendQuick(b.dataset.send);
   if ((b = el('[data-dismiss]'))) { e.stopPropagation(); markSeen(b.dataset.dismiss); return renderLive(); }
   if ((b = el('[data-earlier]'))) return wrap(loadEarlier)();
+  if ((b = el('[data-unqueue]'))) { CV.queue.splice(Number(b.dataset.unqueue), 1); paintQueue(); return undefined; }
   if ((b = el('[data-rtnew]'))) return newRoutine(b.dataset.rtnew);
   if ((b = el('[data-rtmenu]'))) { e.stopPropagation(); return routineMenu(b, b.dataset.rtmenu); }
   if ((b = el('[data-rtrun]'))) { e.stopPropagation(); return openChat(b.dataset.rtrun, { provider: b.dataset.prov === 'codex' ? 'codex' : null }); }
@@ -337,7 +338,7 @@ document.addEventListener('submit', e => {
   return undefined;
 });
 document.addEventListener('keydown', e => {
-  if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('composer').requestSubmit(); return; }
+  if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); COMP.queueNext = e.altKey; $('composer').requestSubmit(); return; }
   if (e.target.id === 'trBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); triageReply(); return; }
   if (e.target.id === 'msgBox' && e.key.toLowerCase() === 'p' && (e.metaKey || e.ctrlKey) && S.view === 'newchat') { e.preventDefault(); document.querySelector('[data-ncproject]')?.click(); return; }
   if (e.target.dataset && e.target.dataset.qr && e.key === 'Enter') { e.preventDefault(); sendQuick(e.target.dataset.qr); }
