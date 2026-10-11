@@ -39,7 +39,9 @@ function api(p, body) {
   });
 }
 const ago = t => { if (!t) return 'unknown'; const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${m}m ago` : m < 2880 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
-const lastReply = async id => ((await api(`/api/chat/last-reply?id=${encodeURIComponent(id)}`)) || {}).text || '';
+const lastReply = async id => ((await api(`/api/chat/last-reply?id=${encodeURIComponent(id)}&max=100000`)) || {}).text || '';
+// The STATUS line a fix chat ends its report with (READY-FOR-RYAN, WITH-TESTERS, NEEDS-RYAN, BLOCKED).
+const statusOf = text => { const m = String(text || '').match(/^[*_>\s]*STATUS:\s*\**\s*(.+)$/gim); return m ? m[m.length - 1].replace(/^[*_>\s]*STATUS:\s*\**\s*/i, '').replace(/\*+$/, '').trim() : null; };
 
 async function fixes(filter) {
   const s = await api('/api/lite/state');
@@ -52,8 +54,9 @@ async function fixes(filter) {
     const l = live.get(String(c.id).toLowerCase());
     const state = l ? (l.pending && l.pending.length ? 'waiting on a permission' : l.working ? `working (${l.tool || l.phase})` : l.phase) : 'not running';
     const reply = await lastReply(c.id).catch(() => '');
-    console.log(`## ${c.title}\nchat: ${c.id}\nstate: ${state}; last activity ${ago((l && l.lastEventAt) || c.updated)}\nbranch: ${c.branch || 'none'}; folder: ${c.runDir || c.cwd}`);
-    console.log(`latest reply (first 1500 characters):\n${reply.slice(0, 1500).trim() || '(none)'}\n`);
+    console.log(`## ${c.title}\nchat: ${c.id} (${c.provider === 'codex' ? 'Codex' : 'Claude'})\nstate: ${state}; last activity ${ago((l && l.lastEventAt) || c.updated)}\nbranch: ${c.branch || 'none'}; folder: ${c.runDir || c.cwd}`);
+    console.log(`status: ${statusOf(reply) || 'none yet'}`);
+    console.log(`latest reply (last 1500 characters):\n${reply.slice(-1500).trim() || '(none)'}\n`);
   }
 }
 
