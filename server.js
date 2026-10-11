@@ -941,6 +941,14 @@ const liteRoutes = createLiteRoutes({
     return chat;
   },
   routinesApi: (route, body) => routines.api('POST', route, body),
+  // Starts a plan's week with one tiny message (Lite does this for plans whose week isn't running).
+  startWeek: async ({ account, family, cwd }) => {
+    const chat = await routineChat({ account, cwd, permissionMode: family === 'claude' ? 'default' : 'read-only', model: family === 'claude' ? 'sonnet' : null, title: 'Start the week' });
+    for (const t0 = Date.now(); chat.state === 'starting' && Date.now() - t0 < 30000;) await new Promise(r => setTimeout(r, 250));
+    if (chat.state === 'ended') throw new Error('The chat stopped as it started.');
+    chat.send('Reply with just: ok');
+    return { key: chat.key };
+  },
   // A message while a chat works: Codex adds it to the running turn (turn/steer); Claude Code
   // already folds a message sent mid-turn into the turn, so it's an ordinary send there.
   steerChat: (key, text, images = []) => {
