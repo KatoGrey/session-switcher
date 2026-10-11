@@ -349,6 +349,7 @@ function applyLook() {
   const root = document.documentElement;
   const look = S.lite ? S.lite.look : { skin: local.get('skin', 'plain'), mode: local.get('mode', 'system') };
   root.dataset.skin = look.skin;
+  if (typeof applyIcon === 'function') applyIcon(look.skin);
   if (look.mode === 'system') delete root.dataset.theme; else root.dataset.theme = look.mode;
 }
 
