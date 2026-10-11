@@ -479,3 +479,15 @@ setSideW(local.get('sideW', SIDE_W.def), false);
     setSideW(now() + (e.key === 'ArrowRight' ? 16 : -16));
   });
 })();
+
+/* ---------- phones: the app fits the space above the keyboard ---------- */
+// iOS keeps the layout viewport full height when the keyboard opens and scrolls the page instead;
+// sizing the app to the visible area keeps the input bar just above the keyboard, nothing pulled.
+if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').matches) {
+  const fit = () => {
+    const r = document.documentElement.style;
+    r.setProperty('--app-h', `${Math.round(visualViewport.height)}px`);
+    r.setProperty('--vv-top', `${Math.round(visualViewport.offsetTop)}px`);
+  };
+  visualViewport.addEventListener('resize', fit); visualViewport.addEventListener('scroll', fit); fit();
+}

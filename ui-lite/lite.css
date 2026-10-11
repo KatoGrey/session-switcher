@@ -144,7 +144,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .rowwrap { border-top: 1px solid var(--line); }
 .rowwrap:first-child { border-top: 0; }
 .rowwrap > .row { border-top: 0; }
-.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--st-feature); box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-feature) 60%, transparent); animation: breathe 2s ease-out infinite; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--st-feature); box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-feature) 60%, transparent); animation: breathe 1.2s ease-out infinite; }
 @keyframes breathe { 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 .plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
 .plan { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -818,3 +818,27 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .pop button.mm { gap: 10px; }
 .pop .mm-name { white-space: nowrap; flex: none; }
 .pop .mm-note { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+/* Long paths and links in replies wrap instead of widening the page (iOS widens it otherwise). */
+.msg-ai, .msg-you { overflow-wrap: anywhere; }
+.msg-ai :not(pre) > code { overflow-wrap: anywhere; word-break: break-word; }
+/* Phones and tablets */
+@media (hover: none) and (pointer: coarse) {
+  /* iOS zooms the page in when a box with text under 16px gets focus, and stays zoomed. */
+  input, textarea, select, .box textarea, .field { font-size: 16px !important; }
+  /* Only the lists scroll: the page itself never bounces, and the search and footer stay put. */
+  html, body { overscroll-behavior: none; }
+  body { position: fixed; inset: 0; overflow: hidden; }
+  .app { height: var(--app-h, 100dvh); }
+  .side-top, .search, .side-foot, .chat-h { touch-action: none; }
+  .side-scroll, #main, .feed { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  /* With the keyboard up, the box doesn't take over the screen. */
+  .box textarea { max-height: 30vh; }
+  .nc-inner .box textarea { min-height: 52px; }
+}
+/* On a phone the page over the sidebar follows the visible area too (top and height), so with the
+   keyboard up its input bar sits right above it. */
+@media (max-width: 760px) and (hover: none) and (pointer: coarse) {
+  .main { top: var(--vv-top, 0px); bottom: auto; height: var(--app-h, 100dvh); }
+}
+/* iOS draws its own grey fill in a focused text box; the input bar has its own look. */
+.box textarea { -webkit-appearance: none; appearance: none; background: transparent !important; border-radius: 0; }
