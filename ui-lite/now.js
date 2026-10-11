@@ -65,7 +65,8 @@ function nowLiveHtml() {
 }
 const leadHtml = () => { const w = allChats().filter(c => c.waiting).length; return `${word(needList().length, 'needs you', 'need you')}, ${word(runList().length, 'running', 'running')}, ${word(w, 'waiting on someone', 'waiting on others')}.`; };
 function plansBoxHtml() {
-  return `<div class="sec-h"><h2>This week</h2>${floorSeg()}<button class="hint" data-refreshplans="1">${S.plansRefreshing ? 'Checking…' : 'Check now'}</button></div>
+  // Drain-to is a setting now (Look menu); the bars keep its mark. Checking is a refresh icon.
+  return `<div class="sec-h"><h2>This week</h2><button class="iconbtn refresh ${S.plansRefreshing ? 'spinning' : ''}" data-refreshplans="1" aria-label="${S.plansRefreshing ? 'Checking the plans…' : 'Check the plans now'}" title="${S.plansRefreshing ? 'Checking…' : 'Check now'}">${IC.refresh}</button></div>
       ${S.plans ? plansTable() : '<p class="empty-note">Reading your plans…</p>'}`;
 }
 function now() {
