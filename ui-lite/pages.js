@@ -30,7 +30,7 @@ function famBlock(t, opts, depth) {
   const all = descOf(t.id), open = famOpen(t.id);
   const run = all.filter(running).length, nd = all.filter(needs).length;
   const line = `<div class="row fam-line" role="button" tabindex="-1" data-fam="${esc(t.id)}" data-cur="f:${esc(t.id)}" aria-expanded="${open}" style="--d:${depth}"><span>${nd ? '<span class="dot needs-dot"></span>' : run ? '<span class="live-dot"></span>' : ''}</span><span class="t"><small><span class="fam-caret">›</span>${all.length} sub-chat${all.length === 1 ? '' : 's'}${run ? ` · ${run} running` : ''}${nd ? ` · ${nd} need${nd === 1 ? 's' : ''} you` : ''}</small></span><span class="side-tags"></span><span class="when">${ago(Math.max(...all.map(k => k.updated)))}</span><span></span></div>`;
-  return open ? line + kids.map(k => rowHtml(k, { ...opts, showProject: false, showStage: true, depth }) + famBlock(k, opts, depth + 1)).join('') : line;
+  return open ? line + kids.map(k => rowHtml(k, { ...opts, showProject: false, showStage: statusOf(k) !== statusOf(t), depth }) + famBlock(k, opts, depth + 1)).join('') : line;
 }
 const selHint = () => '<p class="hint-line"><kbd>j</kbd> <kbd>k</kbd> to move, <kbd>↵</kbd> to open, <kbd>1</kbd>–<kbd>4</kbd> for status, <kbd>f</kbd> for Focus, <kbd>e</kbd> to archive, <kbd>x</kbd> to select. <kbd>?</kbd> shows them all.</p>';
 const BACK = '<button class="iconbtn back" data-go="side" aria-label="Back">‹</button>';

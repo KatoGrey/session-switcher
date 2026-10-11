@@ -166,8 +166,9 @@ const fam = () => famMemo || (famMemo = famIndex());
 const kidsOf = id => fam().kids.get(low(id)) || [];
 const descOf = (id, seen = new Set()) => { const out = []; for (const k of kidsOf(id)) { if (seen.has(k)) continue; seen.add(k); out.push(k, ...descOf(k.id, seen)); } return out; };
 const parentOn = c => (c && c.parent ? fam().by.get(low(c.parent)) || null : null);
-// Top of its family here: no visible parent, or the parent lives in another project.
-const isTop = c => { const p = parentOn(c); return !p || p.project !== c.project; };
+// Top of its family here: no visible parent, the parent lives in another project, or the parent is
+// Done while this one isn't (follow-up work on a finished chat doesn't fold away with it).
+const isTop = c => { const p = parentOn(c); return !p || p.project !== c.project || (statusOf(p) === 'done' && statusOf(c) !== 'done'); };
 // A family is as recent as its newest member, and quiet only if every member is.
 const famUpdated = c => Math.max(c.updated, ...descOf(c.id).map(k => k.updated));
 const famQuiet = c => isQuiet(c) && descOf(c.id).every(isQuiet);

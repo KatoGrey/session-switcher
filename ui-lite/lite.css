@@ -765,3 +765,8 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .chat-i.kid { padding-left: calc(var(--indent) + var(--d, 1) * 14px); }
 .fam-side { padding-left: calc(var(--indent) + var(--d, 1) * 14px); color: var(--muted); font-size: 12.5px; }
 .fam-side .lbl { color: var(--muted); }
+@media (max-width: 760px) {
+  .row.kid, .row.fam-line { padding-left: calc(10px + var(--d, 1) * 12px); }
+  .row.kid .side-tags .kind-tag { display: none; }
+  .row.kid .side-tags .tag { max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

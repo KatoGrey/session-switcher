@@ -385,8 +385,15 @@ document.addEventListener('dragstart', e => {
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', drag.chats ? drag.chats.join(',') : drag.project || drag.idea);
 });
-// A chat dropped on another chat goes under it; on a heading or column, it changes status.
-const nestTarget = t => { const r = t.closest('[data-chat]'); return r && drag && drag.chats && !drag.chats.some(id => low(id) === low(r.dataset.chat)) ? r : null; };
+// Dropped on a chat in the same status (or the sidebar), a chat goes under it; dropped anywhere in
+// another status's section or column (on a card or not), it moves to that status.
+const nestTarget = t => {
+  const r = t.closest('[data-chat]'); if (!r || !drag || !drag.chats || drag.chats.some(id => low(id) === low(r.dataset.chat))) return null;
+  const me = chatBy.get(drag.chats[0]) || {};
+  const zone = r.closest('[data-drop-stage]'); if (zone && zone.dataset.dropStage !== statusOf(me)) return zone;
+  const fz = r.closest('[data-drop-focus]'); if (fz && !me.focus) return fz;
+  return r;
+};
 const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? t.closest('[data-drop-bucket]') : null);
 document.addEventListener('dragover', e => {
   const z = dropZone(e.target); if (!z) return;
