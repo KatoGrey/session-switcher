@@ -68,7 +68,7 @@ function setSound(on) { prefs.sound = on; local.set('sound', on); if (on) sfx('c
 const FAV = $('favicon');
 let favBase = null;
 function updateBadge() {
-  const n = S.live.filter(needsLive).length;
+  const n = S.live.filter(needsLive).length + (typeof rtEventsOpen === 'function' ? rtEventsOpen().filter(e => e.kind !== 'ran').length : 0);
   document.title = n ? `(${n}) Switcher Lite` : 'Switcher Lite';
   if (!FAV) return;
   if (!favBase) favBase = FAV.href;

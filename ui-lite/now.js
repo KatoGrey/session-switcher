@@ -54,7 +54,7 @@ function comingUp() {
 }
 
 const needList = () => S.live.filter(needsLive).sort((a, b) => Number(asking(b)) - Number(asking(a)) || (b.finishedAt || 0) - (a.finishedAt || 0));
-const runList = () => S.live.filter(x => x.working && !asking(x)).sort((a, b) => (a.turnStartedAt || 0) - (b.turnStartedAt || 0));
+const runList = () => S.live.filter(x => x.working && !asking(x) && !isRoutineRun(x)).sort((a, b) => (a.turnStartedAt || 0) - (b.turnStartedAt || 0));
 // The part of Now that moves with every live event; redrawn on its own.
 function nowLiveHtml() {
   const need = needList(), run = runList();
@@ -76,10 +76,11 @@ function now() {
     <div class="page-h"><div class="proj-h" style="align-items:flex-start"><button class="iconbtn back" data-go="side" aria-label="Back">‹</button><div><h1>${L('Now')}</h1><p class="lead" id="nowLead">${leadHtml()}</p></div></div></div>
     ${commanderHtml()}
     <div id="nowLive" class="section-stack">${nowLiveHtml()}</div>
+    ${eventsSection()}
     ${foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span><span class="hint">Your top few; <kbd>f</kbd> on any chat</span></div><div class="rows">${foc.map(c => rowHtml(c, { showProject: true, showStage: true })).join('')}</div></section>` : ''}
     <section class="section"><div class="sec-h"><h2>Waiting on others</h2><span class="n">${waiting.length}</span><span class="hint">Reminds you after two days</span></div>
       <div class="rows">${waiting.map(waitRow).join('') || '<p class="empty-note">Nothing is waiting on anyone. Press <kbd>w</kbd> on a chat to say who it’s waiting on.</p>'}</div></section>
-    <section class="section"><div class="sec-h"><h2>Coming up</h2><label class="hint follow"><input type="checkbox" data-follow="1" ${S.lite.routinesFollow ? 'checked' : ''}> Follow the use-next order</label><a class="hint" href="/" style="margin-left:12px">Routines ›</a></div>
+    <section class="section"><div class="sec-h"><h2>Coming up</h2><label class="hint follow"><input type="checkbox" data-follow="1" ${S.lite.routinesFollow ? 'checked' : ''}> Follow the use-next order</label><button class="hint" data-go="routines" style="margin-left:12px">Routines ›</button></div>
       <div class="rows">${ups.map(r => `<div class="row"><span class="dot" style="background:var(--st-final)"></span><span class="t"><b>${esc(r.name)}</b><small>${esc(r.when)} · runs on ${esc(routineRunsOn(r))}${r.last ? ` · last: ${esc(r.last.line)}` : ''}</small></span><span class="side-tags">${r.running ? '<span class="live-dot"></span>' : ''}</span><span class="when">${r.nextAt ? esc(inWords(r.nextAt)) : r.when ? 'watching' : ''}</span><span></span></div>`).join('') || '<p class="empty-note">No routines yet.</p>'}</div></section>
     <section class="section" id="planBox">${plansBoxHtml()}</section>
   </div>`;

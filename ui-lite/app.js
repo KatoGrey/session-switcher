@@ -2,7 +2,7 @@
 /* The sidebar (pages, bucket switcher, status labels with quiet folding), routing (with real browser
    history, so back and forward work), redraws, and every click and drag on the page. */
 
-const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
+const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'routines', 'routine', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
 const small = () => matchMedia('(max-width: 760px)').matches;
 
 function sideChat(c, depth = 0) {
@@ -31,6 +31,7 @@ function renderSide() {
       ${nav('now', IC.pulse, L('Now'), nNeed ? `<span class="badge">${nNeed}</span>` : '')}
       ${nav('home', IC.grid, L('Projects'))}
       ${nav('hack', IC.flag, 'Hackathon', `<span class="n">${esc(hackLabel())}</span>`)}
+      ${nav('routines', IC.clock, 'Routines', (n => (n ? `<span class="badge">${n}</span>` : ''))(rtEventsOpen().filter(e => e.kind !== 'ran').length))}
       ${nav('bugs', IC.bug, 'Bugs', (n => (n ? `<span class="n">${n}</span>` : ''))(bugList().filter(c => statusOf(c) !== 'done').length))}
     </div>
     <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
@@ -83,8 +84,13 @@ function sideProjects(chats) {
           inner += `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(c => sideChat(c) + sideFam(c)).join('')}`;
         }
       } else inner += rest.slice(0, Math.max(0, limit - n)).map(c => sideChatDot(c) + sideFam(c)).join('');
-      if (lv.length > limit) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}"><span class="lbl">${lv.length - limit} more</span></button>`;
-      if (q.length) inner += `<button class="nav-i chat-i quiet-toggle" data-project="${esc(g.p.key)}"><span class="lbl">${q.length} quiet</span></button>`;
+      // "N more" and "N quiet" open in place and close again.
+      if (lv.length > 8) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}" aria-expanded="${lv.length <= limit}"><span class="lbl">${lv.length > limit ? `${lv.length - limit} more` : 'Show fewer'}</span></button>`;
+      if (q.length) {
+        const qo = !!S.more['pq:' + g.p.key];
+        if (qo) inner += `<div class="quiet-chats">${q.map(c => sideChatDot(c) + sideFam(c)).join('')}</div>`;
+        inner += `<button class="nav-i chat-i quiet-toggle" data-side-quiet="${esc(g.p.key)}" aria-expanded="${qo}"><span class="lbl">${qo ? 'Hide quiet' : `${q.length} quiet`}</span></button>`;
+      }
     }
     // The name opens the project; the chevron beside it folds its chats away.
     const here = S.view === 'project' && S.project === g.p.key;
@@ -108,7 +114,7 @@ function sideChatDot(c) {
   return sideChat(c).replace('<span class="lbl">', `<span class="st-dot" style="background:${st.c}" title="${st.name}"></span><span class="lbl">`);
 }
 
-const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), bugs: () => bugsView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
+const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), bugs: () => bugsView(), routines: () => routinesView(), routine: () => routineEditorView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
 function render() {
   famMemo = null;
   applyLook();
@@ -176,11 +182,12 @@ function go(view, extra = {}, { push = true } = {}) {
   }
   const doIt = () => {
     if (view === 'chat' && extra.draft) { $('main').innerHTML = ''; render(); }
-    else if (view === 'chat') { $('main').innerHTML = ''; CV.id = extra.chat || null; render(); openChatView(extra.chat, { key: extra.chatKey || null }); }
+    else if (view === 'chat') { $('main').innerHTML = ''; CV.id = extra.chat || null; render(); openChatView(extra.chat, { key: extra.chatKey || null, provider: extra.provider || null }); }
     else render();
     $('main').scrollTop = 0;
   };
   if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches && prev !== view && !small() && !document.hidden) document.startViewTransition(doIt); else doIt();
+  if (view === 'now' || view === 'routines') loadRoutines().then(() => { if (S.view === view) renderWhenIdle(); }).catch(() => {});
   if (view === 'now' || view === 'hack' || view === 'newchat') loadPlans(false).then(() => (S.view === 'newchat' ? paintNewChat() : renderPlansOnly())).catch(() => {});
   if (view === 'cleanup') loadSpace().then(render).catch(err => toast(err.message));
   if (view === 'images') loadGallery().then(() => { render(); if (extra.genOpen) $('genPrompt')?.focus(); }).catch(err => toast(err.message));
@@ -215,6 +222,13 @@ document.addEventListener('click', e => {
   if ((b = el('[data-send]'))) return sendQuick(b.dataset.send);
   if ((b = el('[data-dismiss]'))) { e.stopPropagation(); markSeen(b.dataset.dismiss); return renderLive(); }
   if ((b = el('[data-earlier]'))) return wrap(loadEarlier)();
+  if ((b = el('[data-rtnew]'))) return newRoutine(b.dataset.rtnew);
+  if ((b = el('[data-rtmenu]'))) { e.stopPropagation(); return routineMenu(b, b.dataset.rtmenu); }
+  if ((b = el('[data-rtrun]'))) { e.stopPropagation(); return openChat(b.dataset.rtrun, { provider: b.dataset.prov === 'codex' ? 'codex' : null }); }
+  if ((b = el('[data-evseen]'))) { e.stopPropagation(); return wrap(seeEvents)(b.dataset.evseen === 'all' ? 'all' : [b.dataset.evseen]); }
+  if ((b = el('[data-rtproj]'))) { readRoutineForm(); return pickProject(b, k => { const p = projBy.get(k); if (p && p.cwd) { S.rtEdit.cwd = p.cwd; render(); } }); }
+  if ((b = el('[data-rtchat]'))) { readRoutineForm(); S.rtEdit.chat.mode = b.dataset.rtchat; return render(); }
+  if ((b = el('[data-rt]'))) { S.more[`rt:${b.dataset.rt}`] = !S.more[`rt:${b.dataset.rt}`]; return render(); }
   if ((b = el('[data-fam]'))) { e.stopPropagation(); toggleFam(b.dataset.fam); sfx('card'); return render(); }
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
   if ((b = el('[data-renamechat]'))) return editTitleInline();
@@ -269,7 +283,8 @@ document.addEventListener('click', e => {
   if ((b = el('[data-bstages]'))) return wrap(async () => { const list = buckets().map(x => (x.id === b.dataset.bstages ? { ...x, stages: !bucketStages(x.id) } : x)); S.lite.buckets = (await api('/api/lite/buckets', { buckets: list })).buckets; render(); })();
   if ((b = el('[data-sidemode]'))) { S.sideMode = b.dataset.sidemode; local.set('sideMode', S.sideMode); return renderSide(); }
   if ((b = el('[data-foldproj]'))) { const k = 'p:' + b.dataset.foldproj; if (S.folded[k]) delete S.folded[k]; else S.folded[k] = true; local.set('folded', S.folded); return renderSide(); }
-  if ((b = el('[data-more-proj]'))) { S.more['pall:' + b.dataset.moreProj] = true; return renderSide(); }
+  if ((b = el('[data-more-proj]'))) { const k = 'pall:' + b.dataset.moreProj; S.more[k] = !S.more[k]; return renderSide(); }
+  if ((b = el('[data-side-quiet]'))) { const k = 'pq:' + b.dataset.sideQuiet; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-quietproj]'))) { S.more.quietProj = !S.more.quietProj; return renderSide(); }
   if ((b = el('[data-fold]'))) { S.folded[b.dataset.fold] = b.getAttribute('aria-expanded') === 'true'; local.set('folded', S.folded); return renderSide(); }
   if ((b = el('[data-more-st]'))) { S.more[b.dataset.moreSt] = !S.more[b.dataset.moreSt]; return renderSide(); }
@@ -311,6 +326,7 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'cmdForm') { e.preventDefault(); const v = $('cmdInput').value; $('cmdInput').value = ''; return askCommander(v); }
   if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat(); }
   if (e.target.id === 'genForm') { e.preventDefault(); const v = $('genPrompt').value.trim(); if (!v) return undefined; $('genPrompt').value = ''; return wrap(startGenerate)(v, S.genN || 1); }
+  if (e.target.id === 'rtForm') { e.preventDefault(); return wrap(saveRoutine)(); }
   if (e.target.dataset.olread) {
     e.preventDefault();
     const pct = Number(String(e.target.pct.value).replace('%', '').trim());
@@ -328,6 +344,8 @@ document.addEventListener('keydown', e => {
 }, true);
 document.addEventListener('input', e => { if (e.target.id === 'msgBox') autosize(e.target); });
 // Pictures and files: paste (several at once), drop anywhere on a chat, or pick with +.
+// The routine form redraws when what it asks for changes (the trigger, the plan, triage on or off).
+document.addEventListener('change', e => { if (e.target.form && e.target.form.id === 'rtForm' && ['kind', 'account', 'triage'].includes(e.target.name)) { readRoutineForm(); render(); } });
 document.addEventListener('change', e => { if (e.target.id === 'attIn' && e.target.files.length) { addFiles([...e.target.files]); e.target.value = ''; } });
 document.addEventListener('paste', e => {
   if (S.view !== 'chat' && S.view !== 'newchat') return;

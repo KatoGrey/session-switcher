@@ -277,3 +277,40 @@ test('families: sub-chats join their parent’s project and status unless you se
   assert.equal(by.dk.status, 'building', 'a status you set on a sub-chat stays, even under a Done parent');
   assert.ok(by.a.depth <= 1 && by.b.depth <= 1, 'a loop doesn’t run away');
 });
+
+test('routines: verdicts, first-start seeding, escalation with its limits', async () => {
+  const { createLiteRoutines, verdictOf, withSuffix, stripSuffix } = require('../lib/lite-routines');
+  assert.deepEqual(verdictOf('Checked #bugs.\n\nALL CLEAR: nothing new since 9am'), { kind: 'clear', title: 'nothing new since 9am', details: 'Checked #bugs.' });
+  const e = verdictOf('Looked at Discord.\n\n**ESCALATE:** Login loops on iOS 18\nThree players in #help since 8:10, link: https://x/1');
+  assert.deepEqual([e.kind, e.title], ['escalate', 'Login loops on iOS 18']);
+  assert.match(e.details, /Three players/);
+  assert.equal(verdictOf('just chatting').kind, 'none');
+  assert.equal(stripSuffix(withSuffix(withSuffix('Check #bugs'))), 'Check #bugs', 'the suffix is added once and comes off cleanly');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-lite-'));
+  const store = lite.createLite({ dataDir: dir });
+  store.setRoutineFlow('r1', { triage: true, notify: 'important', escalate: { on: true } });
+  const r = { id: 'r1', name: 'Daily check', cwd: '/r/x', provider: 'codex', history: [{ id: 'old', status: 'done', sessionId: 's0', line: 'ESCALATE: old thing' }] };
+  const replies = { s1: 'Looked.\n\nESCALATE: Crash on save\nDetails here', s2: 'ALL CLEAR: quiet', s3: 'ESCALATE: crash on save\nAgain', s4: 'ESCALATE: B\nx', s5: 'ESCALATE: C\nx', s6: 'ESCALATE: D\nx' };
+  const started = [], pushed = [];
+  const lr = createLiteRoutines({ store, routinesList: () => [r], lastReply: async id => replies[id], escalationAccount: () => 'main',
+    startEscalation: async o => { started.push(o); return { key: `k${started.length}`, sessionId: `esc${started.length}` }; }, notify: async (k, p) => { pushed.push(p.title); return 1; } });
+  await lr.tick();
+  assert.equal(store.get().routineEvents.length, 0, 'runs from before Lite looked are never handled');
+  const run = (id, status = 'done') => r.history.unshift({ id, status, sessionId: `s${id.slice(1)}`, line: '' });
+  run('h1'); await lr.tick();
+  assert.equal(started.length, 1); assert.match(started[0].prompt, /Crash on save/); assert.equal(started[0].cwd, '/r/x');
+  run('h2'); await lr.tick();
+  assert.equal(started.length, 1, 'all clear starts nothing');
+  run('h3'); await lr.tick();
+  assert.equal(started.length, 1, 'the same title within a week joins the earlier chat');
+  assert.match(store.get().routineEvents[0].note, /Same as/);
+  run('h4'); await lr.tick(); run('h5'); await lr.tick(); run('h6'); await lr.tick();
+  assert.equal(started.length, 3, 'at most three bug chats a routine a day');
+  assert.match(store.get().routineEvents[0].note, /Already started 3/);
+  r.history.unshift({ id: 'h7', status: 'failed', line: 'Start the Ollama app first.' }); await lr.tick();
+  assert.equal(store.get().routineEvents[0].kind, 'failed');
+  assert.ok(pushed.some(t => /didn’t finish/.test(t)));
+  await lr.tick();
+  assert.equal(store.get().routineEvents.filter(x => x.run === 'h7').length, 1, 'each run is handled once');
+});

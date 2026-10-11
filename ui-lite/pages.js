@@ -15,7 +15,7 @@ function rowHtml(c, { showProject = false, showStage = false, depth = 0 } = {}) 
   return `<div class="row ${depth ? 'sub kid' : par ? 'sub' : ''} ${isQuiet(c) ? 'is-quiet' : ''}" ${depth ? `style="--d:${depth}"` : ''} role="button" tabindex="-1" draggable="true" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" aria-selected="${S.sel.has(c.id)}">
     ${needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '<span></span>'}
     <span class="t"><b>${focusStar(c)}${esc(c.title)}</b>${sub ? `<small>${sub}</small>` : ''}</span>
-    <span class="side-tags">${ranTag}${kindTag(c)}${waitTag(c)}${c.provider === 'codex' ? '<span class="tag">Codex</span>' : ''}${showStage ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu"><span class="dot" style="background:${st.c}"></span>${st.name}</button>` : ''}</span>
+    <span class="side-tags">${c.fromRoutine ? `<span class="tag" title="Started by the routine “${esc(c.fromRoutine)}”">from ${esc(c.fromRoutine.slice(0, 24))}</span>` : ''}${ranTag}${kindTag(c)}${waitTag(c)}${c.provider === 'codex' ? '<span class="tag">Codex</span>' : ''}${showStage ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu"><span class="dot" style="background:${st.c}"></span>${st.name}</button>` : ''}</span>
     <span class="when">${ago(c.updated)}</span>
     <button class="iconbtn rmenu" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" aria-label="Move or change">${IC.dots}</button>
   </div>`;
@@ -309,11 +309,12 @@ function rowMenu(anchor, id, at) {
     <button data-v="open">Open<kbd>↵</kbd></button><button data-v="full">Open in the full app</button><hr><div class="ph">Status</div>
     ${STATUSES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && statusOf(c) === s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('')}
     <div class="ph">Kind</div><div class="kind-seg">${KINDS.map(k => `<button data-v="k:${k.id}" role="menuitemradio" aria-checked="${ids.length === 1 && c.kind === k.id}">${k.name}</button>`).join('')}</div>
-    <hr><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}
+    <hr><button data-v="routine">Make this a routine…</button><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}
     <button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="rename">Rename…</button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
     if (v === 'open') return openChat(id);
     if (v === 'rename') return askRename(id);
     if (v === 'nest') return pickParent(anchor, ids);
+    if (v === 'routine') return routineFromChat(c);
     if (v === 'top') return wrap(nestChats)(ids, null);
     if (v === 'full') return openChat(id, { full: true });
     if (v.startsWith('s:')) return wrap(setChats)(ids, { status: v.slice(2) });
