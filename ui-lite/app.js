@@ -205,6 +205,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-dismiss]'))) { e.stopPropagation(); markSeen(b.dataset.dismiss); return renderLive(); }
   if ((b = el('[data-earlier]'))) return wrap(loadEarlier)();
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
+  if ((b = el('[data-renamechat]'))) return editTitleInline();
   if ((b = el('[data-barmodel]'))) return modelMenu(b);
   if ((b = el('[data-bareffort]'))) return effortMenu(b);
   if ((b = el('[data-chatsettings]'))) return settingsMenu(b);

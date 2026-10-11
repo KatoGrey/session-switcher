@@ -751,3 +751,8 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .folder-gone { max-width: 760px; width: calc(100% - 32px); margin: 0 auto 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--pane); font-size: 13px; color: var(--fg-2); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .folder-gone p { margin: 0; line-height: 1.45; }
 .segs { display: contents; }
+/* The chat's title: click to rename in place */
+.chat-h button.ttl { background: none; border: 0; padding: 0 4px; margin-left: -4px; font: inherit; font-weight: 500; color: inherit; text-align: left; cursor: text; border-radius: 5px; max-width: 100%; }
+.chat-h button.ttl:hover { background: var(--hover); }
+.chat-h .ttl-edit { font: inherit; font-weight: 500; color: var(--fg); background: var(--pane); border: 1px solid var(--accent); border-radius: 5px; padding: 1px 4px; margin-left: -5px; outline: none; width: 100%; max-width: 560px; }
+.chat-h button.ttl { align-self: flex-start; width: auto; }
