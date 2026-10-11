@@ -314,3 +314,11 @@ test('routines: verdicts, first-start seeding, escalation with its limits', asyn
   await lr.tick();
   assert.equal(store.get().routineEvents.filter(x => x.run === 'h7').length, 1, 'each run is handled once');
 });
+
+test('routines: one sweep can escalate several things, each with its own details', () => {
+  const { escalationsOf } = require('../lib/lite-routines');
+  const e = escalationsOf('Read 12 posts.\n\nESCALATE: Story cards vanish on refresh\nThree reports in #bugs, repro below.\n\nESCALATE: **Voice cuts out on iOS 18**\nTwo testers, links.\n\nALL CLEAR: the rest are known or not bugs');
+  assert.deepEqual(e.map(x => x.title), ['Story cards vanish on refresh', 'Voice cuts out on iOS 18']);
+  assert.match(e[0].details, /Three reports/); assert.doesNotMatch(e[0].details, /Voice/);
+  assert.match(e[1].details, /Two testers/); assert.doesNotMatch(e[1].details, /ALL CLEAR/);
+});
