@@ -432,3 +432,32 @@ addEventListener('resize', () => { if (S.view === 'side' && !small()) render(); 
   api('/api/commander').then(c => { if (c.live && c.live.key) { S.cmd.sessionId = c.live.sessionId; cmdListen(c.live.key); } }).catch(() => {});
   if ('serviceWorker' in navigator && window.isSecureContext && location.hostname !== '127.0.0.1') navigator.serviceWorker.register('/lite-sw.js', { scope: '/' }).catch(() => {});
 })();
+
+/* ---------- sidebar width: drag its edge, or ← → on it; remembered on this device ---------- */
+const SIDE_W = { min: 220, max: 480, def: 288 };
+function setSideW(w, save = true) {
+  const v = Math.round(Math.min(SIDE_W.max, Math.max(SIDE_W.min, Number(w) || SIDE_W.def)));
+  document.documentElement.style.setProperty('--side-w', `${v}px`);
+  if (save) local.set('sideW', v);
+  return v;
+}
+setSideW(local.get('sideW', SIDE_W.def), false);
+(() => {
+  const g = $('sideGrip'); if (!g) return;
+  const now = () => parseInt(getComputedStyle(document.documentElement).getPropertyValue('--side-w'), 10) || SIDE_W.def;
+  g.addEventListener('pointerdown', e => {
+    if (small() || e.button !== 0) return;
+    e.preventDefault();
+    const left = g.parentElement.getBoundingClientRect().left;
+    g.setPointerCapture(e.pointerId); document.body.classList.add('resizing');
+    const move = ev => setSideW(ev.clientX - left, false);
+    const up = ev => { document.body.classList.remove('resizing'); g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); g.removeEventListener('pointercancel', up); setSideW(ev.clientX - left); };
+    g.addEventListener('pointermove', move); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
+  });
+  g.addEventListener('dblclick', () => { setSideW(SIDE_W.def); toast('Sidebar back to its usual width.'); });
+  g.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault(); e.stopPropagation();
+    setSideW(now() + (e.key === 'ArrowRight' ? 16 : -16));
+  });
+})();
