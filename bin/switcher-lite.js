@@ -5,7 +5,8 @@
 //                                                 "(from <routine>)"), optionally only those matching
 //                                                 text: state, last activity, branch, latest reply
 //   node bin/switcher-lite.js reply <chat id>     a chat's whole latest reply
-//   node bin/switcher-lite.js send <chat id> <text>   send a chat a message (steers it if it's working)
+//   node bin/switcher-lite.js send <chat id> <text>   send a chat a message (steers it if it's working;
+//                                                 reopens it first if it isn't running)
 //
 // A chat id is the session id the fixes list prints. Talks to the Switcher on --port (default 4777).
 'use strict';
@@ -17,6 +18,7 @@ const http = require('http');
 const args = process.argv.slice(2);
 const opt = (name, d) => { const i = args.indexOf(`--${name}`); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
 const port = Number(opt('port', process.env.SWITCHER_PORT || 4777));
+const permission = opt('permission', 'bypassPermissions'); // for a chat that has to be reopened
 const [cmd, ...rest] = args;
 
 function api(p, body) {
@@ -61,10 +63,16 @@ async function fixes(filter) {
   if (cmd === 'send' && rest[0] && rest.length > 1) {
     const s = await api('/api/lite/state');
     const id = rest[0].toLowerCase();
+    const text = rest.slice(1).join(' ');
     const l = (s.live || []).find(x => (x.sessionId || '').toLowerCase() === id || x.key === rest[0]);
-    if (!l || !l.key) throw new Error('That chat isn’t open in Switcher right now, so it can’t take a message.');
-    await api('/api/lite/steer', { key: l.key, text: rest.slice(1).join(' ') });
-    return console.log('Sent.');
+    if (l && l.key) { await api('/api/lite/steer', { key: l.key, text }); return console.log('Sent.'); }
+    // Not running (say Switcher restarted since): open it again where it left off, then send.
+    const c = (s.chats || []).find(x => String(x.id).toLowerCase() === id);
+    if (!c) throw new Error('That chat isn’t in Switcher’s list.');
+    const info = await api('/api/chat/open', { sessionId: c.id, mode: 'resume', ...(c.provider === 'codex' ? { provider: 'codex', ...(c.ollama && c.accountId ? { account: c.accountId } : {}) } : (c.accountId ? { account: c.accountId } : {})),
+      permissionMode: permission });
+    await api('/api/chat/send', { key: info.key, text });
+    return console.log('Reopened the chat and sent.');
   }
   console.error('Usage: switcher-lite.js fixes [text] | reply <chat id> | send <chat id> <text>');
   process.exit(2);
