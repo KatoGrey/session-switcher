@@ -5,7 +5,7 @@
 const SHORTCUTS = [
   ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g b', 'Bugs'], ['g r', 'Recents'], ['g i', 'Images'], ['g a', 'Archived'], ['g c', 'Clean up'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
   ['Needs you', [['t', 'Triage: one at a time, the next opens by itself'], ['a / d', 'Allow / deny'], ['r', 'Reply'], ['e', 'Done'], ['o', 'Open the chat']]],
-  ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–4', 'Status: Exploring, Building, Finishing, Done'], ['f', 'Focus on / off'], ['w', 'Waiting on…'], ['s', 'Status, kind and more'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
+  ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–4', 'Status: Exploring, Building, Finishing, Done'], ['→ / ←', 'Open / fold a chat’s sub-chats'], ['f', 'Focus on / off'], ['w', 'Waiting on…'], ['s', 'Status, kind and more'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
   ['In a chat', [['↵', 'Send'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['esc', 'Back to where you were']]],
 ];
 
@@ -86,6 +86,16 @@ function onKey(e) {
   if ((e.key === 'Enter' || e.key === 'o') && target) { e.preventDefault(); return target.click(); }
   if (e.key === 'x' && target.dataset.chat) { e.preventDefault(); const id = target.dataset.chat; if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); keepCur.id = target.dataset.cur; return render(); }
   if (/^[1-4]$/.test(e.key) && ids.length) { e.preventDefault(); keepCur.id = target.dataset.cur; return wrap(setChats)(ids, { status: STATUSES[Number(e.key) - 1].id }); }
+  // → opens a family, ← folds it (from a sub-chat, back up to its parent).
+  if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && (target.dataset.fam || target.dataset.chat)) {
+    const id = target.dataset.fam || target.dataset.chat, c = chatBy.get(id);
+    if (e.key === 'ArrowRight' && kidsOf(id).length && !famOpen(id)) { e.preventDefault(); toggleFam(id, true); keepCur.id = target.dataset.cur; return render(); }
+    if (e.key === 'ArrowLeft') {
+      if (kidsOf(id).length && famOpen(id)) { e.preventDefault(); toggleFam(id, false); keepCur.id = target.dataset.cur; return render(); }
+      const p = parentOn(c); if (p) { e.preventDefault(); toggleFam(p.id, false); keepCur.id = p.id; return render(); }
+    }
+    return undefined;
+  }
   if (e.key === 'f' && ids.length) { e.preventDefault(); keepCur.id = target.dataset.cur; return wrap(toggleFocus)(ids); }
   if (e.key === 's' && ids.length) { e.preventDefault(); return rowMenu(target, ids[0]); }
   if (e.key === 'w' && ids.length) { e.preventDefault(); return askWaiting(ids); }

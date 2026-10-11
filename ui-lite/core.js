@@ -151,6 +151,32 @@ const visible = c => !c.archived && !c.desktopArchived && !c.auto && !(projOf(c)
 const allChats = () => S.chats.filter(visible);
 const inBucket = c => S.bucket === 'all' || (S.bucket === 'unsorted' ? !projOf(c).bucket : projOf(c).bucket === S.bucket);
 const live = cs => cs.filter(c => statusOf(c) !== 'done' && !isQuiet(c));
+/* ---------- families: a chat and the sub-chats started from it ---------- */
+const low = x => String(x || '').toLowerCase();
+S.openFam = new Set(local.get('openFam', []));
+// Visible chats by id, and each one's visible sub-chats.
+function famIndex() {
+  const vis = allChats(), by = new Map(vis.map(c => [low(c.id), c])), kids = new Map();
+  for (const c of vis) if (c.parent && by.has(low(c.parent))) { const k = low(c.parent); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(c); }
+  for (const l of kids.values()) l.sort((a, b) => b.updated - a.updated);
+  return { by, kids };
+}
+let famMemo = null;
+const fam = () => famMemo || (famMemo = famIndex());
+const kidsOf = id => fam().kids.get(low(id)) || [];
+const descOf = (id, seen = new Set()) => { const out = []; for (const k of kidsOf(id)) { if (seen.has(k)) continue; seen.add(k); out.push(k, ...descOf(k.id, seen)); } return out; };
+const parentOn = c => (c && c.parent ? fam().by.get(low(c.parent)) || null : null);
+// Top of its family here: no visible parent, the parent lives in another project, or the parent is
+// Done while this one isn't (follow-up work on a finished chat doesn't fold away with it).
+const isTop = c => { const p = parentOn(c); return !p || p.project !== c.project || (statusOf(p) === 'done' && statusOf(c) !== 'done'); };
+// A family is as recent as its newest member, and quiet only if every member is.
+const famUpdated = c => Math.max(c.updated, ...descOf(c.id).map(k => k.updated));
+const famQuiet = c => isQuiet(c) && descOf(c.id).every(isQuiet);
+const famOpen = id => S.openFam.has(low(id));
+function toggleFam(id, on) { const k = low(id); if (on === undefined ? !S.openFam.has(k) : on) S.openFam.add(k); else S.openFam.delete(k); local.set('openFam', [...S.openFam].slice(-200)); }
+// Every archived or visible descendant, from the whole list (for archive and Bring back).
+function descAll(id, seen = new Set()) { const out = []; for (const c of S.chats) if (c.parent && low(c.parent) === low(id) && !seen.has(c.id)) { seen.add(c.id); out.push(c.id, ...descAll(c.id, seen)); } return out; }
+
 const focusList = () => allChats().filter(c => c.focus && statusOf(c) !== 'done').sort((a, b) => b.updated - a.updated);
 const bugList = () => allChats().filter(c => c.kind === 'bug');
 const chatsOfProject = k => allChats().filter(c => c.project === k);
@@ -323,18 +349,44 @@ function applyLook() {
 
 /* ---------- archive (with a record, so Bring back puts it where it was) ---------- */
 const recordOf = c => ({ title: c.title, project: c.project, kind: c.guessed && c.guessed.kind ? undefined : c.kind || undefined, status: c.guessed && c.guessed.status ? undefined : c.status, model: c.model || undefined, branch: c.branch || undefined, worktree: c.worktree || undefined, provider: c.provider });
-async function archiveChats(ids) {
+// A family goes together: archiving a chat archives its sub-chats, and Bring back brings them back.
+async function archiveChats(picked) {
+  const ids = [...new Set([...picked, ...picked.flatMap(id => descOf(id).map(k => k.id))])];
+  const extra = ids.length - picked.length;
   const records = Object.fromEntries(ids.map(id => [id, recordOf(chatBy.get(id) || {})]));
   await api('/api/lite/archive', { chats: ids, records });
   for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = true; }
   S.sel.clear(); sfx('shove'); render();
-  toast(`Archived ${ids.length === 1 ? '1 chat' : `${ids.length} chats`}`, async () => { await api('/api/lite/archive', { chats: ids, on: false }); for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = false; } sfx('undo'); render(); });
+  toast(`Archived ${picked.length === 1 ? '1 chat' : `${picked.length} chats`}${extra ? ` and ${extra === 1 ? 'its sub-chat' : `${extra} sub-chats`}` : ''}`, async () => { await api('/api/lite/archive', { chats: ids, on: false }); for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = false; } sfx('undo'); render(); });
 }
-async function unarchiveChats(ids) {
+async function unarchiveChats(picked) {
+  const ids = [...new Set([...picked, ...picked.flatMap(id => descAll(id).filter(k => (chatBy.get(k) || {}).archived))])];
+  const extra = ids.length - picked.length;
   await api('/api/lite/archive', { chats: ids, on: false });
   for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = false; }
   sfx('slide'); await loadState(); render();
-  toast(`Brought back ${ids.length === 1 ? '1 chat' : `${ids.length} chats`}`);
+  toast(`Brought back ${picked.length === 1 ? '1 chat' : `${picked.length} chats`}${extra ? ` and ${extra === 1 ? 'its sub-chat' : `${extra} sub-chats`}` : ''}`);
+}
+// Nest chats under another (or take them out with parent null). Undo puts each back where it was.
+async function nestChats(ids, parentId) {
+  const prev = ids.map(id => ({ id, parent: (parentOn(chatBy.get(id)) || {}).id || null }));
+  for (const id of ids) if (low(id) !== low(parentId)) await api('/api/lite/parent', { id, parent: parentId || null });
+  if (parentId) toggleFam(parentId, true);
+  sfx('card'); await loadState(); render();
+  const p = parentId ? chatBy.get(parentId) : null;
+  toast(p ? `Now under “${p.title.slice(0, 50)}”` : `${ids.length === 1 ? 'It’s' : 'They’re'} on ${ids.length === 1 ? 'its' : 'their'} own now`, async () => {
+    for (const x of prev) await api('/api/lite/parent', { id: x.id, parent: x.parent });
+    sfx('undo'); await loadState(); render();
+  });
+}
+// Pick a chat to nest under: the same project's chats first, then everything, filtered as you type.
+function pickParent(anchor, ids) {
+  const me = chatBy.get(ids[0]); if (!me) return;
+  const not = new Set(ids.flatMap(id => [low(id), ...descOf(id).map(k => low(k.id))]));
+  const list = allChats().filter(c => !not.has(low(c.id))).sort((a, b) => Number(b.project === me.project) - Number(a.project === me.project) || b.updated - a.updated);
+  const rowsFor = q => list.filter(c => !q || c.title.toLowerCase().includes(q)).slice(0, 40).map(c => `<button data-v="${esc(c.id)}">${esc(c.title.slice(0, 60))}<small>${esc(projOf(c).name)}</small></button>`).join('') || '<div class="ph">No match</div>';
+  pop(anchor, `<div class="ph">Put ${ids.length === 1 ? 'it' : 'them'} under…</div><input class="pop-q" id="npQ" placeholder="Type to filter" aria-label="Filter chats"><div id="npList">${rowsFor('')}</div>`, v => wrap(nestChats)(ids, v));
+  const q = $('npQ'); if (q) { q.focus(); q.addEventListener('input', () => { $('npList').innerHTML = rowsFor(q.value.trim().toLowerCase()); }); }
 }
 async function archiveProject(k, on = true) {
   await api('/api/lite/archive', { projects: [k], on });

@@ -452,9 +452,11 @@ const waitReady = () => new Promise(res => { const t0 = Date.now(); const tick =
 
 function chatMenu(anchor) {
   const c = chatBy.get(CV.id);
-  pop(anchor, `${c ? '<button data-v="rename">Rename…</button>' : ''}<button data-v="settings">Conversation settings…</button><button data-v="full">Open in the full app<small>diffs, files, history</small></button>${c ? '<hr><button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="arch">Archive<kbd>e</kbd></button>' : ''}${CV.key ? '<hr><button data-v="stop">Stop it running here</button>' : ''}`, v => {
+  pop(anchor, `${c ? '<button data-v="rename">Rename…</button>' : ''}<button data-v="settings">Conversation settings…</button><button data-v="full">Open in the full app<small>diffs, files, history</small></button>${c ? `<hr><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}<button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="arch">Archive<kbd>e</kbd></button>` : ''}${CV.key ? '<hr><button data-v="stop">Stop it running here</button>' : ''}`, v => {
     if (v === 'settings') return settingsMenu(anchor);
     if (v === 'rename') return editTitleInline();
+    if (v === 'nest') return pickParent(anchor, [c.id]);
+    if (v === 'top') return wrap(nestChats)([c.id], null);
     if (v === 'full') return openChat(CV.id, { full: true });
     if (v === 'wait') return askWaiting([CV.id]);
     if (v === 'arch') return wrap(archiveChats)([CV.id]).then(() => go('back'));
@@ -593,7 +595,7 @@ async function startNewChat() {
 function adoptChatId(id) {
   if (!id || CV.id) return;
   CV.id = id;
-  const m = $('main'); if (m && S.view === 'chat') m.dataset.chat = String(id);
+  const m = $('main'); if (m && S.view === 'chat') m.dataset.shownChat = String(id);
   try { history.replaceState({ view: 'chat', project: S.project, chat: id }, '', `/lite?chat=${encodeURIComponent(id)}`); } catch { /* fine */ }
   markSeen(id);
 }

@@ -5,17 +5,32 @@
 
 // Grouped views (a project's status sections) leave the status pill out: the heading says it.
 // Mixed lists (Recents, search, Focus) show it.
-function rowHtml(c, { showProject = false, showStage = false } = {}) {
-  const p = projOf(c);
-  const sub = showProject ? `${esc(p.name)}${p.bucket ? ` · ${esc(bucketName(p.bucket))}` : ''}` : (c.waiting && c.note ? esc(c.note) : '');
+function rowHtml(c, { showProject = false, showStage = false, depth = 0 } = {}) {
+  const p = projOf(c), par = parentOn(c);
+  const inParent = par && !depth ? ` · in “${esc(par.title.slice(0, 40))}”` : '';
+  const sub = showProject ? `${esc(p.name)}${p.bucket ? ` · ${esc(bucketName(p.bucket))}` : ''}${inParent}` : (c.waiting && c.note ? esc(c.note) : inParent.replace(/^ · /, ''));
   const st = statusById(statusOf(c));
-  return `<div class="row ${c.parent && !showProject ? 'sub' : ''} ${isQuiet(c) ? 'is-quiet' : ''}" role="button" tabindex="-1" draggable="true" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" aria-selected="${S.sel.has(c.id)}">
+  // In a family, a sub-chat that belongs to another project says which.
+  const ranTag = depth && par && par.project !== c.project ? `<span class="tag" title="Lives in ${esc(p.name)}">${esc(p.name)}</span>` : '';
+  return `<div class="row ${depth ? 'sub kid' : par ? 'sub' : ''} ${isQuiet(c) ? 'is-quiet' : ''}" ${depth ? `style="--d:${depth}"` : ''} role="button" tabindex="-1" draggable="true" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" aria-selected="${S.sel.has(c.id)}">
     ${needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '<span></span>'}
     <span class="t"><b>${focusStar(c)}${esc(c.title)}</b>${sub ? `<small>${sub}</small>` : ''}</span>
-    <span class="side-tags">${kindTag(c)}${waitTag(c)}${c.provider === 'codex' ? '<span class="tag">Codex</span>' : ''}${showStage ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu"><span class="dot" style="background:${st.c}"></span>${st.name}</button>` : ''}</span>
+    <span class="side-tags">${ranTag}${kindTag(c)}${waitTag(c)}${c.provider === 'codex' ? '<span class="tag">Codex</span>' : ''}${showStage ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu"><span class="dot" style="background:${st.c}"></span>${st.name}</button>` : ''}</span>
     <span class="when">${ago(c.updated)}</span>
     <button class="iconbtn rmenu" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" aria-label="Move or change">${IC.dots}</button>
   </div>`;
+}
+// A list with families: each top-level chat, then one line for its sub-chats ("3 sub-chats · 1
+// running"); opened (click it, or → on the parent), the sub-chats follow, indented.
+function famRowsHtml(list, opts = {}) {
+  return list.filter(isTop).sort((a, b) => famUpdated(b) - famUpdated(a)).map(t => rowHtml(t, opts) + famBlock(t, opts, 1)).join('');
+}
+function famBlock(t, opts, depth) {
+  const kids = kidsOf(t.id); if (!kids.length) return '';
+  const all = descOf(t.id), open = famOpen(t.id);
+  const run = all.filter(running).length, nd = all.filter(needs).length;
+  const line = `<div class="row fam-line" role="button" tabindex="-1" data-fam="${esc(t.id)}" data-cur="f:${esc(t.id)}" aria-expanded="${open}" style="--d:${depth}"><span>${nd ? '<span class="dot needs-dot"></span>' : run ? '<span class="live-dot"></span>' : ''}</span><span class="t"><small><span class="fam-caret">›</span>${all.length} sub-chat${all.length === 1 ? '' : 's'}${run ? ` · ${run} running` : ''}${nd ? ` · ${nd} need${nd === 1 ? 's' : ''} you` : ''}</small></span><span class="side-tags"></span><span class="when">${ago(Math.max(...all.map(k => k.updated)))}</span><span></span></div>`;
+  return open ? line + kids.map(k => rowHtml(k, { ...opts, showProject: false, showStage: statusOf(k) !== statusOf(t), depth }) + famBlock(k, opts, depth + 1)).join('') : line;
 }
 const selHint = () => '<p class="hint-line"><kbd>j</kbd> <kbd>k</kbd> to move, <kbd>↵</kbd> to open, <kbd>1</kbd>–<kbd>4</kbd> for status, <kbd>f</kbd> for Focus, <kbd>e</kbd> to archive, <kbd>x</kbd> to select. <kbd>?</kbd> shows them all.</p>';
 const BACK = '<button class="iconbtn back" data-go="side" aria-label="Back">‹</button>';
@@ -74,16 +89,16 @@ function project() {
   const foc = cs.filter(c => c.focus && statusOf(c) !== 'done');
   const focusSec = foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span></div><div class="rows">${foc.map(c => rowHtml(c, { showStage: true })).join('')}</div></section>` : '';
   const sections = focusSec + STATUSES.map(s => {
-    const all = cs.filter(c => statusOf(c) === s.id && !(c.focus && s.id !== 'done'));
+    const all = cs.filter(c => isTop(c) && statusOf(c) === s.id && !(c.focus && s.id !== 'done'));
     if (!all.length) return '';
     const folded = s.id === 'done' ? !S.more['p-done'] : false;
-    const act = s.id === 'done' ? all : all.filter(c => !isQuiet(c)), quiet = s.id === 'done' ? [] : all.filter(isQuiet);
+    const act = s.id === 'done' ? all : all.filter(c => !famQuiet(c)), quiet = s.id === 'done' ? [] : all.filter(famQuiet);
     const showQ = S.more['pq-' + s.id];
     const shown = showQ ? [...act, ...quiet] : act;
     return `<section class="section" data-drop-stage="${s.id}">
       <div class="sec-h">${s.id === 'done' ? `<button class="fold" data-pfold="1"><h2>${s.name}</h2><span class="n">${all.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${act.length}</span>`}
         ${quiet.length ? `<button class="hint" data-pq="${s.id}">${showQ ? 'Hide quiet' : `${quiet.length} quiet`}</button>` : ''}</div>
-      ${folded || !shown.length ? '' : `<div class="rows">${shown.map(c => rowHtml(c)).join('')}</div>`}
+      ${folded || !shown.length ? '' : `<div class="rows">${famRowsHtml(shown)}</div>`}
     </section>`;
   }).join('');
   const autoN = S.chats.filter(c => c.project === p.key && c.auto).length;
@@ -294,9 +309,12 @@ function rowMenu(anchor, id, at) {
     <button data-v="open">Open<kbd>↵</kbd></button><button data-v="full">Open in the full app</button><hr><div class="ph">Status</div>
     ${STATUSES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && statusOf(c) === s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('')}
     <div class="ph">Kind</div><div class="kind-seg">${KINDS.map(k => `<button data-v="k:${k.id}" role="menuitemradio" aria-checked="${ids.length === 1 && c.kind === k.id}">${k.name}</button>`).join('')}</div>
-    <hr><button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="rename">Rename…</button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
+    <hr><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}
+    <button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="rename">Rename…</button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
     if (v === 'open') return openChat(id);
     if (v === 'rename') return askRename(id);
+    if (v === 'nest') return pickParent(anchor, ids);
+    if (v === 'top') return wrap(nestChats)(ids, null);
     if (v === 'full') return openChat(id, { full: true });
     if (v.startsWith('s:')) return wrap(setChats)(ids, { status: v.slice(2) });
     if (v.startsWith('k:')) return wrap(setChats)(ids, { kind: v.slice(2) });
