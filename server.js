@@ -862,7 +862,7 @@ function stateFor() {
 // ---------- routines ----------
 
 // Chats that start on their own (lib/routines.js). They open the same way the chat window opens one.
-async function routineChat({ account, cwd, sessionId, permissionMode, model, title }) {
+async function routineChat({ account, cwd, sessionId, permissionMode, model, effort, title }) {
   const c = config();
   const folder = path.basename(cwd.replace(/[\\/]+$/, '')) || cwd;
   const live = sessionId && chats.bySession(sessionId);
@@ -870,7 +870,7 @@ async function routineChat({ account, cwd, sessionId, permissionMode, model, tit
   if (isCodexAccount(account)) {
     const inst = codexById(account);
     requireCodexSignedIn(inst);
-    const chat = inst.open({ cfg: c, cwd, threadId: sessionId || null, mode: permissionMode, model: modelFits(inst, model) ? model : null, title, folder });
+    const chat = inst.open({ cfg: c, cwd, threadId: sessionId || null, mode: permissionMode, model: modelFits(inst, model) ? model : null, effort: effort || undefined, title, folder });
     if (sessionId) sessions.recordLaunch(sessionId, inst.ACCOUNT, 'app');
     return chat;
   }
@@ -878,7 +878,7 @@ async function routineChat({ account, cwd, sessionId, permissionMode, model, tit
   if (sessionId && running[sessionId.toLowerCase()]) throw fail(409, 'That chat is open in a terminal, so the routine left it alone.');
   await guarded(a);
   acc.prepareForLaunch(c, a);
-  const chat = chats.open({ cfg: c, account: a, cwd, sessionId: sessionId || null, permissionMode, model, title, folder });
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId: sessionId || null, permissionMode, model, effort: effort || undefined, title, folder });
   if (sessionId) sessions.recordLaunch(sessionId, a, 'app');
   return chat;
 }
@@ -933,8 +933,8 @@ const liteRoutes = createLiteRoutes({
     for (let i = items.length - 1; i >= 0; i--) { const t = items[i].kind === 'assistant' ? (items[i].blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim() : ''; if (t) return t.slice(0, 60000); }
     return '';
   },
-  startEscalation: async ({ account, cwd, permissionMode, title, prompt }) => {
-    const chat = await routineChat({ account, cwd, permissionMode, title });
+  startEscalation: async ({ account, cwd, permissionMode, title, prompt, model, effort }) => {
+    const chat = await routineChat({ account, cwd, permissionMode, model, effort, title });
     for (const t0 = Date.now(); chat.state === 'starting' && Date.now() - t0 < 30000;) await new Promise(r => setTimeout(r, 250));
     if (chat.state === 'ended') throw new Error('The chat stopped as it started.');
     if (!chat.title || chat.title === 'New chat') chat.title = title;
@@ -1009,7 +1009,7 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/commander') { const l = commanderLive(); return send(res, 200, { ...orgView().commander, live: l ? l.info() : null }); }
   if (route === 'GET /api/commander/tool/sessions') return send(res, 200, commanderSessions(url.searchParams.get('filter') || 'active', url.searchParams.get('group') || ''));
   if (route === 'GET /api/commander/tool/read') return send(res, 200, await commanderRead(url.searchParams.get('id'), url.searchParams.get('count')));
-  if (route === 'GET /api/chat/last-reply') return send(res, 200, { text: await lastReply(url.searchParams.get('id')) });
+  if (route === 'GET /api/chat/last-reply') return send(res, 200, { text: await lastReply(url.searchParams.get('id'), Math.min(200000, Number(url.searchParams.get('max')) || 6000)) });
   if (route === 'GET /api/file') {
     const q = Object.fromEntries(url.searchParams);
     return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
