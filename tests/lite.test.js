@@ -359,3 +359,14 @@ test('read-only guard: Latitude read tools and plain read commands pass; writes 
   assert.ok(!check('Write', { file_path: '/tmp/x' }).ok); assert.ok(!check('mcp__slack__slack_post_message', {}).ok);
   assert.ok(check('Read', { file_path: '/tmp/x' }).ok);
 });
+
+test('routines: a flow keeps a long escalation prompt and the bug chat’s provider, model and effort', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lite-flow-'));
+  const store = lite.createLite({ dataDir: dir });
+  const long = 'x'.repeat(9000);
+  const f = store.setRoutineFlow('r1', { triage: true, notify: 'important', escalate: { on: true, prompt: long, provider: 'codex', model: 'gpt-6.1-sol', effort: 'medium', permissionMode: 'full' }, maxPerDay: 8 });
+  assert.equal(f.escalate.prompt.length, 9000);
+  assert.deepEqual([f.escalate.provider, f.escalate.model, f.escalate.effort, f.escalate.permissionMode], ['codex', 'gpt-6.1-sol', 'medium', 'full']);
+  const g = store.setRoutineFlow('r2', { escalate: { on: true, prompt: 'p', provider: 'nope', effort: 'huge' } });
+  assert.equal(g.escalate.provider, undefined); assert.equal(g.escalate.effort, undefined);
+});
