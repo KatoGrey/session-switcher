@@ -780,3 +780,6 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
   .row.kid .side-tags .tag { max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (max-width: 760px) { .side-grip { display: none; } }
+.live-status .st-what { flex: none; }
+.live-status .st-think { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-style: italic; opacity: .85; }
+.live-status .st-time { margin-left: auto; flex: none; font-variant-numeric: tabular-nums; }

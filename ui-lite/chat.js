@@ -105,8 +105,8 @@ function listen(key) {
   es.addEventListener('hello', e => { CV.lastEventAt = Date.now(); try { CV.info = JSON.parse(e.data); CV.busy = ['busy', 'waiting', 'starting'].includes(CV.info.state) || CV.sending; paintBar(); paintHead(); } catch { /* fine */ } });
   es.addEventListener('chat', e => { CV.lastEventAt = Date.now(); let ev; try { ev = JSON.parse(e.data); } catch { return; } onEvent(ev); });
 }
-// While it works: the time under it ticks, and if the stream has gone quiet for a while, Lite asks
-// the server whether the chat actually finished; if it did, it catches up (attach and replay).
+// While it works: the time under it ticks every second, and if the stream has gone quiet for a
+// while, Lite asks the server whether the chat actually finished; if it did, it catches up.
 let healBusy = false;
 setInterval(async () => {
   if (S.view !== 'chat' || !CV.busy || CV.sending) return;
@@ -123,7 +123,7 @@ setInterval(async () => {
     }
     else CV.lastEventAt = Date.now();
   } catch { /* try again next time */ } finally { healBusy = false; }
-}, 5000);
+}, 1000);
 function onEvent(ev) {
   switch (ev.kind) {
     case 'state':
@@ -142,15 +142,15 @@ function onEvent(ev) {
       const i = CV.items.findIndex(x => x.onTheWay && same(x));
       if (i >= 0) CV.items[i] = { ...ev, images: (CV.items[i].images || []).length ? CV.items[i].images : ev.images };
       else CV.items.push(ev);
-      CV.live = ''; CV.startedAt = CV.startedAt || Date.now(); appendItem(ev); break;
+      CV.live = ''; CV.thinking = ''; CV.startedAt = CV.startedAt || Date.now(); appendItem(ev); break;
     }
-    case 'delta': if (!ev.thinking) { CV.live += ev.text || ''; CV.status = 'Writing'; } else CV.status = 'Thinking'; paintLive(); paintStatus(); break;
+    case 'delta': if (!ev.thinking) { CV.live += ev.text || ''; CV.status = 'Writing'; CV.thinking = ''; } else { CV.status = 'Thinking'; if (ev.text) CV.thinking = ((CV.thinking || '') + ev.text).slice(-600); } paintLive(); paintStatus(); break;
     case 'assistant': { CV.live = ''; const last = CV.items[CV.items.length - 1]; if (last && last.kind === 'assistant' && last.mid === ev.mid) last.blocks = ev.blocks; else CV.items.push(ev); paintFeed(); const tool = (ev.blocks || []).filter(b => b.type === 'tool').pop(); if (tool) CV.status = `${tool.name}${tool.summary ? ` · ${tool.summary}` : ''}`; paintStatus(); break; }
-    case 'tool_start': CV.status = `Using ${ev.name}`; paintStatus(); break;
+    case 'tool_start': CV.status = `Using ${ev.name}`; CV.thinking = ''; paintStatus(); break;
     case 'notice': CV.items.push(ev); appendItem(ev); break;
     case 'permission': CV.pending.set(ev.requestId, ev); paintPending(); break;
     case 'permission_cancel': case 'permission_done': CV.pending.delete(ev.requestId); paintPending(); break;
-    case 'result': CV.busy = false; CV.status = ''; CV.startedAt = 0; CV.live = ''; markSeen(CV.id); if (!ev.ok && (ev.errors || []).length) { const n = { kind: 'notice', level: 'warning', text: ev.errors.join(' ') }; CV.items.push(n); appendItem(n); } paintLive(); paintStatus(); paintBar(); break;
+    case 'result': CV.busy = false; CV.status = ''; CV.startedAt = 0; CV.live = ''; CV.thinking = ''; markSeen(CV.id); if (!ev.ok && (ev.errors || []).length) { const n = { kind: 'notice', level: 'warning', text: ev.errors.join(' ') }; CV.items.push(n); appendItem(n); } paintLive(); paintStatus(); paintBar(); break;
     default: break;
   }
 }
@@ -273,10 +273,17 @@ function paintFeed() {
 }
 function appendItem() { paintFeed(); }
 function paintLive() { const el = $('liveText'); if (!el) return; const stick = nearBottom(); el.innerHTML = CV.live ? mdHtml(CV.live) : ''; el.hidden = !CV.live; if (stick) $('feed').scrollTop = $('feed').scrollHeight; }
+// How long it's been working, to the second (the page's own clock, not the list's).
+const workedFor = t => { const s = Math.max(0, Math.floor((Date.now() - t) / 1000)); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m ${String(s % 60).padStart(2, '0')}s` : `${Math.floor(m / 60)}h ${m % 60}m`; };
+// The line under the conversation while it works: what it's doing, the end of its thinking when the
+// model shares it (Claude does; Codex only says it's thinking), and the time.
 function paintStatus() {
   const el = $('statusLine'); if (!el) return;
   el.hidden = !CV.busy;
-  el.innerHTML = CV.busy ? `<span class="live-dot"></span><span>${esc(String(CV.status || 'Thinking').replace(/^mcp__(.+?)__/, '$1: '))}</span><span style="margin-left:auto">${CV.startedAt ? since(CV.startedAt) : ''}</span>` : '';
+  if (!CV.busy) { el.innerHTML = ''; return; }
+  const what = String(CV.status || 'Thinking').replace(/^mcp__(.+?)__/, '$1: ');
+  const tail = what === 'Thinking' && CV.thinking ? CV.thinking.replace(/\s+/g, ' ').trim().split(/(?<=[.!?:])\s+/).filter(Boolean).pop() || '' : '';
+  el.innerHTML = `<span class="live-dot"></span><span class="st-what">${esc(what)}</span>${tail ? `<span class="st-think">${esc(tail.slice(-160))}</span>` : ''}<span class="st-time">${CV.startedAt ? workedFor(CV.startedAt) : ''}</span>`;
 }
 function paintPending() {
   const el = $('pendingBox'); if (!el) return;
