@@ -226,3 +226,27 @@ test('Lite page: data-open means "open this chat" and nothing else', () => {
     assert.ok(!/data-open="\$\{!*open\}"/.test(src), `${f} uses data-open for something other than a chat id`);
   }
 });
+
+test('Claude Desktop renames wait until the app is closed, and change only the title fields', () => {
+  const { createDesktopNames, renamed } = require('../lib/lite-desktop-names');
+  const r = renamed({ title: 'Old', completedTurns: 3, previousTitles: ['Older'], other: { a: 1 } }, 'New');
+  assert.deepEqual(r, { title: 'New', completedTurns: 3, previousTitles: ['Older', 'Old'], titleTurn: 3, other: { a: 1 } });
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-desk-'));
+  fs.mkdirSync(path.join(root, 'org', 'acct'), { recursive: true });
+  const file = path.join(root, 'org', 'acct', 'local_abc.json');
+  fs.writeFileSync(file, JSON.stringify({ sessionId: 'local_abc', cliSessionId: 'c1', title: 'Old', completedTurns: 2, keep: 'me' }));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-lite-'));
+  const store = lite.createLite({ dataDir: dir });
+  let running = true;
+  const desktop = { get: id => (id === 'c1' ? { desktopId: 'local_abc', cli: 'c1' } : null), ROOT: root };
+  const names = createDesktopNames({ store, desktop, isRunning: () => running, root });
+  assert.deepEqual(names.queue('C1', 'Voyage Lab pages'), { queued: true, desktopOpen: true });
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).title, 'Old', 'nothing written while the app runs');
+  assert.ok(store.get().desktopRenames.c1);
+  running = false;
+  assert.deepEqual(names.apply().done, ['c1']);
+  const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual([j.title, j.previousTitles, j.titleTurn, j.keep], ['Voyage Lab pages', ['Old'], 2, 'me']);
+  assert.equal(store.get().desktopRenames.c1, undefined, 'done, so no longer waiting');
+  assert.throws(() => names.queue('nope', 'x'), /didn’t come from the Claude desktop app/);
+});

@@ -271,8 +271,9 @@ async function setChats(ids, patch, label) {
     sfx('undo'); await loadState(); render();
   });
 }
-// Renaming a chat: Claude chats keep the name in Switcher's own list (Claude Desktop's sidebar keeps
-// its own title); Codex chats are renamed in Codex itself. Undo goes back to the name it had.
+// Renaming a chat: Claude chats keep the name in Switcher's own list, and one from the Claude desktop
+// app is renamed there too (once the app is closed); Codex chats are renamed in Codex itself. Undo
+// goes back to the name it had.
 async function renameChat(id, name) {
   const c = chatBy.get(id);
   const n = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -280,8 +281,18 @@ async function renameChat(id, name) {
   const before = c ? c.fullTitle || c.title : '', shown = c ? c.title : '';
   const j = await api('/api/chat/rename', { sessionId: id, name: n });
   if (c) { c.title = j.title || n; c.fullTitle = c.title; }
+  // A chat from the Claude desktop app is renamed there too, now if it's closed or when it next is.
+  let where = '';
+  if (c && c.desktop) {
+    const d = await api('/api/lite/desktop-rename', { id, title: c.title }).catch(() => null);
+    where = !d ? ' (Claude Desktop keeps its old name)' : d.queued ? '. Claude Desktop shows it after it next quits and reopens' : ', here and in Claude Desktop';
+  }
   sfx('card'); render(); if (typeof paintHead === 'function') paintHead();
-  toast(`Renamed to “${c ? c.title : n}”`, async () => { await api('/api/chat/rename', { sessionId: id, name: before }); if (c) { c.title = shown; c.fullTitle = before; } sfx('undo'); render(); if (typeof paintHead === 'function') paintHead(); });
+  toast(`Renamed to “${c ? c.title : n}”${where}`, async () => {
+    await api('/api/chat/rename', { sessionId: id, name: before });
+    if (c && c.desktop) await api('/api/lite/desktop-rename', { id, title: before }).catch(() => {});
+    if (c) { c.title = shown; c.fullTitle = before; } sfx('undo'); render(); if (typeof paintHead === 'function') paintHead();
+  });
 }
 function askRename(id) {
   const c = chatBy.get(id); if (!c) return;
