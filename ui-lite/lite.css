@@ -873,3 +873,50 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .pop .pic-grid .pic { padding: 0; border-radius: 6px; overflow: hidden; aspect-ratio: 1; display: block; }
 .pop .pic-grid .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pop .pic-grid .pic::after { content: none !important; }
+
+/* ---------- side viewer: files, Markdown, pictures and links beside the chat ---------- */
+body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr) var(--vw-w, min(46vw, 760px)); }
+.viewer { background: var(--pane); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.viewer[hidden] { display: none; }
+.vw-h { display: flex; align-items: center; gap: 4px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
+.vw-h a.iconbtn { text-decoration: none; color: inherit; display: inline-grid; place-items: center; }
+.vw-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.vw-title b, .vw-title small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vw-title small { color: var(--muted); font-size: 11.5px; font-family: var(--f-mono); }
+.vw-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; }
+.vw-pad { padding: 16px 18px 40px; }
+.vw-center { display: grid; place-items: start center; }
+.vw-center img, .vw-center video { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); }
+.vw-frame { flex: 1; width: 100%; border: 0; background: #fff; min-height: 0; }
+.vw-code { margin: 0; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.5; white-space: pre; overflow-x: auto; }
+.vw-md { max-width: 72ch; }
+.vw-files { display: flex; flex-direction: column; gap: 2px; }
+.vw-file { text-align: left; display: flex; flex-direction: column; gap: 1px; padding: 7px 8px; border-radius: 6px; background: none; border: 0; color: inherit; cursor: pointer; min-width: 0; }
+.vw-file:hover, .vw-file:focus-visible { background: var(--hover); }
+.vw-file small { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-ai code.vpath, .msg-ai a.vlink { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.msg-ai code.vpath:hover { border-color: var(--line-2); }
+.vpath-btn { font: inherit; color: inherit; text-align: left; overflow-wrap: anywhere; text-decoration: underline dotted; text-underline-offset: 2px; }
+.files-btn { width: auto; padding: 0 8px; font-size: 12.5px; }
+@media (max-width: 1100px) { body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr) min(52vw, 560px); } }
+@media (max-width: 760px) {
+  body.has-viewer .app { grid-template-columns: minmax(0, 1fr); }
+  .viewer { position: fixed; inset: 0; z-index: 30; border-left: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+}
+
+/* ---------- the fix pipeline (Bugs page) ---------- */
+.pipe { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; align-items: start; }
+.pipe-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pipe-h { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; padding: 0 2px; }
+.pipe-h small { color: var(--muted); font-size: 11.5px; width: 100%; }
+.pipe-card { background: var(--pane); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; min-width: 0; }
+.pipe-card:hover, .pipe-card:focus-visible, .pipe-card.cur { border-color: var(--line-2); background: var(--hover); }
+.pipe-card b { font-weight: 550; font-size: 13.5px; line-height: 1.3; overflow-wrap: anywhere; }
+.pipe-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.pipe-meta a { color: inherit; font-family: var(--f-mono); }
+.pipe-meta .when { margin-left: auto; }
+.pipe-prev { font-size: 12px; align-self: flex-start; }
+.ci { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.ci-passing { background: #3f9a5c; } .ci-pending { background: #d29b2a; } .ci-failing { background: #d0453b; }
+.tag.warn { color: #b8442f; border-color: currentColor; }
+@media (max-width: 760px) { .pipe { grid-template-columns: minmax(0, 1fr); } }

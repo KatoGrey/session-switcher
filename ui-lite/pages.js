@@ -115,7 +115,48 @@ function project() {
 }
 
 /* ---------- Bugs: every bug across projects, by status ---------- */
+/* ---------- the fix pipeline: each bug chat and its pull request, by how far it's got ---------- */
+const PIPE_COLS = [
+  { id: 'working', name: 'Working', hint: 'no pull request yet' },
+  { id: 'pr', name: 'Pull request', hint: 'open, not on a preview' },
+  { id: 'preview', name: 'Preview', hint: 'live copy to check' },
+  { id: 'testers', name: 'With testers', hint: 'Community QA asked to try it' },
+  { id: 'merged', name: 'Merged', hint: 'last 7 days' },
+];
+let pipeLoading = null;
+function loadPipeline(force = false) {
+  const p = S.pipeline;
+  if (pipeLoading || (!force && p && Date.now() - p.fetched < 60e3)) return;
+  pipeLoading = api(`/api/lite/pipeline${force ? '?refresh=1' : ''}`)
+    .then(j => { S.pipeline = { ...j, fetched: Date.now() }; }, err => { S.pipeline = { items: [], errors: err.status === 404 ? [] : [{ error: err.message }], fetched: Date.now() }; })
+    .finally(() => { pipeLoading = null; if (S.view === 'bugs') render(); });
+}
+// A preview link for repos whose pull requests get one (Latitude's: pr-<n>.preview.voyage.io).
+const previewUrl = pr => (/github\.com\/latitudegames\/latitude\/pull\//.test(pr.url) ? `https://pr-${pr.number}.preview.voyage.io/` : null);
+function pipeCard(it) {
+  const ci = it.pr && it.pr.ci;
+  const ciDot = ci && ci.state !== 'none' ? `<span class="ci ci-${ci.state}" title="${esc(ci.state === 'failing' ? `Failing: ${ci.failing.join(', ')}` : ci.state === 'pending' ? `${ci.pending} check${ci.pending === 1 ? '' : 's'} still running` : 'Checks pass')}"></span>` : '';
+  const who = it.live && it.live.waiting ? '<span class="tag warn">needs you</span>' : it.live && it.live.working ? '<span class="tag"><span class="live-dot"></span>working</span>' : it.waiting ? '<span class="tag">waiting</span>' : '';
+  const prev = it.pr && (it.stage === 'preview' || it.stage === 'testers') ? previewUrl(it.pr) : null;
+  return `<div class="pipe-card" data-cur="${esc(it.chat)}" data-open="${esc(it.chat)}" tabindex="0">
+    <b>${esc(it.title)}</b>
+    <div class="pipe-meta">${it.pr ? `<a href="${esc(it.pr.url)}" target="_blank" rel="noopener noreferrer" title="${esc(it.pr.title)}">#${it.pr.number}</a>${ciDot}${it.pr.draft ? '<span class="tag">draft</span>' : ''}${it.pr.review === 'CHANGES_REQUESTED' ? '<span class="tag warn">changes asked</span>' : it.pr.review === 'APPROVED' ? '<span class="tag">approved</span>' : ''}` : `<span class="mono">${esc(it.branch || 'no branch')}</span>`}${who}<span class="when">${ago(it.updated)}</span></div>
+    ${prev ? `<a class="linkish pipe-prev" href="${esc(prev)}" target="_blank" rel="noopener noreferrer">Open the preview ↗</a>` : ''}
+  </div>`;
+}
+function pipelineHtml() {
+  const p = S.pipeline;
+  if (!p) return '<section class="section"><div class="sec-h"><h2>Pipeline</h2></div><p class="empty-note">Loading pull requests…</p></section>';
+  const items = p.items || [];
+  if (!items.length && !(p.errors || []).length) return '';
+  const cols = PIPE_COLS.map(c => ({ ...c, list: items.filter(i => i.stage === c.id) })).filter(c => c.list.length || c.id !== 'merged');
+  return `<section class="section pipeline"><div class="sec-h"><h2>Pipeline</h2><span class="n">${items.filter(i => i.stage !== 'merged').length}</span><button class="iconbtn" data-pipe-refresh="1" title="Check GitHub again" aria-label="Check GitHub again">${IC.refresh || '↻'}</button></div>
+    ${(p.errors || []).map(e => `<p class="hint-line">Couldn’t list pull requests${e.repo ? ` in ${esc(e.repo.replace(/^\/Users\/[^/]+/, '~'))}` : ''}: ${esc(e.error)}</p>`).join('')}
+    <div class="pipe">${cols.map(c => `<div class="pipe-col"><div class="pipe-h"><b>${c.name}</b><span class="n">${c.list.length}</span><small>${c.hint}</small></div>${c.list.map(pipeCard).join('') || '<p class="empty-note">—</p>'}</div>`).join('')}</div></section>`;
+}
+
 function bugsView() {
+  loadPipeline();
   const all = bugList().sort((x, y) => y.updated - x.updated);
   const sections = STATUSES.map(s => {
     const list = all.filter(c => statusOf(c) === s.id);
@@ -125,6 +166,7 @@ function bugsView() {
       ${folded ? '' : `<div class="rows">${list.map(c => rowHtml(c, { showProject: true })).join('')}</div>`}</section>`;
   }).join('');
   return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Bugs</h1></div></div>
+    ${pipelineHtml()}
     ${sections || '<p class="empty-note">No bugs. A chat becomes one from its menu (Kind → Bug), and new chats about fixing something are guessed as bugs.</p>'}${selHint()}</div>`;
 }
 

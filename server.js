@@ -1014,6 +1014,15 @@ async function handleApi(req, res, url, remote = false) {
     const q = Object.fromEntries(url.searchParams);
     return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
   }
+  // Lite's side viewer: the same, plus the chat's own scratchpad (where Claude Code keeps its
+  // screenshots and notes: <temp>/claude-<uid>/<project>/<this session's id>/…).
+  if (route === 'GET /api/lite/file') {
+    const q = Object.fromEntries(url.searchParams);
+    const abs = path.resolve(String(q.path || ''));
+    const id = String(q.session || '').toLowerCase();
+    const scratch = /^[0-9a-f-]{36}$/.test(id) ? abs.match(new RegExp(`^(/private/tmp|/tmp)/claude-\\d+/[^/]+/${id}/`, 'i')) : null;
+    return send(res, 200, filesLib.readEntry(scratch ? scratch[0] : fileBase(q), q.path));
+  }
   // A chat's (or project's) files, for @ mentions in the message box.
   if (route === 'GET /api/files/list') {
     const cwd = fileBase(Object.fromEntries(url.searchParams));
@@ -2026,6 +2035,9 @@ function chatEvents(req, res, url) {
 // ---------- http ----------
 
 const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
+// Lite's side viewer shows links beside a chat (previews, dev servers on this Mac), so its page may
+// frame web pages and local servers. The full app's page keeps the stricter policy.
+const LITE_CSP = `${CSP}; frame-src 'self' https: http://localhost:* http://127.0.0.1:* http://*.localhost:*`;
 
 // Serves the app. Phone access (lib/remote.js) checks the phone's pairing first, then calls this
 // with remote = true; the PC's own window only ever comes through 127.0.0.1.
@@ -2043,7 +2055,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
     // Switcher Lite: its own page and files, the same token and rules as the full app.
     if (req.method === 'GET' && (url.pathname === '/lite' || url.pathname === '/lite/')) {
       const html = fs.readFileSync(path.join(APP_DIR, 'ui-lite', 'index.html'), 'utf8').replace('__TOKEN__', TOKEN).replace('__REMOTE__', remote ? 'true' : 'false');
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': LITE_CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       return res.end(html);
     }
     // Its service worker (at the root, so it can serve /lite) and the Home Screen manifest.
