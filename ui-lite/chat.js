@@ -326,7 +326,7 @@ function rememberModels(prov, info) {
   if (info && Array.isArray(info.models) && info.models.length) local.set(`models:${prov}`, info.models.map(m => ({ value: m.value, label: m.label })).slice(0, 30));
   if (info && Array.isArray(info.efforts) && info.efforts.length) local.set(`efforts:${prov}`, info.efforts);
 }
-const provNow = () => (S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : NC.who === 'ollama' ? 'ollama' : 'codex') : CV.provider === 'codex' ? (CV.info && /ollama/i.test(CV.info.accountName || '') ? 'ollama' : 'codex') : 'claude');
+const provNow = () => (S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : NC.who === 'ollama' ? 'ollama' : 'codex') : CV.provider === 'codex' ? ((CV.info && /ollama/i.test(CV.info.accountName || '')) || (chatBy.get(CV.id) || {}).ollama ? 'ollama' : 'codex') : 'claude');
 const prettyModel = m => String(m).replace(/^claude-/, '').replace(/-(\d)-(\d)/, ' $1.$2').replace(/\[1m\]$/, ' 1M').replace(/^(\w)/, c => c.toUpperCase());
 const modelLabel = (prov, v) => { const base = String(v).replace(/\[1m\]$/, ''); const m = modelsFor(prov).find(x => x.value === v || x.value === base); return m ? `${m.label}${/\[1m\]$/.test(v) ? ' 1M' : ''}` : prettyModel(v); };
 const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -436,7 +436,8 @@ async function sendInChat() {
       // Claude picks up on the use-next Claude plan (else the account it last ran as); Codex on its own.
       const c = chatBy.get(CV.id);
       const claudeAcct = CV.provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
-      const info = await api('/api/chat/open', { sessionId: CV.id, mode: 'resume', ...(CV.provider === 'codex' ? { provider: 'codex' } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
+      // An Ollama chat goes back to the Ollama account (its thread isn't OpenAI's).
+      const info = await api('/api/chat/open', { sessionId: CV.id, mode: 'resume', ...(CV.provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
       CV.key = info.key; CV.info = info;
       listen(info.key);
       await waitReady();
@@ -472,18 +473,58 @@ function chatMenu(anchor) {
     return undefined;
   });
 }
+// One list of every model you have, grouped by who runs it. In New chat, picking one also picks
+// the plan (your use-next Claude or ChatGPT plan, or Ollama). In a chat, the same provider's models
+// switch in place; another provider's start a new chat there that picks up where this one is.
+const PROVS = [['claude', 'Claude'], ['codex', 'ChatGPT'], ['ollama', 'Ollama']];
+const provName = p => (PROVS.find(x => x[0] === p) || [p, p])[1];
+const hasProv = p => (p === 'claude' ? plans().some(x => x.family === 'claude' && !x.broken) : p === 'codex' ? plans().some(x => x.family === 'chatgpt' && !x.broken) : plans().some(x => x.family === 'ollama' && !x.broken));
 function modelMenu(anchor) {
   const prov = provNow();
-  const running = S.view === 'chat' && CV.key && CV.info;
-  const list = running && CV.info.models && CV.info.models.length ? CV.info.models : modelsFor(prov);
+  const inChat = S.view === 'chat';
+  const running = inChat && CV.key && CV.info;
   const cur = running ? CV.info.model : COMP.model;
-  if (!list.length) { loadModels(); return toast('Reading the models; try again in a moment.'); }
-  const md0 = MD(prov);
-  const main = md0 && !running ? md0.models : list.filter(m => m.value !== 'default' && !/haiku/i.test(m.value)).slice(0, 6);
-  const more = md0 && !running ? md0.more : [];
-  const item = m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === cur}">${esc(m.label || prettyModel(m.value))}${m.note ? `<small>${esc(m.note.replace(/^[^·]*· /, '').slice(0, 34))}</small>` : ''}</button>`;
-  pop(anchor, `<div class="ph">Model${md0 && md0.defaultModel ? ` · default ${esc(md0.defaultModel)}` : ''}</div>${main.map(item).join('')}${more.length ? `<hr><div class="ph">More</div>${more.map(item).join('')}` : ''}`,
-    v => { if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, model: v })); paintBar(); })(); COMP.model = v; return S.view === 'newchat' ? paintNewChat() : paintBar(); });
+  if (!S.models) { loadModels().then(() => modelMenu(anchor)); return toast('Reading the models…'); }
+  const item = (p, m) => `<button class="mm" data-v="${esc(p)}|${esc(m.value)}" role="menuitemradio" aria-checked="${p === prov && m.value === cur}" title="${esc(m.note || '')}"><span class="mm-name">${esc(String(m.label || prettyModel(m.value)).replace(/:cloud$/, ""))}</span>${m.note && m.note !== 'In Ollama' ? `<span class="mm-note">${esc(m.note.replace(/^[^·]*· /, ''))}</span>` : ''}</button>`;
+  const group = p => {
+    const md0 = MD(p); if (!md0 || !hasProv(p)) return '';
+    const here = p === prov;
+    const runList = here && running && CV.info.models && CV.info.models.length ? CV.info.models.filter(m => m.value !== 'default' && !/haiku/i.test(m.value)) : null;
+    // Ollama has only a few, so they're all shown; the others fold the rest under More.
+    const all = runList || (p === 'ollama' ? [...md0.models, ...md0.more] : md0.models);
+    const main = all, more = runList || p === 'ollama' ? [] : md0.more.filter(m => !/haiku/i.test(m.value));
+    const plan = p === 'ollama' ? null : useNext(p === 'claude' ? 'claude' : 'chatgpt');
+    const sub = inChat && !here ? 'starts a new chat there' : p === 'ollama' ? 'no plan limits' : plan ? `${plan.label} · ${plan.left}%` : '';
+    return `<div class="ph">${provName(p)}${sub ? ` · ${esc(sub)}` : ''}${here && md0.defaultModel ? ` · default ${esc(md0.defaultModel)}` : ''}</div>${main.map(m => item(p, m)).join('')}${more.length ? `<details class="pop-more"><summary>More ${provName(p)} models</summary>${more.map(m => item(p, m)).join('')}</details>` : ''}`;
+  };
+  const order = [prov, ...PROVS.map(x => x[0]).filter(p => p !== prov)];
+  pop(anchor, order.map(group).filter(Boolean).join('<hr>'), raw => {
+    const [p, v] = raw.split('|');
+    if (inChat && p !== prov) return continueElsewhere(p, v);
+    if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, model: v })); paintBar(); })();
+    if (S.view === 'newchat' && p !== prov) {
+      NC.who = p === 'claude' ? 'claude' : p === 'ollama' ? 'ollama' : 'codex'; NC.account = null; COMP.effort = null; COMP.perm = null;
+      const plan = planById(accountFor(NC.who));
+      toast(`${modelLabel(p, v)} runs on ${p === 'ollama' ? 'Ollama' : `${provName(p)}${plan ? ` · ${plan.label} (use next)` : ''}`}.`);
+    }
+    COMP.model = v;
+    return S.view === 'newchat' ? paintNewChat() : paintBar();
+  });
+}
+// Another provider can't take over this conversation, so a new chat there starts with where this
+// one got to, in the same project, as its sub-chat.
+function continueElsewhere(p, model) {
+  const c = chatBy.get(CV.id);
+  const lastAi = [...CV.items].reverse().find(it => it.kind === 'assistant' && (it.blocks || []).some(b => b.type === 'text'));
+  const lastText = lastAi ? lastAi.blocks.filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim() : '';
+  const title = c ? c.title : chatTitle();
+  const prefill = `Picking up from the chat “${title}” (on ${provName(provNow())}).${lastText ? ` Where it got to:\n\n${lastText.slice(0, 1800)}${lastText.length > 1800 ? '…' : ''}` : ''}\n\nNext: `;
+  const parent = CV.id;
+  go('newchat', { ncProject: c ? c.project : null, prefill });
+  NC.who = p === 'claude' ? 'claude' : p === 'ollama' ? 'ollama' : 'codex'; NC.account = null; NC.parent = parent;
+  COMP.model = model; COMP.effort = null; COMP.perm = null;
+  paintNewChat();
+  setTimeout(() => { const b = $('msgBox'); if (b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); } }, 50);
 }
 function effortMenu(anchor) {
   const prov = provNow();
@@ -573,7 +614,8 @@ async function startNewChat() {
   resetComposer();
   if (CV.es) { CV.es.close(); CV.es = null; }
   const run = {};
-  Object.assign(CV, { run, id: null, key: null, info: { cwd: p.cwd, state: 'starting', title: 'New chat' }, items: [local], cursor: null, live: '', status: 'Starting', pending: new Map(), busy: true, startedAt: Date.now(), loading: false, error: null, readOnly: null, sending: true, provider: prov });
+  const continues = NC.parent || null; NC.parent = null;
+  Object.assign(CV, { run, continues, id: null, key: null, info: { cwd: p.cwd, state: 'starting', title: 'New chat' }, items: [local], cursor: null, live: '', status: 'Starting', pending: new Map(), busy: true, startedAt: Date.now(), loading: false, error: null, readOnly: null, sending: true, provider: prov });
   const mine = () => CV.run === run && S.view === 'chat';
   sfx('slide');
   go('chat', { draft: true }, { push: false });
@@ -603,6 +645,13 @@ async function startNewChat() {
 function adoptChatId(id) {
   if (!id || CV.id) return;
   CV.id = id;
+  // A chat that continues another one (from another provider) sits under it.
+  // (A new Ollama chat takes a few seconds to reach the list, so this tries for a little while.)
+  if (CV.continues) {
+    const parent = CV.continues; CV.continues = null;
+    const tryLink = n => api('/api/lite/parent', { id, parent }).then(() => loadState()).catch(() => { if (n > 0) setTimeout(() => tryLink(n - 1), 5000); });
+    tryLink(8);
+  }
   const m = $('main'); if (m && S.view === 'chat') m.dataset.shownChat = String(id);
   try { history.replaceState({ view: 'chat', project: S.project, chat: id }, '', `/lite?chat=${encodeURIComponent(id)}`); } catch { /* fine */ }
   markSeen(id);
