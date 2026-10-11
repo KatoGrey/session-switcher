@@ -105,7 +105,9 @@ function connect() {
   es.onerror = () => { S.connected = false; renderConn(); };
   for (const ev of ['live', 'activity', 'running']) es.addEventListener(ev, () => later('live', 350, loadLive));
   for (const ev of ['sessions', 'lite', 'organize', 'routines']) es.addEventListener(ev, () => later('state', 1200, async () => { if (await loadState()) renderWhenIdle(); }));
+  for (const ev of ['lite', 'routines']) es.addEventListener(ev, () => later('routines', 1500, async () => { await loadRoutines(); updateBadge(); if (['now', 'routines'].includes(S.view)) renderWhenIdle(); }));
   for (const ev of ['usage', 'accounts']) es.addEventListener(ev, () => later('plans', 1500, async () => { await loadPlans(false); renderPlansOnly(); }));
+  loadRoutines().then(() => updateBadge()).catch(() => {});
   // "How long ago" moves on its own; only the live parts redraw for it.
   setInterval(() => { S.now = Date.now(); if (!document.hidden) renderLive(); }, 30e3);
 }
@@ -142,12 +144,14 @@ const waitTag = c => (c.waiting ? `<span class="tag wait-tag">${esc(c.waitingOn 
 // Needs you: asking for an OK or a question, or replied since you last looked.
 const replied = x => x && !x.working && !(x.pending || []).length && x.finishedAt && S.now - x.finishedAt < 12 * 3600e3 && x.finishedAt > (S.seen[x.sessionId || x.key] || 0) && x.phase !== 'ended';
 const asking = x => !!(x && (x.pending || []).length);
-const needsLive = x => asking(x) || replied(x);
+// A routine's own runs don't ask for you here: what matters from them comes through "From your routines".
+const isRoutineRun = x => !!(x && x.sessionId && S.rt && S.rt.runIds && S.rt.runIds.has(String(x.sessionId).toLowerCase()));
+const needsLive = x => !isRoutineRun(x) && (asking(x) || replied(x));
 const needs = c => needsLive(liveOf(c));
 const running = c => { const x = liveOf(c); return !!(x && x.working); };
 // Quiet isn't a status: nothing has moved for a few days. Chats asking for you, running, in Focus or Waiting never go quiet.
 const isQuiet = c => S.now - c.updated > quietDays() * DAY && !needs(c) && !running(c) && !c.waiting && !c.focus;
-const visible = c => !c.archived && !c.desktopArchived && !c.auto && !(projOf(c).archived);
+const visible = c => !c.archived && !c.desktopArchived && !c.auto && !c.routineRun && !(projOf(c).archived);
 const allChats = () => S.chats.filter(visible);
 const inBucket = c => S.bucket === 'all' || (S.bucket === 'unsorted' ? !projOf(c).bucket : projOf(c).bucket === S.bucket);
 const live = cs => cs.filter(c => statusOf(c) !== 'done' && !isQuiet(c));
@@ -225,10 +229,10 @@ const IC = {
 
 /* ---------- opening a chat in the full app's chat window ---------- */
 // Inside Lite by default; { full: true } opens the full app's chat window (images, files, diffs).
-function openChat(id, { full = false } = {}) {
+function openChat(id, { full = false, provider = null } = {}) {
   if (!id) return;
   markSeen(id);
-  if (!full) { go('chat', { chat: id }); return; }
+  if (!full) { go('chat', { chat: id, provider }); return; }
   const url = `/?chat=${encodeURIComponent(id)}&solo=1`;
   if (REMOTE || matchMedia('(max-width: 760px)').matches) { location.href = url; return; }
   const w = window.open(url, `ss-chat-${id}`, 'popup=yes,width=980,height=1040');

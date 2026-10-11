@@ -60,12 +60,12 @@ const CV = { id: null, key: null, info: null, items: [], cursor: null, es: null,
 
 function chatTitle() { const c = chatBy.get(CV.id); return c ? c.title : (CV.info && CV.info.title) || 'New chat'; }
 
-async function openChatView(id, { key = null } = {}) {
+async function openChatView(id, { key = null, provider = null } = {}) {
   if (CV.es) { CV.es.close(); CV.es = null; }
   Object.assign(CV, { id, key, info: null, items: [], cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
   resetComposer();
   const c = chatBy.get(id);
-  CV.provider = c ? c.provider : 'claude';
+  CV.provider = provider || (c ? c.provider : 'claude');
   markSeen(id);
   const x = S.live.find(l => l.sessionId && l.sessionId.toLowerCase() === String(id).toLowerCase());
   if (!key && x && x.key && x.source === 'app') CV.key = x.key;
@@ -459,10 +459,11 @@ const waitReady = () => new Promise(res => { const t0 = Date.now(); const tick =
 
 function chatMenu(anchor) {
   const c = chatBy.get(CV.id);
-  pop(anchor, `${c ? '<button data-v="rename">Rename…</button>' : ''}<button data-v="settings">Conversation settings…</button><button data-v="full">Open in the full app<small>diffs, files, history</small></button>${c ? `<hr><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}<button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="arch">Archive<kbd>e</kbd></button>` : ''}${CV.key ? '<hr><button data-v="stop">Stop it running here</button>' : ''}`, v => {
+  pop(anchor, `${c ? '<button data-v="rename">Rename…</button>' : ''}<button data-v="settings">Conversation settings…</button><button data-v="full">Open in the full app<small>diffs, files, history</small></button>${c ? `<hr><button data-v="routine">Make this a routine…</button><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}<button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="arch">Archive<kbd>e</kbd></button>` : ''}${CV.key ? '<hr><button data-v="stop">Stop it running here</button>' : ''}`, v => {
     if (v === 'settings') return settingsMenu(anchor);
     if (v === 'rename') return editTitleInline();
     if (v === 'nest') return pickParent(anchor, [c.id]);
+    if (v === 'routine') return routineFromChat(c);
     if (v === 'top') return wrap(nestChats)([c.id], null);
     if (v === 'full') return openChat(CV.id, { full: true });
     if (v === 'wait') return askWaiting([CV.id]);

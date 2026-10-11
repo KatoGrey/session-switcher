@@ -783,3 +783,26 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .live-status .st-what { flex: none; }
 .live-status .st-think { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-style: italic; opacity: .85; }
 .live-status .st-time { margin-left: auto; flex: none; font-variant-numeric: tabular-nums; }
+/* Routines */
+.rt-row .t small.rt-last { color: var(--fg-2); }
+.rt-runs { border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 60%, var(--pane)); }
+.row.rt-run { padding-left: 36px; padding-top: 6px; padding-bottom: 6px; }
+.rt-ic { font-size: 12px; color: var(--muted); width: 12px; text-align: center; }
+.rt-ic.st-done { color: var(--st-feature); } .rt-ic.st-failed, .rt-ic.st-stopped { color: var(--st-bug); } .rt-ic.st-needs-you { color: var(--needs); }
+.rt-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 24px; }
+.rt-preset { text-align: left; }
+.rt-preset .meta { white-space: normal; color: var(--muted); font-size: 12.5px; line-height: 1.4; margin-top: 4px; }
+.rt-form { display: flex; flex-direction: column; gap: 16px; max-width: 720px; }
+.rt-form .fl { display: flex; flex-direction: column; gap: 6px; }
+.rt-form .fl > span:first-child { font-size: 12px; color: var(--muted); font-weight: 500; }
+.rt-form .field { margin: 0; }
+.rt-form textarea.field { resize: vertical; font: inherit; line-height: 1.45; }
+.rt-when { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.rt-when .num { width: 80px; } .rt-when .unit { color: var(--muted); font-size: 13px; }
+.rt-form .chk { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; color: var(--fg-2); line-height: 1.4; }
+.rt-form .chk input { margin-top: 3px; }
+.rt-esc summary { cursor: pointer; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.rt-esc textarea { margin-top: 6px; width: 100%; }
+.rt-form .acts { display: flex; gap: 8px; align-items: center; }
+.ev-row .side-tags { gap: 6px; }
+.tag.warn { color: var(--st-bug); border-color: color-mix(in srgb, var(--st-bug) 40%, transparent); }

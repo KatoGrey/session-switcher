@@ -3,7 +3,7 @@
    row under it (or on the selection). g-chords jump between pages. ⌘K finds anything. ? shows it all. */
 
 const SHORTCUTS = [
-  ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g b', 'Bugs'], ['g r', 'Recents'], ['g i', 'Images'], ['g a', 'Archived'], ['g c', 'Clean up'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
+  ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g b', 'Bugs'], ['g o', 'Routines'], ['g r', 'Recents'], ['g i', 'Images'], ['g a', 'Archived'], ['g c', 'Clean up'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
   ['Needs you', [['t', 'Triage: one at a time, the next opens by itself'], ['a / d', 'Allow / deny'], ['r', 'Reply'], ['e', 'Done'], ['o', 'Open the chat']]],
   ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–4', 'Status: Exploring, Building, Finishing, Done'], ['→ / ←', 'Open / fold a chat’s sub-chats'], ['f', 'Focus on / off'], ['w', 'Waiting on…'], ['s', 'Status, kind and more'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
   ['In a chat', [['↵', 'Send'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['esc', 'Back to where you were']]],
@@ -30,7 +30,7 @@ function keepCur() {
 const idsAt = el => { const id = el && (el.dataset.chat || el.dataset.open); return S.sel.size && id && S.sel.has(id) ? [...S.sel] : S.sel.size && !id ? [...S.sel] : id ? [id] : []; };
 
 let chord = null, chordTimer = null;
-const GO = { n: 'now', p: 'home', h: 'hack', b: 'bugs', r: 'recent', i: 'images', a: 'archived', c: 'cleanup' };
+const GO = { n: 'now', p: 'home', h: 'hack', b: 'bugs', o: 'routines', r: 'recent', i: 'images', a: 'archived', c: 'cleanup' };
 function onKey(e) {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
   const mod = e.metaKey || e.ctrlKey;
@@ -123,7 +123,7 @@ function score(text, q) {
 }
 function palItems(q) {
   const acts = [
-    { t: L('Now'), s: 'g n', run: () => go('now') }, { t: L('Projects'), s: 'g p', run: () => go('home') }, { t: 'Hackathon', s: 'g h', run: () => go('hack') }, { t: 'Bugs', s: 'g b', run: () => go('bugs') },
+    { t: L('Now'), s: 'g n', run: () => go('now') }, { t: L('Projects'), s: 'g p', run: () => go('home') }, { t: 'Hackathon', s: 'g h', run: () => go('hack') }, { t: 'Bugs', s: 'g b', run: () => go('bugs') }, { t: 'Routines', s: 'g o', run: () => go('routines'), alias: 'automation schedule checker cron' }, { t: 'New routine', run: () => newRoutine('check'), alias: 'automation schedule checker' },
     { t: L('Recents'), s: 'g r', run: () => go('recent') }, { t: 'Images', s: 'g i', run: () => go('images'), alias: 'pictures gallery gpt image' }, { t: 'Archived', s: 'g a', run: () => go('archived') },
     { t: 'Clean up', s: 'g c · free space, worktrees', run: () => go('cleanup'), alias: 'disk space node_modules worktree' }, { t: 'Phone alerts', run: () => go('alerts'), alias: 'push notifications iphone' },
     { t: L('New chat'), s: 'c', run: () => go('newchat'), alias: 'start' },

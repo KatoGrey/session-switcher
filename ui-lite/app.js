@@ -2,7 +2,7 @@
 /* The sidebar (pages, bucket switcher, status labels with quiet folding), routing (with real browser
    history, so back and forward work), redraws, and every click and drag on the page. */
 
-const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
+const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'routines', 'routine', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
 const small = () => matchMedia('(max-width: 760px)').matches;
 
 function sideChat(c, depth = 0) {
@@ -31,6 +31,7 @@ function renderSide() {
       ${nav('now', IC.pulse, L('Now'), nNeed ? `<span class="badge">${nNeed}</span>` : '')}
       ${nav('home', IC.grid, L('Projects'))}
       ${nav('hack', IC.flag, 'Hackathon', `<span class="n">${esc(hackLabel())}</span>`)}
+      ${nav('routines', IC.clock, 'Routines', (n => (n ? `<span class="badge">${n}</span>` : ''))(rtEventsOpen().filter(e => e.kind !== 'ran').length))}
       ${nav('bugs', IC.bug, 'Bugs', (n => (n ? `<span class="n">${n}</span>` : ''))(bugList().filter(c => statusOf(c) !== 'done').length))}
     </div>
     <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
@@ -108,7 +109,7 @@ function sideChatDot(c) {
   return sideChat(c).replace('<span class="lbl">', `<span class="st-dot" style="background:${st.c}" title="${st.name}"></span><span class="lbl">`);
 }
 
-const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), bugs: () => bugsView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
+const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), bugs: () => bugsView(), routines: () => routinesView(), routine: () => routineEditorView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
 function render() {
   famMemo = null;
   applyLook();
@@ -176,11 +177,12 @@ function go(view, extra = {}, { push = true } = {}) {
   }
   const doIt = () => {
     if (view === 'chat' && extra.draft) { $('main').innerHTML = ''; render(); }
-    else if (view === 'chat') { $('main').innerHTML = ''; CV.id = extra.chat || null; render(); openChatView(extra.chat, { key: extra.chatKey || null }); }
+    else if (view === 'chat') { $('main').innerHTML = ''; CV.id = extra.chat || null; render(); openChatView(extra.chat, { key: extra.chatKey || null, provider: extra.provider || null }); }
     else render();
     $('main').scrollTop = 0;
   };
   if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches && prev !== view && !small() && !document.hidden) document.startViewTransition(doIt); else doIt();
+  if (view === 'now' || view === 'routines') loadRoutines().then(() => { if (S.view === view) renderWhenIdle(); }).catch(() => {});
   if (view === 'now' || view === 'hack' || view === 'newchat') loadPlans(false).then(() => (S.view === 'newchat' ? paintNewChat() : renderPlansOnly())).catch(() => {});
   if (view === 'cleanup') loadSpace().then(render).catch(err => toast(err.message));
   if (view === 'images') loadGallery().then(() => { render(); if (extra.genOpen) $('genPrompt')?.focus(); }).catch(err => toast(err.message));
@@ -215,6 +217,13 @@ document.addEventListener('click', e => {
   if ((b = el('[data-send]'))) return sendQuick(b.dataset.send);
   if ((b = el('[data-dismiss]'))) { e.stopPropagation(); markSeen(b.dataset.dismiss); return renderLive(); }
   if ((b = el('[data-earlier]'))) return wrap(loadEarlier)();
+  if ((b = el('[data-rtnew]'))) return newRoutine(b.dataset.rtnew);
+  if ((b = el('[data-rtmenu]'))) { e.stopPropagation(); return routineMenu(b, b.dataset.rtmenu); }
+  if ((b = el('[data-rtrun]'))) { e.stopPropagation(); return openChat(b.dataset.rtrun, { provider: b.dataset.prov === 'codex' ? 'codex' : null }); }
+  if ((b = el('[data-evseen]'))) { e.stopPropagation(); return wrap(seeEvents)(b.dataset.evseen === 'all' ? 'all' : [b.dataset.evseen]); }
+  if ((b = el('[data-rtproj]'))) { readRoutineForm(); return pickProject(b, k => { const p = projBy.get(k); if (p && p.cwd) { S.rtEdit.cwd = p.cwd; render(); } }); }
+  if ((b = el('[data-rtchat]'))) { readRoutineForm(); S.rtEdit.chat.mode = b.dataset.rtchat; return render(); }
+  if ((b = el('[data-rt]'))) { S.more[`rt:${b.dataset.rt}`] = !S.more[`rt:${b.dataset.rt}`]; return render(); }
   if ((b = el('[data-fam]'))) { e.stopPropagation(); toggleFam(b.dataset.fam); sfx('card'); return render(); }
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
   if ((b = el('[data-renamechat]'))) return editTitleInline();
@@ -311,6 +320,7 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'cmdForm') { e.preventDefault(); const v = $('cmdInput').value; $('cmdInput').value = ''; return askCommander(v); }
   if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat(); }
   if (e.target.id === 'genForm') { e.preventDefault(); const v = $('genPrompt').value.trim(); if (!v) return undefined; $('genPrompt').value = ''; return wrap(startGenerate)(v, S.genN || 1); }
+  if (e.target.id === 'rtForm') { e.preventDefault(); return wrap(saveRoutine)(); }
   if (e.target.dataset.olread) {
     e.preventDefault();
     const pct = Number(String(e.target.pct.value).replace('%', '').trim());
@@ -328,6 +338,8 @@ document.addEventListener('keydown', e => {
 }, true);
 document.addEventListener('input', e => { if (e.target.id === 'msgBox') autosize(e.target); });
 // Pictures and files: paste (several at once), drop anywhere on a chat, or pick with +.
+// The routine form redraws when what it asks for changes (the trigger, the plan, triage on or off).
+document.addEventListener('change', e => { if (e.target.form && e.target.form.id === 'rtForm' && ['kind', 'account', 'triage'].includes(e.target.name)) { readRoutineForm(); render(); } });
 document.addEventListener('change', e => { if (e.target.id === 'attIn' && e.target.files.length) { addFiles([...e.target.files]); e.target.value = ''; } });
 document.addEventListener('paste', e => {
   if (S.view !== 'chat' && S.view !== 'newchat') return;

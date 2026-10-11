@@ -924,6 +924,23 @@ const liteRoutes = createLiteRoutes({
   activityList: () => activityList(),
   routinesList: () => routines.list(),
   parentOf: id => organize.parentOf(id),
+  // Routines in Lite: a run's last reply (Ollama's Codex threads aren't in Codex's list, so the
+  // provider is said), starting a bug chat from a routine's findings, and the routines API.
+  lastReply: async (id, provider) => {
+    if (provider !== 'codex') return lastReply(id);
+    const items = (await codex.history(id, null, null)).items || [];
+    for (let i = items.length - 1; i >= 0; i--) { const t = items[i].kind === 'assistant' ? (items[i].blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim() : ''; if (t) return t.slice(0, 6000); }
+    return '';
+  },
+  startEscalation: async ({ account, cwd, permissionMode, title, prompt }) => {
+    const chat = await routineChat({ account, cwd, permissionMode, title });
+    for (const t0 = Date.now(); chat.state === 'starting' && Date.now() - t0 < 30000;) await new Promise(r => setTimeout(r, 250));
+    if (chat.state === 'ended') throw new Error('The chat stopped as it started.');
+    if (!chat.title || chat.title === 'New chat') chat.title = title;
+    chat.send(prompt);
+    return chat;
+  },
+  routinesApi: (route, body) => routines.api('POST', route, body),
   linkParent: (child, parent) => { organize.link(child, parent); broadcast('organize', orgView()); },
   unlinkParent: child => { organize.unlink(child); broadcast('organize', orgView()); },
   isCommanderId: id => isCommanderId(id),
