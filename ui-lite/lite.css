@@ -849,3 +849,10 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .queue-box[hidden] { display: none; }
 .q-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; border: 1px dashed var(--line-2); border-radius: 8px; font-size: 13px; color: var(--fg-2); background: var(--pane); }
 .q-item .q-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Pictures Codex drew, in the conversation */
+.gen-fig { margin: 0; display: flex; flex-direction: column; gap: 6px; max-width: 520px; }
+.gen-fig img { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); cursor: zoom-in; background: var(--bg); }
+.gen-fig figcaption { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.gen-fig .gen-act { display: flex; gap: 6px; }
+.gen-wait { display: flex; align-items: center; gap: 10px; height: 180px; justify-content: center; border: 1px dashed var(--line-2); border-radius: 10px; color: var(--muted); font-size: 13px; }
+.gen-wait.failed { height: auto; padding: 14px; color: var(--st-bug); border-style: solid; }
