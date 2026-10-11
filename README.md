@@ -460,7 +460,7 @@ Each one also brings:
 
 - **A living sky** behind the hub in place of the petals: mana motes rising (Isekai), fireflies wandering and blinking (High Fantasy) or embers rising (Dungeon).
 - **Status dots in its own shape:** glowing diamonds, four-pointed stars that glimmer while a chat works, or little flames that flicker.
-- **Its own panels:** system-window corner brackets (Isekai), gilded hairlines and a gilded drop cap opening each reply (High Fantasy), an iron-bound frame with rivets (Dungeon). The logo becomes a magic circle, a compass star or a keyhole; the circle and the star turn while chats work, and the keyhole glows.
+- **Its own panels:** system-window corner brackets (Isekai), gilded hairlines (High Fantasy), an iron-bound frame with rivets (Dungeon). The logo becomes a magic circle, a compass star or a keyhole; the circle and the star turn while chats work, and the keyhole glows.
 - **Its own words,** for example "Awaiting you" becomes "Awaiting your command", "At your word" or "Answer the dark", and the hub is the "Guild hall", "The great hall" or "Camp".
 - **Chimes made on the spot:** a quick bright arpeggio, harp notes, or a low bell, plus a short flourish when you pick the theme. They follow the chime setting.
 

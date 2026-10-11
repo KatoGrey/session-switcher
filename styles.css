@@ -2908,8 +2908,7 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 
 /* ==================== High Fantasy ====================
    Emerald and gold under a great moon: Cinzel Decorative for the big words, Cinzel for names,
-   EB Garamond to read by. Gilded hairlines, a drop cap to open each reply, status dots that are
-   four-pointed stars. */
+   EB Garamond to read by. Gilded hairlines, and status dots that are four-pointed stars. */
 [data-theme="highfantasy"]{--radius:6px;
   --an-deep:12 60 44; --an-gold:230 194 110; --an-emerald:72 206 146; --an-star:236 242 222;
   --hf-sky1:4 12 22; --hf-sky2:12 40 54; --hf-sky3:40 84 88; --hf-halo:214 236 214; --hf-moon1:252 249 230; --hf-moon2:212 220 194; --hf-maria:150 166 148;
@@ -3051,8 +3050,6 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 [data-theme="highfantasy"] .turn .who{font:700 10.5px/1 var(--f-label);letter-spacing:.2em;color:rgb(var(--an-gold))}
 [data-theme="highfantasy"] .turn .who::before{content:"✧";color:rgb(var(--an-gold));font-size:12px}
 [data-theme="highfantasy"] .turn::before{background:linear-gradient(180deg,rgb(var(--an-gold) / .3),transparent)}
-[data-theme="highfantasy"] .turn-foot + .part :is(.final > .md,.live > .live-done) > p:first-child{display:flow-root}
-[data-theme="highfantasy"] .turn-foot + .part :is(.final > .md,.live > .live-done) > p:first-child::first-letter{float:left;font:700 3.05em/.82 var(--f-display);margin:.08em .1em 0 0;color:rgb(var(--an-gold))}
 [data-theme="highfantasy"] .ububble{background:linear-gradient(180deg,rgb(var(--an-emerald) / .12),rgb(var(--an-emerald) / .05));border-color:rgb(var(--an-gold) / .32);border-radius:10px 10px 2px 10px}
 [data-theme="highfantasy"] .c-box{border-color:rgb(var(--an-gold) / .28)}
 [data-theme="highfantasy"] .c-box:focus-within{border-color:rgb(var(--an-gold) / .65);box-shadow:0 0 0 3px rgb(var(--an-gold) / .12)}
