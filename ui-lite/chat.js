@@ -212,11 +212,24 @@ function genImageHtml(b) {
     : '<div class="gen-wait"><span class="live-dot"></span>Drawing the picture…</div>';
   return `<figure class="gen-fig ${esc(b.status || '')}">${frame}${b.prompt ? `<figcaption>${esc(b.prompt)}</figcaption>` : ''}${src ? `<div class="gen-act"><button type="button" class="btn sm" data-addimg="${esc(src)}">Add to my message</button></div>` : ''}</figure>`;
 }
-async function addImageFromUrl(src) {
+async function addImageFromUrl(src, { quiet = false } = {}) {
   const r = await fetch(src); if (!r.ok) throw new Error('Couldn’t read that picture.');
   const blob = await r.blob();
   addFiles([new File([blob], 'picture.' + ((blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg')), { type: blob.type || 'image/png' })]);
-  toast('Added to your message.');
+  if (!quiet) toast('Added to your message.');
+}
+// Every picture in this conversation (yours and the ones Codex drew), newest first.
+function chatPictures() {
+  const out = [];
+  for (const it of CV.items || []) {
+    if (it.kind === 'user') for (const im of it.images || []) if (im.src) out.push({ src: im.src, who: 'You' });
+    if (it.kind === 'assistant') for (const b of it.blocks || []) if (b.type === 'image') { const src = genImageSrc(b); if (src) out.push({ src, who: 'Codex', prompt: b.prompt || '' }); }
+  }
+  return out.reverse();
+}
+function picturesMenu(anchor) {
+  const pics = chatPictures();
+  pop(anchor, `<div class="ph">Pictures in this chat · ${pics.length}</div><div class="pic-grid">${pics.map(p => `<button class="pic" data-v="${esc(p.src)}" title="${esc(p.prompt || p.who)}"><img src="${esc(p.src)}" alt=""></button>`).join('')}</div>`, v => showPicture(v));
 }
 // The header only changes when what's in it does.
 function paintHead() {
@@ -233,6 +246,7 @@ function chatHead() {
   return `<div class="chat-h" id="chatHead"><button class="iconbtn back" data-go="back" aria-label="Back">‹</button>
       <div style="min-width:0;flex:1;display:flex;flex-direction:column"><div class="crumb">${p ? `<span>${esc(bucketName(p.bucket))}</span>›<button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div>${c ? `<button class="ttl" id="chatTitle" data-renamechat="1" title="Rename">${esc(chatTitle())}</button>` : `<span class="ttl" id="chatTitle">${esc(chatTitle())}</span>`}</div>
       ${st ? `${kindTag(c)}${waitTag(c)}<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>` : ''}
+      ${(n => (n ? `<button class="iconbtn pics-btn" data-chatpics="1" aria-haspopup="menu" title="Pictures in this chat">${IC.image}<span>${n}</span></button>` : ''))(chatPictures().length)}
       <button class="iconbtn" data-chatmenu="1" aria-haspopup="menu" aria-label="More">${IC.dots}</button></div>`;
 }
 // A chat whose folder was deleted can't run until the folder is there again.
@@ -292,7 +306,7 @@ function paintFeed() {
     if (k) box.replaceChild(d, k); else box.appendChild(d);
   }
   while (kids.length > segs.length) box.lastChild.remove();
-  paintLive(); paintPending(); paintStatus();
+  paintLive(); paintPending(); paintStatus(); paintHead();
   if (stick) $('feed').scrollTop = $('feed').scrollHeight;
 }
 function appendItem() { paintFeed(); }
@@ -457,9 +471,32 @@ async function sendQueued() {
   await sendInChat({ fromQueue: true });
   COMP.images = saved; if (box && !box.value) { box.value = typed; autosize(box); }
 }
+// /draw <what> (or /draw 3 <what>) in any input bar: Codex draws it on your use-next ChatGPT plan,
+// and the picture lands in this message's attachments, ready to send (to Claude, Codex, anyone).
+const DRAW_RE = /^\/draw\s+(?:(\d)\s+)?([\s\S]+)$/i;
+async function drawIntoMessage(text) {
+  const m = DRAW_RE.exec(text); if (!m) return false;
+  const n = Math.min(4, Math.max(1, Number(m[1]) || 1)), prompt = m[2].trim();
+  const box = $('msgBox'); if (box) { box.value = ''; autosize(box); }
+  const { job } = await api('/api/lite/images/generate', { prompt, n });
+  drawIntoMessage.pending = (drawIntoMessage.pending || 0) + 1; paintDrawHint();
+  sfx('fan'); toast(`Drawing ${n === 1 ? 'it' : `${n} versions`} on ${job.account || 'ChatGPT'}… keep typing; ${n === 1 ? 'it lands' : 'they land'} in your message.`);
+  const poll = async () => {
+    let j; try { j = (await api(`/api/lite/images/job?id=${encodeURIComponent(job.id)}`)).job; } catch { j = { state: 'failed', error: 'Lost track of the drawing.' }; }
+    if (j.state === 'working') { setTimeout(poll, 3000); return; }
+    drawIntoMessage.pending -= 1; paintDrawHint();
+    if (j.state !== 'done' || !j.images.length) { toast(j.error || 'Codex didn’t draw it.'); return; }
+    for (const im of j.images) await addImageFromUrl(`/api/lite/gimg?token=${TOKEN}&thread=${encodeURIComponent(im.thread)}&file=${encodeURIComponent(im.file)}`, { quiet: true });
+    sfx('card'); toast(`${j.images.length === 1 ? 'The picture is' : `${j.images.length} pictures are`} in your message.`);
+  };
+  setTimeout(poll, 4000);
+  return true;
+}
+function paintDrawHint() { const h = $('barHint'); if (h) h.textContent = drawIntoMessage.pending ? `Drawing ${drawIntoMessage.pending === 1 ? 'a picture' : `${drawIntoMessage.pending} pictures`}…` : ''; }
 async function sendInChat({ fromQueue = false, queue = false } = {}) {
   const box = $('msgBox'); const text = box.value.trim();
   if ((!text && !COMP.images.length && !COMP.files.length) || CV.sending) return;
+  if (DRAW_RE.test(text)) return wrap(drawIntoMessage)(text);
   if (!fromQueue && CV.busy && CV.key) {
     const images = imagesOut();
     if (queue || COMP.queueNext) {
@@ -638,7 +675,7 @@ function newChatView() {
     <h1 class="nc-h">What should we work on?</h1>
     <div class="nc-chips" id="ncChips"></div>
     ${composerHtml({ fresh: true })}
-    <p class="hint-line nc-foot"><kbd>↵</kbd> start · <kbd>⇧↵</kbd> new line · <kbd>⌘P</kbd> project · paste or drop pictures · <kbd>esc</kbd> back</p>
+    <p class="hint-line nc-foot"><kbd>↵</kbd> start · <kbd>⇧↵</kbd> new line · <kbd>⌘P</kbd> project · paste or drop pictures · /draw a picture · <kbd>esc</kbd> back</p>
   </div></div>`;
 }
 function paintNewChat() {
@@ -656,6 +693,7 @@ async function startNewChat() {
   const box = $('msgBox'); const text = box.value.trim();
   const p = projBy.get(NC.project);
   if (!text && !COMP.images.length) return box.focus();
+  if (DRAW_RE.test(text)) return wrap(drawIntoMessage)(text);
   if (!p) return toast('Pick a project first.');
   if (COMP.converting) return toast('One moment: a picture is still being prepared.');
   const prov = NC.who === 'claude' ? 'claude' : 'codex';

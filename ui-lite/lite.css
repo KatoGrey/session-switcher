@@ -867,3 +867,9 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
   .ppct { font-size: 13px; }
   .preset { text-align: right; }
 }
+/* Pictures in this chat */
+.chat-h .pics-btn { display: inline-flex; align-items: center; gap: 4px; width: auto; padding: 0 8px; font-size: 12px; color: var(--muted); }
+.pop .pic-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 4px 6px 8px; }
+.pop .pic-grid .pic { padding: 0; border-radius: 6px; overflow: hidden; aspect-ratio: 1; display: block; }
+.pop .pic-grid .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pop .pic-grid .pic::after { content: none !important; }
