@@ -8,7 +8,8 @@
 //
 // Options: --model (default glm-5.3-flash:cloud), --cd (the folder it works in; default here),
 // --resume (a session id this printed before, to ask the same agent a follow-up), --tools (the
-// tools it may use; default mcp__latitude__run,Read,Grep,Glob — no shell, no edits), --parent (the
+// tools it may use; default mcp__latitude__run,Read,Grep,Glob — no shell, no edits, and only the
+// Latitude tools that read: see readonly-guard.js), --parent (the
 // chat to file it under in Switcher; default the calling Claude chat).
 // Prints the model's final message on stdout; the session id and progress go to stderr.
 'use strict';
@@ -18,6 +19,7 @@ const path = require('path');
 const http = require('http');
 const cp = require('child_process');
 const crypto = require('crypto');
+const guard = require('./readonly-guard');
 
 const args = process.argv.slice(2);
 const opt = (name, d) => { const i = args.indexOf(`--${name}`); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
@@ -68,6 +70,8 @@ async function fileUnder(id) {
   const id = resume || crypto.randomUUID();
   process.stderr.write(`[switcher-glm] ${model} on Ollama, in ${cwd}, tools ${tools}\n[switcher-glm] session ${id} (ask a follow-up with --resume ${id})\n`);
   const p = cp.spawn('claude', ['-p', '--model', model, '--output-format', 'json', ...(resume ? ['--resume', resume] : ['--session-id', id]),
+    // Read-only toward Slack, Discord, Linear and GitHub too: a hook refuses Latitude tools that write.
+    '--settings', guard.settingsFor(),
     '--allowedTools', tools, '--disallowedTools', 'Bash,Edit,Write,NotebookEdit,WebFetch'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
   p.stdin.end(task); // on stdin: the tool lists above take every argument after them
   let out = '';
@@ -76,7 +80,12 @@ async function fileUnder(id) {
   p.on('close', async code => {
     let j = null; try { j = JSON.parse(out); } catch { /* not JSON: print as is */ }
     process.stdout.write(`${(j ? j.result || '' : out).trim()}\n`);
-    if (j) process.stderr.write(`[switcher-glm] ${j.num_turns || 0} turns${j.is_error ? ', ended with an error' : ''}\n`);
+    if (j) {
+      const u = j.usage || {};
+      // SWITCHER_GLM_USAGE_LOG: append each run's token use (one JSON line) for cost tracking.
+      if (process.env.SWITCHER_GLM_USAGE_LOG) { try { fs.appendFileSync(process.env.SWITCHER_GLM_USAGE_LOG, `${JSON.stringify({ at: Date.now(), session: id, model, resumed: !!resume, turns: j.num_turns || 0, usage: u, ms: j.duration_ms || null })}\n`); } catch { /* best effort */ } }
+      process.stderr.write(`[switcher-glm] ${j.num_turns || 0} turns${j.is_error ? ', ended with an error' : ''}; tokens in ${(u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0)} (cached ${u.cache_read_input_tokens || 0}), out ${u.output_tokens || 0}\n`);
+    }
     if (!resume) await fileUnder(id);
     process.exit(code || (j && j.is_error ? 1 : 0));
   });

@@ -343,3 +343,19 @@ test('pipeline: a PR’s column comes from its labels; checks fold to one word',
   assert.deepEqual(ciOf([{ name: 'a', bucket: 'pass' }, { name: 'build', bucket: 'pending' }]), { state: 'pending', failing: [], pending: 1 });
   assert.deepEqual(ciOf([{ name: 'e2e', bucket: 'fail' }, { name: 'b', bucket: 'pending' }]), { state: 'failing', failing: ['e2e'], pending: 1 });
 });
+
+test('read-only guard: Latitude read tools and plain read commands pass; writes don’t', () => {
+  const { check } = require('../bin/readonly-guard');
+  const run = (category, tool) => check('mcp__latitude__run', { category, tool, params: {} }).ok;
+  assert.ok(run('slack', 'get-thread-replies')); assert.ok(run('discord', 'get-channel-messages')); assert.ok(run('linear', 'search-issues')); assert.ok(run('github', 'list-open-prs'));
+  assert.ok(!run('slack', 'reply-to-thread')); assert.ok(!run('slack', 'post-message')); assert.ok(!run('discord', 'send-message'));
+  assert.ok(!run('linear', 'create-issue')); assert.ok(!run('github', 'community-qa-create-pr')); assert.ok(!run('github', 'update-pr')); assert.ok(!run('nope', 'get-x'));
+  const sh = cmd => check('Bash', { command: cmd }).ok;
+  assert.ok(sh('gh pr list --repo latitudegames/latitude --search "head:community-qa/" --json number,title'));
+  assert.ok(sh('gh pr list --json number | jq length'));
+  assert.ok(sh('node /x/bin/switcher-glm.js --cd /y "Read #community-qa; don\'t post; report $ costs"'));
+  assert.ok(!sh('gh pr edit 1 --add-label preview')); assert.ok(!sh('gh pr list; gh pr merge 1')); assert.ok(!sh('curl -X POST https://slack.com'));
+  assert.ok(!sh('echo hi > /tmp/x')); assert.ok(!sh('node x.js $(cat secret)'));
+  assert.ok(!check('Write', { file_path: '/tmp/x' }).ok); assert.ok(!check('mcp__slack__slack_post_message', {}).ok);
+  assert.ok(check('Read', { file_path: '/tmp/x' }).ok);
+});
