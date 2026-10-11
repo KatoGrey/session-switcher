@@ -186,6 +186,7 @@ function feedSegments() {
       const text = bl.filter(b => b.type === 'text').map(b => b.text).join('\n\n');
       tools.push(...bl.filter(b => b.type === 'tool'));
       if (text) { flushTools(); segs.push(`<div class="msg-ai">${mdHtml(text)}</div>`); }
+      for (const im of bl.filter(b => b.type === 'image')) { flushTools(); segs.push(genImageHtml(im)); }
       continue;
     }
     flushTools();
@@ -193,6 +194,29 @@ function feedSegments() {
   }
   flushTools();
   return segs;
+}
+// A picture Codex drew (its own image tool): a placeholder while it draws, then the picture, its
+// prompt, and a button to put it in your next message (to this chat, or after switching chats).
+function genImageSrc(b) {
+  if (b.src) return b.src;
+  if (!b.path) return null;
+  const q = new URLSearchParams({ token: TOKEN, path: b.path });
+  if (CV.key) q.set('key', CV.key);
+  if (CV.id) q.set('session', CV.id);
+  return `/api/image?${q}`;
+}
+function genImageHtml(b) {
+  const src = genImageSrc(b);
+  const frame = src ? `<img src="${esc(src)}" alt="${esc(b.prompt || 'Generated picture')}" data-zoom="1">`
+    : b.status === 'failed' ? `<div class="gen-wait failed">${esc(b.failure || 'The picture couldn’t be made.')}</div>`
+    : '<div class="gen-wait"><span class="live-dot"></span>Drawing the picture…</div>';
+  return `<figure class="gen-fig ${esc(b.status || '')}">${frame}${b.prompt ? `<figcaption>${esc(b.prompt)}</figcaption>` : ''}${src ? `<div class="gen-act"><button type="button" class="btn sm" data-addimg="${esc(src)}">Add to my message</button></div>` : ''}</figure>`;
+}
+async function addImageFromUrl(src) {
+  const r = await fetch(src); if (!r.ok) throw new Error('Couldn’t read that picture.');
+  const blob = await r.blob();
+  addFiles([new File([blob], 'picture.' + ((blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg')), { type: blob.type || 'image/png' })]);
+  toast('Added to your message.');
 }
 // The header only changes when what's in it does.
 function paintHead() {
