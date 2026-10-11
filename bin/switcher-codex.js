@@ -5,7 +5,7 @@
 //
 //   node bin/switcher-codex.js --cd ./worktree "Find why X happens; reproduce it; propose a fix"
 //
-// Options: --model (default gpt-5.6-sol), --effort (default medium), --sandbox (default
+// Options: --model (default gpt-6.1-sol), --effort (default medium), --sandbox (default
 // workspace-write; read-only for research), --cd (the folder Codex works in; default here).
 // Prints Codex's final message on stdout; its progress goes to stderr. Exit code is Codex's.
 'use strict';
@@ -17,14 +17,14 @@ const cp = require('child_process');
 
 const args = process.argv.slice(2);
 const opt = (name, d) => { const i = args.indexOf(`--${name}`); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
-const model = opt('model', 'gpt-5.6-sol');
+const model = opt('model', 'gpt-6.1-sol');
 const effort = opt('effort', 'medium');
 const sandbox = opt('sandbox', 'workspace-write');
 const cwd = path.resolve(opt('cd', '.'));
 const port = Number(opt('port', process.env.SWITCHER_PORT || 4777));
 let task = args.join(' ').trim();
 if (!task && !process.stdin.isTTY) task = fs.readFileSync(0, 'utf8').trim();
-if (!task) { console.error('Usage: switcher-codex.js [--cd folder] [--model gpt-5.6-sol] [--effort medium] [--sandbox workspace-write|read-only] "the task"'); process.exit(2); }
+if (!task) { console.error('Usage: switcher-codex.js [--cd folder] [--model gpt-6.1-sol] [--effort medium] [--sandbox workspace-write|read-only] "the task"'); process.exit(2); }
 
 // Which ChatGPT plan: the one Switcher says is next (falls back to Codex's own default home).
 function useNextHome() {
