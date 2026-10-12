@@ -477,7 +477,61 @@ async function startRace({ cwd, prompt, accountId, split }) {
   log(`${parts ? 'Split' : 'Race'} started in ${p.cwd}: ${r.prompt.split('\n')[0].slice(0, 80)}`);
   return r;
 }
-async function stopRacers(r) { for (const k of Object.values(r.keys || {})) { try { await chats.get(k).stop(); } catch { /* already stopped */ } } }
+// What /api/race does to a running race: keep, keep both, keep files, ask a judge, or discard.
+const raceBusy = new Set();
+async function raceAction(r, body, res) {
+  if (body.action === 'discard') {
+    await stopRacers(r); await raceLib.dropRace(r);
+    Object.assign(r, { state: 'discarded', doneAt: new Date().toISOString() }); saveRaces();
+    return send(res, 200, { races: await racesView() });
+  }
+  if (body.action === 'keep') {
+    if (!r.copies[body.who]) throw fail(400, 'Keep Claude’s or Codex’s?');
+    const k = await raceLib.keepCopy(r, body.who, { force: !!body.force });
+    if (!k.applied) return send(res, 200, { kept: false, why: k.why, detail: k.detail || null, races: await racesView() });
+    await stopRacers(r); await raceLib.dropRace(r);
+    Object.assign(r, { state: 'kept', kept: body.who, doneAt: new Date().toISOString() }); saveRaces();
+    log(`Race in ${r.cwd}: kept ${body.who}'s changes (${k.files.length} file${k.files.length === 1 ? '' : 's'}).`);
+    return send(res, 200, { kept: true, files: k.files, races: await racesView() });
+  }
+  if (body.action === 'keepfiles') {
+    // File by file: the files picked from each copy.
+    const picks = {};
+    for (const who of Object.keys(r.copies)) picks[who] = Array.isArray(body.picks && body.picks[who]) ? body.picks[who].map(String).slice(0, 500) : [];
+    const k = await raceLib.keepFiles(r, picks, { force: !!body.force });
+    if (!k.applied) return send(res, 200, { kept: false, why: k.why, clash: k.clash || null, detail: k.detail || null, races: await racesView() });
+    await stopRacers(r); await raceLib.dropRace(r);
+    Object.assign(r, { state: 'kept', kept: 'files', doneAt: new Date().toISOString() }); saveRaces();
+    log(`Race in ${r.cwd}: kept ${k.files.length} file${k.files.length === 1 ? '' : 's'}, picked from both.`);
+    return send(res, 200, { kept: true, files: k.files, races: await racesView() });
+  }
+  if (body.action === 'judge') {
+    if (r.judge) { let jc = null; try { jc = chats.get(r.judge.key); } catch { /* stopped */ } if (jc && jc.state !== 'ended') return send(res, 200, { key: r.judge.key, races: await racesView() }); }
+    // A judge: a chat that can only look, given both copies' changes, says which is better and why.
+    const d = await raceLib.bothDiffs(r);
+    const task = r.split ? `Claude's part: ${r.split.claude}\nCodex's part: ${r.split.codex}` : r.prompt;
+    const ask = `Claude and Codex each did this task in their own copy of the project:\n\n${task}\n\nHere is what each changed (as diffs from the same starting point). Compare them for correctness, completeness, risk and code quality. Say which you'd keep, or which files to take from each, and why, briefly. Don't change any files.\n\n--- Claude's changes ---\n${d.claude || '(none)'}\n\n--- Codex's changes ---\n${d.codex || '(none)'}`;
+    const ready = tasksLib.readyAccount({ state: 'queued', provider: 'claude', accountId: 'auto', when: 'now' }, queueContext()).account;
+    const prov = ready ? 'claude' : 'codex';
+    const info = await openChat(config(), { account: ready ? ready.id : null, cwd: r.cwd, mode: 'new', provider: prov, permissionMode: prov === 'codex' ? 'read-only' : 'plan' });
+    const chat = chats.get(info.key);
+    chat.title = `Judge: ${(r.prompt || '').split('\n')[0].slice(0, 50)}`;
+    await waitReady(chat, 45000);
+    chat.send(ask, []);
+    r.judge = { key: info.key, provider: prov }; saveRaces();
+    return send(res, 200, { key: info.key, races: await racesView() });
+  }
+  if (body.action === 'keepboth') {
+    const k = await raceLib.keepBoth(r, { force: !!body.force });
+    if (!k.applied) return send(res, 200, { kept: false, why: k.why, clash: k.clash || null, detail: k.detail || null, races: await racesView() });
+    await stopRacers(r); await raceLib.dropRace(r);
+    Object.assign(r, { state: 'kept', kept: 'both', doneAt: new Date().toISOString() }); saveRaces();
+    log(`Race in ${r.cwd}: kept both sets of changes (${k.files.length} file${k.files.length === 1 ? '' : 's'}).`);
+    return send(res, 200, { kept: true, files: k.files, races: await racesView() });
+  }
+  throw fail(400, 'Start, keep or discard a race.');
+}
+async function stopRacers(r) { for (const k of [...Object.values(r.keys || {}), r.judge && r.judge.key].filter(Boolean)) { try { await chats.get(k).stop(); } catch { /* already stopped */ } } }
 
 // Opens a chat in the app window (or attaches to it if it's already running here), returning its info.
 // Two opens of the same conversation at once (a double click, the phone and the PC) start it once.
@@ -792,7 +846,7 @@ function activityList() {
   // to resume a conversation too): a conversation the app runs, or ran in the last minute, is never
   // "in a terminal" as well.
   const ownIds = new Set();
-  for (const c of chats.chats.values()) if (c.state !== 'ended' || now - (c.lastAt || 0) < 60000) for (const id of [c.sessionId, c.startedAs]) if (id) ownIds.add(String(id).toLowerCase());
+  for (const c of chats.chats.values()) if (c.state !== 'ended' || now - (c.lastAt || 0) < 60000) for (const id of [c.sessionId, c.fork ? null : c.startedAs]) if (id) ownIds.add(String(id).toLowerCase());
   for (const p of projects) {
     for (const s of p.sessions) {
       const id = s.id.toLowerCase();
@@ -1135,55 +1189,10 @@ async function handleApi(req, res, url, remote = false) {
       if (body.action === 'start') { const r = await startRace(body); return send(res, 200, { id: r.id, races: await racesView() }); }
       const r = raceOf(body.id);
       if (r.state !== 'running') throw fail(409, 'That race is over.');
-      if (body.action === 'discard') {
-        await stopRacers(r); await raceLib.dropRace(r);
-        Object.assign(r, { state: 'discarded', doneAt: new Date().toISOString() }); saveRaces();
-        return send(res, 200, { races: await racesView() });
-      }
-      if (body.action === 'keep') {
-        if (!r.copies[body.who]) throw fail(400, 'Keep Claude’s or Codex’s?');
-        const k = await raceLib.keepCopy(r, body.who, { force: !!body.force });
-        if (!k.applied) return send(res, 200, { kept: false, why: k.why, detail: k.detail || null, races: await racesView() });
-        await stopRacers(r); await raceLib.dropRace(r);
-        Object.assign(r, { state: 'kept', kept: body.who, doneAt: new Date().toISOString() }); saveRaces();
-        log(`Race in ${r.cwd}: kept ${body.who}'s changes (${k.files.length} file${k.files.length === 1 ? '' : 's'}).`);
-        return send(res, 200, { kept: true, files: k.files, races: await racesView() });
-      }
-      if (body.action === 'keepfiles') {
-        // File by file: the files picked from each copy.
-        const picks = {};
-        for (const who of Object.keys(r.copies)) picks[who] = Array.isArray(body.picks && body.picks[who]) ? body.picks[who].map(String).slice(0, 500) : [];
-        const k = await raceLib.keepFiles(r, picks, { force: !!body.force });
-        if (!k.applied) return send(res, 200, { kept: false, why: k.why, clash: k.clash || null, detail: k.detail || null, races: await racesView() });
-        await stopRacers(r); await raceLib.dropRace(r);
-        Object.assign(r, { state: 'kept', kept: 'files', doneAt: new Date().toISOString() }); saveRaces();
-        log(`Race in ${r.cwd}: kept ${k.files.length} file${k.files.length === 1 ? '' : 's'}, picked from both.`);
-        return send(res, 200, { kept: true, files: k.files, races: await racesView() });
-      }
-      if (body.action === 'judge') {
-        // A judge: a chat that can only look, given both copies' changes, says which is better and why.
-        const d = await raceLib.bothDiffs(r);
-        const task = r.split ? `Claude's part: ${r.split.claude}\nCodex's part: ${r.split.codex}` : r.prompt;
-        const ask = `Claude and Codex each did this task in their own copy of the project:\n\n${task}\n\nHere is what each changed (as diffs from the same starting point). Compare them for correctness, completeness, risk and code quality. Say which you'd keep, or which files to take from each, and why, briefly. Don't change any files.\n\n--- Claude's changes ---\n${d.claude || '(none)'}\n\n--- Codex's changes ---\n${d.codex || '(none)'}`;
-        const ready = tasksLib.readyAccount({ state: 'queued', provider: 'claude', accountId: 'auto', when: 'now' }, queueContext()).account;
-        const prov = ready ? 'claude' : 'codex';
-        const info = await openChat(config(), { account: ready ? ready.id : null, cwd: r.cwd, mode: 'new', provider: prov, permissionMode: prov === 'codex' ? 'read-only' : 'plan' });
-        const chat = chats.get(info.key);
-        chat.title = `Judge: ${(r.prompt || '').split('\n')[0].slice(0, 50)}`;
-        await waitReady(chat, 45000);
-        chat.send(ask, []);
-        r.judge = { key: info.key, provider: prov }; saveRaces();
-        return send(res, 200, { key: info.key, races: await racesView() });
-      }
-      if (body.action === 'keepboth') {
-        const k = await raceLib.keepBoth(r, { force: !!body.force });
-        if (!k.applied) return send(res, 200, { kept: false, why: k.why, clash: k.clash || null, detail: k.detail || null, races: await racesView() });
-        await stopRacers(r); await raceLib.dropRace(r);
-        Object.assign(r, { state: 'kept', kept: 'both', doneAt: new Date().toISOString() }); saveRaces();
-        log(`Race in ${r.cwd}: kept both sets of changes (${k.files.length} file${k.files.length === 1 ? '' : 's'}).`);
-        return send(res, 200, { kept: true, files: k.files, races: await racesView() });
-      }
-      throw fail(400, 'Start, keep or discard a race.');
+      // One action at a time per race (a double click, or the PC and the phone at once).
+      if (raceBusy.has(r.id)) throw fail(409, 'Still working on that race. Try again in a moment.');
+      raceBusy.add(r.id);
+      try { return await raceAction(r, body, res); } finally { raceBusy.delete(r.id); }
     }
     case '/api/tasks': {
       if (body.action === 'add') {
@@ -1546,7 +1555,7 @@ async function handleApi(req, res, url, remote = false) {
     }
     case '/api/chat/done': {
       // Done (off the lists until it's used again) or not done.
-      if (!body.id) throw fail(400, 'Which chat?');
+      if (!/^[\w-]{8,80}$/.test(String(body.id || ''))) throw fail(400, 'Which chat?');
       chatPrefs.setDone(String(body.id), !!body.done);
       return send(res, 200, { doneMarks: chatPrefs.doneMarks() });
     }
@@ -2020,6 +2029,7 @@ const pushSeen = { map: new Map(), primed: false };
 const pushActs = new Map();
 // Reply from a notification: one-time tokens, each for one chat, for six hours.
 const pushReplies = new Map();
+setInterval(() => { const now = Date.now(); for (const m of [pushActs, pushReplies]) for (const [k, v] of m) if (v.exp < now) m.delete(k); }, 5 * 60e3).unref();
 // The single question a chat is asking (its text and choices), if that's what it waits on.
 function questionOf(key, requestId) {
   try {
@@ -2101,7 +2111,7 @@ async function sendPushes() {
 function waitingNow(since) {
   const out = [];
   for (const x of chats.summaries()) {
-    if (!x.key) continue;
+    if (!x.key || x.aside) continue;   // as live: side questions never notify
     for (const p of x.pending || []) out.push({ kind: 'needs', chat: x, pending: p });
     if (x.phase === 'idle' && x.finishedAt && x.finishedAt > since && !(x.pending || []).length) out.push({ kind: 'reply', chat: x });
   }
@@ -2127,7 +2137,7 @@ async function pushApi(req, res, route, remote) {
   if (route === 'GET /api/push') return send(res, 200, { key: pushes.publicKey(), phone: !!dev, subscribed: dev ? pushes.count(dev.id) > 0 : false, phones: pushes.count() });
   if (route === 'POST /api/push/act') {
     const a = pushActs.get(String(body.token || ''));
-    if (!a || !dev) throw fail(410, 'That one was already answered, or has expired.');
+    if (!a || !dev || a.exp < Date.now()) throw fail(410, 'That one was already answered, or has expired.');
     pushActs.delete(String(body.token));
     const decision = body.decision === 'allow' ? 'allow' : 'deny';
     let chat;
@@ -2144,7 +2154,7 @@ async function pushApi(req, res, route, remote) {
   if (route === 'POST /api/push/reply') {
     const a = pushReplies.get(String(body.token || ''));
     const text = typeof body.text === 'string' ? body.text.trim().slice(0, 20000) : '';
-    if (!a || !dev) throw fail(410, 'That reply can’t be sent any more. Open the chat to answer.');
+    if (!a || !dev || a.exp < Date.now()) throw fail(410, 'That reply can’t be sent any more. Open the chat to answer.');
     if (!text) throw fail(400, 'Type a reply.');
     let chat;
     try { chat = chats.get(a.key); } catch { throw fail(410, 'That chat has stopped. Open it to answer.'); }

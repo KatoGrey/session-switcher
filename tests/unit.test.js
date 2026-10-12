@@ -798,8 +798,23 @@ test('run: starts the project’s dev script, finds its address, keeps its outpu
   const t1 = Date.now();
   while (run.status(dir).running && Date.now() - t1 < 5000) await new Promise(r => setTimeout(r, 100));
   assert.equal(run.status(dir).running, false, stopped);
+  // Restart: stop waits until it's gone, so starting again really starts it.
+  run.start(dir);
+  const t2 = Date.now();
+  while (!run.status(dir).url && Date.now() - t2 < 10000) await new Promise(r => setTimeout(r, 100));
+  await run.stop(dir);
+  const again = run.start(dir);
+  assert.equal(again.running, true, 'a new run, not the old one’s status');
+  assert.deepEqual(again.lines, [], 'with fresh output');
+  await run.stop(dir);
+  // A progress bar's \r redraws are lines of their own.
+  put(dir, 'bar.js', "process.stdout.write('10%\\r50%\\r100%\\ndone\\n');\n");
+  run.setCommand(dir, 'node bar.js'); run.start(dir);
+  const t3 = Date.now();
+  while (run.status(dir).running && Date.now() - t3 < 5000) await new Promise(r => setTimeout(r, 100));
+  assert.deepEqual(run.status(dir).lines.filter(l => l.trim()), ['10%', '50%', '100%', 'done']);
   // The command you set is remembered for the project.
-  assert.equal(createRunner({ dataDir: data }).status(dir).cmd, 'node srv.js');
+  assert.equal(createRunner({ dataDir: data }).status(dir).cmd, 'node bar.js');
 });
 
 test('tasks: one from "Do this later" remembers the chat and reply it came from', () => {
