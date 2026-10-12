@@ -536,21 +536,40 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
       frame = 0;
       const f = $('feed'), pinned = f && f.scrollHeight - f.scrollTop - f.clientHeight < 80;
       const r = document.documentElement.style;
+      const k = Math.round(innerHeight - visualViewport.height);
+      if (k > 150) { kbH = k; try { localStorage.setItem('lite.kb', String(k)); } catch { /* fine */ } }
       r.setProperty('--app-h', `${Math.round(visualViewport.height)}px`);
       r.setProperty('--vv-top', `${Math.round(visualViewport.offsetTop)}px`);
       if (pinned) f.scrollTop = f.scrollHeight;
     });
   };
-  // A tap into a text box focuses it without iOS scrolling the page to it (the app resizes to sit
-  // above the keyboard instead, so the two don't fight). A drag that starts on one still scrolls.
-  let touch = null;
-  const TYPEABLE = 'textarea, input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=date]):not([type=time]):not([type=datetime-local])';
-  document.addEventListener('touchstart', e => { const t = e.touches[0]; touch = t ? { x: t.clientX, y: t.clientY } : null; }, { passive: true });
+  // iOS says how tall the keyboard is only once it has finished sliding, so the page would snap after
+  // it. Lite remembers the height and slides the page with the keyboard; the real size then settles it.
+  let kbH = 0; try { kbH = Number(localStorage.getItem('lite.kb')) || 0; } catch { /* fine */ }
+  const TYPE = 'textarea, input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range])';
+  let glideT = 0;
+  const glide = h => {
+    const root = document.documentElement;
+    root.classList.add('kb-glide'); root.style.setProperty('--app-h', `${Math.round(h)}px`); root.style.setProperty('--vv-top', '0px');
+    clearTimeout(glideT); glideT = setTimeout(() => root.classList.remove('kb-glide'), 450);
+  };
+  document.addEventListener('focusin', e => { if (kbH && e.target.matches && e.target.matches(TYPE)) { const f = $('feed'), pinned = f && f.scrollHeight - f.scrollTop - f.clientHeight < 80; glide(innerHeight - kbH); if (pinned) setTimeout(() => { f.scrollTop = f.scrollHeight; }, 320); } });
+  document.addEventListener('focusout', e => { if (e.target.matches && e.target.matches(TYPE)) setTimeout(() => { const a = document.activeElement; if (!(a && a.matches && a.matches(TYPE))) glide(innerHeight); }, 0); });
+  // Like Messages: with the keyboard up, dragging the conversation down (or tapping it) puts the keyboard away.
+  let drag = null;
+  document.addEventListener('touchstart', e => { const f = e.target.closest && e.target.closest('#feed'); drag = f && e.touches[0] ? { y: e.touches[0].clientY, x: e.touches[0].clientX } : null; }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    const a = document.activeElement;
+    if (!drag || !a || !a.matches('textarea, input') || !e.touches[0]) return;
+    if (e.touches[0].clientY - drag.y > 24) { a.blur(); drag = null; }
+  }, { passive: true });
   document.addEventListener('touchend', e => {
-    const el = e.target.closest && e.target.closest(TYPEABLE), t = e.changedTouches[0];
-    if (!el || el.disabled || el.readOnly || document.activeElement === el || !touch || !t || Math.hypot(t.clientX - touch.x, t.clientY - touch.y) > 10) return;
-    e.preventDefault(); el.focus({ preventScroll: true });
-  }, { passive: false });
+    const a = document.activeElement, t = e.changedTouches[0];
+    if (!drag || !a || !a.matches('textarea, input') || !t) return;
+    const still = Math.hypot(t.clientX - drag.x, t.clientY - drag.y) < 8;
+    if (still && !e.target.closest('a, button, input, textarea, [data-open], [data-viewfile], details, summary, img')) a.blur();
+    drag = null;
+  }, { passive: true });
   visualViewport.addEventListener('resize', fit); visualViewport.addEventListener('scroll', fit); fit();
 }
 
