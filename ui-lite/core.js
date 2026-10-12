@@ -222,6 +222,9 @@ const markSeen = id => {
 };
 
 /* ---------- words and pictures ---------- */
+// One-line boxes you write messages in type like the chat box: no contact autofill, autocorrect and
+// capitals on, and the return key says Send.
+const MSG_ATTRS = 'autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" enterkeyhint="send"';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ago = t => { const m = Math.round((S.now - t) / 6e4); if (m < 60) return `${Math.max(1, m)}m`; const h = Math.round(m / 60); if (h < 24) return `${h}h`; const d = Math.round(h / 24); return d < 14 ? `${d}d` : `${Math.round(d / 7)}w`; };
 const since = t => { const m = Math.max(0, Math.round((S.now - t) / 6e4)); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
