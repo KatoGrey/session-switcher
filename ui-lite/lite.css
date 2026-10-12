@@ -941,3 +941,12 @@ body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr
 .bug-row .ci { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .bug-row .ci-failing { background: #d0453b; }
 @media (max-width: 760px) { .bug-row { grid-template-columns: minmax(0, 1fr) auto 28px; } .bug-row .t b { white-space: normal; } }
+
+/* On a phone the chat's name gets the whole first line; its tags and buttons wrap under it. */
+@media (max-width: 760px) {
+  .chat-h { flex-wrap: wrap; row-gap: 6px; gap: 8px; }
+  .chat-h .ch-name { flex: 1 1 calc(100% - 52px); }
+  .chat-h .crumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-h .ch-name ~ * { flex: none; }
+  .chat-h .ch-name ~ .stage:first-of-type, .chat-h .ch-name + .tag { margin-left: 40px; }
+}
