@@ -357,7 +357,7 @@ const isCodexId = id => !!codexFind(id);
 // ---------- queued tasks: started as new chats when their time comes and an account has room ----------
 const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
 let taskList = (() => { const j = store.loadOwnJson(TASKS_FILE, null, log); return j && Array.isArray(j.tasks) ? j.tasks : []; })();
-let queueRunning = false;
+let queueRunning = null;   // the pass that is running, as a promise
 function saveTasks() {
   taskList = tasksLib.tidy(taskList);
   try { store.writeJsonAtomic(TASKS_FILE, { tasks: taskList }); } catch (err) { log(`Couldn’t save tasks.json: ${err.message}`); }
@@ -390,12 +390,15 @@ async function startTask(t, account) {
   log(`Task started in ${t.folder}: ${t.prompt.split('\n')[0].slice(0, 80)}`);
 }
 async function runQueue(onlyId = null, force = false) {
-  if (queueRunning) return;
-  queueRunning = true;
+  // A pass already running: "Start now" waits for it, then goes (rather than saying there's no room).
+  if (queueRunning) { if (!onlyId) return; await queueRunning.catch(() => {}); if (queueRunning) return; }
+  let done;
+  queueRunning = new Promise(r => { done = r; });
   try {
     let changed = false;
-    for (const t of taskList) {
-      if (t.state !== 'queued' || (onlyId && t.id !== onlyId)) continue;
+    for (const t of taskList.slice()) {
+      // Removed (or started) while an earlier one was starting: left alone.
+      if (!taskList.includes(t) || t.state !== 'queued' || (onlyId && t.id !== onlyId)) continue;
       const ctx = queueContext();
       const r = tasksLib.readyAccount(force ? { ...t, when: 'now' } : t, ctx);
       if (!r.account) continue;
@@ -403,7 +406,7 @@ async function runQueue(onlyId = null, force = false) {
       changed = true;
     }
     if (changed) saveTasks();
-  } finally { queueRunning = false; }
+  } finally { const was = queueRunning; queueRunning = null; done(); void was; }
 }
 setInterval(() => { if (taskList.some(t => t.state === 'queued')) runQueue().catch(() => {}); }, 30000).unref();
 // Usage changed (an account has room again, say): queued tasks may be able to start.
@@ -958,7 +961,8 @@ function readBody(req, max = 65536) {
     let data = '';
     req.setEncoding('utf8');
     req.on('data', c => { data += c; if (data.length > max) { reject(fail(413, max > 65536 ? 'That’s too much to send at once. Try fewer or smaller images.' : 'Request too large.')); req.destroy(); } });
-    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { reject(fail(400, 'Bad request.')); } });
+    // A plain object, always (null, a list or a number would trip the routes up).
+    req.on('end', () => { try { const j = data ? JSON.parse(data) : {}; if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error('not an object'); resolve(j); } catch { reject(fail(400, 'Bad request.')); } });
     req.on('error', reject);
   });
 }
@@ -1721,15 +1725,22 @@ function uploadFile(req, res, url) {
   const dir = path.join(chat.cwd, 'attachments', day);
   fs.mkdirSync(dir, { recursive: true });
   const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
-  let dest = path.join(dir, name);
-  for (let i = 2; fs.existsSync(dest); i++) dest = path.join(dir, `${stem} (${i})${ext}`);
-  const tmp = `${dest}.part`;
+  // The name is reserved as it's chosen (two of the same name at once get two names), and each has
+  // a temporary file of its own while it arrives.
+  let dest = null;
+  for (let i = 1; !dest && i < 1000; i++) {
+    const cand = path.join(dir, i === 1 ? name : `${stem} (${i})${ext}`);
+    try { fs.closeSync(fs.openSync(cand, 'wx')); dest = cand; } catch (err) { if (err.code !== 'EEXIST') throw err; }
+  }
+  if (!dest) throw fail(409, 'Too many files with that name today.');
+  const tmp = `${dest}.${crypto.randomBytes(4).toString('hex')}.part`;
+  const unreserve = () => fs.unlink(dest, () => {});
   return new Promise((resolve, reject) => {
     const out = fs.createWriteStream(tmp);
     let got = 0;
-    const failUpload = (status, msg) => { log(`Attach failed for ${name}: ${msg}`); fs.unlink(tmp, () => {}); reject(fail(status, msg)); };
+    const failUpload = (status, msg) => { log(`Attach failed for ${name}: ${msg}`); fs.unlink(tmp, () => {}); unreserve(); reject(fail(status, msg)); };
     req.on('data', c => { got += c.length; if (got > UPLOAD_MAX) { req.destroy(); out.destroy(); failUpload(413, 'Files up to 2 GB can be attached.'); } });
-    req.on('aborted', () => { out.destroy(); log(`Attach of ${name} was interrupted after ${Math.round(got / 1024)} KB.`); fs.unlink(tmp, () => {}); });
+    req.on('aborted', () => { out.destroy(); log(`Attach of ${name} was interrupted after ${Math.round(got / 1024)} KB.`); fs.unlink(tmp, () => {}); unreserve(); resolve(); });
     out.on('error', err => failUpload(500, `Couldn’t save that file: ${err.message}`));
     out.on('finish', () => {
       if (!got) return failUpload(400, 'That file arrived empty. Try attaching it again.');
@@ -1756,10 +1767,10 @@ function sendMedia(req, res, url) {
     let end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
     if (start >= size || start > end) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }); return res.end(); }
     res.writeHead(206, { ...head, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1 });
-    return fs.createReadStream(f.path, { start, end }).pipe(res);
+    return require('stream').pipeline(fs.createReadStream(f.path, { start, end }), res, () => {});
   }
   res.writeHead(200, { ...head, 'Content-Length': size });
-  return fs.createReadStream(f.path).pipe(res);
+  return require('stream').pipeline(fs.createReadStream(f.path), res, () => {});
 }
 
 function validImages(images) {
@@ -1962,7 +1973,8 @@ async function handleRequest(req, res, { remote = false } = {}) {
   if (!remote && host !== `127.0.0.1:${PORT}` && host !== `localhost:${PORT}`) { res.writeHead(403); return res.end('Forbidden'); }
   const fwd = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
   if (req.headers.origin && (remote ? (req.headers.origin !== `http://${host}` && req.headers.origin !== `https://${host}` && !(fwd && req.headers.origin === `https://${fwd}`)) : !ORIGINS.has(req.headers.origin))) { res.writeHead(403); return res.end('Forbidden'); }
-  const url = new URL(req.url, `http://${host}`);
+  let url;
+  try { url = new URL(req.url, `http://${host}`); } catch { res.writeHead(400); return res.end('Bad request'); }
   try {
     if (req.method === 'GET' && url.pathname === '/') {
       const html = fs.readFileSync(path.join(APP_DIR, 'index.html'), 'utf8').replace('__TOKEN__', TOKEN).replace('__REMOTE__', remote ? 'true' : 'false');
@@ -2012,7 +2024,10 @@ async function handleRequest(req, res, { remote = false } = {}) {
     res.writeHead(404); res.end('Not found');
   } catch (err) {
     if (!err.status || err.status >= 500) log(`Error on ${req.method} ${url.pathname}: ${err.stack || err.message}`);
-    if (!res.headersSent) send(res, err.status || 500, { error: err.message, reason: err.reason });
+    // The app's own messages are written for you; a slip inside (a missing file, a code error) isn't, so it
+    // says so plainly (the details are in switcher.log).
+    const internal = !err.status && (err.code || err instanceof TypeError || err instanceof ReferenceError || err instanceof RangeError || err instanceof SyntaxError);
+    if (!res.headersSent) send(res, err.status || 500, { error: internal ? 'Something went wrong on the PC. The details are in switcher.log; trying again usually helps.' : err.message, reason: err.reason });
   }
   return undefined;
 }

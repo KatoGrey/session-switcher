@@ -321,7 +321,7 @@ function images(list) {
   if (!list || !list.length) return '';
   return `<div class="imgs">${list.map(im => (im.path ? `<button type="button" class="thumb" data-full="${esc(imageUrl(im.path))}"><img src="${esc(imageUrl(im.path))}" alt="Image" loading="lazy"></button>`
     : im.src ? `<button type="button" class="thumb" data-full="${esc(im.src)}"><img src="${esc(im.src)}" alt="Attached image"></button>`
-    : im.url ? `<a class="thumb-link" href="${esc(im.url)}" target="_blank" rel="noopener noreferrer">Image link</a>` : '<span class="thumb-missing">Image too large to preview</span>')).join('')}</div>`;
+    : im.url ? `<a class="thumb-link" href="${esc(im.url)}" target="_blank" rel="noopener noreferrer">Image link</a>` : im.dropped ? '<span class="thumb-missing">A picture (it’s in the chat’s history; reopen the chat to see it)</span>' : '<span class="thumb-missing">Image too large to preview</span>')).join('')}</div>`;
 }
 const TOOL_VERBS = { Bash: 'Ran', PowerShell: 'Ran', Read: 'Read', Write: 'Wrote', Edit: 'Edited', MultiEdit: 'Edited', NotebookEdit: 'Edited', Glob: 'Found', Grep: 'Searched', WebFetch: 'Fetched', WebSearch: 'Searched', Agent: 'Delegated', Task: 'Delegated', TodoWrite: 'Tasks', TaskCreate: 'Task', TaskUpdate: 'Task', Artifact: 'Artifact', AskUserQuestion: 'Asked' };
 function toolDetail(view) {
