@@ -13,8 +13,20 @@ const permFam = provider => (provider === 'codex' ? 'codex' : 'claude');
 const permDefault = provider => { const f = permFam(provider); return (S.lite.permissions && S.lite.permissions[f]) || (S.appPermissions && S.appPermissions[f]) || (f === 'claude' ? 'default' : 'agent'); };
 
 /* ---------- Markdown, just enough (escaped first; links only to http(s)) ---------- */
-function mdHtml(src) {
+// Pictures a reply names: a Markdown image, a link or address ending in .png/.jpg/.gif/.webp, or a
+// file path in code. Each shows as a small picture under the paragraph that names it (click to
+// enlarge). Files come from the chat's own folders through /api/image; ones that can't load hide.
+const IMG_EXT = /\.(png|jpe?g|gif|webp)(\?[^\s]*)?$/i;
+function picSrc(ref, session) {
+  if (/^https?:\/\//i.test(ref) || /^data:image\//.test(ref)) return ref;
+  if (!session) return null;
+  return `/api/image?${new URLSearchParams({ token: TOKEN, path: ref.replace(/^file:\/\//, ''), session })}`;
+}
+function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' ? CV.id : null } = {}) {
   const blocks = [];
+  let pics = [];
+  const pic = ref => { const u = picSrc(ref, session); if (u && !pics.includes(u) && pics.length < 8) pics.push(u); };
+  const thumbs = () => { if (!pics.length) return ''; const h = `<div class="md-thumbs">${pics.map(u => `<img src="${esc(u)}" alt="" loading="lazy" data-zoom="1" onerror="this.remove()">`).join('')}</div>`; pics = []; return h; };
   let t = String(src || '').replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (m, lang, code) => {
     code = code.replace(/\n$/, '');
     // HTML can be seen drawn, in a frame that runs no scripts and reaches nothing.
@@ -24,20 +36,23 @@ function mdHtml(src) {
   // Code, links and bare addresses are set aside first, so bold and italics can't reach inside them.
   const inline = x => {
     const held = [], hold = h => `\u0001${held.push(h) - 1}\u0001`;
+    // A Markdown image shows where it's written.
+    x = String(x).replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (m, alt, ref) => { const u = picSrc(ref, session); return u ? `\u0002${held.push(`<img class="md-img" src="${esc(u)}" alt="${esc(alt)}" data-zoom="1" onerror="this.remove()">`) - 1}\u0002` : alt; });
     return esc(x)
-      .replace(/`([^`\n]+)`/g, (m, c) => hold(`<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`))
-      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => hold(`<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`))
+      .replace(/\u0002(\d+)\u0002/g, (m, i) => hold(held[Number(i)]))
+      .replace(/`([^`\n]+)`/g, (m, c) => (IMG_EXT.test(c.trim()) && typeof looksLikePath === 'function' && looksLikePath(c.trim()) ? pic(c.trim()) : null, hold(`<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`)))
+      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => (IMG_EXT.test(href) && pic(href), hold(`<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`)))
       // A link to a file (a relative path, ~/…, /Users/…) opens it beside the chat.
-      .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : hold(`<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`)))
+      .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : (IMG_EXT.test(href) && pic(href), hold(`<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`))))
       // A bare address is a link too (without the full stop or bracket that ends its sentence).
-      .replace(/\bhttps?:\/\/[^\s<>"')\]]+/g, u => { const t = u.replace(/(&quot;|&#39;|[.,;:!?*_])+$/, ''); return hold(`<a href="${t}" target="_blank" rel="noopener noreferrer">${t}</a>`) + u.slice(t.length); })
+      .replace(/\bhttps?:\/\/[^\s<>"')\]]+/g, u => { const t = u.replace(/(&quot;|&#39;|[.,;:!?*_])+$/, ''); if (IMG_EXT.test(t)) pic(t.replace(/&amp;/g, '&')); return hold(`<a href="${t}" target="_blank" rel="noopener noreferrer">${t}</a>`) + u.slice(t.length); })
       .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
       .replace(/(^|[^*\w])\*([^*\n]+)\*(?=[^*\w]|$)/g, '$1<i>$2</i>')
       .replace(/\u0001(\d+)\u0001/g, (m, i) => held[Number(i)]);
   };
   const out = [];
   let list = null;
-  const flush = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${i}</li>`).join('')}</${list.tag}>`); list = null; } };
+  const flush = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${i}</li>`).join('')}</${list.tag}>`); list = null; } const th = thumbs(); if (th) out.push(th); };
   const lines = t.split('\n');
   // A table: a row of cells, a |---|:--:| line under it, then its rows. Cells may hold links and code.
   const cells = l => l.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
@@ -72,6 +87,7 @@ function mdHtml(src) {
     if (/^\s*([-*_])\1{2,}\s*$/.test(line)) { out.push('<hr>'); continue; }
     if (!line.trim()) { out.push(''); continue; }
     out.push(`<p>${inline(line)}</p>`);
+    const th = thumbs(); if (th) out.push(th);
   }
   flush();
   return out.join('').replace(/\u0000(\d+)\u0000/g, (m, i) => blocks[Number(i)]);

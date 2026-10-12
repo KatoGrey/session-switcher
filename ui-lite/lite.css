@@ -1010,3 +1010,8 @@ blockquote p { margin: 4px 0; }
 .pr-g.pr-merged { color: #8b5cf6; }
 .foot-row .nav-i.mute { flex: none; width: 34px; padding: 0; color: var(--muted); }
 .foot-row .nav-i.mute[aria-pressed="true"] { color: var(--st-bug); }
+
+/* Pictures a reply names, small under the paragraph (click to enlarge). */
+.md-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
+.md-thumbs img { height: 120px; max-width: 220px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; background: var(--hover); }
+.md-img { display: block; max-width: min(100%, 520px); max-height: 420px; border-radius: 8px; border: 1px solid var(--line); margin: 6px 0; cursor: zoom-in; }
