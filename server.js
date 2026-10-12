@@ -902,10 +902,10 @@ async function handleApi(req, res, url, remote = false) {
   const c = config();
   const route = `${req.method} ${url.pathname}`;
   if (remote && (LOCAL_ONLY.has(url.pathname) || url.pathname.startsWith('/api/phone'))) throw fail(403, 'That can only be done on the PC itself.');
-  if (route === 'GET /api/phone') return send(res, 200, { ...phone.status(), pushPhones: pushes.count() });
+  if (route === 'GET /api/phone') return send(res, 200, { ...phone.status(), pushPhones: pushes.count(), appsListening: [...new Set([...appWatchers].map(w => w.device.id))] });
   if (route === 'GET /api/phone/tailscale') return send(res, 200, await tailscaleStatus());
   if (route === 'POST /api/phone/tailscale-serve') return send(res, 200, await tailscaleServe());
-  if (url.pathname.startsWith('/api/push')) return pushApi(req, res, route, remote);
+  if (url.pathname.startsWith('/api/push') || url.pathname.startsWith('/api/notify')) return pushApi(req, res, route, remote);
 
   if (route === 'GET /api/state') return send(res, 200, stateFor());
   if (route === 'GET /api/themes') return send(res, 200, themeStudio.list());
@@ -1517,7 +1517,7 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, { ...phone.startPairing(), status: phone.status() });
     }
     case '/api/phone/pair-cancel': phone.cancelPairing(); return send(res, 200, phone.status());
-    case '/api/phone/forget': phone.forget(String(body.id || '')); pushes.forgetDevice(String(body.id || '')); return send(res, 200, { ...phone.status(), pushPhones: pushes.count() });
+    case '/api/phone/forget': phone.forget(String(body.id || '')); pushes.forgetDevice(String(body.id || '')); for (const w of appWatchers) if (w.device.id === String(body.id || '')) { appWatchers.delete(w); try { w.res.end(); } catch { /* gone */ } } return send(res, 200, { ...phone.status(), pushPhones: pushes.count() });
     case '/api/quit': {
       send(res, 200, { ok: true });
       log('Quit from the app.');
@@ -1853,7 +1853,9 @@ async function handleRequest(req, res, { remote = false } = {}) {
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
       const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media' || url.pathname === '/api/themes/art') && url.searchParams.get('token') === TOKEN;
       if (imageGet && url.pathname === '/api/media') return sendMedia(req, res, url);
-      const pushAct = remote && req.device && req.method === 'POST' && url.pathname === '/api/push/act';
+      // The notification's buttons and the Android app's connection have no page token: the phone's
+      // pairing (and, for Allow/Deny, a one-time token) is what lets them in.
+      const pushAct = remote && req.device && ((req.method === 'POST' && url.pathname === '/api/push/act') || (req.method === 'GET' && url.pathname === '/api/notify/stream'));
       if (req.headers['x-switcher-token'] !== TOKEN && !imageGet && !pushAct) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
       return await handleApi(req, res, url, remote);
     }
@@ -1869,7 +1871,7 @@ const server = http.createServer((req, res) => { handleRequest(req, res); });
 // Phone access: off unless turned on in Setup.
 const phone = remoteLib.createRemote({ dataDir: DATA_DIR, appDir: APP_DIR, version: APP_VERSION, log, getPrefs: () => config().prefs, handle: handleRequest });
 
-// ---------- push notifications to phones (lib/push.js; the phone's side: sw.js, ui/push.js) ----------
+// ---------- notifications on phones (lib/push.js; the phone's side: the Android app, sw.js, ui/push.js) ----------
 const pushes = pushLib.createPush({ dataDir: DATA_DIR, log });
 pushes.keepDevices(phone.status().devices.map(d => d.id));
 const pushSeen = { map: new Map(), primed: false };
@@ -1891,31 +1893,64 @@ function wantsToText(p) {
   if (p.detail) return `Wants to run: ${p.detail}`;
   return p.summary ? `Wants to ${p.toolName === 'Edit' || p.toolName === 'Write' ? 'edit' : 'use'}: ${p.summary}` : `Wants to use ${p.toolName || 'a tool'}`;
 }
+// The Android apps connected right now (each listens on /api/notify/stream while on your Wi-Fi).
+const appWatchers = new Set();   // { res, device }
+const sidOf = x => (x.parentKey ? (() => { try { return chats.get(x.parentKey).sessionId; } catch { return null; } })() : x.sessionId);
+// One notification's message. id tells the phone whether it has shown this one already.
+function pushMessage(n, now = Date.now()) {
+  const x = n.chat;
+  if (n.kind === 'clear') return { kind: 'clear', tag: `needs-${x.key}`, key: x.key, at: now };
+  const title = chatTitleOf(x), folder = x.folder ? ` · ${x.folder}` : '';
+  if (n.kind === 'needs') {
+    const p = n.pending;
+    let act = null;
+    if (!p.question) { act = crypto.randomBytes(18).toString('base64url'); pushActs.set(act, { key: x.key, requestId: p.requestId, exp: now + 3600e3 }); }
+    return { kind: 'needs', id: `${x.key}:${p.requestId}`, title: `${title} needs you`, body: `${wantsToText(p)}`.slice(0, 220), chatTitle: title, tag: `needs-${x.key}`, key: x.key, sessionId: x.sessionId || null, act, at: now, ttl: 3600 };
+  }
+  return { kind: 'reply', id: `${x.key}:${x.finishedAt}`, title: `${title} replied`, body: (pushLine(x.lastText) || 'Finished its turn.').slice(0, 200) + folder, chatTitle: title, tag: `reply-${x.key}`, key: x.key, sessionId: x.sessionId || null, at: now, ttl: 6 * 3600 };
+}
+const toApp = (w, msg) => { try { w.res.write(`data: ${JSON.stringify(msg)}\n\n`); } catch { /* gone; its close handler tidies up */ } };
 async function sendPushes() {
-  const list = chats.summaries();
-  const fresh = pushLib.news(list, pushSeen);
-  if (!fresh.length || !pushes.count()) return;
+  const fresh = pushLib.news(chats.summaries(), pushSeen);
+  if (!fresh.length || (!pushes.count() && !appWatchers.size)) return;
   const now = Date.now();
   for (const [k, v] of pushActs) if (v.exp < now) pushActs.delete(k);
   for (const n of fresh) {
-    const x = n.chat, title = chatTitleOf(x), folder = x.folder ? ` · ${x.folder}` : '';
-    let msg;
-    if (n.kind === 'needs') {
-      const p = n.pending;
-      let act = null;
-      if (!p.question) { act = crypto.randomBytes(18).toString('base64url'); pushActs.set(act, { key: x.key, requestId: p.requestId, exp: now + 3600e3 }); }
-      msg = { kind: 'needs', title: `${title} needs you`, body: `${wantsToText(p)}`.slice(0, 220), chatTitle: title, tag: `needs-${x.key}`, key: x.key, sessionId: x.sessionId || null, act, at: now, ttl: 3600 };
-    } else {
-      msg = { kind: 'reply', title: `${title} replied`, body: (pushLine(x.lastText) || 'Finished its turn.').slice(0, 200) + folder, chatTitle: title, tag: `reply-${x.key}`, key: x.key, sessionId: x.sessionId || null, at: now, ttl: 6 * 3600 };
-    }
+    const msg = pushMessage(n, now);
     // Per phone: its alert level for the chat (a partner goes by its chat), and its quiet hours.
-    const sid = x.parentKey ? (() => { try { return chats.get(x.parentKey).sessionId; } catch { return null; } })() : x.sessionId;
-    await pushes.notify(msg, prefs => pushLib.wants(prefs, { kind: n.kind, sessionId: sid }));
+    const want = prefs => msg.kind === 'clear' || pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat) });
+    for (const w of appWatchers) if (want(pushes.appPrefs(w.device.id))) toApp(w, msg);
+    if (msg.kind !== 'clear' && pushes.count()) await pushes.notify(msg, want);
   }
 }
+// What's waiting right now, for an app that has just connected (back on your Wi-Fi): approvals, and
+// replies since it last heard.
+function waitingNow(since) {
+  const out = [];
+  for (const x of chats.summaries()) {
+    if (!x.key) continue;
+    for (const p of x.pending || []) out.push({ kind: 'needs', chat: x, pending: p });
+    if (x.phase === 'idle' && x.finishedAt && x.finishedAt > since && !(x.pending || []).length) out.push({ kind: 'reply', chat: x });
+  }
+  return out;
+}
 async function pushApi(req, res, route, remote) {
-  const body = req.method === 'POST' ? await readBody(req) : {};
   const dev = remote ? req.device : null;
+  // The Android app's connection: notifications as they happen, while it's on your Wi-Fi.
+  if (route === 'GET /api/notify/stream') {
+    if (!dev) throw fail(403, 'Only a paired phone listens here.');
+    const since = Math.max(0, Number(new URL(req.url, 'http://x').searchParams.get('since')) || 0);
+    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    const w = { res, device: dev };
+    res.write(`retry: 5000\ndata: ${JSON.stringify({ kind: 'hello', pc: os.hostname(), at: Date.now() })}\n\n`);
+    const prefs = pushes.appPrefs(dev.id);
+    for (const n of waitingNow(since)) if (pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat) })) toApp(w, { ...pushMessage(n), catchUp: true });
+    appWatchers.add(w);
+    const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* closed */ } }, 25000);
+    req.on('close', () => { clearInterval(ping); appWatchers.delete(w); });
+    return undefined;
+  }
+  const body = req.method === 'POST' ? await readBody(req) : {};
   if (route === 'GET /api/push') return send(res, 200, { key: pushes.publicKey(), phone: !!dev, subscribed: dev ? pushes.count(dev.id) > 0 : false, phones: pushes.count() });
   if (route === 'POST /api/push/act') {
     const a = pushActs.get(String(body.token || ''));
@@ -1930,12 +1965,18 @@ async function pushApi(req, res, route, remote) {
     return send(res, 200, { ok: true });
   }
   if (!dev) throw fail(403, 'Turn notifications on from the phone itself.');
+  if (route === 'POST /api/notify/prefs') { pushes.setAppPrefs(dev.id, body.prefs || {}); return send(res, 200, { ok: true }); }
+  if (route === 'POST /api/notify/test') {
+    let n = 0;
+    for (const w of appWatchers) if (w.device.id === dev.id) { toApp(w, { kind: 'test', id: `test:${Date.now()}`, title: 'Session Switcher', body: 'Notifications work on this phone.', tag: 'test', at: Date.now() }); n++; }
+    return send(res, 200, { ok: n > 0, why: n ? null : 'The app isn’t connected for notifications yet. Turn them on, and give it a moment.' });
+  }
   const sub = body.subscription || {};
   if (route === 'POST /api/push/subscribe') { pushes.subscribe(dev.id, sub, body.prefs || {}); log(`Push: notifications on for “${dev.name}”.`); return send(res, 200, { ok: true }); }
   if (route === 'POST /api/push/prefs') return send(res, 200, { ok: pushes.setPrefs(dev.id, String(body.endpoint || ''), body.prefs || {}) });
   if (route === 'POST /api/push/unsubscribe') { pushes.unsubscribe(dev.id, String(body.endpoint || '')); return send(res, 200, { ok: true }); }
   if (route === 'POST /api/push/test') {
-    const out = await pushes.notify({ kind: 'test', title: 'Session Switcher', body: 'Notifications work on this phone.', tag: 'test', at: Date.now(), ttl: 300 }, (p, s) => s.deviceId === dev.id);
+    const out = await pushes.notify({ kind: 'test', title: 'Session Switcher', body: 'Notifications work on this phone.', tag: 'test', at: Date.now(), ttl: 300 }, (p, sb) => sb.deviceId === dev.id);
     const ok = out.some(o => o.status >= 200 && o.status < 300);
     return send(res, 200, { ok, why: ok ? null : out.length ? `The push service said ${out[0].status || 'nothing'}.` : 'This phone isn’t signed up for notifications.' });
   }

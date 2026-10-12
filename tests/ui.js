@@ -1559,7 +1559,9 @@ module.exports = [
       const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
       await b.eval(`setup.showModal(); setupBody.innerHTML = '<div class="prefs" id="phoneBox"></div>'; loadPhone(); return 1`); await sleep(1200);
       const box = () => b.eval(`const x = document.getElementById('tsBox'); return x ? x.textContent.replace(/\\s+/g, ' ').trim() : ''`);
-      t.check('Phone access explains why notifications need a secure address', /Notifications on your phone/.test(await box()) && /secure \(https\) address/.test(await box()), await box());
+      t.check('Phone access starts with the Android app', /Notifications on your phone/.test(await box()) && /Android: in the app, open Setup/.test(await box()), await box());
+      t.check('Tailscale is folded away, for an iPhone or a browser', await b.eval(`const d = document.querySelector('#tsBox details'); return !!d && !d.open && /iPhone, or a browser/.test(d.querySelector('summary').textContent)`));
+      await b.eval(`document.querySelector('#tsBox details').open = true; return 1`);
       t.check('it offers to set up Tailscale’s address', /tavern-pc\.tail1234\.ts\.net/.test(await box()) && !!(await b.eval(`return !!document.querySelector('[data-ts="serve"]')`)));
       await b.clickOn('[data-ts="serve"]'); await sleep(600);
       t.check('then shows the address and what to do on the phone', calls.some(([p]) => p === '/api/phone/tailscale-serve') && /Secure address: https:\/\/tavern-pc/.test(await box()) && /Add to Home Screen/.test(await box()), await box());
@@ -1567,7 +1569,10 @@ module.exports = [
       await t.shot(b, 'tailscale');
       // The phone's side, by what it is.
       const html = what => b.eval(`${what}; const h = pushBoxHtml(); delete window.Android; return h.replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ')`);
-      t.check('the Android app points to Chrome for notifications', /The Android app can’t show notifications/.test(await html('window.Android = {}')));
+      t.check('an older Android app is asked to update', /Update the app to get notifications/.test(await html('window.Android = {}')));
+      t.check('the new Android app gets its own switch', /Notifications on this phone/.test(await html(`window.Android = { notifyState: () => '{"on":false}' }`)) && /home Wi-Fi/.test(await html(`window.Android = { notifyState: () => '{"on":false}' }`)));
+      t.check('…and says when Android blocks them', /Android is blocking/.test(await html(`window.Android = { notifyState: () => '{"on":true,"allowed":false,"battery":false}' }`)));
+      t.check('…or when the battery saver would delay them', /while the phone sleeps/.test(await html(`window.Android = { notifyState: () => '{"on":true,"allowed":true,"battery":false}' }`)));
       t.check('a browser that can gets the switch', /Notifications on this phone/.test(await html('1')) && /Allow and Deny right on it/.test(await html('1')));
       t.check('quiet hours and alert levels go to the PC with the subscription', await b.eval(`store('quiet-hours', JSON.stringify({ on: true, from: '22:00', to: '07:00' })); const p = pushPrefs(); store('quiet-hours', ''); return p.quiet.on === true && typeof p.tz === 'string' && typeof p.levels === 'object'`));
     },

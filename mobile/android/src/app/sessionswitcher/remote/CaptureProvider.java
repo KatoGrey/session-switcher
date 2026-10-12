@@ -15,7 +15,8 @@ import java.io.FileNotFoundException;
 /**
  * Where the camera app saves a photo you take from "Attach → Take a photo". The camera writes
  * to a file in this app's cache through a content:// address it's granted for that one shot;
- * the page then reads it like any picked file. Not exported: only apps we grant a URI can use it.
+ * the page then reads it like any picked file. An app update downloaded from the PC waits here for
+ * the installer too. Not exported: only apps we grant a URI can use it.
  */
 public class CaptureProvider extends ContentProvider {
     static final String AUTHORITY = "app.sessionswitcher.remote.captures";
@@ -65,7 +66,7 @@ public class CaptureProvider extends ContentProvider {
     @Override
     public String getType(Uri uri) {
         String n = String.valueOf(uri.getLastPathSegment()).toLowerCase();
-        return n.endsWith(".mp4") ? "video/mp4" : "image/jpeg";
+        return n.endsWith(".mp4") ? "video/mp4" : n.endsWith(".apk") ? "application/vnd.android.package-archive" : "image/jpeg";
     }
 
     @Override public Uri insert(Uri uri, ContentValues values) { return null; }

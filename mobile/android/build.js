@@ -24,6 +24,8 @@ const { spawnSync } = require('child_process');
 const ROOT = __dirname;
 const OUT = path.join(ROOT, 'build');
 const APK_NAME = 'SessionSwitcher.apk';
+// The app's version, in one place: the PC reads it (next to the APK) to offer the update.
+const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'version.json'), 'utf8'));
 const IS_WIN = process.platform === 'win32';
 const EXE = IS_WIN ? '.exe' : '';
 const args = new Set(process.argv.slice(2));
@@ -265,7 +267,7 @@ async function main() {
     '-A', path.join(ROOT, 'assets'),
     '--java', dirs.gen,
     '--min-sdk-version', '24', '--target-sdk-version', '34',
-    '--version-code', '6', '--version-name', '5.2.0',
+    '--version-code', String(VERSION.code), '--version-name', VERSION.name,
     '--auto-add-overlay',
     dirs.res]);
 
@@ -297,6 +299,7 @@ async function main() {
   rmrf(finalApk);
   fs.renameSync(signed, finalApk);
   rmrf(signed + '.idsig');
+  fs.writeFileSync(finalApk + '.json', JSON.stringify(VERSION) + '\n');
   log(`OK -> ${finalApk} (${(fs.statSync(finalApk).size / 1024).toFixed(1)} KiB)`);
   if (args.has('--clean')) rmrf(tmp);
 }

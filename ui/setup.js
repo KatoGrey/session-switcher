@@ -88,7 +88,7 @@ function renderPhone(st) {
     <div class="ph-ts" id="tsBox"></div>
     ${st.devices.length ? `<p class="ph-h">Paired phones</p><ul class="ph-dev">${st.devices.map(d => `<li><span class="glyph" aria-hidden="true">◈</span><span><b>${esc(d.name)}</b><small>paired ${esc(agoL(d.created))}${d.lastSeen ? ` · last used ${esc(agoL(d.lastSeen))}` : ''}</small></span><button class="btn quiet sm" data-phone="forget" data-id="${esc(d.id)}">Remove</button></li>`).join('')}</ul>` : ''}
     <p class="ph-warn">A paired phone can do anything you can do here, including letting Claude run commands on this PC. Pair only your own phones, and remove one you lose. ${S.platform === 'darwin' ? 'macOS may ask to let Node accept incoming connections; allow it.' : 'Windows may ask to let Node.js through the firewall; allow it on private networks.'}</p>` : ''}`;
-  Push.phones = st.pushPhones || 0;
+  Push.phones = st.pushPhones || 0; Push.apps = (st.appsListening || []).length;
   if (st.enabled) loadTailscale();
   if (st.pairing) phoneTimer = setInterval(() => {
     const l = Math.max(0, Math.round((st.pairing.expiresAt - Date.now()) / 1000));

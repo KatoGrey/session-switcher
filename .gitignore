@@ -30,6 +30,7 @@ node_modules/
 mobile/android/build/
 mobile/android/*.keystore
 *.apk
+*.apk.json
 *.zip
 
 # Files attached in chats run inside this folder

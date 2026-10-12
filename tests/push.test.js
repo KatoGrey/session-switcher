@@ -101,8 +101,10 @@ test('push: what’s new is approvals that just came up and replies that just fi
   assert.deepEqual(n.map(x => `${x.kind}:${x.pending.requestId}`), ['needs:r1']);
   assert.deepEqual(push.news([chat({ phase: 'waiting', pending: [{ requestId: 'r1' }] })], seen), [], 'the same one isn’t sent twice');
   n = push.news([chat({ phase: 'idle', finishedAt: 5 })], seen);
-  assert.deepEqual(n.map(x => x.kind), ['reply']);
+  assert.deepEqual(n.map(x => x.kind), ['reply', 'clear'], 'answered: its notification can go');
   assert.deepEqual(push.news([chat({ phase: 'idle', finishedAt: 5 })], seen), []);
+  push.news([chat({ phase: 'waiting', pending: [{ requestId: 'r9' }] })], seen);
+  assert.deepEqual(push.news([], seen).map(x => `${x.kind}:${x.chat.key}`), ['clear:k1'], 'a chat that stopped while asking clears too');
   // Chats elsewhere (terminals, the desktop app) aren't this app's to push about.
   assert.deepEqual(push.news([{ source: 'terminal', key: null, phase: 'waiting', pending: [{ requestId: 'z' }] }], seen), []);
 });

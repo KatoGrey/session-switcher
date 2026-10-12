@@ -298,6 +298,24 @@ test('push: a paired phone signs up for notifications; Allow/Deny needs its one-
     // The notification's buttons send no page token; a wrong or used one-time token is refused.
     assert.equal((await call('/api/push/act', { token: 'nope', decision: 'allow' }, { tok: false })).status, 410);
     assert.equal((await call('/api/push/subscribe', { subscription }, { tok: false })).status, 403, 'everything else still needs the page’s token');
+    // The Android app's connection: the phone's pairing lets it in (no page token), and it hears tests.
+    assert.equal((await fetch(`${phone}/api/notify/stream`)).status, 401, 'not without pairing');
+    const ac = new AbortController();
+    const stream = await fetch(`${phone}/api/notify/stream?since=0`, { headers: { cookie }, signal: ac.signal });
+    assert.equal(stream.status, 200);
+    assert.match(stream.headers.get('content-type'), /text\/event-stream/);
+    const reader = stream.body.getReader(), dec = new TextDecoder();
+    let got = '';
+    const until = async re => { const t0 = Date.now(); while (!re.test(got) && Date.now() - t0 < 5000) { const { value, done } = await reader.read(); if (done) break; got += dec.decode(value); } return re.test(got); };
+    assert.ok(await until(/"kind":"hello"/), got);
+    assert.equal((await call('/api/notify/prefs', { prefs: { levels: { abc: 'off' }, quiet: { on: true, from: '22:00', to: '07:00' }, tz: 'Europe/London' } })).status, 200);
+    assert.deepEqual((await s.call('/api/phone')).json.appsListening.length, 1, 'the PC sees the app listening');
+    assert.equal((await call('/api/notify/test', {})).json.ok, true);
+    assert.ok(await until(/"kind":"test"/), got);
+    ac.abort();
+    // The app can tell when the PC has a newer version of it.
+    const hello = await (await fetch(`${phone}/hello`)).json();
+    assert.ok(hello.apk === null || Number.isInteger(hello.apk.code), JSON.stringify(hello));
     // Removing the phone stops its notifications.
     const id = (await s.call('/api/phone')).json.devices[0].id;
     assert.equal((await s.call('/api/phone/forget', { id })).json.pushPhones, 0);

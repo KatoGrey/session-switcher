@@ -376,16 +376,18 @@ How it stays safe:
 
 ### Notifications on your phone
 
-A chat that needs your OK, or one that replies, can notify your phone even when Session Switcher isn't open on it. On Android the notification has **Allow** and **Deny** right on it. On an iPhone, tapping it opens the chat so you can answer there.
+A chat that needs your OK, or one that replies, can notify your phone even when Session Switcher isn't open on it.
 
-Phones only allow notifications on a secure (https) address, so this uses Tailscale's:
+**Android:** in the app, open Setup → **Notifications on this phone**. They come while the phone is on your home Wi-Fi, with **Allow** and **Deny** right on the notification; when you're back on your Wi-Fi, it shows what's waiting. Nothing goes anywhere but your PC. Android shows a small "Watching your chats" notification while it listens (you can collapse it), and may ask to let the app run in the background so notifications arrive while the phone sleeps. The app updates itself: when the PC has a newer version, it offers it.
+
+**iPhone, or a browser:** these use Web Push, which phones only allow on a secure (https) address, so this goes through Tailscale:
 
 1. Install [Tailscale](https://tailscale.com/download) on the PC and the phone, signed in to the same account.
-2. On the PC: Setup → **Phone access** → **Notifications on your phone** → **Set up the secure address**. The first time, Tailscale may ask you to turn on HTTPS for your network; the link is right there. This runs `tailscale serve`, which only your own devices can reach.
-3. On the phone, open the `https://…ts.net` address it shows. On an iPhone, use Safari → **Add to Home Screen**; on Android, Chrome → **Add to Home screen**. Pair it once (a new address pairs separately).
-4. On the phone: Setup → **Notifications on this phone**.
+2. On the PC: Setup → **Phone access** → **iPhone, or a browser** → **Set up the secure address**. The first time, Tailscale may ask you to turn on HTTPS for your network; the link is right there. This runs `tailscale serve`, which only your own devices can reach.
+3. On the phone, open the `https://…ts.net` address it shows (iPhone: Safari → **Add to Home Screen**) and pair it once.
+4. On the phone: Setup → **Notifications on this phone**. On an iPhone, tapping one opens the chat to answer it.
 
-Each phone follows its own alert levels and quiet hours. Messages are encrypted for the phone before they leave the PC. The signing keys are kept in `push.json`. **Remove** a phone and its notifications stop. The Android app (a WebView) can't show notifications; use the address in Chrome for them.
+Each phone follows its own alert levels and quiet hours. **Remove** a phone and its notifications stop.
 
 To build the app yourself, run `mobile/android/build.cmd` (details in `mobile/android/README.md`). It needs no Android Studio: the first run downloads a JDK and the Android build tools (about 560 MB) into `%LOCALAPPDATA%\SessionSwitcherBuild`. A GitHub Actions workflow (`.github/workflows/android.yml`) builds it in the cloud too.
 
