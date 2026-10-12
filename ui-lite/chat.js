@@ -69,9 +69,11 @@ const CV = { id: null, key: null, info: null, items: [], cursor: null, es: null,
 
 function chatTitle() { const c = chatBy.get(CV.id); return c ? c.title : (CV.info && CV.info.title) || 'New chat'; }
 
-async function openChatView(id, { key = null, provider = null } = {}) {
+async function openChatView(id, { key = null, provider = null, keepRead = false } = {}) {
   if (CV.es) { CV.es.close(); CV.es = null; }
-  Object.assign(CV, { id, key, inRepo: false, info: null, items: [], queue: queueFor(id), cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
+  // When it catches up on a chat you're reading higher up in, you stay where you were; otherwise it opens at the end.
+  const readAt = keepRead ? CV.readAt : null;
+  Object.assign(CV, { readAt, id, key, inRepo: false, info: null, items: [], queue: queueFor(id), cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
   resetComposer();
   const c = chatBy.get(id);
   CV.provider = provider || (c ? c.provider : 'claude');
@@ -131,7 +133,7 @@ setInterval(async () => {
     const x = (j.live || []).find(l => l.key === CV.key || (l.sessionId && String(l.sessionId).toLowerCase() === String(CV.id).toLowerCase()));
     if (x && !x.working && !(x.pending || []).length && S.view === 'chat') {
       const typed = $('msgBox') ? $('msgBox').value : '';
-      await openChatView(CV.id, { key: CV.key });
+      await openChatView(CV.id, { key: CV.key, keepRead: true });
       if (typed && $('msgBox') && !$('msgBox').value) { $('msgBox').value = typed; autosize($('msgBox')); }
     }
     else CV.lastEventAt = Date.now();
@@ -307,7 +309,9 @@ function paintChat() {
   const h = $('chatHead'); if (h && !h._h) h._h = chatHead();
   paintFeed(); paintPending(); paintBar(); paintStatus();
   if (typeof paintViewer === 'function') { if (VW.open && VW.chat !== CV.id) closeViewer(); else paintViewer(); }
-  const f = $('feed'); f.scrollTop = f.scrollHeight;
+  const f = $('feed'); f.scrollTop = CV.readAt != null ? CV.readAt : f.scrollHeight;
+  // Where you're reading: null at the end (it follows new messages), else how far down you are.
+  f.addEventListener('scroll', () => { CV.readAt = f.scrollHeight - f.scrollTop - f.clientHeight < 160 ? null : f.scrollTop; }, { passive: true });
   if (!REMOTE && !matchMedia('(max-width: 760px)').matches) $('msgBox')?.focus();
 }
 const nearBottom = () => { const f = $('feed'); return !f || f.scrollHeight - f.scrollTop - f.clientHeight < 160; };
