@@ -1319,6 +1319,44 @@ module.exports = [
     },
   },
   {
+    name: 'long chat speed',
+    // One live round (your message, a reply with steps and pictures, its changes) in a chat of 100,
+    // 400 and 800 replies: it should stay quick however long the chat gets.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const res = await b.eval(`
+        let n = 0, seq = 100000;
+        const pic = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+        const round = () => {
+          const i = n++, at = new Date().toISOString();
+          handle({ kind: 'user', text: 'Round ' + i + ': tweak the rally numbers and check \`art/hero.png\`', images: [], at, local: true, seq: ++seq });
+          handle({ kind: 'assistant', mid: 'bench' + i, at, model: 'claude-opus-5-5', seq: ++seq, blocks: [
+            { type: 'tool', id: 'bt' + i, name: 'Read', summary: 'shots/round' + i + '.png', detail: '{}', detailKind: 'json', result: { text: '', isError: false, images: [{ src: pic }] } },
+            { type: 'tool', id: 'bu' + i, name: 'Edit', summary: 'scripts/bard/songs.lua', detail: { old: 'a', new: 'b' }, detailKind: 'diff', meta: { path: 'scripts/bard/songs.lua' }, result: { text: 'ok', isError: false, images: [] } },
+            { type: 'text', text: 'Done with round ' + i + '. Changed **songs.lua**; see \`art/hero.png\`.\\n\\n- a next step\\n- another one' },
+          ] });
+          handle({ kind: 'changes', turn: 10000 + i, files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 1, del: 1 }, { path: 'art/hero' + i + '.png', status: 'added', add: 0, del: 0 }], more: 0, since: at, seq: ++seq });
+          handle({ kind: 'result', ok: true, seq: ++seq });
+        };
+        const out = {};
+        for (const size of [100, 400, 800]) {
+          while (n < size) round();
+          // As between real replies: a moment for older chapters out of sight to fold.
+          const sc = document.getElementById('cScroll'); sc.scrollTop = sc.scrollHeight;
+          await new Promise(r => setTimeout(r, 2600));
+          const times = [];
+          for (let k = 0; k < 5; k++) { const t0 = performance.now(); round(); await new Promise(r => requestAnimationFrame(() => r())); times.push(performance.now() - t0); }
+          times.sort((a, b) => a - b);
+          out[size] = { ms: Math.round(times[2] * 10) / 10, nodes: document.querySelectorAll('#cFeed *').length };
+        }
+        return out;`);
+      console.log('    per round (median of 5, including the paint):', JSON.stringify(res));
+      t.check('a live round stays quick in a chat of 800 replies', res[800].ms < 40, res);
+      t.check('and doesn’t grow much with the chat’s length', res[800].ms < res[100].ms * 4 + 20, res);
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {
