@@ -182,11 +182,11 @@ function toggleFam(id, on) { const k = low(id); if (on === undefined ? !S.openFa
 function descAll(id, seen = new Set()) { const out = []; for (const c of S.chats) if (c.parent && low(c.parent) === low(id) && !seen.has(c.id)) { seen.add(c.id); out.push(c.id, ...descAll(c.id, seen)); } return out; }
 
 const focusList = () => allChats().filter(c => c.focus && statusOf(c) !== 'done').sort((a, b) => b.updated - a.updated);
-const bugList = () => allChats().filter(c => c.kind === 'bug');
 // Bug chats live under Bugs (the sidebar's Bugs group and page), not in their projects' lists.
 // A bug: one you marked, or one the guesser marked that came from a sweep or names a tracker issue
 // (VOY-2573). A title alone ("Fix carousel swipe stiffness") isn't enough; those stay in their project.
 const isBug = c => c.kind === 'bug' && (!(c.guessed && c.guessed.kind) || /\(from [^)]+\)\s*$|\b[A-Z]{2,6}-\d+\b/.test(c.fullTitle || c.title || ''));
+const bugList = () => allChats().filter(isBug);
 /* A bug's stage: Exploring (no fix yet: investigating, blocked or waiting on a question), Working (a
    fix is being built right now), Finish line (a PR is up: review, preview, testers, waiting to
    merge), Done (merged, or marked done). Taken from its PR and whether it's running; a stage you
