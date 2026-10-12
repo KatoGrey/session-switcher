@@ -926,6 +926,12 @@ const liteRoutes = createLiteRoutes({
   parentOf: id => organize.parentOf(id),
   // Routines in Lite: a run's last reply (Ollama's Codex threads aren't in Codex's list, so the
   // provider is said), starting a bug chat from a routine's findings, and the routines API.
+  // A chat's recent replies, newest last, joined (for finding things a chat reported earlier, like its PR).
+  recentReplies: async (id, provider, turns = 12) => {
+    const items = provider === 'codex' || isCodexId(id) ? ((await codex.history(id, null, null)).items || []) : (await chatLib.readHistory(sessions.fileFor(id), { limit: 60 })).items;
+    const texts = items.filter(it => it.kind === 'assistant').map(it => (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n')).filter(Boolean);
+    return texts.slice(-turns).join('\n\n').slice(-120000);
+  },
   lastReply: async (id, provider) => {
     // The whole reply: a sweep can list many findings, and anything past a cut would be lost.
     if (provider !== 'codex') return lastReply(id, 60000);
@@ -1617,6 +1623,10 @@ Your tools (from the \`switcher\` MCP server):
 - \`answer_permission\`: allow or deny a waiting request. Only works when Ryan has turned it on;
   otherwise tell him what's waiting.
 - \`start_sub_session\`: start a new chat linked to a parent chat, with a task.
+- \`archive_chats\`: archive chats (never deleted; Ryan can bring them back from Archived). Use it
+  when Ryan asks you to tidy up: finished helper and script runs, old routine runs, tests and
+  probes. Leave bug chats, chats that are working or waiting on Ryan, and chats with unmerged
+  work alone unless he says otherwise. Say which chats you archived, by title.
 - \`create_routine\` appears only if Session Switcher has routines (scheduled prompts).
 
 How to work:

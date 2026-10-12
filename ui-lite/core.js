@@ -183,7 +183,11 @@ function descAll(id, seen = new Set()) { const out = []; for (const c of S.chats
 
 const focusList = () => allChats().filter(c => c.focus && statusOf(c) !== 'done').sort((a, b) => b.updated - a.updated);
 const bugList = () => allChats().filter(c => c.kind === 'bug');
-const chatsOfProject = k => allChats().filter(c => c.project === k);
+// Bug chats live under Bugs (the sidebar's Bugs group and page), not in their projects' lists.
+const isBug = c => c.kind === 'bug';
+const chatsOfProject = k => allChats().filter(c => c.project === k && !isBug(c));
+// Runs started by scripts, agents and routines: out of every list, all on the Automation page.
+const automationList = () => S.chats.filter(c => !c.archived && (c.auto || c.routineRun)).sort((a, b) => b.updated - a.updated);
 // What you've read is shared by every screen: kept here and on the Mac.
 let seenOut = new Set();
 const markSeen = id => {
