@@ -927,9 +927,10 @@ const liteRoutes = createLiteRoutes({
   // Routines in Lite: a run's last reply (Ollama's Codex threads aren't in Codex's list, so the
   // provider is said), starting a bug chat from a routine's findings, and the routines API.
   // A chat's recent replies, newest last, joined (for finding things a chat reported earlier, like its PR).
-  recentReplies: async (id, provider, turns = 12) => {
+  recentReplies: async (id, provider, turns = 40) => {
     const items = provider === 'codex' || isCodexId(id) ? ((await codex.history(id, null, null)).items || []) : (await chatLib.readHistory(sessions.fileFor(id), { limit: 400 })).items;
-    const texts = items.filter(it => it.kind === 'assistant').map(it => (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n')).filter(Boolean);
+    // Its words and the commands it ran (git push, gh pr …), which name its branch and PR.
+    const texts = items.filter(it => it.kind === 'assistant').map(it => (it.blocks || []).map(b => (b.type === 'text' ? b.text : b.type === 'tool' && b.detailKind === 'command' && typeof b.detail === 'string' ? b.detail : '')).filter(Boolean).join('\n')).filter(Boolean);
     return texts.slice(-turns).join('\n\n').slice(-120000);
   },
   lastReply: async (id, provider) => {
