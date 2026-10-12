@@ -657,6 +657,19 @@ module.exports = [
       await b.eval(`rcText.value = 'Add a Lullaby cooldown.'; return 1`);
       await b.clickOn('#rcForm [type="submit"]'); await sleep(600);
       t.check('Start the race starts it', calls.some(([p, body]) => p === '/api/race' && body.action === 'start' && body.prompt === 'Add a Lullaby cooldown.') && /Add a Lullaby cooldown/.test((await card()).text));
+      // A judge, and keeping file by file.
+      await b.clickOn('[data-act="race-judge"]'); await sleep(500);
+      t.check('Ask a judge starts one, and the card says so', calls.some(([p, body]) => p === '/api/race' && body.action === 'judge') && /Judge working Read its verdict/.test((await card()).text), (await card()).text);
+      await b.clickOn('[data-act="race-files"]'); await sleep(400);
+      const pf = await b.eval(`const d = document.querySelector('dialog.pick-files[open]'); return d && { rows: [...d.querySelectorAll('.pf-row')].map(x => x.querySelector('input').type + ':' + x.dataset?.who + ':' + x.querySelector('.pf-p').textContent) }`);
+      t.check('Pick files lists each copy’s files; one both changed is a choice between them', pf && pf.rows.filter(x => /^radio:.*songs\.lua$/.test(x)).length === 2 && pf.rows.some(x => /^checkbox:.*rally_test\.lua$/.test(x)), pf);
+      await b.eval(`const d = document.querySelector('dialog.pick-files[open]'); d.querySelector('input[data-who="codex"][data-path="scripts/bard/songs.lua"]').click(); d.querySelector('input[data-path="tests/rally_test.lua"]').click(); return 1`);
+      await t.shot(b, 'pick');
+      await b.eval(`document.querySelector('dialog.pick-files[open] [type="submit"]').click(); return 1`); await sleep(600);
+      const kf = calls.find(([p, body]) => p === '/api/race' && body.action === 'keepfiles');
+      t.check('Keep these files takes each from where you picked', kf && JSON.stringify(kf[1].picks.codex) === JSON.stringify(['scripts/bard/songs.lua']) && JSON.stringify(kf[1].picks.claude) === JSON.stringify(['tests/rally_test.lua']) && /Kept the files you picked/.test((await card()).text), kf && kf[1]);
+      await b.eval(`openRaceDialog(${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}); rcText.value = 'Another go.'; return 1`); await sleep(300);
+      await b.clickOn('#rcForm [type="submit"]'); await sleep(600);
       await b.clickOn('[data-act="race-discard"]'); await sleep(300); await b.clickOn('#cfYes'); await sleep(400);
       t.check('Discard both ends it', /Discarded/.test((await card()).text));
       const items = await b.eval(`return projectItems(${JSON.stringify(demo.projects[0].cwd)}).filter(x => x !== '-').map(x => x.label)`);

@@ -6,10 +6,12 @@
 async function loadRaces() { S.races = (await api('/api/races')).races || []; renderRaces(); }
 
 const RACERS = [['claude', 'Claude'], ['codex', 'Codex']];
+// Both have changed something (so there's something to compare, or to pick from).
+const both = r => RACERS.every(([w]) => ((r.racers[w] || {}).files || []).length);
 const racerState = x => (x.state === 'busy' || x.state === 'starting' ? 'working' : x.state === 'waiting' ? 'needs your OK' : x.state === 'ended' ? (x.sessionId ? 'paused' : 'stopped') : 'done');
 function raceCard(r) {
   const head = `<p class="race-h"><span class="glyph" aria-hidden="true">${r.split ? '⑂' : '⚑'}</span><b>${r.split ? 'Split' : 'Race'}</b> in ${esc(r.folder || base(r.cwd))}<small>${esc(stamp(Date.parse(r.createdAt)))}</small></p>${r.split && r.prompt === `${r.split.claude} · ${r.split.codex}` ? '' : `<p class="race-p">${esc(r.prompt.split('\n')[0].slice(0, 200))}</p>`}`;
-  if (r.state !== 'running') return `<li class="race over">${head}<p class="race-end">${r.state === 'kept' ? (r.kept === 'both' ? 'Kept both sets of changes.' : `Kept ${r.kept === 'codex' ? 'Codex' : 'Claude'}’s changes.`) : 'Discarded.'}</p></li>`;
+  if (r.state !== 'running') return `<li class="race over">${head}<p class="race-end">${r.state === 'kept' ? (r.kept === 'both' ? 'Kept both sets of changes.' : r.kept === 'files' ? 'Kept the files you picked from each.' : `Kept ${r.kept === 'codex' ? 'Codex' : 'Claude'}’s changes.`) : 'Discarded.'}</p></li>`;
   const col = ([who, name]) => {
     const x = r.racers[who] || {};
     const f = x.files;
@@ -20,7 +22,7 @@ function raceCard(r) {
       <p class="rc-b">${x.key ? `<button class="btn quiet sm" data-act="race-open" data-key="${esc(x.key)}">Open chat</button>` : x.sessionId ? `<button class="btn quiet sm" data-act="race-open" data-sid="${esc(x.sessionId)}" title="Starts it again where it left off">Open chat</button>` : ''}${f && f.length ? `<button class="btn quiet sm" data-act="race-diff" data-id="${esc(r.id)}" data-who="${who}">See changes</button>` : ''}</p>
       <button class="btn${f && f.length && !r.split ? ' gilt' : ''} sm" data-act="race-keep" data-id="${esc(r.id)}" data-who="${who}" ${f && f.length ? '' : 'disabled'}>Keep ${name}’s</button></div>`;
   };
-  return `<li class="race">${head}<div class="race-cols">${RACERS.map(col).join('')}</div><p class="race-b"><button class="btn quiet sm" data-act="race-discard" data-id="${esc(r.id)}">Discard both</button>${r.split ? `<button class="btn gilt sm" data-act="race-both" data-id="${esc(r.id)}" ${RACERS.some(([w]) => (r.racers[w] || {}).files && r.racers[w].files.length) ? '' : 'disabled'}>Keep both</button>` : ''}</p></li>`;
+  return `<li class="race">${head}<div class="race-cols">${RACERS.map(col).join('')}</div>${r.judge ? `<p class="race-j"><span class="glyph" aria-hidden="true">⚖</span><b>Judge</b> ${esc(racerState(r.judge))}${r.judge.key ? ` <button class="btn quiet sm" data-act="race-open" data-key="${esc(r.judge.key)}">Read its verdict</button>` : r.judge.sessionId ? ` <button class="btn quiet sm" data-act="race-open" data-sid="${esc(r.judge.sessionId)}">Read its verdict</button>` : ''}</p>` : ''}<p class="race-b">${both(r) ? `${r.judge ? '' : `<button class="btn quiet sm" data-act="race-judge" data-id="${esc(r.id)}" title="A chat that can only look compares both and says which to keep">Ask a judge</button>`}<button class="btn quiet sm" data-act="race-files" data-id="${esc(r.id)}">Pick files…</button>` : ''}<button class="btn quiet sm" data-act="race-discard" data-id="${esc(r.id)}">Discard both</button>${r.split ? `<button class="btn gilt sm" data-act="race-both" data-id="${esc(r.id)}" ${RACERS.some(([w]) => (r.racers[w] || {}).files && r.racers[w].files.length) ? '' : 'disabled'}>Keep both</button>` : ''}</p></li>`;
 }
 function renderRaces() {
   const sec = $('secRaces'), list = $('raceList');
@@ -102,6 +104,13 @@ async function raceAction(act, b) {
     S.races = (await api('/api/race', { action: 'discard', id: r.id })).races; renderRaces();
     return toast('Discarded.', 2500);
   }
+  if (act === 'race-judge') {
+    const res = await api('/api/race', { action: 'judge', id: r.id });
+    S.races = res.races; renderRaces();
+    toast('The judge is looking. Its verdict shows on the race’s card.', 4000);
+    return undefined;
+  }
+  if (act === 'race-files') return pickRaceFiles(r);
   if (act === 'race-both') {
     const n = RACERS.reduce((k, [w]) => k + ((r.racers[w] || {}).files || []).length, 0);
     if (!(await appConfirm(`Keep both?\n\nBoth parts (${n} changed file${n === 1 ? '' : 's'}) come into ${r.folder || 'your project'} together; both chats stop and both copies are deleted.`, { ok: 'Keep both' }))) return undefined;
@@ -127,6 +136,39 @@ async function raceAction(act, b) {
     else if (res.why === 'conflict') toast(`${name}’s changes clash with what changed in your project, so nothing was changed.${res.detail ? `\n${res.detail}` : ''}`, 12000);
   }
   return undefined;
+}
+// File by file: tick the files to keep from each copy (a file both changed comes from one of them).
+async function pickRaceFiles(r) {
+  const files = {}, all = new Map();
+  for (const [w] of RACERS) for (const f of (r.racers[w] || {}).files || []) { (files[w] || (files[w] = [])).push(f); const k = f.path.toLowerCase(); all.set(k, [...(all.get(k) || []), w]); }
+  const row = (w, f) => { const shared = all.get(f.path.toLowerCase()).length > 1; return `<label class="pf-row"><input type="${shared ? 'radio' : 'checkbox'}" name="${shared ? `pf-${esc(f.path)}` : ''}" data-who="${w}" data-path="${esc(f.path)}"><span class="pf-p">${esc(f.path)}</span><span class="pf-n"><i class="d-add">+${f.add || 0}</i> <i class="d-del">−${f.del || 0}</i>${shared ? ' · both changed it' : ''}</span></label>`; };
+  const d = document.createElement('dialog');
+  d.className = 'wide pick-files';
+  d.innerHTML = `<form method="dialog"><div class="setup-head"><h3>Pick files to keep</h3><button type="button" class="icon" data-pf="x" aria-label="Close">✕</button></div>
+    <div class="pf-body">${RACERS.map(([w, name]) => (files[w] || []).length ? `<p class="pf-h"><span class="crew-dot ${w}" aria-hidden="true"></span>From ${name}’s copy</p>${files[w].map(f => row(w, f)).join('')}` : '').join('')}
+    <p class="pf-note">A file both changed comes from one of them. The files come into ${esc(r.folder || 'your project')} together, all or nothing; both chats stop and both copies are deleted.</p>
+    <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-pf="x">Cancel</button><button type="submit" class="btn prime">Keep these files</button></div></div></form>`;
+  document.body.appendChild(d);
+  d.showModal();
+  const picks = await new Promise(res => {
+    d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-pf="x"]')) { d.close(); res(null); } });
+    d.addEventListener('cancel', () => res(null));
+    d.querySelector('form').addEventListener('submit', e => {
+      e.preventDefault();
+      const out = {};
+      for (const i of d.querySelectorAll('input:checked')) (out[i.dataset.who] || (out[i.dataset.who] = [])).push(i.dataset.path);
+      if (!Object.keys(out).length) { toast('Tick at least one file.'); return; }
+      d.close(); res(out);
+    });
+  });
+  d.remove();
+  if (!picks) return;
+  let res = await api('/api/race', { action: 'keepfiles', id: r.id, picks });
+  if (!res.kept && res.why === 'changed' && await appConfirm(`${r.folder || 'Your project'} changed since the race began.\n\nTry to bring the files in anyway? If anything clashes, nothing is changed.`, { ok: 'Try anyway' })) res = await api('/api/race', { action: 'keepfiles', id: r.id, picks, force: true });
+  S.races = res.races; renderRaces();
+  if (res.kept) toast(`Kept ${res.files.length} file${res.files.length === 1 ? '' : 's'}.`, 4000);
+  else if (res.why === 'conflict') toast(`Those files clash with what changed in your project, so nothing was changed.${res.detail ? `\n${res.detail}` : ''}`, 12000);
+  else if (res.why === 'overlap') toast('A file can come from one copy only.', 5000);
 }
 // A racer's changes, file by file (the same view as a reply's changes).
 async function viewRaceChanges(r, who) {

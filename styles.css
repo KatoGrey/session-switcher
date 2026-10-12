@@ -2400,6 +2400,16 @@ body.solo .c-head .icon.c-backm{display:none}
 .as-b{margin:0;padding:0 10px 10px}
 .as-b [hidden]{display:none}
 @media (max-width:640px){.aside-card{right:8px;width:calc(100% - 16px)}}
+.race-j{display:flex;align-items:center;gap:8px;margin:10px 0 0;font-size:14px;color:var(--parch-2)}
+.race-j .glyph{color:var(--gilt)}
+.pick-files .pf-body{padding:4px 22px 18px;display:grid;gap:4px}
+.pf-h{display:flex;align-items:center;gap:8px;margin:10px 0 4px;font:600 12px/1 var(--f-caps);letter-spacing:.06em;color:var(--parch)}
+.pf-h .crew-dot.codex{background:rgb(var(--c-6f97d8))}
+.pf-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 8px;border-radius:6px;cursor:pointer}
+.pf-row:hover{background:var(--vellum)}
+.pf-p{font:13px var(--f-mono);color:var(--parch);overflow-wrap:anywhere}
+.pf-n{font-size:12.5px;color:var(--ash);white-space:nowrap}
+.pf-note{margin:10px 0 4px;font-size:13.5px;color:var(--ash)}
 .tk-rep{color:var(--gilt)}
 .done-chats{margin-top:14px}
 .done-chats summary{cursor:pointer;padding:6px 2px;font:500 11px var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ash)}

@@ -238,6 +238,8 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
         raceList = raceList.map(r => (r.id === body.id ? { ...r, state: 'kept', kept: 'both' } : r));
         return { body: { kept: true, files: [...raceList[0].racers.claude.files, ...raceList[0].racers.codex.files], races: raceList } };
       }
+      if (body.action === 'judge') { raceList = raceList.map(r => (r.id === body.id ? { ...r, judge: { key: 'k-judge', state: 'busy', sessionId: null } } : r)); return { body: { key: 'k-judge', races: raceList } }; }
+      if (body.action === 'keepfiles') { raceList = raceList.map(r => (r.id === body.id ? { ...r, state: 'kept', kept: 'files' } : r)); return { body: { kept: true, files: [...(body.picks.claude || []), ...(body.picks.codex || [])].map(p => ({ path: p })), races: raceList } }; }
       if (body.action === 'discard') { raceList = raceList.map(r => (r.id === body.id ? { ...r, state: 'discarded' } : r)); return { body: { races: raceList } }; }
       // Keep: the first try says the project changed since; the forced one goes through.
       if (body.action === 'keep') {

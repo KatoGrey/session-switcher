@@ -429,7 +429,9 @@ async function racesView() {
       if (r.state === 'running' && fs.existsSync(r.copies[who].path)) { try { files = (await raceLib.copyChanges(r, who)).files; } catch { files = null; } }
       racers[who] = { key: chat && chat.state !== 'ended' ? r.keys[who] : null, state: chat ? chat.state : 'ended', sessionId: (chat && chat.sessionId) || r.sessions[who] || null, files };
     }
-    out.push({ id: r.id, cwd: r.cwd, folder: r.folder, prompt: r.prompt, split: r.split || null, state: r.state, kept: r.kept || null, createdAt: r.createdAt, racers });
+    let judge = null;
+    if (r.judge) { let jc = null; try { jc = chats.get(r.judge.key); } catch { /* stopped */ } judge = { key: jc && jc.state !== 'ended' ? r.judge.key : null, state: jc ? jc.state : 'ended', sessionId: (jc && jc.sessionId) || r.judge.sessionId || null }; if (jc && jc.sessionId) r.judge.sessionId = jc.sessionId; }
+    out.push({ id: r.id, cwd: r.cwd, folder: r.folder, prompt: r.prompt, split: r.split || null, state: r.state, kept: r.kept || null, createdAt: r.createdAt, racers, judge });
   }
   if (dirty) { try { store.writeJsonAtomic(RACES_FILE, { races: raceList }); } catch { /* kept in memory */ } }
   return out;
@@ -1133,6 +1135,32 @@ async function handleApi(req, res, url, remote = false) {
         Object.assign(r, { state: 'kept', kept: body.who, doneAt: new Date().toISOString() }); saveRaces();
         log(`Race in ${r.cwd}: kept ${body.who}'s changes (${k.files.length} file${k.files.length === 1 ? '' : 's'}).`);
         return send(res, 200, { kept: true, files: k.files, races: await racesView() });
+      }
+      if (body.action === 'keepfiles') {
+        // File by file: the files picked from each copy.
+        const picks = {};
+        for (const who of Object.keys(r.copies)) picks[who] = Array.isArray(body.picks && body.picks[who]) ? body.picks[who].map(String).slice(0, 500) : [];
+        const k = await raceLib.keepFiles(r, picks, { force: !!body.force });
+        if (!k.applied) return send(res, 200, { kept: false, why: k.why, clash: k.clash || null, detail: k.detail || null, races: await racesView() });
+        await stopRacers(r); await raceLib.dropRace(r);
+        Object.assign(r, { state: 'kept', kept: 'files', doneAt: new Date().toISOString() }); saveRaces();
+        log(`Race in ${r.cwd}: kept ${k.files.length} file${k.files.length === 1 ? '' : 's'}, picked from both.`);
+        return send(res, 200, { kept: true, files: k.files, races: await racesView() });
+      }
+      if (body.action === 'judge') {
+        // A judge: a chat that can only look, given both copies' changes, says which is better and why.
+        const d = await raceLib.bothDiffs(r);
+        const task = r.split ? `Claude's part: ${r.split.claude}\nCodex's part: ${r.split.codex}` : r.prompt;
+        const ask = `Claude and Codex each did this task in their own copy of the project:\n\n${task}\n\nHere is what each changed (as diffs from the same starting point). Compare them for correctness, completeness, risk and code quality. Say which you'd keep, or which files to take from each, and why, briefly. Don't change any files.\n\n--- Claude's changes ---\n${d.claude || '(none)'}\n\n--- Codex's changes ---\n${d.codex || '(none)'}`;
+        const ready = tasksLib.readyAccount({ state: 'queued', provider: 'claude', accountId: 'auto', when: 'now' }, queueContext()).account;
+        const prov = ready ? 'claude' : 'codex';
+        const info = await openChat(config(), { account: ready ? ready.id : null, cwd: r.cwd, mode: 'new', provider: prov, permissionMode: prov === 'codex' ? 'read-only' : 'plan' });
+        const chat = chats.get(info.key);
+        chat.title = `Judge: ${(r.prompt || '').split('\n')[0].slice(0, 50)}`;
+        await waitReady(chat, 45000);
+        chat.send(ask, []);
+        r.judge = { key: info.key, provider: prov }; saveRaces();
+        return send(res, 200, { key: info.key, races: await racesView() });
       }
       if (body.action === 'keepboth') {
         const k = await raceLib.keepBoth(r, { force: !!body.force });

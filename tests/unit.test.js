@@ -756,3 +756,20 @@ test('tasks: a routine queues its next run, at the same time on its next day', (
   assert.ok(n.id !== 'a' && n.state === 'queued' && n.key === null && n.repeat === 'daily');
   assert.equal(tasks.nextOf({ id: 'b', at, state: 'started' }), null, 'a one-off has no next');
 });
+
+test('race: keep file by file, from either copy; the same file from both is refused', async () => {
+  const dir = repo();
+  put(dir, 'a.txt', 'one\n'); put(dir, 'b.txt', 'two\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  const r = await race.makeRace(dir);
+  put(r.copies.claude.path, 'a.txt', 'claude a\n'); put(r.copies.claude.path, 'b.txt', 'claude b\n');
+  put(r.copies.codex.path, 'b.txt', 'codex b\n'); put(r.copies.codex.path, 'c.txt', 'codex c\n');
+  assert.deepEqual(await race.keepFiles(r, { claude: ['b.txt'], codex: ['b.txt'] }), { applied: false, why: 'overlap', clash: ['b.txt'] });
+  const d = await race.bothDiffs(r);
+  assert.match(d.claude, /claude a/); assert.match(d.codex, /codex c/);
+  const k = await race.keepFiles(r, { claude: ['a.txt'], codex: ['b.txt', 'c.txt'] });
+  assert.equal(k.applied, true);
+  assert.equal(readLF(path.join(dir, 'a.txt')), 'claude a\n');
+  assert.equal(readLF(path.join(dir, 'b.txt')), 'codex b\n', 'b from Codex, not Claude');
+  assert.equal(readLF(path.join(dir, 'c.txt')), 'codex c\n');
+  await race.dropRace(r);
+});
