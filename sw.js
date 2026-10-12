@@ -12,7 +12,7 @@ self.addEventListener('push', e => {
   e.waitUntil(self.registration.showNotification(m.title || 'Session Switcher', {
     body: m.body || '', tag: m.tag || undefined, renotify: m.kind === 'needs', requireInteraction: m.kind === 'needs',
     icon: '/apple-touch-icon.png', badge: '/apple-touch-icon.png', timestamp: m.at || Date.now(), data: m,
-    actions: m.act ? [{ action: 'allow', title: 'Allow' }, { action: 'deny', title: 'Deny' }] : [],
+    actions: m.act ? [{ action: 'allow', title: 'Allow' }, { action: 'deny', title: 'Deny' }] : m.choices && m.choices.length <= 2 ? m.choices.map((c, i) => ({ action: `choice${i}`, title: c.label })) : [],
   }));
 });
 
@@ -20,6 +20,8 @@ self.addEventListener('notificationclick', e => {
   const n = e.notification, m = n.data || {};
   n.close();
   if ((e.action === 'allow' || e.action === 'deny') && m.act) { e.waitUntil(answer(m, e.action)); return; }
+  const c = /^choice(\d)$/.exec(e.action || '');
+  if (c && m.choices && m.choices[+c[1]]) { e.waitUntil(answer({ ...m, act: m.choices[+c[1]].token }, 'allow')); return; }
   e.waitUntil(openChat(m));
 });
 

@@ -4,6 +4,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.RemoteInput;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -13,9 +14,11 @@ import android.graphics.drawable.Icon;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -52,6 +55,8 @@ public class NotifyService extends Service {
     private static final int STATUS_ID = 1;
     static final String ACTION_ACT = "app.sessionswitcher.remote.ACT";
     static final String ACTION_OFF = "app.sessionswitcher.remote.OFF";
+    static final String ACTION_REPLY = "app.sessionswitcher.remote.REPLY";
+    private static final String KEY_TEXT = "reply_text";
 
     private volatile boolean running;
     private volatile HttpURLConnection conn;
@@ -113,8 +118,21 @@ public class NotifyService extends Service {
                 }
             }, "ss-answer").start();
         }
+        if (ACTION_REPLY.equals(action)) {
+            Bundle in = RemoteInput.getResultsFromIntent(intent);
+            CharSequence typed = in == null ? null : in.getCharSequence(KEY_TEXT);
+            final String text = typed == null ? "" : typed.toString().trim();
+            final String token = intent.getStringExtra("token"), tag = intent.getStringExtra("tag");
+            final String title = intent.getStringExtra("title"), key = intent.getStringExtra("key");
+            if (!text.isEmpty()) new Thread(new Runnable() {
+                @Override public void run() {
+                    sendReply(token, text, tag, title, key);
+                    if (!isOn(NotifyService.this)) stopSelf();
+                }
+            }, "ss-reply").start();
+        }
         if (!isOn(this)) {
-            if (!ACTION_ACT.equals(action)) stopSelf();
+            if (!ACTION_ACT.equals(action) && !ACTION_REPLY.equals(action)) stopSelf();
             return START_NOT_STICKY;
         }
         if (worker == null) {
@@ -319,10 +337,35 @@ public class NotifyService extends Service {
                 .setContentIntent(openApp(key == null || key.isEmpty() ? null : key, sid, code));
         if (m.optBoolean("catchUp")) b.setOnlyAlertOnce(true);
         String act = m.isNull("act") ? "" : m.optString("act", "");
+        Icon icon = Icon.createWithResource(this, R.drawable.ic_notify);
         if (needs && !act.isEmpty()) {
-            Icon icon = Icon.createWithResource(this, R.drawable.ic_notify);
             b.addAction(new Notification.Action.Builder(icon, "Allow", actIntent(m, "allow", code + 1)).build());
             b.addAction(new Notification.Action.Builder(icon, "Deny", actIntent(m, "deny", code + 2)).build());
+        }
+        // A question with a few answers: each answer is a button.
+        JSONArray choices = m.optJSONArray("choices");
+        if (needs && act.isEmpty() && choices != null) {
+            for (int i = 0; i < choices.length() && i < 3; i++) {
+                JSONObject ch = choices.optJSONObject(i);
+                if (ch == null) continue;
+                try {
+                    JSONObject one = new JSONObject(m.toString());
+                    one.put("act", ch.optString("token"));
+                    one.put("id", m.optString("id") + "#" + i);
+                    b.addAction(new Notification.Action.Builder(icon, ch.optString("label", "Answer " + (i + 1)), actIntent(one, "allow", code + 3 + i)).build());
+                } catch (JSONException ignored) { }
+            }
+        }
+        // A reply: answer it right here.
+        String reply = m.isNull("reply") ? "" : m.optString("reply", "");
+        if (!reply.isEmpty() && Build.VERSION.SDK_INT >= 24) {
+            RemoteInput input = new RemoteInput.Builder(KEY_TEXT).setLabel("Reply to " + m.optString("who", "it") + "…").build();
+            Intent ri = new Intent(this, NotifyService.class).setAction(ACTION_REPLY)
+                    .putExtra("token", reply).putExtra("tag", tag).putExtra("title", m.optString("chatTitle", "A chat")).putExtra("key", key)
+                    .setData(android.net.Uri.parse("ss://reply/" + m.optString("id")));
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
+            PendingIntent rpi = Build.VERSION.SDK_INT >= 26 ? PendingIntent.getForegroundService(this, code + 7, ri, flags) : PendingIntent.getService(this, code + 7, ri, flags);
+            b.addAction(new Notification.Action.Builder(icon, "Reply", rpi).addRemoteInput(input).build());
         }
         try { nm().notify(tag, 0, b.build()); } catch (RuntimeException e) { Log.w(TAG, "Couldn't notify", e); }
     }
@@ -356,6 +399,42 @@ public class NotifyService extends Service {
         }
         int code = tag.hashCode() & 0xfffffff;
         nm().notify(tag, 0, builder(CH_NEEDS).setContentTitle(title + ": not answered").setContentText(why + " Tap to open it.")
+                .setStyle(new Notification.BigTextStyle().bigText(why + " Tap to open it."))
+                .setAutoCancel(true).setOnlyAlertOnce(true).setContentIntent(openApp(key, null, code)).build());
+    }
+
+    private void sendReply(String token, String text, String tag, String title, String key) {
+        String why;
+        try {
+            SharedPreferences p = prefs(this);
+            HttpURLConnection c = (HttpURLConnection) new URL("http://" + p.getString(KEY_SERVER, "") + "/api/push/reply").openConnection();
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(20000);
+            c.setRequestMethod("POST");
+            c.setDoOutput(true);
+            c.setRequestProperty("Cookie", p.getString(KEY_COOKIE, ""));
+            c.setRequestProperty("Content-Type", "application/json");
+            JSONObject body = new JSONObject();
+            body.put("token", token);
+            body.put("text", text);
+            OutputStream out = c.getOutputStream();
+            out.write(body.toString().getBytes("UTF-8"));
+            out.close();
+            int code = c.getResponseCode();
+            if (code == 200) {
+                c.disconnect();
+                Notification.Builder ok = builder(CH_REPLIES).setContentTitle(title).setContentText("Sent: " + text).setOnlyAlertOnce(true).setAutoCancel(true);
+                if (Build.VERSION.SDK_INT >= 26) ok.setTimeoutAfter(6000);
+                nm().notify(tag, 0, ok.build());
+                return;
+            }
+            why = errorOf(c.getErrorStream(), "It didn’t go through (" + code + ").");
+            c.disconnect();
+        } catch (IOException | JSONException e) {
+            why = "Couldn’t reach your PC. Is the phone on your home Wi-Fi?";
+        }
+        int code = tag.hashCode() & 0xfffffff;
+        nm().notify(tag, 0, builder(CH_REPLIES).setContentTitle(title + ": not sent").setContentText(why + " Tap to open it.")
                 .setStyle(new Notification.BigTextStyle().bigText(why + " Tap to open it."))
                 .setAutoCancel(true).setOnlyAlertOnce(true).setContentIntent(openApp(key, null, code)).build());
     }

@@ -1659,6 +1659,15 @@ module.exports = [
       t.check('…and says when Android blocks them', /Android is blocking/.test(await html(`window.Android = { notifyState: () => '{"on":true,"allowed":false,"battery":false}' }`)));
       t.check('…or when the battery saver would delay them', /while the phone sleeps/.test(await html(`window.Android = { notifyState: () => '{"on":true,"allowed":true,"battery":false}' }`)));
       t.check('a browser that can gets the switch', /Notifications on this phone/.test(await html('1')) && /Allow and Deny right on it/.test(await html('1')));
+      // Shared from another Android app: into the open chat's message box, or you pick the chat.
+      const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+      await b.eval(`setup.close(); window.Android = { takeShare: () => JSON.stringify({ text: 'https://example.com/bug-report', images: [{ mediaType: 'image/png', data: '${pixel}' }], skipped: 0 }) }; onAndroidShare(); return 1`); await sleep(700);
+      const ask = await b.eval(`const d = document.querySelector('dialog.choice-dlg[open]'); return d ? [...d.querySelectorAll('button')].map(x => x.textContent) : null`);
+      t.check('with no chat open, it asks which chat (or a new one)', ask && ask.some(x => /^New chat in /.test(x)) && ask.length >= 3, ask);
+      await b.eval(`document.querySelector('dialog.choice-dlg[open] button').click(); return 1`); await sleep(2800);
+      const put = await b.eval(`return { text: document.getElementById('cText').value, att: C.attachments.length }`);
+      t.check('then it waits in that chat’s message box: the text and the picture', put.text === 'https://example.com/bug-report' && put.att === 1, put);
+      await b.eval(`C.attachments.length = 0; renderAttachments(); document.getElementById('cText').value = ''; delete window.Android; return 1`);
       t.check('quiet hours and alert levels go to the PC with the subscription', await b.eval(`store('quiet-hours', JSON.stringify({ on: true, from: '22:00', to: '07:00' })); const p = pushPrefs(); store('quiet-hours', ''); return p.quiet.on === true && typeof p.tz === 'string' && typeof p.levels === 'object'`));
     },
   },

@@ -297,6 +297,7 @@ test('push: a paired phone signs up for notifications; Allow/Deny needs its one-
     assert.equal((await s.call('/api/push/subscribe', { subscription })).status, 403, 'only a phone signs itself up');
     // The notification's buttons send no page token; a wrong or used one-time token is refused.
     assert.equal((await call('/api/push/act', { token: 'nope', decision: 'allow' }, { tok: false })).status, 410);
+    assert.equal((await call('/api/push/reply', { token: 'nope', text: 'hi' }, { tok: false })).status, 410, 'a reply from a notification needs its one-time token');
     assert.equal((await call('/api/push/subscribe', { subscription }, { tok: false })).status, 403, 'everything else still needs the page’s token');
     // The Android app's connection: the phone's pairing lets it in (no page token), and it hears tests.
     assert.equal((await fetch(`${phone}/api/notify/stream`)).status, 401, 'not without pairing');

@@ -1896,7 +1896,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
       if (imageGet && url.pathname === '/api/media') return sendMedia(req, res, url);
       // The notification's buttons and the Android app's connection have no page token: the phone's
       // pairing (and, for Allow/Deny, a one-time token) is what lets them in.
-      const pushAct = remote && req.device && ((req.method === 'POST' && url.pathname === '/api/push/act') || (req.method === 'GET' && url.pathname === '/api/notify/stream'));
+      const pushAct = remote && req.device && ((req.method === 'POST' && (url.pathname === '/api/push/act' || url.pathname === '/api/push/reply')) || (req.method === 'GET' && url.pathname === '/api/notify/stream'));
       if (req.headers['x-switcher-token'] !== TOKEN && !imageGet && !pushAct) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
       return await handleApi(req, res, url, remote);
     }
@@ -1918,6 +1918,16 @@ pushes.keepDevices(phone.status().devices.map(d => d.id));
 const pushSeen = { map: new Map(), primed: false };
 // Allow/Deny on a notification: one-time tokens, each for one request, for an hour.
 const pushActs = new Map();
+// Reply from a notification: one-time tokens, each for one chat, for six hours.
+const pushReplies = new Map();
+// The single question a chat is asking (its text and choices), if that's what it waits on.
+function questionOf(key, requestId) {
+  try {
+    const p = chats.get(key).pending.get(requestId);
+    const qs = p && p.event && p.event.questions;
+    return qs && qs.length === 1 && qs[0].options ? qs[0] : null;
+  } catch { return null; }
+}
 let pushTimer = null;
 function schedulePush() {
   if (pushTimer) return;
@@ -1944,11 +1954,24 @@ function pushMessage(n, now = Date.now()) {
   const title = chatTitleOf(x), folder = x.folder ? ` · ${x.folder}` : '';
   if (n.kind === 'needs') {
     const p = n.pending;
-    let act = null;
+    let act = null, choices = null, body = wantsToText(p);
     if (!p.question) { act = crypto.randomBytes(18).toString('base64url'); pushActs.set(act, { key: x.key, requestId: p.requestId, exp: now + 3600e3 }); }
-    return { kind: 'needs', id: `${x.key}:${p.requestId}`, title: `${title} needs you`, body: `${wantsToText(p)}`.slice(0, 220), chatTitle: title, tag: `needs-${x.key}`, key: x.key, sessionId: x.sessionId || null, act, at: now, ttl: 3600 };
+    else {
+      // One question with a few answers: each answer is a button on the notification.
+      const q = questionOf(x.key, p.requestId);
+      if (q) {
+        body = q.question;
+        if (!q.multiSelect && q.options.length >= 2 && q.options.length <= 3) {
+          choices = q.options.map(o => { const t = crypto.randomBytes(18).toString('base64url'); pushActs.set(t, { key: x.key, requestId: p.requestId, answers: { [q.question]: o.label }, exp: now + 3600e3 }); return { label: o.label.slice(0, 40), token: t }; });
+        }
+      }
+    }
+    return { kind: 'needs', id: `${x.key}:${p.requestId}`, title: `${title} needs you`, body: String(body).slice(0, 220), chatTitle: title, tag: `needs-${x.key}`, key: x.key, sessionId: x.sessionId || null, act, choices, at: now, ttl: 3600 };
   }
-  return { kind: 'reply', id: `${x.key}:${x.finishedAt}`, title: `${title} replied`, body: (pushLine(x.lastText) || 'Finished its turn.').slice(0, 200) + folder, chatTitle: title, tag: `reply-${x.key}`, key: x.key, sessionId: x.sessionId || null, at: now, ttl: 6 * 3600 };
+  // A reply can be answered from the notification: a token for that chat, for six hours.
+  const reply = crypto.randomBytes(18).toString('base64url');
+  pushReplies.set(reply, { key: x.key, exp: now + 6 * 3600e3 });
+  return { kind: 'reply', reply, who: x.provider === 'codex' ? 'Codex' : 'Claude', id: `${x.key}:${x.finishedAt}`, title: `${title} replied`, body: (pushLine(x.lastText) || 'Finished its turn.').slice(0, 200) + folder, chatTitle: title, tag: `reply-${x.key}`, key: x.key, sessionId: x.sessionId || null, at: now, ttl: 6 * 3600 };
 }
 const toApp = (w, msg) => { try { w.res.write(`data: ${JSON.stringify(msg)}\n\n`); } catch { /* gone; its close handler tidies up */ } };
 async function sendPushes() {
@@ -1956,6 +1979,7 @@ async function sendPushes() {
   if (!fresh.length || (!pushes.count() && !appWatchers.size)) return;
   const now = Date.now();
   for (const [k, v] of pushActs) if (v.exp < now) pushActs.delete(k);
+  for (const [k, v] of pushReplies) if (v.exp < now) pushReplies.delete(k);
   for (const n of fresh) {
     const msg = pushMessage(n, now);
     // Per phone: its alert level for the chat (a partner goes by its chat), and its quiet hours.
@@ -2001,8 +2025,25 @@ async function pushApi(req, res, route, remote) {
     let chat;
     try { chat = chats.get(a.key); } catch { throw fail(410, 'That chat has stopped.'); }
     if (!chat.pending.has(a.requestId)) throw fail(410, 'That one was already answered.');
-    chat.answer(a.requestId, { decision, message: '' });
-    log(`Push: “${dev.name}” chose ${decision} from a notification.`);
+    // The other buttons on the same notification go with it.
+    for (const [k, v] of pushActs) if (v.key === a.key && v.requestId === a.requestId) pushActs.delete(k);
+    if (a.answers) chat.answer(a.requestId, { decision: 'allow', message: '', answers: a.answers });
+    else chat.answer(a.requestId, { decision, message: '' });
+    log(`Push: “${dev.name}” ${a.answers ? 'answered a question' : `chose ${decision}`} from a notification.`);
+    return send(res, 200, { ok: true });
+  }
+  // Reply from a notification: your words go to that chat, caught up as usual (lib/pairs.js).
+  if (route === 'POST /api/push/reply') {
+    const a = pushReplies.get(String(body.token || ''));
+    const text = typeof body.text === 'string' ? body.text.trim().slice(0, 20000) : '';
+    if (!a || !dev) throw fail(410, 'That reply can’t be sent any more. Open the chat to answer.');
+    if (!text) throw fail(400, 'Type a reply.');
+    let chat;
+    try { chat = chats.get(a.key); } catch { throw fail(410, 'That chat has stopped. Open it to answer.'); }
+    if (chat.state === 'ended') throw fail(410, 'That chat has stopped. Open it to answer.');
+    pushReplies.delete(String(body.token));
+    await pairs.send(chat, text, []);
+    log(`Push: “${dev.name}” replied from a notification.`);
     return send(res, 200, { ok: true });
   }
   if (!dev) throw fail(403, 'Turn notifications on from the phone itself.');

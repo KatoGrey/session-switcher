@@ -34,8 +34,10 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -66,6 +68,8 @@ public class MainActivity extends Activity {
     static final String EXTRA_SESSION = "open_session";
     private static final String KEY_UPDATE_LATER = "update_later";
     private long updateCheckedAt = 0;
+    /** Something shared to the app, waiting for the page to take it (JSON: text and pictures). */
+    private volatile String pendingShare = null;
 
     private WebView webView;
     private SharedPreferences prefs;
@@ -110,6 +114,7 @@ public class MainActivity extends Activity {
         // Process death / fresh launch: just (re)load the start page (on a chat, from a notification).
         loadStart(openQuery(getIntent()));
         NotifyService.channels(this);
+        takeShared(getIntent());
     }
 
     private void loadStart() { loadStart(""); }
@@ -132,6 +137,7 @@ public class MainActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (takeShared(intent)) return;
         String key = intent.getStringExtra(EXTRA_KEY), sid = intent.getStringExtra(EXTRA_SESSION);
         if (webView == null || (key == null && sid == null)) return;
         String url = webView.getUrl();
@@ -160,6 +166,69 @@ public class MainActivity extends Activity {
         String c = CookieManager.getInstance().getCookie(serverUrl(server));
         if (c != null && c.contains("sw_device=")) prefs.edit().putString(NotifyService.KEY_COOKIE, c).apply();
         if (NotifyService.isOn(this)) NotifyService.start(this);
+    }
+
+    // ---------------------------------------------------------------- share to the app
+    // Text, a link or pictures shared from another app: read here (the permission to read them is
+    // this activity's), then handed to the page, which asks which chat they go to.
+
+    @SuppressWarnings("deprecation")
+    private boolean takeShared(Intent intent) {
+        if (intent == null) return false;
+        final String a = intent.getAction();
+        if (!Intent.ACTION_SEND.equals(a) && !Intent.ACTION_SEND_MULTIPLE.equals(a)) return false;
+        final String text = intent.getStringExtra(Intent.EXTRA_TEXT), subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
+        final List<Uri> uris = new ArrayList<>();
+        if (Intent.ACTION_SEND_MULTIPLE.equals(a)) {
+            ArrayList<Uri> list = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (list != null) uris.addAll(list);
+        } else {
+            Uri u = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (u != null) uris.add(u);
+        }
+        setIntent(new Intent(Intent.ACTION_MAIN));   // shared once, not again on a rotation
+        new Thread(new Runnable() {
+            @Override public void run() {
+                JSONObject o = new JSONObject();
+                JSONArray pics = new JSONArray();
+                int skipped = 0;
+                for (Uri u : uris) {
+                    if (pics.length() >= 4) { skipped++; continue; }
+                    try {
+                        String type = getContentResolver().getType(u);
+                        if (type == null || !type.matches("image/(png|jpeg|gif|webp)")) { skipped++; continue; }
+                        InputStream in = getContentResolver().openInputStream(u);
+                        if (in == null) { skipped++; continue; }
+                        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+                        byte[] chunk = new byte[16384];
+                        int n;
+                        while ((n = in.read(chunk)) > 0 && buf.size() <= 5 * 1024 * 1024) buf.write(chunk, 0, n);
+                        in.close();
+                        if (buf.size() > 5 * 1024 * 1024) { skipped++; continue; }
+                        JSONObject p = new JSONObject();
+                        p.put("mediaType", type);
+                        p.put("data", android.util.Base64.encodeToString(buf.toByteArray(), android.util.Base64.NO_WRAP));
+                        pics.put(p);
+                    } catch (Exception e) {
+                        skipped++;
+                    }
+                }
+                try {
+                    String t = text == null ? "" : text.trim();
+                    if (subject != null && !subject.trim().isEmpty() && !t.contains(subject.trim())) t = subject.trim() + (t.isEmpty() ? "" : "\n" + t);
+                    o.put("text", t);
+                    o.put("images", pics);
+                    o.put("skipped", skipped);
+                } catch (org.json.JSONException ignored) { }
+                pendingShare = o.toString();
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        if (webView != null) webView.evaluateJavascript("window.onAndroidShare && window.onAndroidShare()", null);
+                    }
+                });
+            }
+        }, "ss-share").start();
+        return true;
     }
 
     // ---------------------------------------------------------------- updates
@@ -543,6 +612,14 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public boolean isApp() {
             return true;
+        }
+
+        /** What was shared to the app, once (null when nothing is waiting). */
+        @JavascriptInterface
+        public String takeShare() {
+            String s = pendingShare;
+            pendingShare = null;
+            return s;
         }
 
         /** Notifications: whether they're on, allowed by Android, and free of battery limits. */
