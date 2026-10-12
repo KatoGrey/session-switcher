@@ -62,11 +62,12 @@ function sideBugs(chats, key = 'all') {
   const open = chats.filter(c => isBug(c) && isTop(c) && bugStage(c) !== 'done');
   if (!open.length) return '';
   const fk = 'p:__bugs:' + key, folded = !!S.folded[fk];
-  const limit = S.more['all-bugs-' + key] ? 400 : 12;
+  // Up to five per stage, so every stage shows; "N more" opens them all.
+  const per = S.more['all-bugs-' + key] ? 400 : 5;
   let n = 0, inner = '';
   for (const st of BUG_STAGES.filter(x => x.id !== 'done')) {
-    const list = open.filter(c => bugStage(c) === st.id); if (!list.length || n >= limit) continue;
-    const take = list.slice(0, limit - n); n += take.length;
+    const list = open.filter(c => bugStage(c) === st.id); if (!list.length) continue;
+    const take = list.slice(0, per); n += take.length;
     inner += `<div class="side-stage"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(c => sideChat(c)).join('')}`;
   }
   if (open.length > n) inner += `<button class="nav-i chat-i quiet-toggle" data-more-all="bugs-${esc(key)}"><span class="lbl">${open.length - n} more</span></button>`;
