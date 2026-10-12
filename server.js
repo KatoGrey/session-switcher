@@ -1049,6 +1049,24 @@ const routines = routinesLib.createRoutines({
     }
   },
 });
+// One kind of routine: a task set to repeat becomes a routine (lib/routines.js), on the same project,
+// account and time, starting a new chat each time. Repeating tasks from before are moved over once.
+function routineFromTask(t) {
+  const at = new Date(t.at), pad2 = n => String(n).padStart(2, '0');
+  const account = t.provider === 'codex' ? (config().codexActive || 'codex') : t.accountId && t.accountId !== 'auto' ? t.accountId : (mainAccount() || config().accounts[0] || {}).id;
+  const first = (String(t.prompt).split('\n').find(l => l.trim()) || 'Routine').trim();
+  return routines.create({
+    name: first.length > 60 ? `${first.slice(0, 59)}…` : first, cwd: t.cwd, account, prompt: t.prompt, chat: { mode: 'new' },
+    trigger: { type: 'schedule', schedule: { kind: t.repeat, time: `${pad2(at.getHours())}:${pad2(at.getMinutes())}`, ...(t.repeat === 'weekly' ? { day: at.getDay() } : {}) } },
+  });
+}
+(() => {
+  const old = taskList.filter(t => t.state === 'queued' && t.repeat && t.at);
+  if (!old.length) return;
+  for (const t of old) { try { routineFromTask(t); } catch (err) { log(`Couldn’t move a repeating task to Routines: ${err.message}`); continue; } taskList = taskList.filter(x => x !== t); }
+  saveTasks();
+  log(`Moved ${old.length} repeating task${old.length === 1 ? '' : 's'} to Routines.`);
+})();
 
 // ---------- Switcher Lite (ui-lite/, at /lite): buckets, stages, plans; see lib/lite.js ----------
 const liteStore = liteLib.createLite({ dataDir: DATA_DIR, log });
@@ -1386,6 +1404,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/tasks': {
       if (body.action === 'add') {
         const t = tasksLib.validTask(body.task || {}, { projectAt, accounts: config().accounts });
+        if (t.repeat) { const routine = routineFromTask(t); return send(res, 200, { routine, tasks: tasksView() }); }
         taskList.push(t); saveTasks();
         runQueue(t.id).catch(() => {});
         return send(res, 200, { task: t, tasks: tasksView() });

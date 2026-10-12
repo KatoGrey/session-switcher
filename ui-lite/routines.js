@@ -138,8 +138,9 @@ function routineEditorView() {
     <label class="fl"><span>Name</span><input class="field" name="name" value="${esc(d.name)}" placeholder="Morning bug check" required></label>
     <label class="fl"><span>What it should do</span><textarea class="field" name="prompt" rows="5" placeholder="Look at … and tell me about …">${esc(d.prompt)}</textarea></label>
     <div class="fl"><span>When</span><div class="rt-when">
-      <select class="field" name="kind">${[['weekdays', 'Every weekday at'], ['daily', 'Every day at'], ['every-hours', 'Every few hours'], ['every-minutes', 'Every few minutes'], ['command', 'When a command prints something new'], ['slack', 'When a Slack channel has something new'], ['cron', 'A cron line']].map(([v, n]) => `<option value="${v}" ${(kind === v || (kind === 'every' && v === `every-${s.unit || 'hours'}`)) ? 'selected' : ''}>${n}</option>`).join('')}</select>
-      ${kind === 'weekdays' || kind === 'daily' ? `<input class="field" name="time" type="time" value="${esc(s.time || '09:00')}">` : ''}
+      <select class="field" name="kind">${[['weekdays', 'Every weekday at'], ['daily', 'Every day at'], ['weekly', 'Every week on'], ['every-hours', 'Every few hours'], ['every-minutes', 'Every few minutes'], ['command', 'When a command prints something new'], ['slack', 'When a Slack channel has something new'], ['cron', 'A cron line']].map(([v, n]) => `<option value="${v}" ${(kind === v || (kind === 'every' && v === `every-${s.unit || 'hours'}`)) ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      ${kind === 'weekly' ? `<select class="field" name="day" aria-label="Day of the week">${DAY_NAMES.map((n, i) => `<option value="${i}" ${i === (s.day ?? 1) ? 'selected' : ''}>${n}</option>`).join('')}</select><span class="unit">at</span>` : ''}
+      ${kind === 'weekdays' || kind === 'daily' || kind === 'weekly' ? `<input class="field" name="time" type="time" value="${esc(s.time || '09:00')}">` : ''}
       ${kind === 'every' || kind === 'every-hours' || kind === 'every-minutes' ? `<input class="field num" name="every" type="number" min="1" value="${esc(s.every || 2)}"><span class="unit">${s.unit === 'minutes' || kind === 'every-minutes' ? 'minutes' : 'hours'}</span>` : ''}
       ${kind === 'cron' ? `<input class="field mono" name="cron" value="${esc(s.cron || '0 9 * * 1-5')}" placeholder="0 9 * * 1-5">` : ''}
     </div>
@@ -160,11 +161,12 @@ function routineEditorView() {
   </form></div>`;
 }
 // What's on the form, back into the draft (so switching "When" keeps the rest).
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 function readRoutineForm() {
   const f = $('rtForm'), d = S.rtEdit; if (!f || !d) return d;
   d.name = f.name.value; d.prompt = f.prompt.value;
   const kind = f.kind.value;
-  if (kind === 'weekdays' || kind === 'daily') d.trigger = { type: 'schedule', schedule: { kind, time: f.time ? f.time.value : '09:00' } };
+  if (kind === 'weekdays' || kind === 'daily' || kind === 'weekly') d.trigger = { type: 'schedule', schedule: { kind, time: f.time ? f.time.value : '09:00', ...(kind === 'weekly' ? { day: f.day ? Number(f.day.value) : 1 } : {}) } };
   else if (kind === 'every-hours' || kind === 'every-minutes') d.trigger = { type: 'schedule', schedule: { kind: 'every', every: f.every ? Number(f.every.value) || 2 : 2, unit: kind === 'every-minutes' ? 'minutes' : 'hours' } };
   else if (kind === 'cron') d.trigger = { type: 'schedule', schedule: { kind: 'cron', cron: f.cron ? f.cron.value : '0 9 * * 1-5' } };
   else if (kind === 'command') d.trigger = { type: 'watch', source: { type: 'command', command: f.command ? f.command.value : '', every: f.srcEvery ? Number(f.srcEvery.value) || 10 : 10, filter: f.filter ? f.filter.value : '' } };

@@ -133,8 +133,8 @@ const Routines = (() => {
         <p class="np-f">Starts</p>
         <div class="seg rt-seg" role="group" aria-label="Starts"><button type="button" data-rte-kind="schedule">On a schedule</button><button type="button" data-rte-kind="watch">When something new turns up</button></div>
         <div class="rt-sec" id="rtSched">
-          <div class="rt-row"><select id="rtSk" aria-label="How often"><option value="daily">Every day</option><option value="weekdays">Weekdays</option><option value="hours">Every few hours</option><option value="minutes">Every few minutes</option><option value="cron">Cron line</option></select>
-            <label class="rt-inl" id="rtAtL">at <input id="rtTime" type="time" value="09:00"></label>
+          <div class="rt-row"><select id="rtSk" aria-label="How often"><option value="daily">Every day</option><option value="weekdays">Weekdays</option><option value="weekly">Every week</option><option value="hours">Every few hours</option><option value="minutes">Every few minutes</option><option value="cron">Cron line</option></select>
+            <label class="rt-inl" id="rtDayL">on <select id="rtDay" aria-label="Day of the week">${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, i) => `<option value="${i}" ${i === 1 ? "selected" : ""}>${d}</option>`).join("")}</select></label><label class="rt-inl" id="rtAtL">at <input id="rtTime" type="time" value="09:00"></label>
             <label class="rt-inl" id="rtEvL">every <input id="rtEvery" type="number" min="1" max="1440" value="2"> <span id="rtEvU">hours</span></label>
             <input id="rtCron" placeholder="0 9 * * 1-5" spellcheck="false" autocomplete="off" aria-label="Cron line"></div>
           <p class="np-path" id="rtSchedHint"></p>
@@ -190,6 +190,7 @@ const Routines = (() => {
     }));
     $('rtSk').addEventListener('change', fillSched);
     for (const id of ['rtTime', 'rtEvery', 'rtCron']) $(id).addEventListener('input', fillSched);
+    $('rtDay').addEventListener('change', fillSched);
     $('rtSrc').addEventListener('change', fillSrc);
     $('rtAcct').addEventListener('change', () => { fillModes(); fillChats(); });
     $('rtCwd').addEventListener('change', fillChats);
@@ -209,13 +210,14 @@ const Routines = (() => {
   }
   function fillSched() {
     const sk = $('rtSk').value;
-    $('rtAtL').hidden = !['daily', 'weekdays'].includes(sk);
+    $('rtAtL').hidden = !['daily', 'weekdays', 'weekly'].includes(sk);
+    $('rtDayL').hidden = sk !== 'weekly';
     $('rtEvL').hidden = !['hours', 'minutes'].includes(sk);
     $('rtCron').hidden = sk !== 'cron';
     $('rtEvU').textContent = sk === 'minutes' ? 'minutes' : 'hours';
     const t = $('rtTime').value || '09:00', n = Math.max(1, Number($('rtEvery').value) || 1);
     const at = (() => { const [h, m] = t.split(':').map(Number); return clock(new Date(2000, 0, 1, h, m).getTime()); })();
-    $('rtSchedHint').textContent = sk === 'daily' ? `Every day at ${at}.` : sk === 'weekdays' ? `Monday to Friday at ${at}.` : sk === 'hours' ? `Every ${n === 1 ? 'hour' : `${n} hours`}, counted from the last run.` : sk === 'minutes' ? `Every ${n === 1 ? 'minute' : `${n} minutes`}, counted from the last run.` : 'Five parts: minute, hour, day of month, month, day of week. “0 9 * * 1-5” is 9:00 AM on weekdays.';
+    $('rtSchedHint').textContent = sk === 'daily' ? `Every day at ${at}.` : sk === 'weekdays' ? `Monday to Friday at ${at}.` : sk === 'weekly' ? `Every ${$('rtDay').selectedOptions[0].textContent} at ${at}.` : sk === 'hours' ? `Every ${n === 1 ? 'hour' : `${n} hours`}, counted from the last run.` : sk === 'minutes' ? `Every ${n === 1 ? 'minute' : `${n} minutes`}, counted from the last run.` : 'Five parts: minute, hour, day of month, month, day of week. “0 9 * * 1-5” is 9:00 AM on weekdays.';
   }
   function fillSrc() {
     const slack = $('rtSrc').value === 'slack';
@@ -268,7 +270,7 @@ const Routines = (() => {
     const t = src.trigger || { type: 'schedule', schedule: { kind: 'daily', time: '09:00' } };
     const s = t.schedule || { kind: 'daily', time: '09:00' };
     $('rtSk').value = s.kind === 'every' ? s.unit : s.kind;
-    $('rtTime').value = s.time || '09:00'; $('rtEvery').value = s.every || 2; $('rtCron').value = s.cron || '';
+    $('rtTime').value = s.time || '09:00'; $('rtDay').value = String(s.day ?? 1); $('rtEvery').value = s.every || 2; $('rtCron').value = s.cron || '';
     const w = t.source || { type: 'slack', every: 2 };
     $('rtSrc').value = w.type || 'slack'; $('rtWEvery').value = w.every || 2;
     $('rtChan').value = w.channel || ''; $('rtCommand').value = w.command || ''; $('rtFilter').value = w.filter || '';
@@ -296,7 +298,7 @@ const Routines = (() => {
       chat: chatSel.startsWith('s:') ? { mode: 'continue', sessionId: chatSel.slice(2) } : { mode: chatSel === 'continue' ? 'continue' : 'new' },
       trigger: k === 'watch'
         ? { type: 'watch', source: { type: $('rtSrc').value, channel: $('rtChan').value, command: $('rtCommand').value, filter: $('rtFilter').value, every: Number($('rtWEvery').value) } }
-        : { type: 'schedule', schedule: ['hours', 'minutes'].includes(sk) ? { kind: 'every', every: Number($('rtEvery').value), unit: sk } : sk === 'cron' ? { kind: 'cron', cron: $('rtCron').value } : { kind: sk, time: $('rtTime').value } },
+        : { type: 'schedule', schedule: ['hours', 'minutes'].includes(sk) ? { kind: 'every', every: Number($('rtEvery').value), unit: sk } : sk === 'cron' ? { kind: 'cron', cron: $('rtCron').value } : { kind: sk, time: $('rtTime').value, ...(sk === 'weekly' ? { day: Number($('rtDay').value) } : {}) } },
     };
     $('rtGo').disabled = true;
     try {

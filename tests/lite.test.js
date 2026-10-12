@@ -370,3 +370,12 @@ test('routines: a flow keeps a long escalation prompt and the bug chat’s provi
   const g = store.setRoutineFlow('r2', { escalate: { on: true, prompt: 'p', provider: 'nope', effort: 'huge' } });
   assert.equal(g.escalate.provider, undefined); assert.equal(g.escalate.effort, undefined);
 });
+
+test('routines: a weekly routine runs on its day at its time', () => {
+  const { nextRun, describeSchedule } = require('../lib/routines');
+  const wed = new Date(2026, 9, 14, 12, 0).getTime(); // a Wednesday, noon
+  const next = new Date(nextRun({ kind: 'weekly', time: '09:30', day: 1 }, wed));
+  assert.equal(next.getDay(), 1); assert.equal(next.getHours(), 9); assert.equal(next.getMinutes(), 30);
+  assert.ok(next.getTime() > wed && next.getTime() - wed < 7 * 864e5);
+  assert.equal(describeSchedule({ kind: 'weekly', time: '09:30', day: 1 }), 'Every Monday at 9:30 AM');
+});

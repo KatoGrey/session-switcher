@@ -15,7 +15,7 @@ function taskRow(t) {
     ? `<button class="btn sm" data-act="task-start" data-id="${esc(t.id)}">Start now</button><button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Remove from the queue" title="Remove">✕</button>`
     : t.state === 'started' && t.key ? `<button class="btn sm" data-act="task-open" data-key="${esc(t.key)}">Open it</button><button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Clear" title="Clear">✕</button>`
       : `<button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Remove" title="Remove">✕</button>`;
-  return `<li class="task ${t.state}" data-task="${esc(t.id)}"><div class="tk-in"><b class="tk-p">${esc(first.slice(0, 160))}</b><small>${esc(t.folder)} · ${esc(who)}${t.repeat ? ` · <span class="tk-rep" title="A routine: each time it starts, the next one is queued">↻ ${esc(REPEAT_LABEL[t.repeat] || t.repeat)}</span>` : ''}</small>${st}</div><div class="tk-b">${btns}</div></li>`;
+  return `<li class="task ${t.state}" data-task="${esc(t.id)}"><div class="tk-in"><b class="tk-p">${esc(first.slice(0, 160))}</b><small>${esc(t.folder)} · ${esc(who)}${t.repeat ? ` · <span class="tk-rep" title="Repeats: each time it starts, the next one is queued">↻ ${esc(REPEAT_LABEL[t.repeat] || t.repeat)}</span>` : ''}</small>${st}</div><div class="tk-b">${btns}</div></li>`;
 }
 function renderQueue() {
   const sec = $('secQueue'), list = $('queueList');
@@ -39,7 +39,7 @@ function taskDialog() {
         <label id="tkAcctWrap">Account<select id="tkAcct"></select></label>
         <label>When<select id="tkWhen"><option value="now">As soon as there’s room</option><option value="at">Not before…</option></select></label>
         <label id="tkAtWrap" hidden>Time<input type="datetime-local" id="tkAt"></label>
-        <label id="tkRepWrap" hidden>Repeat<select id="tkRepeat"><option value="">Just once</option><option value="daily">Every day</option><option value="weekdays">Every weekday</option><option value="weekly">Every week</option></select></label>
+        <label id="tkRepWrap" hidden title="A repeating task becomes a routine (on the Routines page)">Repeat<select id="tkRepeat"><option value="">Just once</option><option value="daily">Every day</option><option value="weekdays">Every weekday</option><option value="weekly">Every week</option></select></label>
       </div>
       <label class="tk-prompt">What should it do?<select id="tkFrom"><option value="">Start from a saved prompt…</option></select><textarea id="tkText" rows="7" placeholder="Write the README for this project: how to install it, run it and test it."></textarea></label>
       <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-tk="close">Cancel</button><button type="submit" class="btn prime" id="tkGo">Queue it</button></div>
@@ -63,6 +63,7 @@ function taskDialog() {
     const r = await api('/api/tasks', { action: 'add', task });
     S.tasks = r.tasks; renderQueue();
     d.close();
+    if (r.routine) { toast(`Made a routine: ${r.routine.name}, ${(r.routine.triggerText || 'on its schedule').toLowerCase()}. It’s on the Routines page.`, 6000); return; }
     toast(r.task.when === 'at' ? `Queued. It starts ${new Date(r.task.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}, once an account has room.` : 'Queued. It starts as soon as an account has room.', 5000);
   }));
   return d;
