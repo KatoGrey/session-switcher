@@ -46,7 +46,7 @@ function mdHtml(src) {
     const line = lines[i];
     const code = /^\u0000(\d+)\u0000$/.exec(line.trim());
     if (code) { flush(); out.push(blocks[Number(code[1])]); continue; }
-    if (line.includes('|') && isRule(lines[i + 1])) {
+    if (line.includes('|') && isRule(lines[i + 1]) && (lines[i + 1].includes('|') || cells(line).length > 1)) {
       flush();
       const align = cells(lines[i + 1]).map(c => (/^:-+:$/.test(c) ? 'center' : /-:$/.test(c) ? 'right' : ''));
       const td = (tag, c, j) => `<${tag}${align[j] ? ` style="text-align:${align[j]}"` : ''}>${inline(c)}</${tag}>`;
