@@ -12,3 +12,5 @@ lite-close.mp3         casino-audio/Audio/card-shove-2.ogg
 lite-chip-1.mp3        casino-audio/Audio/chip-lay-1.ogg
 lite-chip-2.mp3        casino-audio/Audio/chip-lay-2.ogg
 lite-undo.mp3          casino-audio/Audio/card-slide-5.ogg
+lite-done-1.mp3        casino-audio/Audio/chips-stack-1.ogg
+lite-done-2.mp3        casino-audio/Audio/chips-stack-4.ogg

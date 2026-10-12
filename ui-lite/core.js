@@ -287,11 +287,14 @@ function openChat(id, { full = false, provider = null } = {}) {
 
 /* ---------- toasts, menus, confirmations ---------- */
 let lastUndo = null;
-function toast(text, undo = null) {
-  lastUndo = undo;
+// A short message at the bottom. With a function it carries a button: Undo (and z) by default, or
+// another action ({ label: 'Open' }).
+function toast(text, undo = null, { label = null } = {}) {
+  lastUndo = label ? null : undo;
   const r = $('toastRoot');
-  r.innerHTML = `<div class="toast"><span>${esc(text)}</span>${undo ? '<button id="undoBtn">Undo <kbd>z</kbd></button>' : ''}</div>`;
-  r.querySelector('#undoBtn')?.addEventListener('click', () => { const u = lastUndo; lastUndo = null; r.innerHTML = ''; if (u) wrap(u)(); });
+  r.innerHTML = `<div class="toast"><span>${esc(text)}</span>${undo ? `<button id="undoBtn">${label ? esc(label) : 'Undo <kbd>z</kbd>'}</button>` : ''}</div>`;
+  if (label) r.querySelector('#undoBtn')?.addEventListener('click', () => { r.innerHTML = ''; wrap(undo)(); });
+  if (!label) r.querySelector('#undoBtn')?.addEventListener('click', () => { const u = lastUndo; lastUndo = null; r.innerHTML = ''; if (u) wrap(u)(); });
   clearTimeout(toast.t); toast.t = setTimeout(() => { r.innerHTML = ''; lastUndo = null; }, 6000);
 }
 function closePop() { $('popRoot').innerHTML = ''; }

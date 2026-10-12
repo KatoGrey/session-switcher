@@ -1008,3 +1008,5 @@ blockquote p { margin: 4px 0; }
 .pr-g.pr-changes { color: #d97706; }
 .pr-g.pr-approved { color: #16a34a; }
 .pr-g.pr-merged { color: #8b5cf6; }
+.foot-row .nav-i.mute { flex: none; width: 34px; padding: 0; color: var(--muted); }
+.foot-row .nav-i.mute[aria-pressed="true"] { color: var(--st-bug); }

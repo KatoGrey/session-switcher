@@ -3,7 +3,7 @@
    row under it (or on the selection). g-chords jump between pages. ⌘K finds anything. ? shows it all. */
 
 const SHORTCUTS = [
-  ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g b', 'Bugs'], ['g o', 'Routines'], ['g r', 'Recents'], ['g i', 'Images'], ['g a', 'Archived'], ['g c', 'Clean up'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
+  ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g b', 'Bugs'], ['g o', 'Routines'], ['g r', 'Recents'], ['g u', 'Automation'], ['g i', 'Images'], ['g l', 'Alerts'], ['g a', 'Archived'], ['g c', 'Clean up'], ['[ / ]', 'Previous / next chat in the sidebar'], ['n', 'Next chat that needs you'], ['m', 'Sounds on / off'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
   ['Needs you', [['t', 'Triage: one at a time, the next opens by itself'], ['a / d', 'Allow / deny'], ['r', 'Reply'], ['e', 'Done'], ['o', 'Open the chat']]],
   ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–4', 'Status: Exploring, Building, Finishing, Done'], ['→ / ←', 'Open / fold a chat’s sub-chats'], ['f', 'Focus on / off'], ['w', 'Waiting on…'], ['s', 'Status, kind and more'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
   ['In a chat', [['↵', 'Send'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['esc', 'Back to where you were']]],
@@ -30,12 +30,26 @@ function keepCur() {
 const idsAt = el => { const id = el && (el.dataset.chat || el.dataset.open); return S.sel.size && id && S.sel.has(id) ? [...S.sel] : S.sel.size && !id ? [...S.sel] : id ? [id] : []; };
 
 let chord = null, chordTimer = null;
-const GO = { n: 'now', p: 'home', h: 'hack', b: 'bugs', o: 'routines', r: 'recent', i: 'images', a: 'archived', c: 'cleanup' };
+const GO = { n: 'now', p: 'home', h: 'hack', b: 'bugs', o: 'routines', r: 'recent', u: 'automation', i: 'images', l: 'alerts', a: 'archived', c: 'cleanup' };
+// Rifling: the sidebar's chats in order, and the ones that need you.
+function stepChat(dir) {
+  const list = [...document.querySelectorAll('#sideScroll [data-chat]')].filter(b => b.offsetParent);
+  if (!list.length) return;
+  const here = list.findIndex(b => S.view === 'chat' && low(b.dataset.chat) === low(CV.id));
+  const next = list[here < 0 ? (dir > 0 ? 0 : list.length - 1) : (here + dir + list.length) % list.length];
+  next.scrollIntoView({ block: 'nearest' }); next.click();
+}
+function nextNeeding() {
+  const list = needList().filter(x => x.sessionId);
+  if (!list.length) return toast('Nothing needs you.');
+  const here = list.findIndex(x => S.view === 'chat' && low(x.sessionId) === low(CV.id));
+  openChat(list[(here + 1) % list.length].sessionId);
+}
 function onKey(e) {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); return openPalette(); }
-  if (mod && e.key === '.' && S.view === 'chat' && CV.key && CV.busy) { e.preventDefault(); return wrap(() => api('/api/chat/interrupt', { key: CV.key }))(); }
+  if (mod && e.key === '.' && S.view === 'chat' && CV.key && CV.busy) { e.preventDefault(); sfx('close'); return wrap(() => api('/api/chat/interrupt', { key: CV.key }))(); }
   if ($('palRoot').innerHTML) return undefined; // the palette handles its own keys
   if (e.key === 'Escape') {
     if ($('modalRoot').innerHTML) { $('modalRoot').innerHTML = ''; return undefined; }
@@ -68,6 +82,10 @@ function onKey(e) {
     case 'c': e.preventDefault(); return go('newchat', { ncProject: S.view === 'project' ? S.project : null });
     case '/': e.preventDefault(); $('q').focus(); return undefined;
     case '?': e.preventDefault(); return showShortcuts();
+    case 'm': e.preventDefault(); return toggleSound();
+    case '[': e.preventDefault(); return stepChat(-1);
+    case ']': e.preventDefault(); return stepChat(1);
+    case 'n': if (S.view !== 'triage') { e.preventDefault(); return nextNeeding(); } break;
     case 'z': if (lastUndo) { e.preventDefault(); const u = lastUndo; lastUndo = null; $('toastRoot').innerHTML = ''; return wrap(u)(); } return undefined;
     default: break;
   }

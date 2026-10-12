@@ -309,7 +309,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-rmimg]'))) { const [im] = COMP.images.splice(Number(b.dataset.rmimg), 1); if (im && im.url) URL.revokeObjectURL(im.url); return paintAttachments(); }
   if ((b = el('[data-rmfile]'))) { COMP.files.splice(Number(b.dataset.rmfile), 1); return paintAttachments(); }
   if ((b = el('[data-zoom]'))) return showPicture(b.src);
-  if ((b = el('[data-stopchat]'))) return wrap(() => api('/api/chat/interrupt', { key: CV.key }))();
+  if ((b = el('[data-stopchat]'))) { sfx('close'); return wrap(() => api('/api/chat/interrupt', { key: CV.key }))(); }
   if ((b = el('[data-ncproject]'))) return pickProject(b, k => { NC.project = k; paintNewChat(); $('msgBox').focus(); });
   if ((b = el('[data-ncwho]'))) return accountMenu(b);
   if ((b = el('[data-triage]'))) return startTriage();
@@ -366,6 +366,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-pq]'))) { S.more['pq-' + b.dataset.pq] = !S.more['pq-' + b.dataset.pq]; return render(); }
   if ((b = el('[data-pickbucket]'))) return pop(b, `${[['all', 'All buckets'], ...buckets().map(x => [x.id, x.name]), ['unsorted', 'Unsorted']].map(([id, n]) => `<button data-v="${esc(id)}" role="menuitemradio" aria-checked="${S.bucket === id}">${esc(n)}</button>`).join('')}`, v => { S.bucket = v; local.set('bucket', v); render(); });
   if ((b = el('#lookBtn'))) return lookMenu(b);
+  if ((b = el('#muteBtn'))) return toggleSound();
   if ((b = el('[data-open]'))) { if (el('input') || el('a[href]') || (el('button') && !el('button').dataset.open)) return undefined; return b.dataset.open ? openChat(b.dataset.open) : toast('That chat hasn’t started yet.'); }
   if ((b = el('[data-project]'))) return go('project', { project: b.dataset.project });
   if ((b = el('[data-chat]'))) {
