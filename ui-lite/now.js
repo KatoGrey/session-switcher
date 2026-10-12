@@ -140,7 +140,8 @@ function commanderAnswer() {
   return { question, text: text + (live ? (text ? '\n\n' : '') + live : ''), steps, done, err, waiting };
 }
 function commanderHtml() {
-  const a = commanderAnswer();
+  // What you asked shows straight away, while a Commander that was off starts up.
+  const a = S.cmd.pending ? { question: S.cmd.pending, text: '', steps: 0, done: false, err: '', waiting: false } : commanderAnswer();
   const st = S.cmd.state;
   return `<form class="cmd" id="cmdForm" autocomplete="off">
     <span class="cmd-ic">${IC.spark}</span><input ${MSG_ATTRS} id="cmdInput" placeholder="Ask the commander: nudge, sort, summarize, plan…" aria-label="Ask the commander" ${st === 'starting' ? 'disabled' : ''}>
@@ -158,11 +159,12 @@ function cmdListen(key) {
   const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}`);
   S.cmd.es = es;
   S.cmd.chatState = 'starting';
-  es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); S.cmd.sessionId = info.sessionId || S.cmd.sessionId; S.cmd.chatState = info.state; } catch { /* fine */ } });
+  es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); S.cmd.sessionId = info.sessionId || S.cmd.sessionId; S.cmd.chatState = info.state; } catch { /* fine */ } renderCommander(); });
   es.addEventListener('chat', e => {
     let ev; try { ev = JSON.parse(e.data); } catch { return; }
     if (ev.kind === 'init' && ev.sessionId) S.cmd.sessionId = ev.sessionId;
     if (ev.kind === 'state') S.cmd.chatState = ev.state;
+    if (ev.kind === 'user') S.cmd.pending = null;
     S.cmd.events.push(ev);
     if (S.cmd.events.length > 400) S.cmd.events.splice(0, S.cmd.events.length - 400);
     if (ev.kind === 'result') S.cmd.state = 'idle';
@@ -183,7 +185,7 @@ function renderCommander() {
 const waitFor = async (test, msTotal) => { const t0 = Date.now(); while (Date.now() - t0 < msTotal) { if (await test()) return true; await new Promise(r => setTimeout(r, 600)); } return false; };
 async function askCommander(text) {
   text = String(text || '').trim(); if (!text) return;
-  S.cmd.error = null; S.cmd.state = 'starting'; renderCommander();
+  S.cmd.error = null; S.cmd.state = 'starting'; S.cmd.pending = text; renderCommander();
   try {
     const info = await api('/api/commander/open', {});
     S.cmd.sessionId = info.sessionId || S.cmd.sessionId;
@@ -194,7 +196,7 @@ async function askCommander(text) {
     S.cmd.state = 'working'; renderCommander();
     await api('/api/chat/send', { key: info.key, text });
   } catch (err) {
-    S.cmd.state = 'idle';
+    S.cmd.state = 'idle'; S.cmd.pending = null;
     S.cmd.error = /isn’t signed in|sign in/i.test(err.message) ? `${err.message} The Commander runs as one of your Claude accounts; pick it in the full app’s Commander settings.` : err.message;
     renderCommander();
   }

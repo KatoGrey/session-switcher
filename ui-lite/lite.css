@@ -355,7 +355,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .selbar .n { font-weight: 500; margin-right: 6px; white-space: nowrap; }
 .selbar button { padding: 6px 10px; border-radius: 8px; white-space: nowrap; }
 .selbar button:hover { background: color-mix(in srgb, var(--pane) 16%, transparent); }
-.toast { position: fixed; z-index: 45; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; gap: 12px; align-items: center; padding: 8px 10px 8px 14px; border-radius: 10px; background: var(--fg); color: var(--pane); font-size: 13px; max-width: calc(100vw - 32px); }
+.toast { position: fixed; z-index: 45; left: 50%; top: calc(12px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; gap: 12px; align-items: center; padding: 8px 10px 8px 14px; border-radius: 10px; background: var(--fg); color: var(--pane); font-size: 13px; max-width: calc(100vw - 32px); }
 .toast button { color: var(--pane); text-decoration: underline; text-underline-offset: 2px; padding: 2px 4px; }
 
 /* design notes */
