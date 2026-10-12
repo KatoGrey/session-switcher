@@ -6,7 +6,7 @@ const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'automation', 'routines'
 const small = () => matchMedia('(max-width: 760px)').matches;
 
 function sideChat(c, depth = 0) {
-  const marks = kindTag(c) + waitTag(c) + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '');
+  const marks = (isBug(c) ? '' : kindTag(c)) + waitTag(c) + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '');
   return `<button class="nav-i chat-i${depth ? ' kid' : ''}" ${depth ? `style="--d:${depth}"` : ''} draggable="true" data-chat="${esc(c.id)}" aria-current="${S.view === 'chat' && String(CV.id).toLowerCase() === String(c.id).toLowerCase()}" title="${esc(c.title)} · ${esc(projOf(c).name)}">${focusStar(c)}<span class="lbl">${esc(c.title)}</span>${marks}</button>`;
 }
 // Under a top-level chat in the sidebar: one line for its sub-chats, opened in place.
@@ -55,16 +55,23 @@ function renderSide() {
     + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`;
 }
 
-// Open bugs, together above the projects (their own group, whatever project they're in).
+// Open bugs, together above the projects (their own group, whatever project they're in), under
+// their stage: Exploring, Working, Finish line.
 function sideBugs(chats) {
-  const open = chats.filter(c => isBug(c) && statusOf(c) !== 'done' && isTop(c));
+  if (typeof loadPipeline === 'function') loadPipeline();
+  const open = chats.filter(c => isBug(c) && isTop(c) && bugStage(c) !== 'done');
   if (!open.length) return '';
   const folded = !!S.folded['p:__bugs'];
-  const shown = open.slice(0, S.more['all-bugs'] ? 400 : 10);
-  return `<div class="group folder" data-folded="${folded}">
-    <button class="nav-i folder-btn" data-foldproj="__bugs" aria-expanded="${!folded}"><span class="ic">${IC.bug}</span><span class="lbl">Bugs</span><span class="n">${open.length}</span></button>
-    <div class="folder-items">${shown.map(c => sideChat(c)).join('')}${open.length > shown.length ? `<button class="nav-i chat-i quiet-toggle" data-more-all="bugs"><span class="lbl">${open.length - shown.length} more</span></button>` : ''}</div>
-  </div>`;
+  const limit = S.more['all-bugs'] ? 400 : 12;
+  let n = 0, inner = '';
+  for (const st of BUG_STAGES.filter(x => x.id !== 'done')) {
+    const list = open.filter(c => bugStage(c) === st.id); if (!list.length || n >= limit) continue;
+    const take = list.slice(0, limit - n); n += take.length;
+    inner += `<div class="side-stage"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(c => sideChat(c)).join('')}`;
+  }
+  if (open.length > n) inner += `<button class="nav-i chat-i quiet-toggle" data-more-all="bugs"><span class="lbl">${open.length - n} more</span></button>`;
+  const nd = open.some(needs), rn = open.some(running);
+  return `<div class="group folder" data-folded="${folded}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-go="bugs"><span class="ic">${IC.bug}</span><span class="lbl">Bugs</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : `<span class="n">${open.length}</span>`}</button><button class="proj-chev" data-foldproj="__bugs" aria-expanded="${!folded}" aria-label="${folded ? 'Show' : 'Hide'} bugs" title="${folded ? 'Show' : 'Hide'} bugs"></button></div><div class="folder-items">${inner}</div></div>`;
 }
 
 // The sidebar by project (the default): each project with its chats, Focus first. In buckets where

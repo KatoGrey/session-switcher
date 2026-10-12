@@ -185,6 +185,26 @@ const focusList = () => allChats().filter(c => c.focus && statusOf(c) !== 'done'
 const bugList = () => allChats().filter(c => c.kind === 'bug');
 // Bug chats live under Bugs (the sidebar's Bugs group and page), not in their projects' lists.
 const isBug = c => c.kind === 'bug';
+/* A bug's stage: Exploring (no fix yet: investigating, blocked or waiting on a question), Working (a
+   fix is being built right now), Finish line (a PR is up: review, preview, testers, waiting to
+   merge), Done (merged, or marked done). Taken from its PR and whether it's running; a stage you
+   set by hand wins over the guess. */
+const BUG_STAGES = [
+  { id: 'exploring', name: 'Exploring', c: 'var(--st-explore)' },
+  { id: 'building', name: 'Working', c: 'var(--st-feature)' },
+  { id: 'finishing', name: 'Finish line', c: 'var(--st-final)' },
+  { id: 'done', name: 'Done', c: 'var(--st-done)' },
+];
+const pipeItem = c => (S.pipeline && S.pipeline.byChat ? S.pipeline.byChat.get(c.id) || null : null);
+function bugStage(c) {
+  const it = pipeItem(c), st = statusOf(c), byHand = c.guessed && c.guessed.status === false;
+  if (it && it.stage === 'merged') return 'done';
+  if (byHand && st === 'done') return 'done';
+  if (it && it.pr) return 'finishing';
+  if (running(c)) return 'building';
+  if (byHand && (st === 'building' || st === 'finishing')) return st;
+  return 'exploring';
+}
 const chatsOfProject = k => allChats().filter(c => c.project === k && !isBug(c));
 // Runs started by scripts, agents and routines: out of every list, all on the Automation page.
 const automationList = () => S.chats.filter(c => !c.archived && (c.auto || c.routineRun)).sort((a, b) => b.updated - a.updated);
@@ -230,6 +250,9 @@ const IC = {
   flag: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 14.5V2M3.5 2.5h8.5l-2 3 2 3H3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
   refresh: '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.75M13.2 2.6v2.9h-2.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   bug: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="5" width="7" height="8.5" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6 5.2a2 2 0 0 1 4 0M8 8v5.3M2 8.5h2.5M11.5 8.5H14M2.8 4.5l2 1.5M13.2 4.5l-2 1.5M2.8 13l2-1.5M13.2 13l-2-1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  pr: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="4" cy="3.5" r="1.6"/><circle cx="4" cy="12.5" r="1.6"/><circle cx="12" cy="12.5" r="1.6"/><path d="M4 5.1v5.8M12 10.9V6.5a2 2 0 0 0-2-2H7.5M9 3 7.5 4.5 9 6"/></g></svg>',
+  eye: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8Z"/><circle cx="8" cy="8" r="2"/></g></svg>',
+  people: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="6" cy="5.5" r="2.2"/><path d="M2 13c.4-2.2 2-3.5 4-3.5s3.6 1.3 4 3.5"/><path d="M10.5 3.6a2 2 0 0 1 0 3.8M12 9.8c1.1.5 1.8 1.6 2 3.2"/></g></svg>',
 };
 
 /* ---------- opening a chat in the full app's chat window ---------- */
