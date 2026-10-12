@@ -961,3 +961,6 @@ body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr
   .chat-h .crumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-h .ch-name ~ * { flex: none; }
 }
+
+/* The page slides with the iPhone keyboard (about its speed and easing) instead of snapping after it. */
+.kb-glide .app, .kb-glide .main { transition: height .32s cubic-bezier(.25, .8, .25, 1), top .32s cubic-bezier(.25, .8, .25, 1); }
