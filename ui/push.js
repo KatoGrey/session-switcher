@@ -11,7 +11,10 @@ const Push = { reg: null, sub: null, ts: null, tsBusy: false, prefsTimer: 0 };
 const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const pushCapable = () => window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-const pushPrefs = () => ({ levels: alertLevels(), quiet: quietHours(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || '' });
+const pushReplies = () => store('push-replies') || 'recent';
+const pushPrefs = () => ({ levels: alertLevels(), quiet: quietHours(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || '', replies: pushReplies() });
+// Which replies notify this phone ("needs your OK" always does).
+const repliesField = () => `<label class="ph-rep">Replies<select data-push="replies">${[['recent', 'From chats I wrote to in the last few hours'], ['all', 'From every chat'], ['none', 'None: only when a chat needs me']].map(([v, l]) => `<option value="${v}"${pushReplies() === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
 // The Android app (5.3 and later) shows notifications itself.
 const appNotify = () => !!(window.Android && window.Android.notifyState);
 const appNotifyState = () => { try { return JSON.parse(window.Android.notifyState()); } catch { return { on: false }; } };
@@ -69,7 +72,7 @@ function pushBoxHtml() {
     return `${head}<label class="toggle"><input type="checkbox" data-push="app" ${st.on ? 'checked' : ''}><span><b>Notifications on this phone</b><span>When a chat needs your OK, with Allow and Deny right on it, or replies. They come while this phone is on your home Wi-Fi; when you’re back, it shows what’s waiting. Each chat’s alert level and your quiet hours count.</span></span></label>
       ${st.on && !st.allowed ? '<p class="ph-note warn">Android is blocking this app’s notifications. <button class="btn sm" data-push="settings">Allow them</button></p>' : ''}
       ${st.on && st.allowed && !st.battery ? '<p class="ph-note">To get them straight away while the phone sleeps, let the app run in the background. <button class="btn quiet sm" data-push="battery">Allow</button></p>' : ''}
-      ${st.on ? '<p><button class="btn quiet sm" data-push="test">Send a test</button> <button class="btn quiet sm" data-push="settings">Notification settings</button></p>' : ''}`;
+      ${st.on ? `${repliesField()}<p><button class="btn quiet sm" data-push="test">Send a test</button> <button class="btn quiet sm" data-push="settings">Notification settings</button></p>` : ''}`;
   }
   if (window.Android) return `${head}<p class="ph-note">Update the app to get notifications: <button class="btn sm" data-push="get">Get the new app</button> Download it, open it and install it over this one; your pairing stays.</p>`;
   if (!window.isSecureContext) return `${head}<p class="ph-note">Phones only allow notifications on a secure address. On your PC, open Setup → <b>Phone access</b> → <b>Notifications on your phone</b> to set one up with Tailscale, then open that address here and pair once.</p>`;
@@ -77,7 +80,7 @@ function pushBoxHtml() {
   if (!pushCapable()) return `${head}<p class="ph-note">This browser can’t receive notifications.</p>`;
   if (Notification.permission === 'denied') return `${head}<p class="ph-note">Notifications are blocked for this page. Allow them in the browser’s settings for this site, then come back.</p>`;
   return `${head}<label class="toggle"><input type="checkbox" data-push="on" ${Push.sub ? 'checked' : ''}><span><b>Notifications on this phone</b><span>When a chat needs your OK${isIOS() ? ' (tap to answer it)' : ', with Allow and Deny right on it,'} or replies, even with Session Switcher closed. Each chat’s alert level and your quiet hours count.</span></span></label>
-    ${Push.sub ? '<p><button class="btn quiet sm" data-push="test">Send a test</button></p>' : ''}`;
+    ${Push.sub ? `${repliesField()}<p><button class="btn quiet sm" data-push="test">Send a test</button></p>` : ''}`;
 }
 function renderPushBox() { const b = $('pushBox'); if (b) b.innerHTML = pushBoxHtml(); }
 
@@ -102,6 +105,8 @@ function renderTailscale(phones = Push.phones || 0) {
 }
 
 document.addEventListener('change', wrap(async e => {
+  const rp = e.target.closest('[data-push="replies"]');
+  if (rp) { store('push-replies', rp.value); pushSyncPrefs(); toast(rp.value === 'none' ? 'Only when a chat needs you.' : rp.value === 'all' ? 'Replies from every chat.' : 'Replies from chats you wrote to lately.', 2500); return; }
   const a = e.target.closest('[data-push="app"]');
   if (a) {
     window.Android.setNotify(a.checked);

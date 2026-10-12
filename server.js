@@ -2041,6 +2041,13 @@ function wantsToText(p) {
 }
 // The Android apps connected right now (each listens on /api/notify/stream while on your Wi-Fi).
 const appWatchers = new Set();   // { res, device }
+// You wrote to this chat (or its partner) in the last three hours: its replies are ones you're waiting for.
+const RECENT_MS = 3 * 3600e3;
+function yourRecentOf(x) {
+  const since = new Date(Date.now() - RECENT_MS).toISOString();
+  const wrote = c => { try { const ch = chats.get(c); return ch.buffer.some(e => e.kind === 'user' && e.local && (e.at || '') >= since); } catch { return false; } };
+  return wrote(x.key) || (x.parentKey ? wrote(x.parentKey) : false);
+}
 const sidOf = x => (x.parentKey ? (() => { try { return chats.get(x.parentKey).sessionId; } catch { return null; } })() : x.sessionId);
 // One notification's message. id tells the phone whether it has shown this one already.
 function pushMessage(n, now = Date.now()) {
@@ -2078,7 +2085,8 @@ async function sendPushes() {
   for (const n of fresh) {
     const msg = pushMessage(n, now);
     // Per phone: its alert level for the chat (a partner goes by its chat), and its quiet hours.
-    const want = prefs => msg.kind === 'clear' || pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat) });
+    const recent = n.kind === 'reply' ? yourRecentOf(n.chat) : true;
+    const want = prefs => msg.kind === 'clear' || pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat), yourRecent: recent });
     for (const w of appWatchers) if (want(pushes.appPrefs(w.device.id))) toApp(w, msg);
     if (msg.kind !== 'clear' && pushes.count()) await pushes.notify(msg, want);
   }
@@ -2104,7 +2112,7 @@ async function pushApi(req, res, route, remote) {
     const w = { res, device: dev };
     res.write(`retry: 5000\ndata: ${JSON.stringify({ kind: 'hello', pc: os.hostname(), at: Date.now() })}\n\n`);
     const prefs = pushes.appPrefs(dev.id);
-    for (const n of waitingNow(since)) if (pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat) })) toApp(w, { ...pushMessage(n), catchUp: true });
+    for (const n of waitingNow(since)) if (pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat), yourRecent: n.kind === 'reply' ? yourRecentOf(n.chat) : true })) toApp(w, { ...pushMessage(n), catchUp: true });
     appWatchers.add(w);
     const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* closed */ } }, 25000);
     req.on('close', () => { clearInterval(ping); appWatchers.delete(w); });

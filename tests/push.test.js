@@ -91,6 +91,14 @@ test('push: each phone’s alert levels and quiet hours (in its own time zone)',
   assert.equal(push.wants(prefs, { kind: 'reply', sessionId: 'other' }, noon), true);
   assert.equal(push.wants(prefs, { kind: 'needs', sessionId: 'other' }, night), false, 'quiet hours');
   assert.equal(push.cleanPrefs({ tz: 'Not/AZone' }).tz, '');
+  // Replies: by default only from chats you wrote to lately; needing you always gets through.
+  const d = push.cleanPrefs({});
+  assert.equal(d.replies, 'recent');
+  assert.equal(push.wants(d, { kind: 'reply', sessionId: 'x', yourRecent: false }, noon), false, 'a chat you left working on its own');
+  assert.equal(push.wants(d, { kind: 'reply', sessionId: 'x', yourRecent: true }, noon), true);
+  assert.equal(push.wants(d, { kind: 'needs', sessionId: 'x', yourRecent: false }, noon), true);
+  assert.equal(push.wants(push.cleanPrefs({ replies: 'all' }), { kind: 'reply', sessionId: 'x', yourRecent: false }, noon), true);
+  assert.equal(push.wants(push.cleanPrefs({ replies: 'none' }), { kind: 'reply', sessionId: 'x', yourRecent: true }, noon), false);
 });
 
 test('push: what’s new is approvals that just came up and replies that just finished', () => {

@@ -1304,6 +1304,21 @@ module.exports = [
     },
   },
   {
+    name: 'half loaded',
+    // A script lost on the way (a patchy connection): the page reloads once by itself, then says so.
+    async run(t) {
+      const b = await t.open({ demo: false });   // its own interception, not the demo's
+      let tries = 0, block = 2;
+      await b.intercept('*/ui/base.js*', () => (block-- > 0 ? (tries++, { status: 503, type: 'text/plain', body: 'busy' }) : null));
+      await b.nav(`${await b.eval('return location.origin')}/`, 4000);
+      const r = await b.eval(`return { alert: document.querySelector('[role="alert"]')?.textContent || '', loaded: typeof wrap === 'function' }`);
+      t.check('it reloads once by itself, and then says it didn’t load fully', tries === 2 && /didn’t load fully/.test(r.alert) && !r.loaded, { tries, ...r });
+      await b.nav(`${await b.eval('return location.origin')}/`, 3000);
+      t.check('the next time it loads, it’s whole again', await b.eval(`return typeof wrap === 'function' && !document.querySelector('[role="alert"]')`));
+      b.logs.length = 0;   // the lost script's errors were the point of this test
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {

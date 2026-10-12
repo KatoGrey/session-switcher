@@ -190,5 +190,18 @@
 <script src="/ui/chat-run.js"></script>
 <script src="/ui/chat-later.js"></script>
 <script src="/ui/chat.js"></script>
+<script>
+  // A page that didn't load fully (a script lost on a patchy connection) would just be broken: it
+  // reloads once by itself, and if that doesn't help, says so with a Reload button.
+  (function () {
+    var ok = ['wrap', 'renderAll', 'openRun', 'openLaterDialog'].every(function (n) { return typeof window[n] === 'function'; }) && typeof window.ChatUI === 'object';
+    var k = 'ss-half-loaded';
+    if (ok) { try { sessionStorage.removeItem(k); } catch (e) { /* private mode */ } return; }
+    var again = false;
+    try { again = sessionStorage.getItem(k) === '1'; sessionStorage.setItem(k, '1'); } catch (e) { again = true; }
+    if (!again) { location.reload(); return; }
+    document.body.insertAdjacentHTML('afterbegin', '<p role="alert" style="position:fixed;z-index:999;left:50%;top:16px;transform:translateX(-50%);margin:0;padding:12px 18px;border-radius:10px;background:#1b1519;color:#ede6d9;border:1px solid #a5463f;font:15px Georgia,serif">Session Switcher didn’t load fully. <a href="" style="color:#d9bf74">Reload</a></p>');
+  }());
+</script>
 </body>
 </html>
