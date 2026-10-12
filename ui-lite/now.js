@@ -10,6 +10,15 @@ const titleOf = x => { const c = x.sessionId && chatBy.get(x.sessionId); return 
 const whereOf = x => { const c = x.sessionId && chatBy.get(x.sessionId); const p = c && projOf(c); return p ? `${p.name}${p.bucket ? ` · ${bucketName(p.bucket)}` : ''}` : x.folder || ''; };
 const idOf = x => x.sessionId || x.key;
 
+// The end of a reply, for a card: Markdown links as their words, starting at a sentence (or at
+// least a word) when it had to be cut.
+function replyTail(t, n = 300) {
+  t = String(t || '').replace(/\[([^\]\n]+)\]\([^)\s]+\)/g, '$1').replace(/^[^\[]*?\]\(\S+?\)/, '').replace(/\*\*|`/g, '').replace(/\s+/g, ' ').trim();
+  if (t.length <= n && !/^[a-z]/.test(t)) return t;
+  t = t.slice(-n);
+  const i = t.search(/[.!?:]\s+[A-Z(]/);
+  return `…${i >= 0 && i < n * 0.6 ? t.slice(i + 1).trim() : t.slice(t.indexOf(' ') + 1)}`;
+}
 function needsRow(x) {
   const id = idOf(x);
   const head = `<div class="row" role="button" tabindex="-1" data-open="${esc(x.sessionId || '')}" data-cur="n:${esc(id)}"><span class="dot needs-dot" title="Needs you"></span>
@@ -20,8 +29,8 @@ function needsRow(x) {
   if (p && p.question) ask = `<span class="q">Asks you a question${x.pending.length > 1 ? ` (and ${x.pending.length - 1} more)` : ''}.</span><button class="btn prime" data-open="${esc(x.sessionId || '')}">Open to answer</button>`;
   else if (p && x.key) ask = `<code>${esc(p.detail || p.summary || p.toolName)}</code><button class="btn prime" data-perm="allow" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Allow <kbd>a</kbd></button>${p.canAlways ? `<button class="btn" data-perm="always" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Always allow</button>` : ''}<button class="btn" data-perm="deny" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Deny <kbd>d</kbd></button>`;
   else if (p) ask = `<span class="q">Wants to use ${esc(p.toolName)}. It’s running in another app, so answer it there.</span>`;
-  else if (x.key && x.source === 'app') ask = `<span class="q">${esc(x.lastText || 'Replied.')}</span><input data-qr="${esc(x.key)}" data-id="${esc(id)}" placeholder="Reply without opening… (r)" aria-label="Quick reply"><button class="btn" data-send="${esc(x.key)}">Send</button>`;
-  else ask = `<span class="q">${esc(x.lastText || 'Replied.')}</span><button class="btn" data-open="${esc(x.sessionId || '')}">Open</button>`;
+  else if (x.key && x.source === 'app') ask = `<span class="q">${esc(replyTail(x.lastText) || 'Replied.')}</span><input data-qr="${esc(x.key)}" data-id="${esc(id)}" placeholder="Reply without opening… (r)" aria-label="Quick reply"><button class="btn" data-send="${esc(x.key)}">Send</button>`;
+  else ask = `<span class="q">${esc(replyTail(x.lastText) || 'Replied.')}</span><button class="btn" data-open="${esc(x.sessionId || '')}">Open</button>`;
   return `<div class="rowwrap">${head}<div class="ask">${ask}</div></div>`;
 }
 
@@ -107,8 +116,6 @@ function commanderAnswer() {
   const waiting = after.some(e => e.kind === 'permission') && !after.some(e => e.kind === 'permission_done');
   return { question, text: text + (live ? (text ? '\n\n' : '') + live : ''), steps, done, err, waiting };
 }
-// Just enough Markdown for the Commander's answers: bold, inline code and headings, escaped first.
-const mdLite = t => esc(t).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/^#{1,4} (.+)$/gm, '<b>$1</b>');
 function commanderHtml() {
   const a = commanderAnswer();
   const st = S.cmd.state;
@@ -118,7 +125,7 @@ function commanderHtml() {
     <div class="cmd-chips">${CMD_CHIPS.map(t => `<button type="button" class="chip" data-cmd="${esc(t)}">${esc(t)}</button>`).join('')}</div>
     ${S.cmd.error ? `<div class="cmd-answer"><p class="warn" style="color:var(--st-bug)">${esc(S.cmd.error)}</p></div>` : ''}
     ${a ? `<div class="cmd-answer"><div class="cmd-meta"><b>Commander</b><small>${esc(a.question.slice(0, 90))}${a.steps ? ` · ${a.steps} step${a.steps === 1 ? '' : 's'}` : ''}${a.done ? '' : ' · working…'}</small>${S.cmd.sessionId ? `<button type="button" class="linkish" data-open="${esc(S.cmd.sessionId)}">Open its chat</button>` : ''}</div>
-      ${a.waiting ? '<p>It’s asking to do something. Open its chat to allow it.</p>' : ''}${a.err ? `<p style="color:var(--st-bug)">${esc(a.err)}</p>` : ''}<div class="cmd-text">${mdLite(a.text || (a.done ? 'Done.' : '…'))}</div></div>` : ''}
+      ${a.waiting ? '<p>It’s asking to do something. Open its chat to allow it.</p>' : ''}${a.err ? `<p style="color:var(--st-bug)">${esc(a.err)}</p>` : ''}<div class="cmd-text">${a.text ? mdHtml(a.text) : (a.done ? 'Done.' : '…')}</div></div>` : ''}
   </form>`;
 }
 function cmdListen(key) {

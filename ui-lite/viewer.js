@@ -133,7 +133,8 @@ document.addEventListener('click', e => {
   const b = t.closest('[data-vw], [data-viewfile], [data-viewfiles], .msg-ai a[href], .msg-ai code.vpath');
   if (!b || t.closest('#palRoot')) return;
   if (b.matches('.msg-ai a[href]')) {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0 || S.view !== 'chat') return;
+    // On a phone a link just opens (the panel would cover the chat, and sites won't sign in inside it).
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0 || S.view !== 'chat' || matchMedia('(max-width: 760px)').matches) return;
     const href = b.getAttribute('href');
     if (!/^https?:/i.test(href) || !canFrame(href)) return;
     e.preventDefault(); viewUrl(href); return;
