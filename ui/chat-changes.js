@@ -41,6 +41,43 @@ function renderChanges(ev, src) {
   bar._ev = ev;
   picsFromChanges(turn, ev);
 }
+// A chat opened again (after a restart, an update, or an idle stop): its earlier replies' changes,
+// undos and reviews, kept by the PC (lib/extras.js), go back where they were, each under the reply
+// it came from (the last reply from that side that began before it).
+async function loadExtras(gen, until) {
+  C.extras = [];
+  const ask = (id, src, upTo) => (id ? api(`/api/chat/extras?${new URLSearchParams({ id, ...(upTo ? { until: upTo } : {}) })}`).then(r => (r.extras || []).map(ev => ({ ev, src })), () => []) : Promise.resolve([]));
+  const compUntil = C.comp && C.comp.info ? C.comp.info.bufferFrom || C.comp.info.startedAt : null;
+  const [mine, theirs] = await Promise.all([ask(C.sessionId, 'main', until), ask(C.compThread, 'comp', compUntil)]);
+  if (gen !== C.gen) return;
+  C.extras = mine.concat(theirs).sort((a, b) => String(a.ev.at).localeCompare(String(b.ev.at)));
+  applyExtras();
+}
+function applyExtras() {
+  if (!C.extras || !C.extras.length) return;
+  const feed = $c('cFeed');
+  const turns = [...feed.querySelectorAll('.turn')].map(t => ({ t, prov: t.dataset.prov || C.provider, at: Date.parse(t.querySelector('.who-time')?.getAttribute('datetime') || '') }));
+  for (const x of C.extras) {
+    if (x.done) continue;
+    const { ev, src } = x, prov = provFor(src), at = Date.parse(ev.at);
+    let target = null;
+    for (const t of turns) if (t.prov === prov && t.at <= at) target = t.t;
+    if (!target) continue;   // its reply is further back than what's shown (it comes with "Show earlier")
+    x.done = true;
+    if (ev.kind === 'changes') {
+      if (feed.querySelector(`.chg[data-turn="${ev.turn}"][data-src="${src}"]`)) continue;
+      noteChanges(ev, src);
+      target.insertAdjacentHTML('beforeend', changesBar(ev, src));
+      target.lastElementChild._ev = ev;
+      picsFromChanges(target, ev);
+    } else if (ev.kind === 'undone') renderUndone(ev, src);
+    else if (ev.kind === 'review' && src === 'main') {
+      renderReview(ev);
+      const card = feed.querySelector(`.review[data-rid="${CSS.escape(ev.id)}"]`);
+      if (card) { card.classList.remove('fresh'); target.after(card); }
+    }
+  }
+}
 function renderUndone(ev, src) {
   const bar = $c('cFeed').querySelector(`.chg[data-turn="${ev.turn}"][data-src="${src}"]`);
   const r = ev.restored.length, kept = ev.skipped.filter(x => x.why === 'changed since');

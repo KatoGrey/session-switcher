@@ -1167,6 +1167,30 @@ module.exports = [
     },
   },
   {
+    name: 'kept',
+    // A chat opened again after a restart: its earlier changes and reviews are back under their replies.
+    async run(t) {
+      const ago = m => new Date(Date.now() - m * 60000).toISOString();
+      const extras = [
+        { kind: 'changes', turn: 0, files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 3, del: 1 }], more: 0, since: ago(28), at: ago(27) },
+        { kind: 'review', id: 'rv-old', state: 'done', by: 'codex', findings: [], at: ago(26) },
+        { kind: 'changes', turn: 1, files: [{ path: 'data/balance/party.json', status: 'changed', add: 1, del: 1 }], more: 0, since: ago(22), at: ago(20) },
+        { kind: 'undone', turn: 1, restored: ['data/balance/party.json'], skipped: [], at: ago(19) },
+      ];
+      const b = await t.open({ extras });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const r = await b.eval(`const turns = [...document.querySelectorAll('#cFeed .turn[data-prov="claude"]')];
+        const where = el => el ? turns.indexOf(el.closest('.turn') || el.previousElementSibling) : -2;
+        const c0 = document.querySelector('.chg[data-turn="0"]'), c1 = document.querySelector('.chg[data-turn="1"]'), rv = document.querySelector('.review[data-rid="rv-old"]');
+        return { n: turns.length, c0: where(c0), c1: where(c1), undone: c1 && c1.classList.contains('undone'), rv: rv ? turns.indexOf(rv.previousElementSibling) : -2, rvText: rv && rv.textContent.replace(/\\s+/g, ' ') }`);
+      t.check('earlier changes are back, each under its own reply', r.c0 === 0 && r.c1 === 1, r);
+      t.check('…with what was undone', r.undone, r);
+      t.check('a review is back where it came in, as it ended', r.rv === 0 && /All clear/.test(r.rvText || ''), r);
+      await b.eval(`document.querySelector('.chg[data-turn="0"]').scrollIntoView({ block: 'center' }); return 1`); await sleep(300);
+      await t.shot(b, 'kept');
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {

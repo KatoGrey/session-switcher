@@ -222,6 +222,8 @@ async function loadHistory(before) {
   }
   $c('cEarlier').hidden = h.start <= 0 && !(C.compThread && (C.compPending.length || C.compMore));
   $c('cEarlier').textContent = 'Show earlier messages';
+  // The changes, undos and reviews that go with it (kept by the PC).
+  if (before === undefined) loadExtras(gen, until).catch(() => {}); else applyExtras();
   return h;
 }
 // The partner's history, page by page, back to `since` (a time; -Infinity for all of it). Its turns
@@ -287,7 +289,7 @@ function connect() {
 
 function reset() {
   mergeStart(false);
-  C.compPending = []; C.compCursor = null; C.compMore = false;
+  C.compPending = []; C.compCursor = null; C.compMore = false; C.extras = [];
   Recent.main = []; Recent.comp = [];
   PARTS.clear();
   C.planCard = null;

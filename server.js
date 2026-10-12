@@ -35,6 +35,7 @@ const handover = require('./lib/handover');
 const restartLib = require('./lib/restart');
 const themeStudioLib = require('./lib/theme-studio');
 const pushLib = require('./lib/push');
+const extrasLib = require('./lib/extras');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -135,8 +136,11 @@ const restarted = (() => {
 })();
 function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.stopAll(); }
 
+// Each conversation's changes, undos and reviews, kept beyond the chat's run (lib/extras.js).
+const chatExtras = extrasLib.createExtras({ dir: path.join(DATA_DIR, 'chat-extras'), log });
 const chats = chatLib.createChatManager({
   log,
+  extras: chatExtras,
   onChange: chat => {
     // A partner doesn't outlive its chat: it would be left running with no window to show it.
     if (chat && chat.state === 'ended' && chat.companionKey) { const p = pairs.partnerOf(chat); if (p && p.state !== 'ended') p.stop(); }
@@ -932,6 +936,8 @@ async function handleApi(req, res, url, remote = false) {
     }
     return send(res, 200, await chatLib.readHistory(file, { until: q.get('until') || null, cursor: q.get('cursor'), limit: 60 }));
   }
+  // What a chat showed besides its conversation (changes, undos, reviews), up to where its live replay begins.
+  if (route === 'GET /api/chat/extras') return send(res, 200, { extras: chatExtras.list(url.searchParams.get('id') || '', url.searchParams.get('until') || null) });
   if (route === 'GET /api/chat/diff') {
     const q = url.searchParams;
     return send(res, 200, { diff: await chats.get(q.get('key')).turnDiff(q.get('turn'), q.get('path')) });

@@ -688,3 +688,35 @@ test('usage per chat: each turn’s tokens are tallied, cache reads left out', (
   fake.spent.push({ at: Date.now() - 6 * 3600e3, tokens: 999 });
   assert.equal(LiveChat.prototype.spentSince.call(fake, Date.now() - 5 * 3600e3), 2000, 'only the last five hours');
 });
+
+/* ---------- a chat's changes, undos and reviews outlive its run ---------- */
+test('extras: a chat opened again shows its earlier changes, and their Undo still works', async () => {
+  const { LiveChat } = require('../lib/chat');
+  const { createExtras } = require('../lib/extras');
+  const dir = repo(), keep = tmp();
+  put(dir, 'game.lua', 'rally = 0.15\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  const extras = createExtras({ dir: keep });
+  const first = new LiveChat({ cfg: {}, account: { id: 'main', name: 'Main' }, cwd: dir, sessionId: 'S-1', extras, log: () => {} });
+  first.state = 'ready';
+  await first.beforeTurn();
+  put(dir, 'game.lua', 'rally = 0.10\n');
+  await first.afterTurn();
+  first.emit({ kind: 'review', id: 'rv1', state: 'running' });
+  first.emit({ kind: 'review', id: 'rv1', state: 'done', findings: [{ title: 'x' }] });
+  // A later run (a restart): a new chat, as the same conversation, and a fresh reader of the files.
+  const again = createExtras({ dir: keep });
+  assert.deepEqual(again.list('s-1').map(e => `${e.kind}:${e.state || e.turn}`), ['changes:0', 'review:done'], 'what ran is kept, a review as it ended');
+  assert.ok(!('snap' in again.list('S-1')[0]), 'the snapshots stay on the PC');
+  const second = new LiveChat({ cfg: {}, account: { id: 'main', name: 'Main' }, cwd: dir, sessionId: 'S-1', extras: again, log: () => {} });
+  second.state = 'ready';
+  assert.match(await second.turnDiff(0, 'game.lua'), /^\+rally = 0\.10$/m, 'its diff');
+  // A new reply numbers on from the old ones.
+  await second.beforeTurn();
+  put(dir, 'notes.md', 'why\n');
+  await second.afterTurn();
+  assert.equal(second.buffer.filter(e => e.kind === 'changes').pop().turn, 1);
+  const r = await second.undoTurn(0);
+  assert.deepEqual(r.restored, ['game.lua']);
+  assert.equal(readLF(path.join(dir, 'game.lua')), 'rally = 0.15\n', 'Undo from before the restart works');
+  assert.deepEqual(again.list('S-1', new Date(Date.now() + 1000).toISOString()).map(e => e.kind), ['changes', 'review', 'changes', 'undone']);
+});

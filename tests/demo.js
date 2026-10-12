@@ -143,9 +143,9 @@ const artFor = p => {
 const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`).join('');
 
 // Options: state (the chat's state), seen(path, url, body) for every API call, context (how
-// full the chat is), events (more chat events sent after it connects), openclaw (OpenClaw sessions in the list), noHistory (the history
+// full the chat is), events (more chat events sent after it connects), extras (kept changes and reviews), openclaw (OpenClaw sessions in the list), noHistory (the history
 // isn't there yet, as for a brand-new chat).
-async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false } = {}) {
+async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null } = {}) {
   const info = { ...chatInfo, ...(context ? { context } : {}) };
   let reviews = 0;
   // Rules and tools: the project's CLAUDE.md and AGENTS.md differ; one tool on each side, and Codex's own.
@@ -197,6 +197,8 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/events') return { type: 'text/event-stream', body: 'retry: 600000\n\n' };
     if (p === '/api/chat/open') return { body: info };
     if (p === '/api/chat/attach') return { body: compInfo };
+    // extras: what the PC kept from the chat's earlier runs (changes, undos, reviews).
+    if (p === '/api/chat/extras') return { body: { extras: extras && q.get('id') === ID['s-bard'] ? extras : [] } };
     if (p === '/api/chat/history' && noHistory) return { status: 404, body: { error: 'That chat wasn’t found. It may have been deleted; refresh the list.' } };
     if (p === '/api/chat/history' && q.get('provider') === 'openclaw') return { body: { items: ocHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history') return { body: { items: q.get('provider') === 'codex' || q.get('id') === 't-bard-codex' ? codexHistory : claudeHistory, start: 0, cursor: null } };
