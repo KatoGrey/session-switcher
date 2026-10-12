@@ -761,7 +761,10 @@ function syncFav() {
 function chatHeadItems() {
   const id = C.sessionId;
   return [
-    ...(id ? [{ glyph: window.isFav(id) ? '☆' : '★', label: window.isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => window.toggleFav(id) }, '-'] : []),
+    ...(id ? [{ glyph: window.isFav(id) ? '☆' : '★', label: window.isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => window.toggleFav(id) }] : []),
+    // How loudly this chat may alert, on this device.
+    ...(id ? Object.entries(ALERT_LEVELS).map(([lv, label]) => ({ glyph: alertLevelOf(id) === lv ? '●' : '○', label: `Alerts: ${label}`, run: () => setAlertLevel(id, lv) })) : []),
+    ...(id ? ['-'] : []),
     ...(reviewAvailable() ? [{ glyph: '◆', label: 'Have Codex review the changes', hint: 'read-only', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview() }] : []),
     ...(claudeReviewOK() ? [{ glyph: '◇', label: 'Have Claude review the changes', hint: 'asked not to change anything', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'claude') }] : []),
     ...(claudeReviewOK() && codexOK() ? [{ glyph: '◈', label: 'Have both review the changes', hint: 'one card, where they agree first', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'both') }] : []),

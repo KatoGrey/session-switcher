@@ -1042,6 +1042,18 @@ module.exports = [
         handle({ kind: 'state', state: 'ready', seq: 801 }); return { text, buttons, gone: !document.querySelector('.stuck-card') }`);
       t.check('a chat quiet for a long while says so, offering to stop it or keep waiting', /working for 12 minutes without a word/.test(stuck.text) && stuck.buttons.join() === 'Stop Claude,Keep waiting', stuck);
       t.check('and the note goes once it moves on', stuck.gone, stuck);
+      const al = await b.eval(`const played = [], real = window.chime; window.chime = k => played.push(k); Local.sound = true;
+        const x = { sessionId: 'AbC-1', title: 'T', pending: [] };
+        setAlertLevel('abc-1', 'needs'); notify('reply', x); notify('needs', x);
+        setAlertLevel('abc-1', 'off'); notify('needs', x);
+        setAlertLevel('abc-1', 'all');
+        store('quiet-hours', JSON.stringify({ on: true, from: '22:00', to: '08:00' }));
+        const night = inQuietHours(new Date(2026, 9, 11, 23, 30)), morning = inQuietHours(new Date(2026, 9, 11, 7, 59)), day = inQuietHours(new Date(2026, 9, 11, 12, 0));
+        store('quiet-hours', JSON.stringify({ on: true, from: '00:00', to: '23:59' })); notify('needs', x);
+        store('quiet-hours', 'null'); window.chime = real;
+        return { played, night, morning, day }`);
+      t.check('a chat can alert only when it needs you, or not at all', al.played.join() === 'needs', al);
+      t.check('quiet hours hush alerts, overnight too', al.night && al.morning && !al.day, al);
     },
   },
   {

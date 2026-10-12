@@ -22,6 +22,7 @@ function renderSetup(j) {
     <div class="prefs">
       ${t('sound', 'Chime when a chat needs you or replies', 'A soft bell. It doesn’t play for the chat you’re looking at.', true)}
       ${t('notify', 'Desktop notifications', `Shows a ${S.platform === 'darwin' ? 'macOS' : 'Windows'} notification when a chat needs you or replies while this window is in the background.`, true)}
+      ${(q => `<label class="toggle"><input type="checkbox" data-quiet="on" ${q.on ? 'checked' : ''}><span><b>Quiet hours</b><span>No chimes or notifications from <input type="time" data-quiet="from" value="${esc(q.from)}" aria-label="Quiet from"> to <input type="time" data-quiet="to" value="${esc(q.to)}" aria-label="Quiet until">; the hub still shows everything. Each chat’s ⋯ menu can also quiet just that chat.</span></span></label>`)({ from: '22:00', to: '08:00', on: false, ...(quietHours() || {}) })}
       ${t('petals', esc(voice('Drifting petals')), `${esc(voice('A few slow petals behind the hub.'))} ${esc(voice('Turned off automatically if Windows is set to reduce motion.'))}`, true)}
       ${t('motion', 'Animations', 'World banners that open into their pages, cards that rise in, dials that draw themselves. Turned off automatically if Windows is set to reduce motion.', true)}
     </div>
@@ -241,6 +242,14 @@ $('setupBody').addEventListener('change', wrap(async e => {
   if (e.target.id === 'prefCodex') { await api('/api/codex/settings', { command: e.target.value }); toast('Saved. Checking again…', 2000); return loadHealth(true); }
   const ph = e.target.closest('[data-phone="enabled"]');
   if (ph) { renderPhone(await api('/api/phone', { enabled: ph.checked })); toast(ph.checked ? 'Phone access is on.' : 'Phone access is off. Paired phones can’t connect until you turn it on again.', 3500); return; }
+  const qh = e.target.closest('[data-quiet]');
+  if (qh) {
+    const q = { from: '22:00', to: '08:00', on: false, ...(quietHours() || {}) };
+    if (qh.dataset.quiet === 'on') q.on = qh.checked; else if (qh.value) q[qh.dataset.quiet] = qh.value;
+    store('quiet-hours', JSON.stringify(q));
+    if (qh.dataset.quiet === 'on') toast(q.on ? `Quiet from ${q.from} to ${q.to}.` : 'Quiet hours are off.', 2500);
+    return;
+  }
   const loc = e.target.closest('[data-local]');
   if (loc) return setLocal(loc.dataset.local, loc.checked);
   const cxp = e.target.closest('[data-codex]');
@@ -444,7 +453,29 @@ function watchActivity() {
   }
   Alerts.seen = next; Alerts.primed = true;
 }
+// How loudly each chat may alert (this device): 'all' (needs you and replies, the default), 'needs'
+// (only when it needs you) or 'off'. Quiet hours hush every chime and notification; the hub and the
+// chats still show everything.
+const ALERT_LEVELS = { all: 'Everything', needs: 'Only when it needs me', off: 'Nothing' };
+const alertLevels = () => { try { return JSON.parse(store('alert-levels') || '{}') || {}; } catch { return {}; } };
+const alertLevelOf = id => (id && alertLevels()[String(id).toLowerCase()]) || 'all';
+function setAlertLevel(id, level) {
+  if (!id) return;
+  const all = alertLevels(), k = String(id).toLowerCase();
+  if (level === 'all') delete all[k]; else all[k] = level;
+  store('alert-levels', JSON.stringify(all));
+  toast(level === 'off' ? 'No alerts from this chat.' : level === 'needs' ? 'This chat alerts only when it needs you.' : 'This chat alerts when it needs you and when it replies.', 3000);
+}
+const quietHours = () => { try { return JSON.parse(store('quiet-hours') || 'null'); } catch { return null; } };
+function inQuietHours(now = new Date()) {
+  const q = quietHours(); if (!q || !q.on || !q.from || !q.to) return false;
+  const m = now.getHours() * 60 + now.getMinutes(), at = s => { const [h, mm] = s.split(':').map(Number); return h * 60 + mm; };
+  const a = at(q.from), b = at(q.to);
+  return a <= b ? m >= a && m < b : m >= a || m < b;   // overnight (22:00–08:00) wraps past midnight
+}
 function notify(kind, x) {
+  const level = alertLevelOf(x.sessionId);
+  if (level === 'off' || (level === 'needs' && kind === 'reply') || inQuietHours()) return;
   if (Local.sound) chime(kind);
   if (Local.notify && 'Notification' in window && Notification.permission === 'granted' && (document.hidden || !document.hasFocus())) {
     try {

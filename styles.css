@@ -2223,6 +2223,7 @@ details.shared[open] summary{margin-bottom:6px}
 .chg-f small{opacity:.9}
 .chg-b{display:flex;gap:4px}
 /* Plan first: one card from drafting to who builds it. */
+.toggle input[type="time"]{width:auto;display:inline-block;padding:2px 6px;margin:0 2px;border:1px solid var(--seam-2);border-radius:5px;background:var(--abyss);color:var(--parch);font:13px var(--f-label)}
 .stuck-card{margin:14px 0;padding:12px 16px;border:1px dashed var(--seam-2);border-radius:10px;font:14.5px/1.5 var(--f-body);color:var(--parch-2)}
 .stuck-card p{margin:0 0 10px}
 .planfirst{margin:14px 0;padding:14px 16px;border:1px solid rgb(var(--c-d9bf74) / .35);border-radius:10px;background:linear-gradient(180deg,rgb(var(--c-d9bf74) / .06),transparent)}
