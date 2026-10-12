@@ -9,7 +9,6 @@ const crypto = require('crypto');
 const cp = require('child_process');
 const lite = require('../lib/lite');
 const { createLiteOps, worktreeOf, freeTargets } = require('../lib/lite-ops');
-const webpush = require('../lib/webpush');
 
 const sh = (cwd, ...args) => cp.execFileSync('git', ['-C', cwd, ...args], { stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).toString();
 const write = (p, s = 'x') => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, s); };
@@ -81,34 +80,14 @@ test('Remove worktree: archived chats only, never with uncommitted changes; the 
   assert.ok(b.ok && fs.existsSync(path.join(wt, 'src/app.js')), 'rebuilt from the branch');
 });
 
-test('web push: the payload decrypts on the phone’s side (RFC 8291), and VAPID is signed', async () => {
-  const ua = crypto.createECDH('prime256v1'); ua.generateKeys();
-  const auth = crypto.randomBytes(16);
-  const sub = { endpoint: 'https://push.example/abc', keys: { p256dh: webpush.b64u(ua.getPublicKey()), auth: webpush.b64u(auth) } };
-  const body = webpush.encrypt(JSON.stringify({ title: 'Needs you', body: 'npm test' }), sub);
-  assert.deepEqual(JSON.parse(webpush.decrypt(body, ua.getPrivateKey(), auth)), { title: 'Needs you', body: 'npm test' });
-  const keys = webpush.makeVapidKeys();
-  const h = webpush.vapidHeader(sub.endpoint, keys);
-  const m = /^vapid t=([^.]+)\.([^.]+)\.([^,]+), k=(.+)$/.exec(h);
-  assert.ok(m);
-  assert.equal(JSON.parse(webpush.unb64u(m[2]).toString()).aud, 'https://push.example');
-  const raw = webpush.unb64u(keys.publicKey);
-  const pub = crypto.createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: webpush.b64u(raw.subarray(1, 33)), y: webpush.b64u(raw.subarray(33)) }, format: 'jwk' });
-  assert.ok(crypto.verify('sha256', Buffer.from(`${m[1]}.${m[2]}`), { key: pub, dsaEncoding: 'ieee-p1363' }, webpush.unb64u(m[3])), 'signature verifies with the public key the page gets');
-});
 
-test('web push: what reaches the push service', async () => {
-  let got = null;
-  const srv = http.createServer((req, res) => { let b = []; req.on('data', d => b.push(d)); req.on('end', () => { got = { headers: req.headers, body: Buffer.concat(b) }; res.writeHead(201); res.end(); }); });
-  await new Promise(r => srv.listen(0, '127.0.0.1', r));
-  const ua = crypto.createECDH('prime256v1'); ua.generateKeys();
-  const auth = crypto.randomBytes(16);
-  const sub = { endpoint: `http://127.0.0.1:${srv.address().port}/push/1`, keys: { p256dh: webpush.b64u(ua.getPublicKey()), auth: webpush.b64u(auth) } };
-  const r = await webpush.send(sub, { title: 'hi' }, webpush.makeVapidKeys(), { urgency: 'high', topic: 'needs-1' });
-  srv.close();
-  assert.equal(r.status, 201);
-  assert.equal(got.headers['content-encoding'], 'aes128gcm');
-  assert.equal(got.headers.urgency, 'high');
-  assert.match(got.headers.authorization, /^vapid t=/);
-  assert.deepEqual(JSON.parse(webpush.decrypt(got.body, ua.getPrivateKey(), auth)), { title: 'hi' });
+test('phone alerts: a phone can switch kinds off, hackathon alerts only when switched on, and Lite sign-ups open Lite', () => {
+  const { cleanPrefs, wants } = require('../lib/push');
+  const p = cleanPrefs({ kinds: { reply: false, floor: true, bogus: true }, app: 'lite' });
+  assert.deepEqual(p.kinds, { reply: false, floor: true });
+  assert.equal(p.app, 'lite');
+  assert.equal(wants(p, { kind: 'reply' }), false);
+  assert.equal(wants(p, { kind: 'needs' }), true);
+  assert.equal(wants(p, { kind: 'hack' }), false);
+  assert.equal(wants(cleanPrefs({ kinds: { hack: true } }), { kind: 'hack' }), true);
 });

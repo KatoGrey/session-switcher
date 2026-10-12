@@ -2493,11 +2493,10 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': LITE_CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       return res.end(html);
     }
-    // Its service worker (at the root, so it can serve /lite) and the Home Screen manifest.
-    if (req.method === 'GET' && (url.pathname === '/lite-sw.js' || url.pathname === '/lite.webmanifest')) {
-      const sw = url.pathname === '/lite-sw.js';
-      res.writeHead(200, { 'Content-Type': sw ? 'text/javascript; charset=utf-8' : 'application/manifest+json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
-      return res.end(fs.readFileSync(path.join(APP_DIR, 'ui-lite', sw ? 'sw.js' : 'manifest.json'), 'utf8').replace(/\/apple-touch-icon\.png", "sizes": "180x180"/, `${liteIconPath()}", "sizes": "512x512"`));
+    // Its Home Screen manifest (notifications use the app's own service worker, /sw.js).
+    if (req.method === 'GET' && url.pathname === '/lite.webmanifest') {
+      res.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(fs.readFileSync(path.join(APP_DIR, 'ui-lite', 'manifest.json'), 'utf8').replace(/\/apple-touch-icon\.png", "sizes": "180x180"/, `${liteIconPath()}", "sizes": "512x512"`));
     }
     // Lite's own Home Screen icons, one per look.
     if (req.method === 'GET' && /^\/ui-lite\/icon-(plain|imperial|rebel)\.png$/.test(url.pathname)) {
@@ -2573,6 +2572,12 @@ const phone = remoteLib.createRemote({ dataDir: DATA_DIR, appDir: APP_DIR, versi
 
 // ---------- notifications on phones (lib/push.js; the phone's side: the Android app, sw.js, ui/push.js) ----------
 const pushes = pushLib.createPush({ dataDir: DATA_DIR, log });
+// Switcher Lite's own alerts (a plan at its floor, a reset lapsing, routines) go out the same way.
+liteRoutes.usePush(async msg => {
+  if (!pushes.count()) return 0;
+  const out = await pushes.notify({ ...msg, liteIcon: liteIconPath() }, prefs => pushLib.wants(prefs, { kind: msg.kind, sessionId: msg.sessionId || null }));
+  return out.filter(o => o.status >= 200 && o.status < 300).length;
+});
 pushes.keepDevices(phone.status().devices.map(d => d.id));
 const pushSeen = { map: new Map(), primed: false };
 // Allow/Deny on a notification: one-time tokens, each for one request, for an hour.
@@ -2644,7 +2649,7 @@ async function sendPushes() {
     // Per phone: its alert level for the chat (a partner goes by its chat), and its quiet hours.
     const want = prefs => msg.kind === 'clear' || pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat) });
     for (const w of appWatchers) if (want(pushes.appPrefs(w.device.id))) toApp(w, msg);
-    if (msg.kind !== 'clear' && pushes.count()) await pushes.notify(msg, want);
+    if (msg.kind !== 'clear' && pushes.count()) await pushes.notify({ ...msg, liteIcon: liteIconPath() }, want);
   }
 }
 // What's waiting right now, for an app that has just connected (back on your Wi-Fi): approvals, and
@@ -2675,7 +2680,7 @@ async function pushApi(req, res, route, remote) {
     return undefined;
   }
   const body = req.method === 'POST' ? await readBody(req) : {};
-  if (route === 'GET /api/push') return send(res, 200, { key: pushes.publicKey(), phone: !!dev, subscribed: dev ? pushes.count(dev.id) > 0 : false, phones: pushes.count() });
+  if (route === 'GET /api/push') return send(res, 200, { key: pushes.publicKey(), phone: !!dev, subscribed: dev ? pushes.count(dev.id) > 0 : false, phones: pushes.count(), prefs: dev ? pushes.prefsOf(dev.id) : null });
   if (route === 'POST /api/push/act') {
     const a = pushActs.get(String(body.token || ''));
     if (!a || !dev) throw fail(410, 'That one was already answered, or has expired.');

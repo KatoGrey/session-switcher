@@ -344,39 +344,54 @@ const ALERTS = [
   ['reply', 'Finished a reply', 'A chat is done and waiting for you.'],
   ['floor', 'Plan hit the floor', 'A plan drops to your floor; says which one is next.'],
   ['reset', 'Manual reset about to lapse', 'A ChatGPT reset credit expires within two days.'],
-  ['quiet', 'Quiet hours', '10 PM to 7 AM, everything except Needs you waits.'],
+  ['routine', 'Routines', 'A routine escalates, fails or needs you (each routine’s “Tell me” decides).'],
+  ['quiet', 'Quiet hours', '10 PM to 7 AM, nothing comes through.'],
 ];
+// Phone alerts are the app's notifications (its /api/push and /sw.js): one sign-up per phone, with
+// which kinds it hears about, quiet hours, and app: 'lite' so a tap opens Lite.
+const PUSH_ON = { needs: true, reply: true, floor: true, reset: true, routine: true, hack: false };
 function alertsView() {
-  const pu = S.push || { prefs: {} };
+  const pu = S.push || { on: PUSH_ON, quiet: false };
   const can = 'serviceWorker' in navigator && 'PushManager' in window;
   const secure = window.isSecureContext;
   return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Alerts</h1></div></div>
     <section class="section"><div class="sec-h"><h2>Here</h2></div><div class="toggles">
       <label class="toggle"><span><b>Sounds</b><small>A knock when a chat needs you, a card on the table when one replies, cards sliding as you sort.</small></span><input type="checkbox" data-pref="sound" ${prefs.sound ? 'checked' : ''}><span class="switch" aria-hidden="true"></span></label>
       <label class="toggle"><span><b>Desktop notifications</b><small>Only while this window is in the background.</small></span><input type="checkbox" data-pref="notify" ${prefs.notify ? 'checked' : ''}><span class="switch" aria-hidden="true"></span></label></div></section>
-    <section class="section"><div class="sec-h"><h2>On your phone</h2><span class="n">${pu.devices ? `${pu.devices} device${pu.devices === 1 ? '' : 's'} signed up` : ''}</span></div>
+    <section class="section"><div class="sec-h"><h2>On your phone</h2><span class="n">${pu.phones ? `${pu.phones} phone${pu.phones === 1 ? '' : 's'} signed up` : ''}</span></div>
       <p class="hint-line" style="margin:0">Open <b>/lite</b> on your iPhone through the Tailscale address, add it to the Home Screen (Share → Add to Home Screen), pair it, and turn alerts on from that app. iPhone delivers web push only to Home Screen apps on a secure address.</p>
-      <div class="clean-row" style="border:1px solid var(--line);border-radius:var(--r)"><span><b>${pu.subscribed ? 'This device gets alerts' : 'This device doesn’t get alerts yet'}</b><small>${!can ? 'This browser can’t receive web push.' : !secure ? 'Needs the secure (https) address.' : pu.subscribed ? 'Turn off to stop them here.' : 'Asks for permission once.'}</small></span>
-        <span style="display:flex;gap:6px">${pu.devices ? '<button class="btn" data-push="test">Send a test</button>' : ''}${can && secure ? (pu.subscribed ? '<button class="btn" data-push="off">Turn off</button>' : '<button class="btn prime" data-push="on">Turn on</button>') : ''}</span></div>
-      <div class="toggles">${ALERTS.map(([k, t, d]) => `<label class="toggle"><span><b>${esc(t)}</b><small>${esc(d)}</small></span><input type="checkbox" data-pushpref="${k}" ${pu.prefs[k] ? 'checked' : ''}><span class="switch" aria-hidden="true"></span></label>`).join('')}</div></section>
+      <div class="clean-row" style="border:1px solid var(--line);border-radius:var(--r)"><span><b>${pu.subscribed ? 'This device gets alerts' : 'This device doesn’t get alerts yet'}</b><small>${!pu.phone ? 'Alerts are for a paired phone: open Lite there.' : !can ? 'This browser can’t receive web push.' : !secure ? 'Needs the secure (https) address.' : pu.subscribed ? 'Turn off to stop them here.' : 'Asks for permission once.'}</small></span>
+        <span style="display:flex;gap:6px">${pu.subscribed ? '<button class="btn" data-push="test">Send a test</button>' : ''}${pu.phone && can && secure ? (pu.subscribed ? '<button class="btn" data-push="off">Turn off</button>' : '<button class="btn prime" data-push="on">Turn on</button>') : ''}</span></div>
+      <div class="toggles">${ALERTS.map(([k, t, d]) => `<label class="toggle"><span><b>${esc(t)}</b><small>${esc(d)}</small></span><input type="checkbox" data-pushpref="${k}" ${(k === 'quiet' ? pu.quiet : pu.on[k]) ? 'checked' : ''} ${pu.subscribed ? '' : 'disabled'}><span class="switch" aria-hidden="true"></span></label>`).join('')}</div></section>
   </div>`;
 }
-async function loadPush() { S.push = await api('/api/lite/push'); }
+async function loadPush() {
+  const j = await api('/api/push');
+  const p = j.prefs || {};
+  S.push = { ...j, levels: p.levels || {}, on: { ...PUSH_ON, ...(p.kinds || {}) }, quiet: !!(p.quiet && p.quiet.on) };
+}
+const pushPrefs = () => ({ app: 'lite', levels: S.push.levels || {}, kinds: S.push.on, quiet: S.push.quiet ? { on: true, from: '22:00', to: '07:00' } : null, tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
+const pushSub = async () => { const reg = await navigator.serviceWorker.getRegistration('/'); return reg && reg.pushManager.getSubscription(); };
 async function pushOn() {
-  const reg = await navigator.serviceWorker.register('/lite-sw.js', { scope: '/' });
+  const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') throw new Error('Notifications weren’t allowed. Allow them in Settings → Notifications for this app.');
-  const k = S.push.publicKey;
+  const k = S.push.key;
   const key = Uint8Array.from(atob(k.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - k.length % 4) % 4)), ch => ch.charCodeAt(0));
   const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-  S.push = await api('/api/lite/push/subscribe', { subscription: sub.toJSON() });
-  toast('Alerts are on for this device.');
+  await api('/api/push/subscribe', { subscription: sub.toJSON(), prefs: pushPrefs() });
+  await loadPush();
+  toast('Alerts are on for this phone.');
 }
 async function pushOff() {
-  const reg = await navigator.serviceWorker.getRegistration('/');
-  const sub = reg && await reg.pushManager.getSubscription();
-  if (sub) await sub.unsubscribe().catch(() => {});
-  S.push = await api('/api/lite/push/unsubscribe', {});
+  const sub = await pushSub();
+  if (sub) { await api('/api/push/unsubscribe', { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
+  await loadPush();
+}
+async function setPushPref(k, v) {
+  if (k === 'quiet') S.push.quiet = v; else S.push.on = { ...S.push.on, [k]: v };
+  const sub = await pushSub();
+  if (sub) await api('/api/push/prefs', { endpoint: sub.endpoint, prefs: pushPrefs() });
 }
 
 /* ---------- menus ---------- */

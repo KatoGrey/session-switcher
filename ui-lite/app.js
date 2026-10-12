@@ -310,7 +310,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-gimg]'))) return showImage(b.dataset.gimg);
   if ((b = el('[data-gmore]'))) { S.galleryN = (S.galleryN || 120) + 120; return render(); }
   if ((b = el('[data-gen-n]'))) { S.genN = Number(b.dataset.genN); return render(); }
-  if ((b = el('[data-push]'))) return wrap(async () => { if (b.dataset.push === 'on') await pushOn(); else if (b.dataset.push === 'off') await pushOff(); else { const r = await api('/api/lite/push/test', {}); toast(r.sent ? `Sent to ${r.sent} device${r.sent === 1 ? '' : 's'}.` : 'No device took it.'); } render(); })();
+  if ((b = el('[data-push]'))) return wrap(async () => { if (b.dataset.push === 'on') await pushOn(); else if (b.dataset.push === 'off') await pushOff(); else { const r = await api('/api/push/test', {}); toast(r.ok ? 'Sent. It should show on this phone in a moment.' : r.why || 'It didn’t go.'); } render(); })();
   if ((b = el('[data-selstage]'))) return pop(b, STATUSES.map(s => `<button data-v="${s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('') + `<hr>${KINDS.map(k => `<button data-v="k:${k.id}">${k.name}</button>`).join('')}<hr><button data-v="focus">Focus<kbd>f</kbd></button>`, v => (v === 'focus' ? wrap(toggleFocus)([...S.sel]) : wrap(setChats)([...S.sel], v.startsWith('k:') ? { kind: v.slice(2) } : { status: v })));
   if ((b = el('[data-selwait]'))) return askWaiting([...S.sel]);
   if ((b = el('[data-selarch]'))) return wrap(archiveChats)([...S.sel]);
@@ -351,7 +351,7 @@ document.addEventListener('change', e => {
   if (t.dataset.follow) return wrap(async () => { await setLook({ routinesFollow: t.checked }); toast(t.checked ? 'Routines now run on the use-next plan of their family.' : 'Routines run on the plan each one names.'); })();
   if (t.dataset.pref === 'sound') return setSound(t.checked);
   if (t.dataset.pref === 'notify') return setNotify(t.checked).then(render);
-  if (t.dataset.pushpref) return wrap(async () => { S.push.prefs = (await api('/api/lite/push/prefs', { [t.dataset.pushpref]: t.checked })).prefs; })();
+  if (t.dataset.pushpref) return wrap(setPushPref)(t.dataset.pushpref, t.checked);
   return undefined;
 });
 document.addEventListener('contextmenu', e => {
@@ -491,7 +491,9 @@ addEventListener('resize', () => { if (S.view === 'side' && !small()) render(); 
   if (chatArg) go('chat', { chat: chatArg }, { push: false }); else go(S.view, {}, { push: false });
   loadPlans(false).then(renderPlansOnly).catch(err => toast(err.message));
   api('/api/commander').then(c => { if (c.live && c.live.key) { S.cmd.sessionId = c.live.sessionId; cmdListen(c.live.key); } }).catch(() => {});
-  if ('serviceWorker' in navigator && window.isSecureContext && location.hostname !== '127.0.0.1') navigator.serviceWorker.register('/lite-sw.js', { scope: '/' }).catch(() => {});
+  if ('serviceWorker' in navigator && window.isSecureContext && location.hostname !== '127.0.0.1') navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+  // A tapped notification, with Lite already open: go to its chat.
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { const o = e.data && e.data.open; if (o && o.sessionId) openChat(o.sessionId); });
 })();
 
 /* ---------- sidebar width: drag its edge, or ← → on it; remembered on this device ---------- */
