@@ -788,10 +788,15 @@ function activityList() {
   const seen = new Set(out.filter(x => x.sessionId).map(x => x.sessionId.toLowerCase()));
   // Chats this app ran and has since stopped aren't "elsewhere"; they were here.
   const ranHere = new Set([...chats.chats.values()].filter(c => c.sessionId).map(c => c.sessionId.toLowerCase()));
+  // The app's own Claude Code processes look like terminal chats to the process scan (they're started
+  // to resume a conversation too): a conversation the app runs, or ran in the last minute, is never
+  // "in a terminal" as well.
+  const ownIds = new Set();
+  for (const c of chats.chats.values()) if (c.state !== 'ended' || now - (c.lastAt || 0) < 60000) for (const id of [c.sessionId, c.startedAs]) if (id) ownIds.add(String(id).toLowerCase());
   for (const p of projects) {
     for (const s of p.sessions) {
       const id = s.id.toLowerCase();
-      if (seen.has(id)) continue;
+      if (seen.has(id) || ownIds.has(id)) continue;
       // A partner's conversation belongs to its chat; it isn't a chat of its own here either.
       if (chatPrefs.parentOf(id)) continue;
       const pids = running[id] || null;

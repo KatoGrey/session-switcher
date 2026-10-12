@@ -2431,6 +2431,8 @@ body.solo .c-head .icon.c-backm{display:none}
 .rn-dot.err{background:var(--crimson)}
 .ph-rep{display:grid;gap:5px;margin:8px 0;font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ash)}
 .ph-rep select{font:400 14px var(--f-body);letter-spacing:0;text-transform:none;padding:7px 9px;border:1px solid var(--seam-2);border-radius:7px;background:rgb(var(--c-100e12));color:var(--parch)}
+.ri-pin{margin-right:5px;color:var(--gilt);font-size:.85em}
+.ri.outside .ri-s{font-style:italic}
 .rn-note{margin:8px 0 0;font-size:13px;color:var(--ash);line-height:1.45}
 .rn-note code{font:12px var(--f-mono);color:var(--gilt)}
 .rn-b{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 0}

@@ -26,10 +26,12 @@ function railItem(x) {
   const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;   // w: the one the status is about
   const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (w.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
   const doing = w.phase === 'tool' && (w.detail || w.tool) ? `${VERB_NOW[w.tool] || 'Using'} ${w.detail || w.tool}` : w.phase === 'writing' ? 'Writing…' : w.phase === 'starting' ? 'Starting…' : 'Thinking…';
-  let sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
+  let sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal, outside this app' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
   if (w !== x) sub = `${PROV_NAME[w.provider || 'claude']}: ${sub}`;
   else if (x.partner && (st === 'quiet' || st === 'reply')) sub += ` · with ${PROV_NAME[x.partner.provider || 'claude']}`;
-  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  const pin = railPinned(x) ? '<span class="ri-pin" title="Pinned" aria-label="Pinned">★</span>' : '';
+  const outside = x.source !== 'app' ? ` title="${x.source === 'terminal' ? 'Running in a terminal window, not in this app: click to watch it here' : 'Used in another app (like the desktop app) in the last few minutes'}"` : '';
+  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}${x.source !== 'app' ? ' outside' : ''}" aria-current="${isViewing(x)}"${outside}>${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${pin}${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
 }
 // The rail: chats you pinned (they stay, running or not), then the rest of what's open, each list in
 // the order you dragged it into. Chats it hasn't placed yet keep their places after those.
@@ -41,15 +43,28 @@ function inRailOrder(list) {
   const at = x => { for (const id of activityIds(x)) if (id && pos.has(id)) return pos.get(id); return Infinity; };
   return list.map((x, i) => [at(x), i, x]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(r => r[2]);
 }
+// One list of what's open: pinned chats first (★), then the rest. Pinned chats that aren't open wait
+// below it, one click from opening again. A chat's pin follows it if its id changes as it starts.
+const railPinned = x => isFav(x.sessionId) || isFav(x.startedAs);
+function followPins(open) {
+  let moved = false;
+  for (const x of open) {
+    if (!x.startedAs || !x.sessionId || x.startedAs.toLowerCase() === String(x.sessionId).toLowerCase()) continue;
+    if (isFav(x.startedAs) && !isFav(x.sessionId)) { S.favs.delete(x.startedAs.toLowerCase()); S.favs.add(String(x.sessionId).toLowerCase()); moved = true; }
+  }
+  if (moved) store('favChats', JSON.stringify([...S.favs]));
+}
 function railRows() {
   const open = S.activity.filter(x => !x.parentKey);
-  const pinned = open.filter(x => isFav(x.sessionId)), active = open.filter(x => !isFav(x.sessionId));
+  followPins(open);
+  const pinnedOpen = open.filter(railPinned), rest = open.filter(x => !railPinned(x));
+  const closed = [];
   for (const id of S.favs) {
-    if (pinned.some(x => String(x.sessionId).toLowerCase() === id)) continue;
+    if (open.some(x => [x.sessionId, x.startedAs].some(v => v && String(v).toLowerCase() === id))) continue;
     const [s, p] = sessionById(id);
-    if (s) pinned.push({ pinnedOnly: true, sessionId: s.id, title: s.title, folder: p.name });
+    if (s) closed.push({ pinnedOnly: true, sessionId: s.id, title: s.title, folder: p.name });
   }
-  return { pinned: inRailOrder(pinned), active: inRailOrder(active) };
+  return { pinned: inRailOrder(closed), active: [...inRailOrder(pinnedOpen), ...inRailOrder(rest)] };
 }
 const railOpen = () => { const { pinned, active } = railRows(); return [...pinned, ...active].filter(x => !x.pinnedOnly); };
 function renderRail() {
@@ -61,7 +76,7 @@ function renderRail() {
   // Changes glide: a pinned chat rises into Pinned, a closed one fades where it stood, a new one fades in.
   flip([$c('cPinList'), $c('cRailList')], () => {
     patch($c('cPinList'), pinned, railKey, railItem);
-    patch($c('cRailList'), active, railKey, railItem, `<li class="ri-empty">${pinned.length ? 'Nothing else is open.' : 'Only this chat is open.'}</li>`);
+    patch($c('cRailList'), active, railKey, railItem, '<li class="ri-empty">Nothing is open right now.</li>');
   });
 }
 function switchRail(step) {

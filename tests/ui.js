@@ -411,13 +411,13 @@ module.exports = [
       const items = await menu();
       t.check('right-click offers Pin and Close', items.includes('Pin to the sidebar') && items.includes('Close'), items);
       await pick('Pin to the sidebar');
-      t.check('a pinned chat moves up to Pinned', (await names('cPinList')).some(n => /^Tavern brawl/.test(n)) && !(await names('cRailList')).some(n => /^Tavern brawl/.test(n)), [await names('cPinList'), await names('cRailList')]);
-      t.check('Pinned has its own heading', await b.eval(`return !document.getElementById('cPinH').hidden`));
+      t.check('a pinned chat that’s open stays in Active now, at the top, marked ★ (not split off)', /^★Tavern brawl/.test((await names('cRailList'))[0] || '') && (await names('cPinList')).length === 0, [await names('cPinList'), await names('cRailList')]);
+      t.check('so there’s no second list while it’s open', await b.eval(`return document.getElementById('cPinH').hidden`));
       await t.shot(b, 'pinned');
       await push(now.filter(x => x.key !== 'k-brawl'));
       const pin = () => b.eval(`const el = document.querySelector('#cPinList .ri'); return el && { n: el.querySelector('.ri-n').textContent, s: el.querySelector('.ri-s').textContent }`);
       const p1 = await pin();
-      t.check('and stays there when it’s no longer running', !!p1 && /^Tavern brawl/.test(p1.n) && /^Closed/.test(p1.s), p1);
+      t.check('when it’s no longer running, it waits under “Pinned, not open”', !!p1 && /^Tavern brawl/.test(p1.n) && /^Closed/.test(p1.s) && await b.eval(`return !document.getElementById('cPinH').hidden && /Pinned, not open/.test(document.getElementById('cPinH').textContent)`), p1);
 
       // Close: a chat in a terminal leaves the list (it keeps running there) until it does something new.
       await push(now);
@@ -430,7 +430,7 @@ module.exports = [
       t.check('and comes back when something does', (await names('cRailList')).some(n => /^Route-finding/.test(n)));
 
       // Closing a chat this app runs stops it; a pinned one stays pinned, closed.
-      p = await at('cPinList', 0);
+      p = await at('cRailList', 0);
       await b.click(p[0], p[1], 'right'); await pick('Close');
       t.check('closing a chat stops it', calls.some(([q, body]) => q === '/api/chat/stop' && body.key === 'k-brawl'), calls.filter(([q]) => /stop/.test(q)));
       const p2 = await pin();
