@@ -344,12 +344,13 @@ const ALERTS = [
   ['reply', 'Finished a reply', 'A chat is done and waiting for you.'],
   ['floor', 'Plan hit the floor', 'A plan drops to your floor; says which one is next.'],
   ['reset', 'Manual reset about to lapse', 'A ChatGPT reset credit expires within two days.'],
+  ['waiting', 'Waiting chats moved', 'A PR you’re waiting on is merged, approved, out of draft or reviewed.'],
   ['routine', 'Routines', 'A routine escalates, fails or needs you (each routine’s “Tell me” decides).'],
   ['quiet', 'Quiet hours', '10 PM to 7 AM, nothing comes through.'],
 ];
 // Phone alerts are the app's notifications (its /api/push and /sw.js): one sign-up per phone, with
 // which kinds it hears about, quiet hours, and app: 'lite' so a tap opens Lite.
-const PUSH_ON = { needs: true, reply: true, floor: true, reset: true, routine: true, hack: false };
+const PUSH_ON = { needs: true, reply: true, floor: true, reset: true, routine: true, waiting: true, hack: false };
 function alertsView() {
   const pu = S.push || { on: PUSH_ON, quiet: false };
   const can = 'serviceWorker' in navigator && 'PushManager' in window;

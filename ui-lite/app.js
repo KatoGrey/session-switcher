@@ -37,8 +37,9 @@ function renderSide() {
     </div>
     <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
   const focusSt = { id: 'focus', name: 'Focus', c: 'var(--st-priority)' };
-  const folders = [focusSt, ...STATUSES].map(st => {
-    const all = chats.filter(c => (st.id === 'focus' ? c.focus && statusOf(c) !== 'done' : isTop(c) && statusOf(c) === st.id && !(c.focus && st.id !== 'done')));
+  const waitSt = { id: 'waiting', name: 'Waiting on others', c: 'var(--muted)' };
+  const folders = [focusSt, ...STATUSES.filter(x => x.id !== 'done'), waitSt, ...STATUSES.filter(x => x.id === 'done')].map(st => {
+    const all = chats.filter(c => (st.id === 'focus' ? c.focus && statusOf(c) !== 'done' : st.id === 'waiting' ? isTop(c) && c.waiting && !c.focus && statusOf(c) !== 'done' : isTop(c) && statusOf(c) === st.id && !(c.focus && st.id !== 'done') && !(c.waiting && st.id !== 'done')));
     const act = all.filter(c => !famQuiet(c)), quiet = all.filter(famQuiet);
     const open = all.length && !S.folded[st.id];
     const showQuiet = S.more[st.id];
@@ -57,6 +58,7 @@ function renderSide() {
 
 // Open bugs, together above the projects (their own group, whatever project they're in), under
 // their stage: Exploring, Working, Finish line.
+const WAIT_LABEL = { id: 'waiting', name: 'Waiting on others', c: 'var(--muted)' };
 function sideBugs(chats, key = 'all') {
   if (typeof loadPipeline === 'function') loadPipeline();
   const open = chats.filter(c => isBug(c) && isTop(c) && bugStage(c) !== 'done');
@@ -65,8 +67,8 @@ function sideBugs(chats, key = 'all') {
   // Up to five per stage, so every stage shows; "N more" opens them all.
   const per = S.more['all-bugs-' + key] ? 400 : 5;
   let n = 0, inner = '';
-  for (const st of BUG_STAGES.filter(x => x.id !== 'done')) {
-    const list = open.filter(c => bugStage(c) === st.id); if (!list.length) continue;
+  for (const st of [...BUG_STAGES.filter(x => x.id !== 'done'), WAIT_LABEL]) {
+    const list = open.filter(c => (st === WAIT_LABEL ? c.waiting : !c.waiting && bugStage(c) === st.id)); if (!list.length) continue;
     const take = list.slice(0, per); n += take.length;
     inner += `<div class="side-stage"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(c => sideChat(c)).join('')}`;
   }
@@ -99,7 +101,7 @@ function sideProjects(all) {
     let inner = '';
     if (open) {
       const limit = S.more['pall:' + g.p.key] ? 200 : 8;
-      const foc = lv.filter(c => c.focus), rest = lv.filter(c => !c.focus);
+      const foc = lv.filter(c => c.focus), rest = lv.filter(c => !c.focus && !c.waiting), waits = lv.filter(c => !c.focus && c.waiting);
       let n = foc.length;
       inner = foc.map(c => sideChatDot(c) + sideFam(c)).join('');
       if (bucketStages(g.p.bucket)) {
@@ -108,7 +110,9 @@ function sideProjects(all) {
           const take = list.slice(0, limit - n); n += take.length;
           inner += `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(c => sideChat(c) + sideFam(c)).join('')}`;
         }
-      } else inner += rest.slice(0, Math.max(0, limit - n)).map(c => sideChatDot(c) + sideFam(c)).join('');
+      } else { const take = rest.slice(0, Math.max(0, limit - n)); n += take.length; inner += take.map(c => sideChatDot(c) + sideFam(c)).join(''); }
+      // Waiting on someone else: out of the way at the end, whatever its status.
+      if (waits.length) inner += `<div class="side-stage"><span class="label-dot" style="background:${WAIT_LABEL.c}"></span>${WAIT_LABEL.name}</div>${waits.map(c => sideChatDot(c) + sideFam(c)).join('')}`;
       // "N more" and "N quiet" open in place and close again.
       if (lv.length > 8) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}" aria-expanded="${lv.length <= limit}"><span class="lbl">${lv.length > limit ? `${lv.length - limit} more` : 'Show fewer'}</span></button>`;
       if (q.length) {
@@ -451,7 +455,7 @@ document.addEventListener('dragstart', e => {
 const nestTarget = t => {
   const r = t.closest('[data-chat]'); if (!r || !drag || !drag.chats || drag.chats.some(id => low(id) === low(r.dataset.chat))) return null;
   const me = chatBy.get(drag.chats[0]) || {};
-  const zone = r.closest('[data-drop-stage]'); if (zone && zone.dataset.dropStage !== statusOf(me)) return zone;
+  const zone = r.closest('[data-drop-stage]'); if (zone && (zone.dataset.dropStage === 'waiting' ? !me.waiting : zone.dataset.dropStage !== statusOf(me))) return zone;
   const fz = r.closest('[data-drop-focus]'); if (fz && !me.focus) return fz;
   return r;
 };
@@ -471,7 +475,7 @@ document.addEventListener('drop', e => {
   const d = drag; drag = null;
   if (d.idea) { if (z.dataset.ideaDrop) { const over = e.target.closest('[data-idea]'); wrap(moveIdea)(d.idea, over && over.dataset.idea !== d.idea ? over.dataset.idea : null); } else wrap(startIdea)(d.idea); }
   else if (d.chats && z.dataset.chat) wrap(nestChats)(d.chats, z.dataset.chat);
-  else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : { status: z.dataset.dropStage });
+  else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : z.dataset.dropStage === 'waiting' ? { waiting: true } : { status: z.dataset.dropStage, waiting: false });
   else wrap(setBucket)(d.project, z.dataset.dropBucket || null);
 });
 document.addEventListener('dragend', () => { drag = null; document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot')); });

@@ -141,13 +141,16 @@ const statusOf = c => c.status;
 const kindTag = c => (c.kind && c.kind !== 'feature' ? `<span class="tag kind-tag k-${c.kind}">${kindById(c.kind).name}</span>` : '');
 const focusStar = c => (c.focus ? '<span class="focus-star" title="Focus">★</span>' : '');
 const waitTag = c => (c.waiting ? `<span class="tag wait-tag">${esc(c.waitingOn || 'Waiting')}</span>` : '');
+// Where a waiting chat's PRs stand (from the ten-minute check), in a few words.
+const waitPrLine = c => (c.waitPrs || []).map(p => `#${p.n} ${p.standing.toLowerCase()}`).join(' · ');
 // Needs you: asking for an OK or a question, or replied since you last looked.
 const replied = x => x && !x.working && !(x.pending || []).length && x.finishedAt && S.now - x.finishedAt < 12 * 3600e3 && x.finishedAt > (S.seen[x.sessionId || x.key] || 0) && x.phase !== 'ended';
 const asking = x => !!(x && (x.pending || []).length);
 // A routine's own runs don't ask for you here: what matters from them comes through "From your routines".
 const isRoutineRun = x => !!(x && x.sessionId && S.rt && S.rt.runIds && S.rt.runIds.has(String(x.sessionId).toLowerCase()));
 const needsLive = x => !isRoutineRun(x) && (asking(x) || replied(x));
-const needs = c => needsLive(liveOf(c));
+// A waiting chat whose PR moved (merged, approved…) needs you too, until you open it.
+const needs = c => needsLive(liveOf(c)) || !!(c && c.waitNews);
 const running = c => { const x = liveOf(c); return !!(x && x.working); };
 // Quiet isn't a status: nothing has moved for a few days. Chats asking for you, running, in Focus or Waiting never go quiet.
 const isQuiet = c => S.now - c.updated > quietDays() * DAY && !needs(c) && !running(c) && !c.waiting && !c.focus;
@@ -215,6 +218,7 @@ let seenOut = new Set();
 const markSeen = id => {
   if (!id) return;
   S.seen[id] = Date.now();
+  const ch = typeof chatBy !== 'undefined' && chatBy.get(id); if (ch) delete ch.waitNews;
   const cut = Date.now() - 3 * DAY; for (const k of Object.keys(S.seen)) if (S.seen[k] < cut) delete S.seen[k];
   local.set('seen', S.seen);
   seenOut.add(id); clearTimeout(markSeen.t);
@@ -251,7 +255,7 @@ const IC = {
   spark: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6Z" fill="currentColor"/></svg>',
   image: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.3" r="1.2" fill="currentColor"/><path d="M2.5 12l3.8-3.6 2.6 2.4 2-1.8 2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
   broom: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.8 7.6 7.4M4 8.2l5.6 2.6-1.5 3.4c-1.8.4-4.3-.5-5.9-2.4Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>',
-  gear: '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8ZM6.9 1.5h2.2l.4 1.8 1.2.7 1.8-.6 1.1 1.9-1.4 1.2v1.4l1.4 1.2-1.1 1.9-1.8-.6-1.2.7-.4 1.8H6.9l-.4-1.8-1.2-.7-1.8.6-1.1-1.9 1.4-1.2V7.1L2.4 5.9l1.1-1.9 1.8.6 1.2-.7Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+  gear: '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.52 3.22 6.88 1.50 9.12 1.50 9.48 3.22 10.33 3.58 11.81 2.61 13.39 4.19 12.42 5.67 12.78 6.52 14.50 6.88 14.50 9.12 12.78 9.48 12.42 10.33 13.39 11.81 11.81 13.39 10.33 12.42 9.48 12.78 9.12 14.50 6.88 14.50 6.52 12.78 5.67 12.42 4.19 13.39 2.61 11.81 3.58 10.33 3.22 9.48 1.50 9.12 1.50 6.88 3.22 6.52 3.58 5.67 2.61 4.19 4.19 2.61 5.67 3.58ZM8 5.7a2.3 2.3 0 1 0 0 4.6 2.3 2.3 0 0 0 0-4.6Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   flag: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 14.5V2M3.5 2.5h8.5l-2 3 2 3H3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
   refresh: '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.75M13.2 2.6v2.9h-2.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   bug: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="5" width="7" height="8.5" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6 5.2a2 2 0 0 1 4 0M8 8v5.3M2 8.5h2.5M11.5 8.5H14M2.8 4.5l2 1.5M13.2 4.5l-2 1.5M2.8 13l2-1.5M13.2 13l-2-1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',

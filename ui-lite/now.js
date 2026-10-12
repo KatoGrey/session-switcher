@@ -67,8 +67,8 @@ function runRow(x) {
 function waitRow(c) {
   const p = projOf(c);
   const due = c.remindAt && ms(c.remindAt) < S.now;
-  return `<div class="row" role="button" tabindex="-1" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}"><span>${due ? '<span class="dot needs-dot" title="Time to check on it"></span>' : ''}</span>
-    <span class="t"><b>${esc(c.title)}</b><small>${esc(c.note || `${p.name}${p.bucket ? ` · ${bucketName(p.bucket)}` : ''}`)}${due ? ' · two days, time to check' : ''}</small></span>
+  return `<div class="row" role="button" tabindex="-1" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}"><span>${due || c.waitNews ? `<span class="dot needs-dot" title="${c.waitNews ? 'Something moved' : 'Time to check on it'}"></span>` : ''}</span>
+    <span class="t"><b>${esc(c.title)}</b><small>${c.waitNews ? `<b class="wait-news">${esc(c.waitNews.line)}. Ready to pick back up?</b> · ` : ''}${esc(c.note || `${p.name}${p.bucket ? ` · ${bucketName(p.bucket)}` : ''}`)}${waitPrLine(c) ? ` · ${esc(waitPrLine(c))}` : ''}${due ? ' · two days, time to check' : ''}</small></span>
     <span class="side-tags">${c.waitingOn ? `<span class="tag wait-tag">${esc(c.waitingOn)}</span>` : ''}</span><span class="when">${ago(c.updated)}</span>
     <button class="iconbtn rmenu" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" aria-label="Move or change">${IC.dots}</button></div>`;
 }
@@ -102,7 +102,7 @@ function plansBoxHtml() {
       ${S.plans ? plansTable() : '<p class="empty-note">Reading your plans…</p>'}`;
 }
 function now() {
-  const waiting = allChats().filter(c => c.waiting).sort((a, b) => b.updated - a.updated);
+  const waiting = allChats().filter(c => c.waiting).sort((a, b) => Number(!!b.waitNews) - Number(!!a.waitNews) || b.updated - a.updated);
   const foc = focusList();
   const ups = comingUp();
   return `<div class="wrap">
@@ -111,7 +111,7 @@ function now() {
     <div id="nowLive" class="section-stack">${nowLiveHtml()}</div>
     ${eventsSection()}
     ${foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span><span class="hint">Your top few; <kbd>f</kbd> on any chat</span></div><div class="rows">${foc.map(c => rowHtml(c, { showProject: true, showStage: true })).join('')}</div></section>` : ''}
-    <section class="section"><div class="sec-h"><h2>Waiting on others</h2><span class="n">${waiting.length}</span><span class="hint">Reminds you after two days</span></div>
+    <section class="section"><div class="sec-h"><h2>Waiting on others</h2><span class="n">${waiting.length}</span><span class="hint">Checks their PRs every ten minutes; reminds you after two days</span></div>
       <div class="rows">${waiting.map(waitRow).join('') || '<p class="empty-note">Nothing is waiting on anyone. Press <kbd>w</kbd> on a chat to say who it’s waiting on.</p>'}</div></section>
     <section class="section"><div class="sec-h"><h2>Coming up</h2><label class="hint follow"><input type="checkbox" data-follow="1" ${S.lite.routinesFollow ? 'checked' : ''}> Follow the use-next order</label><button class="hint" data-go="routines" style="margin-left:12px">Routines ›</button></div>
       <div class="rows">${ups.map(r => `<div class="row"><span class="dot" style="background:var(--st-final)"></span><span class="t"><b>${esc(r.name)}</b><small>${esc(r.when)} · runs on ${esc(routineRunsOn(r))}${r.last ? ` · last: ${esc(r.last.line)}` : ''}</small></span><span class="side-tags">${r.running ? '<span class="live-dot"></span>' : ''}</span><span class="when">${r.nextAt ? esc(inWords(r.nextAt)) : r.when ? 'watching' : ''}</span><span></span></div>`).join('') || '<p class="empty-note">No routines yet.</p>'}</div></section>

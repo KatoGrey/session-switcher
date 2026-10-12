@@ -15,7 +15,12 @@ const permDefault = provider => { const f = permFam(provider); return (S.lite.pe
 /* ---------- Markdown, just enough (escaped first; links only to http(s)) ---------- */
 function mdHtml(src) {
   const blocks = [];
-  let t = String(src || '').replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (m, lang, code) => { blocks.push(`<pre><code>${esc(code.replace(/\n$/, ''))}</code></pre>`); return `\u0000${blocks.length - 1}\u0000`; });
+  let t = String(src || '').replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (m, lang, code) => {
+    code = code.replace(/\n$/, '');
+    // HTML can be seen drawn, in a frame that runs no scripts and reaches nothing.
+    const html = /^html?$/i.test(lang) ? `<details class="md-html"><summary>Show it drawn</summary><iframe sandbox="" srcdoc="${esc(code)}" title="The HTML, drawn"></iframe></details>` : '';
+    blocks.push(`<pre><code>${esc(code)}</code></pre>${html}`); return `\u0000${blocks.length - 1}\u0000`;
+  });
   // Code, links and bare addresses are set aside first, so bold and italics can't reach inside them.
   const inline = x => {
     const held = [], hold = h => `\u0001${held.push(h) - 1}\u0001`;
@@ -33,10 +38,33 @@ function mdHtml(src) {
   const out = [];
   let list = null;
   const flush = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${i}</li>`).join('')}</${list.tag}>`); list = null; } };
-  for (const line of t.split('\n')) {
+  const lines = t.split('\n');
+  // A table: a row of cells, a |---|:--:| line under it, then its rows. Cells may hold links and code.
+  const cells = l => l.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
+  const isRule = l => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l || '');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const code = /^\u0000(\d+)\u0000$/.exec(line.trim());
     if (code) { flush(); out.push(blocks[Number(code[1])]); continue; }
+    if (line.includes('|') && isRule(lines[i + 1])) {
+      flush();
+      const align = cells(lines[i + 1]).map(c => (/^:-+:$/.test(c) ? 'center' : /-:$/.test(c) ? 'right' : ''));
+      const td = (tag, c, j) => `<${tag}${align[j] ? ` style="text-align:${align[j]}"` : ''}>${inline(c)}</${tag}>`;
+      const head = cells(line).map((c, j) => td('th', c, j)).join('');
+      const rows = [];
+      for (i += 2; i < lines.length && lines[i].includes('|') && lines[i].trim(); i++) rows.push(`<tr>${cells(lines[i]).map((c, j) => td('td', c, j)).join('')}</tr>`);
+      i--;
+      out.push(`<div class="md-table"><table><thead><tr>${head}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`);
+      continue;
+    }
     let m;
+    if ((m = /^\s*>\s?(.*)$/.exec(line))) {
+      flush();
+      const q = [m[1]];
+      while (i + 1 < lines.length && (m = /^\s*>\s?(.*)$/.exec(lines[i + 1]))) { q.push(m[1]); i++; }
+      out.push(`<blockquote>${q.map(x => (x.trim() ? `<p>${inline(x)}</p>` : '')).join('')}</blockquote>`);
+      continue;
+    }
     if ((m = /^\s*[-*•]\s+(.*)$/.exec(line))) { if (!list || list.tag !== 'ul') { flush(); list = { tag: 'ul', items: [] }; } list.items.push(inline(m[1])); continue; }
     if ((m = /^\s*\d+[.)]\s+(.*)$/.exec(line))) { if (!list || list.tag !== 'ol') { flush(); list = { tag: 'ol', items: [] }; } list.items.push(inline(m[1])); continue; }
     flush();

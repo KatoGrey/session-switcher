@@ -379,3 +379,17 @@ test('routines: a weekly routine runs on its day at its time', () => {
   assert.ok(next.getTime() > wed && next.getTime() - wed < 7 * 864e5);
   assert.equal(describeSchedule({ kind: 'weekly', time: '09:30', day: 1 }), 'Every Monday at 9:30 AM');
 });
+
+test('waiting chats: only PR moves that matter are news; bots aren’t', () => {
+  const { prChange, snapOf, prLinks, standing } = require('../lib/lite-waits');
+  const pr = (o = {}) => snapOf({ state: 'OPEN', isDraft: false, reviewDecision: 'REVIEW_REQUIRED', author: { login: 'ryan' }, latestReviews: [], ...o });
+  const bot = { author: { login: 'latitude-pr-reviewer' }, state: 'COMMENTED' };
+  assert.equal(prChange(null, pr(), 1), null, 'the first look only learns');
+  assert.equal(prChange(pr(), pr({ latestReviews: [bot] }), 1), null);
+  assert.equal(prChange(pr({ isDraft: true }), pr(), 7), 'PR #7 is out of draft');
+  assert.equal(prChange(pr(), pr({ reviewDecision: 'APPROVED', latestReviews: [{ author: { login: 'sean' }, state: 'APPROVED' }] }), 7), 'PR #7 was approved by sean');
+  assert.equal(prChange(pr(), pr({ state: 'MERGED' }), 7), 'PR #7 was merged');
+  assert.equal(prChange(pr(), pr({ latestReviews: [{ author: { login: 'sean' }, state: 'COMMENTED' }] }), 7), 'sean reviewed PR #7');
+  assert.equal(standing(pr({ isDraft: true })), 'Still a draft');
+  assert.deepEqual(prLinks('see https://github.com/a/b/pull/1 then https://github.com/a/b/pull/2.'), ['https://github.com/a/b/pull/2', 'https://github.com/a/b/pull/1']);
+});

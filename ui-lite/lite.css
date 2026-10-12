@@ -582,6 +582,8 @@ details.step li { overflow-wrap: anywhere; }
 .lightbox .linkish { color: #cfe3d6; }
 @media (max-width: 760px) {
   .composer { padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  /* With the keyboard up the home-indicator strip is hidden, so its room would be an empty gap. */
+  .kb-up .composer { padding-bottom: 8px; }
   .nc-inner { margin-top: 0; }
   .gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .pal-back { padding-top: 8vh; }
@@ -970,3 +972,16 @@ body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr
 
 /* The page slides with the iPhone keyboard (about its speed and easing) instead of snapping after it. */
 .kb-glide .app, .kb-glide .main { transition: height .32s cubic-bezier(.25, .8, .25, 1), top .32s cubic-bezier(.25, .8, .25, 1); }
+
+/* ---------- tables, quotes and HTML in replies ---------- */
+.md-table { overflow-x: auto; margin: 8px 0; max-width: 100%; }
+.md-table table { border-collapse: collapse; font-size: .92em; min-width: 50%; }
+.md-table th, .md-table td { border: 1px solid var(--line); padding: 5px 10px; text-align: left; vertical-align: top; }
+.md-table th { background: var(--hover); font-weight: 600; white-space: nowrap; }
+.md-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--hover) 45%, transparent); }
+blockquote { margin: 8px 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--line); color: var(--fg-2); }
+blockquote p { margin: 4px 0; }
+.md-html { margin: -4px 0 8px; }
+.md-html summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.md-html iframe { display: block; width: 100%; min-height: 220px; margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; background: #fff; resize: vertical; }
+.wait-news { color: var(--fg); font-weight: 600; }
