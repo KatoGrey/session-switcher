@@ -349,6 +349,11 @@ function applyDesktop(projects, byCwd) {
   return kept;
 }
 // A folder in the list (Claude Code, Codex, or created here), by its path.
+// The repo a deleted worktree came from: a listed folder with the same name that still exists and isn't a worktree.
+function repoForGone(dir) {
+  const name = String(dir || '').split(/[\\/]/).filter(Boolean).pop();
+  return sessionsWithCodex().projects.find(p => p.exists && p.cwd.split(/[\\/]/).filter(Boolean).pop() === name && !/[\\/]worktrees[\\/]/.test(p.cwd)) || null;
+}
 function projectAt(cwd) {
   if (!cwd) return null;
   const list = sessionsWithCodex().projects;
@@ -504,8 +509,10 @@ async function openChatInner(c, body) {
     if (mode !== 'new') {
       const cx = codexFind(body.sessionId);
       if (!cx) throw fail(404, 'That Codex chat isn’t in the list any more.');
-      if (!cx.exists) throw fail(400, `The folder ${cx.cwd} no longer exists, so this chat can’t run there.`);
-      cwd = cx.cwd; threadId = cx.thread.id; title = cx.session ? cx.session.title : null;
+      // A worktree that's gone: asked to, it carries on in the repo it came from (Codex takes a new folder on resume).
+      const home = !cx.exists && body.inRepo ? repoForGone(cx.cwd) : null;
+      if (!cx.exists && !home) throw fail(400, `The folder ${cx.cwd} no longer exists, so this chat can’t run there.`);
+      cwd = home ? home.cwd : cx.cwd; threadId = cx.thread.id; title = cx.session ? cx.session.title : null;
       if (mode === 'resume') { const live = chats.bySession(threadId); if (live) return attachedInfo(live); }
       if (mode === 'fork' && title) title = `${title} (copy)`;
     } else {
