@@ -159,9 +159,9 @@ function render() {
   }
   delete m.dataset.shownChat;
   const keep = m.scrollTop;
-  const typed = [...m.querySelectorAll('input[data-qr], #cmdInput, #genPrompt')].map(i => [i.dataset.qr || i.id, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
+  const typed = [...m.querySelectorAll('[data-qr], #cmdInput, #genPrompt')].map(i => [i.dataset.qr || i.id, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
   m.innerHTML = (VIEW_FN[S.view] || VIEW_FN.now)();
-  for (const [k, v, f] of typed) { const i = m.querySelector(`input[data-qr="${CSS.escape(k)}"]`) || $(k); if (i) { i.value = v; if (f) i.focus(); } }
+  for (const [k, v, f] of typed) { const i = m.querySelector(`[data-qr="${CSS.escape(k)}"]`) || $(k); if (i) { i.value = v; if (i.tagName === 'TEXTAREA') autosize(i); if (f) i.focus(); } }
   m.scrollTop = keep;
   keepCur();
   if (S.view === 'images') watchGallery();
@@ -174,9 +174,9 @@ function renderLive() {
   if (S.view === 'triage') { if (!document.activeElement || document.activeElement.id !== 'trBox') render(); return; }
   if (S.view === 'now' && $('nowLive')) {
     const el = $('nowLive');
-    const typed = [...el.querySelectorAll('input[data-qr]')].map(i => [i.dataset.qr, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
+    const typed = [...el.querySelectorAll('[data-qr]')].map(i => [i.dataset.qr, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
     el.innerHTML = nowLiveHtml(); $('nowLead').innerHTML = leadHtml();
-    for (const [k, v, f] of typed) { const i = el.querySelector(`input[data-qr="${CSS.escape(k)}"]`); if (i) { i.value = v; if (f) i.focus(); } }
+    for (const [k, v, f] of typed) { const i = el.querySelector(`[data-qr="${CSS.escape(k)}"]`); if (i) { i.value = v; if (i.tagName === 'TEXTAREA') autosize(i); if (f) i.focus(); } }
     keepCur();
     return;
   }
@@ -246,6 +246,8 @@ document.addEventListener('click', e => {
     const q = p.questions[Number(b.dataset.q)];
     return answerInChat(p.requestId, 'allow', { [q.question]: q.options[Number(b.dataset.o)].label });
   }
+  if ((b = el('[data-qmore]'))) { toggleMore(b.dataset.qmore); return undefined; }
+  if ((b = el('[data-qreply]'))) { openQuickReply(b.dataset.qreply); return undefined; }
   if ((b = el('[data-send]'))) return sendQuick(b.dataset.send);
   if ((b = el('[data-dismiss]'))) { e.stopPropagation(); markSeen(b.dataset.dismiss); return renderLive(); }
   if ((b = el('[data-earlier]'))) return wrap(loadEarlier)();
@@ -374,7 +376,7 @@ document.addEventListener('keydown', e => {
   if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); COMP.steerNow = e.altKey; $('composer').requestSubmit(); return; }
   if (e.target.id === 'trBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); triageReply(); return; }
   if (e.target.id === 'msgBox' && e.key.toLowerCase() === 'p' && (e.metaKey || e.ctrlKey) && S.view === 'newchat') { e.preventDefault(); document.querySelector('[data-ncproject]')?.click(); return; }
-  if (e.target.dataset && e.target.dataset.qr && e.key === 'Enter') { e.preventDefault(); sendQuick(e.target.dataset.qr); }
+  if (e.target.dataset && e.target.dataset.qr && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendQuick(e.target.dataset.qr); }
 }, true);
 document.addEventListener('input', e => { if (e.target.id === 'msgBox') autosize(e.target); });
 // Pictures and files: paste (several at once), drop anywhere on a chat, or pick with +.
@@ -400,11 +402,11 @@ $('q').addEventListener('input', e => { S.q = e.target.value.trim(); if (S.q) { 
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter') { const r = document.querySelector('#main [data-cur]'); if (r) { e.preventDefault(); r.click(); } } if (e.key === 'ArrowDown') { e.preventDefault(); e.target.blur(); setCur(0); } });
 
 async function sendQuick(key) {
-  const input = document.querySelector(`input[data-qr="${CSS.escape(key)}"]`);
+  const input = document.querySelector(`[data-qr="${CSS.escape(key)}"]`);
   const text = input && input.value.trim();
   if (!text) return;
   input.disabled = true;
-  try { await api('/api/chat/send', { key, text }); markSeen(input.dataset.id); sfx('slide'); toast('Sent.'); await loadLive(); }
+  try { await api('/api/chat/send', { key, text }); NW.replying.delete(key); markSeen(input.dataset.id); sfx('slide'); toast('Sent.'); await loadLive(); }
   catch (err) { toast(err.message); input.disabled = false; return; }
   renderLive();
 }
@@ -530,3 +532,6 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
   };
   visualViewport.addEventListener('resize', fit); visualViewport.addEventListener('scroll', fit); fit();
 }
+
+// Quick-reply boxes grow as you type.
+document.addEventListener('input', e => { if (e.target.matches && e.target.matches('textarea[data-qr]')) autosize(e.target); });
