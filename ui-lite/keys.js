@@ -103,7 +103,7 @@ function onKey(e) {
   if (e.key === 'e' && ids.length) { e.preventDefault(); return S.view === 'archived' ? wrap(unarchiveChats)(ids) : wrap(archiveChats)(ids); }
   const wrapEl = target.closest('.rowwrap');
   if ((e.key === 'a' || e.key === 'd') && wrapEl) { const b = wrapEl.querySelector(`[data-perm="${e.key === 'a' ? 'allow' : 'deny'}"]`); if (b) { e.preventDefault(); b.click(); } return undefined; }
-  if (e.key === 'r' && wrapEl) { const i = wrapEl.querySelector('input[data-qr]'); if (i) { e.preventDefault(); i.focus(); } return undefined; }
+  if (e.key === 'r' && wrapEl) { const i = wrapEl.querySelector('[data-qr]'), o = wrapEl.querySelector('[data-qreply]'); if (i || o) { e.preventDefault(); if (i) i.focus(); else openQuickReply(o.dataset.qreply); } return undefined; }
   return undefined;
 }
 document.addEventListener('keydown', onKey);

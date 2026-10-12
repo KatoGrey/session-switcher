@@ -19,6 +19,21 @@ function replyTail(t, n = 300) {
   const i = t.search(/[.!?:]\s+[A-Z(]/);
   return `…${i >= 0 && i < n * 0.6 ? t.slice(i + 1).trim() : t.slice(t.indexOf(' ') + 1)}`;
 }
+// Needs-you cards: which show their whole reply (and the replies read so far), and which have the reply box open.
+const NW = { more: new Set(), full: {}, replying: new Set() };
+function toggleMore(id) {
+  if (NW.more.has(id)) NW.more.delete(id);
+  else {
+    NW.more.add(id);
+    const x = S.live.find(l => idOf(l) === id);
+    if (x && x.sessionId && NW.full[id] === undefined) api(`/api/chat/last-reply?id=${encodeURIComponent(x.sessionId)}`).then(j => { NW.full[id] = j.text || ''; renderLive(); }).catch(() => { NW.full[id] = ''; renderLive(); });
+  }
+  renderLive();
+}
+function openQuickReply(key) {
+  NW.replying.add(key); renderLive();
+  const t = document.querySelector(`textarea[data-qr="${CSS.escape(key)}"]`); if (t) t.focus();
+}
 function needsRow(x) {
   const id = idOf(x);
   const head = `<div class="row" role="button" tabindex="-1" data-open="${esc(x.sessionId || '')}" data-cur="n:${esc(id)}"><span class="dot needs-dot" title="Needs you"></span>
@@ -29,8 +44,16 @@ function needsRow(x) {
   if (p && p.question) ask = `<span class="q">Asks you a question${x.pending.length > 1 ? ` (and ${x.pending.length - 1} more)` : ''}.</span><button class="btn prime" data-open="${esc(x.sessionId || '')}">Open to answer</button>`;
   else if (p && x.key) ask = `<code>${esc(p.detail || p.summary || p.toolName)}</code><button class="btn prime" data-perm="allow" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Allow <kbd>a</kbd></button>${p.canAlways ? `<button class="btn" data-perm="always" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Always allow</button>` : ''}<button class="btn" data-perm="deny" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Deny <kbd>d</kbd></button>`;
   else if (p) ask = `<span class="q">Wants to use ${esc(p.toolName)}. It’s running in another app, so answer it there.</span>`;
-  else if (x.key && x.source === 'app') ask = `<span class="q" data-open="${esc(x.sessionId || '')}" title="Open the chat">${esc(replyTail(x.lastText) || 'Replied.')}</span><input ${MSG_ATTRS} data-qr="${esc(x.key)}" data-id="${esc(id)}" placeholder="Reply without opening… (r)" aria-label="Quick reply"><button class="btn" data-send="${esc(x.key)}">Send</button>`;
-  else ask = `<span class="q" data-open="${esc(x.sessionId || '')}" title="Open the chat">${esc(replyTail(x.lastText) || 'Replied.')}</span><button class="btn" data-open="${esc(x.sessionId || '')}">Open</button>`;
+  else {
+    // A reply: two small lines, + for all of it; the reply box stays folded until you tap Reply.
+    const more = NW.more.has(id), full = NW.full[id];
+    const text = more ? `<div class="q-full msg-ai">${full === undefined ? '<p class="empty-note">Reading…</p>' : mdHtml(full || x.lastText || 'Replied.')}</div>` : `<span class="q q-short" data-open="${esc(x.sessionId || '')}" title="Open the chat">${esc(replyTail(x.lastText, 180) || 'Replied.')}</span>`;
+    const toggle = x.sessionId ? `<button type="button" class="iconbtn q-more" data-qmore="${esc(id)}" aria-expanded="${more}" aria-label="${more ? 'Show less' : 'Show all of it'}" title="${more ? 'Less' : 'All of it'}">${more ? '−' : '+'}</button>` : '';
+    const reply = !(x.key && x.source === 'app') ? `<button class="btn" data-open="${esc(x.sessionId || '')}">Open</button>`
+      : NW.replying.has(x.key) ? `<textarea ${MSG_ATTRS} rows="1" data-qr="${esc(x.key)}" data-id="${esc(id)}" placeholder="Reply without opening…" aria-label="Quick reply"></textarea><button class="btn prime" data-send="${esc(x.key)}">Send</button>`
+        : `<button class="btn" data-qreply="${esc(x.key)}">Reply <kbd>r</kbd></button>`;
+    ask = `<div class="q-line">${text}${toggle}</div><div class="q-acts">${reply}</div>`;
+  }
   return `<div class="rowwrap">${head}<div class="ask">${ask}</div></div>`;
 }
 
