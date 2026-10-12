@@ -47,7 +47,7 @@ function needsRow(x) {
   else {
     // A reply: two small lines, + for all of it; the reply box stays folded until you tap Reply.
     const more = NW.more.has(id), full = NW.full[id];
-    const text = more ? `<div class="q-full msg-ai">${full === undefined ? '<p class="empty-note">Reading…</p>' : mdHtml(full || x.lastText || 'Replied.')}</div>` : `<span class="q q-short" data-open="${esc(x.sessionId || '')}" title="Open the chat">${esc(replyTail(x.lastText, 180) || 'Replied.')}</span>`;
+    const text = more ? `<div class="q-full msg-ai">${full === undefined ? '<p class="empty-note">Reading…</p>' : mdHtml(full || x.lastText || 'Replied.')}</div>` : `<span class="q q-short" data-open="${esc(x.sessionId || '')}" title="Open the chat">${esc(replyTail(x.lastText, 120) || 'Replied.')}</span>`;
     const toggle = x.sessionId ? `<button type="button" class="iconbtn q-more" data-qmore="${esc(id)}" aria-expanded="${more}" aria-label="${more ? 'Show less' : 'Show all of it'}" title="${more ? 'Less' : 'All of it'}">${more ? '−' : '+'}</button>` : '';
     const reply = !(x.key && x.source === 'app') ? `<button class="btn" data-open="${esc(x.sessionId || '')}">Open</button>`
       : NW.replying.has(x.key) ? `<textarea ${MSG_ATTRS} rows="1" data-qr="${esc(x.key)}" data-id="${esc(id)}" placeholder="Reply without opening…" aria-label="Quick reply"></textarea><button class="btn prime" data-send="${esc(x.key)}">Send</button>`
