@@ -985,3 +985,9 @@ blockquote p { margin: 4px 0; }
 .md-html summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .md-html iframe { display: block; width: 100%; min-height: 220px; margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; background: #fff; resize: vertical; }
 .wait-news { color: var(--fg); font-weight: 600; }
+
+/* ---------- Games, Apps, Personal: one line per project ---------- */
+.flat-proj .flat-st { display: inline-flex; align-items: center; gap: 5px; flex: none; font-size: 11.5px; color: var(--muted); }
+.flat-proj .flat-st .st-dot { margin: 0; }
+.flat-proj .proj-chev.flat-n { font-size: 11px; color: var(--muted); opacity: 1; }
+.flat-proj .proj-chev.flat-n::before, .flat-proj .proj-chev.flat-n::after { display: none; }

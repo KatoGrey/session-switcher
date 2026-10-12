@@ -123,6 +123,15 @@ function sideProjects(all) {
     }
     // The name opens the project; the chevron beside it folds its chats away.
     const here = S.view === 'project' && S.project === g.p.key;
+    // Games, Apps, Personal: one line per project saying where it's at. The line opens its latest
+    // chat; a project with a few open chats has a count that shows them.
+    if (stageless) {
+      const lead = [...lv].sort((x, y) => y.updated - x.updated)[0];
+      const st = statusById(statusOf(lead));
+      const cur = S.view === 'chat' && g.cs.some(c => low(c.id) === low(CV.id));
+      const many = lv.length > 1;
+      return `<div class="group folder flat-proj" data-folded="${!(open && many)}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-chat="${esc(lead.id)}" aria-current="${cur}" title="${esc(g.p.name)}: ${esc(lead.title)}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span><span class="flat-st" title="${st.name}"><span class="st-dot" style="background:${st.c}"></span>${st.name}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : ''}</button>${many ? `<button class="proj-chev flat-n" data-foldproj="${esc(g.p.key)}" data-stageless="1" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} its ${lv.length} chats" title="${lv.length} open chats">${lv.length}</button>` : ''}</div>${many ? `<div class="folder-items">${inner}</div>` : ''}</div>`;
+    }
     return `<div class="group folder" data-folded="${!open}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-project="${esc(g.p.key)}" draggable="true" aria-current="${here}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : `<span class="n">${lv.length || ''}</span>`}</button><button class="proj-chev" data-foldproj="${esc(g.p.key)}" ${stageless ? 'data-stageless="1"' : ''} aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} chats" title="${open ? 'Hide' : 'Show'} chats"></button></div><div class="folder-items">${inner}</div></div>`;
   };
   // With every bucket showing, projects sit under their bucket's name.
