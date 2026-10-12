@@ -39,6 +39,7 @@ function renderChanges(ev, src) {
   withStick(() => turn.insertAdjacentHTML('beforeend', changesBar(ev, src, clashWith(ev, src))));
   const bar = turn.lastElementChild;
   bar._ev = ev;
+  picsFromChanges(turn, ev);
 }
 function renderUndone(ev, src) {
   const bar = $c('cFeed').querySelector(`.chg[data-turn="${ev.turn}"][data-src="${src}"]`);

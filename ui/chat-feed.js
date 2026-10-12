@@ -40,6 +40,7 @@ function inline(s) {
   const keep = h => `\u0000${slots.push(h) - 1}\u0000`;
   let t = String(s);
   t = t.replace(/`([^`\n]+)`/g, (_, c) => keep(looksLikePath(c.trim()) ? `<code class="flink" data-path="${esc(c.trim())}" role="link" tabindex="0" title="Open ${esc(c.trim())}">${esc(c)}</code>` : `<code>${esc(c)}</code>`));
+  t = t.replace(/!\[([^\]\n]*)\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+"[^"\n]*")?\)/g, (_, alt, a, b) => keep(mdPicture(a || b, alt)));
   t = t.replace(/\[([^\]\n]+)\]\((?:<([^>\n]+)>|([^)\s]+))\)/g, (_, txt, a, b) => {
     const url = a || b;
     if (/^https?:\/\//i.test(url)) return keep(link(url, emphasis(esc(txt))));
@@ -50,6 +51,15 @@ function inline(s) {
   t = t.replace(BARE, (_, pre, p) => `${pre}${keep(fileLink(p, esc(p)))}`);
   t = emphasis(esc(t));
   return t.replace(/\u0000(\d+)\u0000/g, (_, n) => slots[+n]);
+}
+// A picture written into a reply as ![alt](path). One on the web can't load inside the app (it only
+// shows what's on this PC), so it's a link to open in the browser.
+function mdPicture(url, alt) {
+  const label = alt || base(url);
+  if (/^https?:\/\//i.test(url)) return link(url, `<span class="md-weblink">▣ ${esc(label || 'Picture')}</span>`);
+  if (/^(data:|javascript:|#)/i.test(url) || !/\.(png|jpe?g|gif|webp|bmp)$/i.test(url)) return fileLink(url, esc(label));
+  const src = imageUrl(url);
+  return `<span class="mdimg"><button type="button" class="thumb md-pic" data-full="${esc(src)}" data-path="${esc(url)}" data-cap="${esc(label)}"><img src="${esc(src)}" alt="${esc(label)}" loading="lazy" decoding="async" onerror="this.closest('.mdimg').classList.add('gone')"></button>${alt ? `<span class="mdimg-cap">${esc(alt)}</span>` : ''}</span>`;
 }
 function plain(s) {
   const slots = [];
@@ -344,6 +354,7 @@ function setToolResult(root, id, result) {
   d.querySelector('.t-time').textContent = '';
   d.querySelector('.t-res').innerHTML = toolResultHtml(result);
   ledgerResult(d._view, result);
+  picsFromTool(d.closest('.turn'), d._view, result);
   if (d.dataset.name === 'Artifact') {
     const cards = artifactCards(result.text, learnArtifact(d._view, result), d.closest('.turn'));
     if (cards) d.closest('.tools').insertAdjacentHTML('afterend', `<div class="arts">${cards}</div>`);
@@ -466,6 +477,7 @@ function addBlock(p, b, live) {
     // A picture that finishes while you watch develops in place.
     const develop = liveRender && !!(old && !old.querySelector('img'));
     if (old) old.outerHTML = genImage(b, develop); else fin.insertAdjacentHTML('beforeend', genImage(b, liveRender));
+    picShown(p.closest('.turn'), b.path);
     if (b.path) { L.images.set(b.path, b.prompt || base(b.path)); renderLedgerSoon(); }
     return;
   }
@@ -479,6 +491,7 @@ function addBlock(p, b, live) {
     }
     const te = toolEl(b, live); if (liveRender) te.classList.add('fresh');
     g.appendChild(te);
+    if (b.result) picsFromTool(p.closest('.turn'), b);
     // From history, a finished reply's steps start folded to their one line.
     if (!liveRender && g.querySelectorAll('.tool').length >= 3) g.classList.add('folded');
     if (b.result && b.name === 'Artifact') { const cards = artifactCards(b.result.text, learnArtifact(b, b.result), p.closest('.turn')); if (cards) g.insertAdjacentHTML('afterend', `<div class="arts">${cards}</div>`); }
@@ -496,6 +509,7 @@ function addBlock(p, b, live) {
   div.innerHTML = md(b.text);
   RAW.set(div, b.text);
   fin.appendChild(div);
+  picsFromText(p.closest('.turn'), div);
   if (cards) fin.insertAdjacentHTML('beforeend', `<div class="arts">${cards}</div>`);
 }
 // The markdown behind each reply and message, for copying, quoting and exporting.

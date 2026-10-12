@@ -535,7 +535,7 @@ function onSelection() {
 document.addEventListener('selectionchange', onSelection);
 
 /* ---------- events ---------- */
-function lightbox(src) { $c('cLight').querySelector('img').src = src; $c('cLight').hidden = false; $c('cLight').focus(); }
+function lightbox(src, from) { openGallery(src, from); }
 function openFile(p) { return Viewer.open({ path: p, key: C.key, session: C.sessionId || (C.watch && C.watch.sessionId), cwd: C.info && C.info.cwd }); }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -567,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return isRunning(id) ? watch({ sessionId: id, source: 'terminal' }) : open({ sessionId: id });
     }
     if (ri) { const li = ri.closest('li'); const x = li && findActivity(li.dataset.k); chat.classList.remove('show-rail'); if (x && !isViewing(x)) return openActivity(x); return; }
-    const thumb = t.closest('.thumb'); if (thumb) return lightbox(thumb.dataset.full);
+    const thumb = t.closest('.thumb, .pic-b'); if (thumb) return lightbox(thumb.dataset.full, thumb);
     const cc = t.closest('.code-copy');
     if (cc) return copyText(cc.closest('.code').querySelector('code').textContent, null).then(ok => { if (ok) copiedButton(cc); });
     const more = t.closest('.tg-more'); if (more) { const g = more.closest('.tools'); g.classList.toggle('open'); updateGroup(g); return; }
@@ -684,7 +684,6 @@ document.addEventListener('DOMContentLoaded', () => {
   chat.addEventListener('dragover', e => { if (!C.watch && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); chat.classList.add('drop'); } });
   chat.addEventListener('dragleave', e => { if (e.target === chat || !chat.contains(e.relatedTarget)) chat.classList.remove('drop'); });
   chat.addEventListener('drop', e => { e.preventDefault(); chat.classList.remove('drop'); if (!C.watch) addFiles([...e.dataTransfer.files]); });
-  $c('cLight').addEventListener('click', () => { $c('cLight').hidden = true; });
   if ('ResizeObserver' in window) new ResizeObserver(() => document.documentElement.style.setProperty('--dock-h', `${Math.round(document.querySelector('.c-dock').getBoundingClientRect().height)}px`)).observe(document.querySelector('.c-dock'));
   $c('cScroll').addEventListener('scroll', () => { if (!jumpRaf) jumpRaf = requestAnimationFrame(() => { jumpRaf = 0; syncJump(); }); }, { passive: true });
   $c('cJump').addEventListener('click', jumpLatest);
@@ -715,7 +714,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $c('pickBack').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closePick(); });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && Rail.drag && Rail.drag.on && !Rail.drag.settling) { e.preventDefault(); e.stopPropagation(); Rail.dropped = Date.now(); railSettle(Rail.drag, false); return; }
-    if (e.key === 'Escape' && !$c('cLight').hidden) { $c('cLight').hidden = true; e.stopPropagation(); return; }
+    if (e.key === 'Escape' && closeLightbox()) { e.stopPropagation(); return; }
     if ($c('chat').hidden) return;
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); (e.shiftKey ? moveInRail : switchRail)(e.key === 'ArrowDown' ? 1 : -1); }
   }, true);
@@ -912,6 +911,6 @@ window.ChatUI = {
     return out;
   },
   // For the phone's Back button: closes the picker, then the chat. True if it did something.
-  back: () => { if (!$c('cLight').hidden) { $c('cLight').hidden = true; return true; } if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { close(); return true; } return false; },
+  back: () => { if (closeLightbox()) return true; if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { close(); return true; } return false; },
   isOpen: () => !$c('chat').hidden, key: () => C.key,
 };

@@ -533,7 +533,7 @@ if (window.Android || / SessionSwitcherAndroid\//.test(navigator.userAgent)) doc
 if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) document.body.classList.add('android', 'ios');
 // The Android app's Back button: close whatever is on top. Returns true if something closed.
 window.__mobileBack = () => {
-  if (!$('cLight')?.hidden) { $('cLight').hidden = true; return true; }
+  if ($('cLight') && closeLightbox()) return true;
   if (!$('menu').hidden) { closeMenu(); return true; }
   if (!$('acctPop').hidden) { closeAcctPop(); return true; }
   if (!$('palette').hidden) { closePalette(); return true; }

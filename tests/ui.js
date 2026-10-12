@@ -1167,6 +1167,46 @@ module.exports = [
     },
   },
   {
+    name: 'pictures',
+    // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      // What it made, what it looked at (sent inline), and a path in a sentence that isn't there.
+      await b.eval(`const turn = lastTurnOf('claude');
+        const pic = col => { const c = document.createElement('canvas'); c.width = 640; c.height = 400; const g = c.getContext('2d'); g.fillStyle = col; g.fillRect(0, 0, 640, 400); return c.toDataURL('image/png'); };
+        const red = pic('#a5463f');
+        addPic(turn, { src: red }, 'made', 'hero.png');
+        addPic(turn, { src: pic('#3c5a96') }, 'looked', 'A screenshot');
+        addPic(turn, { path: 'art/not-there.png' }, 'mentioned');
+        addPic(turn, { src: red }, 'mentioned');
+        return 1`); await sleep(900);
+      const strip = await b.eval(`const p = lastTurnOf('claude').querySelector(':scope > .pics'); return p && { cls: p.className, caps: [...p.querySelectorAll('figcaption')].map(x => x.textContent), big: Math.round(p.querySelector('img').getBoundingClientRect().width) }`);
+      t.check('a reply’s pictures show under it, each once, with what it did with them', strip && strip.caps.length === 2 && strip.caps[0] === 'Made hero.png' && strip.caps[1] === 'Looked at A screenshot' && /\bn2\b/.test(strip.cls), strip);
+      t.check('a path to a picture that isn’t there leaves no empty box', strip && !strip.caps.some(c => /not-there/.test(c)));
+      t.check('they’re big enough to see', strip && strip.big >= 150, strip);
+      // Written as Markdown: the picture itself; one on the web is a link.
+      const m = await b.eval(`const h = md('Here: ![The key art](art/harvest-festival.png) and ![web](https://example.com/x.png)'); const d = document.createElement('div'); d.innerHTML = h; return { img: !!d.querySelector('.mdimg img'), cap: d.querySelector('.mdimg-cap')?.textContent, web: !!d.querySelector('a[href="https://example.com/x.png"]'), bang: /!/.test(d.textContent) }`);
+      t.check('![alt](path) shows the picture, with its caption', m.img && m.cap === 'The key art', m);
+      t.check('a picture on the web is a link, with no stray “!”', m.web && !m.bang, m);
+      await b.eval(`lastTurnOf('claude').querySelector(':scope > .pics').scrollIntoView({ block: 'center' }); return 1`); await sleep(300);
+      await t.shot(b, 'strip');
+      // The viewer: every picture in the chat, in order.
+      await b.clickOn('.pics .pic-b'); await sleep(400);
+      const v = () => b.eval(`const l = document.getElementById('cLight'); return { open: !l.hidden, n: l.querySelector('.lb-n').textContent, cap: l.querySelector('.lb-cap').textContent, open1: !l.querySelector('[data-lb="open"]').hidden }`);
+      let x = await v();
+      t.check('a picture opens in the viewer, with its name and where it is in the chat', x.open && /^\d+ of \d+$/.test(x.n) && x.cap === 'hero.png', x);
+      await t.shot(b, 'viewer');
+      const first = x.n;
+      await b.key('ArrowRight', 'ArrowRight', 39); await sleep(200);
+      x = await v();
+      t.check('the arrow keys step to the next picture', x.n !== first && x.cap === 'A screenshot', x);
+      await b.esc(); await sleep(200);
+      t.check('Escape closes it', !(await v()).open);
+      t.check('nothing spills sideways', await b.eval(`return document.scrollingElement.scrollWidth <= innerWidth + 1`));
+    },
+  },
+  {
     name: 'chapters',
     // A long chat divides into chapters after breaks, named after what you said; old ones fold.
     async run(t) {

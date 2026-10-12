@@ -120,7 +120,12 @@
     </div>
   </div>
   <aside class="ledger" id="cLedger" aria-label="Ledger"><div class="lg-pv" id="cPreview"></div><div id="cLedgerBody"></div></aside>
-  <div class="lightbox" id="cLight" hidden tabindex="-1"><img alt="Full-size image"></div>
+  <div class="lightbox" id="cLight" hidden tabindex="-1" role="dialog" aria-label="Pictures in this chat">
+    <div class="lb-stage"><img alt=""></div>
+    <button type="button" class="lb-nav prev" data-lb="prev" aria-label="Previous picture">‹</button>
+    <button type="button" class="lb-nav next" data-lb="next" aria-label="Next picture">›</button>
+    <div class="lb-bar"><span class="lb-cap"></span><span class="lb-n"></span><span class="lb-acts"><button type="button" class="btn quiet sm" data-lb="zoom">Actual size</button><button type="button" class="btn quiet sm" data-lb="open">Open</button><button type="button" class="btn quiet sm" data-lb="reveal">Show in folder</button><button type="button" class="btn quiet sm" data-lb="copy">Copy</button><button type="button" class="btn quiet sm" data-lb="attach">Attach to my message</button></span><button type="button" class="icon lb-x" data-lb="close" aria-label="Close">✕</button></div>
+  </div>
 </section>
 
 <div class="palette" id="palette" hidden role="dialog" aria-modal="true" aria-label="Jump to">
@@ -179,6 +184,7 @@
 <script src="/ui/chat-preview.js"></script>
 <script src="/ui/chat-map.js"></script>
 <script src="/ui/chat-chapters.js"></script>
+<script src="/ui/chat-pics.js"></script>
 <script src="/ui/chat.js"></script>
 </body>
 </html>
