@@ -538,6 +538,7 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
       const r = document.documentElement.style;
       const k = Math.round(innerHeight - visualViewport.height);
       if (k > 150) { kbH = k; try { localStorage.setItem('lite.kb', String(k)); } catch { /* fine */ } }
+      document.documentElement.classList.toggle('kb-up', k > 150);
       r.setProperty('--app-h', `${Math.round(visualViewport.height)}px`);
       r.setProperty('--vv-top', `${Math.round(visualViewport.offsetTop)}px`);
       if (pinned) f.scrollTop = f.scrollHeight;
@@ -553,8 +554,8 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
     root.classList.add('kb-glide'); root.style.setProperty('--app-h', `${Math.round(h)}px`); root.style.setProperty('--vv-top', '0px');
     clearTimeout(glideT); glideT = setTimeout(() => root.classList.remove('kb-glide'), 450);
   };
-  document.addEventListener('focusin', e => { if (kbH && e.target.matches && e.target.matches(TYPE)) { const f = $('feed'), pinned = f && f.scrollHeight - f.scrollTop - f.clientHeight < 80; glide(innerHeight - kbH); if (pinned) setTimeout(() => { f.scrollTop = f.scrollHeight; }, 320); } });
-  document.addEventListener('focusout', e => { if (e.target.matches && e.target.matches(TYPE)) setTimeout(() => { const a = document.activeElement; if (!(a && a.matches && a.matches(TYPE))) glide(innerHeight); }, 0); });
+  document.addEventListener('focusin', e => { if (kbH && e.target.matches && e.target.matches(TYPE)) { document.documentElement.classList.add('kb-up'); const f = $('feed'), pinned = f && f.scrollHeight - f.scrollTop - f.clientHeight < 80; glide(innerHeight - kbH); if (pinned) setTimeout(() => { f.scrollTop = f.scrollHeight; }, 320); } });
+  document.addEventListener('focusout', e => { if (e.target.matches && e.target.matches(TYPE)) setTimeout(() => { const a = document.activeElement; if (!(a && a.matches && a.matches(TYPE))) { document.documentElement.classList.remove('kb-up'); glide(innerHeight); } }, 0); });
   // Like Messages: with the keyboard up, dragging the conversation down (or tapping it) puts the keyboard away.
   let drag = null;
   document.addEventListener('touchstart', e => { const f = e.target.closest && e.target.closest('#feed'); drag = f && e.touches[0] ? { y: e.touches[0].clientY, x: e.touches[0].clientX } : null; }, { passive: true });

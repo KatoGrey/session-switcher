@@ -412,7 +412,7 @@ function paintBar() {
   const box = $('msgBox'); if (box) box.disabled = !!CV.readOnly;
   paintAttachments();
 }
-function autosize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 280) + 'px'; }
+function autosize(el) { el.style.height = 'auto'; const cap = parseFloat(getComputedStyle(el).maxHeight) || 280; el.style.height = Math.min(el.scrollHeight, cap, 280) + 'px'; }
 
 /* ----- pictures and files ----- */
 const readData = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
