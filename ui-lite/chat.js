@@ -71,6 +71,8 @@ async function openChatView(id, { key = null, provider = null } = {}) {
   markSeen(id);
   const x = S.live.find(l => l.sessionId && l.sessionId.toLowerCase() === String(id).toLowerCase());
   if (!key && x && x.key && x.source === 'app') CV.key = x.key;
+  // The Commander isn't in the running list; Now knows its key.
+  if (!CV.key && S.cmd.key && S.cmd.sessionId && S.cmd.sessionId.toLowerCase() === String(id).toLowerCase()) CV.key = S.cmd.key;
   if (!CV.key && x && x.source !== 'app' && x.working) CV.readOnly = x.source === 'terminal' ? 'It’s running in a terminal. Answer it there, or wait for it to finish.' : 'It’s running in another app (like the Claude desktop app). Answer it there, or wait for it to finish.';
   try {
     let until = null;
@@ -142,7 +144,8 @@ function onEvent(ev) {
       // The message you just sent is already on screen; the real one takes its place quietly.
       const same = x => String(x.text || '').trim() === String(ev.text || '').trim();
       const i = CV.items.findIndex(x => x.onTheWay && same(x));
-      if (i >= 0) CV.items[i] = { ...ev, images: (CV.items[i].images || []).length ? CV.items[i].images : ev.images };
+      // (It goes to the bottom: joining a run in progress replays what came before it.)
+      if (i >= 0) { const was = CV.items.splice(i, 1)[0]; CV.items.push({ ...ev, images: (was.images || []).length ? was.images : ev.images }); }
       else CV.items.push(ev);
       CV.live = ''; CV.thinking = ''; CV.startedAt = CV.startedAt || Date.now(); appendItem(ev); break;
     }
@@ -534,6 +537,8 @@ async function sendInChat({ fromQueue = false, queue = false } = {}) {
       // An Ollama chat goes back to the Ollama account (its thread isn't OpenAI's).
       const info = await api('/api/chat/open', { sessionId: CV.id, mode: 'resume', ...(CV.provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
       CV.key = info.key; CV.info = info;
+      // Already running (picked up from elsewhere): its stream replays this run, so history stops where it starts.
+      if (info.attached) { const from = Date.parse(info.bufferFrom || info.startedAt || '') - 1000; if (from) { CV.items = CV.items.filter(x => x === local || !x.at || Date.parse(x.at) < from); paintFeed(); } }
       listen(info.key);
       await waitReady();
       if (COMP.effort) await api('/api/chat/model', { key: CV.key, effort: COMP.effort }).then(m => Object.assign(CV.info, m)).catch(() => {});
