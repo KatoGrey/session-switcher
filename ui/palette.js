@@ -24,6 +24,7 @@ function palItems(q) {
     { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, shared by Claude and Codex', run: () => openRules(S.view === 'folder' ? S.folder : null), alias: 'claude.md agents.md mcp servers tools rules instructions memory' },
     { glyph: '◐', t: 'Appearance', s: 'themes, fonts, light or dark, text and interface size', run: () => openSetup('look'), alias: 'font fonts typeface' },
     { glyph: '?', t: 'Keyboard shortcuts', run: () => openShortcuts(), alias: 'keys hotkeys help' },
+    ...(miniOK() && !window.REMOTE ? [{ glyph: '◰', t: 'Open the mini window', s: 'what needs you, floating over other apps', run: () => openMini(), alias: 'mini picture in picture float pip always on top small status' }] : []),
     { glyph: '◐', t: Look.isLight() ? 'Switch to dark mode' : 'Switch to light mode', run: () => Look.set({ mode: Look.isLight() ? 'dark' : 'light' }) },
     ...Look.THEMES.filter(t => t.id !== Look.get().theme).map(t => ({ glyph: '◉', t: `Theme: ${t.name}`, s: t.note, run: () => Look.set({ theme: t.id }) })),
     ...Look.FONT_SETS.filter(f => f.id !== Look.get().fontSet).map(f => ({ glyph: '¶', t: `Fonts: ${f.name}`, s: [...new Set([f.head, f.body, f.code])].map(id => Look.FAMILIES.find(x => x.id === id).name).join(' · '), run: () => Look.set({ fontSet: f.id, fBody: '', fHead: '', fCode: '' }), alias: 'font set typeface lettering' })),

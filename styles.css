@@ -3305,3 +3305,21 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
 .dc-used span{display:block;font:500 10.5px/1.6 var(--f-label);letter-spacing:.14em;text-transform:uppercase;color:var(--ash-2)}
 .dc-used .linkish{max-width:14em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;color:var(--parch-2)}
 .dc-used b{color:var(--gilt);font-weight:600}
+/* The mini window (ui/mini.js): a small floating card in the theme's colors. */
+body.mini{margin:0;min-height:100vh;background:linear-gradient(180deg,rgb(var(--c-1a161d)),rgb(var(--c-0a090c)));color:var(--parch);font:14px/1.45 var(--f-body);overflow:auto}
+.mini-in{padding:12px 14px 14px}
+.mn-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.mn-seal{width:22px;height:22px;flex:none}
+.mn-h b{flex:1;font:600 11px/1 var(--f-label);letter-spacing:.18em;text-transform:uppercase;color:var(--ember)}
+.mn-n{font:600 13px/1 var(--f-label);color:var(--ash)}
+.mn-n .needs{font-style:normal;color:var(--gilt)}
+.mn-n i{font-style:normal}
+.mn-k{margin:10px 0 4px;font:500 10px/1 var(--f-label);letter-spacing:.16em;text-transform:uppercase;color:var(--ash-2)}
+.mini ul{list-style:none;margin:0;padding:0}
+.mn-i{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--seam)}
+.mn-t{all:unset;cursor:pointer;flex:1;min-width:0;font:600 14px/1.3 var(--f-caps);color:var(--parch);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mn-t small{display:block;font:400 12px/1.4 var(--f-body);color:var(--ash);overflow:hidden;text-overflow:ellipsis}
+.mn-i.needs .mn-t{color:var(--gilt)}
+.mn-b{display:flex;gap:4px;flex:none}
+.mn-quiet{margin:10px 0;font:italic 14px/1.4 var(--f-body);color:var(--ash)}
+.mn-u{margin:12px 0 0;font:400 11.5px/1.4 var(--f-label);color:var(--ash-2)}

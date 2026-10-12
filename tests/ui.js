@@ -1058,6 +1058,18 @@ module.exports = [
         renderLive(true); await new Promise(r => setTimeout(r, 300));
         const p = document.querySelector('.dc-used'); return p && p.textContent.replace(/\\s+/g, ' ').trim()`);
       t.check('each account says which chats used most of its last five hours', /Used most, last 5 hours/.test(used) && /Balance pass on the bard’s songs 75%/.test(used) && /Old chat 25%/.test(used), used);
+      // The mini window, with a frame standing in for the floating one (that needs a click and a screen).
+      const mini = await b.eval(`const f = document.createElement('iframe'); document.body.appendChild(f);
+        f.contentDocument.body.innerHTML = '<main class="mini-in"></main>'; f.contentDocument.body.className = 'mini';
+        f.contentDocument.addEventListener('click', e => miniClick(e)); Mini.win = f.contentWindow; Mini.h = '';
+        Look.set({ theme: 'isekai' }); syncMiniLook(); renderMini();
+        const d = f.contentDocument, text = d.body.textContent.replace(/\\s+/g, ' ');
+        const calls = [], real = window.api; window.api = async (p, body) => { calls.push([p, body]); return { ok: true }; };
+        d.querySelector('[data-mini-a="allow"]')?.click(); await new Promise(r => setTimeout(r, 100)); window.api = real;
+        const out = { text, theme: d.documentElement.dataset.theme, allow: calls.find(c => c[0] === '/api/chat/permission') };
+        Mini.win = null; f.remove(); Look.set({ theme: 'crimson' }); return out`);
+      t.check('the mini window shows what needs you and what’s at work, in the theme’s own words', /Awaiting your command/.test(mini.text) && /Casting/.test(mini.text) && mini.theme === 'isekai', mini);
+      t.check('and an approval can be answered right there', mini.allow && mini.allow[1].decision === 'allow', mini);
     },
   },
   {
