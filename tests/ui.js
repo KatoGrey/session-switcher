@@ -1037,6 +1037,11 @@ module.exports = [
       t.check('card titles stay at two lines', title && title.lines <= 2, title);
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2200);
       t.check('scrollable code blocks can be reached by keyboard', await b.eval(`const p = document.querySelector('#cFeed .code pre'); return !p || p.tabIndex === 0`));
+      const stuck = await b.eval(`handle({ kind: 'stuck', quietMin: 12, seq: 800 }); const c = document.querySelector('.stuck-card'); const text = c && c.textContent;
+        const buttons = c ? [...c.querySelectorAll('button')].map(x => x.textContent) : [];
+        handle({ kind: 'state', state: 'ready', seq: 801 }); return { text, buttons, gone: !document.querySelector('.stuck-card') }`);
+      t.check('a chat quiet for a long while says so, offering to stop it or keep waiting', /working for 12 minutes without a word/.test(stuck.text) && stuck.buttons.join() === 'Stop Claude,Keep waiting', stuck);
+      t.check('and the note goes once it moves on', stuck.gone, stuck);
     },
   },
   {

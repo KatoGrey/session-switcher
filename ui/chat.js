@@ -610,6 +610,8 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'review': return startReview(c.dataset.base || null, c.dataset.by || 'codex');
       case 'limitas': return continueAs(c.dataset.acct);
       case 'limithand': return handOver(c.dataset.to);
+      case 'stuckwait': return c.closest('.stuck-card').remove();
+      case 'stuckstop': { const card = c.closest('.stuck-card'); C.interruptedAt = Date.now(); card.remove(); return api('/api/chat/interrupt', { key: keyFor(card.dataset.src) }); }
       case 'limitwait': case 'limitnowait': { const card = c.closest('.limit-card'); return card && card._ev ? waitForReset(card._ev, card.dataset.src || 'main', c.dataset.c === 'limitnowait') : undefined; }
       case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
       case 'relay': return relay(c.closest('.turn'));

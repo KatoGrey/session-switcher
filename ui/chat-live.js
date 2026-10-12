@@ -148,6 +148,7 @@ function handleEvent(ev, src) {
   const comp = src === 'comp';
   switch (ev.kind) {
     case 'state': {
+      if (ev.state !== 'busy') feed.querySelectorAll(`.stuck-card[data-src="${src}"]`).forEach(x => x.remove());
       const was = comp ? C.comp.state : C.state;
       if (comp) { C.comp.state = ev.state; if (ev.state !== 'busy') C.comp.status = ''; renderCrew(); syncSend(); }
       else { setState(ev.state); if (ev.state !== 'busy') { $c('cStatus').textContent = ''; C.status = ''; } renderCrew(); }
@@ -178,6 +179,7 @@ function handleEvent(ev, src) {
     case 'planfirst': if (!comp) renderPlanFirst(ev); break;
     case 'limit': renderLimit(ev, src); break;
     case 'resumeat': renderResumeAt(ev, src); break;
+    case 'stuck': renderStuck(ev, src); break;
     case 'changes': renderChanges(ev, src); break;
     case 'undone': renderUndone(ev, src); break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
@@ -612,3 +614,15 @@ function armEsc(name) {
   escTimer = setTimeout(disarmEsc, 1600);
 }
 function disarmEsc(keepArm) { clearTimeout(escTimer); $c('cEscArm')?.remove(); if (!keepArm) C.escArmed = 0; }
+
+// The watchdog (lib/chat.js): one of them has been working a long time without a word. Long commands
+// can be quiet, so it asks rather than stopping anything.
+function renderStuck(ev, src) {
+  if (C.watch) return;
+  const feed = $c('cFeed'), name = PROV_NAME[provFor(src)];
+  feed.querySelectorAll(`.stuck-card[data-src="${src}"]`).forEach(x => x.remove());
+  const card = document.createElement('div');
+  card.className = `stuck-card${liveRender ? ' fresh' : ''}`; card.dataset.src = src; card.setAttribute('role', 'status');
+  card.innerHTML = `<p><b>${name} has been working for ${ev.quietMin || 10} minutes without a word.</b> A long command can be quiet; if it seems stuck, stop it and ask again.</p><div class="lm-b"><button type="button" class="btn" data-c="stuckstop">Stop ${name}</button><button type="button" class="btn quiet" data-c="stuckwait">Keep waiting</button></div>`;
+  withStick(() => feed.appendChild(card));
+}
