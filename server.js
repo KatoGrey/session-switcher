@@ -390,16 +390,22 @@ function raceOf(id) { const r = raceList.find(x => x.id === id); if (!r) throw f
 // Each racer: its chat's state, and what it has changed so far.
 async function racesView() {
   const out = [];
+  let dirty = false;
   for (const r of raceList) {
     const racers = {};
+    if (!r.sessions) r.sessions = {};
     for (const who of Object.keys(r.copies)) {
       let chat = null; try { chat = chats.get(r.keys[who]); } catch { /* stopped */ }
+      // After a restart (or an idle stop and reopening) the chat runs under a new key: found by its conversation.
+      if ((!chat || chat.state === 'ended') && r.sessions[who]) { const again = chats.bySession(r.sessions[who]); if (again) { chat = again; r.keys[who] = again.key; dirty = true; } }
+      if (chat && chat.sessionId && r.sessions[who] !== chat.sessionId) { r.sessions[who] = chat.sessionId; dirty = true; }
       let files = null;
       if (r.state === 'running' && fs.existsSync(r.copies[who].path)) { try { files = (await raceLib.copyChanges(r, who)).files; } catch { files = null; } }
-      racers[who] = { key: chat && chat.state !== 'ended' ? r.keys[who] : null, state: chat ? chat.state : 'ended', sessionId: chat ? chat.sessionId : null, files };
+      racers[who] = { key: chat && chat.state !== 'ended' ? r.keys[who] : null, state: chat ? chat.state : 'ended', sessionId: (chat && chat.sessionId) || r.sessions[who] || null, files };
     }
     out.push({ id: r.id, cwd: r.cwd, folder: r.folder, prompt: r.prompt, split: r.split || null, state: r.state, kept: r.kept || null, createdAt: r.createdAt, racers });
   }
+  if (dirty) { try { store.writeJsonAtomic(RACES_FILE, { races: raceList }); } catch { /* kept in memory */ } }
   return out;
 }
 // Split the work: one task, each taking its own part, told what the other is doing.

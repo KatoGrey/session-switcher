@@ -6,7 +6,7 @@
 async function loadRaces() { S.races = (await api('/api/races')).races || []; renderRaces(); }
 
 const RACERS = [['claude', 'Claude'], ['codex', 'Codex']];
-const racerState = x => (x.state === 'busy' || x.state === 'starting' ? 'working' : x.state === 'waiting' ? 'needs your OK' : x.state === 'ended' ? 'stopped' : 'done');
+const racerState = x => (x.state === 'busy' || x.state === 'starting' ? 'working' : x.state === 'waiting' ? 'needs your OK' : x.state === 'ended' ? (x.sessionId ? 'paused' : 'stopped') : 'done');
 function raceCard(r) {
   const head = `<p class="race-h"><span class="glyph" aria-hidden="true">${r.split ? '⑂' : '⚑'}</span><b>${r.split ? 'Split' : 'Race'}</b> in ${esc(r.folder || base(r.cwd))}<small>${esc(stamp(Date.parse(r.createdAt)))}</small></p>${r.split && r.prompt === `${r.split.claude} · ${r.split.codex}` ? '' : `<p class="race-p">${esc(r.prompt.split('\n')[0].slice(0, 200))}</p>`}`;
   if (r.state !== 'running') return `<li class="race over">${head}<p class="race-end">${r.state === 'kept' ? (r.kept === 'both' ? 'Kept both sets of changes.' : `Kept ${r.kept === 'codex' ? 'Codex' : 'Claude'}’s changes.`) : 'Discarded.'}</p></li>`;
@@ -17,7 +17,7 @@ function raceCard(r) {
     return `<div class="racer ${who}"><p class="rc-h"><span class="crew-dot" aria-hidden="true"></span><b>${name}</b><span class="rc-st ${racerState(x).replace(/\W+/g, '-')}">${esc(racerState(x))}</span></p>
       ${r.split ? `<p class="rc-part" title="${esc(r.split[who])}">${esc(r.split[who].split('\n')[0].slice(0, 160))}</p>` : ''}
       <p class="rc-f">${f === null || f === undefined ? '…' : f.length ? `${f.length} file${f.length === 1 ? '' : 's'} changed <i class="d-add">+${add}</i> <i class="d-del">−${del}</i>` : 'No changes yet'}</p>
-      <p class="rc-b">${x.key ? `<button class="btn quiet sm" data-act="race-open" data-key="${esc(x.key)}">Open chat</button>` : ''}${f && f.length ? `<button class="btn quiet sm" data-act="race-diff" data-id="${esc(r.id)}" data-who="${who}">See changes</button>` : ''}</p>
+      <p class="rc-b">${x.key ? `<button class="btn quiet sm" data-act="race-open" data-key="${esc(x.key)}">Open chat</button>` : x.sessionId ? `<button class="btn quiet sm" data-act="race-open" data-sid="${esc(x.sessionId)}" title="Starts it again where it left off">Open chat</button>` : ''}${f && f.length ? `<button class="btn quiet sm" data-act="race-diff" data-id="${esc(r.id)}" data-who="${who}">See changes</button>` : ''}</p>
       <button class="btn${f && f.length && !r.split ? ' gilt' : ''} sm" data-act="race-keep" data-id="${esc(r.id)}" data-who="${who}" ${f && f.length ? '' : 'disabled'}>Keep ${name}’s</button></div>`;
   };
   return `<li class="race">${head}<div class="race-cols">${RACERS.map(col).join('')}</div><p class="race-b"><button class="btn quiet sm" data-act="race-discard" data-id="${esc(r.id)}">Discard both</button>${r.split ? `<button class="btn gilt sm" data-act="race-both" data-id="${esc(r.id)}" ${RACERS.some(([w]) => (r.racers[w] || {}).files && r.racers[w].files.length) ? '' : 'disabled'}>Keep both</button>` : ''}</p></li>`;
@@ -93,7 +93,7 @@ function openRaceDialog(cwd = null, mode = 'race') {
 async function raceAction(act, b) {
   if (act === 'race-new') return openRaceDialog(b.dataset.cwd || null);
   if (act === 'split-new') return openRaceDialog(b.dataset.cwd || null, 'split');
-  if (act === 'race-open') return ChatUI.openKey(b.dataset.key);
+  if (act === 'race-open') return b.dataset.key ? ChatUI.openKey(b.dataset.key) : ChatUI.open({ sessionId: b.dataset.sid });
   const r = (S.races || []).find(x => x.id === b.dataset.id); if (!r) return undefined;
   const name = b.dataset.who === 'codex' ? 'Codex' : 'Claude';
   if (act === 'race-diff') return viewRaceChanges(r, b.dataset.who);
