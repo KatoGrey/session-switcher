@@ -1430,6 +1430,20 @@ module.exports = [
     },
   },
   {
+    name: 'menu in a dialog',
+    // A menu opened from inside a dialog (the prompt editor's Add a starter set) shows above it, and works.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`openPromptEditor(); return 1`); await sleep(500);
+      await b.clickOn('[data-pd="sets"]'); await sleep(400);
+      const r = await b.eval(`const m = document.getElementById('menu'); if (m.hidden) return { shown: false }; const q = m.querySelector('button').getBoundingClientRect(); const at = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return { shown: true, open: m.matches(':popover-open'), backOpen: document.getElementById('menuBack').matches(':popover-open'), at: at && (at.id || at.className), onTop: !!at && m.contains(at), items: [...m.querySelectorAll('button')].map(x => x.textContent.trim()) }`);
+      t.check('its menu shows above the dialog, where it can be clicked', r.shown && r.onTop, r);
+      await t.shot(b, 'starter');
+      await b.clickOn('#menu button'); await sleep(500);
+      t.check('and picking from it closes the menu, leaving the dialog open', await b.eval(`return document.getElementById('menu').hidden && !!document.querySelector('dialog[open]')`));
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {

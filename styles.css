@@ -1838,6 +1838,10 @@ button.nav-h.fold[aria-expanded="false"] .fold-c{transform:rotate(-90deg)}
 
 /* Menus: a click-catcher behind them (dim on phones), and a quick grow from where they opened */
 .menu-back{position:fixed;inset:0;z-index:59;background:transparent}
+/* Menus show in the top layer (popover), so one opened from a dialog shows above the dialog. The
+   browser's own popover look is undone: they keep the app's. */
+.menu-back:popover-open{width:auto;height:auto;margin:0;padding:0;border:0;overflow:visible}
+.menu:popover-open{inset:auto;margin:0;color:inherit}
 .motion .menu.pop{animation:menu-in .13s cubic-bezier(.2,.8,.2,1)}
 @keyframes menu-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
 .menu button:focus-visible,.menu button:focus{outline:none}

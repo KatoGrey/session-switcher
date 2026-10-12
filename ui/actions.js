@@ -70,6 +70,11 @@ function showMenu(anchor, items) {
   menuReturn = document.activeElement;
   $('menuBack').hidden = false;
   m.hidden = false;
+  // An open dialog makes everything outside it unclickable, so the menu goes inside it while it's
+  // open; and in the top layer (popover), so it shows above the dialog's own content.
+  const host = [...document.querySelectorAll('dialog[open]')].filter(d => d.matches(':modal')).pop() || document.body;
+  if (m.parentElement !== host) host.append($('menuBack'), m);
+  try { $('menuBack').showPopover(); m.showPopover(); } catch { /* an older browser: it's above the page anyway */ }
   placeAt(m, anchor);
   m.classList.remove('pop'); void m.offsetWidth; m.classList.add('pop');
   menuAnchor = anchor instanceof Element ? anchor : null;
@@ -99,6 +104,8 @@ function closeMenu(refocus) {
   const m = $('menu'); if (m.hidden) return;
   m.hidden = true;
   $('menuBack').hidden = true;
+  try { m.hidePopover(); $('menuBack').hidePopover(); } catch { /* not shown as a popover */ }
+  if (m.parentElement !== document.body) document.body.append($('menuBack'), m);   // a dialog may be removed later
   if (menuAnchor) menuAnchor.setAttribute('aria-expanded', 'false');
   if (refocus) {
     const back = menuAnchor && document.contains(menuAnchor) ? menuAnchor : menuReturn && document.contains(menuReturn) ? menuReturn : null;
