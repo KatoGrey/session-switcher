@@ -157,7 +157,7 @@ const pageClicks = wrap(async e => {
   if (act === 'world-more') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : worldMenu(b);
   if (act === 'reopen' || act === 'reopen-no') return reopenChats(act === 'reopen');
   if (/^task-(new|start|remove|open)$/.test(act)) return taskAction(act, b);
-  if (/^race-(new|open|diff|keep|discard)$/.test(act)) return raceAction(act, b);
+  if (/^race-(new|open|diff|keep|both|discard)$|^split-new$/.test(act)) return raceAction(act, b);
   if (act === 'reveal') { const r = await api('/api/reveal', { cwd: S.folder }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
   if (act === 'browse') return Viewer.open({ path: S.folder, cwd: S.folder });
   if (act === 'pin') { S.pins.has(S.folder) ? S.pins.delete(S.folder) : S.pins.add(S.folder); savePins(); renderNav(); renderPage(); }
@@ -413,7 +413,8 @@ function projectItems(cwd) {
     { glyph: '§', label: 'Rules and tools…', hint: 'CLAUDE.md · AGENTS.md · MCP', disabled: !p.exists, why: 'The folder is gone', run: () => openRules(cwd) },
     { glyph: '❖', label: 'Project crest…', hint: 'choose a picture or make one with Codex', disabled: !p.exists, run: () => ProjectArt.open(cwd) },
     { glyph: '⏳', label: 'Queue a task here…', hint: 'starts when an account has room', disabled: !p.exists, why: 'The folder is gone', run: () => openTaskDialog(cwd) },
-    ...(S.codex && S.codex.enabled ? [{ glyph: '⚑', label: 'Race Claude and Codex…', hint: 'same task, keep the better', disabled: !p.exists || !codexReady(), why: !p.exists ? 'The folder is gone' : 'Sign in to Codex first', run: () => openRaceDialog(cwd) }] : []),
+    ...(S.codex && S.codex.enabled ? [{ glyph: '⚑', label: 'Race Claude and Codex…', hint: 'same task, keep the better', disabled: !p.exists || !codexReady(), why: !p.exists ? 'The folder is gone' : 'Sign in to Codex first', run: () => openRaceDialog(cwd) },
+      { glyph: '⑂', label: 'Split the work…', hint: 'each takes a part, keep both', disabled: !p.exists || !codexReady(), why: !p.exists ? 'The folder is gone' : 'Sign in to Codex first', run: () => openRaceDialog(cwd, 'split') }] : []),
     '-',
     { label: S.platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
     { label: 'Browse files', disabled: !p.exists, run: () => Viewer.open({ path: cwd, cwd }) },

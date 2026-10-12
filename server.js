@@ -393,30 +393,34 @@ async function racesView() {
       if (r.state === 'running' && fs.existsSync(r.copies[who].path)) { try { files = (await raceLib.copyChanges(r, who)).files; } catch { files = null; } }
       racers[who] = { key: chat && chat.state !== 'ended' ? r.keys[who] : null, state: chat ? chat.state : 'ended', sessionId: chat ? chat.sessionId : null, files };
     }
-    out.push({ id: r.id, cwd: r.cwd, folder: r.folder, prompt: r.prompt, state: r.state, kept: r.kept || null, createdAt: r.createdAt, racers });
+    out.push({ id: r.id, cwd: r.cwd, folder: r.folder, prompt: r.prompt, split: r.split || null, state: r.state, kept: r.kept || null, createdAt: r.createdAt, racers });
   }
   return out;
 }
-async function startRace({ cwd, prompt, accountId }) {
+// Split the work: one task, each taking its own part, told what the other is doing.
+const splitText = (task, mine, theirs, other) => `${task ? `The task: ${task}\n\n` : ''}You and ${other} are splitting this, each in your own copy of the project; both sets of changes are put together afterwards.\n\nYour part: ${mine}\n\n${other}'s part (leave it to them, and don't edit the files it needs): ${theirs}`;
+async function startRace({ cwd, prompt, accountId, split }) {
   const p = projectAt(cwd);
   if (!p || !p.exists) throw fail(404, 'Pick one of your projects.');
   const text = String(prompt || '').trim();
-  if (!text) throw fail(400, 'Write the task for both of them.');
+  const parts = split && String(split.claude || '').trim() && String(split.codex || '').trim() ? { claude: String(split.claude).trim(), codex: String(split.codex).trim() } : null;
+  if (split && !parts) throw fail(400, 'Write each one’s part.');
+  if (!text && !parts) throw fail(400, 'Write the task for both of them.');
   requireCodexSignedIn();
   const c = config();
   const account = accountId && accountId !== 'auto' ? acc.findAccount(c, accountId) : tasksLib.readyAccount({ state: 'queued', provider: 'claude', accountId: 'auto', when: 'now' }, queueContext()).account;
   if (!account) throw fail(409, 'None of your Claude accounts has room right now.');
   const made = await raceLib.makeRace(p.cwd);
-  const r = { ...made, cwd: p.cwd, folder: p.name, prompt: text, keys: {}, state: 'running', createdAt: new Date().toISOString() };
+  const r = { ...made, cwd: p.cwd, folder: p.name, prompt: text || `${parts.claude} · ${parts.codex}`, split: parts, keys: {}, state: 'running', createdAt: new Date().toISOString() };
   raceList.push(r); saveRaces();
   try {
     for (const [who, provider] of [['claude', 'claude'], ['codex', 'codex']]) {
       const info = await openChat(c, { account: provider === 'codex' ? null : account.id, cwd: r.copies[who].cwd, mode: 'new', provider });
       r.keys[who] = info.key;
       const chat = chats.get(info.key);
-      chat.title = `Race: ${text.split('\n')[0].slice(0, 60)}`;
+      chat.title = parts ? `Split: ${parts[who].split('\n')[0].slice(0, 60)}` : `Race: ${text.split('\n')[0].slice(0, 60)}`;
       await waitReady(chat, 45000);
-      chat.send(text, []);
+      chat.send(parts ? splitText(text, parts[who], parts[who === 'claude' ? 'codex' : 'claude'], who === 'claude' ? 'Codex' : 'Claude') : text, []);
     }
   } catch (err) {
     for (const k of Object.values(r.keys)) { try { await chats.get(k).stop(); } catch { /* gone */ } }
@@ -424,7 +428,7 @@ async function startRace({ cwd, prompt, accountId }) {
     throw err;
   }
   saveRaces();
-  log(`Race started in ${p.cwd}: ${text.split('\n')[0].slice(0, 80)}`);
+  log(`${parts ? 'Split' : 'Race'} started in ${p.cwd}: ${r.prompt.split('\n')[0].slice(0, 80)}`);
   return r;
 }
 async function stopRacers(r) { for (const k of Object.values(r.keys || {})) { try { await chats.get(k).stop(); } catch { /* already stopped */ } } }
@@ -1086,6 +1090,14 @@ async function handleApi(req, res, url, remote = false) {
         await stopRacers(r); await raceLib.dropRace(r);
         Object.assign(r, { state: 'kept', kept: body.who, doneAt: new Date().toISOString() }); saveRaces();
         log(`Race in ${r.cwd}: kept ${body.who}'s changes (${k.files.length} file${k.files.length === 1 ? '' : 's'}).`);
+        return send(res, 200, { kept: true, files: k.files, races: await racesView() });
+      }
+      if (body.action === 'keepboth') {
+        const k = await raceLib.keepBoth(r, { force: !!body.force });
+        if (!k.applied) return send(res, 200, { kept: false, why: k.why, clash: k.clash || null, detail: k.detail || null, races: await racesView() });
+        await stopRacers(r); await raceLib.dropRace(r);
+        Object.assign(r, { state: 'kept', kept: 'both', doneAt: new Date().toISOString() }); saveRaces();
+        log(`Race in ${r.cwd}: kept both sets of changes (${k.files.length} file${k.files.length === 1 ? '' : 's'}).`);
         return send(res, 200, { kept: true, files: k.files, races: await racesView() });
       }
       throw fail(400, 'Start, keep or discard a race.');

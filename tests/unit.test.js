@@ -472,6 +472,31 @@ test('race: keeping waits if the project changed since the race began', async ()
   await assert.rejects(race.makeRace(tmp()), /needs a git project/);
 });
 
+test('race: split the work keeps both parts at once, or nothing if they touched the same file', async () => {
+  const dir = repo();
+  put(dir, 'a.txt', 'one\n'); put(dir, 'b.txt', 'two\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  const r = await race.makeRace(dir);
+  put(r.copies.claude.path, 'a.txt', 'claude\n');
+  put(r.copies.codex.path, 'b.txt', 'codex\n'); put(r.copies.codex.path, 'new.txt', 'added\n');
+  const k = await race.keepBoth(r);
+  assert.equal(k.applied, true);
+  assert.deepEqual(k.files.map(f => `${f.by}:${f.path}`).sort(), ['claude:a.txt', 'codex:b.txt', 'codex:new.txt']);
+  assert.equal(readLF(path.join(dir, 'a.txt')), 'claude\n');
+  assert.equal(readLF(path.join(dir, 'b.txt')), 'codex\n');
+  assert.equal(readLF(path.join(dir, 'new.txt')), 'added\n');
+  await race.dropRace(r);
+  // Both touched a.txt: nothing changes, and it says which file.
+  gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'both');
+  const r2 = await race.makeRace(dir);
+  put(r2.copies.claude.path, 'a.txt', 'mine\n'); put(r2.copies.codex.path, 'a.txt', 'theirs\n'); put(r2.copies.codex.path, 'b.txt', 'x\n');
+  const k2 = await race.keepBoth(r2);
+  assert.equal(k2.applied, false);
+  assert.equal(k2.why, 'overlap');
+  assert.deepEqual(k2.clash, ['a.txt']);
+  assert.equal(readLF(path.join(dir, 'b.txt')), 'codex\n', 'nothing half-applied');
+  await race.dropRace(r2);
+});
+
 /* ---------- what a review looks at ---------- */
 const { reviewTarget, EMPTY_TREE } = require('../lib/review');
 const { execFileSync } = require('child_process');

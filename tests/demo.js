@@ -169,7 +169,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     claude: { key: 'k-race-claude', state: 'ready', files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 3, del: 1 }, { path: 'tests/rally_test.lua', status: 'added', add: 18, del: 0 }] },
     codex: { key: 'k-race-codex', state: 'busy', files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 1, del: 1 }] },
   } }];
-  let keepTries = 0;
+  let keepTries = 0, bothTries = 0;
   const rulesOut = () => ({ scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
@@ -215,7 +215,13 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/races') return { body: { races: raceList } };
     if (p === '/api/race/diff') return { body: { diff: `diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-rally.stacks = true\n+rally.stacks = false\n` } };
     if (p === '/api/race') {
-      if (body.action === 'start') { raceList = [{ ...raceList[raceList.length - 1], id: 'race2', state: 'running', kept: null, prompt: body.prompt, createdAt: iso(NOW) }, ...raceList]; return { body: { id: 'race2', races: raceList } }; }
+      if (body.action === 'start') { const split = body.split || null; raceList = [{ ...raceList[raceList.length - 1], id: split ? 'race3' : 'race2', state: 'running', kept: null, split, prompt: body.prompt || (split ? `${split.claude} · ${split.codex}` : ''), createdAt: iso(NOW) }, ...raceList]; return { body: { id: raceList[0].id, races: raceList } }; }
+      // Keep both: the first try says both changed the same file; the second goes through.
+      if (body.action === 'keepboth') {
+        if (!bothTries++) return { body: { kept: false, why: 'overlap', clash: ['scripts/party/rally.lua'], races: raceList } };
+        raceList = raceList.map(r => (r.id === body.id ? { ...r, state: 'kept', kept: 'both' } : r));
+        return { body: { kept: true, files: [...raceList[0].racers.claude.files, ...raceList[0].racers.codex.files], races: raceList } };
+      }
       if (body.action === 'discard') { raceList = raceList.map(r => (r.id === body.id ? { ...r, state: 'discarded' } : r)); return { body: { races: raceList } }; }
       // Keep: the first try says the project changed since; the forced one goes through.
       if (body.action === 'keep') {

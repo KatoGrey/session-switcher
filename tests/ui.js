@@ -661,6 +661,23 @@ module.exports = [
       t.check('Discard both ends it', /Discarded/.test((await card()).text));
       const items = await b.eval(`return projectItems(${JSON.stringify(demo.projects[0].cwd)}).filter(x => x !== '-').map(x => x.label)`);
       t.check('a project’s menu can start a race', items.includes('Race Claude and Codex…'), items);
+      // Split the work: each its own part, then keep both.
+      t.check('…or split the work', items.includes('Split the work…'), items);
+      await b.eval(`openRaceDialog(${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}, 'split'); return 1`); await sleep(300);
+      t.check('Split shows a part for each, and the task is optional', await b.eval(`return rcTitle.textContent === 'Split the work' && !document.querySelector('.rc-parts').hidden && /Optional/.test(rcText.placeholder) && document.querySelector('#rcForm [type="submit"]').textContent === 'Start both parts'`));
+      await b.eval(`rcClaude.value = 'Fix the rally math.'; rcCodex.value = 'A test for rally stacking.'; return 1`);
+      await b.clickOn('#rcForm [type="submit"]'); await sleep(600);
+      t.check('Start both parts sends each its part', calls.some(([p, body]) => p === '/api/race' && body.action === 'start' && body.split && body.split.claude === 'Fix the rally math.' && body.split.codex === 'A test for rally stacking.'));
+      c = await card();
+      t.check('the card says Split and shows each one’s part', /^⑂ ?Split in Starfall Tavern/.test(c.text) && /Fix the rally math\./.test(c.cols[0]) && /A test for rally stacking\./.test(c.cols[1]), c);
+      await t.shot(b, 'split');
+      await b.clickOn('[data-act="race-both"]'); await sleep(300); await b.clickOn('#cfYes'); await sleep(500);
+      t.check('if both touched the same file, it says which and changes nothing', /Both changed scripts\/party\/rally\.lua, so nothing was changed/.test(await b.eval(`return document.body.textContent`)) && /Split in/.test((await card()).text) && !/Kept both/.test((await card()).text));
+      await b.clickOn('[data-act="race-both"]'); await sleep(300); await b.clickOn('#cfYes'); await sleep(500);
+      t.check('Keep both brings both in', /Kept both sets of changes/.test((await card()).text));
+      await b.eval(`openRaceDialog(null); return 1`); await sleep(200);
+      t.check('the race dialog opens as a race again', await b.eval(`return rcTitle.textContent === 'Race Claude and Codex' && document.querySelector('.rc-parts').hidden`));
+      await b.eval(`raceDlg.close(); return 1`);
     },
   },
   {
