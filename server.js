@@ -23,7 +23,8 @@ const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
-const { reviewTarget } = require('./lib/review');
+const { reviewTarget, fixText } = require('./lib/review');
+const { createReviewLoop } = require('./lib/reviewloop');
 const rulesLib = require('./lib/rules');
 const store = require('./lib/store');
 const { listFiles } = require('./lib/filelist');
@@ -589,20 +590,25 @@ async function copyTool(name, to, cwd) {
 }
 
 // Codex reviews a chat's work; progress and the result arrive in that chat as 'review' events.
-async function startReview(chat, files, base) {
+// `done` settles with the outcome ({ state: 'done', findings } or { state: 'failed' }).
+async function runReview(chat, files, base) {
   requireCodexSignedIn();
   const t = await reviewTarget(chat.cwd, files, base);
   const id = crypto.randomBytes(6).toString('hex');
   const ev = extra => chat.emit({ kind: 'review', id, what: t.what, base: t.base, ...extra });
   ev({ state: 'running', progress: 'Starting…' });
   let last = 0;
-  codexActive().review({
+  const done = codexActive().review({
     cwd: chat.cwd, target: t.target,
     onProgress: p => { const now = Date.now(); if (now - last > 700) { last = now; ev({ state: 'running', progress: p }); } },
-  }).then(r => { ev({ state: 'done', overall: r.overall, findings: r.findings }); log(`Review of ${t.what} in ${chat.cwd}: ${r.findings.length} finding${r.findings.length === 1 ? '' : 's'}.`); })
-    .catch(err => { ev({ state: 'failed', error: err.message }); log(`Review failed: ${err.message}`); });
-  return { id, what: t.what, base: t.base };
+  }).then(r => { ev({ state: 'done', overall: r.overall, findings: r.findings }); log(`Review of ${t.what} in ${chat.cwd}: ${r.findings.length} finding${r.findings.length === 1 ? '' : 's'}.`); return { state: 'done', findings: r.findings }; })
+    .catch(err => { ev({ state: 'failed', error: err.message }); log(`Review failed: ${err.message}`); return { state: 'failed', findings: [] }; });
+  return { id, what: t.what, base: t.base, done };
 }
+async function startReview(chat, files, base) { const r = await runReview(chat, files, base); return { id: r.id, what: r.what, base: r.base }; }
+
+// "Fix and recheck until clean" (lib/reviewloop.js), run here so it carries on whatever the window does.
+const reviewLoop = createReviewLoop({ send: (chat, text) => pairs.send(chat, text), review: runReview, fixText });
 
 // Right after the app starts, Codex's sign-in hasn't been checked yet; check it before saying it isn't.
 async function codexChecked(inst = codexActive()) {
@@ -1603,6 +1609,15 @@ async function handleChat(req, res, url, body, c) {
       return send(res, 200, r);
     }
     case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base));
+    // stop: stop after the current step; otherwise start, from a finished review with findings.
+    case '/api/chat/review-loop': {
+      const chat = chats.get(body.key);
+      if (body.stop) return send(res, 200, reviewLoop.stop(chat));
+      const r = body.review || {};
+      const findings = Array.isArray(r.findings) ? r.findings.slice(0, 40) : [];
+      reviewLoop.start(chat, { id: String(r.id || ''), what: String(r.what || ''), base: r.base ? String(r.base) : null, findings, files: Array.isArray(body.files) ? body.files : [] });
+      return send(res, 200, { ok: true });
+    }
     case '/api/chat/mode': {
       const chat = chats.get(body.key);
       await chat.setMode(body.mode);

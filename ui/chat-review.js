@@ -44,42 +44,29 @@ async function reviewAction(kind, card, i) {
   const list = ev.findings || [];
   if (kind === 'rvfix') return putInBox(fixText(ev, [list[i]]));
   if (kind === 'rvfixall') return putInBox(fixText(ev, list));
+  // "Until it's clean" runs on the PC (server.js reviewLoop), so it carries on when you switch chats,
+  // reload or put the phone down; rechecks keep this review's starting point. Its steps arrive as
+  // 'reviewloop' events.
   if (kind === 'rvloop') {
     if (C.state !== 'ready') { toast('Claude is busy. Try again once it’s done.'); return; }
-    // Rechecks keep this review's starting point, so what wasn't fixed is checked again too.
-    const lp = Review.loop = { round: 1, waiting: true, id: ev.id, base: ev.base || null, gen: C.gen, key: C.key };
-    try { await api('/api/chat/send', { key: lp.key, text: fixText(ev, list) }); }
-    catch (err) { if (Review.loop === lp) Review.loop = null; if (C.gen === lp.gen) renderReview(ev); throw err; }
-    if (C.gen === lp.gen) renderReview(ev);
+    await api('/api/chat/review-loop', { key: C.key, review: { id: ev.id, what: ev.what, base: ev.base || null, findings: list }, files: [...L.files.keys()] });
   }
-  if (kind === 'rvstop') { Review.loop = null; renderReview(ev); toast('Stopped. Nothing else will be sent.', 2500); }
+  if (kind === 'rvstop') { await api('/api/chat/review-loop', { key: C.key, stop: true }); toast('Stopping after this step. Nothing else will be sent.', 3000); }
   return undefined;
 }
 
-// Claude finished a reply: if it was fixing findings, have Codex look again.
-function reviewAfterTurn(ev) {
-  const lp = Review.loop;
-  if (!lp || !lp.waiting || lp.gen !== C.gen) return;
-  lp.waiting = false;
-  if (!ev.ok || C.state === 'ended' || Date.now() - C.interruptedAt < 8000) { Review.loop = null; return; }
-  lp.expect = null;
-  startReview(lp.base)
-    .then(id => { if (Review.loop !== lp) return; if (id) lp.expect = id; else Review.loop = null; })
-    .catch(err => { if (Review.loop === lp) Review.loop = null; toast(err.message); });
-}
-// A review finished during "until it's clean": stop when it's clean or out of rounds, else fix again.
-// Only the review this loop asked for counts. (Round n means n sets of fixes sent; Codex checks
-// after each, so at most REVIEW_ROUNDS + 1 reviews.)
-function reviewLoopStep(ev) {
-  const lp = Review.loop;
-  if (!lp || lp.waiting || ev.state === 'running' || !lp.expect || ev.id !== lp.expect || lp.gen !== C.gen) return;
-  lp.id = ev.id;
-  const n = (ev.findings || []).length;
-  if (ev.state === 'failed' || !n) { ev.loopEnd = { done: ev.state === 'failed' ? 'failed' : 'clean', round: lp.round }; Review.loop = null; return; }
-  if (lp.round >= REVIEW_ROUNDS) { ev.loopEnd = { done: 'rounds', round: lp.round }; Review.loop = null; return; }
-  lp.round++; lp.waiting = true; lp.expect = null;
-  api('/api/chat/send', { key: lp.key, text: fixText(ev, ev.findings) })
-    .catch(err => { if (Review.loop === lp) Review.loop = null; toast(err.message); if (C.gen === lp.gen) renderReview(ev); });
+// A step of "until it's clean": which review it's about and which round, or how it ended.
+function reviewLoopEvent(ev) {
+  const card = $c('cFeed').querySelector(`.review[data-rid="${CSS.escape(ev.id || '')}"]`);
+  if (ev.state === 'end') {
+    Review.loop = null;
+    if (card && card._ev) { card._ev.loopEnd = { done: ev.done, round: ev.round }; renderReview(card._ev); }
+    return;
+  }
+  const was = Review.loop && Review.loop.id;
+  Review.loop = { id: ev.id, round: ev.round, state: ev.state };
+  if (card && card._ev) renderReview(card._ev);
+  if (was && was !== ev.id) { const old = $c('cFeed').querySelector(`.review[data-rid="${CSS.escape(was)}"]`); if (old && old._ev) renderReview(old._ev); }
 }
 
 function renderReview(ev) {

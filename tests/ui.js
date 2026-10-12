@@ -244,23 +244,20 @@ module.exports = [
       t.check('“fix all” lists every finding', /1\. \[P1\][\s\S]*2\. \[P3\] Name the bonus/.test(await b.eval(`return document.getElementById('cText').value`)));
       await b.eval(`document.getElementById('cText').value = ''; return 1`);
 
-      // Fix and recheck until clean: sends now, rechecks when Claude's done, stops when it's clean.
+      // Fix and recheck until clean runs on the PC: the button starts it there, and the card follows its
+      // steps (which round, then how it ended), so it carries on whatever the window does.
+      const firstId = await b.eval(`return document.querySelector('.review').dataset.rid`);
       await b.clickOn('[data-c="rvloop"]'); await sleep(400);
-      const sent = calls.filter(([p]) => p === '/api/chat/send');
-      t.check('“until clean” sends the findings to Claude right away', sent.length === 1 && /Name the bonus/.test(sent[0][1].text));
+      const start = calls.filter(([p]) => p === '/api/chat/review-loop');
+      t.check('“until clean” starts on the PC, with this review’s findings and starting point', start.length === 1 && start[0][1].review.id === firstId && /Name the bonus/.test(JSON.stringify(start[0][1].review.findings)) && start[0][1].review.base === 'abc0000000000000000000000000000000000def', start[0] && start[0][1]);
+      await b.eval(`handle({ kind: 'reviewloop', id: ${JSON.stringify(firstId)}, round: 1, state: 'fixing', seq: 500 }); return 1`); await sleep(200);
       t.check('the card says which round it’s on', /Round 1 of 3/.test(await b.eval(`return document.querySelector('.review').textContent`)));
-      const before = calls.filter(([p]) => p === '/api/chat/review').length;
-      await b.eval(`handle({ kind: 'result', ok: true, errors: [], seq: 500 }); return 1`); await sleep(400);
-      const recheck = calls.filter(([p]) => p === '/api/chat/review');
-      t.check('when Claude finishes, Codex checks again', recheck.length === before + 1);
-      t.check('from the same starting point as the first review', recheck.at(-1)[1].base === 'abc0000000000000000000000000000000000def', recheck.at(-1)[1]);
-      const expect = await b.eval(`return Review.loop && Review.loop.expect`);
-      // Another review finishing meanwhile doesn't count.
-      await b.eval(`handle({ kind: 'review', id: 'stray', what: 'something else', state: 'done', overall: 'Fine.', findings: [], seq: 501 }); return 1`); await sleep(200);
-      t.check('only the review the loop asked for counts', !!(await b.eval(`return Review.loop && Review.loop.expect`)) && !/Clean after/.test(await b.eval(`return document.querySelector('.review[data-rid="stray"]').textContent`)));
-      await b.eval(`handle({ kind: 'review', id: ${JSON.stringify(expect)}, what: ${JSON.stringify(what)}, state: 'done', overall: 'The encore path is fixed.', findings: [], seq: 502 }); return 1`); await sleep(300);
-      const end = await b.eval(`const c = document.querySelector('.review[data-rid="${expect}"]'); return c && c.textContent.replace(/\\s+/g, ' ')`);
-      t.check('and once it’s clean, it says so and stops', /All clear/.test(end) && /Clean after 1 round of fixes/.test(end) && calls.filter(([p]) => p === '/api/chat/send').length === 1, end);
+      await b.eval(`handle({ kind: 'review', id: 'recheck1', what: ${JSON.stringify(what)}, state: 'running', progress: 'Reading…', seq: 501 }); handle({ kind: 'reviewloop', id: 'recheck1', round: 1, state: 'checking', seq: 502 }); return 1`); await sleep(200);
+      t.check('then Codex checks again, in a new card', !!(await b.eval(`return document.querySelector('.review[data-rid="recheck1"]')`)));
+      await b.eval(`handle({ kind: 'review', id: 'recheck1', what: ${JSON.stringify(what)}, state: 'done', overall: 'The encore path is fixed.', findings: [], seq: 503 }); handle({ kind: 'reviewloop', id: 'recheck1', round: 1, state: 'end', done: 'clean', seq: 504 }); return 1`); await sleep(300);
+      const end = await b.eval(`const c = document.querySelector('.review[data-rid="recheck1"]'); return c && c.textContent.replace(/\\s+/g, ' ')`);
+      t.check('and once it’s clean, it says so and stops', /All clear/.test(end) && /Clean after 1 round of fixes/.test(end) && !(await b.eval(`return Review.loop`)), end);
+      t.check('the window itself sends nothing to Claude', calls.filter(([p]) => p === '/api/chat/send').length === 0);
       await t.shot(b, 'clean');
 
       await b.clickOn('[data-c="more"]'); await sleep(300);
