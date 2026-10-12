@@ -314,6 +314,9 @@ async function sendMessage() {
   if (sw && !C.attachments.length) { clear(); await quickSwitch(sw[1].toLowerCase(), sw[2].trim()); return; }
   // "@codex …", "@claude …" or "@both …" sends just this message to that one (or both).
   let target = duo() && (C.target === 'comp' || C.target === 'both' || C.target === 'plan') ? C.target : 'main';
+  // "/btw …": a side question, beside the chat (ui/chat-aside.js).
+  const btw = text.match(/^\s*\/btw\s+/i);
+  if (btw && !C.attachments.length) { const q = text.slice(btw[0].length); clear(); await openAside(q); return; }
   // "/plan …": plan first (one drafts, the other checks, you pick who builds).
   const pl = duo() && text.match(/^\s*\/plan\s+/i);
   if (pl) { target = 'plan'; text = text.slice(pl[0].length); }

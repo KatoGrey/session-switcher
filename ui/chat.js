@@ -618,6 +618,17 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
+      case 'followup': {
+        // "We should also…": a task for later, in this chat's project, starting from what you selected
+        // in the reply (or its last paragraph).
+        const turn = c.closest('.turn'), sel = getSelection();
+        const picked = sel && !sel.isCollapsed && turn.contains(sel.anchorNode) ? sel.toString().trim() : '';
+        const md = turnMarkdown(turn) || '';
+        const last = picked || md.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean).pop() || '';
+        const title = $c('cTitle')?.textContent || 'a chat';
+        const text = `\n\nFrom “${title}”, ${PROV_NAME[turn.dataset.prov || C.provider]} said:\n\n${last.slice(0, 4000).split('\n').map(l => `> ${l}`).join('\n')}`;
+        return openTaskDialog(C.info && C.info.cwd, text);
+      }
       case 'copyturn': {
         // The reply as written (Markdown), not as shown: headings, lists and code fences come along.
         const text = turnMarkdown(c.closest('.turn'));
@@ -773,6 +784,7 @@ function chatHeadItems() {
     ...(claudeReviewOK() && codexOK() ? [{ glyph: '◈', label: 'Have both review the changes', hint: 'one card, where they agree first', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'both') }] : []),
     ...(reviewAvailable() || claudeReviewOK() ? ['-'] : []),
     ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; close(); popOutChat(sid); } }] : []),
+    ...(C.key && !C.watch ? [{ glyph: '❦', label: 'Ask a side question', hint: '/btw · doesn’t derail this chat', run: () => openAside() }] : []),
     ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark this chat done', hint: 'off the lists until it’s used again', run: () => { const sid = id; close(); return setChatDone(sid, true); } }] : []),
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
     { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },

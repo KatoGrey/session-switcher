@@ -204,6 +204,13 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/chat/history' && noHistory) return { status: 404, body: { error: 'That chat wasn’t found. It may have been deleted; refresh the list.' } };
     if (p === '/api/chat/history' && q.get('provider') === 'openclaw') return { body: { items: ocHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history') return { body: { items: q.get('provider') === 'codex' || q.get('id') === 't-bard-codex' ? codexHistory : claudeHistory, start: 0, cursor: null } };
+    // A side question: its own chat, which answers once.
+    if (p === '/api/chat/aside') return { body: { key: 'k-aside', provider: 'claude' } };
+    if (p === '/api/chat/aside-end') return { body: { ok: true } };
+    if (p === '/api/chat/events' && q.get('key') === 'k-aside') {
+      const evs = [['hello', { ...info, key: 'k-aside' }], ['chat', { kind: 'assistant', mid: 'as1', at: iso(NOW), blocks: [{ type: 'text', text: 'It sets the **co-op** bonus cap; 0.15 means +15%.' }], seq: 1 }, 1], ['chat', { kind: 'result', ok: true, seq: 2 }, 2], ['replayed', {}]];
+      return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
+    }
     if (p === '/api/chat/events') {
       const comp = (q.get('key') || '').includes('cx');
       const evs = [['hello', comp ? compInfo : info]];

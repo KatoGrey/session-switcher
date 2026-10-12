@@ -103,7 +103,7 @@ const OPEN_FILE = path.join(DATA_DIR, 'open-chats.json');
 const REOPEN_FILE = path.join(DATA_DIR, 'reopen.json');
 let shuttingDown = false, openTimer = null;
 function writeOpenChats() {
-  const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId).map(c => ({
+  const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId && !(chats.chats.get(c.key) || {}).aside).map(c => ({
     sessionId: c.sessionId, provider: c.provider || 'claude', accountId: c.accountId, accountName: c.accountName,
     cwd: c.cwd, title: c.title || null, folder: c.folder || null,
   }));
@@ -765,7 +765,7 @@ function activityList() {
   const { projects } = sessions.scan();
   const byId = new Map();
   for (const p of projects) for (const s of p.sessions) byId.set(s.id.toLowerCase(), { s, p });
-  const out = chats.summaries().map(s => {
+  const out = chats.summaries().filter(s => !s.aside).map(s => {
     const f = s.sessionId && s.provider !== 'codex' ? byId.get(s.sessionId.toLowerCase()) : null;
     if (f) { s.title = f.s.title; s.folder = f.p.name; }
     return s;
@@ -1737,6 +1737,30 @@ async function handleChat(req, res, url, body, c) {
       // after: wait for the other one to finish first (you chose "Send when it's done").
       await (body.after ? pairs.sendAfter(target, text, images) : pairs.send(target, text, images));
       return send(res, 200, { ok: true, key: target.key });
+    }
+    case '/api/chat/aside': {
+      // A side question: a separate chat in the same project that can only look (Claude's plan mode,
+      // Codex's read-only), told the chat's latest messages, so the chat itself isn't derailed.
+      const lead = pairs.leadOf(chats.get(body.key));
+      const q = typeof body.text === 'string' ? body.text.trim().slice(0, 20000) : '';
+      if (!q) throw fail(400, 'Type your question.');
+      const prov = lead.provider === 'codex' ? 'codex' : 'claude';
+      const ctx = lead.sessionId ? await otherChatBlock({ id: lead.sessionId }).catch(() => '') : '';
+      const info = await openChat(config(), { account: prov === 'codex' ? null : lead.account.id, cwd: lead.cwd, mode: 'new', provider: prov, permissionMode: prov === 'codex' ? 'read-only' : 'plan' });
+      const aside = chats.get(info.key);
+      aside.aside = true; aside.title = `Aside: ${q.split('\n')[0].slice(0, 50)}`;
+      broadcast('live', chats.live()); scheduleActivity();
+      await waitReady(aside, 45000);
+      aside.send(`${ctx.replace('its latest messages, for context (that chat carries on separately)', 'its latest messages, for context. This is a quick side question about it, asked beside that chat; answer it briefly and don’t change any files')}${q}`, []);
+      return send(res, 200, { key: aside.key, provider: prov });
+    }
+    case '/api/chat/aside-end': {
+      // Closed: the side chat stops, and is set aside as done (it's still there, under Done).
+      let aside = null; try { aside = chats.get(body.key); } catch { return send(res, 200, { ok: true }); }
+      if (!aside.aside) throw fail(400, 'That isn’t a side question.');
+      if (aside.sessionId) chatPrefs.setDone(aside.sessionId, true);
+      await aside.stop().catch(() => {});
+      return send(res, 200, { ok: true });
     }
     case '/api/chat/permission': {
       const decision = ['allow', 'always', 'deny'].includes(body.decision) ? body.decision : null;

@@ -1233,6 +1233,31 @@ module.exports = [
     },
   },
   {
+    name: 'aside',
+    // A side question beside the chat, and a follow-up later from a reply.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const feedBefore = await b.eval(`return document.querySelectorAll('#cFeed .turn, #cFeed .umsg').length`);
+      await b.eval(`const ta = document.getElementById('cText'); ta.value = '/btw what does rally_bonus do?'; return 1`);
+      await b.clickOn('#cSend'); await sleep(1200);
+      const card = await b.eval(`const c = document.getElementById('cAside'); return c && { shown: !c.hidden, q: c.querySelector('.as-q')?.textContent, a: c.querySelector('.as-a')?.textContent, bring: !c.querySelector('[data-as="bring"]').hidden }`);
+      t.check('/btw asks beside the chat, in its own card', card && card.shown && card.q === 'what does rally_bonus do?', card);
+      t.check('…and shows the answer there', card && /co-op bonus cap/.test(card.a || ''), card);
+      t.check('the chat itself isn’t sent anything', !calls.some(([p]) => p === '/api/chat/send') && calls.some(([p, body]) => p === '/api/chat/aside' && body.text === 'what does rally_bonus do?') && (await b.eval(`return document.querySelectorAll('#cFeed .turn, #cFeed .umsg').length`)) === feedBefore);
+      await t.shot(b, 'aside');
+      await b.clickOn('[data-as="bring"]'); await sleep(300);
+      const text = await b.eval(`return document.getElementById('cText').value`);
+      t.check('“Put it in my message” brings the answer into your message, and closes it', /^Side question: what does rally_bonus do\?\n\n> It sets/.test(text) && await b.eval(`return document.getElementById('cAside').hidden`) && calls.some(([p]) => p === '/api/chat/aside-end'), text);
+      await b.eval(`document.getElementById('cText').value = ''; return 1`);
+      // Follow up later: a task from a reply.
+      await b.eval(`document.querySelector('#cFeed .turn [data-c="followup"]').click(); return 1`); await sleep(500);
+      const task = await b.eval(`const d = document.getElementById('taskDlg'); return d && { open: d.open, text: document.getElementById('tkText').value, project: document.getElementById('tkProject').selectedOptions[0]?.textContent }`);
+      t.check('Follow up later opens a task for this project, quoting the reply', task && task.open && task.project === 'Starfall Tavern' && /Claude said:\n\n> /.test(task.text), task);
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {

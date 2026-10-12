@@ -2383,6 +2383,23 @@ body.solo .c-head .icon.c-backm{display:none}
 .cs-sep{padding:6px 12px 2px;font:500 10.5px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ash);pointer-events:none}
 .cs-chat b::before{content:'◆ ';color:var(--gilt);font-size:.8em}
 .shared.other summary{color:var(--gilt)}
+.aside-card{position:absolute;right:22px;bottom:calc(var(--dock-h, 120px) + 10px);z-index:12;width:min(440px,calc(100% - 44px));max-height:min(60vh,520px);display:flex;flex-direction:column;border:1px solid var(--seam-2);border-radius:12px;background:rgb(var(--c-141117) / .97);box-shadow:0 18px 48px -18px rgb(var(--c-000000) / .8)}
+.aside-card[hidden]{display:none}
+.as-h{display:flex;align-items:baseline;gap:8px;padding:10px 12px 8px 14px;border-bottom:1px solid var(--seam)}
+.as-h .glyph{color:var(--gilt)}
+.as-h b{font:600 12px/1 var(--f-caps);letter-spacing:.08em;color:var(--parch)}
+.as-h small{color:var(--ash);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.as-x{margin-left:auto}
+.as-body{overflow:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.as-q{margin:0;align-self:flex-end;max-width:85%;padding:6px 10px;border-radius:10px 10px 2px 10px;background:rgb(var(--c-a5463f) / .16);border:1px solid rgb(var(--c-a5463f) / .3);color:var(--parch);font-size:14px;overflow-wrap:anywhere}
+.as-a{font-size:14.5px;overflow-wrap:anywhere}
+.as-a p{margin:0 0 8px}
+.as-wait,.as-perm{margin:0;color:var(--ash);font-size:13.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.as-f{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--seam)}
+.as-f textarea{flex:1;min-width:0;resize:none;padding:7px 10px;border:1px solid var(--seam-2);border-radius:8px;background:rgb(var(--c-100e12));color:var(--parch);font:400 14px/1.4 var(--f-body)}
+.as-b{margin:0;padding:0 10px 10px}
+.as-b [hidden]{display:none}
+@media (max-width:640px){.aside-card{right:8px;width:calc(100% - 16px)}}
 .done-chats{margin-top:14px}
 .done-chats summary{cursor:pointer;padding:6px 2px;font:500 11px var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ash)}
 .done-chats summary:hover{color:var(--parch-2)}

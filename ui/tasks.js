@@ -65,7 +65,7 @@ function taskDialog() {
   }));
   return d;
 }
-function openTaskDialog(cwd = null) {
+function openTaskDialog(cwd = null, text = '') {
   const d = taskDialog();
   const projects = S.projects.filter(p => p.exists).slice().sort((a, b) => a.name.localeCompare(b.name));
   if (!projects.length) { toast('Add a project first.'); return; }
@@ -78,8 +78,10 @@ function openTaskDialog(cwd = null) {
   $('tkWhen').value = 'now'; $('tkAtWrap').hidden = true; $('tkAcctWrap').hidden = false; $('tkText').value = '';
   const soon = new Date(Date.now() + 3600e3); soon.setMinutes(0, 0, 0);
   $('tkAt').value = new Date(soon - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  if (text) $('tkText').value = text;
   d.showModal();
   $('tkText').focus();
+  if (text) $('tkText').setSelectionRange(0, 0);
 }
 async function taskAction(act, b) {
   if (act === 'task-new') return openTaskDialog(b.dataset.cwd || null);

@@ -426,6 +426,7 @@ function lastTurn(root, make) {
   t.dataset.prov = prov;
   const relay = duo(), mine = prov === C.provider, them = PROV_NAME[mine ? partnerProv() : C.provider];
   const acts = `<button type="button" class="ta" data-c="copyturn" title="Copy this reply, as Markdown">Copy</button>
+      <button type="button" class="ta" data-c="followup" title="Queue a follow-up from this reply as a task (select part of it first to use just that)">Follow up later</button>
       ${prov === 'claude' && C.provider === 'claude' && codexOK() ? '<button type="button" class="ta rv" data-c="review" title="Codex reviews the changes so far, in a read-only sandbox">Review with Codex</button>' : ''}
       ${prov === 'codex' && claudeReviewOK() ? '<button type="button" class="ta rv" data-c="review" data-by="claude" title="Claude reviews the changes so far, and is asked not to change anything">Review with Claude</button>' : ''}
       ${relay ? `<button type="button" class="ta relay" data-c="relay" title="Quote this to ${them}${mine && them === 'Codex' ? ', for an image, a test or a second opinion' : ''}">${mine ? `Ask ${them}` : `Send to ${them}`}</button>` : ''}`;
