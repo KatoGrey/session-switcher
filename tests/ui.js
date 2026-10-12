@@ -1205,7 +1205,7 @@ module.exports = [
       const calls = [];
       const b2 = await t.open({ extras: extras.slice(0, 3), seen: (p, u, body) => calls.push([p, body]) });
       await b2.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
-      await b2.eval(`document.querySelector('#cFeed .turn[data-prov="claude"] [data-c="branch"]').click(); return 1`); await sleep(500);
+      await b2.eval(`document.querySelector('#cFeed .turn[data-prov="claude"] [data-c="turnmore"]').click(); [...document.querySelectorAll('#menu button')].find(x => x.textContent.includes('Branch from here')).click(); return 1`); await sleep(500);
       const opts = await b2.eval(`const d = document.querySelector('dialog.choice-dlg[open]'); return d ? [...d.querySelectorAll('button')].map(x => x.textContent) : null`);
       t.check('Branch from here offers to rewind the files later replies changed', opts && opts.includes('Branch from here') && opts.includes('Branch and rewind the files'), opts);
       await b2.eval(`[...document.querySelectorAll('dialog.choice-dlg[open] button')].find(x => x.textContent === 'Branch and rewind the files').click(); return 1`); await sleep(2500);
@@ -1289,7 +1289,7 @@ module.exports = [
       t.check('Stop stops it', /Stopped|Not running/.test(await b.eval(`return document.getElementById('cRun').textContent`)) && !!(await b.eval(`return document.querySelector('#cRun [data-run="start"]')`)));
       await b.eval(`document.getElementById('cText').value = ''; return 1`);
       // Do this later: the reply's next steps, each its own chat later, knowing this one.
-      await b.eval(`document.querySelector('#cFeed .turn[data-prov="claude"] [data-c="followup"]').click(); return 1`); await sleep(500);
+      await b.eval(`document.querySelector('#cFeed .turn[data-prov="claude"] [data-c="turnmore"]').click(); [...document.querySelectorAll('#menu button')].find(x => x.textContent.includes('Do this later')).click(); return 1`); await sleep(500);
       const lt = await b.eval(`const d = document.getElementById('laterDlg'); return d && { open: d.open, title: document.getElementById('ltTitle').textContent, intro: document.getElementById('ltIntro').textContent, steps: [...d.querySelectorAll('.lt-step textarea')].map(x => x.value), go: document.getElementById('ltGo').textContent }`);
       t.check('Do this later explains itself; a reply without next steps says so (no made-up ones)', lt && lt.open && lt.title === 'Do this later' && /its own chat in Starfall Tavern/.test(lt.intro) && lt.steps.length === 0 && await b.eval(`return !!document.querySelector('#ltSteps .lt-none')`), lt);
       t.check('a reply’s list of next steps is offered, without code or questions', await b.eval(`return JSON.stringify(laterSteps('Done.\\n\\n\`\`\`js\\nx()\\n\`\`\`\\n\\nNext:\\n1. Add a **co-op** test\\n2. Update the patch notes\\n\\nShould I push it?'))`) === '["Add a co-op test","Update the patch notes"]');
@@ -1322,6 +1322,7 @@ module.exports = [
       t.check('a reply’s pictures show under it, each once, with what it did with them', strip && strip.caps.length === 2 && strip.caps[0] === 'Made hero.png' && strip.caps[1] === 'Looked at A screenshot' && /\bn2\b/.test(strip.cls), strip);
       t.check('a path to a picture that isn’t there leaves no empty box', strip && !strip.caps.some(c => /not-there/.test(c)));
       t.check('they’re big enough to see', strip && strip.big >= 150, strip);
+      t.check('the same file by its full path and by a short one is one picture', await b.eval(`const tn = document.createElement('div'); addPic(tn, { path: 'C:/Projects/Game/art/hero.png' }, 'made'); addPic(tn, { path: 'art/hero.png' }, 'mentioned'); addPic(tn, { path: 'art\\\\hero.png' }, 'looked'); return picsOf(tn).list.length === 1 && picsOf(tn).list[0].how === 'made'`));
       // Written as Markdown: the picture itself; one on the web is a link.
       const m = await b.eval(`const h = md('Here: ![The key art](art/harvest-festival.png) and ![web](https://example.com/x.png)'); const d = document.createElement('div'); d.innerHTML = h; return { img: !!d.querySelector('.mdimg img'), cap: d.querySelector('.mdimg-cap')?.textContent, web: !!d.querySelector('a[href="https://example.com/x.png"]'), bang: /!/.test(d.textContent) }`);
       t.check('![alt](path) shows the picture, with its caption', m.img && m.cap === 'The key art', m);

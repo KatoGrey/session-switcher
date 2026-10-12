@@ -10,7 +10,7 @@ function asideCard() {
   let card = $c('cAside');
   if (card) return card;
   document.querySelector('.c-dock').insertAdjacentHTML('beforebegin', `<section class="aside-card" id="cAside" hidden aria-label="Side question">
-    <header class="as-h"><span class="glyph" aria-hidden="true">❦</span><b>Side question</b><small>doesn’t touch this chat or your files</small><button type="button" class="icon as-x" data-as="close" aria-label="Close the side question">✕</button></header>
+    <header class="as-h"><span class="glyph" aria-hidden="true">❦</span><b>Side question</b><small title="A separate chat answers it, so it uses a little of your account’s room">a separate chat answers; this one isn’t touched</small><button type="button" class="icon as-x" data-as="close" aria-label="Close the side question">✕</button></header>
     <div class="as-body" aria-live="polite"></div>
     <form class="as-f"><textarea rows="1" placeholder="Ask something quick…" aria-label="Side question"></textarea><button type="submit" class="btn sm">Ask</button></form>
     <p class="as-b"><button type="button" class="btn quiet sm" data-as="bring">Put it in my message</button></p>
@@ -57,7 +57,7 @@ function renderAside() {
   const body = card.querySelector('.as-body');
   const answer = Aside.order.map(m => Aside.text.get(m)).filter(Boolean).join('\n\n');
   const p = Aside.perm;
-  body.innerHTML = `${Aside.q.map(q => `<p class="as-q">${esc(q)}</p>`).join('')}${answer ? `<div class="as-a md">${md(answer)}</div>` : ''}${p ? `<p class="as-perm">It wants to ${esc(wantsTo(p))}. <button type="button" class="btn sm" data-as="allow">Allow</button> <button type="button" class="btn quiet sm" data-as="deny">Deny</button></p>` : ''}${Aside.busy ? '<p class="as-wait"><span class="gen-spin" aria-hidden="true"></span>Thinking it over…</p>' : ''}`;
+  body.innerHTML = `${Aside.q.map(q => `<p class="as-q">${esc(q)}</p>`).join('')}${answer ? `<div class="as-a md">${md(answer)}</div>` : ''}${p ? `<p class="as-perm">It wants to ${esc(wantsTo(p))}. <button type="button" class="btn sm" data-as="allow">Allow</button> <button type="button" class="btn quiet sm" data-as="deny">Deny</button></p>` : ''}${Aside.busy ? `<p class="as-wait"><span class="gen-spin" aria-hidden="true"></span>${Aside.key ? 'Thinking it over…' : 'Starting a separate chat… (a few seconds; it uses a little of your account’s room)'}</p>` : ''}`;
   body.scrollTop = body.scrollHeight;
   card.querySelector('[data-as="bring"]').hidden = !answer || Aside.busy;
 }

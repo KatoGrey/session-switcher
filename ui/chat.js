@@ -644,6 +644,16 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
       case 'branch': return branchFrom(c.closest('.turn'));
+      case 'turnmore': {
+        // The rest of what a reply offers, in one small menu (the row keeps Copy, review and hand-off).
+        const turn = c.closest('.turn'), claudeReply = (turn.dataset.prov || C.provider) === 'claude' && C.provider === 'claude';
+        return showMenu(c, [
+          { glyph: '⏳', label: 'Do this later', hint: 'its next steps, each its own chat later', run: () => openLaterDialog(turn) },
+          ...(claudeReply ? [{ glyph: '⑂', label: 'Branch from here', hint: 'a new chat up to this reply; this one stays', run: () => branchFrom(turn) }] : []),
+          '-',
+          { glyph: '⧉', label: 'Copy as Markdown', run: () => { const text = turnMarkdown(turn); if (text) copyText(text); } },
+        ]);
+      }
       case 'followup': return openLaterDialog(c.closest('.turn'));
       case 'laterhub': { close(); go('hub'); setTimeout(() => $('secQueue')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 300); return undefined; }
       case 'copyturn': {

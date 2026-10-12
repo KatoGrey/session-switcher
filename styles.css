@@ -2429,6 +2429,8 @@ body.solo .c-head .icon.c-backm{display:none}
 .rn-dot{width:8px;height:8px;border-radius:50%;background:var(--ash-2);flex:none}
 .rn-dot.on{background:rgb(var(--c-7fb79a))}
 .rn-dot.err{background:var(--crimson)}
+.rn-note{margin:8px 0 0;font-size:13px;color:var(--ash);line-height:1.45}
+.rn-note code{font:12px var(--f-mono);color:var(--gilt)}
 .rn-b{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 0}
 .rn-b .btn{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rn-log{margin:8px 0 0;max-height:240px;overflow:auto;padding:8px 10px;border-radius:6px;background:rgb(var(--c-0a090c));color:var(--parch-2);font:11.5px/1.45 var(--f-mono);white-space:pre-wrap;overflow-wrap:anywhere}

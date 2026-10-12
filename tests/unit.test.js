@@ -778,7 +778,7 @@ test('race: keep file by file, from either copy; the same file from both is refu
 test('run: starts the project’s dev script, finds its address, keeps its output, and stops it', async () => {
   const { createRunner, guessCommand } = require('../lib/runner');
   const dir = tmp(), data = tmp();
-  put(dir, 'srv.js', "console.log('\u001b[32m  VITE ready\u001b[0m'); console.log('  ➜  Local:   http://localhost:51734/'); setInterval(() => {}, 1000);\n");
+  put(dir, 'srv.js', "console.log('\u001b[32m  VITE ready\u001b[0m'); console.log('  ➜  Local:   http://localhost:51734/'); console.log('  ➜  Network: http://192.168.1.20:51734/'); setInterval(() => {}, 1000);\n");
   put(dir, 'package.json', JSON.stringify({ scripts: { dev: 'node srv.js', build: 'x' } }));
   assert.equal(guessCommand(dir), 'npm run dev');
   assert.equal(guessCommand(tmp()), null, 'nothing to go on');
@@ -791,6 +791,7 @@ test('run: starts the project’s dev script, finds its address, keeps its outpu
   const st = run.status(dir);
   assert.equal(st.running, true);
   assert.equal(st.url, 'http://localhost:51734/');
+  assert.equal(st.lanUrl, 'http://192.168.1.20:51734/', 'the address the phone can use');
   assert.ok(st.lines.some(l => /VITE ready/.test(l) && !/\u001b/.test(l)), 'its output, without colour codes');
   assert.ok(changes.length > 0);
   const stopped = await run.stop(dir);

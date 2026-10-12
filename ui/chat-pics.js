@@ -20,9 +20,11 @@ function addPic(turn, im, how, label) {
   if (!turn || !im || (!im.path && !im.src)) return;
   const k = im.path ? picKey(im.path) : im.src.slice(0, 200);
   const st = picsOf(turn);
-  if (st.seen.has(k)) {
+  // The same file by another path ("art/x.png" and its full path) is the same picture.
+  const same = x => x === k || x.endsWith(`/${k}`) || k.endsWith(`/${x}`);
+  if (st.seen.has(k) || (im.path && [...st.seen].some(same))) {
     // Seen before as "mentioned": what it did with it says more.
-    const was = st.list.find(x => x.k === k);
+    const was = st.list.find(x => same(x.k));
     if (was && was.how === 'mentioned' && how !== 'mentioned') { was.how = how; picStripSoon(turn); }
     return;
   }
@@ -77,7 +79,9 @@ function picsFromTool(turn, b, result) {
 }
 // From a reply's changes: pictures it made or changed.
 function picsFromChanges(turn, ev) {
-  for (const f of ev.files || []) if (PIC_RE.test(f.path) && f.status !== 'deleted' && !f.meanwhile) addPic(turn, { path: f.path }, f.status === 'added' ? 'made' : 'changed');
+  // Their paths are from the top of the git repository, which may be above the project's folder.
+  const top = ev.top ? String(ev.top).replace(/[\\/]+$/, '') : '';
+  for (const f of ev.files || []) if (PIC_RE.test(f.path) && f.status !== 'deleted' && !f.meanwhile) addPic(turn, { path: top ? `${top}/${f.path}` : f.path }, f.status === 'added' ? 'made' : 'changed', base(f.path));
 }
 
 /* ---------- the viewer ---------- */

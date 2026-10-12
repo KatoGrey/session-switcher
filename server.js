@@ -152,6 +152,8 @@ const chats = chatLib.createChatManager({
     broadcast('live', chats.live()); scheduleActivity(); schedulePush(); saveOpenChats();
   },
   onSession: chat => {
+    // A side question is set aside as done as soon as it has an id: it never sits in the lists.
+    if (chat.aside && chat.sessionId) chatPrefs.setDone(chat.sessionId, true);
     if (chat.provider !== 'codex') sessions.recordLaunch(chat.sessionId, chat.account, chat.fork ? 'fork' : 'app');
     // Choices made before the chat had an id, a partner paired before then, and when it last caught
     // up on that partner, are kept now.
@@ -1811,6 +1813,7 @@ async function handleChat(req, res, url, body, c) {
       aside.aside = true; aside.title = `Aside: ${q.split('\n')[0].slice(0, 50)}`;
       broadcast('live', chats.live()); scheduleActivity();
       await waitReady(aside, 45000);
+      if (aside.sessionId) chatPrefs.setDone(aside.sessionId, true);   // in case its id came before it was marked a side question
       aside.send(`${ctx.replace('its latest messages, for context (that chat carries on separately)', 'its latest messages, for context. This is a quick side question about it, asked beside that chat; answer it briefly and don’t change any files')}${q}`, []);
       return send(res, 200, { key: aside.key, provider: prov });
     }

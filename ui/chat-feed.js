@@ -426,11 +426,10 @@ function lastTurn(root, make) {
   t.dataset.prov = prov;
   const relay = duo(), mine = prov === C.provider, them = PROV_NAME[mine ? partnerProv() : C.provider];
   const acts = `<button type="button" class="ta" data-c="copyturn" title="Copy this reply, as Markdown">Copy</button>
-      ${prov === 'claude' && C.provider === 'claude' && !C.watch ? '<button type="button" class="ta" data-c="branch" title="Start a new chat from the end of this reply (this one stays as it is)">Branch from here</button>' : ''}
-      <button type="button" class="ta" data-c="followup" title="Queue the next steps from this reply: each starts later as its own chat in this project, so this chat stays on track">Do this later</button>
       ${prov === 'claude' && C.provider === 'claude' && codexOK() ? '<button type="button" class="ta rv" data-c="review" title="Codex reviews the changes so far, in a read-only sandbox">Review with Codex</button>' : ''}
       ${prov === 'codex' && claudeReviewOK() ? '<button type="button" class="ta rv" data-c="review" data-by="claude" title="Claude reviews the changes so far, and is asked not to change anything">Review with Claude</button>' : ''}
-      ${relay ? `<button type="button" class="ta relay" data-c="relay" title="Quote this to ${them}${mine && them === 'Codex' ? ', for an image, a test or a second opinion' : ''}">${mine ? `Ask ${them}` : `Send to ${them}`}</button>` : ''}`;
+      ${relay ? `<button type="button" class="ta relay" data-c="relay" title="Quote this to ${them}${mine && them === 'Codex' ? ', for an image, a test or a second opinion' : ''}">${mine ? `Ask ${them}` : `Send to ${them}`}</button>` : ''}
+      ${C.watch ? '' : '<button type="button" class="ta tmore" data-c="turnmore" aria-label="More for this reply" title="More: do this later, branch from here">⋯</button>'}`;
   // The same buttons twice: beside the name (with a mouse, on hover) and under the reply (on a phone,
   // where you finish reading; it stays last however the reply grows).
   t.innerHTML = `<div class="who"><span class="who-n">${PROV_NAME[prov]}</span><span class="who-m"></span><span class="turn-act">${acts}</span></div><div class="turn-foot">${acts}</div>`;
