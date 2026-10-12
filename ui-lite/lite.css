@@ -790,7 +790,7 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
   .row.kid .side-tags .tag { max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (max-width: 760px) { .side-grip { display: none; } }
-.live-status .st-what { flex: none; }
+.live-status .st-what { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live-status .st-think { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-style: italic; opacity: .85; }
 .live-status .st-time { margin-left: auto; flex: none; font-variant-numeric: tabular-nums; }
 /* Routines */
@@ -1027,3 +1027,7 @@ blockquote p { margin: 4px 0; }
 .ask-opt kbd { flex: none; margin-top: 1px; }
 .ask-opt input[type=radio], .ask-opt input[type=checkbox] { margin-top: 3px; }
 .ask-opt.other .other-t { margin-top: 4px; width: 100%; }
+/* The question card shares .ask with Now's reply row; undo that row's padding and its input sizing. */
+.ask-card.ask { align-items: stretch; padding: 12px 14px; margin-top: 0; flex-wrap: nowrap; }
+.ask-card.ask .ask-opt input[type=radio], .ask-card.ask .ask-opt input[type=checkbox] { flex: none; min-width: 0; width: auto; padding: 0; border: 0; accent-color: var(--accent); }
+.ask-card.ask .other-t { min-width: 0; }

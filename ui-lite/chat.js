@@ -399,11 +399,13 @@ function paintStatus() {
   const el = $('statusLine'); if (!el) return;
   el.hidden = !CV.busy;
   if (!CV.busy) { el.innerHTML = ''; return; }
-  const what = String(CV.status || 'Thinking').replace(/^mcp__(.+?)__/, '$1: ');
+  // While it waits on a question or an approval, the card says what; this line just says it's waiting.
+  const what = CV.pending.size ? 'Waiting for your answer' : String(CV.status || 'Thinking').replace(/^mcp__(.+?)__/, '$1: ');
   const tail = what === 'Thinking' && CV.thinking ? CV.thinking.replace(/\s+/g, ' ').trim().split(/(?<=[.!?:])\s+/).filter(Boolean).pop() || '' : '';
   el.innerHTML = `<span class="live-dot"></span><span class="st-what">${esc(what)}</span>${tail ? `<span class="st-think">${esc(tail.slice(-160))}</span>` : ''}<span class="st-time">${CV.startedAt ? workedFor(CV.startedAt) : ''}</span>`;
 }
 function paintPending() {
+  paintStatus();
   const el = $('pendingBox'); if (!el) return;
   // Only redrawn when what's asked changes, so answers you've started picking stay picked.
   const sig = [...CV.pending.keys()].join(',');
