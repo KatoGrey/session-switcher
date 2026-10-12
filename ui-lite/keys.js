@@ -95,6 +95,8 @@ function onKey(e) {
   if (S.view === 'chat') {
     const p = [...CV.pending.values()][0];
     if (p && !p.questions && (e.key === 'a' || e.key === 'd')) { e.preventDefault(); return answerInChat(p.requestId, e.key === 'a' ? 'allow' : 'deny'); }
+    // A one-question ask: its number picks that answer.
+    if (p && p.questions && quickQ(p) && /^[1-9]$/.test(e.key)) { const o = p.questions[0].options[Number(e.key) - 1]; if (o) { e.preventDefault(); return answerInChat(p.requestId, 'allow', { [p.questions[0].question]: o.label }); } }
     if (e.key === 's') { const b = document.querySelector('.chat-h .stage'); if (b) { e.preventDefault(); b.click(); } }
     if (e.key === 'e' && CV.id && chatBy.get(CV.id)) { e.preventDefault(); return wrap(archiveChats)([CV.id]).then(() => go('back')); }
     if (e.key === 'w' && CV.id && chatBy.get(CV.id)) { e.preventDefault(); return askWaiting([CV.id]); }

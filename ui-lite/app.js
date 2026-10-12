@@ -281,6 +281,12 @@ document.addEventListener('click', e => {
     const q = p.questions[Number(b.dataset.q)];
     return answerInChat(p.requestId, 'allow', { [q.question]: q.options[Number(b.dataset.o)].label });
   }
+  if ((b = el('[data-sendanswers]'))) {
+    e.preventDefault();
+    const p = CV.pending.get(b.dataset.sendanswers), card = b.closest('.ask-card'); if (!p || !card) return undefined;
+    const answers = answersFrom(card, p); if (answers) return answerInChat(p.requestId, 'allow', answers);
+    return undefined;
+  }
   if ((b = el('[data-qmore]'))) { toggleMore(b.dataset.qmore); return undefined; }
   if ((b = el('[data-qreply]'))) { openQuickReply(b.dataset.qreply); return undefined; }
   if ((b = el('[data-send]'))) return sendQuick(b.dataset.send);

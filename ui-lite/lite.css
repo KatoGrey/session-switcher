@@ -1015,3 +1015,15 @@ blockquote p { margin: 4px 0; }
 .md-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
 .md-thumbs img { height: 120px; max-width: 220px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; background: var(--hover); }
 .md-img { display: block; max-width: min(100%, 520px); max-height: 420px; border-radius: 8px; border: 1px solid var(--line); margin: 6px 0; cursor: zoom-in; }
+
+/* A question the chat asks while it works. */
+.ask-card.ask .ask-q { border: 0; padding: 0; margin: 10px 0 4px; display: flex; flex-direction: column; gap: 6px; }
+.ask-card.ask legend { font-weight: 600; margin-bottom: 4px; padding: 0; }
+.ask-card.ask legend small { font-weight: 400; color: var(--muted); }
+.ask-opt { display: flex; gap: 10px; align-items: flex-start; text-align: left; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: none; color: inherit; font: inherit; }
+.ask-opt:hover { background: var(--hover); }
+.ask-opt span { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.ask-opt small { color: var(--muted); font-size: 12.5px; }
+.ask-opt kbd { flex: none; margin-top: 1px; }
+.ask-opt input[type=radio], .ask-opt input[type=checkbox] { margin-top: 3px; }
+.ask-opt.other .other-t { margin-top: 4px; width: 100%; }

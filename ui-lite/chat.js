@@ -405,15 +405,43 @@ function paintStatus() {
 }
 function paintPending() {
   const el = $('pendingBox'); if (!el) return;
+  // Only redrawn when what's asked changes, so answers you've started picking stay picked.
+  const sig = [...CV.pending.keys()].join(',');
+  if (el._sig === sig && el.innerHTML) { if (CV.pending.size && nearBottom()) $('feed').scrollTop = $('feed').scrollHeight; return; }
+  el._sig = sig;
   el.innerHTML = [...CV.pending.values()].map(p => {
-    if (p.questions && p.questions.length) {
-      return `<div class="ask-card" data-req="${esc(p.requestId)}">${p.questions.map((q, qi) => `<p class="q"><b>${esc(q.header || 'Question')}</b> ${esc(q.question)}</p><div class="opts">${q.options.map((o, oi) => `<button class="btn" data-answer="${esc(p.requestId)}" data-q="${qi}" data-o="${oi}" title="${esc(o.description)}">${esc(o.label)}</button>`).join('')}</div>`).join('')}<button class="linkish" data-perm-c="deny" data-req="${esc(p.requestId)}">Skip</button></div>`;
-    }
+    if (p.questions && p.questions.length) return questionCard(p);
     const v = p.view || {};
     return `<div class="ask-card" data-req="${esc(p.requestId)}"><p class="q">Wants to ${esc(wantsTo(p.toolName))}</p>${v.detail || v.summary ? `<code class="ask-code">${esc(v.detail || v.summary)}</code>` : ''}
       <div class="opts"><button class="btn prime" data-perm-c="allow" data-req="${esc(p.requestId)}">Allow <kbd>a</kbd></button>${p.canAlways ? `<button class="btn" data-perm-c="always" data-req="${esc(p.requestId)}">Always allow</button>` : ''}<button class="btn" data-perm-c="deny" data-req="${esc(p.requestId)}">Deny <kbd>d</kbd></button></div></div>`;
   }).join('');
   if (CV.pending.size && nearBottom()) $('feed').scrollTop = $('feed').scrollHeight;
+}
+// A question the chat asks while it works (Claude's AskUserQuestion). One question with one answer:
+// tap an option (or press its number) and it goes. Several questions, or pick-any: choose in each,
+// then Send answers. Every question takes your own words too.
+const quickQ = p => p.questions.length === 1 && !p.questions[0].multiSelect;
+function questionCard(p) {
+  const quick = quickQ(p), rid = esc(p.requestId);
+  const qs = p.questions.map((q, qi) => `<fieldset class="ask-q" data-qi="${qi}"><legend>${q.header ? `<span class="tag">${esc(q.header)}</span> ` : ''}${esc(q.question)}${q.multiSelect ? ' <small>(pick any)</small>' : ''}</legend>
+    ${q.options.map((o, oi) => quick
+      ? `<button type="button" class="ask-opt" data-answer="${rid}" data-q="${qi}" data-o="${oi}"><kbd>${oi + 1}</kbd><span><b>${esc(o.label)}</b>${o.description ? `<small>${esc(o.description)}</small>` : ''}</span></button>`
+      : `<label class="ask-opt"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="q${rid}-${qi}" value="${oi}"><span><b>${esc(o.label)}</b>${o.description ? `<small>${esc(o.description)}</small>` : ''}</span></label>`).join('')}
+    <label class="ask-opt other">${quick ? '' : `<input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="q${rid}-${qi}" value="other">`}<span><b>Other</b><input type="text" class="other-t field" placeholder="Your own answer${quick ? ', then ↵' : ''}" aria-label="Your own answer" data-otherq="${rid}"></span></label></fieldset>`).join('');
+  return `<div class="ask-card ask" data-req="${rid}"><p class="q">${p.questions.length === 1 ? 'It has a question' : `It has ${p.questions.length} questions`}</p>${qs}
+    <div class="opts">${quick ? '' : `<button class="btn prime" data-sendanswers="${rid}">Send answers</button>`}<button class="btn" data-perm-c="deny" data-req="${rid}">Skip</button></div></div>`;
+}
+// Answers from the card, as the full app sends them: each question's picks, joined.
+function answersFrom(card, p) {
+  const out = {};
+  for (const fs of card.querySelectorAll('fieldset.ask-q')) {
+    const q = p.questions[Number(fs.dataset.qi)];
+    const other = fs.querySelector('.other-t').value.trim();
+    const picked = quickQ(p) ? (other ? [other] : []) : [...fs.querySelectorAll('input:checked')].map(i => (i.value === 'other' ? other || 'Other' : q.options[Number(i.value)].label));
+    if (!picked.length) { toast(`Pick an answer for “${q.question}”.`); return null; }
+    out[q.question] = picked.join(', ');
+  }
+  return out;
 }
 const wantsTo = name => ({ Bash: 'run a command', PowerShell: 'run a command', Edit: 'edit a file', MultiEdit: 'edit a file', Write: 'create or overwrite a file', WebFetch: 'open a web page', WebSearch: 'search the web', NotebookEdit: 'edit a notebook' })[name] || `use ${String(name || 'a tool').replace(/^mcp__(.+?)__/, '$1: ')}`;
 
@@ -919,3 +947,11 @@ function pickProject(anchor, onPick, { personal = false } = {}) {
   q.addEventListener('input', () => { const t = q.value.toLowerCase(); for (const b of $('ppList').querySelectorAll('button')) b.hidden = !b.textContent.toLowerCase().includes(t); });
   q.addEventListener('keydown', e => { if (e.key === 'Enter') { const b = [...$('ppList').querySelectorAll('button')].find(x => !x.hidden); if (b) { e.preventDefault(); b.click(); } } });
 }
+// In a one-question ask, ↵ in Other sends what you typed.
+document.addEventListener('keydown', e => {
+  const t = e.target; if (e.key !== 'Enter' || !t.matches || !t.matches('.other-t[data-otherq]')) return;
+  const p = CV.pending.get(t.dataset.otherq); if (!p) return;
+  e.preventDefault();
+  if (!quickQ(p)) { t.closest('.ask-card').querySelector('[data-sendanswers]')?.click(); return; }
+  const v = t.value.trim(); if (v) answerInChat(p.requestId, 'allow', { [p.questions[0].question]: v });
+});
