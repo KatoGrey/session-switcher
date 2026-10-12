@@ -1195,6 +1195,13 @@ dialog.np-dlg{width:min(600px,calc(100vw - 32px));padding:0}
   .page{padding:18px 16px 90px}
   .hero-in{padding:22px 20px 22px}
   .row{grid-template-columns:minmax(0,1fr) auto;gap:6px 12px}
+  /* A compact hero on phones, so what needs you starts on the first screen: the account and its usage
+     are already in the top bar. (Imperial and Rebel keep Ryan's hero as it is.) */
+  :root:not([data-family="saga"]) .hero .stamp,:root:not([data-family="saga"]) .hero-in > div > p:not(.eyebrow){display:none}
+  :root:not([data-family="saga"]) .hero-in{padding:16px 18px 18px}
+  :root:not([data-family]) .hero .eyebrow{letter-spacing:.1em;font-size:11px}
+  :root:not([data-family]) .hero h1{font-size:26px;margin-top:8px}
+  :root:not([data-family="saga"]) .hero-act{margin-top:12px}
   .r-when{grid-column:1/-1;flex-direction:row;gap:10px;align-items:center;padding-left:6px}
   .r-what{padding-left:6px}
   .dial-card{grid-template-columns:1fr;justify-items:stretch}
@@ -1969,6 +1976,9 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .td-now.on{background:var(--ember)}
 .td-now.on::after{content:"";position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:var(--ember);animation:ripple 1.8s ease-out infinite}
 @media (max-width:760px){ .td-axis,.td-lane{grid-template-columns:96px minmax(0,1fr);gap:10px} .td-name{font-size:13px} .td-name .crest{display:none} }
+/* Touch: the row is the target (ui/today.js finds the nearest bar), and project names are a full finger tall. */
+@media (pointer:coarse){ .td-track{cursor:pointer} .td-b{pointer-events:none} .td-name{min-height:32px} }
+.o-title button{min-height:24px}
 
 /* ---------- empty spots, with a small picture ---------- */
 .empty-art{display:flex;align-items:center;gap:18px;padding:6px 0}
@@ -3256,4 +3266,6 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
   [data-theme="dungeon"] .hero h1{font-size:31px}
   [data-theme="dungeon"] .wordmark b{font-size:21px}
   [data-family="anime"] .hero-art .ha-read{gap:12px;padding:7px 12px 6px}
+  /* A wide crop of the painting on phones, so the chats that need you are close below it. */
+  [data-family="anime"] .hero-art.painted:not(.status){aspect-ratio:2 / 1}
 }

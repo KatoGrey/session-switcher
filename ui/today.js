@@ -80,8 +80,18 @@ function renderToday() {
   const h = todayHtml();
   if (slot._h !== h) { slot.innerHTML = h; slot._h = h; }
 }
+// A bar is a few pixels wide, so on a touch screen a tap anywhere on a project's row opens the bar
+// nearest the finger.
+const todayTouch = matchMedia('(pointer: coarse)');
 document.addEventListener('click', e => {
-  const b = e.target.closest('[data-today]'); if (!b) return;
+  let b = e.target.closest('[data-today]');
+  const track = !b && todayTouch.matches && e.target.closest('.td-track');
+  if (track) {
+    let best = Infinity;
+    for (const x of track.querySelectorAll('[data-today]')) { const r = x.getBoundingClientRect(), d = Math.abs((r.left + r.right) / 2 - e.clientX); if (d < best) { best = d; b = x; } }
+    if (best > 40) b = null;
+  }
+  if (!b) return;
   ChatUI.open({ sessionId: b.dataset.today });
 });
 
