@@ -18,7 +18,7 @@ const http = require('http');
 const args = process.argv.slice(2);
 const opt = (name, d) => { const i = args.indexOf(`--${name}`); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
 const port = Number(opt('port', process.env.SWITCHER_PORT || 4777));
-const permission = opt('permission', 'bypassPermissions'); // for a chat that has to be reopened
+const permissionArg = opt('permission', null); // for a chat that has to be reopened (default: full access for its kind)
 const [cmd, ...rest] = args;
 
 function api(p, body) {
@@ -73,7 +73,7 @@ async function fixes(filter) {
     const c = (s.chats || []).find(x => String(x.id).toLowerCase() === id);
     if (!c) throw new Error('That chat isn’t in Switcher’s list.');
     const info = await api('/api/chat/open', { sessionId: c.id, mode: 'resume', ...(c.provider === 'codex' ? { provider: 'codex', ...(c.ollama && c.accountId ? { account: c.accountId } : {}) } : (c.accountId ? { account: c.accountId } : {})),
-      permissionMode: permission });
+      permissionMode: permissionArg || (c.provider === 'codex' ? 'full' : 'bypassPermissions') });
     await api('/api/chat/send', { key: info.key, text });
     return console.log('Reopened the chat and sent.');
   }
