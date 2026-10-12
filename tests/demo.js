@@ -169,7 +169,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     claude: { key: 'k-race-claude', state: 'ready', files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 3, del: 1 }, { path: 'tests/rally_test.lua', status: 'added', add: 18, del: 0 }] },
     codex: { key: 'k-race-codex', state: 'busy', files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 1, del: 1 }] },
   } }];
-  let keepTries = 0, bothTries = 0;
+  let keepTries = 0, bothTries = 0, tsServing = false;
   const rulesOut = () => ({ scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
@@ -212,6 +212,10 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/chat/diff') return { body: { diff: `diff --git a/${q.get('path')} b/${q.get('path')}\nindex 1..2 100644\n--- a/${q.get('path')}\n+++ b/${q.get('path')}\n@@ -12,3 +12,3 @@ function rally(party)\n   local bonus = 0.15\n-  rally.stacks = true\n+  rally.stacks = false  -- one Rally per party\n   return bonus\n` } };
     // Undo: the first time, one file changed since is left alone; forced, it goes too.
     if (p === '/api/chat/undo') return { body: body.force ? { restored: ['data/balance/party.json'], skipped: [] } : { restored: ['scripts/bard/songs.lua'], skipped: [{ path: 'data/balance/party.json', why: 'changed since' }] } };
+    // Phone access on, one phone paired; Tailscale installed: first not serving, then serving.
+    if (p === '/api/phone') return { body: { enabled: true, listening: true, port: 4788, addresses: [{ address: '192.168.1.20', name: 'Wi-Fi', tailscale: false }], apk: true, pairing: null, devices: [{ id: 'd1', name: 'Pixel', created: NOW - 864e5, lastSeen: NOW - 6e4 }], pushPhones: tsServing ? 1 : 0 } };
+    if (p === '/api/phone/tailscale') return { body: { installed: true, running: true, dns: 'tavern-pc.tail1234.ts.net', url: 'https://tavern-pc.tail1234.ts.net', serving: tsServing, port: 4788 } };
+    if (p === '/api/phone/tailscale-serve') { tsServing = true; return { body: { installed: true, running: true, dns: 'tavern-pc.tail1234.ts.net', url: 'https://tavern-pc.tail1234.ts.net', serving: true, port: 4788 } }; }
     if (p === '/api/races') return { body: { races: raceList } };
     if (p === '/api/race/diff') return { body: { diff: `diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-rally.stacks = true\n+rally.stacks = false\n` } };
     if (p === '/api/race') {

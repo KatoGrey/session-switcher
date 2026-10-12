@@ -12,6 +12,8 @@ openclaw-titles.json
 openclaw-messages/
 pairs.json
 devices.json
+push.json
+push.json.bak
 tasks.json
 races.json
 open-chats.json

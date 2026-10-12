@@ -53,7 +53,7 @@ function renderSetup(j) {
         <small>Leave as “codex” unless Setup can’t find it; then paste the full path to codex.cmd.</small></div>
       <div class="field"><label>Rules and tools</label><div class="row2"><span class="rd-hint">Write rules once for both (CLAUDE.md and AGENTS.md), and give each one the other’s MCP tools.</span><button class="btn" data-fix="rules">Rules and tools…</button></div></div>
     </div>
-    ${window.REMOTE ? `<p class="d-h" id="st-phone">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p>
+    ${window.REMOTE ? `<p class="d-h" id="st-phone">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p><div id="pushBox"></div>
       ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h" id="st-phone">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
     <p class="d-h" id="st-app">App</p>
     <div class="app-actions">
@@ -85,8 +85,11 @@ function renderPhone(st) {
       <div class="ph-step"><span class="ph-n">2</span><div><b>This computer’s address</b><p>${lan.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ') || '<i>No network found.</i>'}${ts.length ? `<br><small>Away from home with Tailscale: ${ts.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ')}</small>` : ''}</p></div></div>
       <div class="ph-step"><span class="ph-n">3</span><div><b>Pair it</b>${st.pairing ? `<p class="ph-code" aria-label="Pairing code">${esc(st.pairing.code.slice(0, 4))}<span>·</span>${esc(st.pairing.code.slice(4))}</p><p><small id="phLeft">Works once, for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}.</small> <button class="btn quiet sm" data-phone="cancel">Cancel</button></p>` : '<p><button class="btn prime sm" data-phone="pair">Show a pairing code</button></p>'}</div></div>
     </div>
+    <div class="ph-ts" id="tsBox"></div>
     ${st.devices.length ? `<p class="ph-h">Paired phones</p><ul class="ph-dev">${st.devices.map(d => `<li><span class="glyph" aria-hidden="true">◈</span><span><b>${esc(d.name)}</b><small>paired ${esc(agoL(d.created))}${d.lastSeen ? ` · last used ${esc(agoL(d.lastSeen))}` : ''}</small></span><button class="btn quiet sm" data-phone="forget" data-id="${esc(d.id)}">Remove</button></li>`).join('')}</ul>` : ''}
     <p class="ph-warn">A paired phone can do anything you can do here, including letting Claude run commands on this PC. Pair only your own phones, and remove one you lose. ${S.platform === 'darwin' ? 'macOS may ask to let Node accept incoming connections; allow it.' : 'Windows may ask to let Node.js through the firewall; allow it on private networks.'}</p>` : ''}`;
+  Push.phones = st.pushPhones || 0;
+  if (st.enabled) loadTailscale();
   if (st.pairing) phoneTimer = setInterval(() => {
     const l = Math.max(0, Math.round((st.pairing.expiresAt - Date.now()) / 1000));
     const el = $('phLeft'); if (!el || !$('setup').open) { clearInterval(phoneTimer); return; }
@@ -100,7 +103,7 @@ async function openSetup(tab = 'health') {
   if (!$('setup').open) $('setup').showModal();
   if (tab === 'look') return renderLook();
   $('setupBody').innerHTML = '<p class="loading">Checking Claude Code, your accounts and shared data…</p>';
-  try { await loadHealth(true); loadPhone(); } catch (err) {
+  try { await loadHealth(true); loadPhone(); renderPushBox(); } catch (err) {
     // A slip in the page itself shouldn't show as programmer's text.
     const msg = err instanceof TypeError || err instanceof ReferenceError ? 'Setup couldn’t finish loading. Close it and open it again; if it keeps happening, restart Session Switcher.' : err.message;
     $('setupBody').innerHTML = `<p class="loading">${esc(msg)}</p>`;
@@ -247,6 +250,7 @@ $('setupBody').addEventListener('change', wrap(async e => {
     const q = { from: '22:00', to: '08:00', on: false, ...(quietHours() || {}) };
     if (qh.dataset.quiet === 'on') q.on = qh.checked; else if (qh.value) q[qh.dataset.quiet] = qh.value;
     store('quiet-hours', JSON.stringify(q));
+    pushSyncPrefs();
     if (qh.dataset.quiet === 'on') toast(q.on ? `Quiet from ${q.from} to ${q.to}.` : 'Quiet hours are off.', 2500);
     return;
   }
@@ -464,6 +468,7 @@ function setAlertLevel(id, level) {
   const all = alertLevels(), k = String(id).toLowerCase();
   if (level === 'all') delete all[k]; else all[k] = level;
   store('alert-levels', JSON.stringify(all));
+  pushSyncPrefs();
   toast(level === 'off' ? 'No alerts from this chat.' : level === 'needs' ? 'This chat alerts only when it needs you.' : 'This chat alerts when it needs you and when it replies.', 3000);
 }
 const quietHours = () => { try { return JSON.parse(store('quiet-hours') || 'null'); } catch { return null; } };

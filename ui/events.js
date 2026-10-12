@@ -556,6 +556,7 @@ wrap(async () => {
   await Promise.all([reload(), loadPrompts()]); connectLive(); watchActivity(); checkAway(); loadHealth(false).catch(() => {}); loadTasks().catch(() => {}); loadRaces().catch(() => {});
   // A popped-out window opens straight into its chat.
   if (PAGE_ARGS.get('chat')) await ChatUI.open({ sessionId: PAGE_ARGS.get('chat') });
+  else if (PAGE_ARGS.get('key')) await ChatUI.openKey(PAGE_ARGS.get('key')).catch(() => {});   // from a notification
   else if (restartReturn()) backFromRestart();
   else maybeTour();
 })();

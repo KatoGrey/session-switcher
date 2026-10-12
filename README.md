@@ -324,6 +324,8 @@ Give Claude and Codex the same task and keep the better result. **Race Claude an
 2. The race's card, under **Races** on the hub, shows what each has changed. **See changes** shows the diff; **Open chat** shows how it got there.
 3. **Keep Claude's** or **Keep Codex's** brings that one's changes into your project, all or nothing. **Discard both** throws both away. Either way both copies are deleted.
 
+**Split the work** (same menus) is the other way round: each one takes its own part of a task (say, Claude fixes the bug while Codex writes the test), each in its own copy, told what the other is doing. **Keep both** brings both parts into your project together, all or nothing. If both changed the same file, nothing changes and the card says which file; keep one of them, or ask one to bring in the other's part.
+
 ## Models, effort and modes
 
 - **Switch models any time:** click the highlighted pill under the message box.
@@ -371,6 +373,19 @@ How it stays safe:
 - A phone can't quit the app, manage phone access, or open folder pickers on the PC.
 - It's plain http on your own network. To use it away from home, install [Tailscale](https://tailscale.com) on both devices; Setup then shows the Tailscale address too, and the connection is encrypted.
 - A paired phone can do everything you can do in Session Switcher, including letting Claude run commands on your PC. Pair only your own phones.
+
+### Notifications on your phone
+
+A chat that needs your OK, or one that replies, can notify your phone even when Session Switcher isn't open on it. On Android the notification has **Allow** and **Deny** right on it. On an iPhone, tapping it opens the chat so you can answer there.
+
+Phones only allow notifications on a secure (https) address, so this uses Tailscale's:
+
+1. Install [Tailscale](https://tailscale.com/download) on the PC and the phone, signed in to the same account.
+2. On the PC: Setup → **Phone access** → **Notifications on your phone** → **Set up the secure address**. The first time, Tailscale may ask you to turn on HTTPS for your network; the link is right there. This runs `tailscale serve`, which only your own devices can reach.
+3. On the phone, open the `https://…ts.net` address it shows. On an iPhone, use Safari → **Add to Home Screen**; on Android, Chrome → **Add to Home screen**. Pair it once (a new address pairs separately).
+4. On the phone: Setup → **Notifications on this phone**.
+
+Each phone follows its own alert levels and quiet hours. Messages are encrypted for the phone before they leave the PC. The signing keys are kept in `push.json`. **Remove** a phone and its notifications stop. The Android app (a WebView) can't show notifications; use the address in Chrome for them.
 
 To build the app yourself, run `mobile/android/build.cmd` (details in `mobile/android/README.md`). It needs no Android Studio: the first run downloads a JDK and the Android build tools (about 560 MB) into `%LOCALAPPDATA%\SessionSwitcherBuild`. A GitHub Actions workflow (`.github/workflows/android.yml`) builds it in the cloud too.
 

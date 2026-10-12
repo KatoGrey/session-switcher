@@ -34,6 +34,7 @@ const pairsLib = require('./lib/pairs');
 const handover = require('./lib/handover');
 const restartLib = require('./lib/restart');
 const themeStudioLib = require('./lib/theme-studio');
+const pushLib = require('./lib/push');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -139,7 +140,7 @@ const chats = chatLib.createChatManager({
   onChange: chat => {
     // A partner doesn't outlive its chat: it would be left running with no window to show it.
     if (chat && chat.state === 'ended' && chat.companionKey) { const p = pairs.partnerOf(chat); if (p && p.state !== 'ended') p.stop(); }
-    broadcast('live', chats.live()); scheduleActivity(); saveOpenChats();
+    broadcast('live', chats.live()); scheduleActivity(); schedulePush(); saveOpenChats();
   },
   onSession: chat => {
     if (chat.provider !== 'codex') sessions.recordLaunch(chat.sessionId, chat.account, chat.fork ? 'fork' : 'app');
@@ -152,7 +153,7 @@ const chats = chatLib.createChatManager({
     setTimeout(sessionsChanged, 1500);
   },
   onActivity: chat => {
-    scheduleActivity();
+    scheduleActivity(); schedulePush();
     // A finished turn changes the account's usage; check it shortly after.
     const f = chat.activity.finishedAt;
     if (f && finishedSeen.get(chat.key) !== f) {
@@ -901,7 +902,10 @@ async function handleApi(req, res, url, remote = false) {
   const c = config();
   const route = `${req.method} ${url.pathname}`;
   if (remote && (LOCAL_ONLY.has(url.pathname) || url.pathname.startsWith('/api/phone'))) throw fail(403, 'That can only be done on the PC itself.');
-  if (route === 'GET /api/phone') return send(res, 200, phone.status());
+  if (route === 'GET /api/phone') return send(res, 200, { ...phone.status(), pushPhones: pushes.count() });
+  if (route === 'GET /api/phone/tailscale') return send(res, 200, await tailscaleStatus());
+  if (route === 'POST /api/phone/tailscale-serve') return send(res, 200, await tailscaleServe());
+  if (url.pathname.startsWith('/api/push')) return pushApi(req, res, route, remote);
 
   if (route === 'GET /api/state') return send(res, 200, stateFor());
   if (route === 'GET /api/themes') return send(res, 200, themeStudio.list());
@@ -1513,7 +1517,7 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, { ...phone.startPairing(), status: phone.status() });
     }
     case '/api/phone/pair-cancel': phone.cancelPairing(); return send(res, 200, phone.status());
-    case '/api/phone/forget': phone.forget(String(body.id || '')); return send(res, 200, phone.status());
+    case '/api/phone/forget': phone.forget(String(body.id || '')); pushes.forgetDevice(String(body.id || '')); return send(res, 200, { ...phone.status(), pushPhones: pushes.count() });
     case '/api/quit': {
       send(res, 200, { ok: true });
       log('Quit from the app.');
@@ -1806,7 +1810,8 @@ const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 's
 async function handleRequest(req, res, { remote = false } = {}) {
   const host = req.headers.host || '';
   if (!remote && host !== `127.0.0.1:${PORT}` && host !== `localhost:${PORT}`) { res.writeHead(403); return res.end('Forbidden'); }
-  if (req.headers.origin && (remote ? (req.headers.origin !== `http://${host}` && req.headers.origin !== `https://${host}`) : !ORIGINS.has(req.headers.origin))) { res.writeHead(403); return res.end('Forbidden'); }
+  const fwd = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  if (req.headers.origin && (remote ? (req.headers.origin !== `http://${host}` && req.headers.origin !== `https://${host}` && !(fwd && req.headers.origin === `https://${fwd}`)) : !ORIGINS.has(req.headers.origin))) { res.writeHead(403); return res.end('Forbidden'); }
   const url = new URL(req.url, `http://${host}`);
   try {
     if (req.method === 'GET' && url.pathname === '/') {
@@ -1822,7 +1827,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': ext === '.mp3' ? 'audio/mpeg' : ext === '.webp' ? 'image/webp' : ext === '.txt' ? 'text/plain; charset=utf-8' : 'font/woff2', 'Cache-Control': 'max-age=604800', 'X-Content-Type-Options': 'nosniff' });
       return res.end(data);
     }
-    const STATIC = { '/theme.js': 'text/javascript', '/styles.css': 'text/css' };
+    const STATIC = { '/theme.js': 'text/javascript', '/styles.css': 'text/css', ...(remote ? { '/sw.js': 'text/javascript' } : {}) };
     const type = STATIC[url.pathname] || (/^\/ui\/[a-z0-9-]+\.js$/.test(url.pathname) ? 'text/javascript' : null);
     if (req.method === 'GET' && type) {
       res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -1848,7 +1853,8 @@ async function handleRequest(req, res, { remote = false } = {}) {
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
       const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media' || url.pathname === '/api/themes/art') && url.searchParams.get('token') === TOKEN;
       if (imageGet && url.pathname === '/api/media') return sendMedia(req, res, url);
-      if (req.headers['x-switcher-token'] !== TOKEN && !imageGet) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
+      const pushAct = remote && req.device && req.method === 'POST' && url.pathname === '/api/push/act';
+      if (req.headers['x-switcher-token'] !== TOKEN && !imageGet && !pushAct) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
       return await handleApi(req, res, url, remote);
     }
     res.writeHead(404); res.end('Not found');
@@ -1862,6 +1868,117 @@ const server = http.createServer((req, res) => { handleRequest(req, res); });
 
 // Phone access: off unless turned on in Setup.
 const phone = remoteLib.createRemote({ dataDir: DATA_DIR, appDir: APP_DIR, version: APP_VERSION, log, getPrefs: () => config().prefs, handle: handleRequest });
+
+// ---------- push notifications to phones (lib/push.js; the phone's side: sw.js, ui/push.js) ----------
+const pushes = pushLib.createPush({ dataDir: DATA_DIR, log });
+pushes.keepDevices(phone.status().devices.map(d => d.id));
+const pushSeen = { map: new Map(), primed: false };
+// Allow/Deny on a notification: one-time tokens, each for one request, for an hour.
+const pushActs = new Map();
+let pushTimer = null;
+function schedulePush() {
+  if (pushTimer) return;
+  pushTimer = setTimeout(() => { pushTimer = null; sendPushes().catch(err => log(`Push: ${err.message}`)); }, 900);
+}
+const chatTitleOf = x => {
+  if (x.parentKey) { try { const p = chats.get(x.parentKey); return `Codex · ${chatTitleOf(p.summary())}`; } catch { /* gone */ } }
+  if (x.sessionId && x.provider !== 'codex') { try { const t = sessions.find(x.sessionId).session.title; if (t) return t; } catch { /* not saved yet */ } }
+  return x.title || 'A chat';
+};
+const pushLine = t => String(t || '').replace(/`{3}[\s\S]*?(`{3}|$)/g, ' ').replace(/[*_#>`]/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop() || '';
+function wantsToText(p) {
+  if (p.question) return 'Has a question for you';
+  if (p.detail) return `Wants to run: ${p.detail}`;
+  return p.summary ? `Wants to ${p.toolName === 'Edit' || p.toolName === 'Write' ? 'edit' : 'use'}: ${p.summary}` : `Wants to use ${p.toolName || 'a tool'}`;
+}
+async function sendPushes() {
+  const list = chats.summaries();
+  const fresh = pushLib.news(list, pushSeen);
+  if (!fresh.length || !pushes.count()) return;
+  const now = Date.now();
+  for (const [k, v] of pushActs) if (v.exp < now) pushActs.delete(k);
+  for (const n of fresh) {
+    const x = n.chat, title = chatTitleOf(x), folder = x.folder ? ` · ${x.folder}` : '';
+    let msg;
+    if (n.kind === 'needs') {
+      const p = n.pending;
+      let act = null;
+      if (!p.question) { act = crypto.randomBytes(18).toString('base64url'); pushActs.set(act, { key: x.key, requestId: p.requestId, exp: now + 3600e3 }); }
+      msg = { kind: 'needs', title: `${title} needs you`, body: `${wantsToText(p)}`.slice(0, 220), chatTitle: title, tag: `needs-${x.key}`, key: x.key, sessionId: x.sessionId || null, act, at: now, ttl: 3600 };
+    } else {
+      msg = { kind: 'reply', title: `${title} replied`, body: (pushLine(x.lastText) || 'Finished its turn.').slice(0, 200) + folder, chatTitle: title, tag: `reply-${x.key}`, key: x.key, sessionId: x.sessionId || null, at: now, ttl: 6 * 3600 };
+    }
+    // Per phone: its alert level for the chat (a partner goes by its chat), and its quiet hours.
+    const sid = x.parentKey ? (() => { try { return chats.get(x.parentKey).sessionId; } catch { return null; } })() : x.sessionId;
+    await pushes.notify(msg, prefs => pushLib.wants(prefs, { kind: n.kind, sessionId: sid }));
+  }
+}
+async function pushApi(req, res, route, remote) {
+  const body = req.method === 'POST' ? await readBody(req) : {};
+  const dev = remote ? req.device : null;
+  if (route === 'GET /api/push') return send(res, 200, { key: pushes.publicKey(), phone: !!dev, subscribed: dev ? pushes.count(dev.id) > 0 : false, phones: pushes.count() });
+  if (route === 'POST /api/push/act') {
+    const a = pushActs.get(String(body.token || ''));
+    if (!a || !dev) throw fail(410, 'That one was already answered, or has expired.');
+    pushActs.delete(String(body.token));
+    const decision = body.decision === 'allow' ? 'allow' : 'deny';
+    let chat;
+    try { chat = chats.get(a.key); } catch { throw fail(410, 'That chat has stopped.'); }
+    if (!chat.pending.has(a.requestId)) throw fail(410, 'That one was already answered.');
+    chat.answer(a.requestId, { decision, message: '' });
+    log(`Push: “${dev.name}” chose ${decision} from a notification.`);
+    return send(res, 200, { ok: true });
+  }
+  if (!dev) throw fail(403, 'Turn notifications on from the phone itself.');
+  const sub = body.subscription || {};
+  if (route === 'POST /api/push/subscribe') { pushes.subscribe(dev.id, sub, body.prefs || {}); log(`Push: notifications on for “${dev.name}”.`); return send(res, 200, { ok: true }); }
+  if (route === 'POST /api/push/prefs') return send(res, 200, { ok: pushes.setPrefs(dev.id, String(body.endpoint || ''), body.prefs || {}) });
+  if (route === 'POST /api/push/unsubscribe') { pushes.unsubscribe(dev.id, String(body.endpoint || '')); return send(res, 200, { ok: true }); }
+  if (route === 'POST /api/push/test') {
+    const out = await pushes.notify({ kind: 'test', title: 'Session Switcher', body: 'Notifications work on this phone.', tag: 'test', at: Date.now(), ttl: 300 }, (p, s) => s.deviceId === dev.id);
+    const ok = out.some(o => o.status >= 200 && o.status < 300);
+    return send(res, 200, { ok, why: ok ? null : out.length ? `The push service said ${out[0].status || 'nothing'}.` : 'This phone isn’t signed up for notifications.' });
+  }
+  throw fail(404, 'Not found.');
+}
+
+// ---------- Tailscale: the phone's secure (https) address, which push notifications need ----------
+const TS_EXE = process.platform === 'win32' ? [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Tailscale', 'tailscale.exe'), 'tailscale'] : ['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale'];
+function tailscale(args, timeout = 8000) {
+  const { execFile } = require('child_process');
+  const tryAt = i => new Promise(resolve => {
+    if (i >= TS_EXE.length) return resolve({ ok: false, missing: true, out: '' });
+    execFile(TS_EXE[i], args, { timeout, windowsHide: true }, (err, out, errOut) => {
+      if (err && err.code === 'ENOENT') return resolve(tryAt(i + 1));
+      resolve({ ok: !err, out: String(out || '') + String(errOut || ''), timedOut: !!(err && err.killed) });
+    });
+  });
+  return tryAt(0);
+}
+async function tailscaleStatus() {
+  const port = phone.status().port;
+  const st = await tailscale(['status', '--json']);
+  if (st.missing) return { installed: false };
+  let j = {};
+  try { j = JSON.parse(st.out.slice(st.out.indexOf('{'))); } catch { /* not running */ }
+  const self = j.Self || {};
+  const dns = String(self.DNSName || '').replace(/\.$/, '');
+  const serve = await tailscale(['serve', 'status', '--json']);
+  const serving = serve.ok && new RegExp(`(127\\.0\\.0\\.1|localhost):${port}\\b`).test(serve.out);
+  return { installed: true, running: j.BackendState === 'Running', dns, url: dns ? `https://${dns}` : null, serving, port };
+}
+async function tailscaleServe() {
+  const port = phone.status().port;
+  if (!phone.status().listening) throw fail(409, 'Turn phone access on first.');
+  const r = await tailscale(['serve', '--bg', `http://127.0.0.1:${port}`], 20000);
+  if (r.missing) throw fail(409, 'Tailscale isn’t installed on this PC.');
+  // HTTPS certificates are off for this tailnet: Tailscale gives a link to turn them on.
+  const link = (r.out.match(/https:\/\/login\.tailscale\.com\/\S+/) || [])[0] || null;
+  if (link) return { ...(await tailscaleStatus()), enable: link };
+  if (!r.ok) throw fail(500, `Tailscale couldn’t set it up: ${r.out.trim().split(/\r?\n/).slice(-3).join(' ')}`);
+  log(`Phone access: Tailscale now serves it over https (port ${port}).`);
+  return await tailscaleStatus();
+}
 
 const appUrl = `http://127.0.0.1:${PORT}/`;
 const openRunning = () => { console.log(`Already running at ${appUrl}. Opening it.`); sys.openAppWindow(appUrl, config().prefs).finally(() => setTimeout(() => process.exit(0), 800)); };

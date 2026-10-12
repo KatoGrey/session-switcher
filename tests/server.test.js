@@ -264,3 +264,46 @@ test('page scripts are served from ui/, and nothing else is', async () => {
     }
   } finally { await s.stop(); }
 });
+
+test('push: a paired phone signs up for notifications; Allow/Deny needs its one-time token; removing the phone stops them', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  const s = await startServer(dataDir);
+  try {
+    const port = await freePort();
+    assert.equal((await s.call('/api/phone', { enabled: true, port })).status, 200);
+    const phone = `http://127.0.0.1:${port}`;
+    // Before pairing: the worker and the manifest (nothing private), and nothing else.
+    const sw = await fetch(`${phone}/sw.js`);
+    assert.equal(sw.status, 200); assert.match(await sw.text(), /notificationclick/);
+    assert.equal((await (await fetch(`${phone}/manifest.webmanifest`)).json()).display, 'standalone');
+    assert.equal((await fetch(`${phone}/api/push`)).status, 401);
+    // Pair, as the phone does.
+    const { code } = (await s.call('/api/phone/pair', {})).json;
+    const p = await fetch(`${phone}/pair?code=${code}&name=Test`, { redirect: 'manual' });
+    const cookie = p.headers.get('set-cookie').split(';')[0];
+    const html = await (await fetch(`${phone}/`, { headers: { cookie } })).text();
+    const token = html.match(/TOKEN = '([a-f0-9]+)'/)[1];
+    const call = async (q, body, { tok = true } = {}) => {
+      const r = await fetch(phone + q, { method: body ? 'POST' : 'GET', headers: { cookie, ...(tok ? { 'x-switcher-token': token } : {}), 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      return { status: r.status, json: await r.json().catch(() => null) };
+    };
+    const st = (await call('/api/push')).json;
+    assert.equal(st.phone, true); assert.equal(st.subscribed, false); assert.match(st.key, /^B[\w-]{80,}$/);
+    const ua = require('crypto').createECDH('prime256v1'); ua.generateKeys();
+    const subscription = { endpoint: 'https://push.example.invalid/sub/1', keys: { p256dh: ua.getPublicKey().toString('base64url'), auth: require('crypto').randomBytes(16).toString('base64url') } };
+    assert.equal((await call('/api/push/subscribe', { subscription, prefs: { levels: {}, tz: 'Europe/London' } })).status, 200);
+    assert.equal((await call('/api/push')).json.subscribed, true);
+    assert.equal((await s.call('/api/phone')).json.pushPhones, 1, 'the PC sees it');
+    assert.equal((await s.call('/api/push/subscribe', { subscription })).status, 403, 'only a phone signs itself up');
+    // The notification's buttons send no page token; a wrong or used one-time token is refused.
+    assert.equal((await call('/api/push/act', { token: 'nope', decision: 'allow' }, { tok: false })).status, 410);
+    assert.equal((await call('/api/push/subscribe', { subscription }, { tok: false })).status, 403, 'everything else still needs the page’s token');
+    // Removing the phone stops its notifications.
+    const id = (await s.call('/api/phone')).json.devices[0].id;
+    assert.equal((await s.call('/api/phone/forget', { id })).json.pushPhones, 0);
+    assert.equal((await call('/api/push')).status, 401);
+    // Tailscale's status reads either way (installed or not).
+    assert.equal((await s.call('/api/phone/tailscale')).status, 200);
+    assert.equal((await call('/api/phone/tailscale')).status, 401);
+  } finally { await s.stop(); }
+});
