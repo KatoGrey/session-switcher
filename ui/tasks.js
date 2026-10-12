@@ -4,6 +4,7 @@
 
 async function loadTasks() { S.tasks = (await api('/api/tasks')).tasks || []; renderQueue(); }
 
+const REPEAT_LABEL = { daily: 'every day', weekdays: 'every weekday', weekly: 'every week' };
 const taskWaiting = t => (t.why === 'time' ? `Starts ${new Date(t.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
   : t.why === 'room' ? 'Waiting for an account with room' : t.why === 'account' ? 'Waiting for a signed-in account' : 'Starting…');
 function taskRow(t) {
@@ -14,7 +15,7 @@ function taskRow(t) {
     ? `<button class="btn sm" data-act="task-start" data-id="${esc(t.id)}">Start now</button><button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Remove from the queue" title="Remove">✕</button>`
     : t.state === 'started' && t.key ? `<button class="btn sm" data-act="task-open" data-key="${esc(t.key)}">Open it</button><button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Clear" title="Clear">✕</button>`
       : `<button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Remove" title="Remove">✕</button>`;
-  return `<li class="task ${t.state}" data-task="${esc(t.id)}"><div class="tk-in"><b class="tk-p">${esc(first.slice(0, 160))}</b><small>${esc(t.folder)} · ${esc(who)}</small>${st}</div><div class="tk-b">${btns}</div></li>`;
+  return `<li class="task ${t.state}" data-task="${esc(t.id)}"><div class="tk-in"><b class="tk-p">${esc(first.slice(0, 160))}</b><small>${esc(t.folder)} · ${esc(who)}${t.repeat ? ` · <span class="tk-rep" title="A routine: each time it starts, the next one is queued">↻ ${esc(REPEAT_LABEL[t.repeat] || t.repeat)}</span>` : ''}</small>${st}</div><div class="tk-b">${btns}</div></li>`;
 }
 function renderQueue() {
   const sec = $('secQueue'), list = $('queueList');
@@ -38,6 +39,7 @@ function taskDialog() {
         <label id="tkAcctWrap">Account<select id="tkAcct"></select></label>
         <label>When<select id="tkWhen"><option value="now">As soon as there’s room</option><option value="at">Not before…</option></select></label>
         <label id="tkAtWrap" hidden>Time<input type="datetime-local" id="tkAt"></label>
+        <label id="tkRepWrap" hidden>Repeat<select id="tkRepeat"><option value="">Just once</option><option value="daily">Every day</option><option value="weekdays">Every weekday</option><option value="weekly">Every week</option></select></label>
       </div>
       <label class="tk-prompt">What should it do?<select id="tkFrom"><option value="">Start from a saved prompt…</option></select><textarea id="tkText" rows="7" placeholder="Write the README for this project: how to install it, run it and test it."></textarea></label>
       <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-tk="close">Cancel</button><button type="submit" class="btn prime" id="tkGo">Queue it</button></div>
@@ -46,7 +48,7 @@ function taskDialog() {
   d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-tk="close"]')) d.close(); });
   d.addEventListener('change', e => {
     if (e.target.id === 'tkWho') $('tkAcctWrap').hidden = e.target.value === 'codex';
-    if (e.target.id === 'tkWhen') $('tkAtWrap').hidden = e.target.value !== 'at';
+    if (e.target.id === 'tkWhen') $('tkAtWrap').hidden = $('tkRepWrap').hidden = e.target.value !== 'at';
     if (e.target.id === 'tkFrom' && e.target.value) {
       const pr = S.prompts.find(x => x.id === e.target.value);
       const p = S.projects.find(x => x.cwd === $('tkProject').value);
@@ -57,7 +59,7 @@ function taskDialog() {
   $('tkForm').addEventListener('submit', wrap(async e => {
     e.preventDefault();
     const when = $('tkWhen').value;
-    const task = { cwd: $('tkProject').value, provider: $('tkWho').value, accountId: $('tkAcct').value, prompt: $('tkText').value, when, at: when === 'at' && $('tkAt').value ? new Date($('tkAt').value).toISOString() : null };
+    const task = { cwd: $('tkProject').value, provider: $('tkWho').value, accountId: $('tkAcct').value, prompt: $('tkText').value, when, at: when === 'at' && $('tkAt').value ? new Date($('tkAt').value).toISOString() : null, repeat: when === 'at' ? $('tkRepeat').value || null : null };
     const r = await api('/api/tasks', { action: 'add', task });
     S.tasks = r.tasks; renderQueue();
     d.close();
@@ -75,7 +77,7 @@ function openTaskDialog(cwd = null, text = '') {
   $('tkAcct').innerHTML = `<option value="auto">Whichever has the most room</option>${S.accounts.filter(canLaunch).map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}`;
   $('tkFrom').innerHTML = `<option value="">Start from a saved prompt…</option>${S.prompts.map(pr => `<option value="${esc(pr.id)}">${esc(pr.title)}</option>`).join('')}`;
   $('tkFrom').hidden = !S.prompts.length;
-  $('tkWhen').value = 'now'; $('tkAtWrap').hidden = true; $('tkAcctWrap').hidden = false; $('tkText').value = '';
+  $('tkWhen').value = 'now'; $('tkAtWrap').hidden = true; $('tkRepWrap').hidden = true; $('tkRepeat').value = ''; $('tkAcctWrap').hidden = false; $('tkText').value = '';
   const soon = new Date(Date.now() + 3600e3); soon.setMinutes(0, 0, 0);
   $('tkAt').value = new Date(soon - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   if (text) $('tkText').value = text;

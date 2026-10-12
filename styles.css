@@ -2400,6 +2400,7 @@ body.solo .c-head .icon.c-backm{display:none}
 .as-b{margin:0;padding:0 10px 10px}
 .as-b [hidden]{display:none}
 @media (max-width:640px){.aside-card{right:8px;width:calc(100% - 16px)}}
+.tk-rep{color:var(--gilt)}
 .done-chats{margin-top:14px}
 .done-chats summary{cursor:pointer;padding:6px 2px;font:500 11px var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ash)}
 .done-chats summary:hover{color:var(--parch-2)}

@@ -743,3 +743,16 @@ test('branch: a new chat with everything up to the end of that reply; the origin
   assert.equal(branchSession(file, 'msg_3', 'other-id').lines, 6, 'from the last reply: all of it');
   assert.throws(() => branchSession(file, 'msg_9', 'x-id'), /isn’t in the chat’s file/);
 });
+
+test('tasks: a routine queues its next run, at the same time on its next day', () => {
+  const at = new Date(2026, 9, 9, 9, 0).toISOString();   // a Friday, 9:00
+  const fri = new Date(2026, 9, 9, 9, 30).getTime();
+  assert.equal(new Date(tasks.nextRun(at, 'daily', fri)).getDate(), 10);
+  assert.equal(new Date(tasks.nextRun(at, 'weekdays', fri)).getDay(), 1, 'Friday → Monday');
+  assert.equal(new Date(tasks.nextRun(at, 'weekly', fri)).getDate(), 16);
+  // Missed while the PC was off: the next one still to come, not a pile of old ones.
+  assert.ok(Date.parse(tasks.nextRun(at, 'daily', fri + 5 * 864e5)) > fri + 5 * 864e5);
+  const n = tasks.nextOf({ id: 'a', repeat: 'daily', at, state: 'started', key: 'k', prompt: 'x' }, fri);
+  assert.ok(n.id !== 'a' && n.state === 'queued' && n.key === null && n.repeat === 'daily');
+  assert.equal(tasks.nextOf({ id: 'b', at, state: 'started' }), null, 'a one-off has no next');
+});

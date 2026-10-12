@@ -377,6 +377,9 @@ async function startTask(t, account) {
   await chat.beforeTurn();
   chat.send(t.prompt, []);
   Object.assign(t, { state: 'started', key: info.key, accountName: info.accountName || account.name || null, doneAt: new Date().toISOString(), error: null });
+  // A routine: its next run waits in the queue.
+  const next = tasksLib.nextOf(t);
+  if (next) taskList.push(next);
   log(`Task started in ${t.folder}: ${t.prompt.split('\n')[0].slice(0, 80)}`);
 }
 async function runQueue(onlyId = null, force = false) {
@@ -389,7 +392,7 @@ async function runQueue(onlyId = null, force = false) {
       const ctx = queueContext();
       const r = tasksLib.readyAccount(force ? { ...t, when: 'now' } : t, ctx);
       if (!r.account) continue;
-      try { await startTask(t, r.account); } catch (err) { Object.assign(t, { state: 'failed', error: err.message, doneAt: new Date().toISOString() }); log(`Task failed to start: ${err.message}`); }
+      try { await startTask(t, r.account); } catch (err) { Object.assign(t, { state: 'failed', error: err.message, doneAt: new Date().toISOString() }); log(`Task failed to start: ${err.message}`); if (t.repeat && !taskList.some(x => x.state === 'queued' && x.repeat && x.prompt === t.prompt && x.cwd === t.cwd)) { const next = tasksLib.nextOf(t); if (next) taskList.push(next); } }
       changed = true;
     }
     if (changed) saveTasks();
