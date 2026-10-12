@@ -959,7 +959,7 @@ body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr
   .chat-h { flex-wrap: wrap; row-gap: 6px; gap: 8px; }
   .chat-h .ch-name { flex: 1 1 calc(100% - 100px); }
   /* ⋯ stays top right, next to the name; the tags and other buttons take the second line. */
-  .chat-h [data-chatmenu] { order: 1; align-self: flex-start; }
+  .chat-h [data-chatmenu] { order: 1; }
   .chat-h .ch-name ~ :not([data-chatmenu]) { order: 2; }
   .chat-h .crumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-h .ch-name ~ * { flex: none; }
