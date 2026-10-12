@@ -275,7 +275,8 @@ document.addEventListener('click', e => {
   if ((b = el('[data-ncwho]'))) return accountMenu(b);
   if ((b = el('[data-triage]'))) return startTriage();
   if ((b = el('[data-tr]'))) { b.disabled = true; return wrap(triageAct)(b.dataset.tr); }
-  if ((b = el('[data-cmd]'))) { if ($('cmdInput')) $('cmdInput').value = b.dataset.cmd; return askCommander(b.dataset.cmd); }
+  // A suggestion only fills the box (easy to brush past on a phone); Ask or Enter sends it.
+  if ((b = el('[data-cmd]'))) { const i = $('cmdInput'); if (i) { i.value = b.dataset.cmd; i.focus(); } return undefined; }
   if ((b = el('[data-floor]'))) return wrap(setLook)({ floor: Number(b.dataset.floor) });
   if ((b = el('[data-quietdays]'))) return wrap(setLook)({ quietDays: Number(b.dataset.quietdays) });
   if ((b = el('[data-refreshplans]'))) { S.plansRefreshing = true; renderPlansOnly(); return loadPlans(true).catch(err => toast(err.message)).finally(() => { S.plansRefreshing = false; renderPlansOnly(); }); }
