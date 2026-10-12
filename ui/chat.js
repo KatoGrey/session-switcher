@@ -305,7 +305,10 @@ function connect() {
 
 function reset() {
   mergeStart(false);
-  C.compPending = []; C.compCursor = null; C.compMore = false; C.extras = [];
+  C.compPending = []; C.compCursor = null; C.compMore = false; C.extras = []; C.chatRefs = new Map();
+  // Nothing from the chat you were in carries over: its side question ends, its run panel and the
+  // picture viewer close.
+  closeAside(); closeLightbox(); resetRun();
   Recent.main = []; Recent.comp = [];
   PARTS.clear();
   C.planCard = null;
@@ -406,7 +409,8 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   $c('cText').focus();
 }
 
-async function open({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false } = {}) {
+// (Not "open"/"close": as page-wide names those would replace the browser's window.open and window.close.)
+async function openChatView({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false } = {}) {
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
   const [known] = sessionId ? findSession(sessionId) : [null];
   // An OpenClaw agent's session is read here; it carries on in OpenClaw.
@@ -421,7 +425,7 @@ async function open({ sessionId = null, cwd = null, mode = 'resume', force = fal
       const name = PROV_NAME[prov];
       const join = await window.appConfirm(`Add ${name} to “${here.title || 'the open chat'}”?\n\nThat chat is already open in this project. ${name} joins it and reads everything in it, so the work stays in one place.`, { ok: `Add ${name} to it`, cancel: `Start a separate ${name} chat`, escape: null });
       if (join === null) return undefined;
-      if (!join) return open({ sessionId, cwd, mode, force, accountId, provider, initialText, separate: true });
+      if (!join) return openChatView({ sessionId, cwd, mode, force, accountId, provider, initialText, separate: true });
       await openKey(here.key);
       setTarget('comp');
       if (initialText) placeText(initialText, true);
@@ -431,7 +435,7 @@ async function open({ sessionId = null, cwd = null, mode = 'resume', force = fal
   // A new Claude chat about to open as an account that's out of usage: offer the one with room.
   if (mode === 'new' && prov === 'claude' && !accountId && a) {
     const alt = await roomierAccount(a);
-    if (alt) return open({ sessionId, cwd, mode, force, accountId: alt.id, provider, initialText });
+    if (alt) return openChatView({ sessionId, cwd, mode, force, accountId: alt.id, provider, initialText });
   }
   let info;
   try {
@@ -439,7 +443,7 @@ async function open({ sessionId = null, cwd = null, mode = 'resume', force = fal
   } catch (err) {
     if (err.reason === 'codex-signin' || err.reason === 'codex-missing') { toast(err.message, 9000); return undefined; }
     if (err.reason === 'running') {
-      if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return open({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText });
+      if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return openChatView({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText });
       return watch({ sessionId, source: 'terminal' });
     }
     throw err;
@@ -512,6 +516,9 @@ async function refreshWatch() {
     $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
     for (const it of h.items) renderItem($c('cFeed'), it, false);
     for (const d of $c('cFeed').querySelectorAll('details[data-tool-id]')) if (open.has(d.dataset.toolId)) d.open = true;
+    // The rebuilt feed gets its kept changes, reviews and "queued for later" marks again.
+    for (const x of C.extras || []) x.done = false;
+    applyExtras(); laterMarks();
     C.historyStart = h.start; C.historyCursor = h.cursor || null;
     $c('cEarlier').hidden = h.start <= 0;
     $c('cEarlier').textContent = 'Show earlier messages';
@@ -519,10 +526,11 @@ async function refreshWatch() {
   } catch { /* try again next time */ } finally { watchBusy = false; }
 }
 
-function close(silent) {
+function closeChatView(silent) {
   if (C.es) { C.es.close(); C.es = null; }
   if (C.comp && C.comp.es) { C.comp.es.close(); C.comp.es = null; }
   closePick();
+  closeAside(); closeLightbox(); resetRun();
   clearInterval(C.watchTimer);
   $c('chat').hidden = true;
   document.body.classList.remove('chat-open');
@@ -575,7 +583,7 @@ async function branchFrom(turn) {
     }
   }
   await loadSessions().catch(() => {});
-  await open({ sessionId: r.sessionId });
+  await openChatView({ sessionId: r.sessionId });
   toast(pick === 'rewind' ? `Branched, and the files are back as they were${kept ? ` (${kept} changed since were left as they are)` : ''}.` : 'Branched. The original chat is as it was.', 5000);
 }
 function openFile(p) { return Viewer.open({ path: p, key: C.key, session: C.sessionId || (C.watch && C.watch.sessionId), cwd: C.info && C.info.cwd }); }
@@ -606,7 +614,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const id = ri.dataset.navchat;
       chat.classList.remove('show-rail'); S.closed.delete(`s:${id.toLowerCase()}`);
       if (isViewing({ sessionId: id })) return;
-      return isRunning(id) ? watch({ sessionId: id, source: 'terminal' }) : open({ sessionId: id });
+      return isRunning(id) ? watch({ sessionId: id, source: 'terminal' }) : openChatView({ sessionId: id });
     }
     if (ri) { const li = ri.closest('li'); const x = li && findActivity(li.dataset.k); chat.classList.remove('show-rail'); if (x && !isViewing(x)) return openActivity(x); return; }
     const thumb = t.closest('.thumb, .pic-b'); if (thumb) return lightbox(thumb.dataset.full, thumb);
@@ -633,7 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const gi = t.closest('[data-giveimg]'); if (gi) return giveImage(gi.dataset.giveimg);
     const c = t.closest('[data-c]'); if (!c) return;
     switch (c.dataset.c) {
-      case 'back': if (SOLO) { window.close(); return undefined; } return close();
+      case 'back': if (SOLO) { window.close(); return undefined; } return closeChatView();
       case 'rail': return chat.classList.toggle('show-rail');
       case 'ledger': {
         if (matchMedia('(max-width: 1320px)').matches) return chat.classList.toggle('show-ledger');
@@ -670,18 +678,18 @@ document.addEventListener('DOMContentLoaded', () => {
         ]);
       }
       case 'followup': return openLaterDialog(c.closest('.turn'));
-      case 'laterhub': { close(); go('hub'); setTimeout(() => $('secQueue')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 300); return undefined; }
+      case 'laterhub': { closeChatView(); go('hub'); setTimeout(() => $('secQueue')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 300); return undefined; }
       case 'copyturn': {
         // The reply as written (Markdown), not as shown: headings, lists and code fences come along.
         const text = turnMarkdown(c.closest('.turn'));
         if (!text) { toast('This reply has no text to copy yet.', 2500); return undefined; }
         return copyText(text, null).then(ok => { if (ok) copiedButton(c); });
       }
-      case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return open({ sessionId: id, mode: 'resume', accountId: provider === 'codex' ? null : accountId, provider }); }
-      case 'fork': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'fork' }); }
-      case 'takeover': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'resume' }); }
+      case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return openChatView({ sessionId: id, mode: 'resume', accountId: provider === 'codex' ? null : accountId, provider }); }
+      case 'fork': { const id = C.watch && C.watch.sessionId; return openChatView({ sessionId: id, mode: 'fork' }); }
+      case 'takeover': { const id = C.watch && C.watch.sessionId; return openChatView({ sessionId: id, mode: 'resume' }); }
       case 'more': return showMenu(c, C.watch && C.provider === 'openclaw' ? chatHeadItems() : C.watch ? [
-        { glyph: '⧉', label: 'Open a copy here', hint: 'keeps the original', run: () => open({ sessionId: C.watch.sessionId, mode: 'fork' }) },
+        { glyph: '⧉', label: 'Open a copy here', hint: 'keeps the original', run: () => openChatView({ sessionId: C.watch.sessionId, mode: 'fork' }) },
         '-',
         ...chatHeadItems(),
         { label: 'Copy terminal command', run: async () => { const r = await api('/api/command', { account: S.acct, sessionId: C.watch.sessionId }); return copyText(r.command, 'Copied the command.'); } },
@@ -690,7 +698,7 @@ document.addEventListener('DOMContentLoaded', () => {
         '-',
         { glyph: '➤', label: 'Move to a terminal', hint: 'same account', disabled: !C.sessionId, why: 'Send a message first', run: async () => {
           if (!(await window.appConfirm('Continue this chat in a terminal?\n\nIt stops here and resumes in a terminal window as the same account.', { ok: 'Move it' }))) return;
-          const key = C.key; close(); const r = await api('/api/chat/handoff', { key });
+          const key = C.key; closeChatView(); const r = await api('/api/chat/handoff', { key });
           toast(r.dryRun ? `Would open a ${r.how}:\n${r.script}` : `Continuing in a ${r.how}.`, 7000);
         } },
         { label: 'Copy terminal command', disabled: !C.sessionId, run: async () => { const r = await api('/api/command', { account: C.info.accountId, sessionId: C.sessionId }); return copyText(r.command, 'Copied the command.'); } },
@@ -825,10 +833,10 @@ function chatHeadItems() {
     ...(claudeReviewOK() ? [{ glyph: '◇', label: 'Have Claude review the changes', hint: 'asked not to change anything', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'claude') }] : []),
     ...(claudeReviewOK() && codexOK() ? [{ glyph: '◈', label: 'Have both review the changes', hint: 'one card, where they agree first', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'both') }] : []),
     ...(reviewAvailable() || claudeReviewOK() ? ['-'] : []),
-    ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; close(); popOutChat(sid); } }] : []),
+    ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; closeChatView(); popOutChat(sid); } }] : []),
     ...(C.info && C.info.cwd && !C.watch ? [{ glyph: '▶', label: 'Run the project', hint: 'its dev server or start script, with its output', run: () => openRun() }] : []),
     ...(C.key && !C.watch ? [{ glyph: '❦', label: 'Ask a side question', hint: '/btw · doesn’t derail this chat', run: () => openAside() }] : []),
-    ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark this chat done', hint: 'off the lists until it’s used again', run: () => { const sid = id; close(); return setChatDone(sid, true); } }] : []),
+    ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark this chat done', hint: 'off the lists until it’s used again', run: () => { const sid = id; closeChatView(); return setChatDone(sid, true); } }] : []),
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
     { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },
     '-',
@@ -945,7 +953,7 @@ function chatContextItems(t, at) {
 }
 
 window.ChatUI = {
-  open, openKey, watch, close, md, renderRail, refreshUsage: refreshChatUsage, isViewing, neighbor: railNeighbor,
+  open: openChatView, openKey, watch, close: closeChatView, md, renderRail, refreshUsage: refreshChatUsage, isViewing, neighbor: railNeighbor,
   accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
   showLedger: () => { const chat = $c('chat'); if (matchMedia('(max-width: 1320px)').matches) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
   sessionsChanged: () => { if (C.watch) refreshWatch(); },
@@ -971,6 +979,6 @@ window.ChatUI = {
     return out;
   },
   // For the phone's Back button: closes the picker, then the chat. True if it did something.
-  back: () => { if (closeLightbox()) return true; if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { close(); return true; } return false; },
+  back: () => { if (closeLightbox()) return true; if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { closeChatView(); return true; } return false; },
   isOpen: () => !$c('chat').hidden, key: () => C.key,
 };

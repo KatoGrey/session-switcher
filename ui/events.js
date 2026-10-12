@@ -420,7 +420,7 @@ function projectItems(cwd) {
     { label: S.platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
     { label: 'Browse files', disabled: !p.exists, run: () => Viewer.open({ path: cwd, cwd }) },
     { label: 'Copy folder path', run: () => copyText(cwd) },
-    ...(p.added && !p.sessions.length ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd }); await loadSessions(); renderAll(); } }] : []),
+    ...(p.added && !hasChats(p) ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd }); await loadSessions(); renderAll(); } }] : []),
   ];
 }
 function activityItems(x) {

@@ -70,7 +70,7 @@ function renderNav() {
       + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${provOf(c) === 'claude' ? '' : provOf(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : isOpenClaw(c) ? ' · OpenClaw' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
   const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0), nOc = ocF.reduce((n, x) => n + x.list.length, 0);
   const showCodex = S.codex && S.codex.enabled;
-  const fresh = S.projects.filter(p => !p.sessions.length);
+  const fresh = S.projects.filter(p => !hasChats(p));
   const blocked = a && (a.pinnedOrg || a.expectEmail) && !a.lock.ok;
   const html = `
     <button class="seal ${blocked ? 'blocked' : ''}" id="seal" aria-haspopup="menu" aria-expanded="false" title="Choose which account new chats open as">
@@ -908,7 +908,7 @@ function worldCard(p, i) {
     <button class="w-art" data-world="${esc(p.cwd)}" aria-label="Open ${esc(p.name)}">${worldArt(p, w)}<span class="w-shade" aria-hidden="true"></span>
       <span class="w-title">${crestHtml(p, 30)}<span class="w-name">${esc(p.name)}</span>${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}</span></button>
     <div class="w-body">
-      <p class="w-today ${bits.length ? 'on' : ''}">${bits.length ? `<span class="glyph" aria-hidden="true">✦</span>Today: ${esc(bits.join(', '))}` : p.sessions.length ? 'Quiet today' : 'New project'}</p>
+      <p class="w-today ${bits.length ? 'on' : ''}">${bits.length ? `<span class="glyph" aria-hidden="true">✦</span>Today: ${esc(bits.join(', '))}` : hasChats(p) ? 'Quiet today' : 'New project'}</p>
       ${latest ? `<p class="w-last"><button class="linkish" data-preview="${esc(latest.id)}" title="${esc(latest.title)}">${esc(latest.title)}</button><span>${esc(agoL(latest.updated))}</span></p>` : `<p class="w-last quiet">No chats yet${p.added && p.updated ? `. Added ${esc(agoL(p.updated))}` : ''}.</p>`}
       <div class="w-act">
         ${resumable && p.exists ? `<button class="btn sm" data-continue="${esc(resumable.id)}" title="${esc(resumable.title)}">Continue</button>` : ''}

@@ -11,6 +11,12 @@ function runBox() {
   return box;
 }
 const runCwd = () => (C.info && C.info.cwd) || null;
+// Another chat: the panel goes (it was about the other chat's project); the run itself carries on.
+function resetRun() {
+  clearTimeout(Run.timer);
+  Object.assign(Run, { cwd: null, st: null, open: false });
+  const box = $c('cRun'); if (box) { box.hidden = true; box.innerHTML = ''; box._h = ''; }
+}
 async function openRun(start = true) {
   const cwd = runCwd(); if (!cwd) { toast('Open a chat in a project first.'); return; }
   Run.cwd = cwd; Run.open = true;
@@ -18,7 +24,7 @@ async function openRun(start = true) {
   runBox().hidden = false;
   Run.st = await api(`/api/run?cwd=${encodeURIComponent(cwd)}`);
   if (start && !Run.st.running) {
-    if (!Run.st.cmd) { await setRunCommand(); if (!Run.st.cmd) return; }
+    if (!Run.st.cmd) { await setRunCommand(); if (!Run.st.cmd) { renderRun(); return; } }   // no command yet: the panel says so
     Run.st = await api('/api/run', { cwd, action: 'start' });
   }
   renderRun();

@@ -164,7 +164,7 @@ function worldMenu(anchor) {
     '-',
     { label: 'Look for new files', hint: 'documents and pictures', disabled: !p.exists, run: async () => { await loadWorld(p.cwd, true); renderFolder(); toast('Up to date.', 1500); } },
     { label: 'Edit prompts…', run: openPromptEditor },
-    ...(p.added && !p.sessions.length ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd: p.cwd }); await loadSessions(); go('hub'); toast(`Removed ${p.name} from the list. Its folder is still there.`, 4000); } }] : []),
+    ...(p.added && !hasChats(p) ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd: p.cwd }); await loadSessions(); go('hub'); toast(`Removed ${p.name} from the list. Its folder is still there.`, 4000); } }] : []),
   ]);
 }
 function renderSearch() {

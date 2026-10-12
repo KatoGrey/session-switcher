@@ -93,7 +93,8 @@ async function loadTailscale(force = false) {
 function renderTailscale(phones = Push.phones || 0) {
   const box = $('tsBox'); if (!box) return;
   const t = Push.ts, apps = Push.apps || 0;
-  const intro = `<p class="ph-h">Notifications on your phone</p><p class="ph-note"><b>Android:</b> in the app, open Setup → <b>Notifications on this phone</b>. They come while the phone is on your Wi-Fi, with Allow and Deny on them. ${apps ? `<b>${apps}</b> ${apps === 1 ? 'phone is' : 'phones are'} listening now.` : ''}</p><details class="ts-more"${t && t.serving ? ' open' : ''}><summary>iPhone, or a browser (needs Tailscale)</summary><p class="ph-note">Phones only allow a browser’s notifications on a secure (https) address. Tailscale gives this PC one for free, reachable only by your own devices, and it works away from home too.</p>`;
+  const wasOpen = !!box.querySelector('details.ts-more[open]');   // a click inside it doesn't fold it
+  const intro = `<p class="ph-h">Notifications on your phone</p><p class="ph-note"><b>Android:</b> in the app, open Setup → <b>Notifications on this phone</b>. They come while the phone is on your Wi-Fi, with Allow and Deny on them. ${apps ? `<b>${apps}</b> ${apps === 1 ? 'phone is' : 'phones are'} listening now.` : ''}</p><details class="ts-more"${(t && t.serving) || wasOpen ? ' open' : ''}><summary>iPhone, or a browser (needs Tailscale)</summary><p class="ph-note">Phones only allow a browser’s notifications on a secure (https) address. Tailscale gives this PC one for free, reachable only by your own devices, and it works away from home too.</p>`;
   let body;
   if (!t) body = '<p class="loading">Checking for Tailscale…</p>';
   else if (t.error) body = `<p class="ph-note warn">${esc(t.error)}</p>`;

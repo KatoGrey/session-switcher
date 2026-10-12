@@ -345,7 +345,7 @@ async function otherChatBlock(ref) {
   let total = 0;
   for (let i = lines.length - 1; i >= 0 && keep.length < 12; i--) { if (keep.length && total + lines[i].length > 9000) break; total += lines[i].length; keep.unshift(lines[i]); }
   const attr = v => String(v).replace(/["<>\n]/g, ' ').slice(0, 120);
-  return `<other-chat title="${attr(title)}" folder="${attr(folder)}" items="${keep.length}">\nFrom the user’s other chat “${title}”${folder ? ` (in ${folder})` : ''}, its latest messages, for context (that chat carries on separately):\n\n${keep.join('\n\n') || '(Nothing in it yet.)'}\n</other-chat>\n\n`;
+  return `<other-chat title="${attr(title)}" folder="${attr(folder)}" items="${keep.length}">\nFrom the user’s other chat “${title}”${folder ? ` (in ${folder})` : ''}, its latest messages, for context (that chat carries on separately):\n\n${(keep.join('\n\n') || '(Nothing in it yet.)').replace(/<\/other-chat>/gi, '</other‑chat>')}\n</other-chat>\n\n`;
 }
 function codexFind(id) {
   const t = id && codex.known(String(id));

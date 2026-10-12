@@ -63,12 +63,13 @@ function laterCount() {
 }
 async function openLaterDialog(turn) {
   const cwd = C.info && C.info.cwd;
-  if (!cwd || !S.projects.some(p => p.cwd === cwd && p.exists)) { toast('This chat’s folder isn’t one of your projects, so it can’t queue work for it.', 5000); return; }
+  const proj = cwd && S.projects.find(p => p.exists && normPath(p.cwd).replace(/\/+$/, '') === normPath(cwd).replace(/\/+$/, ''));
+  if (!proj) { toast('This chat’s folder isn’t one of your projects, so it can’t queue work for it.', 5000); return; }
   const d = laterDialog();
   const sel = getSelection();
   const picked = sel && !sel.isCollapsed && turn.contains(sel.anchorNode) ? sel.toString().trim() : '';
   const steps = picked ? [picked] : laterSteps(turnMarkdown(turn));
-  const project = (S.projects.find(p => p.cwd === cwd) || {}).name || base(cwd);
+  const project = proj.name || base(proj.cwd);
   $('ltIntro').innerHTML = `Each one starts later as <b>its own chat</b> in ${esc(project)}, knowing this chat’s latest messages, so this chat stays on track. They wait under <b>Queued</b> on the hub, and this reply shows what’s queued from it.`;
   $('ltSteps').innerHTML = steps.length
     ? `<p class="lt-h">${picked ? 'What you selected' : 'Next steps from this reply'}</p>${steps.map((x, i) => `<label class="lt-step"><input type="checkbox" ${picked || i === 0 ? 'checked' : ''}><textarea rows="1" aria-label="Step ${i + 1}">${esc(x)}</textarea></label>`).join('')}`
@@ -98,7 +99,7 @@ async function openLaterDialog(turn) {
   const from = { id: C.sessionId, title: $c('cTitle').textContent || '', mid };
   d.close();
   let r = null;
-  for (const text of items) r = await api('/api/tasks', { action: 'add', task: { cwd, provider: $('ltWho').value, accountId: 'auto', prompt: text, when: at ? 'at' : 'now', at, from } });
+  for (const text of items) r = await api('/api/tasks', { action: 'add', task: { cwd: proj.cwd, provider: $('ltWho').value, accountId: 'auto', prompt: text, when: at ? 'at' : 'now', at, from } });
   if (r) { S.tasks = r.tasks; renderQueue(); }
   laterMarks();
   const whenText = at ? new Date(at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : 'as soon as an account has room';
@@ -115,6 +116,6 @@ function laterMarks() {
     const part = feed.querySelector(`.part[data-mid="${CSS.escape(mid)}"]`), turn = part && part.closest('.turn');
     if (!turn) continue;
     const q = list.filter(t => t.state === 'queued').length, started = list.filter(t => t.state === 'started').length;
-    turn.insertAdjacentHTML('beforeend', `<p class="later-mark"><span class="glyph" aria-hidden="true">⏳</span>${[q ? `${q} queued for later` : '', started ? `${started} started` : ''].filter(Boolean).join(' · ')}: ${list.slice(0, 3).map(t => `<i>${esc(t.prompt.split('\n')[0].slice(0, 60))}</i>`).join(', ')}${list.length > 3 ? '…' : ''} <button type="button" class="linkish" data-c="laterhub">See the queue</button></p>`);
+    turn.insertAdjacentHTML('beforeend', `<p class="later-mark"><span class="glyph" aria-hidden="true">⏳</span>${[q ? `${q} queued for later` : '', started ? `${started} started` : '', list.length - q - started ? `${list.length - q - started} couldn’t start` : ''].filter(Boolean).join(' · ') || 'Queued for later'}: ${list.slice(0, 3).map(t => `<i>${esc(t.prompt.split('\n')[0].slice(0, 60))}</i>`).join(', ')}${list.length > 3 ? '…' : ''} <button type="button" class="linkish" data-c="laterhub">See the queue</button></p>`);
   }
 }

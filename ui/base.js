@@ -209,12 +209,14 @@ function highlight(text, q) {
 // Done chats: ones you marked done (until they're used again), and, with tidy-up on, ones with
 // nothing new for a while. They leave every list; each project keeps them under Done.
 function isDoneChat(s) {
-  if (!s || (S.running && S.running[s.id]) || (S.live && Object.values(S.live).some(c => c.sessionId && c.sessionId.toLowerCase() === s.id.toLowerCase()))) return false;
+  if (!s || (S.running && S.running[String(s.id).toLowerCase()]) || (S.live && Object.values(S.live).some(c => c.sessionId && c.sessionId.toLowerCase() === s.id.toLowerCase()))) return false;
   const m = (S.doneMarks || {})[s.id.toLowerCase()] || {};
   if (m.done && (s.updated || 0) <= m.done + 60000) return true;
   const days = (S.prefs && S.prefs.autoDone) || 0;
   return !!days && Date.now() - Math.max(s.updated || 0, m.undone || 0) > days * 864e5;
 }
+// Any chats at all, done ones included.
+const hasChats = p => !!((p.sessions || []).length || (p.done || []).length);
 function sortDone() {
   for (const p of S.projects) {
     const all = (p.sessions || []).concat(p.done || []).sort((a, b) => (b.updated || 0) - (a.updated || 0));

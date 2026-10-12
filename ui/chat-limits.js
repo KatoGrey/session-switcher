@@ -65,7 +65,7 @@ async function continueAs(accountId) {
   const a = S.accounts.find(x => x.id === accountId); if (!a) return;
   const last = lastToClaude();
   await api('/api/chat/stop', { key: C.key }).catch(() => {});
-  await open({ sessionId: id, mode: 'resume', accountId, provider: 'claude' });
+  await openChatView({ sessionId: id, mode: 'resume', accountId, provider: 'claude' });
   if (!ChatUI.isOpen() || C.sessionId !== id) return;
   if (last) putInBox(last);
   toast(`Now running as ${a.name}.${last ? ' Your last message is in the box: press Enter to send it again.' : ''}`, 6000);

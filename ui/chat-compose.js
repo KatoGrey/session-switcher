@@ -340,6 +340,9 @@ async function sendMessage() {
   try {
     // The app catches each one up on what it missed (lib/pairs.js); with Both they take turns.
     const refs = chatRefsIn(text);
+    // "@chat[…]" that isn't linked (a draft from before a reload, say): it would go without that chat.
+    const lost = [...String(text).matchAll(/@chat\[([^\]\n]+)\]/g)].map(m => m[1]).filter(l => !(C.chatRefs && C.chatRefs.get(l)));
+    if (lost.length) { toast(`“${lost[0]}” isn’t linked any more. Type @ and pick it again, so its messages come along.`, 6000); return; }
     const r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct }), ...(after ? { after: true } : {}) });
     clear();
     // Follow the partner's replies here (it may only just have started).
