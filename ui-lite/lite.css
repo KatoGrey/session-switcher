@@ -988,6 +988,6 @@ blockquote p { margin: 4px 0; }
 
 /* ---------- Games, Apps, Personal: one line per project ---------- */
 .flat-proj .flat-st { display: inline-flex; align-items: center; gap: 5px; flex: none; font-size: 11.5px; color: var(--muted); }
-.flat-proj .flat-st .st-dot { margin: 0; }
+.flat-proj .flat-btn { padding-left: 22px; }
 .flat-proj .proj-chev.flat-n { font-size: 11px; color: var(--muted); opacity: 1; }
 .flat-proj .proj-chev.flat-n::before, .flat-proj .proj-chev.flat-n::after { display: none; }
