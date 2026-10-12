@@ -813,6 +813,10 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .rt-esc textarea { margin-top: 6px; width: 100%; }
 .rt-form .acts { display: flex; gap: 8px; align-items: center; }
 .ev-row .side-tags { gap: 6px; }
+.ev-row[data-rtrun], .ev-row[data-go] { cursor: pointer; }
+.ev-row .ev-t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ev-row small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.hint.nowrap { white-space: nowrap; }
 .tag.warn { color: var(--st-bug); border-color: color-mix(in srgb, var(--st-bug) 40%, transparent); }
 /* The model menu: every provider's models, the rest of each folded under "More" */
 .pop { max-height: min(76vh, 640px); overflow-y: auto; }

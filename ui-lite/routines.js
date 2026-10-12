@@ -56,7 +56,29 @@ function presetCards() {
 }
 
 /* ---------- what came of the runs (on Now and on Routines) ---------- */
+// On Now: one row per routine (its latest report; tap it to read the run, × clears it and the
+// earlier ones), and the bug chats a sweep started as a single line that goes to Bugs.
+function nowEventsSection() {
+  const evs = rtEventsOpen();
+  if (!evs.length) return '';
+  const bugs = evs.filter(e => e.escalation && e.escalation.sessionId);
+  const groups = new Map();
+  for (const e of evs.filter(x => !bugs.includes(x))) { if (!groups.has(e.name)) groups.set(e.name, []); groups.get(e.name).push(e); }
+  const icon = e => (e.kind === 'failed' ? '<span class="rt-ic st-failed">✕</span>' : e.kind === 'needs-you' || e.kind === 'escalate' ? '<span class="dot needs-dot"></span>' : '<span class="rt-ic st-done">✓</span>');
+  const rows = [...groups.values()].map(g => {
+    const e = g[0], earlier = g.length - 1;
+    return `<div class="row ev-row" ${e.sessionId ? `data-rtrun="${esc(e.sessionId)}" data-prov="${esc(e.provider || '')}" role="button" title="Read the run"` : ''} data-cur="ev:${esc(e.id)}"><span>${icon(e)}</span>
+      <span class="t"><b class="ev-t">${esc(e.title)}</b><small>${esc(e.name)} · ${esc(ago(e.at))}${earlier ? ` · ${earlier} earlier` : ''}</small></span><span></span><span class="when"></span>
+      <button class="iconbtn" data-evseen="${esc(g.map(x => x.id).join(','))}" aria-label="Clear" title="Clear${earlier ? ' (and the earlier ones)' : ''}">×</button></div>`;
+  });
+  if (bugs.length) rows.push(`<div class="row ev-row" data-go="bugs" role="button" title="Open Bugs"><span><span class="dot needs-dot"></span></span>
+      <span class="t"><b>${bugs.length === 1 ? 'A new bug chat' : `${bugs.length} new bug chats`}</b><small>${esc(bugs.slice(0, 3).map(e => e.title).join(' · '))}${bugs.length > 3 ? ' …' : ''}</small></span><span></span><span class="when">Bugs ›</span>
+      <button class="iconbtn" data-evseen="${esc(bugs.map(x => x.id).join(','))}" aria-label="Clear" title="Clear">×</button></div>`);
+  return `<section class="section"><div class="sec-h"><h2>From your routines</h2><span class="n">${rows.length}</span><button class="hint nowrap" data-evseen="all">Clear all</button><button class="hint nowrap" data-go="routines" style="margin-left:12px">Routines ›</button></div>
+    <div class="rows">${rows.join('')}</div></section>`;
+}
 function eventsSection(all = false) {
+  if (!all) return nowEventsSection();
   const evs = all ? (S.rt.events || []).slice(0, 20) : rtEventsOpen();
   if (!evs.length) return all ? '' : '';
   const icon = e => (e.kind === 'escalate' ? '<span class="dot needs-dot"></span>' : e.kind === 'failed' ? '<span class="rt-ic st-failed">✕</span>' : e.kind === 'needs-you' ? '<span class="dot needs-dot"></span>' : '<span class="rt-ic st-done">✓</span>');
