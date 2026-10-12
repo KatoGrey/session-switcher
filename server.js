@@ -2057,6 +2057,8 @@ function chatEvents(req, res, url) {
 const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
 // Lite's side viewer shows links beside a chat (previews, dev servers on this Mac), so its page may
 // frame web pages and local servers. The full app's page keeps the stricter policy.
+// Lite's Home Screen icon for the look you picked (Safari reads it from the page, not from scripts).
+function liteIconPath() { let skin = 'plain'; try { skin = liteStore.get().look.skin; } catch { /* plain */ } return `/ui-lite/icon-${['plain', 'imperial', 'rebel'].includes(skin) ? skin : 'plain'}.png`; }
 const LITE_CSP = `${CSP}; frame-src 'self' https: http://localhost:* http://127.0.0.1:* http://*.localhost:*`;
 
 // Serves the app. Phone access (lib/remote.js) checks the phone's pairing first, then calls this
@@ -2074,7 +2076,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
     }
     // Switcher Lite: its own page and files, the same token and rules as the full app.
     if (req.method === 'GET' && (url.pathname === '/lite' || url.pathname === '/lite/')) {
-      const html = fs.readFileSync(path.join(APP_DIR, 'ui-lite', 'index.html'), 'utf8').replace('__TOKEN__', TOKEN).replace('__REMOTE__', remote ? 'true' : 'false');
+      const html = fs.readFileSync(path.join(APP_DIR, 'ui-lite', 'index.html'), 'utf8').replace('/apple-touch-icon.png', liteIconPath()).replace('__TOKEN__', TOKEN).replace('__REMOTE__', remote ? 'true' : 'false');
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': LITE_CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       return res.end(html);
     }
@@ -2082,7 +2084,14 @@ async function handleRequest(req, res, { remote = false } = {}) {
     if (req.method === 'GET' && (url.pathname === '/lite-sw.js' || url.pathname === '/lite.webmanifest')) {
       const sw = url.pathname === '/lite-sw.js';
       res.writeHead(200, { 'Content-Type': sw ? 'text/javascript; charset=utf-8' : 'application/manifest+json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
-      return res.end(fs.readFileSync(path.join(APP_DIR, 'ui-lite', sw ? 'sw.js' : 'manifest.json'), 'utf8'));
+      return res.end(fs.readFileSync(path.join(APP_DIR, 'ui-lite', sw ? 'sw.js' : 'manifest.json'), 'utf8').replace(/\/apple-touch-icon\.png", "sizes": "180x180"/, `${liteIconPath()}", "sizes": "512x512"`));
+    }
+    // Lite's own Home Screen icons, one per look.
+    if (req.method === 'GET' && /^\/ui-lite\/icon-(plain|imperial|rebel)\.png$/.test(url.pathname)) {
+      let buf;
+      try { buf = fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1))); } catch { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(buf);
     }
     if (req.method === 'GET' && /^\/ui-lite\/[a-z0-9-]+\.(js|css)$/.test(url.pathname)) {
       let text;

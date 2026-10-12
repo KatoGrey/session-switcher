@@ -1,7 +1,7 @@
 'use strict';
 /* Switcher's icon, one per look: two arrows passing each other (switching), drawn for Plain,
    Imperial and Rebel. The tab icon follows the look, or the one you pick (Look → Icon, kept on
-   this device). The Home Screen icon takes whichever is showing when you add Lite to it. */
+   this device). The Home Screen icon is a PNG per look (ui-lite/icon-*.png); the page names the look you picked. */
 
 const ICONS = {
   plain: { name: 'Plain', svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#2f6f4e"/><g fill="none" stroke="#f4efe2" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 24h28M37 16.5 44.5 24 37 31.5"/><path d="M48 40H20M27 32.5 19.5 40 27 47.5"/></g></svg>` },
@@ -17,16 +17,7 @@ function applyIcon(skin) {
   const key = iconFor(skin); if (key === shownIcon) return;
   shownIcon = key;
   const fav = $('favicon'); if (fav) { fav.href = iconUrl(key); if (typeof favBase !== 'undefined') favBase = null; }
-  const img = new Image();
-  img.onload = () => {
-    try {
-      const c = document.createElement('canvas'); c.width = c.height = 180;
-      c.getContext('2d').drawImage(img, 0, 0, 180, 180);
-      let a = document.querySelector('link[rel="apple-touch-icon"]');
-      if (!a) { a = document.createElement('link'); a.rel = 'apple-touch-icon'; document.head.appendChild(a); }
-      a.href = c.toDataURL('image/png');
-    } catch { /* keep the old one */ }
-  };
-  img.src = iconUrl(key);
+  // The Home Screen icon is a real file per look (Safari's share sheet and Add to Home Screen read the link, not a drawing).
+  const a = document.querySelector('link[rel="apple-touch-icon"]'); if (a) a.href = `/ui-lite/icon-${key}.png`;
   if (typeof updateBadge === 'function') updateBadge();
 }
