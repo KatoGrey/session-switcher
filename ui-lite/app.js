@@ -169,6 +169,7 @@ function render() {
 // Live events redraw only what moves: the sidebar marks, Now's Needs you and Running, and the count.
 let markSig = '';
 function renderLive() {
+  if (typeof sendBackgroundQueues === 'function') sendBackgroundQueues();
   if (!S.loaded) return;
   renderSide(); updateBadge();
   if (S.view === 'triage') { if (!document.activeElement || document.activeElement.id !== 'trBox') render(); return; }
@@ -525,11 +526,30 @@ setSideW(local.get('sideW', SIDE_W.def), false);
 // iOS keeps the layout viewport full height when the keyboard opens and scrolls the page instead;
 // sizing the app to the visible area keeps the input bar just above the keyboard, nothing pulled.
 if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').matches) {
+  // Once a frame at most (the keyboard fires these many times as it slides), and a conversation
+  // that was at its end stays at its end.
+  let frame = 0;
   const fit = () => {
-    const r = document.documentElement.style;
-    r.setProperty('--app-h', `${Math.round(visualViewport.height)}px`);
-    r.setProperty('--vv-top', `${Math.round(visualViewport.offsetTop)}px`);
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const f = $('feed'), pinned = f && f.scrollHeight - f.scrollTop - f.clientHeight < 80;
+      const r = document.documentElement.style;
+      r.setProperty('--app-h', `${Math.round(visualViewport.height)}px`);
+      r.setProperty('--vv-top', `${Math.round(visualViewport.offsetTop)}px`);
+      if (pinned) f.scrollTop = f.scrollHeight;
+    });
   };
+  // A tap into a text box focuses it without iOS scrolling the page to it (the app resizes to sit
+  // above the keyboard instead, so the two don't fight). A drag that starts on one still scrolls.
+  let touch = null;
+  const TYPEABLE = 'textarea, input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=date]):not([type=time]):not([type=datetime-local])';
+  document.addEventListener('touchstart', e => { const t = e.touches[0]; touch = t ? { x: t.clientX, y: t.clientY } : null; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    const el = e.target.closest && e.target.closest(TYPEABLE), t = e.changedTouches[0];
+    if (!el || el.disabled || el.readOnly || document.activeElement === el || !touch || !t || Math.hypot(t.clientX - touch.x, t.clientY - touch.y) > 10) return;
+    e.preventDefault(); el.focus({ preventScroll: true });
+  }, { passive: false });
   visualViewport.addEventListener('resize', fit); visualViewport.addEventListener('scroll', fit); fit();
 }
 
