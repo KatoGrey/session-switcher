@@ -326,6 +326,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 
 .chat { display: flex; flex-direction: column; height: 100%; }
 .chat-h { display: flex; align-items: center; gap: 12px; padding: 12px 24px; border-bottom: 1px solid var(--line); }
+.chat-h .ch-name { min-width: 0; flex: 1; display: flex; flex-direction: column; }
 .chat-h .ttl { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feed { flex: 1; overflow-y: auto; }
 .feed .inner { max-width: 720px; margin: 0 auto; padding: 28px 24px; display: flex; flex-direction: column; gap: 20px; }
@@ -948,5 +949,4 @@ body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr
   .chat-h .ch-name { flex: 1 1 calc(100% - 52px); }
   .chat-h .crumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-h .ch-name ~ * { flex: none; }
-  .chat-h .ch-name ~ .stage:first-of-type, .chat-h .ch-name + .tag { margin-left: 40px; }
 }

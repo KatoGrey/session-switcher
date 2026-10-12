@@ -256,7 +256,7 @@ function chatHead() {
   const p = c ? projOf(c) : CV.info && CV.info.cwd ? S.projects.find(x => x.cwd === CV.info.cwd && !x.key.includes('#')) || null : null;
   const st = c ? statusById(statusOf(c)) : null;
   return `<div class="chat-h" id="chatHead"><button class="iconbtn back" data-go="back" aria-label="Back">‹</button>
-      <div class="ch-name" style="min-width:0;flex:1;display:flex;flex-direction:column"><div class="crumb">${p ? `<span>${esc(bucketName(p.bucket))}</span>›<button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div>${c ? `<button class="ttl" id="chatTitle" data-renamechat="1" title="Rename">${esc(chatTitle())}</button>` : `<span class="ttl" id="chatTitle">${esc(chatTitle())}</span>`}</div>
+      <div class="ch-name"><div class="crumb">${p ? `<span>${esc(bucketName(p.bucket))}</span>›<button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div>${c ? `<button class="ttl" id="chatTitle" data-renamechat="1" title="Rename">${esc(chatTitle())}</button>` : `<span class="ttl" id="chatTitle">${esc(chatTitle())}</span>`}</div>
       ${st ? `${kindTag(c)}${waitTag(c)}<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>` : ''}
       ${(n => (n ? `<button class="iconbtn pics-btn" data-chatpics="1" aria-haspopup="menu" title="Pictures in this chat">${IC.image}<span>${n}</span></button>` : ''))(chatPictures().length)}
       ${typeof chatFiles === 'function' && chatFiles().length ? `<button class="iconbtn files-btn" data-viewfiles="1" title="Files this chat read or changed (opens beside the chat)">Files</button>` : ''}
@@ -394,7 +394,7 @@ function toolsHtml({ fresh }) {
     <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
-    ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button><button type="submit" class="send" aria-label="Steer (↵) · queue for after (⌥↵)" title="↵ tells it now (it reads this while it works) · ⌥↵ queues it for when it finishes">↑</button>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
+    ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button><button type="submit" class="send" aria-label="Queue (↵) · tell it now (⌥↵)" title="↵ queues it for when it finishes · ⌥↵ tells it now, while it works">↑</button>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
 }
 function paintBar() {
   const t = $('barTools'); if (!t || S.view !== 'chat') return;
@@ -469,11 +469,12 @@ const fileLines = () => COMP.files.filter(f => f.rel).map(f => `Attached file: \
 const withFiles = text => { const l = fileLines(); return l ? `${text.replace(/\s+$/, '')}${text.trim() ? '\n\n' : ''}${l}` : text; };
 const imagesOut = () => COMP.images.map(i => ({ mediaType: i.mediaType, data: i.data }));
 
-// While it works: ↵ steers (it reads the message now), ⌥↵ queues it for when the turn ends.
+// While it works: ↵ queues a message for when the turn ends (shown above the box, with Send now
+// to tell it straight away); ⌥↵ tells it now.
 CV.queue = [];
 function paintQueue() {
   const el = $('queueBox'); if (!el) return;
-  el.innerHTML = (CV.queue || []).map((q, i) => `<div class="q-item"><span class="tag">Queued</span><span class="q-text">${esc(q.text.slice(0, 160))}${q.images.length ? ` · ${q.images.length} picture${q.images.length === 1 ? '' : 's'}` : ''}</span><button type="button" class="iconbtn" data-unqueue="${i}" aria-label="Remove from the queue">×</button></div>`).join('');
+  el.innerHTML = (CV.queue || []).map((q, i) => `<div class="q-item"><span class="tag">Queued</span><span class="q-text">${esc(q.text.slice(0, 160))}${q.images.length ? ` · ${q.images.length} picture${q.images.length === 1 ? '' : 's'}` : ''}</span><button type="button" class="btn" data-steerq="${i}" title="Tell it now, while it works">Send now</button><button type="button" class="iconbtn" data-unqueue="${i}" aria-label="Remove from the queue">×</button></div>`).join('');
   el.hidden = !(CV.queue || []).length;
 }
 async function sendQueued() {
@@ -507,23 +508,34 @@ async function drawIntoMessage(text) {
   return true;
 }
 function paintDrawHint() { const h = $('barHint'); if (h) h.textContent = drawIntoMessage.pending ? `Drawing ${drawIntoMessage.pending === 1 ? 'a picture' : `${drawIntoMessage.pending} pictures`}…` : ''; }
-async function sendInChat({ fromQueue = false, queue = false } = {}) {
+// Into the running turn now: on screen at once, and it reads it while it works.
+async function steerIn(text, imgs) {
+  const images = imgs.map(i => ({ mediaType: i.mediaType, data: i.data }));
+  const local = { kind: 'user', text, images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
+  CV.items.push(local); paintFeed(); sfx('slide');
+  try { await api('/api/lite/steer', { key: CV.key, text, ...(images.length ? { images } : {}) }); }
+  catch (err) {
+    CV.items = CV.items.filter(x => x !== local); paintFeed();
+    CV.queue.unshift({ text, images: imgs }); paintQueue();
+    toast(`${err.message} It’s back in the queue.`);
+  }
+}
+function steerQueued(i) {
+  const q = CV.queue.splice(i, 1)[0]; paintQueue();
+  if (!q) return;
+  if (!CV.busy) { CV.queue.unshift(q); sendQueued(); return; }
+  steerIn(q.text, q.images);
+}
+async function sendInChat({ fromQueue = false } = {}) {
   const box = $('msgBox'); const text = box.value.trim();
   if ((!text && !COMP.images.length && !COMP.files.length) || CV.sending) return;
   if (DRAW_RE.test(text)) return wrap(drawIntoMessage)(text);
   if (!fromQueue && CV.busy && CV.key) {
-    const images = imagesOut();
-    if (queue || COMP.queueNext) {
-      COMP.queueNext = false;
-      CV.queue.push({ text, images: COMP.images.slice() }); box.value = ''; autosize(box); resetComposer(); paintAttachments(); paintQueue(); sfx('chip');
-      return toast('Queued: it goes when this turn finishes.');
-    }
-    // Steer: on screen at once, and into the running turn.
-    const local = { kind: 'user', text, images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
-    CV.items.push(local); box.value = ''; autosize(box); resetComposer(); paintAttachments(); paintFeed(); sfx('slide');
-    try { await api('/api/lite/steer', { key: CV.key, text, ...(images.length ? { images } : {}) }); }
-    catch (err) { CV.items = CV.items.filter(x => x !== local); paintFeed(); if (!box.value) { box.value = text; autosize(box); } toast(err.message); }
-    return;
+    const steer = COMP.steerNow; COMP.steerNow = false;
+    const imgs = COMP.images.slice();
+    box.value = ''; autosize(box); resetComposer(); paintAttachments();
+    if (!steer) { CV.queue.push({ text, images: imgs }); paintQueue(); sfx('chip'); return undefined; }
+    return steerIn(text, imgs);
   }
   if (COMP.converting) return toast('One moment: a picture is still being prepared.');
   CV.sending = true;
