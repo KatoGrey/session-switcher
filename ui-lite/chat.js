@@ -523,12 +523,12 @@ function uploadOne(key, f) {
     x.send(f.file);
   });
 }
-async function uploadPending(key) { for (const f of COMP.files) if (!f.rel && !f.error && !f.uploading) { f.uploading = true; await uploadOne(key, f); f.uploading = false; } }
-const fileLines = () => COMP.files.filter(f => f.rel).map(f => `Attached file: \`${f.rel}\` (${sizeText(f.size)})`).join('\n');
-const withFiles = text => { const l = fileLines(); return l ? `${text.replace(/\s+$/, '')}${text.trim() ? '\n\n' : ''}${l}` : text; };
+async function uploadPending(key, files = COMP.files) { for (const f of files) if (!f.rel && !f.error && !f.uploading) { f.uploading = true; await uploadOne(key, f); f.uploading = false; } }
+const fileLines = (files = COMP.files) => files.filter(f => f.rel).map(f => `Attached file: \`${f.rel}\` (${sizeText(f.size)})`).join('\n');
+const withFiles = (text, files = COMP.files) => { const l = fileLines(files); return l ? `${text.replace(/\s+$/, '')}${text.trim() ? '\n\n' : ''}${l}` : text; };
 const imagesOut = () => COMP.images.map(i => ({ mediaType: i.mediaType, data: i.data }));
 
-// While it works: ↵ queues a message for when the turn ends (shown above the box, with Send now
+// While it works: ↵ queues a message for when the turn ends (shown above the box, with Steer
 // to tell it straight away); ⌥↵ tells it now.
 // Queues are kept per chat, so leaving a chat (or reloading) doesn't lose them; while you're
 // elsewhere, sendBackgroundQueues sends the next one when that chat finishes its turn. Pictures stay
@@ -557,7 +557,7 @@ function paintQueue() {
   if (CV.id && CV.queue && CV.queue.length) QUEUES[CV.id] = CV.queue;
   saveQueues();
   const el = $('queueBox'); if (!el) return;
-  el.innerHTML = (CV.queue || []).map((q, i) => `<div class="q-item"><span class="tag">Queued</span><span class="q-text">${esc(q.text.slice(0, 160))}${q.images.length ? ` · ${q.images.length} picture${q.images.length === 1 ? '' : 's'}` : ''}</span><button type="button" class="btn" data-steerq="${i}" title="Tell it now, while it works">Send now</button><button type="button" class="iconbtn" data-unqueue="${i}" aria-label="Remove from the queue">×</button></div>`).join('');
+  el.innerHTML = (CV.queue || []).map((q, i) => `<div class="q-item"><span class="tag">Queued</span><span class="q-text">${esc(q.text.slice(0, 160))}${q.images.length ? ` · ${q.images.length} picture${q.images.length === 1 ? '' : 's'}` : ''}</span><button type="button" class="btn" data-steerq="${i}" title="Tell it now, while it works">Steer</button><button type="button" class="iconbtn" data-unqueue="${i}" aria-label="Remove from the queue">×</button></div>`).join('');
   el.hidden = !(CV.queue || []).length;
 }
 async function sendQueued() {
@@ -624,7 +624,10 @@ async function sendInChat({ fromQueue = false } = {}) {
   CV.sending = true;
   // On screen at once: your message, and the line under it, while the chat starts up.
   const images = imagesOut();
-  const local = { kind: 'user', text: withFiles(text), images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
+  // The pictures and files go with the message at once: off the input bar now, back on it if it doesn't go.
+  const sentImages = COMP.images, files = COMP.files;
+  COMP.images = []; COMP.files = []; paintAttachments();
+  const local = { kind: 'user', text: withFiles(text, files), images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
   CV.items.push(local);
   box.value = ''; autosize(box); DRAFTS.delete(String(CV.id)); saveDrafts();
   if (!CV.busy) { CV.busy = true; CV.status = CV.key ? 'Sending' : 'Starting'; CV.startedAt = Date.now(); }
@@ -645,8 +648,9 @@ async function sendInChat({ fromQueue = false } = {}) {
       await waitReady();
       if (COMP.effort) await api('/api/chat/model', { key: CV.key, effort: COMP.effort }).then(m => Object.assign(CV.info, m)).catch(() => {});
     }
-    await uploadPending(CV.key);
-    const out = withFiles(text); local.text = out;
+    await uploadPending(CV.key, files);
+    const out = withFiles(text, files); local.text = out;
+    for (const i of sentImages) if (i.url) URL.revokeObjectURL(i.url);
     resetComposer(); paintAttachments();
     await api('/api/chat/send', { key: CV.key, text: out, ...(images.length ? { images } : {}) });
     CV.busy = true; if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
@@ -654,6 +658,7 @@ async function sendInChat({ fromQueue = false } = {}) {
     // Didn't go: the message comes back to the box, as you wrote it.
     CV.items = CV.items.filter(x => x !== local);
     if (!box.value) { box.value = text; autosize(box); }
+    COMP.images = [...sentImages, ...COMP.images]; COMP.files = [...files, ...COMP.files]; paintAttachments();
     CV.busy = false; CV.status = ''; paintFeed(); paintStatus();
     toast(err.message);
   } finally { CV.sending = false; }
