@@ -844,7 +844,10 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
   .side-top, .search, .side-foot, .chat-h { touch-action: none; }
   .side-scroll, #main, .feed { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   /* With the keyboard up, the box doesn't take over the screen. */
-  .box textarea { max-height: 30vh; }
+  /* With the keyboard up, the box takes at most a quarter of what's visible and scrolls inside after that;
+     the chat header drops its second line so the conversation keeps room. */
+  .box textarea { max-height: calc(var(--app-h, 100dvh) * .25); overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+  .kb-up .chat-h .ch-name ~ :not([data-chatmenu]) { display: none; }
   .nc-inner .box textarea { min-height: 52px; }
 }
 /* On a phone the page over the sidebar follows the visible area too (top and height), so with the
