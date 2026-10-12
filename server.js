@@ -1579,7 +1579,8 @@ async function handleChat(req, res, url, body, c) {
       const chat = chats.get(body.key), lead = pairs.leadOf(chat);
       if (body.to === 'both') { await pairs.sendBoth(lead, text, images, { accountId: body.account }); return send(res, 200, { ok: true }); }
       const target = body.to === 'partner' ? await pairs.ensure(lead, { accountId: body.account }) : chat;
-      await pairs.send(target, text, images);
+      // after: wait for the other one to finish first (you chose "Send when it's done").
+      await (body.after ? pairs.sendAfter(target, text, images) : pairs.send(target, text, images));
       return send(res, 200, { ok: true, key: target.key });
     }
     case '/api/chat/permission': {

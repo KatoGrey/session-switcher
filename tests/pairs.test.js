@@ -250,3 +250,17 @@ test('pairs: what the partner says during the snapshot before a send is passed o
   await pairs.send(lead, 'Third message.');
   assert.ok(lead.sent.some(s => /Step 2: I rewrote save\.lua/.test(s.text)), 'the reply from during the snapshot reaches Claude');
 });
+
+test('pairs: "when it’s done" waits for the busy one, then sends', async () => {
+  const { pairs, add } = setup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  const partner = await pairs.ensure(lead);
+  lead.state = 'busy';
+  await pairs.sendAfter(partner, 'Now the icons.');
+  assert.equal(partner.sent.length, 0, 'held while Claude works');
+  assert.ok(partner.buffer.some(e => e.kind === 'notice' && /once Claude finishes/.test(e.text)));
+  lead.reply('Done with the code.');
+  await tick(); await tick();
+  assert.ok(partner.sent.at(-1).text.endsWith('Now the icons.'), 'sent once Claude finished');
+  assert.match(partner.sent.at(-1).text, /Done with the code\./, 'and caught up on what Claude just did');
+});

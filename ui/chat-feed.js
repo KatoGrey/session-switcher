@@ -174,9 +174,12 @@ const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 function ledgerTool(b) {
   const m = b.meta || {};
   if (FILE_TOOLS.has(b.name) && (m.path || b.summary)) {
-    const p = m.path || b.summary; const f = L.files.get(p) || { n: 0 };
-    f.n++; f.verb = b.name === 'Write' && f.verb !== 'edited' ? 'wrote' : 'edited';
-    L.files.delete(p); L.files.set(p, f);
+    // A Codex change can touch several files at once; each is counted.
+    for (const p of m.paths && m.paths.length ? m.paths : [m.path || b.summary]) {
+      const f = L.files.get(p) || { n: 0 };
+      f.n++; f.verb = b.name === 'Write' && f.verb !== 'edited' ? 'wrote' : 'edited';
+      L.files.delete(p); L.files.set(p, f);
+    }
   } else if ((b.name === 'Bash' || b.name === 'PowerShell') && (b.detail || b.summary)) {
     if (!L.cmds.some(c => c.id && c.id === b.id)) L.cmds.push({ id: b.id, text: typeof b.detail === 'string' && b.detail.trim() ? b.detail : b.summary, desc: b.summary, st: b.result ? (b.result.isError ? 'err' : 'ok') : 'run' });
   } else if (b.name === 'TodoWrite' && m.todos) L.todos = m.todos;
@@ -352,7 +355,7 @@ const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']);
 function stepsSummary(g) {
   const steps = [...g.querySelectorAll('.tool')].map(d => ({ name: d.dataset.name, v: d._view || {}, st: d.querySelector('.t-st').className }));
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-  const edited = [...new Set(steps.filter(x => FILE_TOOLS.has(x.name)).map(x => base((x.v.meta && x.v.meta.path) || x.v.summary || '')).filter(Boolean))];
+  const edited = [...new Set(steps.filter(x => FILE_TOOLS.has(x.name)).flatMap(x => (x.v.meta && x.v.meta.paths && x.v.meta.paths.length ? x.v.meta.paths : [(x.v.meta && x.v.meta.path) || x.v.summary || ''])).map(base).filter(Boolean))];
   const cmds = steps.filter(x => x.name === 'Bash' || x.name === 'PowerShell').length;
   const reads = steps.filter(x => READ_TOOLS.has(x.name)).length;
   const web = steps.filter(x => /^Web/.test(x.name)).length;

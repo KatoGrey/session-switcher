@@ -1065,6 +1065,15 @@ module.exports = [
         window.api = real; C.compThread = null;
         return { first, back, calls }`);
       t.check('the partner pages back as far as the chat’s own page, and keeps older turns for later', paging.first.join() === 'q6,q8,q9' && paging.back.join() === 'q1,q4', paging);
+      const bars = await b.eval(`const at = s => new Date(Date.parse('2026-10-11T10:00:00Z') + s * 1000).toISOString();
+        Recent.main = []; Recent.comp = [];
+        const first = clashWith({ files: [{ path: 'scripts/songs.lua' }], since: at(0), at: at(60) }, 'comp');
+        const ev = { turn: 1, since: at(30), at: at(90), files: [{ path: 'scripts/songs.lua' }, { path: 'data/party.json' }, { path: 'art/icon.png', meanwhile: true }] };
+        const box = document.createElement('div'); box.innerHTML = changesBar(ev, 'main', clashWith(ev, 'main'));
+        const out = { first, head: box.querySelector('.chg-h').textContent, clash: box.querySelector('.chg-clash')?.textContent || '', mw: box.querySelector('.chg-mw')?.textContent || '' };
+        Recent.main = []; Recent.comp = []; return out`);
+      t.check('a reply’s changes count only its own files, and say what changed meanwhile', bars.head === 'Changed 2 files' && /1 more changed meanwhile/.test(bars.mw), bars);
+      t.check('both editing the same file at the same time is called out', bars.first.length === 0 && /also edited songs\.lua at the same time/.test(bars.clash), bars);
     },
   },
   {

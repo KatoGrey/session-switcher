@@ -2181,6 +2181,9 @@ details.shared[open] summary{margin-bottom:6px}
 .chg-f{flex:1 1 240px;min-width:0;color:var(--ash);font:400 12px/1.5 var(--f-mono)}
 .chg-f small{opacity:.9}
 .chg-b{display:flex;gap:4px}
+.chg-clash{flex:1 1 100%;font:500 12.5px/1.45 var(--f-body);color:var(--gilt)}
+.chg-clash::before{content:"⚠ "}
+.chg-mw{flex:1 1 100%;font:italic 12px/1.45 var(--f-body);color:var(--ash)}
 .chg.undone{opacity:.75}
 .chg.undone .chg-h{color:rgb(var(--c-7fb79a))}
 .d-add{font-style:normal;color:rgb(var(--c-7fb79a))}

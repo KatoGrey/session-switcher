@@ -640,3 +640,14 @@ test('font pack: every face has its file, every set uses pack families, and font
   for (const k of ['clear', 'storybook', 'rounded']) assert.ok(setFonts(k), k);
   for (const f of FAMILIES.filter(x => ['sans', 'serif', 'code', 'easy'].includes(x.cat))) assert.ok(f.x > 0.3 && f.x < 0.7, `${f.name} has a measured x-height`);
 });
+
+/* ---------- what a reply changed: its own edits, or changed meanwhile ---------- */
+test('changes: a reply’s own edits are told apart from files changed meanwhile; commands mark nothing', () => {
+  const { LiveChat } = require('../lib/chat');
+  const at = s => new Date(Date.parse('2026-10-11T10:00:00Z') + s * 1000).toISOString();
+  const tool = (name, meta) => ({ kind: 'assistant', at: at(5), blocks: [{ type: 'tool', name, meta }] });
+  const own = LiveChat.prototype.ownPaths.call({ buffer: [tool('Edit', { path: 'C:\Proj\scripts\songs.lua' }), tool('Edit', { path: 'x', paths: ['C:/Proj/a.js', 'C:/Proj/b.js'] })] }, at(0));
+  assert.deepEqual(own, ['C:\Proj\scripts\songs.lua', 'C:/Proj/a.js', 'C:/Proj/b.js'], 'every path of a multi-file change counts');
+  assert.equal(LiveChat.prototype.ownPaths.call({ buffer: [tool('Edit', { path: 'a' }), tool('Bash', null)] }, at(0)), null, 'a command may have changed anything');
+  assert.deepEqual(LiveChat.prototype.ownPaths.call({ buffer: [tool('Edit', { path: 'old.js' })] }, at(9)), [], 'edits from before the reply don’t count');
+});

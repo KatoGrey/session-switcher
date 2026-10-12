@@ -6,19 +6,37 @@
 // In a reply's bar each file name opens that reply's change to it in the preview.
 const fileLine = (f, ev, src) => `${ev ? `<button type="button" class="chg-fn" data-pv="${esc(f.path)}" data-kind="file" data-turn="${ev.turn}" data-src="${src}" title="See what changed in ${esc(f.path)}">${esc(base(f.path))}</button>` : esc(base(f.path))}${f.status === 'added' ? ' <small>new</small>' : f.status === 'deleted' ? ' <small>deleted</small>' : f.add !== null ? ` <small><i class="d-add">+${f.add}</i> <i class="d-del">−${f.del}</i></small>` : ''}`;
 
-function changesBar(ev, src) {
-  const n = ev.files.length + (ev.more || 0);
+// The files a reply's own edits changed; others changed meanwhile (by its partner, or you) are listed
+// apart and left out of its Undo.
+const ownFiles = ev => ev.files.filter(f => !f.meanwhile);
+// Recent changes from each side, to notice both editing the same file during overlapping replies.
+const Recent = { main: [], comp: [] };
+function clashWith(ev, src) {
+  const other = src === 'comp' ? 'main' : 'comp', since = Date.parse(ev.since) || 0, at = Date.parse(ev.at) || Date.now();
+  const mine = new Set(ownFiles(ev).map(f => f.path.toLowerCase()));
+  const both = new Set();
+  for (const o of Recent[other]) if (o.since < at && since < o.at) for (const p of o.paths) if (mine.has(p)) both.add(p);
+  Recent[src].push({ since, at, paths: [...mine] });
+  if (Recent[src].length > 20) Recent[src].shift();
+  return [...both];
+}
+function changesBar(ev, src, clash = []) {
+  const own = ownFiles(ev), mw = ev.files.length - own.length;
+  const n = own.length + (ev.more || 0);
+  const other = PROV_NAME[src === 'comp' ? C.provider : partnerProv()];
   return `<div class="chg" data-src="${src}" data-turn="${ev.turn}">
-    <span class="chg-h">Changed ${n} file${n === 1 ? '' : 's'}</span>
-    <span class="chg-f">${ev.files.slice(0, 4).map(f => fileLine(f, ev, src)).join(' · ')}${n > 4 ? ` · and ${n - 4} more` : ''}</span>
-    <span class="chg-b"><button type="button" class="ta" data-c="chgview">See the changes</button><button type="button" class="ta" data-c="chgundo" title="Puts these files back as they were before this reply">Undo</button></span></div>`;
+    <span class="chg-h">${n ? `Changed ${n} file${n === 1 ? '' : 's'}` : 'No file changes of its own'}</span>
+    ${n ? `<span class="chg-f">${own.slice(0, 4).map(f => fileLine(f, ev, src)).join(' · ')}${n > 4 ? ` · and ${n - 4} more` : ''}</span>` : ''}
+    ${clash.length ? `<span class="chg-clash" role="note">${esc(other)} also edited ${esc(clash.slice(0, 3).map(base).join(', '))}${clash.length > 3 ? ` and ${clash.length - 3} more` : ''} at the same time. Check ${clash.length === 1 ? 'it' : 'them'} before building on either.</span>` : ''}
+    ${mw ? `<span class="chg-mw">${mw} more changed meanwhile${duo() ? ` (by ${esc(other)} or you)` : ''}; not part of this reply’s Undo.</span>` : ''}
+    <span class="chg-b">${n ? `<button type="button" class="ta" data-c="chgview">See the changes</button><button type="button" class="ta" data-c="chgundo" title="Puts these files back as they were before this reply">Undo</button>` : ''}</span></div>`;
 }
 function renderChanges(ev, src) {
   noteChanges(ev, src);
   const prov = provFor(src);
   const turn = [...$c('cFeed').querySelectorAll('.turn')].filter(t => (t.dataset.prov || C.provider) === prov).pop();
   if (!turn || turn.querySelector(`.chg[data-turn="${ev.turn}"][data-src="${src}"]`)) return;
-  withStick(() => turn.insertAdjacentHTML('beforeend', changesBar(ev, src)));
+  withStick(() => turn.insertAdjacentHTML('beforeend', changesBar(ev, src, clashWith(ev, src))));
   const bar = turn.lastElementChild;
   bar._ev = ev;
 }
@@ -36,8 +54,9 @@ function renderUndone(ev, src) {
 async function undoChanges(bar, force = false) {
   const ev = bar && bar._ev; if (!ev) return;
   const src = bar.dataset.src, key = keyFor(src), name = PROV_NAME[provFor(src)];
-  const n = ev.files.length;
-  if (!force && !(await window.appConfirm(`Undo the changes from this reply?\n\nPuts ${n === 1 ? base(ev.files[0].path) : `these ${n} files`} back as they were before ${name} replied. A file that’s changed since is left as it is.`, { ok: 'Undo them' }))) return;
+  const own = ownFiles(ev), n = own.length;
+  if (!n) return;
+  if (!force && !(await window.appConfirm(`Undo the changes from this reply?\n\nPuts ${n === 1 ? base(own[0].path) : `these ${n} files`} back as they were before ${name} replied. A file that’s changed since is left as it is.`, { ok: 'Undo them' }))) return;
   const r = await api('/api/chat/undo', { key, turn: ev.turn, force });
   const kept = r.skipped.filter(x => x.why === 'changed since');
   if (!force && kept.length) {
