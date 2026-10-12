@@ -36,6 +36,7 @@ const restartLib = require('./lib/restart');
 const themeStudioLib = require('./lib/theme-studio');
 const pushLib = require('./lib/push');
 const extrasLib = require('./lib/extras');
+const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -319,6 +320,27 @@ function projectAt(cwd) {
   return list.find(x => x.cwd === cwd) || list.find(x => normCwd(x.cwd) === normCwd(cwd)) || null;
 }
 // A Codex chat by id, with its folder, or null for anything else.
+// Another chat's latest messages, for one that brings it in with "@chat[…]" (shown there as a fold-out).
+async function otherChatBlock(ref) {
+  const id = String((ref && ref.id) || '');
+  let items = [], title = 'another chat', folder = '', who = 'Claude';
+  try {
+    const cx = codexFind(id);
+    if (cx) { items = (await codex.history(id, null, null)).items || []; title = (cx.session && cx.session.title) || title; folder = cx.folder || ''; who = 'Codex'; }
+    else { const f = sessions.find(id); title = f.session.title || title; folder = f.project.name || ''; items = (await chatLib.readHistory(sessions.fileFor(id), { limit: 40 })).items || []; }
+  } catch { throw fail(404, 'That chat can’t be read. It may have been deleted.'); }
+  const clipT = (t, n) => (t.length > n ? `${t.slice(0, n)}…` : t);
+  const lines = [];
+  for (const it of items) {
+    if (it.kind === 'user') { const t = ownText(it.text || '').trim(); if (t) lines.push(`User: ${clipT(t, 1500)}`); }
+    else if (it.kind === 'assistant') { const t = (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim(); if (t) lines.push(`${who}: ${clipT(t, 2500)}`); }
+  }
+  const keep = [];
+  let total = 0;
+  for (let i = lines.length - 1; i >= 0 && keep.length < 12; i--) { if (keep.length && total + lines[i].length > 9000) break; total += lines[i].length; keep.unshift(lines[i]); }
+  const attr = v => String(v).replace(/["<>\n]/g, ' ').slice(0, 120);
+  return `<other-chat title="${attr(title)}" folder="${attr(folder)}" items="${keep.length}">\nFrom the user’s other chat “${title}”${folder ? ` (in ${folder})` : ''}, its latest messages, for context (that chat carries on separately):\n\n${keep.join('\n\n') || '(Nothing in it yet.)'}\n</other-chat>\n\n`;
+}
 function codexFind(id) {
   const t = id && codex.known(String(id));
   if (!t) return null;
@@ -1695,10 +1717,12 @@ async function handleChat(req, res, url, body, c) {
     case '/api/chat/send': {
       // to: 'partner' (the other assistant in this chat, started if need be), 'both' (they take
       // turns), or the chat `key` itself.
-      const text = typeof body.text === 'string' ? body.text.slice(0, 200000) : '';
+      let text = typeof body.text === 'string' ? body.text.slice(0, 200000) : '';
       const images = validImages(body.images);
       if (!text.trim() && !images.length) throw fail(400, 'Type a message or attach an image.');
       const chat = chats.get(body.key), lead = pairs.leadOf(chat);
+      // "@chat[…]": other chats you brought in; their latest messages go along, before your words.
+      if (Array.isArray(body.refs) && body.refs.length) text = (await Promise.all(body.refs.slice(0, 3).map(otherChatBlock))).join('') + text;
       if (body.to === 'both') { await pairs.sendBoth(lead, text, images, { accountId: body.account }); return send(res, 200, { ok: true }); }
       if (body.to === 'plan') { await pairs.planFirst(lead, text, images, { accountId: body.account }); return send(res, 200, { ok: true }); }
       const target = body.to === 'partner' ? await pairs.ensure(lead, { accountId: body.account }) : chat;
@@ -1722,7 +1746,12 @@ async function handleChat(req, res, url, body, c) {
     case '/api/chat/compact': await chats.get(body.key).compact(); return send(res, 200, { ok: true });
     case '/api/chat/undo': {
       const chat = chats.get(body.key), r = await chat.undoTurn(body.turn, !!body.force);
-      if (r && r.restored && r.restored.length) (chat.undoneFiles || (chat.undoneFiles = [])).push(r.restored);
+      if (r && r.restored && r.restored.length) {
+        (chat.undoneFiles || (chat.undoneFiles = [])).push(r.restored);
+        // Its partner hears too: it may have built on what's gone.
+        const mate = pairs.partnerOf(chat);
+        if (mate) (mate.partnerUndone || (mate.partnerUndone = [])).push(r.restored);
+      }
       return send(res, 200, r);
     }
     case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base, ['claude', 'both'].includes(body.by) ? body.by : 'codex'));

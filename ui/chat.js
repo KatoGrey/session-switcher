@@ -748,6 +748,8 @@ function modelItems(src) {
   return [
     { glyph: '◈', label: `Choose ${name}’s model…`, run: () => openPick(src) },
     ...presetsFor(src).map(p => ({ glyph: p.glyph, label: `${p.name}: ${p.label}${p.effort ? ` · ${p.effort}` : ''}`, hint: p.note, checked: C.mi[src] && C.mi[src].model === p.model && C.mi[src].effort === p.effort, run: () => pickModel(src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }) })),
+    // The partner's permission mode, changed from its pill (the lead's is in the header).
+    ...(src === 'comp' && C.comp && C.comp.modes && C.comp.modes.length && !C.comp.ended ? ['-', ...C.comp.modes.map(m => ({ glyph: C.comp.mode === m.value ? '●' : '○', label: `May: ${m.label}`, checked: C.comp.mode === m.value, run: () => setCompMode(m.value) }))] : []),
   ];
 }
 // ★ in the header pins this chat to the top of the sidebar.

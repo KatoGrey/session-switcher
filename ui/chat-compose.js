@@ -146,7 +146,7 @@ function renderSlash() {
   box.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
 }
 function pickSlash(i) {
-  if (Slash.kind === 'file') { const f = Slash.items[i], at = Slash.at; closeSlash(); if (f && at) insertMention(f, at); return; }
+  if (Slash.kind === 'file') { const f = Slash.items[i], at = Slash.at; closeSlash(); if (f && at) { if (typeof f === 'string') insertMention(f, at); else insertChatRef(f, at); } return; }
   const pr = Slash.items[i]; closeSlash(); if (pr) insertPrompt(pr, true);
 }
 
@@ -193,14 +193,42 @@ async function renderMention(men) {
   const files = await mentionFiles();
   const now = mentionAt();
   if (!now || now.q !== men.q || now.start !== men.start) return undefined;   // typed on meanwhile
-  const items = rankFiles(files, men.q);
+  const items = [...rankFiles(files, men.q).slice(0, men.q ? 6 : 5), ...rankChats(men.q)];
   if (!items.length) return closeSlash();
   if (Slash.kind !== 'file' || Slash.at?.start !== men.start) Slash.sel = 0;
   Object.assign(Slash, { kind: 'file', items, at: men, open: true, sel: Math.min(Slash.sel, items.length - 1) });
   const box = $c('cSlash'); box.hidden = false;
-  box.innerHTML = `<p class="cs-h">Files in ${esc(C.folder || 'this project')}</p><ul>${items.map((f, i) => `<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}"><b>${esc(f.split('/').pop())}</b><span class="cs-x">${esc(f)}</span></li>`).join('')}</ul>
+  const firstChat = items.findIndex(x => typeof x !== 'string');
+  box.innerHTML = `<p class="cs-h">${firstChat === 0 ? 'Your other chats' : `Files in ${esc(C.folder || 'this project')}`}</p><ul>${items.map((f, i) => typeof f !== 'string' ? `${i === firstChat && i ? '<li class="cs-sep" role="presentation">Your other chats</li>' : ''}<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}" class="cs-chat"><b>${esc(f.title)}</b><span class="cs-x">${esc(f.folder || '')}${f.provider === 'codex' ? ' · Codex' : ''} · brings its latest messages in</span></li>` : `<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}"><b>${esc(f.split('/').pop())}</b><span class="cs-x">${esc(f)}</span></li>`).join('')}</ul>
     <p class="cs-f"><kbd class="kbd">Tab</kbd> or <kbd class="kbd">Enter</kbd> puts it in · <kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> choose · <kbd class="kbd">Esc</kbd> closes</p>`;
   return undefined;
+}
+// Your other chats matching what's typed after "@" (by title or project), newest first.
+function rankChats(q) {
+  const ql = q.toLowerCase();
+  const mine = String(C.sessionId || '').toLowerCase();
+  return allSessions().filter(([x]) => x.id.toLowerCase() !== mine && (x.title || '').trim())
+    .filter(([x, p]) => !ql || (x.title || '').toLowerCase().includes(ql) || (p.name || '').toLowerCase().startsWith(ql))
+    .sort((a, b) => (b[0].updated || 0) - (a[0].updated || 0)).slice(0, ql ? 4 : 3)
+    .map(([x, p]) => ({ chat: true, id: x.id, provider: x.provider || 'claude', title: x.title, folder: p.name }));
+}
+// "@chat[Title] ": that chat's latest messages go along with this message (the PC adds them).
+function insertChatRef(c, at) {
+  const ta = $c('cText');
+  const label = c.title.replace(/[[\]\n]/g, ' ').trim().slice(0, 80);
+  if (!C.chatRefs) C.chatRefs = new Map();
+  C.chatRefs.set(label, { id: c.id, provider: c.provider });
+  const text = `@chat[${label}] `;
+  ta.value = ta.value.slice(0, at.start) + text + ta.value.slice(at.end);
+  const pos = at.start + text.length;
+  ta.focus(); ta.setSelectionRange(pos, pos);
+  grow(); saveDraft();
+}
+// The chats a message brings in: each "@chat[…]" still in it that was picked from the list.
+function chatRefsIn(text) {
+  const out = [];
+  for (const m of String(text).matchAll(/@chat\[([^\]\n]+)\]/g)) { const r = C.chatRefs && C.chatRefs.get(m[1]); if (r && !out.some(x => x.id === r.id)) out.push(r); }
+  return out;
 }
 // Replaces "@wor" with "@path/to/file " (in quotes if the path has spaces).
 function insertMention(f, at) {
@@ -308,7 +336,8 @@ async function sendMessage() {
   $c('cSend').disabled = true;
   try {
     // The app catches each one up on what it missed (lib/pairs.js); with Both they take turns.
-    const r = await api('/api/chat/send', { key: C.key, text, images, ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct }), ...(after ? { after: true } : {}) });
+    const refs = chatRefsIn(text);
+    const r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct }), ...(after ? { after: true } : {}) });
     clear();
     // Follow the partner's replies here (it may only just have started).
     if (target !== 'main' && !(C.comp && !C.comp.ended && (!r || !r.key || C.comp.key === r.key))) ensureCompanion().catch(() => {});

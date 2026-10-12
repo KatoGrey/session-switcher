@@ -2380,6 +2380,12 @@ body.solo .c-head .icon.c-backm{display:none}
 .rc-b{display:flex;gap:4px;margin:0}
 .racer > .btn{justify-self:start}
 .race-b{display:flex;justify-content:flex-end;gap:6px;margin:10px 0 0}
+.cs-sep{padding:6px 12px 2px;font:500 10.5px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ash);pointer-events:none}
+.cs-chat b::before{content:'◆ ';color:var(--gilt);font-size:.8em}
+.shared.other summary{color:var(--gilt)}
+.crew-room{margin-left:6px;padding:1px 6px;border-radius:999px;font:500 10.5px/1.5 var(--f-mono);color:var(--gilt);border:1px solid rgb(var(--c-d9bf74) / .45);white-space:nowrap}
+.crew-room.low{color:var(--crimson);border-color:var(--crimson)}
+.crew-mode{margin-left:6px;padding:1px 6px;border:1px solid var(--seam-2);border-radius:999px;font:400 10.5px/1.5 var(--f-mono);color:var(--ash);white-space:nowrap}
 .rc-part{margin:0;font-size:13.5px;line-height:1.4;color:var(--parch);overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 .rc-mode{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
 .rc-mode label{display:flex;align-items:center;gap:6px;padding:6px 11px;border:1px solid var(--seam-2);border-radius:999px;font-size:13.5px;color:var(--parch-2);cursor:pointer}

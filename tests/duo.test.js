@@ -99,3 +99,9 @@ test('duo: the other one’s plan travels in the catch-up, so they split the wor
   assert.match(b, /Codex’s plan right now/);
   assert.match(b, /▸ Paint the icons\n○ Save them in art\//);
 });
+
+test('duo: undoing one’s changes is told to the other, who may have built on them', () => {
+  const t = catchUp({ to: 'codex', theirUndone: [['scripts/bard/songs.lua']] });
+  assert.match(t, /The user undid Claude’s file changes from one of its replies: scripts\/bard\/songs\.lua is back as before/);
+  assert.match(catchUp({ to: 'claude', theirUndone: [['a.js', 'b.js']] }), /undid Codex’s .*a\.js, b\.js are back/);
+});

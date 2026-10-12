@@ -171,7 +171,7 @@ function handleEvent(ev, src) {
       $c('cModel').textContent = C.model;
       renderLedgerSoon();
       break;
-    case 'status': if (ev.permissionMode && !comp) setMode(ev.permissionMode); if (ev.status === 'compacting') setStatus(src, 'Summarizing the conversation…'); if (ev.text) setStatus(src, ev.text); break;
+    case 'status': if (ev.permissionMode && !comp) setMode(ev.permissionMode); if (ev.permissionMode && comp && C.comp) { C.comp.mode = ev.permissionMode; renderCrewSoon(); } if (ev.status === 'compacting') setStatus(src, 'Summarizing the conversation…'); if (ev.text) setStatus(src, ev.text); break;
     case 'plan': L.plans[provFor(src)] = ev.steps || []; renderLedgerSoon(); break;
     case 'context': setCtx(src, ev); break;
     case 'review': if (!comp) renderReview(ev); break;
@@ -384,12 +384,31 @@ function crewPill(src) {
   const label = mi ? `${modelLabel(mi)}${mi.effort ? ` · ${mi.effort}` : ''}` : src === 'comp' && st === 'off' ? 'ready when you are' : '…';
   const on = duo() ? C.target === src || C.target === 'both' : true;
   const sub = st === 'waiting' ? 'needs your OK' : src === 'comp' && C.handoff ? 'up next…' : busy && status ? status : label;
-  const tip = (on ? `${PROV_NAME[prov]}: choose its model and effort` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`)
+  const mode = src === 'comp' ? compModeLabel() : '';
+  // The partner's own account: how much room it has (the lead's is in the header).
+  const acct = src === 'comp' && C.comp ? C.comp.accountId : null, room = acct ? usageLine(acct, { short: true }) : '';
+  const left = acct ? roomLeft(acct) : null;
+  const tip = (on ? `${PROV_NAME[prov]}: choose its model, effort${src === 'comp' && C.comp && C.comp.modes ? ' and what it may do' : ''}` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`)
+    + (mode ? `\nMay: ${mode}` : '')
+    + (room ? `\nRoom: ${room}` : '')
     + (C.ctx[src] ? `\nContext: ${ctxLine(src)}` : '');
   const f = ctxFill(C.ctx[src]);
   const ring = f === null ? '' : `<span class="crew-ctx ${ctxClass(f)}" style="--p:${Math.round(f * 100)}" aria-hidden="true"></span>`;
   return `<button type="button" class="crew ${prov}${on ? ' on' : ''}${busy ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}" data-crew="${src}" aria-pressed="${on}" title="${esc(tip)}">
-      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${ring}${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
+      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${mode && !busy && st !== 'waiting' ? `<span class="crew-mode">${esc(mode)}</span>` : ''}${left !== null && left <= 25 ? `<span class="crew-room${left <= 5 ? ' low' : ''}" title="${esc(room)}">${left}% left</span>` : ''}${ring}${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
+}
+// The partner's permission mode, by its own label ("Ask before acting", Codex's "Agent", …).
+// Percent left on an account's tightest window, or null when it isn't known.
+function roomLeft(id) { const u = usageOf(id); const b = u && u.data && u.data.available ? binding(u) : null; return b ? b.left : null; }
+function compModeLabel() {
+  const c = C.comp; if (!c || !c.mode) return '';
+  return ((c.modes || []).find(m => m.value === c.mode) || {}).label || MODE_LABELS[c.mode] || c.mode;
+}
+async function setCompMode(mode) {
+  const c = C.comp; if (!c || !c.key) return;
+  await api('/api/chat/mode', { key: c.key, mode });
+  c.mode = mode; renderCrew();
+  toast(`${PROV_NAME[partnerProv()]}: ${compModeLabel()}.`, 2000);
 }
 function renderCrew() {
   const box = $c('cCrew'); if (!box) return;
@@ -397,7 +416,7 @@ function renderCrew() {
   const two = duo();
   const both = C.target === 'both';
   const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
-  box.innerHTML = crewPill('main') + (two ? crewPill('comp') + `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : `Both: ${lead} answers, then ${mate} picks it up and builds on that`}"><span class="crew-n">Both</span></button><button type="button" class="crew both plan${C.target === 'plan' ? ' on' : ''}" data-crew="plan" aria-pressed="${C.target === 'plan'}" title="Plan first: ${lead} drafts a plan, ${mate} checks it, then you pick who builds it"><span class="crew-n">Plan</span></button>` : '');
+  box.innerHTML = crewPill('main') + (two ? crewPill('comp') + `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : `Both: ${lead} answers, then ${mate} picks it up and builds on that. Uses room on both accounts, about twice a single reply.`}"><span class="crew-n">Both</span></button><button type="button" class="crew both plan${C.target === 'plan' ? ' on' : ''}" data-crew="plan" aria-pressed="${C.target === 'plan'}" title="Plan first: ${lead} drafts a plan, ${mate} checks it, then you pick who builds it"><span class="crew-n">Plan</span></button>` : '');
   box.classList.toggle('duo', two);
   renderRelay();
   $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · <b>@${partnerProv()}</b> or <b>@both</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;
@@ -573,7 +592,7 @@ function mergeFlush() {
 }
 function attachComp(info) {
   if (C.comp && C.comp.es) C.comp.es.close();
-  C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended' };
+  C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
   if (info.models && info.models.length) C.mi.comp = info;
   if (info.context) C.ctx.comp = info.context;
   const key = info.key;

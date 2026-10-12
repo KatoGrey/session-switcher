@@ -522,6 +522,7 @@ function renderItem(root, it, live) {
     // From the partner's side: your message to Codex in a Claude chat (or to Claude in a Codex chat).
     const toPartner = provNow() !== C.provider;
     const sh = splitShared(it.text);
+    const oc = splitOther(sh.own); sh.own = oc.own;
     // "Both": your message, passed on once the first one answered it. A hand-over, not your words again.
     if (toPartner && (it.relay || /sent the message below to both of you/.test(sh.context))) { root.insertAdjacentHTML('beforeend', handoverHtml(provNow(), sh)); return; }
     d.className = `${liveRender ? 'umsg fresh' : 'umsg'}${toPartner ? ` to-partner to-${provNow()}` : ''}`;
@@ -532,7 +533,7 @@ function renderItem(root, it, live) {
     const text = sh.own.split('\n').filter(l => { const m = l.trim().match(ATTACH_LINE); if (m) files.push([m[1], m[2] || '']); return !m; }).join('\n').trim();
     RAW.set(d, sh.own);
     d._at = at;
-    d.innerHTML = `${toPartner ? `<span class="to-tag">to ${PROV_NAME[provNow()]}</span>` : ''}${sh.context ? `<details class="shared"><summary>${PROV_NAME[provNow()]} was caught up on ${sh.items ? `${sh.items} message${sh.items === 1 ? '' : 's'}` : 'the conversation'}</summary><div class="sh-body">${plain(sh.context)}</div></details>` : ''}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
+    d.innerHTML = `${toPartner ? `<span class="to-tag">to ${PROV_NAME[provNow()]}</span>` : ''}${sh.context ? `<details class="shared"><summary>${PROV_NAME[provNow()]} was caught up on ${sh.items ? `${sh.items} message${sh.items === 1 ? '' : 's'}` : 'the conversation'}</summary><div class="sh-body">${plain(sh.context)}</div></details>` : ''}${otherChatsHtml(oc.chats)}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
     root.appendChild(d);
   } else if (it.kind === 'assistant') {
     const mi = C.mi[provNow() !== C.provider ? 'comp' : 'main'];

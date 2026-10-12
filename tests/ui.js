@@ -1191,6 +1191,27 @@ module.exports = [
     },
   },
   {
+    name: 'bring in',
+    // "@" and a chat's name brings that chat's latest messages along with yours.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      await b.eval(`const ta = document.getElementById('cText'); ta.focus(); ta.value = 'Compare with @Taver'; ta.setSelectionRange(ta.value.length, ta.value.length); ta.dispatchEvent(new Event('input', { bubbles: true })); return 1`); await sleep(700);
+      const pick = await b.eval(`const box = document.getElementById('cSlash'); return { open: !box.hidden, chats: [...box.querySelectorAll('.cs-chat b')].map(x => x.textContent), head: box.textContent }`);
+      t.check('@ lists your other chats that match', pick.open && pick.chats.some(x => /Tavern brawl/.test(x)), pick);
+      await b.clickOn('#cSlash .cs-chat'); await sleep(300);
+      const text = await b.eval(`return document.getElementById('cText').value`);
+      t.check('picking one puts it in the message', /^Compare with @chat\[Tavern brawl[^\]]*\] $/.test(text), text);
+      await b.clickOn('#cSend'); await sleep(600);
+      const sent = calls.find(([p]) => p === '/api/chat/send');
+      t.check('sending takes that chat along', sent && Array.isArray(sent[1].refs) && sent[1].refs.length === 1 && sent[1].refs[0].id === demo.ID['s-brawl'], sent && sent[1]);
+      // As it shows in the chat: your words, and the other chat folded away.
+      const shown = await b.eval(`const d = document.createElement('div'); renderItem(d, { kind: 'user', at: new Date().toISOString(), text: '<other-chat title="Tavern brawl encounter" folder="Starfall Tavern" items="2">\\nFrom the user’s other chat…\\n\\nUser: hi\\n\\nClaude: hello\\n</other-chat>\\n\\nCompare with @chat[Tavern brawl encounter]' }, false); return { sum: d.querySelector('.shared.other summary')?.textContent, own: d.querySelector('.utext')?.textContent }`);
+      t.check('it shows as a fold-out, not as your words', /Brought in “Tavern brawl encounter”: its last 2 messages/.test(shown.sum || '') && shown.own === 'Compare with @chat[Tavern brawl encounter]', shown);
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {
