@@ -87,8 +87,10 @@ function placeAt(m, anchor, align = 'start') {
   const w = m.offsetWidth * z, h = m.offsetHeight * z;
   let left = align === 'end' || r.left + w > W - 8 ? r.right - w : r.left;
   left = Math.max(8, Math.min(W - w - 8, left));
-  const up = r.bottom + h + 8 > H;
-  const top = up ? Math.max(8, r.top - h - 6) : r.bottom + 6;
+  // Below if it fits, else above if it fits there, else wherever it fits best on screen (it scrolls).
+  const below = r.bottom + h + 8 <= H, above = r.top - h - 6 >= 8;
+  const up = !below && (above || r.top > H - r.bottom);
+  const top = below ? r.bottom + 6 : above ? r.top - h - 6 : Math.max(8, H - h - 8);
   m.style.left = `${left / z}px`; m.style.top = `${top / z}px`;
   // Grows out of the point it was opened from.
   m.style.transformOrigin = `${Math.max(0, Math.min(w, r.left - left)) / z}px ${up ? '100%' : '0'}`;

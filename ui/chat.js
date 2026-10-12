@@ -560,6 +560,12 @@ function onSelection() {
 }
 document.addEventListener('selectionchange', onSelection);
 
+// The side panel is a pull-out drawer when the window, at its interface size, is 1320px or narrower.
+const ledgerDrawer = () => window.innerWidth / uiScale() <= 1320;
+function syncNarrow() { document.documentElement.classList.toggle('ui-narrow', uiScale() > 1 && ledgerDrawer()); }
+window.addEventListener('resize', syncNarrow);
+document.addEventListener('lookchange', syncNarrow);
+syncNarrow();
 /* ---------- events ---------- */
 function lightbox(src, from) { openGallery(src, from); }
 // Branch: a new chat with everything up to the end of this reply. Rewind: that, and the files the
@@ -644,7 +650,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'back': if (SOLO) { window.close(); return undefined; } return closeChatView();
       case 'rail': return chat.classList.toggle('show-rail');
       case 'ledger': {
-        if (matchMedia('(max-width: 1320px)').matches) return chat.classList.toggle('show-ledger');
+        if (ledgerDrawer()) return chat.classList.toggle('show-ledger');
         const off = !chat.classList.contains('no-ledger');
         chat.classList.toggle('no-ledger', off);
         try { localStorage.setItem('ledger', off ? 'off' : 'on'); } catch { /* fine */ }
@@ -955,7 +961,7 @@ function chatContextItems(t, at) {
 window.ChatUI = {
   open: openChatView, openKey, watch, close: closeChatView, md, renderRail, refreshUsage: refreshChatUsage, isViewing, neighbor: railNeighbor,
   accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
-  showLedger: () => { const chat = $c('chat'); if (matchMedia('(max-width: 1320px)').matches) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
+  showLedger: () => { const chat = $c('chat'); if (ledgerDrawer()) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
   sessionsChanged: () => { if (C.watch) refreshWatch(); },
   refreshCrew: () => { if (!$c('chat').hidden) renderCrew(); },
   refreshFav: () => syncFav(),

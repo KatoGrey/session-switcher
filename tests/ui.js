@@ -1399,6 +1399,37 @@ module.exports = [
     },
   },
   {
+    name: 'screens',
+    // Every screen size: a long menu stays on screen and scrolls to its last item; dialogs fit, at the
+    // normal and the biggest interface size.
+    async run(t) {
+      const sizes = [{ width: 1280, height: 720 }, { width: 1366, height: 680, ui: 130 }, { width: 412, height: 780, mobile: true }, { width: 412, height: 780, mobile: true, ui: 130 }];
+      for (const size of sizes) {
+        const name = `${size.width}×${size.height}${size.ui ? ` at ${size.ui}%` : ''}`;
+        const b = await t.open(size);
+        if (size.ui) { await b.eval(`Look.set({ ui: ${size.ui} }); return 1`); await sleep(400); }
+        await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+        await b.eval(`document.querySelector('[data-c="more"]').click(); return 1`); await sleep(400);
+        const m = await b.eval(`const m = document.getElementById('menu'), z = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--look-ui')) || 1, r = m.getBoundingClientRect();
+          const inView = r.top >= -1 && r.bottom * 1 <= innerHeight + 1;
+          m.scrollTop = m.scrollHeight; await new Promise(r => setTimeout(r, 50));
+          const items = m.querySelectorAll('button'), last = items[items.length - 1].getBoundingClientRect();
+          return { inView, top: Math.round(r.top), bottom: Math.round(r.bottom), h: innerHeight, lastReachable: last.bottom <= r.bottom + 1 && last.top >= r.top - 1, n: items.length }`);
+        t.check(`${name}: the chat’s ⋯ menu stays on screen, and its last item can be scrolled to`, m.inView && m.lastReachable, m);
+        if (!size.mobile && !size.ui) {
+          const crew = await b.eval(`return [...document.querySelectorAll('#cCrew .crew:not(.both) .crew-m')].map(x => ({ t: x.textContent, cut: x.scrollWidth > x.clientWidth + 1 }))`);
+          t.check(`${name}: the message box shows both models’ names in full`, crew.length === 2 && crew.every(x => !x.cut), crew);
+          await t.shot(b, `${name.replace(/\W+/g, '-')}-crew`);
+        }
+        await b.eval(`closeMenu(); ChatUI.close(); openTaskDialog(); return 1`); await sleep(400);
+        const d = await b.eval(`const d = document.getElementById('taskDlg'), r = d.getBoundingClientRect(); const go = d.querySelector('[type="submit"]'); go.scrollIntoView({ block: 'nearest' }); const g = go.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), right: Math.round(r.right), w: innerWidth, h: innerHeight, goVisible: g.bottom <= innerHeight + 1 && g.top >= 0 }`);
+        t.check(`${name}: a dialog fits the screen, with its button reachable`, d.top >= -1 && d.bottom <= d.h + 1 && d.right <= d.w + 1 && d.goVisible, d);
+        await t.shot(b, name.replace(/\W+/g, '-'));
+        await b.eval(`document.getElementById('taskDlg').close(); return 1`);
+      }
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {
