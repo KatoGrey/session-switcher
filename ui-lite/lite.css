@@ -998,3 +998,13 @@ blockquote p { margin: 4px 0; }
 .fam-n .fam-caret { width: auto; font-size: 12px; }
 .fam-n .dot, .fam-n .live-dot { margin-right: 2px; }
 .usage .bar + .top { margin-top: 4px; }
+
+/* Counts line up whatever their width, so the marks beside them do too. */
+.proj-row .n { min-width: 2.2ch; text-align: right; font-variant-numeric: tabular-nums; }
+/* A chat's PR. */
+.pr-g { display: inline-grid; place-items: center; flex: none; margin-left: 4px; color: var(--fg-2); }
+.pr-g.pr-draft { color: var(--muted); opacity: .75; }
+.pr-g.pr-failing { color: var(--st-bug); }
+.pr-g.pr-changes { color: #d97706; }
+.pr-g.pr-approved { color: #16a34a; }
+.pr-g.pr-merged { color: #8b5cf6; }

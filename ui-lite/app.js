@@ -5,11 +5,30 @@
 const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'automation', 'routines', 'routine', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
 const small = () => matchMedia('(max-width: 760px)').matches;
 
+// A chat's pull request, as one small icon: draft, open, checks failing, changes asked for,
+// approved or merged (from the pipeline for your PRs; from the waiting check for others').
+const PR_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3.5" r="1.7"/><circle cx="4" cy="12.5" r="1.7"/><circle cx="12" cy="12.5" r="1.7"/><path d="M4 5.2v5.6M12 10.8V7a2.8 2.8 0 0 0-2.8-2.8H7.2M8.8 2.4 7 4.2l1.8 1.8"/></g></svg>';
+const MERGED_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="4" cy="3.5" r="1.7"/><circle cx="4" cy="12.5" r="1.7"/><circle cx="12" cy="8" r="1.7"/><path d="M4 5.2v5.6M4 5.2c0 2.2 2.2 2.8 6.3 2.8"/></g></svg>';
+function prMark(c) {
+  const it = S.pipeline && S.pipeline.byChat && S.pipeline.byChat.get(c.id);
+  let st = null, n = null;
+  if (it && it.pr) {
+    const pr = it.pr; n = pr.number;
+    st = it.stage === 'merged' ? 'merged' : pr.draft ? 'draft' : pr.ci && pr.ci.state === 'failing' ? 'failing' : pr.review === 'CHANGES_REQUESTED' ? 'changes' : pr.review === 'APPROVED' ? 'approved' : 'open';
+  } else if (c.waitPrs && c.waitPrs[0]) {
+    const w = c.waitPrs[0]; n = w.n;
+    st = { Merged: 'merged', Closed: null, 'Still a draft': 'draft', Approved: 'approved', 'Changes requested': 'changes' }[w.standing];
+    if (st === undefined) st = 'open';
+  }
+  if (!st) return '';
+  const say = { merged: 'merged', draft: 'a draft', failing: 'open, checks failing', changes: 'open, changes requested', approved: 'approved', open: 'open, waiting for review' }[st];
+  return `<span class="pr-g pr-${st}" title="PR #${n}: ${say}">${st === 'merged' ? MERGED_ICON : PR_ICON}</span>`;
+}
 function sideChat(c, depth = 0) {
   // Its sub-chats: a count at the side that opens them in place (with a mark if one needs you).
   const desc = descOf(c.id), fo = famOpen(c.id);
   const fam = desc.length ? `<span class="fam-n" role="button" tabindex="0" data-fam="${esc(c.id)}" aria-expanded="${fo}" title="${fo ? 'Hide' : 'Show'} ${desc.length} sub-chat${desc.length === 1 ? '' : 's'}">${!fo && desc.some(needs) ? '<span class="dot needs-dot"></span>' : !fo && desc.some(running) ? '<span class="live-dot"></span>' : ''}${desc.length}<span class="fam-caret">›</span></span>` : '';
-  const marks = (isBug(c) ? '' : kindTag(c)) + waitTag(c) + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '') + fam;
+  const marks = (isBug(c) ? '' : kindTag(c)) + waitTag(c) + prMark(c) + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '') + fam;
   return `<button class="nav-i chat-i${depth ? ' kid' : ''}" ${depth ? `style="--d:${depth}"` : ''} draggable="true" data-chat="${esc(c.id)}" aria-current="${S.view === 'chat' && String(CV.id).toLowerCase() === String(c.id).toLowerCase()}" title="${esc(c.title)} · ${esc(projOf(c).name)}">${focusStar(c)}<span class="lbl">${esc(isBug(c) ? c.title.replace(/\s*\(from [^)]+\)\s*$/, '') : c.title)}</span>${marks}</button>`;
 }
 // Under a top-level chat in the sidebar: one line for its sub-chats, opened in place.
@@ -83,6 +102,7 @@ function sideBugs(chats, key = 'all') {
 S.sideMode = local.get('sideMode', 'projects');
 const bucketStages = id => { const b = buckets().find(x => x.id === id); return !b || b.stages !== false; };
 function sideProjects(all) {
+  if (typeof loadPipeline === 'function') loadPipeline();
   const chats = all.filter(c => !isBug(c));
   const bugsIn = bid => all.filter(c => isBug(c) && (projOf(c).bucket || null) === bid);
   const byProj = new Map();
@@ -469,7 +489,16 @@ const nestTarget = t => {
   const fz = r.closest('[data-drop-focus]'); if (fz && !me.focus) return fz;
   return r;
 };
-const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? t.closest('[data-drop-bucket]') : null);
+// A project dropped on another one goes just above it, in that one's bucket; the bucket's order is saved.
+async function placeProject(key, before) {
+  const target = projBy.get(before); if (!target) return;
+  const keys = [...document.querySelectorAll('#sideScroll .proj-row [data-project]')].map(b => b.dataset.project)
+    .filter(k => k !== key && (projBy.get(k) || {}).bucket === target.bucket);
+  keys.splice(keys.indexOf(before), 0, key);
+  for (const [i, k] of keys.entries()) await api('/api/lite/project', { key: k, patch: { order: i + 1, ...(k === key ? { bucket: target.bucket || null } : {}) } });
+  sfx('card'); await loadState(); render();
+}
+const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? t.closest('.proj-row [data-project]:not(.drop-self)') || t.closest('[data-drop-bucket]') : null);
 document.addEventListener('dragover', e => {
   const z = dropZone(e.target); if (!z) return;
   e.preventDefault();
@@ -486,6 +515,7 @@ document.addEventListener('drop', e => {
   if (d.idea) { if (z.dataset.ideaDrop) { const over = e.target.closest('[data-idea]'); wrap(moveIdea)(d.idea, over && over.dataset.idea !== d.idea ? over.dataset.idea : null); } else wrap(startIdea)(d.idea); }
   else if (d.chats && z.dataset.chat) wrap(nestChats)(d.chats, z.dataset.chat);
   else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : z.dataset.dropStage === 'waiting' ? { waiting: true } : { status: z.dataset.dropStage, waiting: false });
+  else if (z.dataset.project) { if (z.dataset.project !== d.project) wrap(placeProject)(d.project, z.dataset.project); }
   else wrap(setBucket)(d.project, z.dataset.dropBucket || null);
 });
 document.addEventListener('dragend', () => { drag = null; document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot')); });
