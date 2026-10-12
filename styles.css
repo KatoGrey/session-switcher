@@ -2012,6 +2012,16 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .c-map .cm.turn.codex{background:rgb(var(--c-6f97d8) / .32)}
 .c-map .cm.you{background:var(--ember);box-shadow:0 0 6px rgb(var(--c-cf8274) / .5)}
 .c-map .cm.you.to-partner{background:rgb(var(--c-6f97d8))}
+.c-map .cm.chap{left:-3px;right:-3px;height:2px;background:var(--gilt);box-shadow:0 0 6px rgb(var(--c-d9bf74) / .45)}
+/* Chapters (ui/chat-chapters.js): a quiet heading in the theme's gold, and a folded chapter as one line. */
+.chapter{display:flex;align-items:baseline;gap:12px;margin:30px 0 14px;padding-top:12px;border-top:1px solid rgb(var(--c-d9bf74) / .28);min-width:0}
+.chapter .ch-n,.chapter-fold .ch-n{flex:none;font:600 10.5px/1 var(--f-label);letter-spacing:.18em;text-transform:uppercase;color:var(--gilt)}
+.chapter .ch-t,.chapter-fold .ch-t{flex:1;min-width:0;font:600 15px/1.3 var(--f-caps);color:var(--parch);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chapter .ch-at{flex:none;font:400 12px/1 var(--f-label);color:var(--ash-2)}
+.chapter-fold{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;margin:14px 0;padding:12px 16px;border:1px dashed rgb(var(--c-d9bf74) / .35);border-radius:10px;background:rgb(var(--c-d9bf74) / .04)}
+.chapter-fold .ch-at{flex:1 1 100%;order:3;font:400 12.5px/1.4 var(--f-body);color:var(--ash)}
+.chapter-fold .ta{flex:none}
+@media (max-width:760px){.chapter{flex-wrap:wrap;gap:4px 10px}.chapter .ch-at{flex-basis:100%}}
 .c-map .cm.hand{height:4px;background:var(--gilt);box-shadow:0 0 6px rgb(var(--c-d9bf74) / .55)}
 .c-map .cm.pic{left:2px;right:auto;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:var(--violet)}
 .c-map .cm.warn{background:var(--gilt);opacity:.8}

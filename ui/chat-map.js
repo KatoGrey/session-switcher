@@ -9,7 +9,8 @@ const firstLine = el => (el.innerText || '').trim().split('\n').find(Boolean) ||
 function mapMarks() {
   const out = [];
   for (const el of $c('cFeed').children) {
-    if (el.classList.contains('umsg')) out.push({ el, kind: `you${el.classList.contains('to-partner') ? ' to-partner' : ''}`, tip: `You: ${firstLine(el).slice(0, 90)}` });
+    if (el.classList.contains('chapter') || el.classList.contains('chapter-fold')) out.push({ el, kind: 'chap', tip: (el.querySelector('.ch-n')?.textContent || 'Chapter') + ': ' + (el.querySelector('.ch-t')?.textContent || '') });
+    else if (el.classList.contains('umsg')) out.push({ el, kind: `you${el.classList.contains('to-partner') ? ' to-partner' : ''}`, tip: `You: ${firstLine(el).slice(0, 90)}` });
     else if (el.classList.contains('handover')) out.push({ el, kind: `hand ${el.dataset.prov || ''}`, tip: firstLine(el) });
     else if (el.classList.contains('turn')) {
       out.push({ el, kind: `turn ${el.dataset.prov || C.provider}`, tip: '' });

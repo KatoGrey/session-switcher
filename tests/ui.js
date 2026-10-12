@@ -1074,6 +1074,38 @@ module.exports = [
     },
   },
   {
+    name: 'chapters',
+    // A long chat divides into chapters after breaks, named after what you said; old ones fold.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2200);
+      const r = await b.eval(`const feed = document.getElementById('cFeed');
+        for (const el of [...feed.children]) if (el.id !== 'cEarlier') el.remove();
+        const t0 = Date.parse('2026-10-10T09:00:00Z'), topics = ['Plan the tavern brawl', 'Balance the bard songs', 'Paint the festival banner'];
+        topics.forEach((topic, c) => { for (let i = 0; i < 110; i++) {
+          const at = new Date(t0 + c * 3 * 3600000 + i * 60000).toISOString();
+          renderItem(feed, { kind: 'user', text: i ? 'And the next step, please.' : topic, at }, false);
+          renderItem(feed, { kind: 'assistant', at, blocks: [{ type: 'text', text: 'Done: step ' + i + ' of ' + topic + '.' }] }, false);
+        } });
+        toBottom(); await new Promise(r => setTimeout(r, 300));
+        chapters(); await new Promise(r => setTimeout(r, 200));
+        const heads = [...feed.querySelectorAll(':scope > .chapter .ch-t')].map(x => x.textContent);
+        const folds = [...feed.querySelectorAll(':scope > .chapter-fold')].map(x => x.querySelector('.ch-t').textContent + ' | ' + x.querySelector('.ch-at').textContent);
+        const turnsLeft = feed.querySelectorAll(':scope > .turn').length;
+        return { heads, folds, turnsLeft }`);
+      t.check('after a break, a new chapter starts, named after what you said; a long one goes on in parts', r.heads.includes('Paint the festival banner') && r.heads.includes('Paint the festival banner (part 2)') && !r.heads.some(h => /next step/.test(h)), r);
+      t.check('in a long chat, chapters well behind you fold to one line, oldest first', /^Plan the tavern brawl \|/.test(r.folds[0]) && /40 messages, 40 replies/.test(r.folds[0]) && r.turnsLeft <= 200 && r.turnsLeft >= 150, r);
+      await t.shot(b, 'chapters');
+      await b.eval(`const f = document.querySelector('#cFeed > .chapter-fold:last-of-type'); const h = document.querySelector('#cFeed > .chapter'); (h || f).scrollIntoView({ block: 'center' }); return 1`); await sleep(400);
+      await t.shot(b, 'heading');
+      await b.clickOn('[data-chapopen]'); await sleep(300);
+      const open = await b.eval(`chapters(); await new Promise(r => setTimeout(r, 200)); const feed = document.getElementById('cFeed'); return { turns: feed.querySelectorAll(':scope > .turn').length, folds: feed.querySelectorAll(':scope > .chapter-fold').length, marks: ChatMap.marks.filter(m => m.kind === 'chap').length }`);
+      t.check('Show brings it back, and it stays open', open.turns === r.turnsLeft + 40 && open.folds === r.folds.length - 1, { open, before: r.turnsLeft });
+      await b.eval(`drawMap(); return 1`); await sleep(200);
+      t.check('chapters are marked on the conversation map', (await b.eval(`return ChatMap.marks.filter(m => m.kind === 'chap').length`)) >= 2);
+    },
+  },
+  {
     name: 'malibu',
     // The glam theme: its own lettering, words, sunset, sparkles, hearts and chimes; light mode first.
     async run(t) {
