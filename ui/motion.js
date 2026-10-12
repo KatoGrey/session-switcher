@@ -82,7 +82,7 @@ function renderFolder() {
     <div class="wp-in"><p class="eyebrow ${prov || ''}">${prov === 'codex' ? 'Codex chats in this project' : prov === 'claude' ? 'Claude Code chats in this project' : prov === 'openclaw' ? 'OpenClaw sessions in this project' : 'Project'}</p><h1>${esc(p.name)}</h1></div>${hint}`;
   const subH = `<div class="wp-where"><p class="f-path">${esc(p.cwd)}${p.exists ? '' : ' (this folder no longer exists)'}</p>
       <p class="f-meta">${esc(meta[0].toUpperCase() + meta.slice(1))}.${esc(todayLine)}${other ? ` <button class="linkish" data-view="folder" data-cwd="${esc(p.cwd)}" data-prov="${otherProv}">${other === 1 ? `1 ${otherName} ${otherWord}` : `${other} ${otherName} ${otherWord}s`} here too</button>` : ''}</p></div>
-    <div class="wp-tools"><button class="btn quiet sm" data-project-crest="${esc(p.cwd)}" ${p.exists ? '' : 'disabled'}>Project crest…</button><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin' : 'Pin to top'}</button></div>`;
+    <div class="wp-tools"><button class="btn quiet sm" data-project-crest="${esc(p.cwd)}" ${p.exists ? '' : 'disabled'}>Project crest…</button><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin from the sidebar' : 'Pin to the sidebar'}</button></div>`;
   const off = !canLaunch(a) || !p.exists;
   const cxOff = !codexReady() || !p.exists;
   const cxWhy = S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first';
@@ -164,6 +164,8 @@ function worldMenu(anchor) {
     '-',
     { label: 'Look for new files', hint: 'documents and pictures', disabled: !p.exists, run: async () => { await loadWorld(p.cwd, true); renderFolder(); toast('Up to date.', 1500); } },
     { label: 'Edit prompts…', run: openPromptEditor },
+    '-',
+    ...projectItems(p.cwd).filter(it => it !== '-' && /^(Rules and tools|Queue a task|Race Claude|Split the work|Project crest)/.test(it.label)),
     ...(p.added && !hasChats(p) ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd: p.cwd }); await loadSessions(); go('hub'); toast(`Removed ${p.name} from the list. Its folder is still there.`, 4000); } }] : []),
   ]);
 }

@@ -171,9 +171,10 @@ function codexChatItems(s) {
     { label: 'Browse this chat’s folder', run: () => Viewer.open({ path: '.', session: s.id }) },
     { label: 'Rename chat', run: () => renameChat(s.id) },
     { label: 'Copy terminal command', run: () => copyCommand(s.id) },
+    doneItem(s.id),
   ];
 }
-function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id), doneItem(s.id)]); }
+function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id)]); }
 function chatItems(id) {
   const [s] = sessionById(id); if (!s) return [];
   if (isCodex(s)) return codexChatItems(s);
@@ -206,9 +207,10 @@ function chatItems(id) {
     { label: 'Rename chat', run: () => renameChat(id) },
     { label: 'Copy terminal command', run: () => copyCommand(id) },
     { label: 'Show transcript file', run: async () => { const r = await api('/api/reveal', { sessionId: id }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
+    doneItem(id),
   ];
 }
-function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id), doneItem(id)]); }
+function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id)]); }
 const doneItem = id => { const [s] = sessionById(id); const d = s && isDoneChat(s); return { glyph: d ? '↺' : '✓', label: d ? 'Not done' : 'Mark done', hint: d ? 'back on the lists' : 'off the lists until it’s used again', run: () => setChatDone(id, !d) }; };
 const favItem = id => ({ glyph: isFav(id) ? '☆' : '★', label: isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => toggleFav(id) });
 

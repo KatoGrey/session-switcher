@@ -60,7 +60,7 @@
 
 <section id="chat" class="chat" hidden aria-labelledby="cTitle">
   <aside class="rail" id="cRail" aria-label="Open chats">
-    <div class="rail-top"><button type="button" class="rail-back" data-c="back"><span class="glyph" aria-hidden="true">✦</span>All chats</button></div>
+    <div class="rail-top"><button type="button" class="rail-back" data-c="back"><span class="glyph" aria-hidden="true">✦</span>The hub</button></div>
     <div class="rail-scroll">
       <div class="nav-h" id="cActH">Active now <span class="count" id="cRailCount"></span></div>
       <ul class="rail-list" id="cRailList"></ul>
@@ -76,8 +76,8 @@
       <div class="c-meta">
         <span class="c-acct" id="cAcct"></span>
         <span class="c-state" id="cState" aria-live="polite"></span>
-        <label class="sr" for="cMode">What Claude may do without asking</label>
-        <select id="cMode" class="c-mode" title="What Claude may do without asking"></select>
+        <label class="sr" for="cMode" id="cModeL">What it may do without asking</label>
+        <select id="cMode" class="c-mode" title="What it may do without asking"></select>
       </div>
       <div class="c-icons">
       <button type="button" class="icon c-fav" id="cFav" data-c="fav" aria-pressed="false" aria-label="Pin to the sidebar" hidden>☆</button>

@@ -5,7 +5,15 @@
 async function loadTasks() { S.tasks = (await api('/api/tasks')).tasks || []; renderQueue(); if (window.ChatUI && ChatUI.isOpen()) laterMarks(); }
 
 const REPEAT_LABEL = { daily: 'every day', weekdays: 'every weekday', weekly: 'every week' };
-const taskWaiting = t => (t.why === 'time' ? `Starts ${new Date(t.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
+// "today at 9:00 PM", "tomorrow at 9:00 AM", else "Mon 9:00 PM" (a weekday alone could read as next week).
+function whenText(iso) {
+  const d = new Date(iso), day = new Date(d); day.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const days = Math.round((day - today) / 864e5);
+  return days === 0 ? `today at ${time}` : days === 1 ? `tomorrow at ${time}` : d.toLocaleString([], { weekday: 'short', month: days > 6 ? 'short' : undefined, day: days > 6 ? 'numeric' : undefined, hour: 'numeric', minute: '2-digit' });
+}
+const taskWaiting = t => (t.why === 'time' ? `Starts ${whenText(t.at)}`
   : t.why === 'room' ? 'Waiting for an account with room' : t.why === 'account' ? 'Waiting for a signed-in account' : 'Starting…');
 function taskRow(t) {
   const first = t.prompt.split('\n').find(l => l.trim()) || t.prompt;
@@ -63,7 +71,7 @@ function taskDialog() {
     const r = await api('/api/tasks', { action: 'add', task });
     S.tasks = r.tasks; renderQueue();
     d.close();
-    toast(r.task.when === 'at' ? `Queued. It starts ${new Date(r.task.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}, once an account has room.` : 'Queued. It starts as soon as an account has room.', 5000);
+    toast(r.task.when === 'at' ? `Queued. It starts ${whenText(r.task.at)}, once an account has room.` : 'Queued. It starts as soon as an account has room.', 5000);
   }));
   return d;
 }
@@ -88,8 +96,12 @@ function openTaskDialog(cwd = null, text = '') {
 async function taskAction(act, b) {
   if (act === 'task-new') return openTaskDialog(b.dataset.cwd || null);
   if (act === 'task-open') return ChatUI.openKey ? ChatUI.openKey(b.dataset.key) : undefined;
+  const t = (S.tasks || []).find(x => x.id === b.dataset.id);
+  // A routine stops repeating when it's removed: that asks first.
+  if (act === 'task-remove' && t && t.state === 'queued' && t.repeat && !(await appConfirm(`Stop this routine?\n\n${t.prompt.split('\n')[0].slice(0, 120)}\n\nIt won’t start again.`, { ok: 'Stop it', danger: true }))) return undefined;
   const r = await api('/api/tasks', { action: act === 'task-start' ? 'start' : 'remove', id: b.dataset.id });
   S.tasks = r.tasks; renderQueue();
   if (act === 'task-start') toast('Started. It’s under At work.', 3000);
+  else if (t && t.state === 'queued' && !t.repeat) toast('Removed from the queue.', 5000, { label: 'Undo', run: async () => { const u = await api('/api/tasks', { action: 'add', task: { cwd: t.cwd, provider: t.provider, accountId: t.accountId, prompt: t.prompt, when: t.when, at: t.at, from: t.from || null } }); S.tasks = u.tasks; renderQueue(); } });
   return undefined;
 }

@@ -62,7 +62,7 @@ function renderSetup(j) {
       <button class="btn" data-fix="shortcut">${S.platform === 'darwin' ? 'Add to Applications' : 'Create desktop shortcut'}</button>
       <button class="btn" data-fix="share-copy" title="A zip of the app for someone else, without your accounts, chats or settings">Make a copy to share</button>
       <button class="btn" data-fix="update-claude">Update Claude Code</button>
-      <button class="btn" data-fix="tour">Show the tour</button>
+      <button class="btn" data-fix="tour">Take the tour</button>
       <button class="btn" data-fix="restart">Restart</button><button class="btn danger" data-fix="quit">Quit Session Switcher</button>
     </div>
     <p class="ver">Session Switcher ${esc(j.appVersion)}. Your chats are read from your own .claude folder and never leave this PC.</p>`;
@@ -253,7 +253,7 @@ $('setupBody').addEventListener('change', wrap(async e => {
     if (qh.dataset.quiet === 'on') q.on = qh.checked; else if (qh.value) q[qh.dataset.quiet] = qh.value;
     store('quiet-hours', JSON.stringify(q));
     pushSyncPrefs();
-    if (qh.dataset.quiet === 'on') toast(q.on ? `Quiet from ${q.from} to ${q.to}.` : 'Quiet hours are off.', 2500);
+    if (qh.dataset.quiet === 'on') toast(q.on ? `Quiet from ${clockOf(q.from)} to ${clockOf(q.to)}.` : 'Quiet hours are off.', 2500);
     return;
   }
   const loc = e.target.closest('[data-local]');
@@ -473,6 +473,8 @@ function setAlertLevel(id, level) {
   pushSyncPrefs();
   toast(level === 'off' ? 'No alerts from this chat.' : level === 'needs' ? 'This chat alerts only when it needs you.' : 'This chat alerts when it needs you and when it replies.', 3000);
 }
+// 22:00 as this PC shows times (10:00 PM, or 22:00).
+const clockOf = hhmm => { const [h, m] = String(hhmm).split(':').map(Number); const d = new Date(); d.setHours(h || 0, m || 0, 0, 0); return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
 const quietHours = () => { try { return JSON.parse(store('quiet-hours') || 'null'); } catch { return null; } };
 function inQuietHours(now = new Date()) {
   const q = quietHours(); if (!q || !q.on || !q.from || !q.to) return false;

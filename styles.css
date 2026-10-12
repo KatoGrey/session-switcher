@@ -1653,6 +1653,11 @@ dialog.fonts-dlg[open]{display:flex;flex-direction:column}
 }
 /* Foldables open, small tablets: room for the chat, not for side panels */
 @media (min-width:600px) and (max-width:980px){
+  /* A tablet: the top bar keeps to the screen (the counts without their words, the account without its windows). */
+  .pulse .p-label,.pulse .p-need .p-label{display:none}
+  .usechip .ac-win:not(:first-of-type),.usechip .ac-sep:not(:first-of-type){display:none}
+  .usechip .ac-win i{display:none}
+  .bar{gap:10px}
   .c-feed{padding-left:22px;padding-right:22px}
   .atlas{grid-template-columns:repeat(2,minmax(0,1fr))}
   .board,.summons-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -2253,6 +2258,9 @@ details.shared[open] summary{margin-bottom:6px}
 /* ---------- rules and tools, shared by Claude and Codex ---------- */
 .rules-dlg{width:min(880px,calc(calc(100vw / var(--look-ui, 1)) - 32px))}
 .rd-body{padding:4px 22px 18px;max-height:calc(calc(100vh / var(--look-ui, 1)) - 150px);overflow:auto}
+/* Rules and tools fills the dialog however tall its title gets: the body scrolls, its buttons stay in it. */
+#rulesDlg[open]{display:flex;flex-direction:column}
+#rulesDlg .rd-body{flex:1 1 auto;min-height:0;max-height:none}
 .rd-scope{display:inline-flex;gap:4px;margin:4px 0 12px;padding:3px;border:1px solid var(--seam);border-radius:999px}
 .rd-scope button{border:0;background:none;color:var(--ash);font:500 13px var(--f-body);padding:5px 13px;border-radius:999px;cursor:pointer}
 .rd-scope button[aria-checked="true"]{background:var(--vellum-3);color:var(--parch)}
@@ -2275,7 +2283,10 @@ details.shared[open] summary{margin-bottom:6px}
 .rd-no{color:var(--ash-2)}
 .rd-both{color:rgb(var(--c-7fb79a));font-size:13px}
 .rd-note{color:var(--ash);font-size:13px}
-@media (max-width:760px){ .rd-body{padding:4px 14px 14px} .rd-tools td:first-child small{max-width:160px} }
+@media (max-width:760px){ .rd-body{padding:4px 14px 14px} .rd-tools td:first-child small{max-width:160px}
+  /* On a phone each tool is a row of three, and its Add button goes under it, whole. */
+  .rd-tools tr{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr)} .rd-tools th:last-child{display:none}
+  .rd-tools td:last-child{grid-column:1 / -1;text-align:left;white-space:normal;padding-top:0} .rd-tools td{border-bottom:0} .rd-tools tr{border-bottom:1px solid var(--seam)} }
 
 /* ---------- pick up where you left off ---------- */
 .reopen{display:flex;gap:16px;margin:0 0 26px;padding:16px 20px;border:1px solid rgb(var(--c-d9bf74) / .4);border-radius:10px;background:linear-gradient(180deg,rgb(var(--c-d9bf74) / .07),transparent)}
@@ -2413,7 +2424,7 @@ body.solo .c-head .icon.c-backm{display:none}
 .cs-sep{padding:6px 12px 2px;font:500 10.5px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ash);pointer-events:none}
 .cs-chat b::before{content:'◆ ';color:var(--gilt);font-size:.8em}
 .shared.other summary{color:var(--gilt)}
-.aside-card{position:absolute;right:22px;bottom:calc(var(--dock-h, 120px) + 10px);z-index:12;width:min(440px,calc(100% - 44px));max-height:min(calc(60vh / var(--look-ui, 1)),520px);display:flex;flex-direction:column;border:1px solid var(--seam-2);border-radius:12px;background:rgb(var(--c-141117));box-shadow:0 18px 48px -18px rgb(var(--c-000000) / .8)}
+.aside-card{position:absolute;right:22px;bottom:calc(var(--dock-h, 120px) + 10px);z-index:12;width:min(440px,calc(100% - 44px));max-height:min(calc(60vh / var(--look-ui, 1)),520px,calc(100% - var(--dock-h, 120px) - 20px));display:flex;flex-direction:column;border:1px solid var(--seam-2);border-radius:12px;background:rgb(var(--c-141117));box-shadow:0 18px 48px -18px rgb(var(--c-000000) / .8)}
 .aside-card[hidden]{display:none}
 .as-h{display:flex;align-items:baseline;gap:8px;padding:10px 12px 8px 14px;border-bottom:1px solid var(--seam)}
 .as-h .glyph{color:var(--gilt)}
@@ -3486,3 +3497,22 @@ body.mini{margin:0;min-height:calc(100vh / var(--look-ui, 1));background:linear-
 .mn-b{display:flex;gap:4px;flex:none}
 .mn-quiet{margin:10px 0;font:italic 14px/1.4 var(--f-body);color:var(--ash)}
 .mn-u{margin:12px 0 0;font:400 11.5px/1.4 var(--f-label);color:var(--ash-2)}
+
+/* Touch screens: what you tap is at least about a fingertip tall. */
+@media (pointer:coarse){
+  .c-crew .crew{min-height:36px}
+  .c-crew .crew.both{min-height:32px}
+  .c-row .c-ib,#cSend,#cStop{min-height:36px}
+  .toast-act{min-height:34px;padding:6px 12px}
+  .lg-run .btn,.rn-b .btn{min-height:36px}
+  .lg a,.lg .linkish,.lg-i button{min-height:32px;display:inline-flex;align-items:center}
+  .q input[type="radio"],.q input[type="checkbox"],.lt-step input,.pf-row input{width:20px;height:20px}
+}
+/* A very wide monitor: the hub's cards and the chat's column use more of it. */
+@media (min-width:1900px){
+  .board{grid-template-columns:repeat(auto-fill,minmax(380px,1fr))}
+  .summons-grid{grid-template-columns:repeat(auto-fill,minmax(460px,1fr))}
+}
+@media (min-width:2200px){
+  .c-feed,.c-pending,.c-compose,.watchbar{max-width:1040px}
+}

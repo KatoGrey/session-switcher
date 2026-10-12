@@ -1403,11 +1403,13 @@ module.exports = [
     // Every screen size: a long menu stays on screen and scrolls to its last item; dialogs fit, at the
     // normal and the biggest interface size.
     async run(t) {
-      const sizes = [{ width: 1280, height: 720 }, { width: 1366, height: 680, ui: 130 }, { width: 412, height: 780, mobile: true }, { width: 412, height: 780, mobile: true, ui: 130 }];
+      const sizes = [{ width: 1280, height: 720 }, { width: 1366, height: 680, ui: 130 }, { width: 768, height: 1024, mobile: true }, { width: 412, height: 780, mobile: true }, { width: 412, height: 780, mobile: true, ui: 130 }];
       for (const size of sizes) {
         const name = `${size.width}×${size.height}${size.ui ? ` at ${size.ui}%` : ''}`;
         const b = await t.open(size);
         if (size.ui) { await b.eval(`Look.set({ ui: ${size.ui} }); return 1`); await sleep(400); }
+        const bar = await b.eval(`const r = document.querySelector('.bar'); return { fits: r.scrollWidth <= innerWidth + 1 && [...r.children].every(c => c.getBoundingClientRect().right <= innerWidth + 1), w: r.scrollWidth, iw: innerWidth }`);
+        t.check(`${name}: the top bar keeps to the screen`, bar.fits, bar);
         await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
         await b.eval(`document.querySelector('[data-c="more"]').click(); return 1`); await sleep(400);
         const m = await b.eval(`const m = document.getElementById('menu'), z = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--look-ui')) || 1, r = m.getBoundingClientRect();
@@ -1441,6 +1443,20 @@ module.exports = [
       await t.shot(b, 'starter');
       await b.clickOn('#menu button'); await sleep(500);
       t.check('and picking from it closes the menu, leaving the dialog open', await b.eval(`return document.getElementById('menu').hidden && !!document.querySelector('dialog[open]')`));
+    },
+  },
+  {
+    name: 'palette finds',
+    // Ctrl+K finds what you'd look for by name, and the chat's own actions while you're in one.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const find = q => b.eval(`openPalette(${JSON.stringify(q)}); await new Promise(r => setTimeout(r, 250)); const t = document.getElementById('palette').textContent; closePalette && closePalette(); return t`);
+      const want = { phone: /Phone access/, 'quiet hours': /Alerts and quiet hours/, 'text size': /Text and interface size/, 'theme studio': /Theme Studio/, 'edit prompts': /Edit prompts/, 'mark done': /Mark done/, btw: /Ask a side question/, stop: /Stop this chat/, rename: /Rename chat/, find: /Find in this chat/ };
+      const missing = [];
+      for (const [q, re] of Object.entries(want)) if (!re.test(await find(q))) missing.push(q);
+      t.check('Ctrl+K finds settings and the chat’s own actions by name', !missing.length, missing);
+      t.check('Rules and tools from inside a chat is about that chat’s project', await b.eval(`return paletteHere() === C.info.cwd`));
     },
   },
   {

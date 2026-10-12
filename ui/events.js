@@ -417,7 +417,7 @@ function projectItems(cwd) {
     ...(S.codex && S.codex.enabled ? [{ glyph: '⚑', label: 'Race Claude and Codex…', hint: 'same task, keep the better', disabled: !p.exists || !codexReady(), why: !p.exists ? 'The folder is gone' : 'Sign in to Codex first', run: () => openRaceDialog(cwd) },
       { glyph: '⑂', label: 'Split the work…', hint: 'each takes a part, keep both', disabled: !p.exists || !codexReady(), why: !p.exists ? 'The folder is gone' : 'Sign in to Codex first', run: () => openRaceDialog(cwd, 'split') }] : []),
     '-',
-    { label: S.platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
+    { label: 'Open folder', hint: S.platform === 'darwin' ? 'in Finder' : 'in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
     { label: 'Browse files', disabled: !p.exists, run: () => Viewer.open({ path: cwd, cwd }) },
     { label: 'Copy folder path', run: () => copyText(cwd) },
     ...(p.added && !hasChats(p) ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd }); await loadSessions(); renderAll(); } }] : []),
@@ -428,6 +428,7 @@ function activityItems(x) {
   return [
     { glyph: '❝', label: x.source === 'app' ? 'Open the chat' : x.source === 'terminal' ? 'Watch it live' : 'Read it here', run: () => { markSeen(x); return openActivity(x); } },
     ...(st === 'reply' ? [{ glyph: '✓', label: 'Mark as read', run: () => { markSeen(x); renderLive(true); renderNav(); } }] : []),
+    ...(x.sessionId && x.source === 'app' && sessionById(x.sessionId)[0] ? [doneItem(x.sessionId)] : []),
     { glyph: '✕', label: 'Close', hint: x.source === 'terminal' ? 'it keeps running in its terminal' : x.source === 'elsewhere' ? 'it stays in the other app' : x.phase === 'ended' ? '' : 'open it again any time', run: () => closeActivity(x) },
     ...(x.sessionId && !x.parentKey ? ['-', favItem(x.sessionId), ...chatItems(x.sessionId).filter(i => i === '-' || !/^(Return|Open in the chat window)/.test(i.label))] : []),
     ...(x.sessionId ? ['-', { label: 'Copy chat ID', run: () => copyText(x.sessionId) }] : []),
@@ -511,7 +512,7 @@ function openShortcuts() {
     document.body.insertAdjacentHTML('beforeend', `<dialog id="keysDlg" class="keys-dlg" aria-labelledby="keysTitle"><div class="setup-head"><h3 id="keysTitle">Keyboard shortcuts</h3><button class="icon" data-keys-close aria-label="Close">✕</button></div>
       <div class="keys-body">${[
         ['Anywhere', [['Ctrl K', 'Search chats, projects, documents, prompts and actions'], ['?', 'This list'], ['Right-click', 'Options for whatever you clicked (Shift for the browser’s menu)'], ['Esc', 'Close what’s open']]],
-        ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['Ctrl F', 'Find in this chat'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between open chats'], ['Alt Shift ↑ ↓', 'Move the chat you’re in up or down the list'], ['End', 'Jump to the latest message']]],
+        ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['Ctrl F', 'Find in this chat'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc twice', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between open chats'], ['Alt Shift ↑ ↓', 'Move the chat you’re in up or down the list'], ['End', 'Jump to the latest message']]],
         ['Pictures', [['← →', 'Step through a project’s pictures']]],
       ].map(([h, rows]) => `<section><p class="d-h">${esc(h)}</p><dl>${rows.map(([k, v]) => `<dt><kbd class="kbd">${esc(k)}</kbd></dt><dd>${esc(v)}</dd>`).join('')}</dl></section>`).join('')}</div></dialog>`);
     d = $('keysDlg');

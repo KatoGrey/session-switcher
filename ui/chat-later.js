@@ -102,8 +102,8 @@ async function openLaterDialog(turn) {
   for (const text of items) r = await api('/api/tasks', { action: 'add', task: { cwd: proj.cwd, provider: $('ltWho').value, accountId: 'auto', prompt: text, when: at ? 'at' : 'now', at, from } });
   if (r) { S.tasks = r.tasks; renderQueue(); }
   laterMarks();
-  const whenText = at ? new Date(at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : 'as soon as an account has room';
-  toast(`${items.length === 1 ? 'Queued' : `Queued ${items.length} tasks`}: ${at ? `starting ${whenText}` : `starting ${whenText}`}. They’re under Queued on the hub.`, 5000);
+  const startText = at ? whenText(at) : 'as soon as an account has room';
+  toast(`${items.length === 1 ? 'Queued' : `Queued ${items.length} tasks`}: starting ${startText}. They’re under Queued on the hub.`, 5000);
 }
 // Under each reply: what's queued from it (and what's started), from the queue itself.
 function laterMarks() {

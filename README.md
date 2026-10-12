@@ -429,7 +429,7 @@ Appearance is saved on each device, so your phone and your PC can look different
 
 ### Theme Studio: a world of your own
 
-Open **Setup → Appearance → Theme Studio**, name a world and describe the place you want to work in. Choose clear, storybook or rounded lettering, then **Review art brief in Codex**. Send the prepared brief in the chat to generate coordinated night and morning paintings and a palette drawn from them. This uses your normal Codex session and its image tools; no separate API key is needed. If image generation is unavailable in that session, the brief asks Codex to explain rather than make a placeholder.
+Open **Setup → Appearance → Theme Studio**, name a world and describe the place you want to work in. Choose its lettering (any of the font sets), then **Review art brief in Codex**. Send the prepared brief in the chat to generate coordinated night and morning paintings and a palette drawn from them. This uses your normal Codex session and its image tools; no separate API key is needed. If image generation is unavailable in that session, the brief asks Codex to explain rather than make a placeholder.
 
 Return to Theme Studio and **Review** the finished draft. Both modes appear beside sample chat text before you choose **Save and use this world**. Small text is adjusted to at least 4.5:1 contrast, and body text to at least 7:1, against page and card surfaces in both modes. Controls keep their familiar wording. Paintings are compressed to WebP, with a 1600 × 1200 maximum, and have no continuous animation; live counts remain readable on a solid panel.
 
@@ -525,7 +525,7 @@ Turn **Animations** off in Setup to keep everything still. It's also off automat
 
 | Keys | What it does |
 |---|---|
-| `Ctrl+K` or `/` | Jump to any chat, project, document, prompt or action, or search inside every message |
+| `Ctrl+K` (or `/` outside a chat) | Jump to any chat, project, document, prompt or action (in a chat, its own actions too), or search inside every message |
 | `/` in the message box | Pick a saved prompt |
 | `←` / `→` | Step through a project's pictures in the full-size view |
 | `Alt+↑` / `Alt+↓` | Switch between open chats in the chat window |

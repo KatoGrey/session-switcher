@@ -842,7 +842,7 @@ function chatHeadItems() {
     ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; closeChatView(); popOutChat(sid); } }] : []),
     ...(C.info && C.info.cwd && !C.watch ? [{ glyph: '▶', label: 'Run the project', hint: 'its dev server or start script, with its output', run: () => openRun() }] : []),
     ...(C.key && !C.watch ? [{ glyph: '❦', label: 'Ask a side question', hint: '/btw · doesn’t derail this chat', run: () => openAside() }] : []),
-    ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark this chat done', hint: 'off the lists until it’s used again', run: () => { const sid = id; closeChatView(); return setChatDone(sid, true); } }] : []),
+    ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark done', hint: 'off the lists until it’s used again', run: () => { const sid = id; closeChatView(); return setChatDone(sid, true); } }] : []),
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
     { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },
     '-',

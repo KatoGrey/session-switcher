@@ -10,20 +10,29 @@ function score(text, q) {
   for (const term of terms) { const i = t.indexOf(term); if (i < 0) return -1; s += i === 0 ? 30 : /\W/.test(t[i - 1]) ? 20 : 8; }
   return s;
 }
+// The project an action is about: the open chat's, else the project page you're on.
+const paletteHere = () => (window.ChatUI && ChatUI.isOpen() && C.info && C.info.cwd) || (S.view === 'folder' ? S.folder : null);
+// Setup, at one of its sections.
+async function openSetupAt(id) { await openSetup(); setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 300); }
 function palItems(q) {
   const out = [];
   const add = (g, list) => { if (list.length) out.push({ g }, ...list); };
   const run = S.activity.filter(x => !x.parentKey).map(x => ({ glyph: NEEDS.has(statusOf(x)) || statusOf(x) === 'reply' ? '✦' : '◉', t: x.title || 'New chat', s: `${{ approve: 'needs your OK', question: 'has a question', 'terminal-wait': 'waiting in its terminal', reply: 'your turn', working: 'at work', quiet: 'open', ended: 'stopped' }[statusOf(x)]}${x.folder ? ` · ${x.folder}` : ''}`, run: () => openActivity(x), text: `${x.title} ${x.folder}` }));
   const acts = [
+    { glyph: '◈', t: 'Phone access', s: 'pair a phone, notifications', run: () => openSetupAt('st-phone'), alias: 'phone android iphone pair mobile notifications tailscale' },
+    { glyph: '◈', t: 'Alerts and quiet hours', s: 'chimes, notifications, when to keep quiet', run: () => openSetupAt('st-alerts'), alias: 'alerts quiet hours notifications chime sound mute' },
+    { glyph: '◐', t: 'Text and interface size', run: () => openSetup('look'), alias: 'text size zoom bigger smaller interface scale' },
+    { glyph: '❖', t: 'Theme Studio', s: 'a world of your own, painted with Codex', run: () => { const x = document.createElement('button'); x.setAttribute('data-studio-open', ''); x.hidden = true; document.body.appendChild(x); x.click(); x.remove(); }, alias: 'theme studio world paint custom' },
+    { glyph: '❡', t: 'Edit prompts', run: () => openPromptEditor(), alias: 'prompts saved slash templates' },
     { glyph: '✦', t: 'Go to the hub', run: () => go('hub') },
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
     { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health' },
     { glyph: '✧', t: 'Take the tour', s: 'a minute on what’s where', run: () => startTour(), alias: 'tour help guide intro getting started' },
-    { glyph: '⚑', t: 'Race Claude and Codex', s: 'the same task in two copies of a project; keep the better one', run: () => openRaceDialog(S.view === 'folder' ? S.folder : null), alias: 'race compete compare both versus head to head' },
+    { glyph: '⚑', t: 'Race Claude and Codex', s: 'the same task in two copies of a project; keep the better one', run: () => openRaceDialog(paletteHere()), alias: 'race compete compare both versus head to head' },
     ...(window.ChatUI && ChatUI.isOpen() && C.info && C.info.cwd ? [{ glyph: '▶', t: 'Run the project', s: 'its dev server or start script, with its output, beside the chat', run: () => openRun(), alias: 'run start dev server preview serve launch' }] : []),
-    { glyph: '⑂', t: 'Split the work', s: 'Claude and Codex each take a part, in their own copies; keep both', run: () => openRaceDialog(S.view === 'folder' ? S.folder : null, 'split'), alias: 'split divide parallel share both halves worktree' },
-    { glyph: '⏳', t: 'Queue a task', s: 'starts as a new chat when an account has room, or at a time', run: () => openTaskDialog(S.view === 'folder' ? S.folder : null), alias: 'queue later schedule task when limit resets' },
-    { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, shared by Claude and Codex', run: () => openRules(S.view === 'folder' ? S.folder : null), alias: 'claude.md agents.md mcp servers tools rules instructions memory' },
+    { glyph: '⑂', t: 'Split the work', s: 'Claude and Codex each take a part, in their own copies; keep both', run: () => openRaceDialog(paletteHere(), 'split'), alias: 'split divide parallel share both halves worktree' },
+    { glyph: '⏳', t: 'Queue a task', s: 'starts as a new chat when an account has room, or at a time', run: () => openTaskDialog(paletteHere()), alias: 'queue later schedule task when limit resets' },
+    { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, shared by Claude and Codex', run: () => openRules(paletteHere()), alias: 'claude.md agents.md mcp servers tools rules instructions memory' },
     { glyph: '◐', t: 'Appearance', s: 'themes, fonts, light or dark, text and interface size', run: () => openSetup('look'), alias: 'font fonts typeface' },
     { glyph: '?', t: 'Keyboard shortcuts', run: () => openShortcuts(), alias: 'keys hotkeys help' },
     ...(miniOK() && !window.REMOTE ? [{ glyph: '◰', t: 'Open the mini window', s: 'what needs you, floating over other apps', run: () => openMini(), alias: 'mini picture in picture float pip always on top small status' }] : []),
@@ -53,11 +62,11 @@ function palItems(q) {
   // The chat you're in: find, export, pin.
   const inChat = window.ChatUI && ChatUI.isOpen();
   const sid = inChat && ChatUI.sessionId ? ChatUI.sessionId() : null;
-  const chatActs = inChat ? [
-    { glyph: '⌕', t: 'Find in this chat', s: 'Ctrl F', run: () => ChatUI.find(), text: 'find search this chat' },
-    { glyph: '❧', t: 'Export this chat as Markdown', run: () => ChatUI.exportChat(), text: 'export save download markdown chat' },
-    ...(sid ? [{ glyph: '★', t: isFav(sid) ? 'Unpin this chat from the sidebar' : 'Pin this chat to the sidebar', run: () => toggleFav(sid), text: 'pin favorite star this chat' }] : []),
-  ] : [];
+  // Everything the chat's ⋯ menu has (find, export, pin, side question, mark done, stop…), searchable.
+  const chatActs = inChat ? chatHeadItems().filter(it => it !== '-' && !it.disabled && it.label).map(it => ({
+    glyph: it.glyph || '·', t: it.label, s: it.hint || it.keys || '', run: it.run,
+    text: `${it.label} ${it.hint || ''} ${/done/i.test(it.label) ? 'done archive finish tidy' : /side question/i.test(it.label) ? 'btw aside quick question' : /Summarize/.test(it.label) ? 'compact summarize context' : /Stop/.test(it.label) ? 'stop end quit chat' : /Find/.test(it.label) ? 'find search' : ''}`,
+  })) : [];
   if (!q) {
     add('This chat', chatActs);
     add('Active now', run);

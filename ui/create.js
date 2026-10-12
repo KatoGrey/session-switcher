@@ -203,7 +203,7 @@ function npRenderAs() {
     return { v: a.id, ring: ringOf(a), name: a.name, sub: why, ok };
   });
   if (S.codex && S.codex.enabled) opts.push({ v: 'codex', ring: codexRing(S.codex.id), name: S.codex.name || 'Codex', sub: codexReady() ? (usageLine(S.codex.id, { short: true }) || (S.codex.kind === 'ollama' ? 'Ollama' : 'ChatGPT')) : 'Sign in to Codex first', ok: codexReady(), codex: true });
-  opts.push({ v: 'none', name: 'Don’t start a chat yet', sub: 'Just make the folder and open the project', ok: true, none: true });
+  opts.push({ v: 'none', name: 'Don’t start a chat yet', sub: NP.mode === 'new' ? 'Just make the folder and open the project' : 'Just open the project', ok: true, none: true });
   const pick = (canLaunch(cur) && cur.id) || (opts.find(o => o.ok) || {}).v;
   $('npAs').innerHTML = opts.map(o => `<label class="np-opt ${o.ok ? '' : 'off'} ${o.codex ? 'codex' : ''}"><input type="radio" name="npAs" value="${esc(o.v)}" ${o.v === pick ? 'checked' : ''} ${o.ok ? '' : 'disabled'}>
     ${o.none ? '<span class="np-ring none" aria-hidden="true"></span>' : `<span class="np-ring" style="--ring:${o.ring}" aria-hidden="true"></span>`}<span class="np-t"><b>${esc(o.name)}</b><small>${esc(o.sub)}</small></span></label>`).join('');

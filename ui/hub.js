@@ -913,7 +913,7 @@ function worldCard(p, i) {
       <div class="w-act">
         ${resumable && p.exists ? `<button class="btn sm" data-continue="${esc(resumable.id)}" title="${esc(resumable.title)}">Continue</button>` : ''}
         <button class="btn quiet sm" data-act="world-new" data-cwd="${esc(p.cwd)}" aria-haspopup="menu" aria-expanded="false" ${p.exists ? '' : 'disabled'}>New chat</button>
-        ${p.sessions.length ? `<span class="w-counts" title="${nClaude} Claude Code chats${nCodex ? `, ${nCodex} Codex chats` : ''}${nOc ? `, ${nOc} OpenClaw sessions` : ''}">${nClaude ? `<span class="pc claude">${nClaude}</span>` : ''}${nCodex ? `<span class="pc codex">${nCodex}</span>` : ''}${nOc ? `<span class="pc openclaw">${nOc}</span>` : ''}</span>` : ''}
+        ${p.sessions.length ? `<span class="w-counts" title="${plural(nClaude, 'Claude Code chat')}${nCodex ? `, ${plural(nCodex, 'Codex chat')}` : ''}${nOc ? `, ${nOc} OpenClaw sessions` : ''}">${nClaude ? `<span class="pc claude">${nClaude}</span>` : ''}${nCodex ? `<span class="pc codex">${nCodex}</span>` : ''}${nOc ? `<span class="pc openclaw">${nOc}</span>` : ''}</span>` : ''}
       </div>
     </div>
   </article>`;

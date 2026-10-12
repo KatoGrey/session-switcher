@@ -233,7 +233,10 @@ async function setChatDone(id, done) {
 function allSessions() { const all = []; for (const p of S.projects) for (const s of p.sessions) all.push([s, p]); return all; }
 function sessionById(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
 const lastLine = t => { const parts = String(t || '').trim().split(/\n\s*\n/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean); return parts.length ? parts[parts.length - 1] : ''; };
-const plainMd = t => String(t || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*_`#>|]+/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\s+/g, ' ').trim();
+// Markdown as plain text for a one-line preview: emphasis, code marks, headings and links go; an
+// asterisk that's part of the words (A*, 2*3) stays.
+const plainMd = t => String(t || '').replace(/```[\s\S]*?```/g, ' ').replace(/`([^`]*)`/g, '$1').replace(/(\*\*|__)(.+?)\1/g, '$2')
+  .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,;:!?]|$)/g, '$1$2').replace(/^\s{0,3}(#{1,6}|>)\s*/gm, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\s+/g, ' ').trim();
 
 const ICON = {
   lock: '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.4" fill="currentColor"/><path d="M5.2 7V5.2a2.8 2.8 0 015.6 0V7" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',

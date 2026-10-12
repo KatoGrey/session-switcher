@@ -243,7 +243,7 @@ function insertMention(f, at) {
 function welcome(cwd) {
   const p = cwd && S.projects.find(x => x.cwd === cwd);
   const w = cwd && S.worlds[cwd];
-  const art = w && w.banner ? `<img src="${esc(imageSrc(w.banner, cwd))}" alt="">` : '';
+  const art = w && w.banner ? `<img src="${esc(imageSrc(w.banner, cwd))}" alt="" onerror="this.closest('.c-welcome')?.classList.remove('has-art'); this.parentElement.remove()">` : '';   // a banner that won't load leaves the plain welcome
   const chips = S.prompts.filter(pr => C.provider === 'codex' || pr.provider !== 'codex').slice(0, 8)
     .map(pr => `<button type="button" class="chip" data-c="chip" data-pid="${esc(pr.id)}">${esc(pr.title)}</button>`).join('');
   $c('cFeed').insertAdjacentHTML('beforeend', `<div class="c-welcome ${art ? 'has-art' : ''}">${art ? `<div class="cw-art">${art}</div>` : ''}
@@ -352,6 +352,8 @@ async function sendMessage() {
 function modeOptions(list) {
   const sel = $c('cMode');
   sel.innerHTML = list.map(m => `<option value="${esc(m.value)}">${esc(m.label)}</option>`).join('');
+  const what = `What ${PROV_NAME[C.provider] || 'it'} may do without asking`;   // Claude, or Codex in a Codex chat
+  sel.title = what; const l = $c('cModeL'); if (l) l.textContent = what;
 }
 function setMode(m) {
   const sel = $c('cMode');
