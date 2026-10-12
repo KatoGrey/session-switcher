@@ -7,7 +7,7 @@ const small = () => matchMedia('(max-width: 760px)').matches;
 
 function sideChat(c, depth = 0) {
   const marks = (isBug(c) ? '' : kindTag(c)) + waitTag(c) + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '');
-  return `<button class="nav-i chat-i${depth ? ' kid' : ''}" ${depth ? `style="--d:${depth}"` : ''} draggable="true" data-chat="${esc(c.id)}" aria-current="${S.view === 'chat' && String(CV.id).toLowerCase() === String(c.id).toLowerCase()}" title="${esc(c.title)} · ${esc(projOf(c).name)}">${focusStar(c)}<span class="lbl">${esc(c.title)}</span>${marks}</button>`;
+  return `<button class="nav-i chat-i${depth ? ' kid' : ''}" ${depth ? `style="--d:${depth}"` : ''} draggable="true" data-chat="${esc(c.id)}" aria-current="${S.view === 'chat' && String(CV.id).toLowerCase() === String(c.id).toLowerCase()}" title="${esc(c.title)} · ${esc(projOf(c).name)}">${focusStar(c)}<span class="lbl">${esc(isBug(c) ? c.title.replace(/\s*\(from [^)]+\)\s*$/, '') : c.title)}</span>${marks}</button>`;
 }
 // Under a top-level chat in the sidebar: one line for its sub-chats, opened in place.
 function sideFam(t, depth = 1) {
