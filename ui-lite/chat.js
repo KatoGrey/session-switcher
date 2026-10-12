@@ -395,6 +395,15 @@ const wantsTo = name => ({ Bash: 'run a command', PowerShell: 'run a command', E
    (or paste, or drop, several at once), the model, and the effort. How much it may do without
    asking lives in Conversation settings (the gear), and defaults to yours. */
 const COMP = { images: [], files: [], converting: 0, model: null, effort: null, perm: null };
+// What you'd typed in each chat and not sent, kept on this device, so moving between chats doesn't lose it.
+const DRAFTS = new Map(Object.entries(local.get('drafts', {})));
+const saveDrafts = () => { clearTimeout(saveDrafts.t); saveDrafts.t = setTimeout(() => local.set('drafts', Object.fromEntries([...DRAFTS].slice(-40))), 400); };
+document.addEventListener('input', e => {
+  if (e.target.id !== 'msgBox' || S.view !== 'chat' || !CV.id) return;
+  const v = e.target.value; if (v.trim()) DRAFTS.set(String(CV.id), v); else DRAFTS.delete(String(CV.id));
+  saveDrafts();
+});
+function restoreDraft() { const d = CV.id && DRAFTS.get(String(CV.id)); const box = $('msgBox'); if (d && box && !box.value) { box.value = d; autosize(box); } }
 function resetComposer() { for (const i of COMP.images) if (i.url) URL.revokeObjectURL(i.url); Object.assign(COMP, { images: [], files: [], converting: 0, model: null, effort: null, perm: null }); }
 function composerHtml({ fresh = false } = {}) {
   return `<form class="box" id="composer" autocomplete="off">
@@ -596,7 +605,7 @@ async function sendInChat({ fromQueue = false } = {}) {
   if (!fromQueue && CV.busy && CV.key) {
     const steer = COMP.steerNow; COMP.steerNow = false;
     const imgs = COMP.images.slice();
-    box.value = ''; autosize(box); resetComposer(); paintAttachments();
+    box.value = ''; autosize(box); resetComposer(); paintAttachments(); DRAFTS.delete(String(CV.id)); saveDrafts();
     if (!steer) { CV.queue.push({ text, images: imgs }); paintQueue(); sfx('chip'); return undefined; }
     return steerIn(text, imgs);
   }
@@ -606,7 +615,7 @@ async function sendInChat({ fromQueue = false } = {}) {
   const images = imagesOut();
   const local = { kind: 'user', text: withFiles(text), images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
   CV.items.push(local);
-  box.value = ''; autosize(box);
+  box.value = ''; autosize(box); DRAFTS.delete(String(CV.id)); saveDrafts();
   if (!CV.busy) { CV.busy = true; CV.status = CV.key ? 'Sending' : 'Starting'; CV.startedAt = Date.now(); }
   sfx('slide'); paintFeed(); paintStatus(); $('feed').scrollTop = $('feed').scrollHeight;
   try {

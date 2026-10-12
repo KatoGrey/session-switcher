@@ -185,7 +185,7 @@ function render() {
   if (S.view === 'side') return;
   const m = $('main');
   // The chat and New chat pages are drawn once; after that only their parts change.
-  if (S.view === 'chat') { if (!$('chatView') || m.dataset.shownChat !== String(CV.id)) { m.innerHTML = chatView(); m.dataset.shownChat = String(CV.id); paintChat(); } else paintHead(); return; }
+  if (S.view === 'chat') { if (!$('chatView') || m.dataset.shownChat !== String(CV.id)) { m.innerHTML = chatView(); m.dataset.shownChat = String(CV.id); paintChat(); restoreDraft(); } else paintHead(); return; }
   if (S.view === 'newchat') {
     if (!m.querySelector('.newchat')) { m.innerHTML = newChatView(); delete m.dataset.shownChat; paintNewChat(); $('msgBox').focus(); } else paintNewChat();
     if (NC.prefill) { $('msgBox').value = NC.prefill; autosize($('msgBox')); NC.prefill = null; }

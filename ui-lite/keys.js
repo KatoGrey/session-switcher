@@ -3,7 +3,7 @@
    row under it (or on the selection). g-chords jump between pages. ⌘K finds anything. ? shows it all. */
 
 const SHORTCUTS = [
-  ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g b', 'Bugs'], ['g o', 'Routines'], ['g r', 'Recents'], ['g u', 'Automation'], ['g i', 'Images'], ['g l', 'Alerts'], ['g a', 'Archived'], ['g c', 'Clean up'], ['[ / ]', 'Previous / next chat in the sidebar'], ['n', 'Next chat that needs you'], ['m', 'Sounds on / off'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
+  ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g b', 'Bugs'], ['g o', 'Routines'], ['g r', 'Recents'], ['g u', 'Automation'], ['g i', 'Images'], ['g l', 'Alerts'], ['g a', 'Archived'], ['g c', 'Clean up'], ['[ / ] or ⌥↑ / ⌥↓', 'Previous / next chat in the sidebar (⌥ works while typing)'], ['n or ⌥⇧↓', 'Next chat that needs you'], ['m', 'Sounds on / off'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
   ['Needs you', [['t', 'Triage: one at a time, the next opens by itself'], ['a / d', 'Allow / deny'], ['r', 'Reply'], ['e', 'Done'], ['o', 'Open the chat']]],
   ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–4', 'Status: Exploring, Building, Finishing, Done'], ['→ / ←', 'Open / fold a chat’s sub-chats'], ['f', 'Focus on / off'], ['w', 'Waiting on…'], ['s', 'Status, kind and more'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
   ['In a chat', [['↵', 'Send'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['esc', 'Back to where you were']]],
@@ -51,6 +51,8 @@ function onKey(e) {
   if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); return openPalette(); }
   if (mod && e.key === '.' && S.view === 'chat' && CV.key && CV.busy) { e.preventDefault(); sfx('close'); return wrap(() => api('/api/chat/interrupt', { key: CV.key }))(); }
   if ($('palRoot').innerHTML) return undefined; // the palette handles its own keys
+  // Rifling works even while typing: ⌥↑ / ⌥↓ the sidebar's chats, ⌥⇧↓ the next that needs you.
+  if (e.altKey && !mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); return e.shiftKey && e.key === 'ArrowDown' ? nextNeeding() : stepChat(e.key === 'ArrowDown' ? 1 : -1); }
   if (e.key === 'Escape') {
     if ($('modalRoot').innerHTML) { $('modalRoot').innerHTML = ''; return undefined; }
     if ($('popRoot').innerHTML) return closePop();
