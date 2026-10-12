@@ -1713,8 +1713,10 @@ function commanderSessions(filter = 'active', groupName = '') {
   };
   for (const g of view.groups) g.chats.forEach(addKnown);
   for (const [child, parent] of Object.entries(view.parents)) { addKnown(child); addKnown(parent); }
-  if (filter === 'all') [...known.values()].sort((a, b) => b.s.updated - a.s.updated).slice(0, 40).forEach(f => addKnown(f.s.id));
-  let out = [...rows.values()].map(r => ({ ...r, group: groupName_(r.id), parent: organize.parentOf(r.id), subSessions: organize.childrenOf(r.id) }));
+  if (filter === 'all' || filter === 'archived') [...known.values()].sort((a, b) => b.s.updated - a.s.updated).slice(0, 40).forEach(f => addKnown(f.s.id));
+  // Chats archived in Switcher Lite are out of every list, the Commander's included (unless it asks for 'archived').
+  let archivedLite = {}; try { archivedLite = (liteStore.get().archived || {}).chats || {}; } catch { /* none */ }
+  let out = [...rows.values()].filter(r => (filter === 'archived') === !!archivedLite[r.id]).map(r => ({ ...r, group: groupName_(r.id), parent: organize.parentOf(r.id), subSessions: organize.childrenOf(r.id) }));
   const WAIT = ['needs approval', 'has a question', 'waiting in its terminal', 'idle'];
   if (filter === 'working') out = out.filter(r => r.state === 'working');
   else if (filter === 'waiting') out = out.filter(r => WAIT.includes(r.state) && r.state !== 'not running');
