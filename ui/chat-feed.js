@@ -92,7 +92,7 @@ function hl(code, lang) {
   return out + esc(code.slice(last));
 }
 function codeBlock(code, lang) {
-  return `<div class="code"><div class="code-h"><span>${esc(lang || 'code')}</span><button type="button" class="code-copy">Copy</button></div><pre><code>${hl(code, lang)}</code></pre></div>`;
+  return `<div class="code"><div class="code-h"><span>${esc(lang || 'code')}</span><button type="button" class="code-copy">Copy</button></div><pre tabindex="0"><code>${hl(code, lang)}</code></pre></div>`;
 }
 const LIST_RE = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/;
 function list(lines, i) {
@@ -431,12 +431,12 @@ function part(root, mid, model) {
 // A picture Codex is making or made.
 function genImage(b, develop) {
   const src = b.src || (b.path ? imageUrl(b.path) : null);
-  const frame = src ? `<button type="button" class="thumb gen-img" data-full="${esc(src)}"><img src="${esc(src)}" alt="${esc(b.prompt || 'Generated image')}"></button>`
+  const frame = src ? `<button type="button" class="thumb gen-img" data-full="${esc(src)}"><img src="${esc(src)}" alt="${esc(b.prompt || 'Generated image')}" onerror="this.closest('.gen').classList.add('gone')"></button>`
     : b.status === 'failed' ? `<div class="gen-wait failed">${esc(b.failure || 'The image couldn’t be made.')}</div>`
     : '<div class="gen-wait"><span class="gen-spin" aria-hidden="true"></span>Drawing the image…</div>';
   const give = b.path && C.provider === 'claude' ? `<button type="button" class="btn sm codexbtn" data-giveimg="${esc(b.path)}" title="Attach this picture to your next message to Claude">Give to Claude</button>` : '';
   const acts = b.path ? `<div class="gen-act">${give}<button type="button" class="btn quiet sm" data-file="${esc(b.path)}">Open</button><button type="button" class="btn quiet sm" data-reveal="${esc(b.path)}">Show in folder</button><button type="button" class="btn quiet sm" data-copy="${esc(b.path)}">Copy path</button></div>` : '';
-  return `<figure class="gen ${b.status || ''} ${develop && src ? 'develop' : ''}" data-gid="${esc(b.id || '')}"><div class="gen-frame">${frame}</div>${b.prompt ? `<figcaption>${esc(b.prompt)}</figcaption>` : ''}${acts}</figure>`;
+  return `<figure class="gen ${b.status || ''} ${develop && src ? 'develop' : ''}" data-gid="${esc(b.id || '')}"><div class="gen-frame">${frame}</div><p class="gen-gone">This picture can’t be shown here; it may have moved or been deleted.</p>${b.prompt ? `<figcaption>${esc(b.prompt)}</figcaption>` : ''}${acts}</figure>`;
 }
 function addBlock(p, b, live) {
   const fin = p.querySelector('.final');

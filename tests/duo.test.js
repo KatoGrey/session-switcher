@@ -72,3 +72,24 @@ test('duo: nothing new, nothing added', () => {
   assert.equal(catchUp({ to: 'claude', theirs: [] }), '');
   assert.equal(catchUp({ to: 'codex', theirs: entries([reply(1, '')], 'claude') }), '');
 });
+
+test('duo: Claude is told once that it has a partner, and the first in Both knows one follows', () => {
+  const intro = catchUp({ to: 'claude', theirs: [], intro: true });
+  assert.match(intro, /working alongside Codex/);
+  assert.match(intro, /leave it to Codex/);
+  const first = catchUp({ to: 'claude', theirs: [], first: true });
+  assert.match(first, /You answer first; Codex picks it up after you/);
+});
+
+test('duo: the newest reply goes whole; older long ones keep their start and end', () => {
+  const long = n => ({ from: 'codex', text: `${'a'.repeat(n)} MIDDLE ${'b'.repeat(2000)}`, files: new Set(), cmds: 0 });
+  const block = catchUp({ to: 'claude', theirs: [long(6000), long(9000)] });
+  assert.equal((block.match(/MIDDLE/g) || []).length, 1, 'only the newest keeps its middle');
+});
+
+test('duo: a reply you quoted into your message is not passed on again', () => {
+  const r = { from: 'claude', text: 'Step one: fix it.\nStep two: test it.', files: new Set(), cmds: 0 };
+  const msg = `Claude said:\n\n> Step one: fix it.\n> Step two: test it.\n\nThoughts?`;
+  assert.equal(catchUp({ to: 'codex', theirs: [r], heard: [msg] }), '');
+  assert.match(catchUp({ to: 'codex', theirs: [r], heard: ['something else'] }), /Step two/);
+});

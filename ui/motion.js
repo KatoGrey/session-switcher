@@ -233,3 +233,22 @@ function tick() {
   for (const el of document.querySelectorAll('[data-clock]')) set(el, clock(now));
 }
 setInterval(tick, 1000);
+
+/* ---------- rest ---------- */
+// The world rests when you do: after a while with no one using the window (unfocused for 90 seconds,
+// or untouched for 5 minutes), every looping animation pauses and the scene dims a little; the first
+// touch, key or look back wakes it. Nothing redraws while you're away, however fast the screen.
+const REST_AWAY_MS = 90 * 1000, REST_IDLE_MS = 5 * 60 * 1000;
+let restSeen = Date.now();
+function restCheck() {
+  const idle = Date.now() - restSeen;
+  const rest = document.hidden || (!document.hasFocus() && idle > REST_AWAY_MS) || idle > REST_IDLE_MS;
+  document.documentElement.classList.toggle('at-rest', rest);
+}
+function restWake() {
+  restSeen = Date.now();
+  if (document.documentElement.classList.contains('at-rest')) restCheck();
+}
+for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'focus']) window.addEventListener(ev, restWake, { passive: true, capture: true });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) restSeen = Date.now(); restCheck(); });
+setInterval(restCheck, 15000);

@@ -255,7 +255,7 @@ mark{background:rgb(var(--c-d9bf74) / .26);color:var(--parch);border-radius:2px;
 .o-top{display:flex;align-items:center;gap:9px;font:500 10.5px/1 var(--f-label);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
 .o-top .o-time{margin-left:auto;color:var(--ash);letter-spacing:.06em;font-variant-numeric:tabular-nums}
 .o-title{margin:2px 0 0;font:600 17.5px/1.25 var(--f-caps);letter-spacing:.03em;color:var(--parch);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.o-title button{all:unset;cursor:pointer}
+.o-title button{all:unset;cursor:pointer;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .o-title button:hover{color:var(--parch);text-decoration:underline;text-decoration-color:var(--crimson);text-underline-offset:4px}
 .o-title button:focus-visible{outline:2px solid var(--gilt);outline-offset:3px}
 .o-where{margin:-4px 0 0;font:italic 14px/1.4 var(--f-body);color:var(--ash);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -598,7 +598,7 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .md del{color:var(--ash)}
 .md a{color:var(--ember-soft);text-decoration-color:rgb(var(--c-e2a596) / .4);text-underline-offset:3px}
 .md a:hover{text-decoration-color:currentColor}
-.md code{font:13.5px var(--f-mono);background:rgb(var(--c-ede6d9) / .05);border:1px solid var(--seam-2);border-radius:4px;padding:1px 5px;color:rgb(var(--c-e6dccb))}
+.md code{box-decoration-break:clone;-webkit-box-decoration-break:clone;font:13.5px var(--f-mono);background:rgb(var(--c-ede6d9) / .05);border:1px solid var(--seam-2);border-radius:4px;padding:1px 5px;color:rgb(var(--c-e6dccb))}
 .md blockquote{margin:0 0 12px;padding:4px 0 4px 16px;border-left:2px solid var(--gilt);color:var(--parch-2);font-style:italic}
 .md hr{border:0;height:1px;background:var(--seam);margin:20px 0}
 .md .task{display:inline-block;width:14px;height:14px;border:1.5px solid var(--ash);border-radius:3px;vertical-align:-2px;margin-right:6px}
@@ -613,6 +613,7 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .code-h{display:flex;justify-content:space-between;align-items:center;padding:6px 8px 6px 13px;border-bottom:1px solid var(--seam);font:500 10.5px var(--f-label);letter-spacing:.14em;text-transform:uppercase;color:var(--ash)}
 .code-copy{background:none;border:1px solid var(--seam-2);border-radius:4px;padding:3px 9px;font:500 11px var(--f-label);color:var(--ash)}
 .code-copy:hover{color:var(--parch);border-color:var(--ash-2)}
+.code pre:focus-visible{outline:2px solid var(--gilt);outline-offset:-2px}
 .code pre{margin:0;padding:13px 15px;overflow-x:auto;font:13.5px/1.6 var(--f-mono);color:rgb(var(--c-e9e1d4))}
 .aborted{font:italic 14px var(--f-body);color:var(--ash);margin:0}
 
@@ -843,6 +844,9 @@ dialog.viewer[open]{display:block}
 @keyframes sheen{from{background-position:120% 0}to{background-position:-120% 0}}
 .gen-spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--seam-2);border-top-color:rgb(var(--c-6f97d8));animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.gen-gone{display:none;margin:0;padding:14px 16px;border:1px dashed var(--seam-2);border-radius:8px;font:italic 14px/1.5 var(--f-body);color:var(--ash)}
+.gen.gone .gen-frame{display:none}
+.gen.gone .gen-gone{display:block}
 .gen figcaption{font:italic 14px/1.5 var(--f-body);color:var(--ash)}
 .gen-act{display:flex;gap:4px;flex-wrap:wrap}
 
@@ -1785,6 +1789,7 @@ dialog:focus-visible,dialog:focus{outline:none}
   .livepill.off{left:50%;right:auto;bottom:auto;top:calc(var(--bar-h) + 8px);transform:translateX(-50%);padding:7px 14px 7px 10px}
   .livepill.off .lp-text{display:inline}
   .livepill.off .lp-bell{display:none}
+  body.nav-open .livepill.off{display:none}
   /* The sidebar drawer: solid, with a backdrop that closes it */
   .nav{background:linear-gradient(180deg,var(--vellum),var(--abyss))}
   .nav-back{position:fixed;inset:var(--bar-h) 0 0 0;z-index:25;background:rgb(var(--c-000000) / .55)}
@@ -1796,7 +1801,7 @@ body.chat-open #toast{bottom:calc(var(--dock-h, 150px) + 14px)}
 @media (max-width:760px){ #toast{max-width:calc(100vw - 24px);bottom:16px} }
 
 /* Recent-chat rows: the folder on its own line; buttons the same width */
-.r-chip{display:block;width:max-content;margin-top:6px}
+.r-chip{display:block;width:max-content;max-width:100%;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .r-go .btn.sm{min-width:74px}
 
 /* The app name stays whole on laptops: the tagline goes first, then the name */
@@ -1844,7 +1849,11 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 /* ---------- nothing decorative runs where it can't be seen ----------
    The hub and the sky behind it while a chat window covers them, and a hub scene scrolled out of view,
    hold still (the top bar's dots keep going: they say something). */
-.chat-open :is(.page,.petals) *,.hero-off *{animation-play-state:paused !important}
+.chat-open :is(.page,.petals,#brand) *,.hero-off *{animation-play-state:paused !important}
+/* Resting (ui/motion.js): nobody is using the window, so nothing loops and the scene dims a little. */
+.at-rest *,.at-rest *::before,.at-rest *::after{animation-play-state:paused !important}
+.hero-art,.petals{transition:filter 2.4s ease}
+.at-rest:not([data-family="saga"]) :is(.hero-art,.petals){filter:brightness(.72) saturate(.85)}
 
 /* ---------- project crests: one emblem per project, wherever it appears ---------- */
 .crest{flex:none;display:inline-grid;place-items:center;width:var(--s);height:var(--s);border-radius:calc(var(--s) * .3);overflow:hidden;position:relative;vertical-align:middle;
@@ -2090,7 +2099,8 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 
 /* ---------- one conversation, two assistants: catch-ups and "Both" ---------- */
 .crew.both{padding:5px 11px;color:var(--ash);border:1px dashed rgb(var(--c-9a928a) / .45)}
-.crew.both .crew-n{font:500 11px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase}
+.crew.both .crew-n{font:500 11px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+.look-ui-big .crew.both .crew-n{letter-spacing:.06em}
 .crew.both:hover{color:var(--parch);border-color:rgb(var(--c-9a928a) / .8)}
 .crew.both.on{color:var(--parch);border-style:solid;border-color:rgb(var(--c-6f97d8) / .7);background:linear-gradient(90deg,rgb(var(--c-a5463f) / .22),rgb(var(--c-6f97d8) / .22))}
 /* Writing to both: the message box takes both colors, Claude's on the left and Codex's on the right. */

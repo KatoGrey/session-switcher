@@ -179,7 +179,7 @@ async function openNewProject() {
   $('npName').focus();
   try {
     NP.places = await api('/api/project/places');
-    if (!$('npParent').value) $('npParent').value = NP.places.suggested;
+    if (!$('npParent').value) $('npParent').value = (NP.places && NP.places.suggested) || '';
     $('npPlaces').innerHTML = NP.places.places.map(x => `<option value="${esc(x.path)}">`).join('');
     $('npChips').innerHTML = NP.places.places.filter(x => x.projects).slice(0, 4).map(x => `<button type="button" class="chip" data-np-place="${esc(x.path)}" title="${esc(x.path)}">${esc(shortDir(x.path))}<span class="count">${x.projects}</span></button>`).join('');
   } catch { /* you can still type a location */ }

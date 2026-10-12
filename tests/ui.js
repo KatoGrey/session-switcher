@@ -1007,6 +1007,36 @@ module.exports = [
     },
   },
   {
+    name: 'polish',
+    // Small things that keep the app calm and clean: resting when no one's there, pictures that can't
+    // load, long names, and titles that stay short.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`Look.set({ theme: 'highfantasy', mode: 'dark' }); return 1`); await sleep(1200);
+      const rest = await b.eval(`const running = () => document.getAnimations().filter(a => a.playState === 'running' && a.effect && a.effect.getTiming().iterations === Infinity).length;
+        const before = running(); restSeen = 0; restCheck(); await new Promise(r => setTimeout(r, 100));
+        const resting = document.documentElement.classList.contains('at-rest'), during = running();
+        window.dispatchEvent(new Event('pointerdown')); await new Promise(r => setTimeout(r, 100));
+        return { before, resting, during, awake: !document.documentElement.classList.contains('at-rest') && running() > 0 }`);
+      t.check('left alone, the world rests: nothing loops, and a touch wakes it', rest.before > 0 && rest.resting && rest.during === 0 && rest.awake, rest);
+      const pics = await b.eval(`const box = document.createElement('div'); document.body.appendChild(box);
+        box.innerHTML = genImage({ src: '/art/none-such.webp', prompt: 'A lantern at dusk' }) + '<div class="w-art">' + worldArt({ name: 'Lost Banner', cwd: 'C:\\\\x' }, { banner: 'C:\\\\x\\\\missing.png' }, '', false) + '</div>';
+        await new Promise(r => setTimeout(r, 800));
+        const g = box.querySelector('.gen'); const out = { gone: g.classList.contains('gone'), note: getComputedStyle(box.querySelector('.gen-gone')).display, img: !!box.querySelector('.w-art img'), glyph: !!box.querySelector('.w-art .w-glyph') };
+        box.remove(); return out`);
+      t.check('a picture that can’t load shows a calm note, not its caption drawn over itself', pics.gone && pics.note === 'block', pics);
+      t.check('a project banner that can’t load leaves its drawn tile', !pics.img && pics.glyph, pics);
+      await b.eval(`Look.set({ theme: 'crimson' }); go('recent'); return 1`); await sleep(1000);
+      const chip = await b.eval(`const c = document.querySelector('.r-chip'); if (!c) return null; c.textContent = 'An exceptionally long project name that keeps on going well past any sensible length'; const cs = getComputedStyle(c); return { ellipsis: cs.textOverflow, fits: c.getBoundingClientRect().width <= c.parentElement.getBoundingClientRect().width + 1 }`);
+      t.check('long project names in Recent chats end in “…”', chip && chip.ellipsis === 'ellipsis' && chip.fits, chip);
+      await b.eval(`go('hub'); return 1`); await sleep(900);
+      const title = await b.eval(`const btn = document.querySelector('.o-title button'); if (!btn) return null; btn.textContent = 'A very long chat title about rebalancing every single song the bard knows, including the encore and the ballads nobody asked for'; const lh = parseFloat(getComputedStyle(btn.parentElement).lineHeight); return { lines: Math.round(btn.getBoundingClientRect().height / lh) }`);
+      t.check('card titles stay at two lines', title && title.lines <= 2, title);
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2200);
+      t.check('scrollable code blocks can be reached by keyboard', await b.eval(`const p = document.querySelector('#cFeed .code pre'); return !p || p.tabIndex === 0`));
+    },
+  },
+  {
     name: 'malibu',
     // The glam theme: its own lettering, words, sunset, sparkles, hearts and chimes; light mode first.
     async run(t) {

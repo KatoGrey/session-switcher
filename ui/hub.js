@@ -859,9 +859,11 @@ function newProjectTile(i) {
 const TINTS = ['#a5463f', '#d9bf74', '#a58be8', '#cf8274', '#8f7f6a'];
 function worldArt(p, w, cls = '', lazy = true) {
   const banner = w && w.banner;
-  if (banner) return `<img class="${cls}" src="${esc(imageSrc(banner, p.cwd))}" alt="" ${lazy ? 'loading="lazy" ' : ''}decoding="async">`;
   const h = hash(p.name), a = TINTS[h % TINTS.length], b = TINTS[(h >>> 5) % TINTS.length === h % TINTS.length ? (h + 1) % TINTS.length : (h >>> 5) % TINTS.length];
-  return `<span class="w-glyph ${cls}" style="--a:${a};--b:${b};--x:${18 + (h >>> 9) % 50}%;--y:${10 + (h >>> 13) % 50}%" aria-hidden="true"><b>${esc(initial(p.name))}</b></span>`;
+  const glyph = `<span class="w-glyph ${cls}" style="--a:${a};--b:${b};--x:${18 + (h >>> 9) % 50}%;--y:${10 + (h >>> 13) % 50}%" aria-hidden="true"><b>${esc(initial(p.name))}</b></span>`;
+  // The banner sits over the drawn tile; if it can't load (moved or deleted), it steps aside for it.
+  if (banner) return `${glyph}<img class="${cls}" src="${esc(imageSrc(banner, p.cwd))}" alt="" ${lazy ? 'loading="lazy" ' : ''}decoding="async" onerror="this.remove()">`;
+  return glyph;
 }
 // A project's crest, the same wherever the project appears: a picture of its own named crest, emblem,
 // icon or logo (Codex can make one), else its banner, else an emblem drawn from its name (its colors

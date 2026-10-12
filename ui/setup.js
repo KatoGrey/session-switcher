@@ -4,6 +4,7 @@
 /* ---------- setup ---------- */
 async function loadHealth(showIn) {
   const j = await api('/api/health');
+  if (!j || !Array.isArray(j.checks)) throw new Error('The health checks didn’t answer properly. Close Setup and open it again in a moment.');
   const worst = j.checks.some(c => c.state === 'error') ? 'error' : j.checks.some(c => c.state === 'warn') ? 'warn' : 'ok';
   $('hdot').className = `hdot ${worst}`;
   $('setupBtn').title = worst === 'ok' ? 'Setup: everything looks good' : 'Setup: something needs attention';
@@ -98,7 +99,11 @@ async function openSetup(tab = 'health') {
   if (!$('setup').open) $('setup').showModal();
   if (tab === 'look') return renderLook();
   $('setupBody').innerHTML = '<p class="loading">Checking Claude Code, your accounts and shared data…</p>';
-  try { await loadHealth(true); loadPhone(); } catch (err) { $('setupBody').innerHTML = `<p class="loading">${esc(err.message)}</p>`; }
+  try { await loadHealth(true); loadPhone(); } catch (err) {
+    // A slip in the page itself shouldn't show as programmer's text.
+    const msg = err instanceof TypeError || err instanceof ReferenceError ? 'Setup couldn’t finish loading. Close it and open it again; if it keeps happening, restart Session Switcher.' : err.message;
+    $('setupBody').innerHTML = `<p class="loading">${esc(msg)}</p>`;
+  }
   return undefined;
 }
 function setupTab(tab) {

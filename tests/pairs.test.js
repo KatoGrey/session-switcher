@@ -77,7 +77,8 @@ test('pairs: Both takes turns, and the second builds on the first', async () => 
   const { pairs, add } = setup();
   const lead = add(new FakeChat({ sessionId: 'L' }));
   const { handedOver } = await pairs.sendBoth(lead, 'Plan the 1.4 release.');
-  assert.equal(lead.sent.at(-1).text, 'Plan the 1.4 release.');
+  assert.ok(lead.sent.at(-1).text.endsWith('Plan the 1.4 release.'));
+  assert.match(lead.sent.at(-1).text, /You answer first; Codex picks it up after you/, 'the first one knows a partner follows');
   const partner = pairs.partnerOf(lead);
   await tick();
   assert.equal(partner.sent.length, 0, 'the second waits for the first');
@@ -233,4 +234,19 @@ test('pairs: a Codex conversation still in use (an app that’s just quitting) i
   assert.deepEqual(started, ['P', 'P'], 'tried again, the same conversation');
   assert.equal(partner.sessionId, 'P');
   assert.ok(!lead.buffer.some(e => e.kind === 'notice'), 'and nothing to tell you');
+});
+
+test('pairs: what the partner says during the snapshot before a send is passed on next time', async () => {
+  const { pairs, add } = setup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  const partner = await pairs.ensure(lead);
+  partner.state = 'busy';
+  await pairs.send(lead, 'First message.');
+  // A slow snapshot: the partner replies while it runs.
+  lead.beforeTurn = async () => { await tick(); partner.reply('Step 2: I rewrote save.lua.'); await tick(); };
+  await pairs.send(lead, 'Second message.');
+  lead.beforeTurn = async () => {};
+  await tick();
+  await pairs.send(lead, 'Third message.');
+  assert.ok(lead.sent.some(s => /Step 2: I rewrote save\.lua/.test(s.text)), 'the reply from during the snapshot reaches Claude');
 });
