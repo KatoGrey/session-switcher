@@ -1093,7 +1093,7 @@ async function handleApi(req, res, url, remote = false) {
 
   if (route === 'POST /api/chat/upload') return uploadFile(req, res, url);
   if (url.pathname.startsWith('/api/lite/')) {
-    const out = await liteRoutes.handle(req.method, url.pathname, url, () => readBody(req), req, remote);
+    const out = await liteRoutes.handle(req.method, url.pathname, url, () => readBody(req, url.pathname === '/api/lite/steer' ? 40 * 1024 * 1024 : 65536), req, remote);
     if (out === undefined) throw fail(404, 'Not found.');
     return send(res, 200, out);
   }
