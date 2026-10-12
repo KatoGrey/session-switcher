@@ -1274,6 +1274,17 @@ module.exports = [
       t.check('with line numbers: the removed line’s old number, the added line’s new one', del && del[1] === '13' && del[2] === '' && add && add[1] === '' && add[2] === '13' && /rally\.stacks = false/.test(add[3]), d);
       t.check('no stray empty line at the end', d.rows.length && d.rows[d.rows.length - 1][3].trim() !== '', d.rows);
       await t.shot(b, 'diff');
+      // Comments on lines: click a line, write, and send them all to whoever made the change.
+      const cm = await b.eval(`const row = document.querySelector('#cPreview .pv-r.add'); row.click(); await new Promise(r => setTimeout(r, 100));
+        const ta = document.querySelector('#cPreview .pv-ce textarea'); ta.value = 'Keep stacking off, but say why in a comment.';
+        document.querySelector('[data-pvc-add]').click(); await new Promise(r => setTimeout(r, 100));
+        const note = document.querySelector('#cPreview .pv-cm')?.textContent || '', bar = document.querySelector('#cPreview .pv-cbar')?.textContent || '';
+        document.getElementById('cText').value = '';
+        document.querySelector('[data-pvsend]').click(); await new Promise(r => setTimeout(r, 200));
+        return { note, bar, box: document.getElementById('cText').value, target: C.target, left: !!document.querySelector('#cPreview .pv-cbar') }`);
+      t.check('a line can take a comment, shown under it', /say why in a comment/.test(cm.note) && /1 comment/.test(cm.bar) && /Send to Claude/.test(cm.bar), cm);
+      t.check('sending puts every comment in the message box, with its line, for the one who made the change', /songs\.lua, line 13:\n> .*rally\.stacks = false[\s\S]*say why in a comment/.test(cm.box) && cm.target === 'main' && !cm.left, cm);
+      await b.eval(`document.getElementById('cText').value = ''; return 1`);
       await b.eval(`document.querySelector('[data-pvclose]').click(); return 1`); await sleep(200);
       t.check('✕ closes it', await b.eval(`return !document.querySelector('#cPreview .pv')`));
       // From the ledger: files changed (the latest change) and pictures it made.

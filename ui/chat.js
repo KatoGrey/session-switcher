@@ -291,6 +291,7 @@ function reset() {
   Recent.main = []; Recent.comp = [];
   PARTS.clear();
   C.planCard = null;
+  Preview.comments = [];
   if (C.es) { C.es.close(); C.es = null; }
   clearTimeout(C.liveTimer);
   if (C.comp && C.comp.es) C.comp.es.close();

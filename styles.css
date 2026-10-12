@@ -1923,6 +1923,16 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 .pv-t .d-add{color:rgb(var(--c-7fb79a));font-style:normal}
 .pv-t .d-del{color:var(--ember);font-style:normal}
 .pv-x{width:28px;height:28px;color:var(--ash)}
+/* Comments on lines: click a line (or Enter), write, then send them all to whoever made the change. */
+.pv-r[data-ln]{cursor:pointer}
+.pv-r[data-ln]:hover,.pv-r[data-ln]:focus-visible{outline:1px solid rgb(var(--c-d9bf74) / .45);outline-offset:-1px}
+.pv-ce{padding:8px 10px;background:rgb(var(--c-d9bf74) / .06);border-left:2px solid var(--gilt)}
+.pv-ce textarea{display:block;width:100%;box-sizing:border-box;resize:vertical;border:1px solid var(--seam-2);border-radius:6px;background:var(--abyss);color:var(--parch);font:13.5px/1.45 var(--f-body);padding:6px 8px}
+.pv-ce div{display:flex;gap:6px;margin-top:6px}
+.pv-cm{display:flex;align-items:baseline;gap:10px;padding:6px 10px;border-left:2px solid var(--gilt);background:rgb(var(--c-d9bf74) / .05);font:13.5px/1.45 var(--f-body);color:var(--parch-2)}
+.pv-cm p{flex:1;margin:0;white-space:pre-wrap}
+.pv-cbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--seam);font:500 12px/1 var(--f-label);letter-spacing:.06em;color:var(--gilt)}
+.pv-cbar span{margin-right:auto}
 .pv-diff{max-height:min(52vh,460px);overflow:auto;font:12.5px/1.55 var(--f-mono);padding:4px 0}
 .pv-r{display:grid;grid-template-columns:30px 30px minmax(0,1fr);align-items:baseline}
 .pv-r i{font-style:normal;text-align:right;padding-right:6px;color:var(--ash-2);font-size:11px;user-select:none}
