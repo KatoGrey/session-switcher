@@ -609,8 +609,8 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'chgundo': return undoChanges(c.closest('.chg'));
       case 'review': return startReview(c.dataset.base || null, c.dataset.by || 'codex');
       case 'limitas': return continueAs(c.dataset.acct);
-      case 'limitcodex': return handToCodex();
-      case 'limitwait': { const card = c.closest('.limit-card'); return card && card._ev ? waitForReset(card._ev) : undefined; }
+      case 'limithand': return handOver(c.dataset.to);
+      case 'limitwait': case 'limitnowait': { const card = c.closest('.limit-card'); return card && card._ev ? waitForReset(card._ev, card.dataset.src || 'main', c.dataset.c === 'limitnowait') : undefined; }
       case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }

@@ -648,6 +648,26 @@ async function startReview(chat, files, base, by = 'codex') {
   return { id: r.id, what: r.what, base: r.base };
 }
 
+// "Carry on when it's back": a minute after the account's limit resets, the chat is told to pick up
+// where it left off (if it's still open and idle; otherwise it just says the usage is back). Kept here,
+// not in a window, while the app runs.
+const resumeTimers = new Map();   // chat key -> timeout
+function resumeAt(chat, at, cancel = false) {
+  clearTimeout(resumeTimers.get(chat.key)); resumeTimers.delete(chat.key);
+  if (cancel) { chat.emit({ kind: 'resumeat', at: null }); return { ok: true }; }
+  const ms = Date.parse(at) - Date.now() + 60000;
+  if (!Number.isFinite(ms) || ms > 20 * 24 * 3600e3) throw fail(400, 'That reset time isn’t known.');
+  resumeTimers.set(chat.key, setTimeout(() => {
+    resumeTimers.delete(chat.key);
+    chat.emit({ kind: 'resumeat', at: null });
+    if (chat.state === 'ended') return;
+    if (chat.state !== 'ready') return chat.emit(notice('info', 'Your usage is back.'));
+    pairs.send(chat, 'Your usage is back. Please carry on where you left off.').catch(err => chat.emit(notice('warning', `Couldn’t carry on: ${err.message}`)));
+  }, Math.max(5000, ms)));
+  chat.emit({ kind: 'resumeat', at });
+  return { ok: true, at };
+}
+
 // "Fix and recheck until clean" (lib/reviewloop.js), run here so it carries on whatever the window does.
 const reviewLoop = createReviewLoop({ send: (chat, text) => pairs.send(chat, text), review: runReview, fixText });
 
@@ -1652,6 +1672,7 @@ async function handleChat(req, res, url, body, c) {
     }
     case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base, ['claude', 'both'].includes(body.by) ? body.by : 'codex'));
     // stop: stop after the current step; otherwise start, from a finished review with findings.
+    case '/api/chat/resume-at': return send(res, 200, resumeAt(chats.get(body.key), String(body.at || ''), !!body.cancel));
     case '/api/chat/review-loop': {
       const chat = chats.get(body.key);
       if (body.stop) return send(res, 200, reviewLoop.stop(chat));

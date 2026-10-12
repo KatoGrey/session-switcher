@@ -20,22 +20,37 @@ function backAt(iso) {
   return `${clock} (in ${h ? `${h} h ` : ''}${m} min)`;
 }
 
-function renderLimit(ev) {
-  if (C.watch || C.provider !== 'claude') return;
+// src: which of the chat's two ran out ('main' or, in a duo chat, 'comp'). Claude out: carry on as
+// another account (the chat's own Claude only), or hand it to Codex. Codex out: hand it to Claude.
+// Either way, or carry on by itself when the limit resets (the PC sends "carry on" then).
+function renderLimit(ev, src = 'main') {
+  if (C.watch) return;
+  const prov = provFor(src), other = prov === 'claude' ? 'codex' : 'claude';
   const feed = $c('cFeed');
-  feed.querySelectorAll('.limit-card').forEach(x => x.remove());   // only the latest one
-  const me = C.info && C.info.accountId;
-  const acct = S.accounts.find(a => a.id === me);
-  const others = roomyAccounts(me).slice(0, 2);
+  feed.querySelectorAll(`.limit-card[data-src="${src}"]`).forEach(x => x.remove());   // only the latest one for each
+  const me = src === 'main' && C.info && C.info.accountId;
+  const acct = me && S.accounts.find(a => a.id === me);
+  const others = prov === 'claude' && src === 'main' ? roomyAccounts(me).slice(0, 2) : [];
+  const canHand = other === 'codex' ? codexOK() : (duo() || C.provider === 'claude');
   const card = document.createElement('div');
   card.className = `limit-card${liveRender ? ' fresh' : ''}`;
+  card.dataset.src = src;
   card._ev = ev;
-  card.innerHTML = `<p class="lm-h"><b>${esc(acct ? acct.name : 'This account')} is out of its ${LIMIT_NAMES[ev.which] || 'usage'} limit.</b>${ev.resetsAt ? ` It’s back at ${esc(backAt(ev.resetsAt))}.` : ''}</p>
-    ${others.length || codexOK() ? '<p class="lm-s">Keep going without waiting:</p>' : '<p class="lm-s">None of your other accounts has room right now.</p>'}
+  const who = prov === 'claude' ? (acct ? acct.name : 'Claude’s account') : 'Codex';
+  card.innerHTML = `<p class="lm-h"><b>${esc(who)} is out of its ${LIMIT_NAMES[ev.which] || 'usage'} limit.</b>${ev.resetsAt ? ` It’s back at ${esc(backAt(ev.resetsAt))}.` : ''}</p>
+    ${others.length || canHand ? '<p class="lm-s">Keep going without waiting:</p>' : ev.resetsAt ? '' : '<p class="lm-s">Nothing else has room right now.</p>'}
     <div class="lm-b">${others.map(x => `<button type="button" class="btn gilt" data-c="limitas" data-acct="${esc(x.a.id)}" title="The same conversation, carried on as ${esc(x.a.name)}">Continue as ${esc(x.a.name)}${x.left !== null ? ` <small>${x.left}% left</small>` : ''}</button>`).join('')}
-      ${codexOK() ? '<button type="button" class="btn" data-c="limitcodex" title="Codex is caught up on this chat and picks up the work">Hand it to Codex</button>' : ''}
-      ${ev.resetsAt ? '<button type="button" class="btn quiet" data-c="limitwait">Tell me when it’s back</button>' : ''}</div>`;
+      ${canHand ? `<button type="button" class="btn" data-c="limithand" data-to="${other}" title="${PROV_NAME[other]} is caught up on this chat and picks up the work">Hand it to ${PROV_NAME[other]}</button>` : ''}
+      ${ev.resetsAt ? '<button type="button" class="btn quiet" data-c="limitwait" title="When it resets, it carries on where it left off by itself">Carry on when it’s back</button>' : ''}</div>
+    <p class="lm-wait" hidden></p>`;
   withStick(() => feed.appendChild(card));
+}
+// The PC has "carry on when it's back" set for one of them (or not any more).
+function renderResumeAt(ev, src) {
+  const card = $c('cFeed').querySelector(`.limit-card[data-src="${src}"]`); if (!card) return;
+  const note = card.querySelector('.lm-wait'), btn = card.querySelector('[data-c="limitwait"]');
+  if (ev.at) { note.hidden = false; note.innerHTML = `${esc(PROV_NAME[provFor(src)])} carries on by itself at ${esc(backAt(ev.at).replace(/ \(.*\)$/, ''))}. <button type="button" class="linkish" data-c="limitnowait">Don’t</button>`; if (btn) btn.hidden = true; }
+  else { note.hidden = true; if (btn) btn.hidden = false; }
 }
 
 // Your last message to Claude, to send again after switching.
@@ -55,17 +70,16 @@ async function continueAs(accountId) {
   if (last) putInBox(last);
   toast(`Now running as ${a.name}.${last ? ' Your last message is in the box: press Enter to send it again.' : ''}`, 6000);
 }
-function handToCodex() {
-  if (!codexOK()) return;
-  putInBox('Claude has hit its usage limit. Please pick up the work where it left off.', 'comp');
+// The other one picks up the work (it's caught up on the chat with your message).
+function handOver(to) {
+  const from = to === 'codex' ? 'Claude' : 'Codex';
+  putInBox(`${from} has hit its usage limit. Please pick up the work where it left off.`, to === C.provider ? 'main' : 'comp');
 }
-function waitForReset(ev) {
-  const ms = Date.parse(ev.resetsAt) - Date.now();
-  if (!(ms > 0)) { toast('It should be back already: try sending again.'); return; }
-  const acct = S.accounts.find(a => a.id === (C.info && C.info.accountId));
-  const name = acct ? acct.name : 'Your account';
-  setTimeout(() => { toast(`${name}’s usage is back. You can carry on.`, 12000); try { chime('needs'); } catch { /* no sound */ } }, Math.min(ms + 15000, 2 ** 31 - 1));
-  toast(`I’ll tell you at ${backAt(ev.resetsAt).replace(/ \(.*\)$/, '')}.`, 3500);
+// Carry on by itself when the limit resets: the PC keeps the time (server.js resumeAt), so it happens
+// whether or not this window is open.
+async function waitForReset(ev, src = 'main', cancel = false) {
+  if (!cancel && !(Date.parse(ev.resetsAt) - Date.now() > -60000)) { toast('It should be back already: try sending again.'); return; }
+  await api('/api/chat/resume-at', { key: keyFor(src), at: ev.resetsAt, ...(cancel ? { cancel: true } : {}) });
 }
 
 // A new chat about to open as an account that's out: offer the one with the most room.

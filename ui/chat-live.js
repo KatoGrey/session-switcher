@@ -176,7 +176,8 @@ function handleEvent(ev, src) {
     case 'review': if (!comp) renderReview(ev); break;
     case 'reviewloop': if (!comp) reviewLoopEvent(ev); break;
     case 'planfirst': if (!comp) renderPlanFirst(ev); break;
-    case 'limit': if (!comp) renderLimit(ev); break;
+    case 'limit': renderLimit(ev, src); break;
+    case 'resumeat': renderResumeAt(ev, src); break;
     case 'changes': renderChanges(ev, src); break;
     case 'undone': renderUndone(ev, src); break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;

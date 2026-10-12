@@ -533,10 +533,16 @@ module.exports = [
       const card = await b.eval(`const c = document.querySelector('.limit-card'); return c && { text: c.textContent.replace(/\\s+/g, ' ').trim(), buttons: [...c.querySelectorAll('button')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
       t.check('out of usage: the chat says so, and when it’s back', card && /Studio is out of its 5-hour limit\. It’s back at .+ \(in 2 h 1[12] min\)/.test(card.text), card && card.text);
       t.check('and offers your other account, with how much it has left', card && card.buttons.some(x => /^Continue as Personal \d+% left$/.test(x)), card && card.buttons);
-      t.check('or Codex, or a nudge when it’s back', card && card.buttons.includes('Hand it to Codex') && card.buttons.includes('Tell me when it’s back'), card && card.buttons);
+      t.check('or Codex, or carrying on by itself when it’s back', card && card.buttons.includes('Hand it to Codex') && card.buttons.includes('Carry on when it’s back'), card && card.buttons);
       await t.shot(b, 'card');
 
-      await b.clickOn('[data-c="limitcodex"]'); await sleep(300);
+      await b.clickOn('[data-c="limitwait"]'); await sleep(300);
+      const wait = calls.find(([p]) => p === '/api/chat/resume-at');
+      t.check('“Carry on when it’s back” asks the PC to send “carry on” at the reset', wait && wait[1].at === resetsAt && wait[1].key === 'k-bard', wait && wait[1]);
+      await b.eval(`handle({ kind: 'resumeat', at: ${JSON.stringify(resetsAt)}, seq: 700 }); return 1`); await sleep(100);
+      t.check('and the card says when it will', /Claude carries on by itself at/.test(await b.eval(`return document.querySelector('.limit-card .lm-wait').textContent`)));
+      await b.eval(`handle({ kind: 'limit', which: null, resetsAt: ${JSON.stringify(resetsAt)}, seq: 1 }, 'comp'); return 1`).catch(() => null);
+      await b.clickOn('[data-c="limithand"]'); await sleep(300);
       const cx = await b.eval(`return { target: C.target, box: document.getElementById('cText').value }`);
       t.check('“Hand it to Codex” turns the message box to Codex', cx.target === 'comp' && /pick up the work where it left off/.test(cx.box), cx);
       await b.eval(`setTarget('main', false); document.getElementById('cText').value = ''; clearDraft(); return 1`);
