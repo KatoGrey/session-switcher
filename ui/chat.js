@@ -290,6 +290,7 @@ function reset() {
   C.compPending = []; C.compCursor = null; C.compMore = false;
   Recent.main = []; Recent.comp = [];
   PARTS.clear();
+  C.planCard = null;
   if (C.es) { C.es.close(); C.es = null; }
   clearTimeout(C.liveTimer);
   if (C.comp && C.comp.es) C.comp.es.close();
@@ -574,8 +575,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
     const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
     const rl = t.closest('[data-relay]'); if (rl) return setTarget(rl.dataset.relay);
+    const bp = t.closest('[data-build]');
+    if (bp) return buildPlan(bp).catch(err => toast(err.message));
     const crew = t.closest('[data-crew]');
-    if (crew) { const src = crew.dataset.crew; if (src === 'both') return setTarget(C.target === 'both' ? 'main' : 'both'); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
+    if (crew) { const src = crew.dataset.crew; if (src === 'both' || src === 'plan') return setTarget(C.target === src ? 'main' : src); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
     const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });
     const pp = t.closest('#cPick [data-preset]');
     if (pp) { const p = presetsFor(Pick.src).find(x => x.id === pp.dataset.preset); if (p) return pickModel(Pick.src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }); return undefined; }

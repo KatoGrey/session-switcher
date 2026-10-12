@@ -2207,6 +2207,15 @@ details.shared[open] summary{margin-bottom:6px}
 .chg-f{flex:1 1 240px;min-width:0;color:var(--ash);font:400 12px/1.5 var(--f-mono)}
 .chg-f small{opacity:.9}
 .chg-b{display:flex;gap:4px}
+/* Plan first: one card from drafting to who builds it. */
+.planfirst{margin:14px 0;padding:14px 16px;border:1px solid rgb(var(--c-d9bf74) / .35);border-radius:10px;background:linear-gradient(180deg,rgb(var(--c-d9bf74) / .06),transparent)}
+.pf-h{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;min-width:0}
+.pf-h b{font:600 11px/1 var(--f-label);letter-spacing:.18em;text-transform:uppercase;color:var(--gilt)}
+.pf-g{color:var(--gilt)}
+.pf-ask{flex:1;min-width:0;font:italic 14px/1.3 var(--f-body);color:var(--ash);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-s{display:flex;align-items:center;gap:10px;margin:0;font:15px/1.5 var(--f-body);color:var(--parch-2)}
+.pf-s.ok{color:rgb(var(--c-7fb79a))}
+.pf-b{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .chg-clash{flex:1 1 100%;font:500 12.5px/1.45 var(--f-body);color:var(--gilt)}
 .chg-clash::before{content:"⚠ "}
 .chg-mw{flex:1 1 100%;font:italic 12px/1.45 var(--f-body);color:var(--ash)}

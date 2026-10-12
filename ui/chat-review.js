@@ -112,3 +112,38 @@ function markEdits(p, blocks) {
   if (provNow() !== 'claude' || C.provider !== 'claude') return;
   if (blocks.some(b => b && b.type === 'tool' && FILE_TOOLS.has(b.name))) p.closest('.turn')?.classList.add('edits');
 }
+
+/* ---------- plan first ---------- */
+// One card follows a "plan first": drafting, then the other's check, then who builds it. It moves to
+// the end of the conversation once the plan and its check are in, so the choice sits under them.
+function renderPlanFirst(ev) {
+  const feed = $c('cFeed');
+  let card = C.planCard && C.planCard.isConnected ? C.planCard : null;
+  if (ev.state === 'drafting' || !card) {
+    card = document.createElement('div');
+    card.className = `planfirst${liveRender ? ' fresh' : ''}`;
+    Object.assign(card, { _who: ev.who || C.provider, _to: ev.to || partnerProv(), _ask: ev.ask || '' });
+    withStick(() => feed.appendChild(card));
+    C.planCard = card;
+  }
+  const who = PROV_NAME[card._who], to = PROV_NAME[card._to];
+  const head = `<p class="pf-h"><span class="pf-g" aria-hidden="true">◆</span><b>Plan first</b>${card._ask ? `<span class="pf-ask">${esc(card._ask)}</span>` : ''}</p>`;
+  let body;
+  if (ev.state === 'drafting') body = `<p class="pf-s"><span class="gen-spin" aria-hidden="true"></span>${who} is drafting a plan; ${to} checks it next. Nothing changes yet.</p>`;
+  else if (ev.state === 'checking') body = `<p class="pf-s"><span class="gen-spin" aria-hidden="true"></span>${to} is checking ${who}’s plan…</p>`;
+  else if (ev.state === 'stopped') body = '<p class="pf-s">Plan first stopped before the plan was ready.</p>';
+  else if (ev.state === 'built') body = `<p class="pf-s ok">${esc(ev.by)} ${ev.by.includes(' and ') ? 'are' : 'is'} building it.</p>`;
+  else {
+    body = `<p class="pf-s">The plan is ready${ev.checked === false ? '' : `, checked by ${to}`}. Who builds it?</p>
+      <div class="pf-b"><button type="button" class="btn gilt" data-build="main">${who}</button><button type="button" class="btn" data-build="comp">${to}</button><button type="button" class="btn" data-build="both">Both (${who} first)</button></div>`;
+    withStick(() => feed.appendChild(card));
+  }
+  card.innerHTML = head + body;
+}
+async function buildPlan(btn) {
+  const card = btn.closest('.planfirst'); if (!card) return;
+  const t = btn.dataset.build, who = PROV_NAME[card._who], to = PROV_NAME[card._to];
+  const text = `Build it as planned above${t === 'comp' ? ` (${who}’s plan, with your own check)` : `, taking in ${to}’s check`}. Go ahead and make the changes.`;
+  await api('/api/chat/send', { key: C.key, text, ...(t === 'main' ? {} : { to: t === 'both' ? 'both' : 'partner', account: S.acct }) });
+  renderPlanFirst({ state: 'built', by: t === 'both' ? `${who} and ${to}` : t === 'comp' ? to : who });
+}

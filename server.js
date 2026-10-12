@@ -1584,6 +1584,7 @@ async function handleChat(req, res, url, body, c) {
       if (!text.trim() && !images.length) throw fail(400, 'Type a message or attach an image.');
       const chat = chats.get(body.key), lead = pairs.leadOf(chat);
       if (body.to === 'both') { await pairs.sendBoth(lead, text, images, { accountId: body.account }); return send(res, 200, { ok: true }); }
+      if (body.to === 'plan') { await pairs.planFirst(lead, text, images, { accountId: body.account }); return send(res, 200, { ok: true }); }
       const target = body.to === 'partner' ? await pairs.ensure(lead, { accountId: body.account }) : chat;
       // after: wait for the other one to finish first (you chose "Send when it's done").
       await (body.after ? pairs.sendAfter(target, text, images) : pairs.send(target, text, images));

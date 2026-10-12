@@ -175,6 +175,7 @@ function handleEvent(ev, src) {
     case 'context': setCtx(src, ev); break;
     case 'review': if (!comp) renderReview(ev); break;
     case 'reviewloop': if (!comp) reviewLoopEvent(ev); break;
+    case 'planfirst': if (!comp) renderPlanFirst(ev); break;
     case 'limit': if (!comp) renderLimit(ev); break;
     case 'changes': renderChanges(ev, src); break;
     case 'undone': renderUndone(ev, src); break;
@@ -393,18 +394,19 @@ function renderCrew() {
   const two = duo();
   const both = C.target === 'both';
   const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
-  box.innerHTML = crewPill('main') + (two ? crewPill('comp') + `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : `Both: ${lead} answers, then ${mate} picks it up and builds on that`}"><span class="crew-n">Both</span></button>` : '');
+  box.innerHTML = crewPill('main') + (two ? crewPill('comp') + `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : `Both: ${lead} answers, then ${mate} picks it up and builds on that`}"><span class="crew-n">Both</span></button><button type="button" class="crew both plan${C.target === 'plan' ? ' on' : ''}" data-crew="plan" aria-pressed="${C.target === 'plan'}" title="Plan first: ${lead} drafts a plan, ${mate} checks it, then you pick who builds it"><span class="crew-n">Plan</span></button>` : '');
   box.classList.toggle('duo', two);
   renderRelay();
   $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · <b>@${partnerProv()}</b> or <b>@both</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;
   if (!two && C.target !== 'main') setTarget('main');
 }
 function setTarget(t, focus = true) {
-  C.target = duo() && (t === 'comp' || t === 'both') ? t : 'main';
+  C.target = duo() && (t === 'comp' || t === 'both' || t === 'plan') ? t : 'main';
   const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
-  const name = C.target === 'both' ? `${lead} and ${mate}` : PROV_NAME[provFor(C.target)];
+  const name = C.target === 'both' || C.target === 'plan' ? `${lead} and ${mate}` : PROV_NAME[provFor(C.target)];
   $c('cText').placeholder = C.target === 'comp' ? (mate === 'Codex' ? 'Ask Codex… an image, a quick test, a second opinion' : 'Ask Claude… a plan, a review, a second opinion')
-    : C.target === 'both' ? `Write to ${lead} and ${mate}: ${lead} answers, then ${mate} builds on it…` : `Write to ${name}…`;
+    : C.target === 'both' ? `Write to ${lead} and ${mate}: ${lead} answers, then ${mate} builds on it…`
+    : C.target === 'plan' ? `Plan first: what should be done? ${lead} drafts a plan, ${mate} checks it, then you pick who builds…` : `Write to ${name}…`;
   $c('cText').setAttribute('aria-label', `Message ${name}`);
   renderCrew(); syncSend(); closePick();
   if (focus) $c('cText').focus();

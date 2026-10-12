@@ -264,3 +264,20 @@ test('pairs: "when it’s done" waits for the busy one, then sends', async () =>
   assert.ok(partner.sent.at(-1).text.endsWith('Now the icons.'), 'sent once Claude finished');
   assert.match(partner.sent.at(-1).text, /Done with the code\./, 'and caught up on what Claude just did');
 });
+
+test('pairs: plan first drafts, has the other check it, then asks who builds', async () => {
+  const { pairs, add } = setup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  await pairs.planFirst(lead, 'Add a save system.');
+  assert.match(lead.sent.at(-1).text, /Add a save system\.\n\n\(Plan first: .*Don't change any files yet/s);
+  assert.ok(lead.buffer.some(e => e.kind === 'planfirst' && e.state === 'drafting'));
+  lead.reply('1. Write save.lua\n2. Hook it to the menu');
+  await tick(); await tick();
+  const partner = pairs.partnerOf(lead);
+  assert.match(partner.sent.at(-1).text, /\(Plan first\) Check Claude's plan above/);
+  assert.match(partner.sent.at(-1).text, /Write save\.lua/, 'and it was caught up on the plan');
+  assert.ok(lead.buffer.some(e => e.kind === 'planfirst' && e.state === 'checking'));
+  partner.reply('Add a version number to the save file.');
+  await tick(); await tick();
+  assert.ok(lead.buffer.some(e => e.kind === 'planfirst' && e.state === 'ready' && e.checked));
+});

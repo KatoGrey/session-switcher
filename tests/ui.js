@@ -1081,6 +1081,26 @@ module.exports = [
         return { crew: /Crew plan/i.test(text), owners: [...box.querySelectorAll('.lg-owner')].map(x => x.textContent), both: /Rebalance the songs/.test(text) && /Paint the festival icons/.test(text), themed: /Quest board/i.test(themed) }`);
       t.check('the crew plan shows each one’s steps under its own name', plan.crew && plan.both && plan.owners.length === 2, plan);
       t.check('and themed looks name it in their own words', plan.themed, plan);
+      // Plan first: the Plan choice under the message box, then one card from drafting to who builds it.
+      await b.eval(`handle({ kind: 'state', state: 'ready', seq: 900 }); return 1`);
+      const pf = await b.eval(`const real = window.api, calls = []; window.api = async (p, body) => { calls.push([p, body]); return { ok: true }; };
+        setTarget('plan', false);
+        const placeholder = document.getElementById('cText').placeholder, pill = !!document.querySelector('[data-crew="plan"][aria-pressed="true"]');
+        document.getElementById('cText').value = 'Add a save system.'; await sendMessage();
+        const sent = calls.find(c => c[0] === '/api/chat/send');
+        handle({ kind: 'planfirst', state: 'drafting', who: 'claude', to: 'codex', ask: 'Add a save system.', seq: 901 });
+        const drafting = document.querySelector('.planfirst').textContent;
+        handle({ kind: 'planfirst', state: 'checking', who: 'claude', to: 'codex', seq: 902 });
+        handle({ kind: 'planfirst', state: 'ready', checked: true, seq: 903 });
+        const ready = document.querySelector('.planfirst').textContent, last = document.getElementById('cFeed').lastElementChild.classList.contains('planfirst');
+        await buildPlan(document.querySelector('[data-build="comp"]'));
+        const build = calls.filter(c => c[0] === '/api/chat/send').pop();
+        const after = document.querySelector('.planfirst').textContent;
+        window.api = real; setTarget('main', false);
+        return { placeholder, pill, sent: sent && sent[1], drafting, ready, last, build: build && build[1], after }`);
+      t.check('Plan first is a choice under the message box', pf.pill && /Plan first/.test(pf.placeholder) && pf.sent && pf.sent.to === 'plan' && pf.sent.text === 'Add a save system.', pf);
+      t.check('one card follows it: drafting, then who builds it, under the plan', /Claude is drafting a plan; Codex checks it next/.test(pf.drafting) && /checked by Codex\. Who builds it\?/.test(pf.ready) && pf.last, pf);
+      t.check('picking a builder sends it the go-ahead', pf.build && pf.build.to === 'partner' && /Build it as planned above/.test(pf.build.text) && /Codex is building it/.test(pf.after), pf);
     },
   },
   {

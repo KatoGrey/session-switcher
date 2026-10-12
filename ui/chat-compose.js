@@ -285,13 +285,16 @@ async function sendMessage() {
   const sw = text.trim().match(/^\/(model|effort)\s+(.{1,60})$/i);
   if (sw && !C.attachments.length) { clear(); await quickSwitch(sw[1].toLowerCase(), sw[2].trim()); return; }
   // "@codex …", "@claude …" or "@both …" sends just this message to that one (or both).
-  let target = duo() && (C.target === 'comp' || C.target === 'both') ? C.target : 'main';
+  let target = duo() && (C.target === 'comp' || C.target === 'both' || C.target === 'plan') ? C.target : 'main';
+  // "/plan …": plan first (one drafts, the other checks, you pick who builds).
+  const pl = duo() && text.match(/^\s*\/plan\s+/i);
+  if (pl) { target = 'plan'; text = text.slice(pl[0].length); }
   const at = duo() && text.match(/^\s*@(codex|claude|both)\b[:,]?\s*/i);
   if (at) { const w = at[1].toLowerCase(); target = w === 'both' ? 'both' : w === C.provider ? 'main' : 'comp'; text = text.slice(at[0].length); }
   if (target !== 'comp' && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
   // Writing to one while the other is mid-reply: both would work at once, maybe on the same files.
   let after = false;
-  if (duo() && target !== 'both') {
+  if (duo() && target !== 'both' && target !== 'plan') {
     const otherState = target === 'main' ? (C.comp && !C.comp.ended ? C.comp.state : null) : C.state;
     if (otherState === 'busy' || otherState === 'waiting') {
       const other = PROV_NAME[target === 'main' ? partnerProv() : C.provider], to = PROV_NAME[target === 'main' ? C.provider : partnerProv()];
@@ -305,7 +308,7 @@ async function sendMessage() {
   $c('cSend').disabled = true;
   try {
     // The app catches each one up on what it missed (lib/pairs.js); with Both they take turns.
-    const r = await api('/api/chat/send', { key: C.key, text, images, ...(target === 'main' ? {} : { to: target === 'both' ? 'both' : 'partner', account: S.acct }), ...(after ? { after: true } : {}) });
+    const r = await api('/api/chat/send', { key: C.key, text, images, ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct }), ...(after ? { after: true } : {}) });
     clear();
     // Follow the partner's replies here (it may only just have started).
     if (target !== 'main' && !(C.comp && !C.comp.ended && (!r || !r.key || C.comp.key === r.key))) ensureCompanion().catch(() => {});
