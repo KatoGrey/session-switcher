@@ -948,7 +948,7 @@ async function handleApi(req, res, url, remote = false) {
     res.writeHead(200, { 'Content-Type': art.type, 'Cache-Control': q.get('kind') === 'themes' ? 'private, max-age=300' : 'no-store', 'X-Content-Type-Options': 'nosniff' });
     return res.end(art.bytes);
   }
-  if (route === 'GET /api/sessions') return send(res, 200, { ...sessionsWithCodex(), running, live: chats.live() });
+  if (route === 'GET /api/sessions') return send(res, 200, { ...sessionsWithCodex(), running, live: chats.live(), doneMarks: chatPrefs.doneMarks() });
   if (route === 'GET /api/chat/history') {
     const id = url.searchParams.get('id'), q = url.searchParams;
     const running = chats.bySession(id);
@@ -1499,8 +1499,16 @@ async function handleApi(req, res, url, remote = false) {
       broadcast('sessions');
       return send(res, 200, { title });
     }
+    case '/api/chat/done': {
+      // Done (off the lists until it's used again) or not done.
+      if (!body.id) throw fail(400, 'Which chat?');
+      chatPrefs.setDone(String(body.id), !!body.done);
+      return send(res, 200, { doneMarks: chatPrefs.doneMarks() });
+    }
     case '/api/prefs': {
       const p = c.prefs;
+      // Tidy up: chats with nothing new for this many days count as done (0: never).
+      if (body.autoDone !== undefined) { const d = Number(body.autoDone); if (![0, 3, 7, 14, 30].includes(d)) throw fail(400, 'Unknown choice.'); p.autoDone = d; }
       if (body.terminal !== undefined) { if (!acc.TERMINALS.includes(body.terminal)) throw fail(400, 'Unknown terminal choice.'); p.terminal = body.terminal; }
       for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow']) if (typeof body[k] === 'boolean') p[k] = body[k];
       if (body.openIn !== undefined) { if (!['app', 'terminal'].includes(body.openIn)) throw fail(400, 'Unknown choice.'); p.openIn = body.openIn; }

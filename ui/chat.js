@@ -186,7 +186,7 @@ function railSettle(d, keep) {
 }
 
 /* ---------- open / close ---------- */
-function findSession(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
+function findSession(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
 
 async function loadHistory(before) {
   if (!C.sessionId) return null;
@@ -773,6 +773,7 @@ function chatHeadItems() {
     ...(claudeReviewOK() && codexOK() ? [{ glyph: '◈', label: 'Have both review the changes', hint: 'one card, where they agree first', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'both') }] : []),
     ...(reviewAvailable() || claudeReviewOK() ? ['-'] : []),
     ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; close(); popOutChat(sid); } }] : []),
+    ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark this chat done', hint: 'off the lists until it’s used again', run: () => { const sid = id; close(); return setChatDone(sid, true); } }] : []),
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
     { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },
     '-',

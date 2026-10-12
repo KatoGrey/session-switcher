@@ -123,8 +123,13 @@ function renderWorldBody() {
     if (fresh || !$('wbList')) { box.innerHTML = '<div class="wb-top" id="wbTop"></div><div id="wbList"></div>'; box._h = null; }
     if ($('wbTop')._h !== seg) { $('wbTop').innerHTML = seg; $('wbTop')._h = seg; $('wbTop').hidden = !seg; }
     const lb = $('wbList');
-    if (!list.length) { lb.innerHTML = emptyArt('chats', `No ${prov === 'codex' ? 'Codex chats' : prov === 'claude' ? 'Claude Code chats' : 'chats'} in this project yet. Start one above, or start with a prompt.`); return; }
-    if (!lb.querySelector(':scope > ul.rows')) lb.innerHTML = '<ul class="rows"></ul>';
+    const done = (p.done || []).filter(x => !prov || provOf(x) === prov);
+    if (!list.length && !done.length) { lb.innerHTML = emptyArt('chats', `No ${prov === 'codex' ? 'Codex chats' : prov === 'claude' ? 'Claude Code chats' : 'chats'} in this project yet. Start one above, or start with a prompt.`); return; }
+    if (!lb.querySelector(':scope > ul.rows')) lb.innerHTML = '<ul class="rows"></ul><details class="done-chats"><summary></summary><ul class="rows"></ul></details>';
+    const dz = lb.querySelector('.done-chats');
+    dz.hidden = !done.length;
+    dz.querySelector('summary').textContent = `Done · ${done.length}`;
+    patch(dz.querySelector('ul.rows'), done, s => s.id, s => rowHtml(s, null));
     return patch(lb.firstElementChild, list, s => s.id, s => rowHtml(s, null));
   }
   if (!w) return set(`<p class="loading">${p.exists ? 'Reading this project’s files…' : 'This folder no longer exists.'}</p>`);

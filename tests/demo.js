@@ -170,6 +170,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     codex: { key: 'k-race-codex', state: 'busy', files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 1, del: 1 }] },
   } }];
   let keepTries = 0, bothTries = 0, tsServing = false;
+  const doneMarks = {};
   const rulesOut = () => ({ scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
@@ -177,7 +178,8 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (seen) seen(p, url, body);
     if (p === '/api/reopen') { const out = { reopened: body.action === 'reopen' ? reopen.map(c => c.sessionId) : [], failed: [] }; reopen = []; return { body: out }; }
     if (p === '/api/state') return { body: { reopen, accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '6.0.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
-    if (p === '/api/sessions') return { body: { projects: openclaw ? withOpenClaw(projects) : projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
+    if (p === '/api/chat/done') { if (body.done) doneMarks[String(body.id).toLowerCase()] = { done: Date.now(), undone: 0 }; else doneMarks[String(body.id).toLowerCase()] = { done: 0, undone: Date.now() }; return { body: { doneMarks } }; }
+    if (p === '/api/sessions') return { body: { doneMarks, projects: openclaw ? withOpenClaw(projects) : projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
     if (p === '/api/activity') return { body: { list: activity, at: NOW } };
     // The day at a glance: bursts of messages through the last few hours.
     if (p === '/api/away') return { body: { files: 3, reviews: [{ by: 'codex', findings: 2 }] } };

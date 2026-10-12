@@ -1212,6 +1212,27 @@ module.exports = [
     },
   },
   {
+    name: 'done',
+    // A finished chat leaves the lists, waits under Done in its project, and comes back when asked.
+    async run(t) {
+      const b = await t.open();
+      const id = demo.ID['s-brawl'];
+      const inNav = () => b.eval(`return [...document.querySelectorAll('.nav-i, .r-row, .row')].some(x => /Tavern brawl/.test(x.textContent) && !x.closest('.done-chats'))`);
+      t.check('a chat is on the lists to begin with', await inNav());
+      await b.eval(`setChatDone(${JSON.stringify(id)}, true); return 1`); await sleep(600);
+      t.check('marked done, it leaves the lists', !(await inNav()));
+      await b.eval(`go('folder', ${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}); return 1`); await sleep(900);
+      const dz = await b.eval(`const d = document.querySelector('.done-chats'); return d && { shown: !d.hidden, sum: d.querySelector('summary').textContent, rows: d.textContent }`);
+      t.check('its project keeps it under Done', dz && dz.shown && /^Done · 1$/.test(dz.sum) && /Tavern brawl/.test(dz.rows), dz);
+      await t.shot(b, 'done');
+      t.check('its menu offers Not done', await b.eval(`return doneItem(${JSON.stringify(id)}).label === 'Not done'`));
+      await b.eval(`setChatDone(${JSON.stringify(id)}, false); return 1`); await sleep(600);
+      t.check('Not done brings it back', await b.eval(`const d = document.querySelector('.done-chats'); return !d || d.hidden`) && await b.eval(`return [...document.querySelectorAll('#wbList > ul.rows li')].some(x => /Tavern brawl/.test(x.textContent))`));
+      // Tidy-up: with nothing new for longer than the chosen time, a chat counts as done.
+      t.check('tidy-up counts old, quiet chats as done', await b.eval(`S.prefs.autoDone = 3; const old = { id: 'x-old', updated: Date.now() - 5 * 864e5 }, fresh = { id: 'x-new', updated: Date.now() - 864e5 }; const r = isDoneChat(old) && !isDoneChat(fresh); S.prefs.autoDone = 0; return r`));
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {

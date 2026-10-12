@@ -2383,6 +2383,10 @@ body.solo .c-head .icon.c-backm{display:none}
 .cs-sep{padding:6px 12px 2px;font:500 10.5px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ash);pointer-events:none}
 .cs-chat b::before{content:'◆ ';color:var(--gilt);font-size:.8em}
 .shared.other summary{color:var(--gilt)}
+.done-chats{margin-top:14px}
+.done-chats summary{cursor:pointer;padding:6px 2px;font:500 11px var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ash)}
+.done-chats summary:hover{color:var(--parch-2)}
+.done-chats .rows{opacity:.8}
 .crew-room{margin-left:6px;padding:1px 6px;border-radius:999px;font:500 10.5px/1.5 var(--f-mono);color:var(--gilt);border:1px solid rgb(var(--c-d9bf74) / .45);white-space:nowrap}
 .crew-room.low{color:var(--crimson);border-color:var(--crimson)}
 .crew-mode{margin-left:6px;padding:1px 6px;border:1px solid var(--seam-2);border-radius:999px;font:400 10.5px/1.5 var(--f-mono);color:var(--ash);white-space:nowrap}

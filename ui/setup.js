@@ -33,6 +33,8 @@ function renderSetup(j) {
           <option value="app" ${p.openIn !== 'terminal' ? 'selected' : ''}>Open it in Session Switcher’s chat window</option>
           <option value="terminal" ${p.openIn === 'terminal' ? 'selected' : ''}>Resume it in a terminal</option>
         </select></div>
+      <div class="field"><label for="prefAutoDone">Tidy up: chats with nothing new count as done after</label>
+        <select id="prefAutoDone" data-pref="autoDone">${[[0, 'Never (only the ones I mark done)'], [3, '3 days'], [7, 'A week'], [14, 'Two weeks'], [30, 'A month']].map(([v, l]) => `<option value="${v}" ${(p.autoDone || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="field"><label for="prefTerminal">Terminal chats open in</label>
         <select id="prefTerminal" data-pref="terminal">
           ${(S.platform === 'darwin' ? [['auto', 'Terminal'], ['iterm', 'iTerm']] : [['auto', 'Windows Terminal tab when available, otherwise a console window'], ['wt-tab', 'Windows Terminal, new tab'], ['wt-window', 'Windows Terminal, new window'], ['console', 'Classic console window']]).map(([v, l]) => `<option value="${v}" ${p.terminal === v ? 'selected' : ''}>${l}</option>`).join('')}
@@ -261,7 +263,7 @@ $('setupBody').addEventListener('change', wrap(async e => {
   const el = e.target.closest('[data-pref]'); if (!el) return;
   const k = el.dataset.pref;
   const r = await api('/api/prefs', { [k]: el.type === 'checkbox' ? el.checked : el.value });
-  S.prefs = r.prefs; toast('Saved.', 1500); renderPage();
+  S.prefs = r.prefs; toast('Saved.', 1500); if (k === 'autoDone') { sortDone(); renderAll(); } else renderPage();
 }));
 $('setupBody').addEventListener('click', wrap(async e => {
   const ph = e.target.closest('button[data-phone]');
