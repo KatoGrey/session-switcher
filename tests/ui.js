@@ -1379,6 +1379,26 @@ module.exports = [
     },
   },
   {
+    name: 'long question',
+    // A question with many answers, on a short screen and a phone: it scrolls, its Send button stays
+    // in view, and the conversation and the message box stay on screen.
+    async run(t) {
+      for (const size of [{ width: 1366, height: 680 }, { width: 412, height: 780, mobile: true }]) {
+        const b = await t.open(size);
+        await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+        await b.eval(`addPermission({ requestId: 'q-long', toolName: 'AskUserQuestion', questions: [{ question: 'Which of these should the bard rework first? Pick the one that matters most for co-op balance.', header: 'Rework', multiSelect: false, options: Array.from({ length: 12 }, (_, i) => ({ label: 'Option ' + (i + 1) + ': Rally, Lullaby or Ballad of Embers, with a longer description', description: 'What this changes for four bards in a co-op party, explained at some length so the card gets tall.' })) }] }); return 1`); await sleep(400);
+        const r = await b.eval(`const box = document.getElementById('cPending'), send = box.querySelector('[data-p="answer"]').getBoundingClientRect(), text = document.getElementById('cText').getBoundingClientRect(), feed = document.getElementById('cScroll').getBoundingClientRect();
+          return { scrolls: box.scrollHeight > box.clientHeight + 10, sendVisible: send.top >= 0 && send.bottom <= innerHeight && send.top >= box.getBoundingClientRect().top - 1, composer: text.bottom <= innerHeight + 1 && text.height > 20, feedLeft: Math.round(feed.height) }`);
+        t.check(`${size.mobile ? 'phone' : 'short screen'}: the answers scroll, with Send answers in view`, r.scrolls && r.sendVisible, r);
+        t.check(`${size.mobile ? 'phone' : 'short screen'}: the message box and some of the conversation stay on screen`, r.composer && r.feedLeft >= 60, r);
+        // The last answer can be reached.
+        const last = await b.eval(`const box = document.getElementById('cPending'); box.scrollTop = box.scrollHeight; await new Promise(r => setTimeout(r, 100)); const opts = box.querySelectorAll('fieldset.q label, fieldset.q button, fieldset.q input'); const l = opts[opts.length - 1].getBoundingClientRect(), bb = box.getBoundingClientRect(); return l.bottom <= bb.bottom + 1 && l.top >= bb.top`);
+        t.check(`${size.mobile ? 'phone' : 'short screen'}: the last answer can be scrolled to`, last);
+        await t.shot(b, size.mobile ? 'phone' : 'short');
+      }
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {

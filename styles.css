@@ -705,7 +705,10 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 @keyframes work-sweep{0%{background-position:-70% 0}100%{background-position:170% 0}}
 /* a new theme fades in over the old one (Setup → Appearance) */
 .look-fade::view-transition-old(root),.look-fade::view-transition-new(root){animation-duration:.45s;animation-timing-function:ease}
-.c-pending{max-width:860px;margin:0 auto;padding:0 28px;display:flex;flex-direction:column;gap:10px}
+/* What's waiting for you (approvals, questions) never grows past the screen: it scrolls, leaving the
+   conversation and the message box in view; each card's buttons stay at its bottom edge. */
+.c-pending{max-width:860px;margin:0 auto;padding:0 28px;display:flex;flex-direction:column;gap:10px;max-height:max(150px,min(50vh,calc(100dvh - 470px)));overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.c-pending:not(:empty){padding-bottom:4px}
 .c-pending:not(:empty){padding-top:14px}
 .perm{border:1px solid rgb(var(--c-d9bf74) / .6);border-radius:8px;padding:15px 17px;background:linear-gradient(180deg,rgb(var(--c-d9bf74) / .08),rgb(var(--c-141117) / .9));box-shadow:0 0 30px -14px rgb(var(--c-d9bf74) / .5)}
 .perm-h{margin:0 0 6px;font-size:16px}
@@ -715,7 +718,7 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .perm-d .t-in,.perm-d .diff pre{max-height:180px}
 .perm-why{margin-top:10px}
 .perm-why input,.other-t{width:100%;background:var(--abyss);border:1px solid var(--seam-2);border-radius:6px;padding:8px 11px;font:15px var(--f-body)}
-.perm-b{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.perm-b{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;position:sticky;bottom:0;z-index:1;padding:10px 0 6px;background:linear-gradient(180deg,rgb(var(--c-141117) / 0),rgb(var(--c-141117)) 10px)}
 .perm-k{display:none}
 .perm-d{position:relative}
 .perm-copy{position:absolute;top:6px;right:6px;opacity:.85}
