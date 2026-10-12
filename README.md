@@ -191,6 +191,9 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
   - **What each reply changed** (in a git project): a bar under the reply, like "Changed 3 files".
     - **See the changes** shows them, file by file.
     - **Undo** puts those files back as they were before that reply. A file that's changed since is left alone, and it tells you which. Whoever made the changes hears about the undo with your next message, so it doesn't build on them.
+  - These bars, Undo, and review results are kept on the PC (`chat-extras/`, one small file per conversation), so after a restart, an update or an idle stop they're back under the replies they came from, and Undo still works.
+  - **Pictures** show under the reply they belong to, not folded inside its steps: the ones it looked at, the ones it made or changed (a screenshot it took, say), and the ones it mentions by path. One shows large; several make a grid. `![caption](path)` in a reply shows the picture itself. Click any picture for the viewer: `←` `→` (or swipe) steps through every picture in the chat, a click zooms to actual size, and it can **Open**, **Show in folder**, **Copy** or **Attach to my message**.
+  - Under each reply: **Branch from here** (Claude's replies) starts a new chat with everything up to the end of that reply, leaving this one as it is; **Branch and rewind the files** also puts back what the later replies changed. **Follow up later** queues a task for the project, quoting the reply (or what you selected in it).
   - Artifacts appear as cards.
   - **Attach** (or paste or drop) any file:
     - Pictures go straight into the message, as before.
@@ -198,7 +201,9 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
     - In the conversation, videos and sound play right in the message, and other files show as cards that open in the viewer.
   - The file viewer plays videos and sound, and shows PDFs.
   - Notices are slim banners.
-- **@ mentions:** type `@` and a few letters in the message box to pick a file from the project. It goes in as its path, so Claude or Codex reads exactly that file.
+- **@ mentions:** type `@` and a few letters in the message box to pick a file from the project. It goes in as its path, so Claude or Codex reads exactly that file. The same list shows **your other chats** that match: pick one (`@chat[…]`) and its latest messages go along with your message, as a fold-out.
+- **Side questions:** `/btw …` (or **⋯ → Ask a side question**) asks something quick in a small card beside the chat. A separate chat that can only look answers it, told this chat's latest messages, so the chat itself isn't derailed. **Put it in my message** brings the answer in; closing the card sets it aside under Done.
+- **Run the project:** **⋯ → Run the project** (or `Ctrl+K`) starts its dev server or start script (package.json's `dev`, `start` or `serve`, or a command you set) at the top of the side panel: its output, **Open** for the address it serves on, **Stop**, **Restart**, and **Show Claude the output** when something goes wrong. Quitting the app stops it.
 - **How full the chat is:** each pill under the message box has a thin meter, and the ledger says how full (for example "62% full · 98k of 160k tokens"). Near the end, the chat suggests **Summarize now**: a chat that's full summarizes itself, maybe in the middle of a task, so summarizing between tasks keeps what matters. **⋯** has **Summarize the conversation now** any time.
 - **Never stuck on a limit:** if the account runs out of usage in the middle of a chat, the chat offers **Continue as** another of your accounts (the same conversation), **Hand it to Codex** (Codex is caught up on the conversation first), or **Tell me when it's back**. A new chat skips an account that's out and offers one with room.
 - **Permission requests:** a card above the message box with **Allow**, **Always allow** and **Deny**. Claude's multiple-choice questions show as clickable options.
@@ -229,6 +234,10 @@ Behind the scenes this is Claude Code itself, run in its official streaming mode
 Chats running in a terminal, or recently used in the desktop app, also appear on the hub. Click one to **watch it live**: you can read along as it works, but you reply in its own window. Its menus offer **Watch it live** first, since opening it in two places at once can mix up its history.
 
 **Open a copy here** branches the chat so you can continue it in the app without touching the original.
+
+### Done, and tidying up
+
+**Mark done** (a chat's right-click menu, or the chat's **⋯**) takes it off every list; it waits under **Done** at the bottom of its project's chats, and comes back by itself if it's used again (**Not done** brings it back by hand). Setup → Preferences → **Tidy up** can do it for you: chats with nothing new for 3 days, a week, two weeks or a month count as done.
 
 ## Codex (OpenAI)
 
@@ -280,10 +289,11 @@ Claude and Codex work in the same chat, either way round: bring Codex into a Cla
 - **The crew, under the message box:** two pills, the chat's own assistant and its partner. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex).
   - Click the other pill, or press `Ctrl+.`, to choose who your next message goes to. The box takes that one's color.
   - Or start a message with `@codex` or `@claude` to send just that one message.
+  - The partner's pill shows what it may do (Codex's **Agent**, **Read only**…), changed from its menu, and how much room its account has left once that's low. **Both** says it uses room on both accounts.
 - **One feed:** the partner's replies appear in the same conversation, under its own name and color. Messages you sent it are tagged **to Codex** (or **to Claude**). Pictures Codex makes appear as it makes them.
 - **They read each other:** before each message one of them gets, the app catches it up on what it hasn't seen: what the other one said and did (which files it changed, how many commands it ran), and what you said to the other. In the feed that's a small fold-out ("Codex was caught up on 3 messages"), not text you wrote. So you can ask Claude for a plan, switch to Codex and say "do the second part", and Codex knows what that is.
   - The app works this out on the PC from the two conversations themselves, from the moment each one last caught up, so it's the same in every window and on your phone, and survives a reload or a restart. Nothing is told twice; a long stretch keeps the newest messages and says how many earlier ones it left out.
-  - Files you undo from a reply are mentioned to that one with your next message.
+  - Files you undo from a reply are mentioned to that one with your next message, and to the other one too (it may have built on them).
 - **Both: they take turns.** The **Both** pill (or `@both`) sends your message to the chat's own assistant first. When it has answered, the other one picks the same message up, already knowing that answer, and builds on it (checks it, adds what it missed, does its part) instead of starting over. Your message reads "to Claude, then Codex", the second one's pill says **up next** while it waits, and the feed marks where it **takes it from here**. They never edit files at the same time. Stopping the first one skips the hand-over.
 - **One chat per project:** starting a Codex chat in a project where a Claude chat is open (or the other way round) offers to add it to that chat instead, so the work stays in one place. **Start a separate chat** is still there if you want one.
   - A partner's own conversation lives inside its chat: it isn't listed as a chat of its own, the chat's row says **with Codex**, and opening it (from search, a notification or a card) opens the chat it belongs to.
@@ -311,7 +321,7 @@ One set of rules for both assistants. Claude Code reads `CLAUDE.md` and Codex re
 **Queue a task** (on the hub's **At work** heading, a project's right-click menu, or `Ctrl+K`) saves a prompt for a project, for Claude or Codex, to start as a new chat later:
 
 - **When an account has room:** for example when every account is out of usage. It starts as soon as one is back, as whichever account has room.
-- **At a time** you pick.
+- **At a time** you pick, once or as a **routine**: every day, every weekday or every week at that time. Each time a routine starts, the next one is queued.
 - **Start now** and **Cancel** are on its card under **Queued**. A started task goes to **At work** like any chat.
 
 Queued tasks start only while Session Switcher is running.
@@ -323,6 +333,8 @@ Give Claude and Codex the same task and keep the better result. **Race Claude an
 1. Each one works in its own copy of the project (a git worktree in your temp folder, with your uncommitted work; ignored folders like `node_modules` aren't copied), so neither touches your project or the other's work.
 2. The race's card, under **Races** on the hub, shows what each has changed. **See changes** shows the diff; **Open chat** shows how it got there.
 3. **Keep Claude's** or **Keep Codex's** brings that one's changes into your project, all or nothing. **Discard both** throws both away. Either way both copies are deleted.
+
+**Ask a judge** gives both copies' changes to a chat that can only look; it says which to keep (or which files from each) and why, and its verdict is on the card. **Pick files…** keeps file by file: tick what to take from each copy (a file both changed comes from one of them), and they come in together. A race's chats stay reachable after a restart or an idle stop.
 
 **Split the work** (same menus) is the other way round: each one takes its own part of a task (say, Claude fixes the bug while Codex writes the test), each in its own copy, told what the other is doing. **Keep both** brings both parts into your project together, all or nothing. If both changed the same file, nothing changes and the card says which file; keep one of them, or ask one to bring in the other's part.
 
@@ -378,7 +390,7 @@ How it stays safe:
 
 A chat that needs your OK, or one that replies, can notify your phone even when Session Switcher isn't open on it.
 
-**Android:** in the app, open Setup → **Notifications on this phone**. They come while the phone is on your home Wi-Fi, with **Allow** and **Deny** right on the notification; when you're back on your Wi-Fi, it shows what's waiting. Nothing goes anywhere but your PC. Android shows a small "Watching your chats" notification while it listens (you can collapse it), and may ask to let the app run in the background so notifications arrive while the phone sleeps. The app updates itself: when the PC has a newer version, it offers it.
+**Android:** in the app, open Setup → **Notifications on this phone**. A reply's notification has **Reply** (type an answer right there), and a question with two or three answers shows them as buttons. They come while the phone is on your home Wi-Fi, with **Allow** and **Deny** right on the notification; when you're back on your Wi-Fi, it shows what's waiting. Nothing goes anywhere but your PC. Android shows a small "Watching your chats" notification while it listens (you can collapse it), and may ask to let the app run in the background so notifications arrive while the phone sleeps. The app updates itself: when the PC has a newer version, it offers it.
 
 **iPhone, or a browser:** these use Web Push, which phones only allow on a secure (https) address, so this goes through Tailscale:
 
@@ -388,6 +400,8 @@ A chat that needs your OK, or one that replies, can notify your phone even when 
 4. On the phone: Setup → **Notifications on this phone**. On an iPhone, tapping one opens the chat to answer it.
 
 Each phone follows its own alert levels and quiet hours. **Remove** a phone and its notifications stop.
+
+**Share to Session Switcher:** in any Android app, Share → Session Switcher sends text, a link or pictures to the app. They wait in the open chat's message box (or the one you pick, or a new chat) for a word from you; nothing is sent until you press Send.
 
 To build the app yourself, run `mobile/android/build.cmd` (details in `mobile/android/README.md`). It needs no Android Studio: the first run downloads a JDK and the Android build tools (about 560 MB) into `%LOCALAPPDATA%\SessionSwitcherBuild`. A GitHub Actions workflow (`.github/workflows/android.yml`) builds it in the cloud too.
 
