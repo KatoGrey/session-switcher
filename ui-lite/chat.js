@@ -278,7 +278,7 @@ function folderNotice() {
 function editTitleInline() {
   const el = $('chatTitle'); const c = chatBy.get(CV.id); if (!el || !c) return;
   const inp = document.createElement('input');
-  inp.className = 'ttl ttl-edit'; inp.value = c.title; inp.setAttribute('aria-label', 'Chat name'); inp.maxLength = 120;
+  inp.className = 'ttl ttl-edit'; inp.autocomplete = 'off'; inp.setAttribute('autocorrect', 'on'); inp.setAttribute('autocapitalize', 'sentences'); inp.enterKeyHint = 'done'; inp.value = c.title; inp.setAttribute('aria-label', 'Chat name'); inp.maxLength = 120;
   el.replaceWith(inp); inp.focus(); inp.select();
   let done = false;
   const finish = save => {
@@ -361,7 +361,7 @@ function composerHtml({ fresh = false } = {}) {
   return `<form class="box" id="composer" autocomplete="off">
     ${fresh ? '' : '<div class="readonly-note" id="roNote" hidden></div>'}
     <div class="att-strip" id="attStrip" hidden></div>
-    <textarea id="msgBox" rows="1" placeholder="${fresh ? 'What should it do?' : 'Reply…'}" aria-label="Message"></textarea>
+    <textarea autocomplete="off" id="msgBox" rows="1" placeholder="${fresh ? 'What should it do?' : 'Reply…'}" aria-label="Message"></textarea>
     <div class="tools" id="barTools"></div>
     <input type="file" id="attIn" multiple hidden>
   </form>`;

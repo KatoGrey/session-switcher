@@ -29,8 +29,8 @@ function needsRow(x) {
   if (p && p.question) ask = `<span class="q">Asks you a question${x.pending.length > 1 ? ` (and ${x.pending.length - 1} more)` : ''}.</span><button class="btn prime" data-open="${esc(x.sessionId || '')}">Open to answer</button>`;
   else if (p && x.key) ask = `<code>${esc(p.detail || p.summary || p.toolName)}</code><button class="btn prime" data-perm="allow" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Allow <kbd>a</kbd></button>${p.canAlways ? `<button class="btn" data-perm="always" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Always allow</button>` : ''}<button class="btn" data-perm="deny" data-key="${esc(x.key)}" data-req="${esc(p.requestId)}">Deny <kbd>d</kbd></button>`;
   else if (p) ask = `<span class="q">Wants to use ${esc(p.toolName)}. It’s running in another app, so answer it there.</span>`;
-  else if (x.key && x.source === 'app') ask = `<span class="q">${esc(replyTail(x.lastText) || 'Replied.')}</span><input data-qr="${esc(x.key)}" data-id="${esc(id)}" placeholder="Reply without opening… (r)" aria-label="Quick reply"><button class="btn" data-send="${esc(x.key)}">Send</button>`;
-  else ask = `<span class="q">${esc(replyTail(x.lastText) || 'Replied.')}</span><button class="btn" data-open="${esc(x.sessionId || '')}">Open</button>`;
+  else if (x.key && x.source === 'app') ask = `<span class="q" data-open="${esc(x.sessionId || '')}" title="Open the chat">${esc(replyTail(x.lastText) || 'Replied.')}</span><input ${MSG_ATTRS} data-qr="${esc(x.key)}" data-id="${esc(id)}" placeholder="Reply without opening… (r)" aria-label="Quick reply"><button class="btn" data-send="${esc(x.key)}">Send</button>`;
+  else ask = `<span class="q" data-open="${esc(x.sessionId || '')}" title="Open the chat">${esc(replyTail(x.lastText) || 'Replied.')}</span><button class="btn" data-open="${esc(x.sessionId || '')}">Open</button>`;
   return `<div class="rowwrap">${head}<div class="ask">${ask}</div></div>`;
 }
 
@@ -120,7 +120,7 @@ function commanderHtml() {
   const a = commanderAnswer();
   const st = S.cmd.state;
   return `<form class="cmd" id="cmdForm" autocomplete="off">
-    <span class="cmd-ic">${IC.spark}</span><input id="cmdInput" placeholder="Ask the commander: nudge, sort, summarize, plan…" aria-label="Ask the commander" ${st === 'starting' ? 'disabled' : ''}>
+    <span class="cmd-ic">${IC.spark}</span><input ${MSG_ATTRS} id="cmdInput" placeholder="Ask the commander: nudge, sort, summarize, plan…" aria-label="Ask the commander" ${st === 'starting' ? 'disabled' : ''}>
     <button class="btn prime" type="submit" ${st === 'starting' || st === 'working' ? 'disabled' : ''}>${st === 'starting' ? 'Starting…' : st === 'working' ? 'Working…' : 'Ask'}</button>
     <div class="cmd-chips">${CMD_CHIPS.map(t => `<button type="button" class="chip" data-cmd="${esc(t)}">${esc(t)}</button>`).join('')}</div>
     ${S.cmd.error ? `<div class="cmd-answer"><p class="warn" style="color:var(--st-bug)">${esc(S.cmd.error)}</p></div>` : ''}
@@ -216,7 +216,7 @@ function triageView() {
       <div class="crumb">${proj ? `${esc(bucketName(proj.bucket))} › ${esc(proj.name)}` : esc(x.folder || '')}${x.accountName ? ` · ${esc(x.accountName)}` : ''}${x.finishedAt ? ` · ${ago(x.finishedAt)}` : ''}</div>
       <h2 class="tr-title">${esc(titleOf(x))}</h2>
       ${body}
-      ${TR.replying ? `<form class="box tr-box" id="trForm"><textarea id="trBox" rows="2" placeholder="Reply, then ↵ (it goes to the next one)"></textarea></form>` : ''}
+      ${TR.replying ? `<form class="box tr-box" id="trForm"><textarea ${MSG_ATTRS} id="trBox" rows="2" placeholder="Reply, then ↵ (it goes to the next one)"></textarea></form>` : ''}
       <div class="tr-acts">${acts}<button class="btn" data-tr="open">Open <kbd>o</kbd></button><span class="tr-skip"><kbd>j</kbd> <kbd>k</kbd> skip</span></div>
     </div></div>`;
 }
