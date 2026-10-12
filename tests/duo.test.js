@@ -93,3 +93,9 @@ test('duo: a reply you quoted into your message is not passed on again', () => {
   assert.equal(catchUp({ to: 'codex', theirs: [r], heard: [msg] }), '');
   assert.match(catchUp({ to: 'codex', theirs: [r], heard: ['something else'] }), /Step two/);
 });
+
+test('duo: the other one’s plan travels in the catch-up, so they split the work', () => {
+  const b = catchUp({ to: 'claude', theirs: [], plan: [{ content: 'Paint the icons', status: 'in_progress' }, { content: 'Save them in art/', status: 'pending' }] });
+  assert.match(b, /Codex’s plan right now/);
+  assert.match(b, /▸ Paint the icons\n○ Save them in art\//);
+});

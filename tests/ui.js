@@ -1071,6 +1071,16 @@ module.exports = [
         Recent.main = []; Recent.comp = []; return out`);
       t.check('a reply’s changes count only its own files, and say what changed meanwhile', bars.head === 'Changed 2 files' && /1 more changed meanwhile/.test(bars.mw), bars);
       t.check('both editing the same file at the same time is called out', bars.first.length === 0 && /also edited songs\.lua at the same time/.test(bars.clash), bars);
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2200);
+      const plan = await b.eval(`L.plans.claude = [{ content: 'Rebalance the songs', status: 'completed' }, { content: 'Write the tests', status: 'in_progress' }];
+        L.plans.codex = [{ content: 'Paint the festival icons', status: 'pending' }];
+        renderLedger(); const box = document.getElementById('cLedgerBody') || document.querySelector('.ledger');
+        const text = box.textContent;
+        Look.set({ theme: 'isekai' }); renderLedger(); const themed = (document.getElementById('cLedgerBody') || document.querySelector('.ledger')).textContent;
+        Look.set({ theme: 'crimson' });
+        return { crew: /Crew plan/i.test(text), owners: [...box.querySelectorAll('.lg-owner')].map(x => x.textContent), both: /Rebalance the songs/.test(text) && /Paint the festival icons/.test(text), themed: /Quest board/i.test(themed) }`);
+      t.check('the crew plan shows each one’s steps under its own name', plan.crew && plan.both && plan.owners.length === 2, plan);
+      t.check('and themed looks name it in their own words', plan.themed, plan);
     },
   },
   {

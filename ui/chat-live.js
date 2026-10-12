@@ -171,7 +171,7 @@ function handleEvent(ev, src) {
       renderLedgerSoon();
       break;
     case 'status': if (ev.permissionMode && !comp) setMode(ev.permissionMode); if (ev.status === 'compacting') setStatus(src, 'Summarizing the conversation…'); if (ev.text) setStatus(src, ev.text); break;
-    case 'plan': L.todos = ev.steps || []; renderLedgerSoon(); break;
+    case 'plan': L.plans[provFor(src)] = ev.steps || []; renderLedgerSoon(); break;
     case 'context': setCtx(src, ev); break;
     case 'review': if (!comp) renderReview(ev); break;
     case 'reviewloop': if (!comp) reviewLoopEvent(ev); break;

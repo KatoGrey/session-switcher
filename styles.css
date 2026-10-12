@@ -745,6 +745,10 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .lg-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 .lg-i{display:flex;gap:9px;align-items:baseline;padding:5px 6px;border-radius:4px;font-size:14px;color:var(--parch-2);min-width:0}
 .lg-i:hover{background:var(--vellum)}
+.lg-owner{display:flex;align-items:center;gap:8px;margin:10px 0 2px;font:600 12px/1 var(--f-caps);color:var(--parch-2)}
+.lg-owner::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--crimson)}
+.lg-owner.codex::before{background:rgb(var(--c-6f97d8))}
+.lg-owner small{margin-left:auto;font:400 11px/1 var(--f-label);color:var(--ash-2)}
 .lg-i .glyph{flex:none;color:var(--crimson);font-size:11px;width:12px}
 .lg-i .lg-t{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lg-i .lg-t > .linkish{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}

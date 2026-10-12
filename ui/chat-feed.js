@@ -168,7 +168,7 @@ function md(src) {
 /* ---------- the ledger: what this chat produced ---------- */
 const L = {};
 let ledgerTimer = null;
-function ledgerReset() { Object.assign(L, { arts: new Map(), links: new Map(), files: new Map(), images: new Map(), cmds: [], todos: null, tasks: new Map(), pendingTasks: new Map() }); renderLedgerSoon(); }
+function ledgerReset() { Object.assign(L, { arts: new Map(), links: new Map(), files: new Map(), images: new Map(), cmds: [], plans: { claude: null, codex: null }, tasks: new Map(), pendingTasks: new Map() }); renderLedgerSoon(); }
 ledgerReset();
 const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 function ledgerTool(b) {
@@ -182,7 +182,7 @@ function ledgerTool(b) {
     }
   } else if ((b.name === 'Bash' || b.name === 'PowerShell') && (b.detail || b.summary)) {
     if (!L.cmds.some(c => c.id && c.id === b.id)) L.cmds.push({ id: b.id, text: typeof b.detail === 'string' && b.detail.trim() ? b.detail : b.summary, desc: b.summary, st: b.result ? (b.result.isError ? 'err' : 'ok') : 'run' });
-  } else if (b.name === 'TodoWrite' && m.todos) L.todos = m.todos;
+  } else if (b.name === 'TodoWrite' && m.todos) L.plans[provNow() || C.provider] = m.todos;
   else if (b.name === 'TaskCreate' && m.subject) L.pendingTasks.set(b.id, m.subject);
   else if (b.name === 'TaskUpdate' && m.taskId) {
     const t = L.tasks.get(m.taskId) || { subject: m.subject || `Task ${m.taskId}`, status: 'pending' };
@@ -238,10 +238,17 @@ function renderLedger() {
   if (links.length) html += sec('Files it pointed to', links.length, `<ul class="lg-list">${links.map(([p, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${/[\\/]$/.test(p) ? '❖' : '✧'}</span><span class="lg-t"><button class="linkish" data-file="${esc(p)}" title="${esc(p)}">${esc(t === p ? base(p) : t)}</button></span></li>`).join('')}</ul>`);
   const files = [...L.files.entries()].reverse().slice(0, 40);
   if (files.length) html += sec('Files changed', files.length, `<ul class="lg-list">${files.map(([p, f]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${f.verb === 'wrote' ? '✥' : '◈'}</span><span class="lg-t"><button class="linkish" data-pv="${esc(p)}" data-kind="file" title="See what changed in ${esc(p)}">${esc(base(p))}</button></span><span class="lg-m">${f.verb}${f.n > 1 ? ` ×${f.n}` : ''}</span></li>`).join('')}</ul>`);
-  const tasks = L.todos ? L.todos.map(t => ({ subject: t.content, status: t.status })) : [...L.tasks.values()];
+  // The crew plan: each one's own task list, side by side with its owner (they used to overwrite each
+  // other). With one assistant it's simply its tasks.
+  const step = t => `<li class="lg-i ${t.status === 'completed' ? 'done' : t.status === 'in_progress' ? 'doing' : ''}"><span class="glyph" aria-hidden="true">${t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '▸' : '○'}</span><span class="lg-t" title="${esc(t.subject)}">${esc(t.subject)}</span></li>`;
+  const owners = ['claude', 'codex'].filter(p => L.plans[p] && L.plans[p].length).map(p => [p, L.plans[p].map(t => ({ subject: t.content, status: t.status }))]);
+  const tasks = owners.length ? owners.flatMap(([, list]) => list) : [...L.tasks.values()];
   if (tasks.length) {
     const done = tasks.filter(t => t.status === 'completed').length;
-    html += sec('Tasks', `${done}/${tasks.length}`, `<ul class="lg-list">${tasks.map(t => `<li class="lg-i ${t.status === 'completed' ? 'done' : t.status === 'in_progress' ? 'doing' : ''}"><span class="glyph" aria-hidden="true">${t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '▸' : '○'}</span><span class="lg-t" title="${esc(t.subject)}">${esc(t.subject)}</span></li>`).join('')}</ul>`);
+    const body = owners.length > 1
+      ? owners.map(([p, list]) => `<p class="lg-owner ${p}">${PROV_NAME[p]}<small>${list.filter(t => t.status === 'completed').length}/${list.length}</small></p><ul class="lg-list">${list.map(step).join('')}</ul>`).join('')
+      : `<ul class="lg-list">${tasks.map(step).join('')}</ul>`;
+    html += sec(owners.length > 1 ? voice('Crew plan') : 'Tasks', `${done}/${tasks.length}`, body);
   }
   const cmds = L.cmds.slice(-14).reverse();
   if (cmds.length) html += sec('Commands', L.cmds.length, `<ul class="lg-list">${cmds.map(c => `<li class="lg-i" title="${esc(c.text)}"><span class="t-st ${c.st}" aria-hidden="true" style="margin-top:6px"></span><span class="lg-t"><code>${esc(c.text.split('\n')[0])}</code></span></li>`).join('')}</ul>`);
