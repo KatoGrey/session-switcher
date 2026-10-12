@@ -720,3 +720,26 @@ test('extras: a chat opened again shows its earlier changes, and their Undo stil
   assert.equal(readLF(path.join(dir, 'game.lua')), 'rally = 0.15\n', 'Undo from before the restart works');
   assert.deepEqual(again.list('S-1', new Date(Date.now() + 1000).toISOString()).map(e => e.kind), ['changes', 'review', 'changes', 'undone']);
 });
+
+/* ---------- branch a chat from one of its replies ---------- */
+test('branch: a new chat with everything up to the end of that reply; the original stays as it is', () => {
+  const { branchSession } = require('../lib/branch');
+  const dir = tmp(), file = path.join(dir, 'old-id.jsonl');
+  const L = o => JSON.stringify({ sessionId: 'old-id', timestamp: '2026-10-12T10:00:00Z', ...o });
+  const lines = [
+    L({ type: 'user', uuid: 'u1', message: { role: 'user', content: 'Balance the bard' } }),
+    L({ type: 'assistant', uuid: 'a1', message: { id: 'msg_1', role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] } }),
+    L({ type: 'user', uuid: 'r1', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } }),
+    L({ type: 'assistant', uuid: 'a2', message: { id: 'msg_2', role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } }),
+    L({ type: 'user', uuid: 'u2', message: { role: 'user', content: 'Now the art' } }),
+    L({ type: 'assistant', uuid: 'a3', message: { id: 'msg_3', role: 'assistant', content: [{ type: 'text', text: 'Painting.' }] } }),
+  ];
+  fs.writeFileSync(file, `${lines.join('\n')}\n`);
+  const r = branchSession(file, 'msg_1', 'new-id');
+  const kept = fs.readFileSync(r.file, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  assert.deepEqual(kept.map(e => e.uuid), ['u1', 'a1', 'r1', 'a2'], 'the whole reply (its steps too), and nothing after your next message');
+  assert.ok(kept.every(e => e.sessionId === 'new-id'), 'under its new id');
+  assert.equal(fs.readFileSync(file, 'utf8').trim().split('\n').length, 6, 'the original is untouched');
+  assert.equal(branchSession(file, 'msg_3', 'other-id').lines, 6, 'from the last reply: all of it');
+  assert.throws(() => branchSession(file, 'msg_9', 'x-id'), /isn’t in the chat’s file/);
+});

@@ -538,6 +538,30 @@ document.addEventListener('selectionchange', onSelection);
 
 /* ---------- events ---------- */
 function lightbox(src, from) { openGallery(src, from); }
+// Branch: a new chat with everything up to the end of this reply. Rewind: that, and the files the
+// later replies changed put back as they were (each reply's Undo, newest first).
+async function branchFrom(turn) {
+  const mid = [...turn.querySelectorAll('.part[data-mid]')].map(p => p.dataset.mid).pop();
+  if (!mid || !C.sessionId) { toast('This reply can’t be branched from yet.', 3000); return; }
+  const later = [...$c('cFeed').querySelectorAll('.chg[data-src="main"]:not(.undone)')].filter(b => !turn.contains(b) && (turn.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) && b._ev && ownFiles(b._ev).length);
+  const pick = await appChoice(`Start a new chat from the end of this reply?\n\nIt has everything up to here, and none of what came after. This chat stays as it is.${later.length && C.key ? `\n\n${later.length} later repl${later.length === 1 ? 'y' : 'ies'} changed files. Rewind puts those back as they were here, too.` : ''}`, [
+    { v: 'branch', label: 'Branch from here', kind: 'prime' },
+    ...(later.length && C.key ? [{ v: 'rewind', label: 'Branch and rewind the files' }] : []),
+    { v: '', label: 'Cancel', kind: 'quiet' },
+  ]);
+  if (!pick) return;
+  const r = await api('/api/chat/branch', { sessionId: C.sessionId, mid });
+  let kept = 0;
+  if (pick === 'rewind') {
+    for (const b of later.reverse()) {
+      const u = await api('/api/chat/undo', { key: C.key, turn: b._ev.turn }).catch(() => null);
+      if (u) kept += (u.skipped || []).filter(x => x.why === 'changed since').length;
+    }
+  }
+  await loadSessions().catch(() => {});
+  await open({ sessionId: r.sessionId });
+  toast(pick === 'rewind' ? `Branched, and the files are back as they were${kept ? ` (${kept} changed since were left as they are)` : ''}.` : 'Branched. The original chat is as it was.', 5000);
+}
 function openFile(p) { return Viewer.open({ path: p, key: C.key, session: C.sessionId || (C.watch && C.watch.sessionId), cwd: C.info && C.info.cwd }); }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -618,6 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
+      case 'branch': return branchFrom(c.closest('.turn'));
       case 'followup': {
         // "We should also…": a task for later, in this chat's project, starting from what you selected
         // in the reply (or its last paragraph).

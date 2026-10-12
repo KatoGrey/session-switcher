@@ -205,6 +205,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/chat/history' && q.get('provider') === 'openclaw') return { body: { items: ocHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history') return { body: { items: q.get('provider') === 'codex' || q.get('id') === 't-bard-codex' ? codexHistory : claudeHistory, start: 0, cursor: null } };
     // A side question: its own chat, which answers once.
+    if (p === '/api/chat/branch') return { body: { sessionId: ID['s-brawl'] } };
     if (p === '/api/chat/aside') return { body: { key: 'k-aside', provider: 'claude' } };
     if (p === '/api/chat/aside-end') return { body: { ok: true } };
     if (p === '/api/chat/events' && q.get('key') === 'k-aside') {

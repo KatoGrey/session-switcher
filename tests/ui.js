@@ -1188,6 +1188,20 @@ module.exports = [
       t.check('a review is back where it came in, as it ended', r.rv === 0 && /All clear/.test(r.rvText || ''), r);
       await b.eval(`document.querySelector('.chg[data-turn="0"]').scrollIntoView({ block: 'center' }); return 1`); await sleep(300);
       await t.shot(b, 'kept');
+      // Branch from the first reply, and rewind: the later reply's changes are undone, newest first.
+      const calls = [];
+      const b2 = await t.open({ extras: extras.slice(0, 3), seen: (p, u, body) => calls.push([p, body]) });
+      await b2.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      await b2.eval(`document.querySelector('#cFeed .turn[data-prov="claude"] [data-c="branch"]').click(); return 1`); await sleep(500);
+      const opts = await b2.eval(`const d = document.querySelector('dialog.choice-dlg[open]'); return d ? [...d.querySelectorAll('button')].map(x => x.textContent) : null`);
+      t.check('Branch from here offers to rewind the files later replies changed', opts && opts.includes('Branch from here') && opts.includes('Branch and rewind the files'), opts);
+      await b2.eval(`[...document.querySelectorAll('dialog.choice-dlg[open] button')].find(x => x.textContent === 'Branch and rewind the files').click(); return 1`); await sleep(2500);
+      const br = calls.find(([p]) => p === '/api/chat/branch'), un = calls.filter(([p]) => p === '/api/chat/undo');
+      t.check('it branches from the end of that reply', br && br[1].mid === 'm1' && br[1].sessionId === demo.ID['s-bard'], br && br[1]);
+      t.check('and undoes the later reply’s changes', un.length === 1 && un[0][1].turn === 1, un.map(x => x[1]));
+      await sleep(1500);
+      const now = await b2.eval(`return { sid: C.sessionId, title: document.getElementById('cTitle').textContent, toast: document.getElementById('toast').textContent }`);
+      t.check('then opens the new chat', calls.some(([p, body]) => p === '/api/chat/open' && body.sessionId === demo.ID['s-brawl']), now);
     },
   },
   {

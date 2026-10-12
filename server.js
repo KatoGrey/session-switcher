@@ -36,6 +36,7 @@ const restartLib = require('./lib/restart');
 const themeStudioLib = require('./lib/theme-studio');
 const pushLib = require('./lib/push');
 const extrasLib = require('./lib/extras');
+const { branchSession } = require('./lib/branch');
 const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.0.0';
@@ -1737,6 +1738,18 @@ async function handleChat(req, res, url, body, c) {
       // after: wait for the other one to finish first (you chose "Send when it's done").
       await (body.after ? pairs.sendAfter(target, text, images) : pairs.send(target, text, images));
       return send(res, 200, { ok: true, key: target.key });
+    }
+    case '/api/chat/branch': {
+      // A new chat from one of this chat's replies (lib/branch.js); the original stays as it is.
+      const id = String(body.sessionId || '');
+      if (isCodexId(id)) throw fail(400, 'Branching works for Claude chats.');
+      let f;
+      try { f = sessions.find(id); } catch { throw fail(404, 'That chat’s file wasn’t found.'); }
+      const r = branchSession(sessions.fileFor(id), String(body.mid || ''), crypto.randomUUID());
+      try { sessions.rename(r.id, `↳ ${f.session.title || 'Branch'}`.slice(0, 120)); } catch { /* keeps its first message as its name */ }
+      sessionsChanged();
+      log(`Branched chat ${id} into ${r.id} (${r.lines} lines).`);
+      return send(res, 200, { sessionId: r.id });
     }
     case '/api/chat/aside': {
       // A side question: a separate chat in the same project that can only look (Claude's plan mode,
