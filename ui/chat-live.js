@@ -545,6 +545,27 @@ function ensureCompanion() {
     .finally(() => { C.compPending = null; });
   return C.compPending;
 }
+// Opening a duo chat: both chats replay what they've done so far. The two replays are held until each
+// has finished and then played in time order, so the feed reads as one conversation (an event without
+// a time of its own keeps its place after the one before it in its own chat).
+const Merge = { on: false, q: { main: [], comp: [] }, done: { main: false, comp: false }, timer: null };
+function mergeStart(withComp) {
+  clearTimeout(Merge.timer);
+  Object.assign(Merge, { on: !!withComp, q: { main: [], comp: [] }, done: { main: false, comp: !withComp } });
+  if (withComp) Merge.timer = setTimeout(mergeFlush, 5000);   // a replay that never finishes doesn't hold the feed
+}
+function feedIn(ev, src) { if (Merge.on) Merge.q[src].push(ev); else handle(ev, src); }
+function replayed(src) { if (!Merge.on) return; Merge.done[src] = true; if (Merge.done.main && Merge.done.comp) mergeFlush(); }
+function mergeFlush() {
+  if (!Merge.on) return;
+  Merge.on = false; clearTimeout(Merge.timer);
+  const stamp = (list, src) => { let t = 0; return list.map(ev => { t = (ev.at && Date.parse(ev.at)) || t; return { ev, t, src }; }); };
+  const a = stamp(Merge.q.main, 'main'), b = stamp(Merge.q.comp, 'comp'), all = [];
+  let i = 0, j = 0;
+  while (i < a.length || j < b.length) all.push(j >= b.length || (i < a.length && a[i].t <= b[j].t) ? a[i++] : b[j++]);
+  Merge.q = { main: [], comp: [] };
+  for (const x of all) { try { handle(x.ev, x.src); } catch (err) { console.error(err); } }
+}
 function attachComp(info) {
   if (C.comp && C.comp.es) C.comp.es.close();
   C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended' };
@@ -552,7 +573,8 @@ function attachComp(info) {
   if (info.context) C.ctx.comp = info.context;
   const key = info.key;
   const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=0`);
-  es.addEventListener('chat', e => { if (!C.comp || C.comp.key !== key) return; try { handle(JSON.parse(e.data), 'comp'); } catch (err) { console.error(err); } });
+  es.addEventListener('chat', e => { if (!C.comp || C.comp.key !== key) return; try { feedIn(JSON.parse(e.data), 'comp'); } catch (err) { console.error(err); } });
+  es.addEventListener('replayed', () => { if (C.comp && C.comp.key === key) replayed('comp'); });
   es.onerror = () => { if (C.comp && C.comp.key === key && C.comp.ended) es.close(); };
   C.comp.es = es;
   renderCrew(); renderLedgerSoon();

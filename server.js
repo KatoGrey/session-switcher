@@ -1672,6 +1672,8 @@ function chatEvents(req, res, url) {
   const after = Math.max(Number(url.searchParams.get('after') || 0), Number(req.headers['last-event-id'] || 0) || 0);
   res.write(`event: hello\ndata: ${JSON.stringify(chat.info())}\n\n`);
   for (const ev of chat.buffer) if (ev.seq > after) res.write(`id: ${ev.seq}\nevent: chat\ndata: ${JSON.stringify(ev)}\n\n`);
+  // The end of the replay, so a window opening both of a duo's chats can put the two in time order.
+  res.write('event: replayed\ndata: {}\n\n');
   chat.clients.add(res);
   const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* closed */ } }, 25000);
   req.on('close', () => { clearInterval(ping); chat.clients.delete(res); });

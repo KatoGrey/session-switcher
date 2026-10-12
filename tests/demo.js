@@ -204,6 +204,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
       const evs = [['hello', comp ? compInfo : info]];
       if (live && !comp) evs.push(['chat', { kind: 'state', state, seq: 1 }, 1]);
       if (live && !comp) events.forEach((ev, i) => evs.push(['chat', { ...ev, seq: i + 2 }, i + 2]));
+      evs.push(['replayed', {}]);   // as the real server does, after its replay
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
     }
     if (p === '/api/chat/model') return { body: { ...info } };

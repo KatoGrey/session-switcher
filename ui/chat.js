@@ -196,15 +196,20 @@ async function loadHistory(before) {
   const until = C.info && !C.watch ? C.info.bufferFrom || C.info.startedAt : null;
   if (until) params.set('until', until);
   if (before !== undefined && C.historyCursor) params.set('cursor', C.historyCursor);
-  const h = await api(`/api/chat/history?${params}`);
+  // The chat's own history may run out before its partner's does; then only the partner's is paged.
+  const ownDone = before !== undefined && C.historyStart <= 0;
+  const h = ownDone ? { items: [], start: 0, cursor: null } : await api(`/api/chat/history?${params}`);
   if (gen !== C.gen) return null;   // you've moved on to another chat
   C.historyStart = h.start;
   C.historyCursor = h.cursor || null;
   let rows = h.items.map(it => ({ it, prov: C.provider }));
-  // The partner's earlier messages (Codex in a Claude chat, or Claude in a Codex chat) slot in by time.
-  if (before === undefined && C.compThread) {
-    try { rows = mergeHelper(rows, (await api(`/api/chat/history?${new URLSearchParams({ id: C.compThread, provider: partnerProv() })}`)).items); } catch { /* shown without them */ }
-    if (gen !== C.gen) return null;
+  // The partner's earlier messages (Codex in a Claude chat, or Claude in a Codex chat) slot in by time,
+  // paged back as far as this page of the chat's own reaches.
+  if (C.compThread) {
+    const first = rows.find(r => r.it.at);
+    const mine = await partnerBack(h.start > 0 && first ? Date.parse(first.it.at) : -Infinity, gen, before === undefined);
+    if (mine === null) return null;
+    rows = mergeHelper(rows, mine);
   }
   const tmp = document.createElement('div');
   for (const r of rows) { curProv = r.prov; try { renderItem(tmp, r.it, false); } finally { curProv = null; } }
@@ -215,9 +220,31 @@ async function loadHistory(before) {
     $c('cEarlier').after(...tmp.childNodes);
     s.scrollTop += s.scrollHeight - oldH;
   }
-  $c('cEarlier').hidden = h.start <= 0;
+  $c('cEarlier').hidden = h.start <= 0 && !(C.compThread && (C.compPending.length || C.compMore));
   $c('cEarlier').textContent = 'Show earlier messages';
   return h;
+}
+// The partner's history, page by page, back to `since` (a time; -Infinity for all of it). Its turns
+// older than that wait for the next "Show earlier messages", so the two always read in order.
+const partnerReached = since => { const o = C.compPending.find(it => it.at); return !!o && Date.parse(o.at) <= since; };
+async function partnerBack(since, gen, fresh) {
+  if (fresh) { C.compPending = []; C.compCursor = null; C.compMore = true; }
+  try {
+    for (let pages = 0; C.compMore && pages < 8 && !partnerReached(since); pages++) {
+      const q = new URLSearchParams({ id: C.compThread, provider: partnerProv() });
+      if (C.compCursor) q.set('cursor', C.compCursor);
+      const h = await api(`/api/chat/history?${q}`);
+      if (gen !== C.gen) return null;
+      C.compPending = h.items.concat(C.compPending);
+      C.compCursor = h.cursor || null;
+      C.compMore = !!h.cursor && h.start > 0;
+    }
+  } catch { C.compMore = false; /* shown without the rest */ }
+  let k = since === -Infinity ? 0 : C.compPending.length;
+  if (k) for (let j = 0; j < C.compPending.length; j++) { const it = C.compPending[j]; if (it.kind === 'user' && it.at && Date.parse(it.at) >= since) { k = j; break; } }
+  const out = C.compPending.slice(k);
+  C.compPending = C.compPending.slice(0, k);
+  return out;
 }
 // Waits (briefly) for the last pictures to size themselves, so "the bottom" is really the bottom.
 async function settle() {
@@ -253,11 +280,14 @@ function connect() {
   const key = C.key;
   C.es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=${C.lastSeq}`);
   C.es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); C.info = { ...C.info, ...info }; C.sessionId = info.sessionId || C.sessionId; headerAccount(info.accountId, info.accountName); if (info.permissionMode) setMode(info.permissionMode); if (info.context) setCtx('main', info.context); } catch { /* ignore */ } });
-  C.es.addEventListener('chat', e => { if (C.key !== key) return; try { handle(JSON.parse(e.data)); } catch (err) { console.error(err); } });
+  C.es.addEventListener('chat', e => { if (C.key !== key) return; try { feedIn(JSON.parse(e.data), 'main'); } catch (err) { console.error(err); } });
+  C.es.addEventListener('replayed', () => { if (C.key === key) replayed('main'); });
   C.es.onerror = () => { if (C.state === 'ended' && C.es) { C.es.close(); C.es = null; } };
 }
 
 function reset() {
+  mergeStart(false);
+  C.compPending = []; C.compCursor = null; C.compMore = false;
   if (C.es) { C.es.close(); C.es = null; }
   clearTimeout(C.liveTimer);
   if (C.comp && C.comp.es) C.comp.es.close();
@@ -319,7 +349,8 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   if (info.modes) modeOptions(info.modes);
   if (info.models && info.models.length) C.mi.main = info;
   C.compThread = info.companionThread || null;
-  if (info.companionKey) { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { /* the helper has stopped */ } }
+  mergeStart(!!info.companionKey);
+  if (info.companionKey) { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { replayed('comp'); /* the helper has stopped */ } }
   if (gen !== C.gen) return;
   setTarget('main', false);
   $c('chat').classList.toggle('codex', C.provider === 'codex');
