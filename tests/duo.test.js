@@ -72,3 +72,36 @@ test('duo: nothing new, nothing added', () => {
   assert.equal(catchUp({ to: 'claude', theirs: [] }), '');
   assert.equal(catchUp({ to: 'codex', theirs: entries([reply(1, '')], 'claude') }), '');
 });
+
+test('duo: Claude is told once that it has a partner, and the first in Both knows one follows', () => {
+  const intro = catchUp({ to: 'claude', theirs: [], intro: true });
+  assert.match(intro, /working alongside Codex/);
+  assert.match(intro, /leave it to Codex/);
+  const first = catchUp({ to: 'claude', theirs: [], first: true });
+  assert.match(first, /You answer first; Codex picks it up after you/);
+});
+
+test('duo: the newest reply goes whole; older long ones keep their start and end', () => {
+  const long = n => ({ from: 'codex', text: `${'a'.repeat(n)} MIDDLE ${'b'.repeat(2000)}`, files: new Set(), cmds: 0 });
+  const block = catchUp({ to: 'claude', theirs: [long(6000), long(9000)] });
+  assert.equal((block.match(/MIDDLE/g) || []).length, 1, 'only the newest keeps its middle');
+});
+
+test('duo: a reply you quoted into your message is not passed on again', () => {
+  const r = { from: 'claude', text: 'Step one: fix it.\nStep two: test it.', files: new Set(), cmds: 0 };
+  const msg = `Claude said:\n\n> Step one: fix it.\n> Step two: test it.\n\nThoughts?`;
+  assert.equal(catchUp({ to: 'codex', theirs: [r], heard: [msg] }), '');
+  assert.match(catchUp({ to: 'codex', theirs: [r], heard: ['something else'] }), /Step two/);
+});
+
+test('duo: the other one’s plan travels in the catch-up, so they split the work', () => {
+  const b = catchUp({ to: 'claude', theirs: [], plan: [{ content: 'Paint the icons', status: 'in_progress' }, { content: 'Save them in art/', status: 'pending' }] });
+  assert.match(b, /Codex’s plan right now/);
+  assert.match(b, /▸ Paint the icons\n○ Save them in art\//);
+});
+
+test('duo: undoing one’s changes is told to the other, who may have built on them', () => {
+  const t = catchUp({ to: 'codex', theirUndone: [['scripts/bard/songs.lua']] });
+  assert.match(t, /The user undid Claude’s file changes from one of its replies: scripts\/bard\/songs\.lua is back as before/);
+  assert.match(catchUp({ to: 'claude', theirUndone: [['a.js', 'b.js']] }), /undid Codex’s .*a\.js, b\.js are back/);
+});

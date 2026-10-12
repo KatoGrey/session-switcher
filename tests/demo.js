@@ -143,9 +143,9 @@ const artFor = p => {
 const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`).join('');
 
 // Options: state (the chat's state), seen(path, url, body) for every API call, context (how
-// full the chat is), events (more chat events sent after it connects), openclaw (OpenClaw sessions in the list), noHistory (the history
+// full the chat is), events (more chat events sent after it connects), extras (kept changes and reviews), openclaw (OpenClaw sessions in the list), noHistory (the history
 // isn't there yet, as for a brand-new chat).
-async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false } = {}) {
+async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null } = {}) {
   const info = { ...chatInfo, ...(context ? { context } : {}) };
   let reviews = 0;
   // Rules and tools: the project's CLAUDE.md and AGENTS.md differ; one tool on each side, and Codex's own.
@@ -169,7 +169,9 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     claude: { key: 'k-race-claude', state: 'ready', files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 3, del: 1 }, { path: 'tests/rally_test.lua', status: 'added', add: 18, del: 0 }] },
     codex: { key: 'k-race-codex', state: 'busy', files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 1, del: 1 }] },
   } }];
-  let keepTries = 0;
+  let keepTries = 0, bothTries = 0, tsServing = false;
+  const doneMarks = {};
+  let runState = { running: false, cmd: 'npm run dev', custom: false, url: null, exit: null, lines: [] };
   const rulesOut = () => ({ scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
@@ -177,8 +179,20 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (seen) seen(p, url, body);
     if (p === '/api/reopen') { const out = { reopened: body.action === 'reopen' ? reopen.map(c => c.sessionId) : [], failed: [] }; reopen = []; return { body: out }; }
     if (p === '/api/state') return { body: { reopen, accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '6.0.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
-    if (p === '/api/sessions') return { body: { projects: openclaw ? withOpenClaw(projects) : projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
+    if (p === '/api/chat/done') { if (body.done) doneMarks[String(body.id).toLowerCase()] = { done: Date.now(), undone: 0 }; else doneMarks[String(body.id).toLowerCase()] = { done: 0, undone: Date.now() }; return { body: { doneMarks } }; }
+    if (p === '/api/sessions') return { body: { doneMarks, projects: openclaw ? withOpenClaw(projects) : projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
     if (p === '/api/activity') return { body: { list: activity, at: NOW } };
+    // The day at a glance: bursts of messages through the last few hours.
+    if (p === '/api/away') return { body: { files: 3, reviews: [{ by: 'codex', findings: 2 }] } };
+    if (p === '/api/today') {
+      const burst = (k, from, to, n) => Array.from({ length: n }, (_, i) => min(from + ((to - from) * i) / Math.max(1, n - 1)));
+      const spec = [['s-bard', 0, 40, 14], ['s-bard', 120, 160, 8], ['s-brawl', 6, 60, 10], ['s-brawl', 200, 260, 12], ['s-quests', 160, 220, 9], ['s-nutrient', 2, 50, 9], ['s-nutrient', 300, 330, 4], ['s-migrate', 75, 110, 6], ['s-route', 1, 90, 16], ['s-notes', 30, 70, 7], ['s-playtest', 220, 280, 5], ['s-readme', 55, 95, 6], ['s-review', 130, 170, 8]];
+      const by = {};
+      for (const [k, a, b, n] of spec) (by[k] = by[k] || []).push(...burst(k, a, b, n));
+      const chats = Object.entries(by).map(([k, times]) => ({ id: ID[k], provider: 'claude', times: times.sort((x, y) => x - y) }));
+      for (const [k, ago] of [['c-harvest', 14], ['c-shader', 300], ['c-rain', 45]]) chats.push({ id: ID[k], provider: 'codex', times: [min(ago)] });
+      return { body: { at: NOW, since: NOW - 864e5, chats } };
+    }
     if (p === '/api/usage') return { body: { usage } };
     if (p === '/api/prompts') return null;
     if (p === '/api/project/info') return { body: projInfo(q.get('cwd')) };
@@ -186,24 +200,49 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/events') return { type: 'text/event-stream', body: 'retry: 600000\n\n' };
     if (p === '/api/chat/open') return { body: info };
     if (p === '/api/chat/attach') return { body: compInfo };
+    // extras: what the PC kept from the chat's earlier runs (changes, undos, reviews).
+    if (p === '/api/chat/extras') return { body: { extras: extras && q.get('id') === ID['s-bard'] ? extras : [] } };
     if (p === '/api/chat/history' && noHistory) return { status: 404, body: { error: 'That chat wasn’t found. It may have been deleted; refresh the list.' } };
     if (p === '/api/chat/history' && q.get('provider') === 'openclaw') return { body: { items: ocHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history') return { body: { items: q.get('provider') === 'codex' || q.get('id') === 't-bard-codex' ? codexHistory : claudeHistory, start: 0, cursor: null } };
+    // A side question: its own chat, which answers once.
+    // Run the project: npm run dev, up on a local address.
+    if (p === '/api/run') { if (body.action === 'start' || body.action === 'restart') runState = { running: true, cmd: 'npm run dev', custom: false, url: 'http://localhost:5173/', exit: null, lines: ['> starfall@1.0.0 dev', '> vite', '', '  VITE v6.0.0  ready in 312 ms', '  ➜  Local:   http://localhost:5173/'] }; if (body.action === 'stop') runState = { ...runState, running: false, exit: 0 }; return { body: runState }; }
+    if (p === '/api/chat/branch') return { body: { sessionId: ID['s-brawl'] } };
+    if (p === '/api/chat/aside') return { body: { key: 'k-aside', provider: 'claude' } };
+    if (p === '/api/chat/aside-end') return { body: { ok: true } };
+    if (p === '/api/chat/events' && q.get('key') === 'k-aside') {
+      const evs = [['hello', { ...info, key: 'k-aside' }], ['chat', { kind: 'assistant', mid: 'as1', at: iso(NOW), blocks: [{ type: 'text', text: 'It sets the **co-op** bonus cap; 0.15 means +15%.' }], seq: 1 }, 1], ['chat', { kind: 'result', ok: true, seq: 2 }, 2], ['replayed', {}]];
+      return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
+    }
     if (p === '/api/chat/events') {
       const comp = (q.get('key') || '').includes('cx');
       const evs = [['hello', comp ? compInfo : info]];
       if (live && !comp) evs.push(['chat', { kind: 'state', state, seq: 1 }, 1]);
       if (live && !comp) events.forEach((ev, i) => evs.push(['chat', { ...ev, seq: i + 2 }, i + 2]));
+      evs.push(['replayed', {}]);   // as the real server does, after its replay
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
     }
     if (p === '/api/chat/model') return { body: { ...info } };
     if (p === '/api/chat/diff') return { body: { diff: `diff --git a/${q.get('path')} b/${q.get('path')}\nindex 1..2 100644\n--- a/${q.get('path')}\n+++ b/${q.get('path')}\n@@ -12,3 +12,3 @@ function rally(party)\n   local bonus = 0.15\n-  rally.stacks = true\n+  rally.stacks = false  -- one Rally per party\n   return bonus\n` } };
     // Undo: the first time, one file changed since is left alone; forced, it goes too.
     if (p === '/api/chat/undo') return { body: body.force ? { restored: ['data/balance/party.json'], skipped: [] } : { restored: ['scripts/bard/songs.lua'], skipped: [{ path: 'data/balance/party.json', why: 'changed since' }] } };
+    // Phone access on, one phone paired; Tailscale installed: first not serving, then serving.
+    if (p === '/api/phone') return { body: { enabled: true, listening: true, port: 4788, addresses: [{ address: '192.168.1.20', name: 'Wi-Fi', tailscale: false }], apk: true, pairing: null, devices: [{ id: 'd1', name: 'Pixel', created: NOW - 864e5, lastSeen: NOW - 6e4 }], pushPhones: tsServing ? 1 : 0 } };
+    if (p === '/api/phone/tailscale') return { body: { installed: true, running: true, dns: 'tavern-pc.tail1234.ts.net', url: 'https://tavern-pc.tail1234.ts.net', serving: tsServing, port: 4788 } };
+    if (p === '/api/phone/tailscale-serve') { tsServing = true; return { body: { installed: true, running: true, dns: 'tavern-pc.tail1234.ts.net', url: 'https://tavern-pc.tail1234.ts.net', serving: true, port: 4788 } }; }
     if (p === '/api/races') return { body: { races: raceList } };
     if (p === '/api/race/diff') return { body: { diff: `diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-rally.stacks = true\n+rally.stacks = false\n` } };
     if (p === '/api/race') {
-      if (body.action === 'start') { raceList = [{ ...raceList[raceList.length - 1], id: 'race2', state: 'running', kept: null, prompt: body.prompt, createdAt: iso(NOW) }, ...raceList]; return { body: { id: 'race2', races: raceList } }; }
+      if (body.action === 'start') { const split = body.split || null; raceList = [{ ...raceList[raceList.length - 1], id: split ? 'race3' : 'race2', state: 'running', kept: null, split, prompt: body.prompt || (split ? `${split.claude} · ${split.codex}` : ''), createdAt: iso(NOW) }, ...raceList]; return { body: { id: raceList[0].id, races: raceList } }; }
+      // Keep both: the first try says both changed the same file; the second goes through.
+      if (body.action === 'keepboth') {
+        if (!bothTries++) return { body: { kept: false, why: 'overlap', clash: ['scripts/party/rally.lua'], races: raceList } };
+        raceList = raceList.map(r => (r.id === body.id ? { ...r, state: 'kept', kept: 'both' } : r));
+        return { body: { kept: true, files: [...raceList[0].racers.claude.files, ...raceList[0].racers.codex.files], races: raceList } };
+      }
+      if (body.action === 'judge') { raceList = raceList.map(r => (r.id === body.id ? { ...r, judge: { key: 'k-judge', state: 'busy', sessionId: null } } : r)); return { body: { key: 'k-judge', races: raceList } }; }
+      if (body.action === 'keepfiles') { raceList = raceList.map(r => (r.id === body.id ? { ...r, state: 'kept', kept: 'files' } : r)); return { body: { kept: true, files: [...(body.picks.claude || []), ...(body.picks.codex || [])].map(p => ({ path: p })), races: raceList } }; }
       if (body.action === 'discard') { raceList = raceList.map(r => (r.id === body.id ? { ...r, state: 'discarded' } : r)); return { body: { races: raceList } }; }
       // Keep: the first try says the project changed since; the forced one goes through.
       if (body.action === 'keep') {
@@ -228,8 +267,10 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
       return { body: { servers, codexError: null, codexOn: true, copied: body.name } };
     }
     if (p === '/api/chat/review') { return { body: { id: `rv${++reviews}`, what: 'your uncommitted changes', base: body.base || null } }; }
+    // Restart, pretended: "now" says it's restarting; "idle" waits on one chat; "cancel" calls it off.
+    if (p === '/api/restart') return { body: body.when === 'now' ? { pending: false, restarting: true } : body.when === 'idle' ? { pending: true, waitingOn: 1, since: NOW } : { pending: false } };
     return { body: {} };
   });
 }
 
-module.exports = { install, ID, projects, accounts };
+module.exports = { install, ID, projects, accounts, NOW };

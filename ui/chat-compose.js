@@ -146,7 +146,7 @@ function renderSlash() {
   box.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
 }
 function pickSlash(i) {
-  if (Slash.kind === 'file') { const f = Slash.items[i], at = Slash.at; closeSlash(); if (f && at) insertMention(f, at); return; }
+  if (Slash.kind === 'file') { const f = Slash.items[i], at = Slash.at; closeSlash(); if (f && at) { if (typeof f === 'string') insertMention(f, at); else insertChatRef(f, at); } return; }
   const pr = Slash.items[i]; closeSlash(); if (pr) insertPrompt(pr, true);
 }
 
@@ -193,14 +193,42 @@ async function renderMention(men) {
   const files = await mentionFiles();
   const now = mentionAt();
   if (!now || now.q !== men.q || now.start !== men.start) return undefined;   // typed on meanwhile
-  const items = rankFiles(files, men.q);
+  const items = [...rankFiles(files, men.q).slice(0, men.q ? 6 : 5), ...rankChats(men.q)];
   if (!items.length) return closeSlash();
   if (Slash.kind !== 'file' || Slash.at?.start !== men.start) Slash.sel = 0;
   Object.assign(Slash, { kind: 'file', items, at: men, open: true, sel: Math.min(Slash.sel, items.length - 1) });
   const box = $c('cSlash'); box.hidden = false;
-  box.innerHTML = `<p class="cs-h">Files in ${esc(C.folder || 'this project')}</p><ul>${items.map((f, i) => `<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}"><b>${esc(f.split('/').pop())}</b><span class="cs-x">${esc(f)}</span></li>`).join('')}</ul>
+  const firstChat = items.findIndex(x => typeof x !== 'string');
+  box.innerHTML = `<p class="cs-h">${firstChat === 0 ? 'Your other chats' : `Files in ${esc(C.folder || 'this project')}`}</p><ul>${items.map((f, i) => typeof f !== 'string' ? `${i === firstChat && i ? '<li class="cs-sep" role="presentation">Your other chats</li>' : ''}<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}" class="cs-chat"><b>${esc(f.title)}</b><span class="cs-x">${esc(f.folder || '')}${f.provider === 'codex' ? ' · Codex' : ''} · brings its latest messages in</span></li>` : `<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}"><b>${esc(f.split('/').pop())}</b><span class="cs-x">${esc(f)}</span></li>`).join('')}</ul>
     <p class="cs-f"><kbd class="kbd">Tab</kbd> or <kbd class="kbd">Enter</kbd> puts it in · <kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> choose · <kbd class="kbd">Esc</kbd> closes</p>`;
   return undefined;
+}
+// Your other chats matching what's typed after "@" (by title or project), newest first.
+function rankChats(q) {
+  const ql = q.toLowerCase();
+  const mine = String(C.sessionId || '').toLowerCase();
+  return allSessions().filter(([x]) => x.id.toLowerCase() !== mine && (x.title || '').trim())
+    .filter(([x, p]) => !ql || (x.title || '').toLowerCase().includes(ql) || (p.name || '').toLowerCase().startsWith(ql))
+    .sort((a, b) => (b[0].updated || 0) - (a[0].updated || 0)).slice(0, ql ? 4 : 3)
+    .map(([x, p]) => ({ chat: true, id: x.id, provider: x.provider || 'claude', title: x.title, folder: p.name }));
+}
+// "@chat[Title] ": that chat's latest messages go along with this message (the PC adds them).
+function insertChatRef(c, at) {
+  const ta = $c('cText');
+  const label = c.title.replace(/[[\]\n]/g, ' ').trim().slice(0, 80);
+  if (!C.chatRefs) C.chatRefs = new Map();
+  C.chatRefs.set(label, { id: c.id, provider: c.provider });
+  const text = `@chat[${label}] `;
+  ta.value = ta.value.slice(0, at.start) + text + ta.value.slice(at.end);
+  const pos = at.start + text.length;
+  ta.focus(); ta.setSelectionRange(pos, pos);
+  grow(); saveDraft();
+}
+// The chats a message brings in: each "@chat[…]" still in it that was picked from the list.
+function chatRefsIn(text) {
+  const out = [];
+  for (const m of String(text).matchAll(/@chat\[([^\]\n]+)\]/g)) { const r = C.chatRefs && C.chatRefs.get(m[1]); if (r && !out.some(x => x.id === r.id)) out.push(r); }
+  return out;
 }
 // Replaces "@wor" with "@path/to/file " (in quotes if the path has spaces).
 function insertMention(f, at) {
@@ -236,6 +264,32 @@ function restoreDraft() {
 function clearDraft() { clearTimeout(draftTimer); const k = draftKey(); try { if (k) localStorage.removeItem(k); if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
 
 async function sendMessage() {
+  // An OpenClaw session: the message becomes a follow-up turn in that session (through
+  // the agent's own CLI; it carries on in OpenClaw). One at a time.
+  if (C.provider === 'openclaw' && C.watch && C.watch.sessionId) {
+    const text = $c('cText').value.trim();
+    if (!text) return;
+    $c('cText').value = ''; clearDraft();
+    const sid = C.watch.sessionId, gen = C.gen, id = C.watch.sessionId;
+    renderItem($c('cFeed'), { kind: 'user', text, at: new Date().toISOString(), images: [] }, true);
+    toBottom();
+    $c('cSend').disabled = true; setStatus('main', `Sending to ${PROV_NAME[C.provider]}…`);
+    setState('busy'); $c('cStop').hidden = true;
+    try {
+      const r = await api('/api/openclaw/send', { id: sid, text });
+      if (gen === C.gen && r.reply) { setStatus('main', ''); }
+    } catch (err) {
+      if (gen === C.gen) { toast(`OpenClaw couldn’t send that: ${err.message}`, 6000); }
+    } finally {
+      if (gen === C.gen) {
+        setState('watching'); $c('cSend').disabled = false; setStatus('main', '');
+        // Give the CLI turn a beat to reach the transcript, then reconcile the feed.
+        setTimeout(() => { if (gen === C.gen && C.watch) refreshWatch(); }, 1800);
+        $c('cText').focus();
+      }
+    }
+    return;
+  }
   const typed = $c('cText').value;
   let text = typed;
   if (!text.trim() && !C.attachments.length && !(C.files || []).length) return;
@@ -259,15 +313,34 @@ async function sendMessage() {
   const sw = text.trim().match(/^\/(model|effort)\s+(.{1,60})$/i);
   if (sw && !C.attachments.length) { clear(); await quickSwitch(sw[1].toLowerCase(), sw[2].trim()); return; }
   // "@codex …", "@claude …" or "@both …" sends just this message to that one (or both).
-  let target = duo() && (C.target === 'comp' || C.target === 'both') ? C.target : 'main';
+  let target = duo() && (C.target === 'comp' || C.target === 'both' || C.target === 'plan') ? C.target : 'main';
+  // "/btw …": a side question, beside the chat (ui/chat-aside.js).
+  const btw = text.match(/^\s*\/btw\s+/i);
+  if (btw && !C.attachments.length) { const q = text.slice(btw[0].length); clear(); await openAside(q); return; }
+  // "/plan …": plan first (one drafts, the other checks, you pick who builds).
+  const pl = duo() && text.match(/^\s*\/plan\s+/i);
+  if (pl) { target = 'plan'; text = text.slice(pl[0].length); }
   const at = duo() && text.match(/^\s*@(codex|claude|both)\b[:,]?\s*/i);
   if (at) { const w = at[1].toLowerCase(); target = w === 'both' ? 'both' : w === C.provider ? 'main' : 'comp'; text = text.slice(at[0].length); }
   if (target !== 'comp' && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
+  // Writing to one while the other is mid-reply: both would work at once, maybe on the same files.
+  let after = false;
+  if (duo() && target !== 'both' && target !== 'plan') {
+    const otherState = target === 'main' ? (C.comp && !C.comp.ended ? C.comp.state : null) : C.state;
+    if (otherState === 'busy' || otherState === 'waiting') {
+      const other = PROV_NAME[target === 'main' ? partnerProv() : C.provider], to = PROV_NAME[target === 'main' ? C.provider : partnerProv()];
+      const pick = await appChoice(`${other} is still working.\n\nSend it to ${to} when ${other} is done, so they don't edit the same files at once, or send it now and let both work?`,
+        [{ v: 'after', label: `When ${other} is done`, kind: 'prime' }, { v: 'now', label: 'Send now' }, { v: '', label: 'Cancel', kind: 'quiet' }]);
+      if (!pick) return;
+      after = pick === 'after';
+    }
+  }
   const images = C.attachments.slice();
   $c('cSend').disabled = true;
   try {
     // The app catches each one up on what it missed (lib/pairs.js); with Both they take turns.
-    const r = await api('/api/chat/send', { key: C.key, text, images, ...(target === 'main' ? {} : { to: target === 'both' ? 'both' : 'partner', account: S.acct }) });
+    const refs = chatRefsIn(text);
+    const r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct }), ...(after ? { after: true } : {}) });
     clear();
     // Follow the partner's replies here (it may only just have started).
     if (target !== 'main' && !(C.comp && !C.comp.ended && (!r || !r.key || C.comp.key === r.key))) ensureCompanion().catch(() => {});

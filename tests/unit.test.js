@@ -12,7 +12,7 @@ const put = (dir, rel, text = 'x') => { const p = path.join(dir, rel); fs.mkdirS
 
 /* ---------- "Make a copy to share" never takes anything personal ---------- */
 const { appFiles, zip } = require('../lib/sharecopy');
-const PERSONAL = ['accounts.json', 'accounts.json.bak', 'history.json', 'chat-names.json', 'projects.json', 'banners.json', 'prompts.json',
+const PERSONAL = ['accounts.json', 'push.json', 'accounts.json.bak', 'history.json', 'chat-names.json', 'projects.json', 'banners.json', 'prompts.json',
   'chat-prefs.json', 'devices.json', 'tasks.json', 'races.json', 'open-chats.json', 'reopen.json', 'switcher.log', 'attachments/2026-10-09/clip.mp4', 'mobile/android/debug.keystore', '.claude/settings.local.json'];
 
 test('share copy: personal files stay out', () => {
@@ -29,8 +29,15 @@ test('share copy: personal files stay out', () => {
 test('share copy: this repo’s own files are all safe to share', () => {
   const names = appFiles(APP).map(f => f.name);
   assert.ok(names.includes('server.js') && names.includes('index.html'));
-  for (const n of names) assert.match(n, /\.(js|html|css|md|vbs|bat|command|ico|icns|woff2|mp3|txt)$/i, `${n} has an unexpected type`);
+  for (const n of names) assert.match(n, /\.(js|html|css|md|vbs|bat|command|ico|icns|woff2|mp3|txt)$|^art\/[a-z0-9-]+\.webp$/i, `${n} has an unexpected type`);
+  assert.ok(!names.some(n => n.startsWith('art/src/')), 'originals and local previews stay out');
   assert.ok(!names.some(n => /\.json$|\.log$|\.bak$|keystore/i.test(n)), 'no settings, logs or keys');
+});
+
+test('share copy: theme paintings are included, originals and local concepts stay out', () => {
+  const dir = tmp();
+  for (const f of ['art/isekai-dark.webp', 'art/src/isekai-dark.png', 'art/src/preview.html', 'art/src/concepts/script.js', 'attachments/personal.webp', 'personal.webp']) put(dir, f);
+  assert.deepEqual(appFiles(dir).map(f => f.name), ['art/isekai-dark.webp']);
 });
 
 test('share copy: the Mac launcher unzips as runnable', () => {
@@ -465,6 +472,31 @@ test('race: keeping waits if the project changed since the race began', async ()
   await assert.rejects(race.makeRace(tmp()), /needs a git project/);
 });
 
+test('race: split the work keeps both parts at once, or nothing if they touched the same file', async () => {
+  const dir = repo();
+  put(dir, 'a.txt', 'one\n'); put(dir, 'b.txt', 'two\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  const r = await race.makeRace(dir);
+  put(r.copies.claude.path, 'a.txt', 'claude\n');
+  put(r.copies.codex.path, 'b.txt', 'codex\n'); put(r.copies.codex.path, 'new.txt', 'added\n');
+  const k = await race.keepBoth(r);
+  assert.equal(k.applied, true);
+  assert.deepEqual(k.files.map(f => `${f.by}:${f.path}`).sort(), ['claude:a.txt', 'codex:b.txt', 'codex:new.txt']);
+  assert.equal(readLF(path.join(dir, 'a.txt')), 'claude\n');
+  assert.equal(readLF(path.join(dir, 'b.txt')), 'codex\n');
+  assert.equal(readLF(path.join(dir, 'new.txt')), 'added\n');
+  await race.dropRace(r);
+  // Both touched a.txt: nothing changes, and it says which file.
+  gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'both');
+  const r2 = await race.makeRace(dir);
+  put(r2.copies.claude.path, 'a.txt', 'mine\n'); put(r2.copies.codex.path, 'a.txt', 'theirs\n'); put(r2.copies.codex.path, 'b.txt', 'x\n');
+  const k2 = await race.keepBoth(r2);
+  assert.equal(k2.applied, false);
+  assert.equal(k2.why, 'overlap');
+  assert.deepEqual(k2.clash, ['a.txt']);
+  assert.equal(readLF(path.join(dir, 'b.txt')), 'codex\n', 'nothing half-applied');
+  await race.dropRace(r2);
+});
+
 /* ---------- what a review looks at ---------- */
 const { reviewTarget, EMPTY_TREE } = require('../lib/review');
 const { execFileSync } = require('child_process');
@@ -617,4 +649,154 @@ test('handover: the build fingerprint follows the code, not file dates', () => {
   assert.equal(handover.buildId(dir), one);
   put(dir, 'ui/base.js', 'b2');
   assert.notEqual(handover.buildId(dir), one);
+});
+
+/* ---------- the font pack ---------- */
+test('font pack: every face has its file, every set uses pack families, and fonts/ holds nothing extra', () => {
+  const { FAMILIES, FONT_SETS, setFonts } = require('../theme');
+  assert.equal(FAMILIES.filter(f => f.cat !== 'theme').length, 42);
+  const files = FAMILIES.flatMap(f => f.faces.map(fc => `${fc[0]}.woff2`));
+  for (const f of files) assert.ok(fs.existsSync(path.join(APP, 'fonts', f)), `fonts/${f} is missing`);
+  const extra = fs.readdirSync(path.join(APP, 'fonts')).filter(n => n.endsWith('.woff2') && !files.includes(n));
+  assert.deepEqual(extra, [], 'every font file belongs to a family');
+  const ids = new Set(FAMILIES.map(f => f.id));
+  for (const s of FONT_SETS) for (const k of ['head', 'body', 'code', 'caps']) if (s[k]) assert.ok(ids.has(s[k]), `${s.id}.${k} is ${s[k]}`);
+  // Theme Studio's saved worlds keep these keys.
+  for (const k of ['clear', 'storybook', 'rounded']) assert.ok(setFonts(k), k);
+  for (const f of FAMILIES.filter(x => ['sans', 'serif', 'code', 'easy'].includes(x.cat))) assert.ok(f.x > 0.3 && f.x < 0.7, `${f.name} has a measured x-height`);
+});
+
+/* ---------- what a reply changed: its own edits, or changed meanwhile ---------- */
+test('changes: a reply’s own edits are told apart from files changed meanwhile; commands mark nothing', () => {
+  const { LiveChat } = require('../lib/chat');
+  const at = s => new Date(Date.parse('2026-10-11T10:00:00Z') + s * 1000).toISOString();
+  const tool = (name, meta) => ({ kind: 'assistant', at: at(5), blocks: [{ type: 'tool', name, meta }] });
+  const own = LiveChat.prototype.ownPaths.call({ buffer: [tool('Edit', { path: 'C:\Proj\scripts\songs.lua' }), tool('Edit', { path: 'x', paths: ['C:/Proj/a.js', 'C:/Proj/b.js'] })] }, at(0));
+  assert.deepEqual(own, ['C:\Proj\scripts\songs.lua', 'C:/Proj/a.js', 'C:/Proj/b.js'], 'every path of a multi-file change counts');
+  assert.equal(LiveChat.prototype.ownPaths.call({ buffer: [tool('Edit', { path: 'a' }), tool('Bash', null)] }, at(0)), null, 'a command may have changed anything');
+  assert.deepEqual(LiveChat.prototype.ownPaths.call({ buffer: [tool('Edit', { path: 'old.js' })] }, at(9)), [], 'edits from before the reply don’t count');
+});
+
+/* ---------- what used my window ---------- */
+test('usage per chat: each turn’s tokens are tallied, cache reads left out', () => {
+  const { LiveChat, translate } = require('../lib/chat');
+  const out = translate({ type: 'result', subtype: 'success', usage: { input_tokens: 1200, cache_creation_input_tokens: 300, cache_read_input_tokens: 90000, output_tokens: 500 } });
+  assert.equal(out[0].tokens, 2000);
+  const fake = { spent: [] };
+  LiveChat.prototype.spend.call(fake, 2000);
+  LiveChat.prototype.spend.call(fake, 0);
+  fake.spent.push({ at: Date.now() - 6 * 3600e3, tokens: 999 });
+  assert.equal(LiveChat.prototype.spentSince.call(fake, Date.now() - 5 * 3600e3), 2000, 'only the last five hours');
+});
+
+/* ---------- a chat's changes, undos and reviews outlive its run ---------- */
+test('extras: a chat opened again shows its earlier changes, and their Undo still works', async () => {
+  const { LiveChat } = require('../lib/chat');
+  const { createExtras } = require('../lib/extras');
+  const dir = repo(), keep = tmp();
+  put(dir, 'game.lua', 'rally = 0.15\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  const extras = createExtras({ dir: keep });
+  const first = new LiveChat({ cfg: {}, account: { id: 'main', name: 'Main' }, cwd: dir, sessionId: 'S-1', extras, log: () => {} });
+  first.state = 'ready';
+  await first.beforeTurn();
+  put(dir, 'game.lua', 'rally = 0.10\n');
+  await first.afterTurn();
+  first.emit({ kind: 'review', id: 'rv1', state: 'running' });
+  first.emit({ kind: 'review', id: 'rv1', state: 'done', findings: [{ title: 'x' }] });
+  // A later run (a restart): a new chat, as the same conversation, and a fresh reader of the files.
+  const again = createExtras({ dir: keep });
+  assert.deepEqual(again.list('s-1').map(e => `${e.kind}:${e.state || e.turn}`), ['changes:0', 'review:done'], 'what ran is kept, a review as it ended');
+  assert.ok(!('snap' in again.list('S-1')[0]), 'the snapshots stay on the PC');
+  const second = new LiveChat({ cfg: {}, account: { id: 'main', name: 'Main' }, cwd: dir, sessionId: 'S-1', extras: again, log: () => {} });
+  second.state = 'ready';
+  assert.match(await second.turnDiff(0, 'game.lua'), /^\+rally = 0\.10$/m, 'its diff');
+  // A new reply numbers on from the old ones.
+  await second.beforeTurn();
+  put(dir, 'notes.md', 'why\n');
+  await second.afterTurn();
+  assert.equal(second.buffer.filter(e => e.kind === 'changes').pop().turn, 1);
+  const r = await second.undoTurn(0);
+  assert.deepEqual(r.restored, ['game.lua']);
+  assert.equal(readLF(path.join(dir, 'game.lua')), 'rally = 0.15\n', 'Undo from before the restart works');
+  assert.deepEqual(again.list('S-1', new Date(Date.now() + 1000).toISOString()).map(e => e.kind), ['changes', 'review', 'changes', 'undone']);
+});
+
+/* ---------- branch a chat from one of its replies ---------- */
+test('branch: a new chat with everything up to the end of that reply; the original stays as it is', () => {
+  const { branchSession } = require('../lib/branch');
+  const dir = tmp(), file = path.join(dir, 'old-id.jsonl');
+  const L = o => JSON.stringify({ sessionId: 'old-id', timestamp: '2026-10-12T10:00:00Z', ...o });
+  const lines = [
+    L({ type: 'user', uuid: 'u1', message: { role: 'user', content: 'Balance the bard' } }),
+    L({ type: 'assistant', uuid: 'a1', message: { id: 'msg_1', role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] } }),
+    L({ type: 'user', uuid: 'r1', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } }),
+    L({ type: 'assistant', uuid: 'a2', message: { id: 'msg_2', role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } }),
+    L({ type: 'user', uuid: 'u2', message: { role: 'user', content: 'Now the art' } }),
+    L({ type: 'assistant', uuid: 'a3', message: { id: 'msg_3', role: 'assistant', content: [{ type: 'text', text: 'Painting.' }] } }),
+  ];
+  fs.writeFileSync(file, `${lines.join('\n')}\n`);
+  const r = branchSession(file, 'msg_1', 'new-id');
+  const kept = fs.readFileSync(r.file, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  assert.deepEqual(kept.map(e => e.uuid), ['u1', 'a1', 'r1', 'a2'], 'the whole reply (its steps too), and nothing after your next message');
+  assert.ok(kept.every(e => e.sessionId === 'new-id'), 'under its new id');
+  assert.equal(fs.readFileSync(file, 'utf8').trim().split('\n').length, 6, 'the original is untouched');
+  assert.equal(branchSession(file, 'msg_3', 'other-id').lines, 6, 'from the last reply: all of it');
+  assert.throws(() => branchSession(file, 'msg_9', 'x-id'), /isn’t in the chat’s file/);
+});
+
+test('tasks: a routine queues its next run, at the same time on its next day', () => {
+  const at = new Date(2026, 9, 9, 9, 0).toISOString();   // a Friday, 9:00
+  const fri = new Date(2026, 9, 9, 9, 30).getTime();
+  assert.equal(new Date(tasks.nextRun(at, 'daily', fri)).getDate(), 10);
+  assert.equal(new Date(tasks.nextRun(at, 'weekdays', fri)).getDay(), 1, 'Friday → Monday');
+  assert.equal(new Date(tasks.nextRun(at, 'weekly', fri)).getDate(), 16);
+  // Missed while the PC was off: the next one still to come, not a pile of old ones.
+  assert.ok(Date.parse(tasks.nextRun(at, 'daily', fri + 5 * 864e5)) > fri + 5 * 864e5);
+  const n = tasks.nextOf({ id: 'a', repeat: 'daily', at, state: 'started', key: 'k', prompt: 'x' }, fri);
+  assert.ok(n.id !== 'a' && n.state === 'queued' && n.key === null && n.repeat === 'daily');
+  assert.equal(tasks.nextOf({ id: 'b', at, state: 'started' }), null, 'a one-off has no next');
+});
+
+test('race: keep file by file, from either copy; the same file from both is refused', async () => {
+  const dir = repo();
+  put(dir, 'a.txt', 'one\n'); put(dir, 'b.txt', 'two\n'); gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  const r = await race.makeRace(dir);
+  put(r.copies.claude.path, 'a.txt', 'claude a\n'); put(r.copies.claude.path, 'b.txt', 'claude b\n');
+  put(r.copies.codex.path, 'b.txt', 'codex b\n'); put(r.copies.codex.path, 'c.txt', 'codex c\n');
+  assert.deepEqual(await race.keepFiles(r, { claude: ['b.txt'], codex: ['b.txt'] }), { applied: false, why: 'overlap', clash: ['b.txt'] });
+  const d = await race.bothDiffs(r);
+  assert.match(d.claude, /claude a/); assert.match(d.codex, /codex c/);
+  const k = await race.keepFiles(r, { claude: ['a.txt'], codex: ['b.txt', 'c.txt'] });
+  assert.equal(k.applied, true);
+  assert.equal(readLF(path.join(dir, 'a.txt')), 'claude a\n');
+  assert.equal(readLF(path.join(dir, 'b.txt')), 'codex b\n', 'b from Codex, not Claude');
+  assert.equal(readLF(path.join(dir, 'c.txt')), 'codex c\n');
+  await race.dropRace(r);
+});
+
+/* ---------- run the project ---------- */
+test('run: starts the project’s dev script, finds its address, keeps its output, and stops it', async () => {
+  const { createRunner, guessCommand } = require('../lib/runner');
+  const dir = tmp(), data = tmp();
+  put(dir, 'srv.js', "console.log('\u001b[32m  VITE ready\u001b[0m'); console.log('  ➜  Local:   http://localhost:51734/'); setInterval(() => {}, 1000);\n");
+  put(dir, 'package.json', JSON.stringify({ scripts: { dev: 'node srv.js', build: 'x' } }));
+  assert.equal(guessCommand(dir), 'npm run dev');
+  assert.equal(guessCommand(tmp()), null, 'nothing to go on');
+  const changes = [];
+  const run = createRunner({ dataDir: data, onChange: c => changes.push(c) });
+  run.setCommand(dir, 'node srv.js');   // npm isn't needed for the test
+  run.start(dir);
+  const t0 = Date.now();
+  while (!run.status(dir).url && Date.now() - t0 < 10000) await new Promise(r => setTimeout(r, 100));
+  const st = run.status(dir);
+  assert.equal(st.running, true);
+  assert.equal(st.url, 'http://localhost:51734/');
+  assert.ok(st.lines.some(l => /VITE ready/.test(l) && !/\u001b/.test(l)), 'its output, without colour codes');
+  assert.ok(changes.length > 0);
+  const stopped = await run.stop(dir);
+  const t1 = Date.now();
+  while (run.status(dir).running && Date.now() - t1 < 5000) await new Promise(r => setTimeout(r, 100));
+  assert.equal(run.status(dir).running, false, stopped);
+  // The command you set is remembered for the project.
+  assert.equal(createRunner({ dataDir: data }).status(dir).cmd, 'node srv.js');
 });

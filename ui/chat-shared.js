@@ -6,6 +6,19 @@
 
 // "<shared-context items="2">…</shared-context>" at the start of a message, and what follows it.
 const SHARED_TAG = /^\s*<shared-context(?:\s+items="(\d+)")?[^>]*>\n?([\s\S]*?)(?:\n?<\/shared-context>\s*|$)/;
+// "<other-chat title=… items=…>…</other-chat>": another chat you brought in with "@chat[…]".
+const OTHER_TAG = /^\s*<other-chat([^>]*)>\n?([\s\S]*?)(?:\n?<\/other-chat>\s*|$)/;
+function splitOther(text) {
+  let s = String(text || '');
+  const chats = [];
+  for (let m; (m = s.match(OTHER_TAG));) {
+    const a = k => ((m[1].match(new RegExp(`${k}="([^"]*)"`)) || [])[1] || '');
+    chats.push({ title: a('title'), folder: a('folder'), items: Number(a('items')) || 0, body: m[2].trim() });
+    s = s.slice(m[0].length);
+  }
+  return { chats, own: s };
+}
+const otherChatsHtml = list => list.map(c => `<details class="shared other"><summary>Brought in “${esc(c.title || 'another chat')}”${c.items ? `: its last ${c.items} message${c.items === 1 ? '' : 's'}` : ''}</summary><div class="sh-body">${plain(c.body)}</div></details>`).join('');
 function splitShared(text) {
   const s = String(text || '');
   const m = /^\s*<shared-context/.test(s) && s.match(SHARED_TAG);

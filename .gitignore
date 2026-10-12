@@ -11,16 +11,22 @@ routines.json
 chat-prefs.json
 organize.json
 commander/
+openclaw-titles.json
+openclaw-messages/
 pairs.json
 lite.json
 lite-usage.json
 push.json
 lite-thumbs/
 devices.json
+push.json
+chat-extras/
+push.json.bak
 tasks.json
 races.json
 open-chats.json
 reopen.json
+restart.json
 switcher.log
 switcher.log.old
 *.corrupt-*
@@ -32,6 +38,7 @@ node_modules/
 mobile/android/build/
 mobile/android/*.keystore
 *.apk
+*.apk.json
 *.zip
 
 # Files attached in chats run inside this folder
@@ -40,3 +47,7 @@ attachments/
 # Xcode
 mobile/ios/**/xcuserdata/
 *.xcuserstate
+
+# The themes' paintings: full-size originals stay local; the app uses the WebP copies in art/
+art/src/
+theme-studio/

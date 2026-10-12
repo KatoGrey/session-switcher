@@ -164,11 +164,20 @@ function codexChatItems(s) {
     { label: 'Copy terminal command', run: () => copyCommand(s.id) },
   ];
 }
-function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id), ...orgItems(s.id)]); }
+function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id), doneItem(s.id), ...orgItems(s.id)]); }
 function chatItems(id) {
   const [s] = sessionById(id); if (!s) return [];
   if (isCodex(s)) return codexChatItems(s);
-  if (isOpenClaw(s)) return [{ glyph: '❝', label: 'Read it here', hint: 'read-only; it carries on in OpenClaw', run: () => ChatUI.open({ sessionId: id }) }];
+  if (isOpenClaw(s)) return [
+    { glyph: '❝', label: 'Read it here', hint: 'it carries on in OpenClaw; you can write to it here', run: () => ChatUI.open({ sessionId: id }) },
+    '-', 
+    { label: 'Refresh now', hint: 'reread the session list', run: () => loadSessions().then(renderAll) },
+    { glyph: '🗄', label: 'Archive in OpenClaw', hint: 'keeps it out of the active list; nothing is deleted', run: async () => {
+      if (!(await appConfirm(`Archive this session in OpenClaw?\n\n${s.title}\n\nIt leaves the active list; its transcript stays archived and searchable. This can't be undone from here.`, { ok: 'Archive' }))) return;
+      try { await api('/api/openclaw/archive', { id: s.id }); await loadSessions(); renderAll(); toast('Archived in OpenClaw.', 3000); }
+      catch (err) { toast(`Couldn’t archive: ${err.message}`, 6000); }
+    } },
+  ];
   const a = current(); const ok = canLaunch(a);
   const why = !a.signedIn ? `Sign in to ${a.name} first` : (a.lockMessage || '');
   const live = liveOf(id), run = isRunning(id);
@@ -190,7 +199,8 @@ function chatItems(id) {
     { label: 'Show transcript file', run: async () => { const r = await api('/api/reveal', { sessionId: id }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
   ];
 }
-function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id), ...orgItems(id)]); }
+function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id), doneItem(id), ...orgItems(id)]); }
+const doneItem = id => { const [s] = sessionById(id); const d = s && isDoneChat(s); return { glyph: d ? '↺' : '✓', label: d ? 'Not done' : 'Mark done', hint: d ? 'back on the lists' : 'off the lists until it’s used again', run: () => setChatDone(id, !d) }; };
 const favItem = id => ({ glyph: isFav(id) ? '☆' : '★', label: isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => toggleFav(id) });
 
 function sealMenu(anchor) {

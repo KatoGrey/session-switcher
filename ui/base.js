@@ -206,8 +206,30 @@ function highlight(text, q) {
   if (!terms.length) return out;
   return out.replace(new RegExp(`(${terms.join('|')})`, 'gi'), '<mark>$1</mark>');
 }
+// Done chats: ones you marked done (until they're used again), and, with tidy-up on, ones with
+// nothing new for a while. They leave every list; each project keeps them under Done.
+function isDoneChat(s) {
+  if (!s || (S.running && S.running[s.id]) || (S.live && Object.values(S.live).some(c => c.sessionId && c.sessionId.toLowerCase() === s.id.toLowerCase()))) return false;
+  const m = (S.doneMarks || {})[s.id.toLowerCase()] || {};
+  if (m.done && (s.updated || 0) <= m.done + 60000) return true;
+  const days = (S.prefs && S.prefs.autoDone) || 0;
+  return !!days && Date.now() - Math.max(s.updated || 0, m.undone || 0) > days * 864e5;
+}
+function sortDone() {
+  for (const p of S.projects) {
+    const all = (p.sessions || []).concat(p.done || []).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    p.done = all.filter(isDoneChat); p.sessions = all.filter(x => !isDoneChat(x));
+  }
+}
+async function setChatDone(id, done) {
+  const r = await api('/api/chat/done', { id, done });
+  S.doneMarks = r.doneMarks || {};
+  if (!done) { const m = S.doneMarks[id.toLowerCase()]; if (m) m.undone = Date.now(); }
+  sortDone(); renderAll();
+  toast(done ? 'Done. It’s off the lists; find it under Done in its project, and it comes back if it’s used again.' : 'Back on the lists.', 4000);
+}
 function allSessions() { const all = []; for (const p of S.projects) for (const s of p.sessions) all.push([s, p]); return all; }
-function sessionById(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
+function sessionById(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
 const lastLine = t => { const parts = String(t || '').trim().split(/\n\s*\n/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean); return parts.length ? parts[parts.length - 1] : ''; };
 const plainMd = t => String(t || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*_`#>|]+/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\s+/g, ' ').trim();
 
@@ -415,17 +437,23 @@ function openActivity(x) {
 /* ---------- data ---------- */
 async function loadState() {
   const j = await api('/api/state');
-  S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null; S.reopen = j.reopen || [];
+  S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null; S.reopen = j.reopen || []; S.restart = j.restart || { pending: false }; S.update = !!j.update; S.pid = j.pid || null;
   const saved = store('acct');
   if (!S.accounts.some(a => a.id === S.acct)) S.acct = S.accounts.some(a => a.id === saved) ? saved : S.accounts[0].id;
 }
 async function loadSessions() {
   const j = await api('/api/sessions');
   S.projects = j.projects; S.root = j.root; S.running = j.running || {}; S.live = j.live || {};
+  S.doneMarks = j.doneMarks || {};
+  sortDone();
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
 async function loadActivity() { const j = await api('/api/activity'); S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }
-async function loadUsage() { const j = await api('/api/usage'); S.usage = j.usage || {}; }
+async function loadUsage() {
+  const [j, sp] = await Promise.all([api('/api/usage'), api('/api/usage/chats').catch(() => null)]);
+  S.usage = j.usage || {};
+  if (sp) S.spent = sp.byAccount || {};   // what used each account's window, chat by chat
+}
 async function reload() {
   await loadState();
   await Promise.all([loadSessions(), loadActivity().catch(() => {}), loadUsage().catch(() => {}), loadOrganize()]);

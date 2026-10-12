@@ -175,6 +175,7 @@ Routines are chats that start on their own. Open **Routines** in the sidebar, th
 - Before each run it checks the account's usage. If the five-hour window is more used than the routine allows (90% unless you change it), or the week is used up, it waits until the window resets and says so in the history.
 - Routines never post anywhere. Slack is only read, and every run is told to write any reply as a draft for you to send. Keep routines on **Ask before acting** if a chat has tools that could send messages.
 - Routines are kept in `routines.json`. Other code can make one through `POST /api/routines`.
+**Project crests:** choose **Project crest…** on a project page or in its right-click menu. Pick an existing picture, or edit the art direction under **Make a crest with Codex** and choose **Review prompt in Codex**. The prompt waits in the chat for you to send it. When Codex saves that image, it becomes the project's crest across the sidebar, project cards and chat header; existing artwork and the wide banner stay intact. Choosing **Use automatic crest** restores automatic selection. Named crests, emblems and logos in the project are recognised, including small icons. Generation needs image tools in your Codex session.
 
 ## Handing it to someone else
 
@@ -207,6 +208,9 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
   - **What each reply changed** (in a git project): a bar under the reply, like "Changed 3 files".
     - **See the changes** shows them, file by file.
     - **Undo** puts those files back as they were before that reply. A file that's changed since is left alone, and it tells you which. Whoever made the changes hears about the undo with your next message, so it doesn't build on them.
+  - These bars, Undo, and review results are kept on the PC (`chat-extras/`, one small file per conversation), so after a restart, an update or an idle stop they're back under the replies they came from, and Undo still works.
+  - **Pictures** show under the reply they belong to, not folded inside its steps: the ones it looked at, the ones it made or changed (a screenshot it took, say), and the ones it mentions by path. One shows large; several make a grid. `![caption](path)` in a reply shows the picture itself. Click any picture for the viewer: `←` `→` (or swipe) steps through every picture in the chat, a click zooms to actual size, and it can **Open**, **Show in folder**, **Copy** or **Attach to my message**.
+  - Under each reply: **Branch from here** (Claude's replies) starts a new chat with everything up to the end of that reply, leaving this one as it is; **Branch and rewind the files** also puts back what the later replies changed. **Follow up later** queues a task for the project, quoting the reply (or what you selected in it).
   - Artifacts appear as cards.
   - **Attach** (or paste or drop) any file:
     - Pictures go straight into the message, as before.
@@ -214,7 +218,9 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
     - In the conversation, videos and sound play right in the message, and other files show as cards that open in the viewer.
   - The file viewer plays videos and sound, and shows PDFs.
   - Notices are slim banners.
-- **@ mentions:** type `@` and a few letters in the message box to pick a file from the project. It goes in as its path, so Claude or Codex reads exactly that file.
+- **@ mentions:** type `@` and a few letters in the message box to pick a file from the project. It goes in as its path, so Claude or Codex reads exactly that file. The same list shows **your other chats** that match: pick one (`@chat[…]`) and its latest messages go along with your message, as a fold-out.
+- **Side questions:** `/btw …` (or **⋯ → Ask a side question**) asks something quick in a small card beside the chat. A separate chat that can only look answers it, told this chat's latest messages, so the chat itself isn't derailed. **Put it in my message** brings the answer in; closing the card sets it aside under Done.
+- **Run the project:** **⋯ → Run the project** (or `Ctrl+K`) starts its dev server or start script (package.json's `dev`, `start` or `serve`, or a command you set) at the top of the side panel: its output, **Open** for the address it serves on, **Stop**, **Restart**, and **Show Claude the output** when something goes wrong. Quitting the app stops it.
 - **How full the chat is:** each pill under the message box has a thin meter, and the ledger says how full (for example "62% full · 98k of 160k tokens"). Near the end, the chat suggests **Summarize now**: a chat that's full summarizes itself, maybe in the middle of a task, so summarizing between tasks keeps what matters. **⋯** has **Summarize the conversation now** any time.
 - **Never stuck on a limit:** if the account runs out of usage in the middle of a chat, the chat offers **Continue as** another of your accounts (the same conversation), **Hand it to Codex** (Codex is caught up on the conversation first), or **Tell me when it's back**. A new chat skips an account that's out and offers one with room.
 - **Permission requests:** a card above the message box with **Allow**, **Always allow** and **Deny**. Claude's multiple-choice questions show as clickable options.
@@ -246,6 +252,10 @@ Chats running in a terminal, or recently used in the desktop app, also appear on
 
 **Open a copy here** branches the chat so you can continue it in the app without touching the original.
 
+### Done, and tidying up
+
+**Mark done** (a chat's right-click menu, or the chat's **⋯**) takes it off every list; it waits under **Done** at the bottom of its project's chats, and comes back by itself if it's used again (**Not done** brings it back by hand). Setup → Preferences → **Tidy up** can do it for you: chats with nothing new for 3 days, a week, two weeks or a month count as done.
+
 ## Codex (OpenAI)
 
 If you have Codex, the OpenAI coding agent, and a ChatGPT plan, Session Switcher works with it the same way:
@@ -276,13 +286,17 @@ Codex works with more than one ChatGPT account, and with Ollama:
 - Each account has its own usage dial, in a Codex shade of its own.
 - The Ollama account's settings are a copy of `~/.codex/ollama-launch.config.toml` (what `ollama launch codex` writes), in `~/.codex-ollama/config.toml`. Edit that copy to change its default model, or delete it and Session Switcher makes a fresh copy the next time it starts Codex for Ollama.
 
-## OpenClaw agents (read-only)
+## OpenClaw agents
 
 If [OpenClaw](https://openclaw.ai) is installed, its agents' sessions (Discord channels, cron runs, subagents, voice rooms and direct chats) are listed with your other chats:
 
 - **Where they show up:** in an **OpenClaw** group in the sidebar, and inside the project that is the agent's workspace (from `~/.openclaw/openclaw.json`). Each one is tagged with its agent's name. Sessions of an agent without a workspace folder are left out.
-- **Reading one:** **Read** opens it in the chat window, read-only: your messages and the agent's replies, with no message box. A session that's running keeps updating by itself. Nothing is ever sent to a session from here, and nothing is changed or deleted.
+- **Reading one:** **Read** opens the chat window on it: your messages and the agent's replies, and a message box. A session that's running keeps updating by itself, and what you send there becomes the session's next turn (it carries on in OpenClaw either way). Deleting isn't here: the ⋯ menu can archive a session in OpenClaw, which only files it away.
 - **Where it comes from:** the list from `openclaw sessions --json --all-agents`, refreshed every 30 seconds while the app is open; a transcript from the agent's own session store, opened read-only for each read. Reading transcripts needs Node.js 22.13 or newer (compressed messages need 22.15 or newer).
+- **A running session:** rows show a **Live now** tag while the session is active (from the same list), and the read view follows along on its own, so you can read a conversation as it happens without touching it.
+- **Following up:** the read view's message box sends your words as the session's next turn (`openclaw agent --session-key … --message-file …`), one at a time, and the session's own reply shows up in the feed right after yours. The turn and the reply are recorded in the session's transcript, so they read the same everywhere; nothing extra is delivered to any channel.
+- **What they're about:** rows are named from the session's own conversation (the channel's name, or how the conversation started — a cron session by the cron task, a voice turn by what was actually said), and the row shows the same under it. Kept in `openclaw-titles.json` so they stay right between runs.
+- **Archive:** the ⋯ menu on an OpenClaw row can **Archive in OpenClaw**, which runs `openclaw sessions archive` for that session after a confirming dialog. What's archived keeps its transcript; nothing is deleted here or there.
 - **Without OpenClaw** nothing changes: the list is empty, and the app checks for it again every ten minutes.
 
 ## Claude and Codex in one chat
@@ -292,10 +306,11 @@ Claude and Codex work in the same chat, either way round: bring Codex into a Cla
 - **The crew, under the message box:** two pills, the chat's own assistant and its partner. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex).
   - Click the other pill, or press `Ctrl+.`, to choose who your next message goes to. The box takes that one's color.
   - Or start a message with `@codex` or `@claude` to send just that one message.
+  - The partner's pill shows what it may do (Codex's **Agent**, **Read only**…), changed from its menu, and how much room its account has left once that's low. **Both** says it uses room on both accounts.
 - **One feed:** the partner's replies appear in the same conversation, under its own name and color. Messages you sent it are tagged **to Codex** (or **to Claude**). Pictures Codex makes appear as it makes them.
 - **They read each other:** before each message one of them gets, the app catches it up on what it hasn't seen: what the other one said and did (which files it changed, how many commands it ran), and what you said to the other. In the feed that's a small fold-out ("Codex was caught up on 3 messages"), not text you wrote. So you can ask Claude for a plan, switch to Codex and say "do the second part", and Codex knows what that is.
   - The app works this out on the PC from the two conversations themselves, from the moment each one last caught up, so it's the same in every window and on your phone, and survives a reload or a restart. Nothing is told twice; a long stretch keeps the newest messages and says how many earlier ones it left out.
-  - Files you undo from a reply are mentioned to that one with your next message.
+  - Files you undo from a reply are mentioned to that one with your next message, and to the other one too (it may have built on them).
 - **Both: they take turns.** The **Both** pill (or `@both`) sends your message to the chat's own assistant first. When it has answered, the other one picks the same message up, already knowing that answer, and builds on it (checks it, adds what it missed, does its part) instead of starting over. Your message reads "to Claude, then Codex", the second one's pill says **up next** while it waits, and the feed marks where it **takes it from here**. They never edit files at the same time. Stopping the first one skips the hand-over.
 - **One chat per project:** starting a Codex chat in a project where a Claude chat is open (or the other way round) offers to add it to that chat instead, so the work stays in one place. **Start a separate chat** is still there if you want one.
   - A partner's own conversation lives inside its chat: it isn't listed as a chat of its own, the chat's row says **with Codex**, and opening it (from search, a notification or a card) opens the chat it belongs to.
@@ -323,7 +338,7 @@ One set of rules for both assistants. Claude Code reads `CLAUDE.md` and Codex re
 **Queue a task** (on the hub's **At work** heading, a project's right-click menu, or `Ctrl+K`) saves a prompt for a project, for Claude or Codex, to start as a new chat later:
 
 - **When an account has room:** for example when every account is out of usage. It starts as soon as one is back, as whichever account has room.
-- **At a time** you pick.
+- **At a time** you pick, once or as a **routine**: every day, every weekday or every week at that time. Each time a routine starts, the next one is queued.
 - **Start now** and **Cancel** are on its card under **Queued**. A started task goes to **At work** like any chat.
 
 Queued tasks start only while Session Switcher is running.
@@ -335,6 +350,10 @@ Give Claude and Codex the same task and keep the better result. **Race Claude an
 1. Each one works in its own copy of the project (a git worktree in your temp folder, with your uncommitted work; ignored folders like `node_modules` aren't copied), so neither touches your project or the other's work.
 2. The race's card, under **Races** on the hub, shows what each has changed. **See changes** shows the diff; **Open chat** shows how it got there.
 3. **Keep Claude's** or **Keep Codex's** brings that one's changes into your project, all or nothing. **Discard both** throws both away. Either way both copies are deleted.
+
+**Ask a judge** gives both copies' changes to a chat that can only look; it says which to keep (or which files from each) and why, and its verdict is on the card. **Pick files…** keeps file by file: tick what to take from each copy (a file both changed comes from one of them), and they come in together. A race's chats stay reachable after a restart or an idle stop.
+
+**Split the work** (same menus) is the other way round: each one takes its own part of a task (say, Claude fixes the bug while Codex writes the test), each in its own copy, told what the other is doing. **Keep both** brings both parts into your project together, all or nothing. If both changed the same file, nothing changes and the card says which file; keep one of them, or ask one to bring in the other's part.
 
 ## Models, effort and modes
 
@@ -384,6 +403,23 @@ How it stays safe:
 - It's plain http on your own network. To use it away from home, install [Tailscale](https://tailscale.com) on both devices; Setup then shows the Tailscale address too, and the connection is encrypted.
 - A paired phone can do everything you can do in Session Switcher, including letting Claude run commands on your PC. Pair only your own phones.
 
+### Notifications on your phone
+
+A chat that needs your OK, or one that replies, can notify your phone even when Session Switcher isn't open on it.
+
+**Android:** in the app, open Setup → **Notifications on this phone**. A reply's notification has **Reply** (type an answer right there), and a question with two or three answers shows them as buttons. They come while the phone is on your home Wi-Fi, with **Allow** and **Deny** right on the notification; when you're back on your Wi-Fi, it shows what's waiting. Nothing goes anywhere but your PC. Android shows a small "Watching your chats" notification while it listens (you can collapse it), and may ask to let the app run in the background so notifications arrive while the phone sleeps. The app updates itself: when the PC has a newer version, it offers it.
+
+**iPhone, or a browser:** these use Web Push, which phones only allow on a secure (https) address, so this goes through Tailscale:
+
+1. Install [Tailscale](https://tailscale.com/download) on the PC and the phone, signed in to the same account.
+2. On the PC: Setup → **Phone access** → **iPhone, or a browser** → **Set up the secure address**. The first time, Tailscale may ask you to turn on HTTPS for your network; the link is right there. This runs `tailscale serve`, which only your own devices can reach.
+3. On the phone, open the `https://…ts.net` address it shows (iPhone: Safari → **Add to Home Screen**) and pair it once.
+4. On the phone: Setup → **Notifications on this phone**. On an iPhone, tapping one opens the chat to answer it.
+
+Each phone follows its own alert levels and quiet hours. **Remove** a phone and its notifications stop.
+
+**Share to Session Switcher:** in any Android app, Share → Session Switcher sends text, a link or pictures to the app. They wait in the open chat's message box (or the one you pick, or a new chat) for a word from you; nothing is sent until you press Send.
+
 To build the app yourself, run `mobile/android/build.cmd` (details in `mobile/android/README.md`). It needs no Android Studio: the first run downloads a JDK and the Android build tools (about 560 MB) into `%LOCALAPPDATA%\SessionSwitcherBuild`. A GitHub Actions workflow (`.github/workflows/android.yml`) builds it in the cloud too.
 
 ## Regular Claude chats
@@ -401,12 +437,22 @@ Open **Setup → Appearance** (or type "appearance", "theme" or "light mode" in 
 - **Light or dark:** Dark, Light, or Match device (it follows Windows or Android).
 - **Themes:** Crimson (the original), Sapphire, Emerald, Amethyst, Amber, Ocean, Rose and Graphite, plus two space saga themes, Malibu and three anime themes (below). Each has a light and a dark version, and its swatch shows a preview before you pick it. Codex keeps its own color in every theme.
 - **Text size** (80–150%): messages, documents and the message box.
-- **Reading font:** Classic (the serif), Modern (a clean sans for reading), or Clean (sans headings too).
+- **Fonts:** a pack of 42 free fonts. Pick a ready-made set (Clear, Reading, Easy reading, Editorial, Fantasy, Sci-fi, Glam, Poster, Retro pixel, Loud and wide, Soft and rounded), each card drawn in its own letters, or choose the font for replies and documents, for headings and names, and for code yourself. Reading and code fonts are scaled so their lowercase letters match, which keeps the size you set the same whichever font you pick. **Code ligatures** (`=>` drawn as one arrow) are off until you turn them on. **Fonts and licences** lists every family with its licence. The space saga themes (Imperial and Rebel) always keep their own lettering.
 - **Bold text** and **Higher contrast**. Light themes keep small grey text (dates, hints, labels) dark enough to read.
 - **Interface size** (80–130%): scales everything at once. On smaller windows the top bar tucks away its smaller labels so nothing overlaps.
 - A live preview shows a reply and a message in your choices; **Back to the original look** undoes everything.
 
 Appearance is saved on each device, so your phone and your PC can look different.
+
+### Theme Studio: a world of your own
+
+Open **Setup → Appearance → Theme Studio**, name a world and describe the place you want to work in. Choose clear, storybook or rounded lettering, then **Review art brief in Codex**. Send the prepared brief in the chat to generate coordinated night and morning paintings and a palette drawn from them. This uses your normal Codex session and its image tools; no separate API key is needed. If image generation is unavailable in that session, the brief asks Codex to explain rather than make a placeholder.
+
+Return to Theme Studio and **Review** the finished draft. Both modes appear beside sample chat text before you choose **Save and use this world**. Small text is adjusted to at least 4.5:1 contrast, and body text to at least 7:1, against page and card surfaces in both modes. Controls keep their familiar wording. Paintings are compressed to WebP, with a 1600 × 1200 maximum, and have no continuous animation; live counts remain readable on a solid panel.
+
+Saved worlds are available to all paired devices, while each device chooses its own theme. A saved theme can be deleted from the Studio; devices using it return to Crimson when they receive the update. Drafts and original paintings stay in `theme-studio/jobs/`, and saved themes in `theme-studio/themes/`, under the app's data folder (`SWITCHER_DATA_DIR` when configured). Both are private, excluded from git and shared app copies, and their images require the app's authenticated route. An art brief opens in its own folder and can be resumed from the Studio.
+
+The sample **Lantern Tide** paintings were made with Codex's built-in image generation; their prompts are in `art/theme-studio-prompts.json`. The full-size sources stay local in `art/src/lantern-tide/`. Screenshots: [`theme-studio-preview.jpg`](docs/themes/theme-studio-preview.jpg), [`theme-studio-hub-dark.jpg`](docs/themes/theme-studio-hub-dark.jpg) and [`theme-studio-phone.jpg`](docs/themes/theme-studio-phone.jpg).
 
 ### Space saga themes
 
@@ -419,7 +465,7 @@ Two more themes turn the hub into a command deck. Each has a light and a dark ve
 
 Beyond colors, a saga theme brings:
 
-- **Its own lettering, all of it readable:** a display face for titles, a reading face for messages and a label face for the small uppercase labels (monospace in the other themes; code stays monospace). **Modern** and **Clean** still swap the reading font (Clean the headings too).
+- **Its own lettering, all of it readable:** a display face for titles, a reading face for messages and a label face for the small uppercase labels (monospace in the other themes; code stays monospace). A font set or a font you pick in **Fonts** still wins over the theme's.
 - **A display in the hero** that reads the same live counts as the headline. Imperial's needs-you lamps pulse slowly and Rebel's trench scrolls; both hold still when **Animations** is off or your device asks for less motion.
 - **Its own panels and markings:** Imperial cards carry a lit edge in red (needs you) or white (at work), with rectangular signal lamps in place of dots. Rebel cards carry squadron stripes, with hazard stripes when a chat needs you. The default theme's ornaments (fleurons, the turning seal, dial numerals, painted project art) are left out, and project pictures are toned to match. Each theme has its own emblem in place of the seal.
 - **A few still stars** behind the hub in place of the petals. The petals switch turns them off, and its label changes with the theme.
@@ -444,23 +490,29 @@ Screenshots: [`malibu-hub-light.jpg`](docs/themes/malibu-hub-light.jpg), [`malib
 
 ### Anime themes: Isekai, High Fantasy and Dungeon
 
-Three worlds drawn like an anime's: glowing magic, gradient skies, rim light and drifting particles. Made for dark mode (each has a light version too), under **Anime** in **Setup → Appearance**.
+Three worlds from an anime, each with a hand-painted scene in the hub that lights up with your chats. Made for dark mode (each has a light version too), under **Anime** in **Setup → Appearance**.
 
-| Theme | Feel | Lettering | In the hero |
+| Theme | Feel | Lettering | The painted scene in the hero |
 |---|---|---|---|
-| **Isekai** | Summoned to another world: indigo glass, a cyan magic glow, sakura pink and gold | Orbitron for the big words, M PLUS Rounded for reading | Floating islands under two moons over a sea of clouds. A crystal floats up for each chat waiting on you (gold when it needs your OK), and the magic circle glows and turns while chats are at work. A **status window** reads the account you work as: HP is what's left of its five-hour window, MP what's left of its week, its level is how many chats you've had, its class comes from its plan |
-| **High Fantasy** | Emerald and gold under a great moon | Cinzel Decorative and Cinzel for titles and names, EB Garamond for reading | A citadel on a cliff with snow on the peaks behind. A window lights for each chat at work and a beacon burns for each one waiting on you (the castle's braziers first, then the peaks); a dragon crosses the moon now and then |
-| **Dungeon** | Torchlit stone deep below: iron, rust and ember light | Pirata One for the big words, Alegreya SC for names and labels, Alegreya for reading | An archway into the dark: a torch burns for each chat at work, eyes open in the dark for each one waiting on you (gold when it needs your OK), and a chest sits ready for each one open and idle. It stays dark in light mode too, as a window underground |
+| **Isekai** | Summoned to another world: indigo glass, a cyan magic glow, sakura pink and gold | Tektur for the big words, M PLUS Rounded for everything you read | Floating islands under two moons over a sea of clouds (twilight, or a bright morning in light mode). A crystal floats up for each chat waiting on you (gold when it needs your OK), and the magic circle glows and turns while chats are at work. A **status window**, in the quiet sky beside the island, reads the account you work as: HP is what's left of its five-hour window, MP what's left of its week, its level is how many chats you've had, its class comes from its plan |
+| **High Fantasy** | Emerald and gold under a great moon | Cinzel Decorative and Cinzel for headlines and short labels, EB Garamond for titles, names and reading | A citadel on a cliff with snowy peaks behind (moonlight, or dawn in light mode). A window lights for each chat at work and a beacon burns for each one waiting on you (the terrace braziers first, then the outposts down the valley); a dragon crosses the moon now and then |
+| **Dungeon** | Torchlit stone deep below: iron, rust and ember light | Pirata One for the big words, Alegreya SC for labels, Alegreya for titles, names and reading | A stone archway into the dark: a torch on the wall catches fire for each chat at work, eyes open in the dark for each one waiting on you (gold when it needs your OK), and a chest sits ready for each one open and idle. It stays dark in light mode too, as a window underground |
+
+Each count in the scene says what it counts ("need you", "working", "idle").
+
+**The paintings** were made by Codex with OpenAI's built-in image generator, one per theme and mode (the Dungeon's stays dark). Fires, lit windows, crystals, eyes and the magic circle are drawn on top of the painting, lined up with what's painted there, so they change with your chats; the painting and those parts scale and crop together, and a phone shows the whole painting. The app uses WebP copies in `art/` (about 600 KB for all five); the prompts Codex used are in `art/painting-prompts.json`, and the full-size originals stay out of the repo (`art/src/`). Until a painting has loaded, the scene is drawn as before.
+
+**Gentle depth:** separate painted foregrounds add clouds, foliage or close stonework. On a mouse-driven desktop the foreground moves a few pixels with the pointer, while the painting and its live lights move together. It settles when the pointer leaves and stays still on touch screens, with reduced motion, or when the hub is hidden. The three transparent WebPs add about 210 KB. Their prompts and the sample project crest's prompt are in `art/identity-depth-prompts.json`; the motion lives in `ui/scene-depth.js`. Missing foreground art leaves the base scene working normally.
 
 Each one also brings:
 
 - **A living sky** behind the hub in place of the petals: mana motes rising (Isekai), fireflies wandering and blinking (High Fantasy) or embers rising (Dungeon).
 - **Status dots in its own shape:** glowing diamonds, four-pointed stars that glimmer while a chat works, or little flames that flicker.
-- **Its own panels:** system-window corner brackets (Isekai), gilded hairlines and a gilded drop cap opening each reply (High Fantasy), an iron-bound frame with rivets (Dungeon). The logo becomes a magic circle, a compass star or a keyhole; the circle and the star turn while chats work, and the keyhole glows.
+- **Its own panels:** system-window corner brackets (Isekai), gilded hairlines (High Fantasy), an iron-bound frame with rivets (Dungeon). The logo becomes a magic circle, a compass star or a keyhole; the circle and the star turn while chats work, and the keyhole glows.
 - **Its own words,** for example "Awaiting you" becomes "Awaiting your command", "At your word" or "Answer the dark", and the hub is the "Guild hall", "The great hall" or "Camp".
 - **Chimes made on the spot:** a quick bright arpeggio, harp notes, or a low bell, plus a short flourish when you pick the theme. They follow the chime setting.
 
-Everything that moves holds still when **Animations** is off or your device asks for less motion. Small print (dates, paths, commands) stays in a plain reading face or monospace, never in the display lettering. Screenshots: [`isekai-hub-dark.jpg`](docs/themes/isekai-hub-dark.jpg), [`isekai-chat-dark.jpg`](docs/themes/isekai-chat-dark.jpg), [`highfantasy-hub-dark.jpg`](docs/themes/highfantasy-hub-dark.jpg), [`highfantasy-chat-dark.jpg`](docs/themes/highfantasy-chat-dark.jpg), [`dungeon-hub-dark.jpg`](docs/themes/dungeon-hub-dark.jpg), [`dungeon-chat-dark.jpg`](docs/themes/dungeon-chat-dark.jpg) and [`anime-phones-dark.jpg`](docs/themes/anime-phones-dark.jpg). Their words are in each theme's `copy` map in `theme.js`, their scenes in `ui/hub.js` and their look in the anime section of `styles.css`.
+Everything that moves holds still when **Animations** is off or your device asks for less motion. The display lettering is only for big words: titles, names and labels you read all day are in the theme's reading face, and small print (dates, paths, commands) in a plain face or monospace. Screenshots: [`isekai-hub-dark.jpg`](docs/themes/isekai-hub-dark.jpg), [`isekai-chat-dark.jpg`](docs/themes/isekai-chat-dark.jpg), [`highfantasy-hub-dark.jpg`](docs/themes/highfantasy-hub-dark.jpg), [`highfantasy-chat-dark.jpg`](docs/themes/highfantasy-chat-dark.jpg), [`dungeon-hub-dark.jpg`](docs/themes/dungeon-hub-dark.jpg), [`dungeon-chat-dark.jpg`](docs/themes/dungeon-chat-dark.jpg) and [`anime-phones-dark.jpg`](docs/themes/anime-phones-dark.jpg). Their words are in each theme's `copy` map in `theme.js`, their scenes in `ui/hub.js` and their look in the anime section of `styles.css`.
 
 **In every theme:** while Claude or Codex is writing, a band of light runs along the top of the message box (in Codex's color when only Codex is), and picking a new theme or switching light and dark fades the new look in rather than snapping.
 
@@ -683,7 +735,7 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `events.js`: clicks, the account dropdown, live updates, confirmations, right-click, the shortcuts sheet.
   - `chat-feed.js`, `chat-live.js`, `chat-compose.js`, `chat.js`: the chat window (drawing the conversation; live events, permissions and the crew; the message box; opening, closing and the rest).
 - `theme.js`: themes, light and dark, text and interface size. Every color in `styles.css` is a variable named after its original value (`--c-a5463f`), and each theme recolors them all from a few seed colors.
-- `fonts/`: the bundled typefaces (SIL Open Font License).
+- `fonts/`: the bundled font pack (SIL Open Font License; `fonts/OFL.txt` has every notice). The catalog, sets and size matching are in `theme.js`.
 - `mobile/android/`: the Android app (a small WebView remote) and its build script.
 - `mobile/ios/`: the iPhone app (a small WebView remote), as an XcodeGen project.
 - `Session Switcher.command`, `macos/`: the Mac launcher and the icon for the app it makes in Applications.

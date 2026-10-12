@@ -2,9 +2,19 @@
 
 A small companion app that turns your phone into a remote for Session Switcher running on your PC.
 It is a full-screen WebView that loads the Session Switcher web UI from your PC over your Wi-Fi
-(or Tailscale). Nothing runs on the phone except the WebView.
+(or Tailscale), so new features arrive from the PC without updating the app. Besides the WebView,
+it has two small native parts:
 
-- Package: `app.sessionswitcher.remote`, version 5.0.0 (code 5), Android 7.0+ (minSdk 24, targetSdk 34)
+- **Notifications** (`NotifyService.java`): with them on, a foreground service keeps one connection to
+  the PC's `/api/notify/stream` while the phone is on your Wi-Fi, and shows a chat that needs your OK
+  (with Allow and Deny, which post a one-time token to `/api/push/act`) or one that replied. Off your
+  Wi-Fi it waits, and when you're back it shows what's waiting. It restarts after a reboot or an update
+  (`BootReceiver.java`). Android requires its own "Watching your chats" notification while it runs; it
+  is on the quietest channel.
+- **Updates**: the PC's `/hello` says which version of the app it has (from `version.json`, written
+  next to the APK by the build). When it's newer, the app offers to download and install it.
+
+- Package: `app.sessionswitcher.remote`, version in `version.json` (bump `code` for every release), Android 7.0+ (minSdk 24, targetSdk 34)
 - Plain Java against `android.jar`: no Gradle, AndroidX or Kotlin
 
 ## Building

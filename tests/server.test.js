@@ -11,10 +11,10 @@ const APP = path.join(__dirname, '..');
 const freePort = () => new Promise(res => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => res(port)); }); });
 
 // home: a throwaway home folder, for tests that write where Claude Code and Codex keep their own files.
-async function startServer(dataDir, { home = null } = {}) {
+async function startServer(dataDir, { home = null, preload = null } = {}) {
   const port = await freePort();
   const homeEnv = home ? { HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'), CLAUDE_CONFIG_DIR: '' } : {};
-  const proc = spawn(process.execPath, ['server.js'], {
+  const proc = spawn(process.execPath, [...(preload ? ['--require', preload] : []), 'server.js'], {
     cwd: APP, stdio: 'ignore',
     env: { ...process.env, ...homeEnv, SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
   });
@@ -158,6 +158,100 @@ test('races: one can’t start without Codex, and nothing is left behind', async
   } finally { await s.stop(); }
 });
 
+test('restart: a new copy takes over (same port, new process, same build), the old one exits, and the old page is told to reload', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  const s = await startServer(dir);
+  let next = null;
+  try {
+    const before = (await s.call('/api/version')).json;
+    const st = (await s.call('/api/state')).json;
+    assert.equal(st.restart.pending, false);
+    assert.equal(typeof st.update, 'boolean');
+    assert.equal((await s.call('/api/restart', { when: 'typo' })).status, 400, 'an invalid request does not stop the app');
+    assert.equal((await s.call('/api/version')).json.pid, before.pid);
+    // "When replies finish" with nothing working restarts at once.
+    const r = await s.call('/api/restart', { when: 'idle' });
+    assert.equal(r.json.restarting, true);
+    for (let i = 0; i < 120 && !next; i++) {
+      await new Promise(res => setTimeout(res, 250));
+      try { const v = await (await fetch(`${s.base}/api/version`)).json(); if (v.pid !== before.pid) next = v; } catch { /* between copies */ }
+    }
+    assert.ok(next, 'a new copy answered on the same port');
+    assert.equal(next.build, before.build);
+    assert.ok(!fs.existsSync(path.join(dir, 'restart.json')), 'the restart note is used up');
+    let oldAlive = true; try { process.kill(before.pid, 0); } catch { oldAlive = false; }
+    assert.equal(oldAlive, false, 'the old copy has exited');
+    // The page from before is out of date now (new token); a reload picks the new copy up.
+    assert.equal((await s.call('/api/state')).status, 403);
+  } finally {
+    if (next) {
+      const html = await (await fetch(`${s.base}/`)).text();
+      const token = html.match(/TOKEN = '([a-f0-9]+)'/)[1];
+      await fetch(`${s.base}/api/quit`, { method: 'POST', headers: { 'x-switcher-token': token, 'content-type': 'application/json' }, body: '{}' }).catch(() => {});
+      for (let i = 0; i < 40; i++) { try { process.kill(next.pid, 0); await new Promise(res => setTimeout(res, 100)); } catch { break; } }
+    } else await s.stop();
+  }
+});
+
+test('restart: a replacement initialization failure leaves the current app usable', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  const preload = path.join(dir, 'fail-replacement.cjs');
+  fs.writeFileSync(preload, `require(${JSON.stringify(path.join(APP, 'lib', 'restart.js'))}).startReplacement = async () => { throw new Error('Replacement failed to initialize (test)'); };`);
+  const s = await startServer(dir, { preload });
+  try {
+    const before = (await s.call('/api/version')).json;
+    const r = await s.call('/api/restart', { when: 'now' });
+    assert.equal(r.status, 503);
+    assert.match(r.json.error, /Replacement failed to initialize/);
+    assert.equal((await s.call('/api/version')).json.pid, before.pid, 'the old process is still serving');
+    assert.equal((await s.call('/api/state')).status, 200, 'the existing window token still works');
+    assert.equal(fs.existsSync(path.join(dir, 'restart.json')), false, 'no stale restart marker');
+    assert.equal((await s.call('/api/state')).json.restart.pending, false);
+  } finally { await s.stop(); }
+});
+
+test('the themes’ paintings are served from art/ (WebP only), and nothing else there is', async () => {
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
+  try {
+    const dir = path.join(__dirname, '..', 'art');
+    const one = (fs.existsSync(dir) ? fs.readdirSync(dir) : []).find(f => /^[a-z0-9-]+\.webp$/.test(f));
+    if (one) {
+      const ok = await fetch(`${s.base}/art/${one}`);
+      assert.equal(ok.status, 200);
+      assert.equal(ok.headers.get('content-type'), 'image/webp');
+    }
+    for (const bad of ['/art/none-such.webp', '/art/src/isekai-dark.png', '/art/../server.js', '/art/..%2fserver.js', '/art/x.png', '/art/spots.json']) {
+      const r = await fetch(`${s.base}${bad}`);
+      assert.notEqual(r.status, 200, `${bad} must not be served`);
+    }
+  } finally { await s.stop(); }
+});
+
+test('the font pack and its licence are served from fonts/, and nothing else there is', async () => {
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
+  try {
+    const { FAMILIES } = require('../theme');
+    for (const f of FAMILIES.flatMap(x => x.faces.map(fc => fc[0]))) {
+      const r = await fetch(`${s.base}/fonts/${f}.woff2`);
+      assert.equal(r.status, 200, `${f}.woff2`);
+      assert.equal(r.headers.get('content-type'), 'font/woff2');
+      assert.equal(Buffer.from(await r.arrayBuffer()).subarray(0, 4).toString('latin1'), 'wOF2', `${f}.woff2 is a WOFF2 file`);
+    }
+    const ofl = await fetch(`${s.base}/fonts/OFL.txt`);
+    assert.equal(ofl.status, 200);
+    assert.match(ofl.headers.get('content-type'), /^text\/plain/);
+    const text = await ofl.text();
+    const notices = text.split('SIL OPEN FONT LICENSE')[0];
+    // Each family is named on a notice line, alone ("Inter: Copyright …") or with its relatives ("Alegreya and Alegreya SC: …").
+    const named = notices.split('\n').filter(l => /: Copyright/.test(l)).map(l => l.split(': Copyright')[0].split(/, | and /));
+    for (const f of FAMILIES) assert.ok(named.some(n => n.includes(f.name)), `OFL.txt has ${f.name}'s notice`);
+    for (const bad of ['/fonts/none-such.woff2', '/fonts/../server.js', '/fonts/..%2fserver.js', '/fonts/OFL.md', '/fonts/inter.ttf']) {
+      const r = await fetch(`${s.base}${bad}`);
+      assert.notEqual(r.status, 200, `${bad} must not be served`);
+    }
+  } finally { await s.stop(); }
+});
+
 test('page scripts are served from ui/, and nothing else is', async () => {
   const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
   try {
@@ -168,5 +262,67 @@ test('page scripts are served from ui/, and nothing else is', async () => {
       const r = await fetch(`${s.base}${bad}`);
       assert.notEqual(r.status, 200, `${bad} must not be served`);
     }
+  } finally { await s.stop(); }
+});
+
+test('push: a paired phone signs up for notifications; Allow/Deny needs its one-time token; removing the phone stops them', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  const s = await startServer(dataDir);
+  try {
+    const port = await freePort();
+    assert.equal((await s.call('/api/phone', { enabled: true, port })).status, 200);
+    const phone = `http://127.0.0.1:${port}`;
+    // Before pairing: the worker and the manifest (nothing private), and nothing else.
+    const sw = await fetch(`${phone}/sw.js`);
+    assert.equal(sw.status, 200); assert.match(await sw.text(), /notificationclick/);
+    assert.equal((await (await fetch(`${phone}/manifest.webmanifest`)).json()).display, 'standalone');
+    assert.equal((await fetch(`${phone}/api/push`)).status, 401);
+    // Pair, as the phone does.
+    const { code } = (await s.call('/api/phone/pair', {})).json;
+    const p = await fetch(`${phone}/pair?code=${code}&name=Test`, { redirect: 'manual' });
+    const cookie = p.headers.get('set-cookie').split(';')[0];
+    const html = await (await fetch(`${phone}/`, { headers: { cookie } })).text();
+    const token = html.match(/TOKEN = '([a-f0-9]+)'/)[1];
+    const call = async (q, body, { tok = true } = {}) => {
+      const r = await fetch(phone + q, { method: body ? 'POST' : 'GET', headers: { cookie, ...(tok ? { 'x-switcher-token': token } : {}), 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      return { status: r.status, json: await r.json().catch(() => null) };
+    };
+    const st = (await call('/api/push')).json;
+    assert.equal(st.phone, true); assert.equal(st.subscribed, false); assert.match(st.key, /^B[\w-]{80,}$/);
+    const ua = require('crypto').createECDH('prime256v1'); ua.generateKeys();
+    const subscription = { endpoint: 'https://push.example.invalid/sub/1', keys: { p256dh: ua.getPublicKey().toString('base64url'), auth: require('crypto').randomBytes(16).toString('base64url') } };
+    assert.equal((await call('/api/push/subscribe', { subscription, prefs: { levels: {}, tz: 'Europe/London' } })).status, 200);
+    assert.equal((await call('/api/push')).json.subscribed, true);
+    assert.equal((await s.call('/api/phone')).json.pushPhones, 1, 'the PC sees it');
+    assert.equal((await s.call('/api/push/subscribe', { subscription })).status, 403, 'only a phone signs itself up');
+    // The notification's buttons send no page token; a wrong or used one-time token is refused.
+    assert.equal((await call('/api/push/act', { token: 'nope', decision: 'allow' }, { tok: false })).status, 410);
+    assert.equal((await call('/api/push/reply', { token: 'nope', text: 'hi' }, { tok: false })).status, 410, 'a reply from a notification needs its one-time token');
+    assert.equal((await call('/api/push/subscribe', { subscription }, { tok: false })).status, 403, 'everything else still needs the page’s token');
+    // The Android app's connection: the phone's pairing lets it in (no page token), and it hears tests.
+    assert.equal((await fetch(`${phone}/api/notify/stream`)).status, 401, 'not without pairing');
+    const ac = new AbortController();
+    const stream = await fetch(`${phone}/api/notify/stream?since=0`, { headers: { cookie }, signal: ac.signal });
+    assert.equal(stream.status, 200);
+    assert.match(stream.headers.get('content-type'), /text\/event-stream/);
+    const reader = stream.body.getReader(), dec = new TextDecoder();
+    let got = '';
+    const until = async re => { const t0 = Date.now(); while (!re.test(got) && Date.now() - t0 < 5000) { const { value, done } = await reader.read(); if (done) break; got += dec.decode(value); } return re.test(got); };
+    assert.ok(await until(/"kind":"hello"/), got);
+    assert.equal((await call('/api/notify/prefs', { prefs: { levels: { abc: 'off' }, quiet: { on: true, from: '22:00', to: '07:00' }, tz: 'Europe/London' } })).status, 200);
+    assert.deepEqual((await s.call('/api/phone')).json.appsListening.length, 1, 'the PC sees the app listening');
+    assert.equal((await call('/api/notify/test', {})).json.ok, true);
+    assert.ok(await until(/"kind":"test"/), got);
+    ac.abort();
+    // The app can tell when the PC has a newer version of it.
+    const hello = await (await fetch(`${phone}/hello`)).json();
+    assert.ok(hello.apk === null || Number.isInteger(hello.apk.code), JSON.stringify(hello));
+    // Removing the phone stops its notifications.
+    const id = (await s.call('/api/phone')).json.devices[0].id;
+    assert.equal((await s.call('/api/phone/forget', { id })).json.pushPhones, 0);
+    assert.equal((await call('/api/push')).status, 401);
+    // Tailscale's status reads either way (installed or not).
+    assert.equal((await s.call('/api/phone/tailscale')).status, 200);
+    assert.equal((await call('/api/phone/tailscale')).status, 401);
   } finally { await s.stop(); }
 });

@@ -24,7 +24,8 @@ const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
-const { reviewTarget } = require('./lib/review');
+const { reviewTarget, fixText, reviewAsk, parseFindings, mergeFindings } = require('./lib/review');
+const { createReviewLoop } = require('./lib/reviewloop');
 const rulesLib = require('./lib/rules');
 const store = require('./lib/store');
 const { listFiles } = require('./lib/filelist');
@@ -36,6 +37,13 @@ const routinesLib = require('./lib/routines');
 const organizeLib = require('./lib/organize');
 const liteLib = require('./lib/lite');
 const { createLiteRoutes } = require('./lib/lite-routes');
+const restartLib = require('./lib/restart');
+const themeStudioLib = require('./lib/theme-studio');
+const pushLib = require('./lib/push');
+const extrasLib = require('./lib/extras');
+const { branchSession } = require('./lib/branch');
+const runnerLib = require('./lib/runner');
+const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
@@ -81,8 +89,9 @@ function save() {
 
 const sessions = createSessionStore({ root: path.join(config().mainConfigDir, 'projects'), dataDir: DATA_DIR, log });
 const projectInfo = projectsLib.createProjects({ dataDir: DATA_DIR, log });
+const themeStudio = themeStudioLib.createStudio(DATA_DIR);
 const chatPrefs = prefsLib.createChatPrefs({ dataDir: DATA_DIR, log });
-const openclaw = openclawLib.createOpenClaw({ log, run: sys.runCapture, found: async () => (await sys.whereIs('openclaw')).length > 0 });
+const openclaw = openclawLib.createOpenClaw({ log, run: sys.runCapture, found: async () => (await sys.whereIs('openclaw')).length > 0, dataDir: DATA_DIR });
 openclaw.onSessionsChanged(() => { forgetMerged(); broadcast('sessions'); });
 const organize = organizeLib.createOrganize({ dataDir: DATA_DIR, log });
 
@@ -101,17 +110,17 @@ const finishedSeen = new Map();
 const OPEN_FILE = path.join(DATA_DIR, 'open-chats.json');
 const REOPEN_FILE = path.join(DATA_DIR, 'reopen.json');
 let shuttingDown = false, openTimer = null;
+function writeOpenChats() {
+  const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId && !(chats.chats.get(c.key) || {}).aside).map(c => ({
+    sessionId: c.sessionId, provider: c.provider || 'claude', accountId: c.accountId, accountName: c.accountName,
+    cwd: c.cwd, title: c.title || null, folder: c.folder || null,
+  }));
+  try { store.writeJsonAtomic(OPEN_FILE, { at: Date.now(), chats: list }); return true; } catch (err) { log(`Couldn’t note the open chats: ${err.message}`); return false; }
+}
 function saveOpenChats() {
   if (shuttingDown) return;
   clearTimeout(openTimer);
-  openTimer = setTimeout(() => {
-    if (shuttingDown) return;
-    const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId).map(c => ({
-      sessionId: c.sessionId, provider: c.provider || 'claude', accountId: c.accountId, accountName: c.accountName,
-      cwd: c.cwd, title: c.title || null, folder: c.folder || null,
-    }));
-    try { store.writeJsonAtomic(OPEN_FILE, { at: Date.now(), chats: list }); } catch (err) { log(`Couldn’t note the open chats: ${err.message}`); }
-  }, 1500);
+  openTimer = setTimeout(() => { if (!shuttingDown) writeOpenChats(); }, 1500);
 }
 // At start: last time's open chats become the ones to offer.
 try {
@@ -121,14 +130,32 @@ try {
   }
 } catch { /* nothing to offer */ }
 const toReopen = () => { const j = store.loadOwnJson(REOPEN_FILE, null, () => {}); return (j && Array.isArray(j.chats) ? j.chats : []).filter(c => c && c.sessionId); };
-function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.stopAll(); }
+// Started by Restart (in the last two minutes): the chats that were open are reopened straight away,
+// not offered, and nothing is left to offer.
+const RESTART_FILE = path.join(DATA_DIR, 'restart.json');
+const restarted = (() => {
+  try {
+    const j = JSON.parse(fs.readFileSync(RESTART_FILE, 'utf8'));
+    fs.unlinkSync(RESTART_FILE);
+    if (!j || !(Date.now() - j.at < 120000)) return null;
+    const list = toReopen();
+    try { fs.unlinkSync(REOPEN_FILE); } catch { /* nothing open */ }
+    return { ...j, chats: list };
+  } catch { return null; }
+})();
+function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.stopAll(); try { runner.stopAll(); } catch { /* not started yet */ } }
 
+// Each conversation's changes, undos and reviews, kept beyond the chat's run (lib/extras.js).
+const chatExtras = extrasLib.createExtras({ dir: path.join(DATA_DIR, 'chat-extras'), log });
+// Run the project (lib/runner.js): one run per project, its output kept for the page.
+const runner = runnerLib.createRunner({ dataDir: DATA_DIR, log, onChange: cwd => broadcast('run', { cwd }) });
 const chats = chatLib.createChatManager({
   log,
+  extras: chatExtras,
   onChange: chat => {
     // A partner doesn't outlive its chat: it would be left running with no window to show it.
     if (chat && chat.state === 'ended' && chat.companionKey) { const p = pairs.partnerOf(chat); if (p && p.state !== 'ended') p.stop(); }
-    broadcast('live', chats.live()); scheduleActivity(); saveOpenChats();
+    broadcast('live', chats.live()); scheduleActivity(); schedulePush(); saveOpenChats();
   },
   onSession: chat => {
     if (chat.provider !== 'codex') sessions.recordLaunch(chat.sessionId, chat.account, chat.fork ? 'fork' : 'app');
@@ -144,7 +171,7 @@ const chats = chatLib.createChatManager({
     setTimeout(sessionsChanged, 1500);
   },
   onActivity: chat => {
-    scheduleActivity();
+    scheduleActivity(); schedulePush();
     routines.onActivity(chat);
     // A finished turn changes the account's usage; check it shortly after.
     const f = chat.activity.finishedAt;
@@ -269,6 +296,7 @@ function sessionsWithCodex() {
       return { ...p, sessions: list.sort((a, b) => b.updated - a.updated) };
     }) };
   }
+  value = { ...value, projects: value.projects.map(p => { const art = themeStudio.project(p.cwd); return art ? { ...p, name: `Theme Studio · ${art.name}` } : p; }) };
   mergedMemo = { at: Date.now(), value };
   return value;
 }
@@ -360,6 +388,27 @@ function projectAt(cwd) {
   return list.find(x => x.cwd === cwd) || list.find(x => normCwd(x.cwd) === normCwd(cwd)) || null;
 }
 // A Codex chat by id, with its folder, or null for anything else.
+// Another chat's latest messages, for one that brings it in with "@chat[…]" (shown there as a fold-out).
+async function otherChatBlock(ref) {
+  const id = String((ref && ref.id) || '');
+  let items = [], title = 'another chat', folder = '', who = 'Claude';
+  try {
+    const cx = codexFind(id);
+    if (cx) { items = (await codex.history(id, null, null)).items || []; title = (cx.session && cx.session.title) || title; folder = cx.folder || ''; who = 'Codex'; }
+    else { const f = sessions.find(id); title = f.session.title || title; folder = f.project.name || ''; items = (await chatLib.readHistory(sessions.fileFor(id), { limit: 40 })).items || []; }
+  } catch { throw fail(404, 'That chat can’t be read. It may have been deleted.'); }
+  const clipT = (t, n) => (t.length > n ? `${t.slice(0, n)}…` : t);
+  const lines = [];
+  for (const it of items) {
+    if (it.kind === 'user') { const t = ownText(it.text || '').trim(); if (t) lines.push(`User: ${clipT(t, 1500)}`); }
+    else if (it.kind === 'assistant') { const t = (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim(); if (t) lines.push(`${who}: ${clipT(t, 2500)}`); }
+  }
+  const keep = [];
+  let total = 0;
+  for (let i = lines.length - 1; i >= 0 && keep.length < 12; i--) { if (keep.length && total + lines[i].length > 9000) break; total += lines[i].length; keep.unshift(lines[i]); }
+  const attr = v => String(v).replace(/["<>\n]/g, ' ').slice(0, 120);
+  return `<other-chat title="${attr(title)}" folder="${attr(folder)}" items="${keep.length}">\nFrom the user’s other chat “${title}”${folder ? ` (in ${folder})` : ''}, its latest messages, for context (that chat carries on separately):\n\n${keep.join('\n\n') || '(Nothing in it yet.)'}\n</other-chat>\n\n`;
+}
 function codexFind(id) {
   const t = id && codex.known(String(id));
   if (!t) return null;
@@ -395,6 +444,9 @@ async function startTask(t, account) {
   await chat.beforeTurn();
   chat.send(t.prompt, []);
   Object.assign(t, { state: 'started', key: info.key, accountName: info.accountName || account.name || null, doneAt: new Date().toISOString(), error: null });
+  // A routine: its next run waits in the queue.
+  const next = tasksLib.nextOf(t);
+  if (next) taskList.push(next);
   log(`Task started in ${t.folder}: ${t.prompt.split('\n')[0].slice(0, 80)}`);
 }
 async function runQueue(onlyId = null, force = false) {
@@ -407,7 +459,7 @@ async function runQueue(onlyId = null, force = false) {
       const ctx = queueContext();
       const r = tasksLib.readyAccount(force ? { ...t, when: 'now' } : t, ctx);
       if (!r.account) continue;
-      try { await startTask(t, r.account); } catch (err) { Object.assign(t, { state: 'failed', error: err.message, doneAt: new Date().toISOString() }); log(`Task failed to start: ${err.message}`); }
+      try { await startTask(t, r.account); } catch (err) { Object.assign(t, { state: 'failed', error: err.message, doneAt: new Date().toISOString() }); log(`Task failed to start: ${err.message}`); if (t.repeat && !taskList.some(x => x.state === 'queued' && x.repeat && x.prompt === t.prompt && x.cwd === t.cwd)) { const next = tasksLib.nextOf(t); if (next) taskList.push(next); } }
       changed = true;
     }
     if (changed) saveTasks();
@@ -431,38 +483,50 @@ function raceOf(id) { const r = raceList.find(x => x.id === id); if (!r) throw f
 // Each racer: its chat's state, and what it has changed so far.
 async function racesView() {
   const out = [];
+  let dirty = false;
   for (const r of raceList) {
     const racers = {};
+    if (!r.sessions) r.sessions = {};
     for (const who of Object.keys(r.copies)) {
       let chat = null; try { chat = chats.get(r.keys[who]); } catch { /* stopped */ }
+      // After a restart (or an idle stop and reopening) the chat runs under a new key: found by its conversation.
+      if ((!chat || chat.state === 'ended') && r.sessions[who]) { const again = chats.bySession(r.sessions[who]); if (again) { chat = again; r.keys[who] = again.key; dirty = true; } }
+      if (chat && chat.sessionId && r.sessions[who] !== chat.sessionId) { r.sessions[who] = chat.sessionId; dirty = true; }
       let files = null;
       if (r.state === 'running' && fs.existsSync(r.copies[who].path)) { try { files = (await raceLib.copyChanges(r, who)).files; } catch { files = null; } }
-      racers[who] = { key: chat && chat.state !== 'ended' ? r.keys[who] : null, state: chat ? chat.state : 'ended', sessionId: chat ? chat.sessionId : null, files };
+      racers[who] = { key: chat && chat.state !== 'ended' ? r.keys[who] : null, state: chat ? chat.state : 'ended', sessionId: (chat && chat.sessionId) || r.sessions[who] || null, files };
     }
-    out.push({ id: r.id, cwd: r.cwd, folder: r.folder, prompt: r.prompt, state: r.state, kept: r.kept || null, createdAt: r.createdAt, racers });
+    let judge = null;
+    if (r.judge) { let jc = null; try { jc = chats.get(r.judge.key); } catch { /* stopped */ } judge = { key: jc && jc.state !== 'ended' ? r.judge.key : null, state: jc ? jc.state : 'ended', sessionId: (jc && jc.sessionId) || r.judge.sessionId || null }; if (jc && jc.sessionId) r.judge.sessionId = jc.sessionId; }
+    out.push({ id: r.id, cwd: r.cwd, folder: r.folder, prompt: r.prompt, split: r.split || null, state: r.state, kept: r.kept || null, createdAt: r.createdAt, racers, judge });
   }
+  if (dirty) { try { store.writeJsonAtomic(RACES_FILE, { races: raceList }); } catch { /* kept in memory */ } }
   return out;
 }
-async function startRace({ cwd, prompt, accountId }) {
+// Split the work: one task, each taking its own part, told what the other is doing.
+const splitText = (task, mine, theirs, other) => `${task ? `The task: ${task}\n\n` : ''}You and ${other} are splitting this, each in your own copy of the project; both sets of changes are put together afterwards.\n\nYour part: ${mine}\n\n${other}'s part (leave it to them, and don't edit the files it needs): ${theirs}`;
+async function startRace({ cwd, prompt, accountId, split }) {
   const p = projectAt(cwd);
   if (!p || !p.exists) throw fail(404, 'Pick one of your projects.');
   const text = String(prompt || '').trim();
-  if (!text) throw fail(400, 'Write the task for both of them.');
+  const parts = split && String(split.claude || '').trim() && String(split.codex || '').trim() ? { claude: String(split.claude).trim(), codex: String(split.codex).trim() } : null;
+  if (split && !parts) throw fail(400, 'Write each one’s part.');
+  if (!text && !parts) throw fail(400, 'Write the task for both of them.');
   requireCodexSignedIn();
   const c = config();
   const account = accountId && accountId !== 'auto' ? acc.findAccount(c, accountId) : tasksLib.readyAccount({ state: 'queued', provider: 'claude', accountId: 'auto', when: 'now' }, queueContext()).account;
   if (!account) throw fail(409, 'None of your Claude accounts has room right now.');
   const made = await raceLib.makeRace(p.cwd);
-  const r = { ...made, cwd: p.cwd, folder: p.name, prompt: text, keys: {}, state: 'running', createdAt: new Date().toISOString() };
+  const r = { ...made, cwd: p.cwd, folder: p.name, prompt: text || `${parts.claude} · ${parts.codex}`, split: parts, keys: {}, state: 'running', createdAt: new Date().toISOString() };
   raceList.push(r); saveRaces();
   try {
     for (const [who, provider] of [['claude', 'claude'], ['codex', 'codex']]) {
       const info = await openChat(c, { account: provider === 'codex' ? null : account.id, cwd: r.copies[who].cwd, mode: 'new', provider });
       r.keys[who] = info.key;
       const chat = chats.get(info.key);
-      chat.title = `Race: ${text.split('\n')[0].slice(0, 60)}`;
+      chat.title = parts ? `Split: ${parts[who].split('\n')[0].slice(0, 60)}` : `Race: ${text.split('\n')[0].slice(0, 60)}`;
       await waitReady(chat, 45000);
-      chat.send(text, []);
+      chat.send(parts ? splitText(text, parts[who], parts[who === 'claude' ? 'codex' : 'claude'], who === 'claude' ? 'Codex' : 'Claude') : text, []);
     }
   } catch (err) {
     for (const k of Object.values(r.keys)) { try { await chats.get(k).stop(); } catch { /* gone */ } }
@@ -470,7 +534,7 @@ async function startRace({ cwd, prompt, accountId }) {
     throw err;
   }
   saveRaces();
-  log(`Race started in ${p.cwd}: ${text.split('\n')[0].slice(0, 80)}`);
+  log(`${parts ? 'Split' : 'Race'} started in ${p.cwd}: ${r.prompt.split('\n')[0].slice(0, 80)}`);
   return r;
 }
 async function stopRacers(r) { for (const k of Object.values(r.keys || {})) { try { await chats.get(k).stop(); } catch { /* already stopped */ } } }
@@ -516,15 +580,16 @@ async function openChatInner(c, body) {
       if (mode === 'resume') { const live = chats.bySession(threadId); if (live) return attachedInfo(live); }
       if (mode === 'fork' && title) title = `${title} (copy)`;
     } else {
-      const p = projectAt(body.cwd) || raceCopyAt(body.cwd);
+      const p = projectAt(body.cwd) || raceCopyAt(body.cwd) || themeStudio.project(body.cwd);
       if (!p) throw fail(404, 'That folder isn’t in the list.');
       if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
       cwd = p.cwd;
     }
-    const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
+    const art = themeStudio.project(cwd);
+    const folder = art ? `Theme Studio · ${art.name}` : cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
     const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
     const model = [body.model, pref.model].find(m => m && modelFits(inst, m)) || null;
-    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || 'New Codex chat', folder });
+    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
     if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
     log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
     return { ...chat.info(), attached: false, remembered: !!pref.mode, companionThread: threadId && mode !== 'new' ? chatPrefs.companionOf(threadId) : null };
@@ -637,20 +702,87 @@ async function copyTool(name, to, cwd) {
 }
 
 // Codex reviews a chat's work; progress and the result arrive in that chat as 'review' events.
-async function startReview(chat, files, base) {
+// `done` settles with the outcome ({ state: 'done', findings } or { state: 'failed' }).
+async function runReview(chat, files, base, { quiet = false } = {}) {
   requireCodexSignedIn();
   const t = await reviewTarget(chat.cwd, files, base);
   const id = crypto.randomBytes(6).toString('hex');
-  const ev = extra => chat.emit({ kind: 'review', id, what: t.what, base: t.base, ...extra });
+  const ev = extra => { if (!quiet) chat.emit({ kind: 'review', id, by: 'codex', what: t.what, base: t.base, ...extra }); };
   ev({ state: 'running', progress: 'Starting…' });
   let last = 0;
-  codexActive().review({
+  const done = codexActive().review({
     cwd: chat.cwd, target: t.target,
     onProgress: p => { const now = Date.now(); if (now - last > 700) { last = now; ev({ state: 'running', progress: p }); } },
-  }).then(r => { ev({ state: 'done', overall: r.overall, findings: r.findings }); log(`Review of ${t.what} in ${chat.cwd}: ${r.findings.length} finding${r.findings.length === 1 ? '' : 's'}.`); })
-    .catch(err => { ev({ state: 'failed', error: err.message }); log(`Review failed: ${err.message}`); });
-  return { id, what: t.what, base: t.base };
+  }).then(r => { ev({ state: 'done', overall: r.overall, findings: r.findings }); log(`Review of ${t.what} in ${chat.cwd}: ${r.findings.length} finding${r.findings.length === 1 ? '' : 's'}.`); return { state: 'done', findings: r.findings }; })
+    .catch(err => { ev({ state: 'failed', error: err.message }); log(`Review failed: ${err.message}`); return { state: 'failed', findings: [] }; });
+  return { id, what: t.what, base: t.base, done };
 }
+// Claude reviews (usually Codex's work): asked in its own chat, it answers with its findings as JSON
+// (lib/review.js), which arrive as the same kind of review card. quiet: no card of its own (a dual review).
+async function runClaudeReview(chat, files, base, { quiet = false, ask = '' } = {}) {
+  const lead = pairs.leadOf(chat);
+  const claude = (lead.provider || 'claude') === 'claude' ? lead : await pairs.ensure(lead);
+  const t = await reviewTarget(lead.cwd, files, base);
+  const id = crypto.randomBytes(6).toString('hex');
+  const ev = extra => { if (!quiet) lead.emit({ kind: 'review', id, by: 'claude', what: t.what, base: t.base, ...extra }); };
+  ev({ state: 'running', progress: 'Claude is reading the changes…' });
+  const sentAt = new Date().toISOString();
+  const done = (async () => {
+    await pairs.send(claude, reviewAsk(t, ask));
+    const end = await claude.turnDone();
+    if (end.kind === 'ended' || end.ok === false) throw new Error('Claude stopped before finishing the review.');
+    const text = claude.buffer.filter(e => e.kind === 'assistant' && e.at >= sentAt).flatMap(e => (e.blocks || []).filter(b => b.type === 'text').map(b => b.text)).join('\n\n');
+    const r = parseFindings(text);
+    ev({ state: 'done', overall: r.overall, findings: r.findings });
+    log(`Claude's review of ${t.what} in ${lead.cwd}: ${r.findings.length} finding${r.findings.length === 1 ? '' : 's'}.`);
+    return { state: 'done', overall: r.overall, findings: r.findings };
+  })().catch(err => { ev({ state: 'failed', error: err.message }); return { state: 'failed', findings: [] }; });
+  return { id, what: t.what, base: t.base, done };
+}
+// Both review the same changes at once; one card shows every finding, marking those they both made.
+async function runBothReview(chat, files, base) {
+  const lead = pairs.leadOf(chat);
+  const t = await reviewTarget(lead.cwd, files, base);
+  const id = crypto.randomBytes(6).toString('hex');
+  const ev = extra => lead.emit({ kind: 'review', id, by: 'both', what: t.what, base: t.base, ...extra });
+  ev({ state: 'running', progress: 'Codex and Claude are both reviewing…' });
+  const [cx, cl] = await Promise.all([runReview(lead, files, base, { quiet: true }), runClaudeReview(lead, files, base, { quiet: true })]);
+  Promise.all([cx.done, cl.done]).then(([a, b]) => {
+    if (a.state === 'failed' && b.state === 'failed') return ev({ state: 'failed', error: 'Neither review finished.' });
+    const findings = mergeFindings(a.findings || [], b.findings || []);
+    const agree = findings.filter(f => f.by === 'both').length;
+    ev({ state: 'done', findings, overall: `${a.state === 'failed' ? 'Codex’s review didn’t finish. ' : ''}${b.state === 'failed' ? 'Claude’s review didn’t finish. ' : ''}${findings.length ? `${agree ? `Both found ${agree === 1 ? 'one problem' : `${agree} problems`}; those come first.` : 'They found different things.'}` : 'Neither found a problem.'}` });
+  });
+  return { id, what: t.what, base: t.base, done: null };
+}
+async function startReview(chat, files, base, by = 'codex') {
+  const r = by === 'both' ? await runBothReview(chat, files, base) : by === 'claude' ? await runClaudeReview(chat, files, base) : await runReview(chat, files, base);
+  return { id: r.id, what: r.what, base: r.base };
+}
+
+// "Carry on when it's back": a minute after the account's limit resets, the chat is told to pick up
+// where it left off (if it's still open and idle; otherwise it just says the usage is back). Kept here,
+// not in a window, while the app runs.
+const spentBook = new Map();   // session -> its token tally, kept after the chat closes (see /api/usage/chats)
+const resumeTimers = new Map();   // chat key -> timeout
+function resumeAt(chat, at, cancel = false) {
+  clearTimeout(resumeTimers.get(chat.key)); resumeTimers.delete(chat.key);
+  if (cancel) { chat.emit({ kind: 'resumeat', at: null }); return { ok: true }; }
+  const ms = Date.parse(at) - Date.now() + 60000;
+  if (!Number.isFinite(ms) || ms > 20 * 24 * 3600e3) throw fail(400, 'That reset time isn’t known.');
+  resumeTimers.set(chat.key, setTimeout(() => {
+    resumeTimers.delete(chat.key);
+    chat.emit({ kind: 'resumeat', at: null });
+    if (chat.state === 'ended') return;
+    if (chat.state !== 'ready') return chat.emit(notice('info', 'Your usage is back.'));
+    pairs.send(chat, 'Your usage is back. Please carry on where you left off.').catch(err => chat.emit(notice('warning', `Couldn’t carry on: ${err.message}`)));
+  }, Math.max(5000, ms)));
+  chat.emit({ kind: 'resumeat', at });
+  return { ok: true, at };
+}
+
+// "Fix and recheck until clean" (lib/reviewloop.js), run here so it carries on whatever the window does.
+const reviewLoop = createReviewLoop({ send: (chat, text) => pairs.send(chat, text), review: runReview, fixText });
 
 // Right after the app starts, Codex's sign-in hasn't been checked yet; check it before saying it isn't.
 async function codexChecked(inst = codexActive()) {
@@ -708,7 +840,7 @@ function activityList() {
   const { projects } = sessions.scan();
   const byId = new Map();
   for (const p of projects) for (const s of p.sessions) byId.set(s.id.toLowerCase(), { s, p });
-  const out = chats.summaries().map(s => {
+  const out = chats.summaries().filter(s => !s.aside).map(s => {
     const f = s.sessionId && s.provider !== 'codex' ? byId.get(s.sessionId.toLowerCase()) : null;
     if (f) { s.title = f.s.title; s.folder = f.p.name; }
     return s;
@@ -862,7 +994,8 @@ function stateFor() {
     dryRun: sys.DRY_RUN, appVersion: APP_VERSION, platform: process.platform,
     index: sessions.progress,
     codex: codexPublic(),
-    reopen: toReopen(),
+    reopen: restarted ? [] : toReopen(),
+    restart: restartState(), update: newBuildReady(), pid: process.pid,
   };
 }
 
@@ -987,16 +1120,28 @@ const liteRoutes = createLiteRoutes({
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/routines/secret', '/api/tools/copy', '/api/quit', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude']);
+const LOCAL_ONLY = new Set(['/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send', '/api/routines/secret']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
   const route = `${req.method} ${url.pathname}`;
   if (remote && (LOCAL_ONLY.has(url.pathname) || url.pathname.startsWith('/api/phone') || url.pathname.startsWith('/api/commander/tool/'))) throw fail(403, 'That can only be done on the PC itself.');
-  if (route === 'GET /api/phone') return send(res, 200, phone.status());
+  if (route === 'GET /api/phone') return send(res, 200, { ...phone.status(), pushPhones: pushes.count(), appsListening: [...new Set([...appWatchers].map(w => w.device.id))] });
+  if (route === 'GET /api/run') { const p = projectAt(url.searchParams.get('cwd')); if (!p) throw fail(404, 'Pick one of your projects.'); return send(res, 200, runner.status(p.cwd)); }
+  if (route === 'GET /api/phone/tailscale') return send(res, 200, await tailscaleStatus());
+  if (route === 'POST /api/phone/tailscale-serve') return send(res, 200, await tailscaleServe());
+  if (url.pathname.startsWith('/api/push') || url.pathname.startsWith('/api/notify')) return pushApi(req, res, route, remote);
 
   if (route === 'GET /api/state') return send(res, 200, stateFor());
-  if (route === 'GET /api/sessions') return send(res, 200, { ...sessionsWithCodex(), running, live: chats.live() });
+  if (route === 'GET /api/themes') return send(res, 200, themeStudio.list());
+  if (route === 'GET /api/themes/job') return send(res, 200, themeStudio.job(url.searchParams.get('id')));
+  if (route === 'GET /api/themes/result') return send(res, 200, themeStudio.result(url.searchParams.get('id')));
+  if (route === 'GET /api/themes/art') {
+    const q = url.searchParams, art = themeStudio.asset(q.get('kind'), q.get('id'), q.get('mode'));
+    res.writeHead(200, { 'Content-Type': art.type, 'Cache-Control': q.get('kind') === 'themes' ? 'private, max-age=300' : 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return res.end(art.bytes);
+  }
+  if (route === 'GET /api/sessions') return send(res, 200, { ...sessionsWithCodex(), running, live: chats.live(), doneMarks: chatPrefs.doneMarks() });
   if (route === 'GET /api/chat/history') {
     const id = url.searchParams.get('id'), q = url.searchParams;
     const running = chats.bySession(id);
@@ -1012,6 +1157,8 @@ async function handleApi(req, res, url, remote = false) {
     }
     return send(res, 200, await chatLib.readHistory(file, { until: q.get('until') || null, cursor: q.get('cursor'), limit: 60 }));
   }
+  // What a chat showed besides its conversation (changes, undos, reviews), up to where its live replay begins.
+  if (route === 'GET /api/chat/extras') return send(res, 200, { extras: chatExtras.list(url.searchParams.get('id') || '', url.searchParams.get('until') || null) });
   if (route === 'GET /api/chat/diff') {
     const q = url.searchParams;
     return send(res, 200, { diff: await chats.get(q.get('key')).turnDiff(q.get('turn'), q.get('path')) });
@@ -1024,6 +1171,32 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/commander/tool/sessions') return send(res, 200, commanderSessions(url.searchParams.get('filter') || 'active', url.searchParams.get('group') || ''));
   if (route === 'GET /api/commander/tool/read') return send(res, 200, await commanderRead(url.searchParams.get('id'), url.searchParams.get('count')));
   if (route === 'GET /api/chat/last-reply') return send(res, 200, { text: await lastReply(url.searchParams.get('id'), Math.min(200000, Number(url.searchParams.get('max')) || 6000)) });
+  // Since you left (for the welcome-back card): files the chats changed and reviews that came back.
+  if (route === 'GET /api/away') {
+    const since = new Date(Number(url.searchParams.get('since')) || 0).toISOString();
+    const files = new Set(), reviews = [];
+    for (const c of chats.chats.values()) {
+      for (const e of c.buffer) {
+        if (!e.at || e.at < since) continue;
+        if (e.kind === 'changes') for (const f of e.files || []) if (!f.meanwhile) files.add(`${c.cwd}|${f.path}`);
+        if (e.kind === 'review' && e.state === 'done') reviews.push({ by: e.by || 'codex', findings: (e.findings || []).length });
+      }
+    }
+    return send(res, 200, { files: files.size, reviews });
+  }
+  // What used each account's window: tokens per chat over the last five hours and the week, counted
+  // while this app runs (kept after a chat closes).
+  if (route === 'GET /api/usage/chats') {
+    const now = Date.now(), out = {};
+    for (const c of chats.chats.values()) if (c.spent && c.spent.length) spentBook.set(c.sessionId || c.key, { c, title: (c.info().title || c.title || ''), spent: c.spent, account: c.account.id, provider: c.provider || 'claude', sessionId: c.sessionId });
+    for (const [k, e] of spentBook) {
+      const five = e.spent.reduce((n, x) => n + (now - x.at < 5 * 3600e3 ? x.tokens : 0), 0), week = e.spent.reduce((n, x) => n + (now - x.at < 7 * 24 * 3600e3 ? x.tokens : 0), 0);
+      if (!week) { spentBook.delete(k); continue; }
+      (out[e.account] = out[e.account] || []).push({ sessionId: e.sessionId, title: e.title, provider: e.provider, five, week });
+    }
+    for (const list of Object.values(out)) list.sort((a, b) => b.five - a.five || b.week - a.week);
+    return send(res, 200, { byAccount: out });
+  }
   if (route === 'GET /api/file') {
     const q = Object.fromEntries(url.searchParams);
     return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
@@ -1055,6 +1228,18 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, { scope: cwd ? 'project' : 'user', cwd, ...rulesLib.readRules(rulesPathsFor(cwd)) });
   }
   if (route === 'GET /api/tools') return send(res, 200, await toolsFor(url.searchParams.get('cwd') || null));
+  // The day at a glance: when each chat was active since a moment (Claude's message by message, Codex's
+  // last activity), for the hub's Today strip.
+  if (route === 'GET /api/today') {
+    const since = Math.max(Number(url.searchParams.get('since')) || 0, Date.now() - 2 * 864e5);
+    const codexMarks = codexSessions().filter(x => x.updated >= since).map(x => ({ id: x.id, provider: 'codex', times: [x.updated] }));
+    return send(res, 200, { at: Date.now(), since, chats: [...sessions.activity(since).map(x => ({ ...x, provider: 'claude' })), ...codexMarks] });
+  }
+  if (route === 'GET /api/project/crest-result') {
+    const p = projectAt(url.searchParams.get('cwd'));
+    if (!p || !p.exists) throw fail(404, 'That folder isn’t available.');
+    return send(res, 200, { image: projectsLib.crestResult(p.cwd, url.searchParams.get('name')) });
+  }
   if (route === 'GET /api/project/info') {
     const p = projectAt(url.searchParams.get('cwd'));
     if (!p) throw fail(404, 'That folder isn’t in the list.');
@@ -1110,26 +1295,30 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, out);
   }
   if (req.method !== 'POST') throw fail(404, 'Not found.');
-  const body = await readBody(req, url.pathname === '/api/chat/send' ? 40 * 1024 * 1024 : 65536);
+  const body = await readBody(req, url.pathname === '/api/chat/send' ? 40 * 1024 * 1024 : url.pathname === '/api/themes/save' ? 6 * 1024 * 1024 : 65536);
 
   if (url.pathname.startsWith('/api/chat/') && url.pathname !== '/api/chat/rename') return handleChat(req, res, url, body, c);
 
   switch (url.pathname) {
+    case '/api/themes/create': return send(res, 200, themeStudio.create(body));
+    case '/api/themes/save': { const theme = themeStudio.save(body); broadcast('themes'); return send(res, 200, { theme }); }
+    case '/api/themes/dismiss': themeStudio.dismiss(body.id); return send(res, 200, { ok: true });
+    case '/api/themes/delete': themeStudio.remove(body.id); broadcast('themes'); return send(res, 200, { ok: true });
     // Last time's open chats: reopened (each started again, as the account it ran as) or set aside.
     case '/api/reopen': {
       const list = toReopen();
       try { fs.unlinkSync(REOPEN_FILE); } catch { /* already gone */ }
       if (body.action !== 'reopen') return send(res, 200, { reopened: [], failed: [] });
-      const reopened = [], failed = [];
-      for (const c of list.filter(x => !body.only || body.only.includes(x.sessionId))) {
-        try {
-          if (chats.bySession(c.sessionId)) { reopened.push(c.sessionId); continue; }
-          await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true });
-          reopened.push(c.sessionId);
-        } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
-      }
-      log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} from last time${failed.length ? `; ${failed.length} couldn’t` : ''}.`);
-      return send(res, 200, { reopened, failed });
+      return send(res, 200, await reopenChats(list.filter(x => !body.only || body.only.includes(x.sessionId)), 'from last time'));
+    }
+    // Restart now, or once no chat in the window is working or waiting for an OK; or don't after all.
+    case '/api/restart': {
+      if (!['now', 'idle', 'cancel'].includes(body.when)) throw fail(400, 'Choose now, idle or cancel.');
+      if (restartStarting || shuttingDown) throw fail(409, 'Restart is already in progress.');
+      if (body.when === 'cancel') { cancelRestart(); return send(res, 200, restartState()); }
+      if (body.when === 'idle' && busyChats()) { restartWhenIdle(); return send(res, 200, restartState()); }
+      if (!(await restartNow(body.when === 'idle' ? 'nothing was working' : 'from the app'))) throw fail(503, restartError || 'Could not restart. This copy is still running.');
+      return send(res, 200, { pending: false, restarting: true });
     }
     case '/api/rules': {
       const paths = rulesPathsFor(body.cwd || null);
@@ -1156,6 +1345,40 @@ async function handleApi(req, res, url, remote = false) {
         await stopRacers(r); await raceLib.dropRace(r);
         Object.assign(r, { state: 'kept', kept: body.who, doneAt: new Date().toISOString() }); saveRaces();
         log(`Race in ${r.cwd}: kept ${body.who}'s changes (${k.files.length} file${k.files.length === 1 ? '' : 's'}).`);
+        return send(res, 200, { kept: true, files: k.files, races: await racesView() });
+      }
+      if (body.action === 'keepfiles') {
+        // File by file: the files picked from each copy.
+        const picks = {};
+        for (const who of Object.keys(r.copies)) picks[who] = Array.isArray(body.picks && body.picks[who]) ? body.picks[who].map(String).slice(0, 500) : [];
+        const k = await raceLib.keepFiles(r, picks, { force: !!body.force });
+        if (!k.applied) return send(res, 200, { kept: false, why: k.why, clash: k.clash || null, detail: k.detail || null, races: await racesView() });
+        await stopRacers(r); await raceLib.dropRace(r);
+        Object.assign(r, { state: 'kept', kept: 'files', doneAt: new Date().toISOString() }); saveRaces();
+        log(`Race in ${r.cwd}: kept ${k.files.length} file${k.files.length === 1 ? '' : 's'}, picked from both.`);
+        return send(res, 200, { kept: true, files: k.files, races: await racesView() });
+      }
+      if (body.action === 'judge') {
+        // A judge: a chat that can only look, given both copies' changes, says which is better and why.
+        const d = await raceLib.bothDiffs(r);
+        const task = r.split ? `Claude's part: ${r.split.claude}\nCodex's part: ${r.split.codex}` : r.prompt;
+        const ask = `Claude and Codex each did this task in their own copy of the project:\n\n${task}\n\nHere is what each changed (as diffs from the same starting point). Compare them for correctness, completeness, risk and code quality. Say which you'd keep, or which files to take from each, and why, briefly. Don't change any files.\n\n--- Claude's changes ---\n${d.claude || '(none)'}\n\n--- Codex's changes ---\n${d.codex || '(none)'}`;
+        const ready = tasksLib.readyAccount({ state: 'queued', provider: 'claude', accountId: 'auto', when: 'now' }, queueContext()).account;
+        const prov = ready ? 'claude' : 'codex';
+        const info = await openChat(config(), { account: ready ? ready.id : null, cwd: r.cwd, mode: 'new', provider: prov, permissionMode: prov === 'codex' ? 'read-only' : 'plan' });
+        const chat = chats.get(info.key);
+        chat.title = `Judge: ${(r.prompt || '').split('\n')[0].slice(0, 50)}`;
+        await waitReady(chat, 45000);
+        chat.send(ask, []);
+        r.judge = { key: info.key, provider: prov }; saveRaces();
+        return send(res, 200, { key: info.key, races: await racesView() });
+      }
+      if (body.action === 'keepboth') {
+        const k = await raceLib.keepBoth(r, { force: !!body.force });
+        if (!k.applied) return send(res, 200, { kept: false, why: k.why, clash: k.clash || null, detail: k.detail || null, races: await racesView() });
+        await stopRacers(r); await raceLib.dropRace(r);
+        Object.assign(r, { state: 'kept', kept: 'both', doneAt: new Date().toISOString() }); saveRaces();
+        log(`Race in ${r.cwd}: kept both sets of changes (${k.files.length} file${k.files.length === 1 ? '' : 's'}).`);
         return send(res, 200, { kept: true, files: k.files, races: await racesView() });
       }
       throw fail(400, 'Start, keep or discard a race.');
@@ -1188,6 +1411,18 @@ async function handleApi(req, res, url, remote = false) {
       const a = acc.findAccount(c, body.account);
       const r = await sys.openWebProfile('https://claude.ai/new', a.id);
       if (!r.ok && !r.dryRun) throw fail(500, r.error || 'Couldn’t open a browser window.');
+      return send(res, 200, r);
+    }
+    case '/api/openclaw/archive': {
+      const r = await openclaw.archive((Array.isArray(body.ids) && body.ids) || (body.id ? [body.id] : []));
+      if (!r.ok) throw fail(500, `OpenClaw couldn’t archive that: ${r.error}`);
+      sessionsChanged();
+      return send(res, 200, r);
+    }
+    case '/api/openclaw/send': {
+      const r = await openclaw.sendMessage(String(body.id || ''), String(body.text || ''));
+      if (!r.ok) throw fail(400, `OpenClaw couldn’t send that: ${r.error}`);
+      sessionsChanged();
       return send(res, 200, r);
     }
     case '/api/usage/refresh': {
@@ -1331,6 +1566,13 @@ async function handleApi(req, res, url, remote = false) {
       inst.refreshAccount().then(st => { if (st.signedIn) inst.refreshUsage(); }).catch(() => {});
       broadcast('accounts');
       return send(res, 200, { codex: codexPublic() });
+    }
+    case '/api/project/crest': {
+      const p = projectAt(body.cwd);
+      if (!p || !p.exists) throw fail(404, 'That folder isn’t available.');
+      const w = projectInfo.setCrest(p.cwd, body.path || null);
+      broadcast('project-art', { cwd: p.cwd });
+      return send(res, 200, w);
     }
     case '/api/project/banner': {
       const p = projectAt(body.cwd);
@@ -1528,8 +1770,16 @@ async function handleApi(req, res, url, remote = false) {
       broadcast('organize', orgView());
       return send(res, 200, { ...orgView(), made });
     }
+    case '/api/chat/done': {
+      // Done (off the lists until it's used again) or not done.
+      if (!body.id) throw fail(400, 'Which chat?');
+      chatPrefs.setDone(String(body.id), !!body.done);
+      return send(res, 200, { doneMarks: chatPrefs.doneMarks() });
+    }
     case '/api/prefs': {
       const p = c.prefs;
+      // Tidy up: chats with nothing new for this many days count as done (0: never).
+      if (body.autoDone !== undefined) { const d = Number(body.autoDone); if (![0, 3, 7, 14, 30].includes(d)) throw fail(400, 'Unknown choice.'); p.autoDone = d; }
       if (body.terminal !== undefined) { if (!acc.TERMINALS.includes(body.terminal)) throw fail(400, 'Unknown terminal choice.'); p.terminal = body.terminal; }
       for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow']) if (typeof body[k] === 'boolean') p[k] = body[k];
       if (body.openIn !== undefined) { if (!['app', 'terminal'].includes(body.openIn)) throw fail(400, 'Unknown choice.'); p.openIn = body.openIn; }
@@ -1582,7 +1832,7 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, { ...phone.startPairing(), status: phone.status() });
     }
     case '/api/phone/pair-cancel': phone.cancelPairing(); return send(res, 200, phone.status());
-    case '/api/phone/forget': phone.forget(String(body.id || '')); return send(res, 200, phone.status());
+    case '/api/phone/forget': phone.forget(String(body.id || '')); pushes.forgetDevice(String(body.id || '')); for (const w of appWatchers) if (w.device.id === String(body.id || '')) { appWatchers.delete(w); try { w.res.end(); } catch { /* gone */ } } return send(res, 200, { ...phone.status(), pushPhones: pushes.count() });
     case '/api/quit': {
       send(res, 200, { ok: true });
       log('Quit from the app.');
@@ -1848,6 +2098,82 @@ async function commanderSub(c, parentId, task, includeContext = true) {
   for (let i = 0; i < 40 && !chat.sessionId && chat.state !== 'ended'; i++) await new Promise(r => setTimeout(r, 500));
   return { ok: true, session: chat.sessionId || null, folder, note: chat.sessionId ? 'Started, and the task was sent.' : 'Started; it shows in list_sessions once it has an id.' };
 }
+// ---------- restart ----------
+// A fresh copy of the app takes over from this one. This one notes the open chats and stops them (as
+// Quit does) and exits; the new copy waits for it to be gone, takes the port, and reopens those chats.
+// The window reconnects by itself. "When replies finish" waits until no chat in the window is
+// starting, working or waiting for an OK.
+let restartWait = null, restartStarting = false, restartError = null;
+const busyChats = () => Object.values(chats.live()).filter(c => ['starting', 'busy', 'waiting'].includes(c.state)).length;
+function restartState() { return restartWait ? { pending: true, waitingOn: busyChats(), since: restartWait.since } : { pending: false }; }
+async function restartNow(why) {
+  if (shuttingDown || restartStarting) return false;
+  restartStarting = true; restartError = null;
+  log(`Restarting (${why}).`);
+  if (restartWait) { clearInterval(restartWait.timer); restartWait = null; }
+  try {
+    chatPrefs.flush();
+    if (!writeOpenChats()) throw new Error('Could not save the open chats.');
+    store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid });
+    await restartLib.startReplacement({ executable: process.execPath, args: process.argv.slice(1), cwd: process.cwd(), env: { ...process.env, SWITCHER_RESTART_FROM: String(process.pid) } });
+  } catch (err) {
+    restartStarting = false;
+    restartError = `Couldn’t start the new copy: ${err.message}`;
+    log(restartError);
+    try { fs.unlinkSync(RESTART_FILE); } catch { /* already consumed */ }
+    writeOpenChats();
+    broadcast('restart', { pending: false, error: restartError });
+    return false;
+  }
+  broadcast('restart', { pending: false, restarting: true });
+  chatPrefs.flush();
+  phone.stop();
+  stopForQuit();
+  for (const x of codexAll()) x.stop(true);
+  setTimeout(() => process.exit(0), 300);
+  return true;
+}
+function restartWhenIdle() {
+  if (restartWait) return;
+  let last = -1;
+  restartWait = {
+    since: Date.now(),
+    timer: setInterval(() => {
+      const n = busyChats();
+      if (!n) return restartNow('replies finished');
+      if (n !== last) { last = n; broadcast('restart', restartState()); }
+      return undefined;
+    }, 1000),
+  };
+  log('Will restart when replies finish.');
+  broadcast('restart', restartState());
+}
+function cancelRestart() {
+  if (!restartWait) return;
+  clearInterval(restartWait.timer); restartWait = null;
+  log('Restart called off.');
+  broadcast('restart', restartState());
+}
+// The app's files changed since it started (an update, say): a restart would bring in the new version.
+let diskBuild = { at: 0, id: BUILD };
+function newBuildReady() {
+  if (Date.now() - diskBuild.at > 20000) diskBuild = { at: Date.now(), id: handover.buildId(APP_DIR) };
+  return diskBuild.id !== BUILD;
+}
+setInterval(() => { const was = diskBuild.id !== BUILD; if (newBuildReady() !== was) broadcast('update', { ready: !was }); }, 60000).unref();
+// Reopens chats (each started again, resuming its conversation, as the account it ran as).
+async function reopenChats(list, what) {
+  const reopened = [], failed = [];
+  for (const c of list) {
+    try {
+      if (chats.bySession(c.sessionId)) { reopened.push(c.sessionId); continue; }
+      await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true });
+      reopened.push(c.sessionId);
+    } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
+  }
+  log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} ${what}${failed.length ? `; ${failed.length} couldn’t` : ''}.`);
+  return { reopened, failed };
+}
 
 // ---------- chat window ----------
 
@@ -1930,14 +2256,64 @@ async function handleChat(req, res, url, body, c) {
     case '/api/chat/send': {
       // to: 'partner' (the other assistant in this chat, started if need be), 'both' (they take
       // turns), or the chat `key` itself.
-      const text = typeof body.text === 'string' ? body.text.slice(0, 200000) : '';
+      let text = typeof body.text === 'string' ? body.text.slice(0, 200000) : '';
       const images = validImages(body.images);
       if (!text.trim() && !images.length) throw fail(400, 'Type a message or attach an image.');
       const chat = chats.get(body.key), lead = pairs.leadOf(chat);
+      // "@chat[…]": other chats you brought in; their latest messages go along, before your words.
+      if (Array.isArray(body.refs) && body.refs.length) text = (await Promise.all(body.refs.slice(0, 3).map(otherChatBlock))).join('') + text;
       if (body.to === 'both') { await pairs.sendBoth(lead, text, images, { accountId: body.account }); return send(res, 200, { ok: true }); }
+      if (body.to === 'plan') { await pairs.planFirst(lead, text, images, { accountId: body.account }); return send(res, 200, { ok: true }); }
       const target = body.to === 'partner' ? await pairs.ensure(lead, { accountId: body.account }) : chat;
-      await pairs.send(target, text, images);
+      // after: wait for the other one to finish first (you chose "Send when it's done").
+      await (body.after ? pairs.sendAfter(target, text, images) : pairs.send(target, text, images));
       return send(res, 200, { ok: true, key: target.key });
+    }
+    case '/api/run': {
+      // Run, stop or restart a project, or set the command it runs with.
+      const p = projectAt(body.cwd);
+      if (!p || !p.exists) throw fail(404, 'Pick one of your projects.');
+      if (body.command !== undefined) runner.setCommand(p.cwd, body.command);
+      if (body.action === 'stop') return send(res, 200, await runner.stop(p.cwd));
+      if (body.action === 'restart') { await runner.stop(p.cwd); return send(res, 200, runner.start(p.cwd)); }
+      if (body.action === 'start') return send(res, 200, runner.start(p.cwd));
+      return send(res, 200, runner.status(p.cwd));
+    }
+    case '/api/chat/branch': {
+      // A new chat from one of this chat's replies (lib/branch.js); the original stays as it is.
+      const id = String(body.sessionId || '');
+      if (isCodexId(id)) throw fail(400, 'Branching works for Claude chats.');
+      let f;
+      try { f = sessions.find(id); } catch { throw fail(404, 'That chat’s file wasn’t found.'); }
+      const r = branchSession(sessions.fileFor(id), String(body.mid || ''), crypto.randomUUID());
+      try { sessions.rename(r.id, `↳ ${f.session.title || 'Branch'}`.slice(0, 120)); } catch { /* keeps its first message as its name */ }
+      sessionsChanged();
+      log(`Branched chat ${id} into ${r.id} (${r.lines} lines).`);
+      return send(res, 200, { sessionId: r.id });
+    }
+    case '/api/chat/aside': {
+      // A side question: a separate chat in the same project that can only look (Claude's plan mode,
+      // Codex's read-only), told the chat's latest messages, so the chat itself isn't derailed.
+      const lead = pairs.leadOf(chats.get(body.key));
+      const q = typeof body.text === 'string' ? body.text.trim().slice(0, 20000) : '';
+      if (!q) throw fail(400, 'Type your question.');
+      const prov = lead.provider === 'codex' ? 'codex' : 'claude';
+      const ctx = lead.sessionId ? await otherChatBlock({ id: lead.sessionId }).catch(() => '') : '';
+      const info = await openChat(config(), { account: prov === 'codex' ? null : lead.account.id, cwd: lead.cwd, mode: 'new', provider: prov, permissionMode: prov === 'codex' ? 'read-only' : 'plan' });
+      const aside = chats.get(info.key);
+      aside.aside = true; aside.title = `Aside: ${q.split('\n')[0].slice(0, 50)}`;
+      broadcast('live', chats.live()); scheduleActivity();
+      await waitReady(aside, 45000);
+      aside.send(`${ctx.replace('its latest messages, for context (that chat carries on separately)', 'its latest messages, for context. This is a quick side question about it, asked beside that chat; answer it briefly and don’t change any files')}${q}`, []);
+      return send(res, 200, { key: aside.key, provider: prov });
+    }
+    case '/api/chat/aside-end': {
+      // Closed: the side chat stops, and is set aside as done (it's still there, under Done).
+      let aside = null; try { aside = chats.get(body.key); } catch { return send(res, 200, { ok: true }); }
+      if (!aside.aside) throw fail(400, 'That isn’t a side question.');
+      if (aside.sessionId) chatPrefs.setDone(aside.sessionId, true);
+      await aside.stop().catch(() => {});
+      return send(res, 200, { ok: true });
     }
     case '/api/chat/permission': {
       const decision = ['allow', 'always', 'deny'].includes(body.decision) ? body.decision : null;
@@ -1955,10 +2331,25 @@ async function handleChat(req, res, url, body, c) {
     case '/api/chat/compact': await chats.get(body.key).compact(); return send(res, 200, { ok: true });
     case '/api/chat/undo': {
       const chat = chats.get(body.key), r = await chat.undoTurn(body.turn, !!body.force);
-      if (r && r.restored && r.restored.length) (chat.undoneFiles || (chat.undoneFiles = [])).push(r.restored);
+      if (r && r.restored && r.restored.length) {
+        (chat.undoneFiles || (chat.undoneFiles = [])).push(r.restored);
+        // Its partner hears too: it may have built on what's gone.
+        const mate = pairs.partnerOf(chat);
+        if (mate) (mate.partnerUndone || (mate.partnerUndone = [])).push(r.restored);
+      }
       return send(res, 200, r);
     }
-    case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base));
+    case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base, ['claude', 'both'].includes(body.by) ? body.by : 'codex'));
+    // stop: stop after the current step; otherwise start, from a finished review with findings.
+    case '/api/chat/resume-at': return send(res, 200, resumeAt(chats.get(body.key), String(body.at || ''), !!body.cancel));
+    case '/api/chat/review-loop': {
+      const chat = chats.get(body.key);
+      if (body.stop) return send(res, 200, reviewLoop.stop(chat));
+      const r = body.review || {};
+      const findings = Array.isArray(r.findings) ? r.findings.slice(0, 40) : [];
+      reviewLoop.start(chat, { id: String(r.id || ''), what: String(r.what || ''), base: r.base ? String(r.base) : null, findings, files: Array.isArray(body.files) ? body.files : [] });
+      return send(res, 200, { ok: true });
+    }
     case '/api/chat/mode': {
       const chat = chats.get(body.key);
       await chat.setMode(body.mode);
@@ -2047,6 +2438,8 @@ function chatEvents(req, res, url) {
   const after = Math.max(Number(url.searchParams.get('after') || 0), Number(req.headers['last-event-id'] || 0) || 0);
   res.write(`event: hello\ndata: ${JSON.stringify(chat.info())}\n\n`);
   for (const ev of chat.buffer) if (ev.seq > after) res.write(`id: ${ev.seq}\nevent: chat\ndata: ${JSON.stringify(ev)}\n\n`);
+  // The end of the replay, so a window opening both of a duo's chats can put the two in time order.
+  res.write('event: replayed\ndata: {}\n\n');
   chat.clients.add(res);
   const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* closed */ } }, 25000);
   req.on('close', () => { clearInterval(ping); chat.clients.delete(res); });
@@ -2066,7 +2459,8 @@ const LITE_CSP = `${CSP}; frame-src 'self' https: http://localhost:* http://127.
 async function handleRequest(req, res, { remote = false } = {}) {
   const host = req.headers.host || '';
   if (!remote && host !== `127.0.0.1:${PORT}` && host !== `localhost:${PORT}`) { res.writeHead(403); return res.end('Forbidden'); }
-  if (req.headers.origin && (remote ? (req.headers.origin !== `http://${host}` && req.headers.origin !== `https://${host}`) : !ORIGINS.has(req.headers.origin))) { res.writeHead(403); return res.end('Forbidden'); }
+  const fwd = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  if (req.headers.origin && (remote ? (req.headers.origin !== `http://${host}` && req.headers.origin !== `https://${host}` && !(fwd && req.headers.origin === `https://${fwd}`)) : !ORIGINS.has(req.headers.origin))) { res.writeHead(403); return res.end('Forbidden'); }
   const url = new URL(req.url, `http://${host}`);
   try {
     if (req.method === 'GET' && url.pathname === '/') {
@@ -2099,13 +2493,15 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': `${url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript'}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       return res.end(text);
     }
-    if (req.method === 'GET' && /^\/(fonts\/[a-z0-9-]+\.woff2|sounds\/[a-z0-9-]+\.mp3)$/.test(url.pathname)) {
+    // Fonts and their licence, sound cues and the themes' paintings (art/, WebP only; their originals in art/src/ stay unserved).
+    if (req.method === 'GET' && /^\/(fonts\/(?:[a-z0-9-]+\.woff2|OFL\.txt)|sounds\/[a-z0-9-]+\.mp3|art\/[a-z0-9-]+\.webp)$/.test(url.pathname)) {
       let data;
       try { data = fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1))); } catch { res.writeHead(404); return res.end(); }
-      res.writeHead(200, { 'Content-Type': url.pathname.endsWith('.mp3') ? 'audio/mpeg' : 'font/woff2', 'Cache-Control': 'max-age=604800', 'X-Content-Type-Options': 'nosniff' });
+      const ext = path.extname(url.pathname);
+      res.writeHead(200, { 'Content-Type': ext === '.mp3' ? 'audio/mpeg' : ext === '.webp' ? 'image/webp' : ext === '.txt' ? 'text/plain; charset=utf-8' : 'font/woff2', 'Cache-Control': 'max-age=604800', 'X-Content-Type-Options': 'nosniff' });
       return res.end(data);
     }
-    const STATIC = { '/theme.js': 'text/javascript', '/styles.css': 'text/css' };
+    const STATIC = { '/theme.js': 'text/javascript', '/styles.css': 'text/css', ...(remote ? { '/sw.js': 'text/javascript' } : {}) };
     const type = STATIC[url.pathname] || (/^\/ui\/[a-z0-9-]+\.js$/.test(url.pathname) ? 'text/javascript' : /^\/ui\/[a-z0-9-]+\.css$/.test(url.pathname) ? 'text/css' : null);
     if (req.method === 'GET' && type) {
       res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -2129,7 +2525,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
     if (req.method === 'GET' && url.pathname === '/api/version') return send(res, 200, { app: 'session-switcher', version: APP_VERSION, build: BUILD, pid: process.pid });
     if (url.pathname.startsWith('/api/')) {
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
-      const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media') && url.searchParams.get('token') === TOKEN;
+      const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media' || url.pathname === '/api/themes/art') && url.searchParams.get('token') === TOKEN;
       // Switcher Lite's gallery: a picture Codex generated (or its thumbnail), by thread and file name.
       if (req.method === 'GET' && url.pathname === '/api/lite/gimg' && url.searchParams.get('token') === TOKEN) {
         const q = url.searchParams, f = q.get('thumb') ? liteRoutes.images.thumbFor(q.get('thread'), q.get('file')) : liteRoutes.images.fileFor(q.get('thread'), q.get('file'));
@@ -2138,7 +2534,10 @@ async function handleRequest(req, res, { remote = false } = {}) {
         return fs.createReadStream(f).pipe(res);
       }
       if (imageGet && url.pathname === '/api/media') return sendMedia(req, res, url);
-      if (req.headers['x-switcher-token'] !== TOKEN && !imageGet) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
+      // The notification's buttons and the Android app's connection have no page token: the phone's
+      // pairing (and, for Allow/Deny, a one-time token) is what lets them in.
+      const pushAct = remote && req.device && ((req.method === 'POST' && (url.pathname === '/api/push/act' || url.pathname === '/api/push/reply')) || (req.method === 'GET' && url.pathname === '/api/notify/stream'));
+      if (req.headers['x-switcher-token'] !== TOKEN && !imageGet && !pushAct) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
       return await handleApi(req, res, url, remote);
     }
     res.writeHead(404); res.end('Not found');
@@ -2152,6 +2551,197 @@ const server = http.createServer((req, res) => { handleRequest(req, res); });
 
 // Phone access: off unless turned on in Setup.
 const phone = remoteLib.createRemote({ dataDir: DATA_DIR, appDir: APP_DIR, version: APP_VERSION, log, getPrefs: () => config().prefs, handle: handleRequest });
+
+// ---------- notifications on phones (lib/push.js; the phone's side: the Android app, sw.js, ui/push.js) ----------
+const pushes = pushLib.createPush({ dataDir: DATA_DIR, log });
+pushes.keepDevices(phone.status().devices.map(d => d.id));
+const pushSeen = { map: new Map(), primed: false };
+// Allow/Deny on a notification: one-time tokens, each for one request, for an hour.
+const pushActs = new Map();
+// Reply from a notification: one-time tokens, each for one chat, for six hours.
+const pushReplies = new Map();
+// The single question a chat is asking (its text and choices), if that's what it waits on.
+function questionOf(key, requestId) {
+  try {
+    const p = chats.get(key).pending.get(requestId);
+    const qs = p && p.event && p.event.questions;
+    return qs && qs.length === 1 && qs[0].options ? qs[0] : null;
+  } catch { return null; }
+}
+let pushTimer = null;
+function schedulePush() {
+  if (pushTimer) return;
+  pushTimer = setTimeout(() => { pushTimer = null; sendPushes().catch(err => log(`Push: ${err.message}`)); }, 900);
+}
+const chatTitleOf = x => {
+  if (x.parentKey) { try { const p = chats.get(x.parentKey); return `Codex · ${chatTitleOf(p.summary())}`; } catch { /* gone */ } }
+  if (x.sessionId && x.provider !== 'codex') { try { const t = sessions.find(x.sessionId).session.title; if (t) return t; } catch { /* not saved yet */ } }
+  return x.title || 'A chat';
+};
+const pushLine = t => String(t || '').replace(/`{3}[\s\S]*?(`{3}|$)/g, ' ').replace(/[*_#>`]/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop() || '';
+function wantsToText(p) {
+  if (p.question) return 'Has a question for you';
+  if (p.detail) return `Wants to run: ${p.detail}`;
+  return p.summary ? `Wants to ${p.toolName === 'Edit' || p.toolName === 'Write' ? 'edit' : 'use'}: ${p.summary}` : `Wants to use ${p.toolName || 'a tool'}`;
+}
+// The Android apps connected right now (each listens on /api/notify/stream while on your Wi-Fi).
+const appWatchers = new Set();   // { res, device }
+const sidOf = x => (x.parentKey ? (() => { try { return chats.get(x.parentKey).sessionId; } catch { return null; } })() : x.sessionId);
+// One notification's message. id tells the phone whether it has shown this one already.
+function pushMessage(n, now = Date.now()) {
+  const x = n.chat;
+  if (n.kind === 'clear') return { kind: 'clear', tag: `needs-${x.key}`, key: x.key, at: now };
+  const title = chatTitleOf(x), folder = x.folder ? ` · ${x.folder}` : '';
+  if (n.kind === 'needs') {
+    const p = n.pending;
+    let act = null, choices = null, body = wantsToText(p);
+    if (!p.question) { act = crypto.randomBytes(18).toString('base64url'); pushActs.set(act, { key: x.key, requestId: p.requestId, exp: now + 3600e3 }); }
+    else {
+      // One question with a few answers: each answer is a button on the notification.
+      const q = questionOf(x.key, p.requestId);
+      if (q) {
+        body = q.question;
+        if (!q.multiSelect && q.options.length >= 2 && q.options.length <= 3) {
+          choices = q.options.map(o => { const t = crypto.randomBytes(18).toString('base64url'); pushActs.set(t, { key: x.key, requestId: p.requestId, answers: { [q.question]: o.label }, exp: now + 3600e3 }); return { label: o.label.slice(0, 40), token: t }; });
+        }
+      }
+    }
+    return { kind: 'needs', id: `${x.key}:${p.requestId}`, title: `${title} needs you`, body: String(body).slice(0, 220), chatTitle: title, tag: `needs-${x.key}`, key: x.key, sessionId: x.sessionId || null, act, choices, at: now, ttl: 3600 };
+  }
+  // A reply can be answered from the notification: a token for that chat, for six hours.
+  const reply = crypto.randomBytes(18).toString('base64url');
+  pushReplies.set(reply, { key: x.key, exp: now + 6 * 3600e3 });
+  return { kind: 'reply', reply, who: x.provider === 'codex' ? 'Codex' : 'Claude', id: `${x.key}:${x.finishedAt}`, title: `${title} replied`, body: (pushLine(x.lastText) || 'Finished its turn.').slice(0, 200) + folder, chatTitle: title, tag: `reply-${x.key}`, key: x.key, sessionId: x.sessionId || null, at: now, ttl: 6 * 3600 };
+}
+const toApp = (w, msg) => { try { w.res.write(`data: ${JSON.stringify(msg)}\n\n`); } catch { /* gone; its close handler tidies up */ } };
+async function sendPushes() {
+  const fresh = pushLib.news(chats.summaries(), pushSeen);
+  if (!fresh.length || (!pushes.count() && !appWatchers.size)) return;
+  const now = Date.now();
+  for (const [k, v] of pushActs) if (v.exp < now) pushActs.delete(k);
+  for (const [k, v] of pushReplies) if (v.exp < now) pushReplies.delete(k);
+  for (const n of fresh) {
+    const msg = pushMessage(n, now);
+    // Per phone: its alert level for the chat (a partner goes by its chat), and its quiet hours.
+    const want = prefs => msg.kind === 'clear' || pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat) });
+    for (const w of appWatchers) if (want(pushes.appPrefs(w.device.id))) toApp(w, msg);
+    if (msg.kind !== 'clear' && pushes.count()) await pushes.notify(msg, want);
+  }
+}
+// What's waiting right now, for an app that has just connected (back on your Wi-Fi): approvals, and
+// replies since it last heard.
+function waitingNow(since) {
+  const out = [];
+  for (const x of chats.summaries()) {
+    if (!x.key) continue;
+    for (const p of x.pending || []) out.push({ kind: 'needs', chat: x, pending: p });
+    if (x.phase === 'idle' && x.finishedAt && x.finishedAt > since && !(x.pending || []).length) out.push({ kind: 'reply', chat: x });
+  }
+  return out;
+}
+async function pushApi(req, res, route, remote) {
+  const dev = remote ? req.device : null;
+  // The Android app's connection: notifications as they happen, while it's on your Wi-Fi.
+  if (route === 'GET /api/notify/stream') {
+    if (!dev) throw fail(403, 'Only a paired phone listens here.');
+    const since = Math.max(0, Number(new URL(req.url, 'http://x').searchParams.get('since')) || 0);
+    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    const w = { res, device: dev };
+    res.write(`retry: 5000\ndata: ${JSON.stringify({ kind: 'hello', pc: os.hostname(), at: Date.now() })}\n\n`);
+    const prefs = pushes.appPrefs(dev.id);
+    for (const n of waitingNow(since)) if (pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat) })) toApp(w, { ...pushMessage(n), catchUp: true });
+    appWatchers.add(w);
+    const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* closed */ } }, 25000);
+    req.on('close', () => { clearInterval(ping); appWatchers.delete(w); });
+    return undefined;
+  }
+  const body = req.method === 'POST' ? await readBody(req) : {};
+  if (route === 'GET /api/push') return send(res, 200, { key: pushes.publicKey(), phone: !!dev, subscribed: dev ? pushes.count(dev.id) > 0 : false, phones: pushes.count() });
+  if (route === 'POST /api/push/act') {
+    const a = pushActs.get(String(body.token || ''));
+    if (!a || !dev) throw fail(410, 'That one was already answered, or has expired.');
+    pushActs.delete(String(body.token));
+    const decision = body.decision === 'allow' ? 'allow' : 'deny';
+    let chat;
+    try { chat = chats.get(a.key); } catch { throw fail(410, 'That chat has stopped.'); }
+    if (!chat.pending.has(a.requestId)) throw fail(410, 'That one was already answered.');
+    // The other buttons on the same notification go with it.
+    for (const [k, v] of pushActs) if (v.key === a.key && v.requestId === a.requestId) pushActs.delete(k);
+    if (a.answers) chat.answer(a.requestId, { decision: 'allow', message: '', answers: a.answers });
+    else chat.answer(a.requestId, { decision, message: '' });
+    log(`Push: “${dev.name}” ${a.answers ? 'answered a question' : `chose ${decision}`} from a notification.`);
+    return send(res, 200, { ok: true });
+  }
+  // Reply from a notification: your words go to that chat, caught up as usual (lib/pairs.js).
+  if (route === 'POST /api/push/reply') {
+    const a = pushReplies.get(String(body.token || ''));
+    const text = typeof body.text === 'string' ? body.text.trim().slice(0, 20000) : '';
+    if (!a || !dev) throw fail(410, 'That reply can’t be sent any more. Open the chat to answer.');
+    if (!text) throw fail(400, 'Type a reply.');
+    let chat;
+    try { chat = chats.get(a.key); } catch { throw fail(410, 'That chat has stopped. Open it to answer.'); }
+    if (chat.state === 'ended') throw fail(410, 'That chat has stopped. Open it to answer.');
+    pushReplies.delete(String(body.token));
+    await pairs.send(chat, text, []);
+    log(`Push: “${dev.name}” replied from a notification.`);
+    return send(res, 200, { ok: true });
+  }
+  if (!dev) throw fail(403, 'Turn notifications on from the phone itself.');
+  if (route === 'POST /api/notify/prefs') { pushes.setAppPrefs(dev.id, body.prefs || {}); return send(res, 200, { ok: true }); }
+  if (route === 'POST /api/notify/test') {
+    let n = 0;
+    for (const w of appWatchers) if (w.device.id === dev.id) { toApp(w, { kind: 'test', id: `test:${Date.now()}`, title: 'Session Switcher', body: 'Notifications work on this phone.', tag: 'test', at: Date.now() }); n++; }
+    return send(res, 200, { ok: n > 0, why: n ? null : 'The app isn’t connected for notifications yet. Turn them on, and give it a moment.' });
+  }
+  const sub = body.subscription || {};
+  if (route === 'POST /api/push/subscribe') { pushes.subscribe(dev.id, sub, body.prefs || {}); log(`Push: notifications on for “${dev.name}”.`); return send(res, 200, { ok: true }); }
+  if (route === 'POST /api/push/prefs') return send(res, 200, { ok: pushes.setPrefs(dev.id, String(body.endpoint || ''), body.prefs || {}) });
+  if (route === 'POST /api/push/unsubscribe') { pushes.unsubscribe(dev.id, String(body.endpoint || '')); return send(res, 200, { ok: true }); }
+  if (route === 'POST /api/push/test') {
+    const out = await pushes.notify({ kind: 'test', title: 'Session Switcher', body: 'Notifications work on this phone.', tag: 'test', at: Date.now(), ttl: 300 }, (p, sb) => sb.deviceId === dev.id);
+    const ok = out.some(o => o.status >= 200 && o.status < 300);
+    return send(res, 200, { ok, why: ok ? null : out.length ? `The push service said ${out[0].status || 'nothing'}.` : 'This phone isn’t signed up for notifications.' });
+  }
+  throw fail(404, 'Not found.');
+}
+
+// ---------- Tailscale: the phone's secure (https) address, which push notifications need ----------
+const TS_EXE = process.platform === 'win32' ? [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Tailscale', 'tailscale.exe'), 'tailscale'] : ['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale'];
+function tailscale(args, timeout = 8000) {
+  const { execFile } = require('child_process');
+  const tryAt = i => new Promise(resolve => {
+    if (i >= TS_EXE.length) return resolve({ ok: false, missing: true, out: '' });
+    execFile(TS_EXE[i], args, { timeout, windowsHide: true }, (err, out, errOut) => {
+      if (err && err.code === 'ENOENT') return resolve(tryAt(i + 1));
+      resolve({ ok: !err, out: String(out || '') + String(errOut || ''), timedOut: !!(err && err.killed) });
+    });
+  });
+  return tryAt(0);
+}
+async function tailscaleStatus() {
+  const port = phone.status().port;
+  const st = await tailscale(['status', '--json']);
+  if (st.missing) return { installed: false };
+  let j = {};
+  try { j = JSON.parse(st.out.slice(st.out.indexOf('{'))); } catch { /* not running */ }
+  const self = j.Self || {};
+  const dns = String(self.DNSName || '').replace(/\.$/, '');
+  const serve = await tailscale(['serve', 'status', '--json']);
+  const serving = serve.ok && new RegExp(`(127\\.0\\.0\\.1|localhost):${port}\\b`).test(serve.out);
+  return { installed: true, running: j.BackendState === 'Running', dns, url: dns ? `https://${dns}` : null, serving, port };
+}
+async function tailscaleServe() {
+  const port = phone.status().port;
+  if (!phone.status().listening) throw fail(409, 'Turn phone access on first.');
+  const r = await tailscale(['serve', '--bg', `http://127.0.0.1:${port}`], 20000);
+  if (r.missing) throw fail(409, 'Tailscale isn’t installed on this PC.');
+  // HTTPS certificates are off for this tailnet: Tailscale gives a link to turn them on.
+  const link = (r.out.match(/https:\/\/login\.tailscale\.com\/\S+/) || [])[0] || null;
+  if (link) return { ...(await tailscaleStatus()), enable: link };
+  if (!r.ok) throw fail(500, `Tailscale couldn’t set it up: ${r.out.trim().split(/\r?\n/).slice(-3).join(' ')}`);
+  log(`Phone access: Tailscale now serves it over https (port ${port}).`);
+  return await tailscaleStatus();
+}
 
 const appUrl = `http://127.0.0.1:${PORT}/`;
 // The page the app window opens on: Switcher Lite, if lite.json says so (Look → "Open Lite on start").
@@ -2182,8 +2772,25 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopF
 process.on('exit', () => { try { routines.stop(); } catch { /* not started */ } stopForQuit(); try { chatPrefs.flush(); organize.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
 process.on('unhandledRejection', err => log(`Unexpected error: ${err && (err.stack || err.message)}`));
 
-server.listen(PORT, '127.0.0.1', () => {
-  log(`Session Switcher ${APP_VERSION} running at ${appUrl}${sys.DRY_RUN ? ' (preview mode: nothing is launched)' : ''}`);
+// Started by Restart: the copy being replaced is still exiting, so wait for it (up to 20 s) first.
+const restartFrom = Number(process.env.SWITCHER_RESTART_FROM) || 0;
+delete process.env.SWITCHER_RESTART_FROM;
+function replacedGone() {
+  const until = Date.now() + 20000;
+  return new Promise((resolve, reject) => {
+    const tick = () => {
+      let alive = true;
+      try { process.kill(restartFrom, 0); } catch (err) { alive = err.code === 'EPERM'; }
+      if (!alive) return setTimeout(resolve, 150);
+      if (Date.now() > until) return reject(new Error('The previous copy did not exit; leaving it running.'));
+      return setTimeout(tick, 120);
+    };
+    tick();
+  });
+}
+if (restartFrom && process.send) process.send({ type: restartLib.READY, pid: process.pid });
+(restartFrom ? replacedGone() : Promise.resolve()).then(() => server.listen(PORT, '127.0.0.1', () => {
+  log(`Session Switcher ${APP_VERSION} running at ${appUrl}${sys.DRY_RUN ? ' (preview mode: nothing is launched)' : ''}${restartFrom ? ' (restarted)' : ''}`);
   handover.writeLock(PORT, { pid: process.pid, version: APP_VERSION, build: BUILD, dir: APP_DIR, token: TOKEN });
   console.log('Keep this window open while you use it, or use “Quit” in the app.');
   sys.cleanupLaunchScripts();
@@ -2195,7 +2802,9 @@ server.listen(PORT, '127.0.0.1', () => {
   }
   sessionsSig = sessionsSignature();
   sessions.refreshIndex();
-  pollAccounts(0).then(() => setTimeout(() => refreshAllUsage(0), 1500));
+  const accountsIn = pollAccounts(0);
+  accountsIn.then(() => setTimeout(() => refreshAllUsage(0), 1500));
+  if (restarted && restarted.chats.length) accountsIn.then(() => reopenChats(restarted.chats, 'after the restart')).catch(err => log(`Couldn’t reopen chats after the restart: ${err.message}`));
   if (config().codex.enabled) setTimeout(() => {
     codex.refreshAccount().then(() => codexSessions(0)).catch(() => {});
     for (const x of codexAll()) x.refreshAccount().then(st => { if (st.signedIn) x.refreshUsage(); }).catch(() => {});
@@ -2204,5 +2813,6 @@ server.listen(PORT, '127.0.0.1', () => {
   routines.start();
   liteRoutes.startSampling();
   phone.sync().catch(err => log(`Phone access: ${err.message}`));
-  sys.openAppWindow(startUrl(), config().prefs);
-});
+  // After a restart the window that was open reconnects by itself.
+  if (!restartFrom) sys.openAppWindow(startUrl(), config().prefs);
+})).catch(err => { log(`Couldn’t take over after restart: ${err.message}`); process.exit(1); });

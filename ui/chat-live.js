@@ -68,8 +68,45 @@ function flushLive() {
     });
   }
 }
+// The relay: with both assistants in a chat, a strip under the title shows what each is doing, and the
+// hand-over between them: the line flows while the second one is up next, and is lit once it has the
+// message. Click either side to write to it.
+const RELAY_WORD = { starting: 'Starting', busy: 'Working', waiting: 'Needs your OK', ready: 'Ready', ended: 'Stopped', off: 'Ready when you are' };
+function relaySide(src) {
+  const prov = provFor(src);
+  const st = src === 'comp' ? (C.comp && !C.comp.ended ? C.comp.state : 'off') : C.state;
+  const upNext = src === 'comp' && C.handoff && st !== 'busy';
+  const status = (src === 'comp' ? C.comp && C.comp.status : C.status) || '';
+  const done = st === 'ready' && C.justDone && C.justDone.src === src && Date.now() < C.justDone.until;
+  const word = upNext ? 'Up next' : st === 'busy' && status ? status : done ? 'Done' : RELAY_WORD[st] || 'Ready';
+  const on = C.target === src || C.target === 'both';
+  return `<button type="button" class="cr-side ${prov}${st === 'busy' || st === 'starting' ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}${upNext ? ' next' : ''}${done ? ' done' : ''}${on ? ' on' : ''}" data-relay="${src}" aria-pressed="${on}" title="Write to ${PROV_NAME[prov]}"><span class="cr-dot" aria-hidden="true"></span><b>${PROV_NAME[prov]}</b><span class="cr-w">${esc(word)}</span></button>`;
+}
+function renderRelay() {
+  const box = $c('cRelay'); if (!box) return;
+  const show = duo() && !C.watch && !!C.key;
+  box.hidden = !show;
+  if (!show) { box.innerHTML = ''; return; }
+  const compBusy = C.comp && !C.comp.ended && C.comp.state === 'busy';
+  const passing = C.passedAt && Date.now() - C.passedAt < 1300;
+  const link = C.handoff ? 'flow' : passing ? 'lit pass' : compBusy && C.target === 'both' ? 'lit' : '';
+  const h = `${relaySide('main')}<span class="cr-link ${link}" aria-hidden="true"><i></i></span>${relaySide('comp')}`;
+  if (box._h !== h) { box.innerHTML = h; box._h = h; }
+}
+// A reply landed: its side of the relay says Done for a moment, and the reply's last part glows once.
+function landed(src) {
+  if (!liveRender) return;
+  C.justDone = { src, until: Date.now() + 2600 };
+  renderRelay(); setTimeout(renderRelay, 2700);
+  if (!motionOk()) return;
+  const prov = provFor(src);
+  const turn = lastTurnOf(prov);
+  const part = turn && [...turn.querySelectorAll('.part')].pop();
+  if (part) { part.classList.remove('landed'); void part.offsetWidth; part.classList.add('landed'); setTimeout(() => part.classList.remove('landed'), 1700); }
+}
 function setState(s) {
   C.state = s;
+  renderRelay();
   const pill = $c('cState');
   pill.textContent = STATE_LABELS[s] || s;
   pill.className = `c-state ${s}`;
@@ -97,7 +134,7 @@ function syncSend() {
 }
 function setStatus(src, t) {
   if (src === 'comp') { if (C.comp) { C.comp.status = t; renderCrewSoon(); } return; }
-  $c('cStatus').textContent = t;
+  $c('cStatus').textContent = t; C.status = t; renderCrewSoon();
 }
 function handle(ev, src = 'main') {
   const box = src === 'comp' ? C.comp : C;
@@ -110,9 +147,14 @@ function handleEvent(ev, src) {
   const feed = $c('cFeed');
   const comp = src === 'comp';
   switch (ev.kind) {
-    case 'state':
-      if (comp) { C.comp.state = ev.state; if (ev.state !== 'busy') C.comp.status = ''; renderCrew(); syncSend(); break; }
-      setState(ev.state); if (ev.state !== 'busy') { $c('cStatus').textContent = ''; } renderCrew(); break;
+    case 'state': {
+      if (ev.state !== 'busy') feed.querySelectorAll(`.stuck-card[data-src="${src}"]`).forEach(x => x.remove());
+      const was = comp ? C.comp.state : C.state;
+      if (comp) { C.comp.state = ev.state; if (ev.state !== 'busy') C.comp.status = ''; renderCrew(); syncSend(); }
+      else { setState(ev.state); if (ev.state !== 'busy') { $c('cStatus').textContent = ''; C.status = ''; } renderCrew(); }
+      if (was === 'busy' && ev.state === 'ready') landed(src);
+      break;
+    }
     case 'model': {
       C.mi[src] = ev;
       if (!comp) { C.model = modelLabel(ev); $c('cModel').textContent = C.model; }
@@ -129,16 +171,24 @@ function handleEvent(ev, src) {
       $c('cModel').textContent = C.model;
       renderLedgerSoon();
       break;
-    case 'status': if (ev.permissionMode && !comp) setMode(ev.permissionMode); if (ev.status === 'compacting') setStatus(src, 'Summarizing the conversation…'); if (ev.text) setStatus(src, ev.text); break;
-    case 'plan': L.todos = ev.steps || []; renderLedgerSoon(); break;
+    case 'status': if (ev.permissionMode && !comp) setMode(ev.permissionMode); if (ev.permissionMode && comp && C.comp) { C.comp.mode = ev.permissionMode; renderCrewSoon(); } if (ev.status === 'compacting') setStatus(src, 'Summarizing the conversation…'); if (ev.text) setStatus(src, ev.text); break;
+    case 'plan': L.plans[provFor(src)] = ev.steps || []; renderLedgerSoon(); break;
     case 'context': setCtx(src, ev); break;
-    case 'review': if (!comp) { reviewLoopStep(ev); renderReview(ev); } break;
-    case 'limit': if (!comp) renderLimit(ev); break;
+    case 'review': if (!comp) renderReview(ev); break;
+    case 'reviewloop': if (!comp) reviewLoopEvent(ev); break;
+    case 'planfirst': if (!comp) renderPlanFirst(ev); break;
+    case 'limit': renderLimit(ev, src); break;
+    case 'resumeat': renderResumeAt(ev, src); break;
+    case 'stuck': renderStuck(ev, src); break;
     case 'changes': renderChanges(ev, src); break;
     case 'undone': renderUndone(ev, src); break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
     // "Both": your message went to this one first; the other picks it up when it's done.
-    case 'handoff': C.handoff = ev.state === 'waiting' ? ev.to : null; if (ev.state === 'waiting') markBoth(ev.to); renderCrew(); break;
+    case 'handoff':
+      C.handoff = ev.state === 'waiting' ? ev.to : null;
+      if (ev.state === 'waiting') markBoth(ev.to);
+      if (ev.state === 'sent' && liveRender) { C.passedAt = Date.now(); setTimeout(renderRelay, 1400); }
+      renderCrew(); break;
     case 'stream_start': withStick(() => part(feed, ev.mid)); break;
     case 'delta':
       if (ev.thinking) { setStatus(src, 'Thinking…'); break; }
@@ -170,7 +220,6 @@ function handleEvent(ev, src) {
     case 'result':
       setStatus(src, '');
       foldSteps(src);
-      if (!comp) reviewAfterTurn(ev);
       if (!ev.ok && Date.now() - C.interruptedAt > 8000 && (ev.errors.length || ev.text)) {
         withStick(() => renderItem(feed, { kind: 'notice', level: 'warning', text: ev.text || ev.errors.join('\n') || `${PROV_NAME[provFor(src)]} stopped with an error.` }));
       }
@@ -213,7 +262,7 @@ function addPermission(p, src = 'main') {
   if (box.querySelector(`[data-req="${CSS.escape(`${src}:${p.requestId}`)}"]`)) return;
   const card = document.createElement('div');
   const name = PROV_NAME[provFor(src)];
-  card.className = `perm ${provFor(src) === 'codex' ? 'codex' : ''}`;
+  card.className = `perm ${provFor(src) === 'codex' ? 'codex' : ''}${liveRender ? ' arrive' : ''}`;
   card.dataset.req = `${src}:${p.requestId}`;
   card._src = src;
   if (p.questions && p.questions.length) {
@@ -225,15 +274,19 @@ function addPermission(p, src = 'main') {
         <div class="perm-b"><button type="button" class="btn gilt" data-p="answer">Send answers</button><button type="button" class="btn" data-p="deny">Skip</button></div>`;
   } else {
     const v = p.view || {};
-    card.innerHTML = `<p class="perm-h">${name} wants to <b>${esc(verbFor(p))}</b>${v.summary && p.toolName !== 'Bash' ? `: <span class="perm-sum">${esc(v.summary)}</span>` : ''}</p>
+    // On a phone it reads as its own screen: whose project, the question, the exact command (with Copy),
+    // and the two answers in thumb reach, Always allow kept small beneath them.
+    const proj = typeof projectOf === 'function' ? projectOf({ cwd: C.info && C.info.cwd, folder: C.folder }) : null;
+    card.innerHTML = `<p class="perm-k">${proj ? crestHtml(proj, 22) : ''}<span>Needs your OK${C.folder ? ` · ${esc(C.folder)}` : ''}</span></p>
+        <p class="perm-h">${name} wants to <b>${esc(verbFor(p))}</b>${v.summary && p.toolName !== 'Bash' ? `: <span class="perm-sum">${esc(v.summary)}</span>` : ''}</p>
         ${p.title && p.title !== p.toolName ? `<p class="perm-r">${esc(p.title)}</p>` : ''}
         ${p.description ? `<p class="perm-r">${esc(p.description)}</p>` : ''}
         ${p.reason ? `<p class="perm-r">Why it’s asking: ${esc(p.reason)}</p>` : ''}
         ${p.blockedPath ? `<p class="perm-r">Outside your project: ${esc(p.blockedPath)}</p>` : ''}
-        <div class="perm-d">${toolDetail(v)}</div>
+        <div class="perm-d">${toolDetail(v)}${v.detailKind === 'command' && v.detail ? `<button type="button" class="ta perm-copy" data-copy="${esc(v.detail)}" title="Copy the command">Copy</button>` : ''}</div>
         <div class="perm-why" hidden><input type="text" class="why-t" placeholder="Optional: tell ${name} what to do instead" aria-label="What to do instead"></div>
         <div class="perm-b">
-          <button type="button" class="btn ${p.defaultToNo ? '' : 'gilt'}" data-p="allow">Allow</button>
+          <button type="button" class="btn ${p.defaultToNo ? '' : 'gilt'}" data-p="allow">${p.canAlways ? 'Allow once' : 'Allow'}</button>
           ${p.canAlways ? '<button type="button" class="btn" data-p="always" title="Don’t ask again for this kind of action in this project">Always allow</button>' : ''}
           <button type="button" class="btn ${p.defaultToNo ? 'gilt' : ''}" data-p="deny">Deny</button>
         </div>`;
@@ -332,12 +385,31 @@ function crewPill(src) {
   const label = mi ? `${modelLabel(mi)}${mi.effort ? ` ${cap(mi.effort)}` : ''}` : src === 'comp' && st === 'off' ? '' : '…';
   const on = duo() ? C.target === src || C.target === 'both' : true;
   const sub = st === 'waiting' ? 'needs your OK' : src === 'comp' && C.handoff ? 'up next…' : busy && status ? status : label;
-  const tip = (on ? `${PROV_NAME[prov]}: choose its model and effort` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`)
+  const mode = src === 'comp' ? compModeLabel() : '';
+  // The partner's own account: how much room it has (the lead's is in the header).
+  const acct = src === 'comp' && C.comp ? C.comp.accountId : null, room = acct ? usageLine(acct, { short: true }) : '';
+  const left = acct ? roomLeft(acct) : null;
+  const tip = (on ? `${PROV_NAME[prov]}: choose its model, effort${src === 'comp' && C.comp && C.comp.modes ? ' and what it may do' : ''}` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`)
+    + (mode ? `\nMay: ${mode}` : '')
+    + (room ? `\nRoom: ${room}` : '')
     + (C.ctx[src] ? `\nContext: ${ctxLine(src)}` : '');
   const f = ctxFill(C.ctx[src]);
   const ring = f === null ? '' : `<span class="crew-ctx ${ctxClass(f)}" style="--p:${Math.round(f * 100)}" aria-hidden="true"></span>`;
   return `<button type="button" class="crew ${prov}${on ? ' on' : ''}${busy ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}" data-crew="${src}" aria-pressed="${on}" title="${esc(tip)}">
-      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${ring}${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
+      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${mode && !busy && st !== 'waiting' ? `<span class="crew-mode">${esc(mode)}</span>` : ''}${left !== null && left <= 25 ? `<span class="crew-room${left <= 5 ? ' low' : ''}" title="${esc(room)}">${left}% left</span>` : ''}${ring}${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
+}
+// The partner's permission mode, by its own label ("Ask before acting", Codex's "Agent", …).
+// Percent left on an account's tightest window, or null when it isn't known.
+function roomLeft(id) { const u = usageOf(id); const b = u && u.data && u.data.available ? binding(u) : null; return b ? b.left : null; }
+function compModeLabel() {
+  const c = C.comp; if (!c || !c.mode) return '';
+  return ((c.modes || []).find(m => m.value === c.mode) || {}).label || MODE_LABELS[c.mode] || c.mode;
+}
+async function setCompMode(mode) {
+  const c = C.comp; if (!c || !c.key) return;
+  await api('/api/chat/mode', { key: c.key, mode });
+  c.mode = mode; renderCrew();
+  toast(`${PROV_NAME[partnerProv()]}: ${compModeLabel()}.`, 2000);
 }
 function renderCrew() {
   const box = $c('cCrew'); if (!box) return;
@@ -345,17 +417,19 @@ function renderCrew() {
   const two = duo();
   const both = C.target === 'both';
   const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
-  box.innerHTML = crewPill('main') + (two ? crewPill('comp') + (C.target !== 'main' || (C.comp && !C.comp.ended) ? `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : `Both: ${lead} answers, then ${mate} picks it up and builds on that`}"><span class="crew-n">Both</span></button>` : '') : '');
+  box.innerHTML = crewPill('main') + (two ? crewPill('comp') + (C.target !== 'main' || (C.comp && !C.comp.ended) ? `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : `Both: ${lead} answers, then ${mate} picks it up and builds on that. Uses room on both accounts, about twice a single reply.`}"><span class="crew-n">Both</span></button>` : '') + `<button type="button" class="crew both plan${C.target === 'plan' ? ' on' : ''}" data-crew="plan" aria-pressed="${C.target === 'plan'}" title="Plan first: ${lead} drafts a plan, ${mate} checks it, then you pick who builds it"><span class="crew-n">Plan</span></button>` : '');
   box.classList.toggle('duo', two);
+  renderRelay();
   $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · <b>@${partnerProv()}</b> or <b>@both</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;
   if (!two && C.target !== 'main') setTarget('main');
 }
 function setTarget(t, focus = true) {
-  C.target = duo() && (t === 'comp' || t === 'both') ? t : 'main';
+  C.target = duo() && (t === 'comp' || t === 'both' || t === 'plan') ? t : 'main';
   const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
-  const name = C.target === 'both' ? `${lead} and ${mate}` : PROV_NAME[provFor(C.target)];
+  const name = C.target === 'both' || C.target === 'plan' ? `${lead} and ${mate}` : PROV_NAME[provFor(C.target)];
   $c('cText').placeholder = C.target === 'comp' ? (mate === 'Codex' ? 'Ask Codex… an image, a quick test, a second opinion' : 'Ask Claude… a plan, a review, a second opinion')
-    : C.target === 'both' ? `Write to ${lead} and ${mate}: ${lead} answers, then ${mate} builds on it…` : `Write to ${name}…`;
+    : C.target === 'both' ? `Write to ${lead} and ${mate}: ${lead} answers, then ${mate} builds on it…`
+    : C.target === 'plan' ? `Plan first: what should be done? ${lead} drafts a plan, ${mate} checks it, then you pick who builds…` : `Write to ${name}…`;
   $c('cText').setAttribute('aria-label', `Message ${name}`);
   renderCrew(); syncSend(); closePick();
   if (focus) $c('cText').focus();
@@ -491,14 +565,36 @@ function ensureCompanion() {
     .finally(() => { C.compPending = null; });
   return C.compPending;
 }
+// Opening a duo chat: both chats replay what they've done so far. The two replays are held until each
+// has finished and then played in time order, so the feed reads as one conversation (an event without
+// a time of its own keeps its place after the one before it in its own chat).
+const Merge = { on: false, q: { main: [], comp: [] }, done: { main: false, comp: false }, timer: null };
+function mergeStart(withComp) {
+  clearTimeout(Merge.timer);
+  Object.assign(Merge, { on: !!withComp, q: { main: [], comp: [] }, done: { main: false, comp: !withComp } });
+  if (withComp) Merge.timer = setTimeout(mergeFlush, 5000);   // a replay that never finishes doesn't hold the feed
+}
+function feedIn(ev, src) { if (Merge.on) Merge.q[src].push(ev); else handle(ev, src); }
+function replayed(src) { if (!Merge.on) return; Merge.done[src] = true; if (Merge.done.main && Merge.done.comp) mergeFlush(); }
+function mergeFlush() {
+  if (!Merge.on) return;
+  Merge.on = false; clearTimeout(Merge.timer);
+  const stamp = (list, src) => { let t = 0; return list.map(ev => { t = (ev.at && Date.parse(ev.at)) || t; return { ev, t, src }; }); };
+  const a = stamp(Merge.q.main, 'main'), b = stamp(Merge.q.comp, 'comp'), all = [];
+  let i = 0, j = 0;
+  while (i < a.length || j < b.length) all.push(j >= b.length || (i < a.length && a[i].t <= b[j].t) ? a[i++] : b[j++]);
+  Merge.q = { main: [], comp: [] };
+  for (const x of all) { try { handle(x.ev, x.src); } catch (err) { console.error(err); } }
+}
 function attachComp(info) {
   if (C.comp && C.comp.es) C.comp.es.close();
-  C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended' };
+  C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
   if (info.models && info.models.length) C.mi.comp = info;
   if (info.context) C.ctx.comp = info.context;
   const key = info.key;
   const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=0`);
-  es.addEventListener('chat', e => { if (!C.comp || C.comp.key !== key) return; try { handle(JSON.parse(e.data), 'comp'); } catch (err) { console.error(err); } });
+  es.addEventListener('chat', e => { if (!C.comp || C.comp.key !== key) return; try { feedIn(JSON.parse(e.data), 'comp'); } catch (err) { console.error(err); } });
+  es.addEventListener('replayed', () => { if (C.comp && C.comp.key === key) replayed('comp'); });
   es.onerror = () => { if (C.comp && C.comp.key === key && C.comp.ended) es.close(); };
   C.comp.es = es;
   renderCrew(); renderLedgerSoon();
@@ -533,3 +629,15 @@ function armEsc(name) {
   escTimer = setTimeout(disarmEsc, 1600);
 }
 function disarmEsc(keepArm) { clearTimeout(escTimer); $c('cEscArm')?.remove(); if (!keepArm) C.escArmed = 0; }
+
+// The watchdog (lib/chat.js): one of them has been working a long time without a word. Long commands
+// can be quiet, so it asks rather than stopping anything.
+function renderStuck(ev, src) {
+  if (C.watch) return;
+  const feed = $c('cFeed'), name = PROV_NAME[provFor(src)];
+  feed.querySelectorAll(`.stuck-card[data-src="${src}"]`).forEach(x => x.remove());
+  const card = document.createElement('div');
+  card.className = `stuck-card${liveRender ? ' fresh' : ''}`; card.dataset.src = src; card.setAttribute('role', 'status');
+  card.innerHTML = `<p><b>${name} has been working for ${ev.quietMin || 10} minutes without a word.</b> A long command can be quiet; if it seems stuck, stop it and ask again.</p><div class="lm-b"><button type="button" class="btn" data-c="stuckstop">Stop ${name}</button><button type="button" class="btn quiet" data-c="stuckwait">Keep waiting</button></div>`;
+  withStick(() => feed.appendChild(card));
+}

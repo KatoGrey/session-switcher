@@ -26,11 +26,14 @@ function renderLive(force) {
   const A = awaiting(), W = atWork(), Q = quietOpen();
   // The clock ticks on its own, so a new minute alone doesn't redraw the hero (and restart its scene).
   const heroNow = heroHtml(), heroKey = heroNow.replace(/<span data-clock>[^<]*<\/span>/, '');
-  if (force || $('heroSlot')._h !== heroKey) { $('heroSlot').innerHTML = heroNow; $('heroSlot')._h = heroKey; }
+  // Only when it changed: redrawing restarts the scene's animations (a forced refresh needn't).
+  if ($('heroSlot')._h !== heroKey) { $('heroSlot').innerHTML = heroNow; $('heroSlot')._h = heroKey; }
+  renderWelcome();
+  loadToday(); renderToday();
   // A chat moving between the boards (it finished, or wants you) glides across; new ones fade in.
   flip([$('awaitList'), $('board'), $('quietList')], () => {
-    patch($('awaitList'), A, keyOf, awaitCard, '<p class="empty-line">Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.</p>');
-    patch($('board'), W, keyOf, workCard, `<p class="empty-line">${A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.'}</p>`);
+    patch($('awaitList'), A, keyOf, awaitCard, emptyArt('await', 'Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.'));
+    patch($('board'), W, keyOf, workCard, emptyArt('work', A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.'));
     patch($('quietList'), Q, keyOf, quietChip, '');
   if ($('secGroups')) { $('secGroups').hidden = !S.org.groups.length; patch($('gcards'), S.org.groups, g => g.id, groupCard, ''); }
   });
@@ -51,7 +54,7 @@ function renderRecent() {
   $('page').innerHTML = `<div id="guardSlot">${guardHtml()}</div>
     <header class="f-head"><div><p class="eyebrow">✧ Every folder</p><h1>Recent chats</h1><p class="f-meta">Your latest chats${f === 'codex' ? ' in Codex' : f === 'claude' ? ` in Claude Code, ready to open as ${esc(current().name)}` : f === 'openclaw' ? ' from OpenClaw agents, to read here' : ''}.</p></div>
       ${kinds.length > 1 ? `<div class="seg provseg" role="group" aria-label="Show">${tab('all', 'All', every.length)}${kinds.map(k => tab(k, PROV_TITLE[k], n[k])).join('')}</div>` : ''}</header>
-    ${all.length ? `<ul class="rows sec-gap">${all.slice(0, 60).map(([x, p]) => rowHtml(x, p.name)).join('')}</ul>` : '<p class="empty-line">Nothing here yet.</p>'}`;
+    ${all.length ? `<ul class="rows sec-gap">${all.slice(0, 60).map(([x, p]) => rowHtml(x, p.name)).join('')}</ul>` : emptyArt('chats', 'Nothing here yet.')}`;
 }
 // A project: its banner, then its chats, documents and pictures.
 function renderFolder() {
@@ -80,7 +83,7 @@ function renderFolder() {
     <div class="wp-in"><p class="eyebrow ${prov || ''}">${prov === 'codex' ? 'Codex chats in this project' : prov === 'claude' ? 'Claude Code chats in this project' : prov === 'openclaw' ? 'OpenClaw sessions in this project' : 'Project'}</p><h1>${esc(p.name)}</h1></div>${hint}`;
   const subH = `<div class="wp-where"><p class="f-path">${esc(p.cwd)}${p.exists ? '' : ' (this folder no longer exists)'}</p>
       <p class="f-meta">${esc(meta[0].toUpperCase() + meta.slice(1))}.${esc(todayLine)}${other ? ` <button class="linkish" data-view="folder" data-cwd="${esc(p.cwd)}" data-prov="${otherProv}">${other === 1 ? `1 ${otherName} ${otherWord}` : `${other} ${otherName} ${otherWord}s`} here too</button>` : ''}</p></div>
-    <div class="wp-tools"><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin' : 'Pin to top'}</button></div>`;
+    <div class="wp-tools"><button class="btn quiet sm" data-project-crest="${esc(p.cwd)}" ${p.exists ? '' : 'disabled'}>Project crest…</button><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin' : 'Pin to top'}</button></div>`;
   const off = !canLaunch(a) || !p.exists;
   const cxOff = !codexReady() || !p.exists;
   const cxWhy = S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first';
@@ -121,8 +124,13 @@ function renderWorldBody() {
     if (fresh || !$('wbList')) { box.innerHTML = '<div class="wb-top" id="wbTop"></div><div id="wbList"></div>'; box._h = null; }
     if ($('wbTop')._h !== seg) { $('wbTop').innerHTML = seg; $('wbTop')._h = seg; $('wbTop').hidden = !seg; }
     const lb = $('wbList');
-    if (!list.length) { lb.innerHTML = `<p class="empty-line">No ${prov === 'codex' ? 'Codex chats' : prov === 'claude' ? 'Claude Code chats' : 'chats'} in this project yet. Start one above, or start with a prompt.</p>`; return; }
-    if (!lb.querySelector(':scope > ul.rows')) lb.innerHTML = '<ul class="rows"></ul>';
+    const done = (p.done || []).filter(x => !prov || provOf(x) === prov);
+    if (!list.length && !done.length) { lb.innerHTML = emptyArt('chats', `No ${prov === 'codex' ? 'Codex chats' : prov === 'claude' ? 'Claude Code chats' : 'chats'} in this project yet. Start one above, or start with a prompt.`); return; }
+    if (!lb.querySelector(':scope > ul.rows')) lb.innerHTML = '<ul class="rows"></ul><details class="done-chats"><summary></summary><ul class="rows"></ul></details>';
+    const dz = lb.querySelector('.done-chats');
+    dz.hidden = !done.length;
+    dz.querySelector('summary').textContent = `Done · ${done.length}`;
+    patch(dz.querySelector('ul.rows'), done, s => s.id, s => rowHtml(s, null));
     return patch(lb.firstElementChild, list, s => s.id, s => rowHtml(s, null));
   }
   if (!w) return set(`<p class="loading">${p.exists ? 'Reading this project’s files…' : 'This folder no longer exists.'}</p>`);
@@ -167,7 +175,7 @@ function renderSearch() {
   $('page').innerHTML = `<header class="f-head"><div><p class="eyebrow">❝ Search</p><h1>“${esc(S.q)}”</h1><p class="f-meta">${h ? (h.hits.length === 1 ? 'One chat mentions it.' : `${nword(h.hits.length)} chats mention it.`) : 'Searching…'}</p></div>
       <div class="f-act"><button class="btn" data-act="search-again">Search again</button><button class="btn quiet" data-view="hub">Back to the hub</button></div></header>
     ${pr && !pr.ready ? `<p class="progress">Still reading chats (${pr.done} of ${pr.total}); results may grow.</p>` : ''}
-    ${rows ? `<ul class="rows sec-gap">${rows}</ul>` : h ? '<p class="empty-line">Nothing matches. Search looks inside every message you and Claude wrote, plus titles and folder names.</p>' : ''}`;
+    ${rows ? `<ul class="rows sec-gap">${rows}</ul>` : h ? emptyArt('search', 'Nothing matches. Search looks inside every message you and Claude wrote, plus titles and folder names.') : ''}`;
 }
 function renderPage() {
   if (S.view === 'hub') renderHub();
@@ -180,7 +188,13 @@ function renderAll() { renderNav(); renderPage(); renderBar(); updateTitle(); }
 // Names the chat window uses.
 const renderSide = () => renderNav();
 const renderMain = () => renderPage();
+// Where you've been, so Back (a swipe from the left edge, or the phone's Back) returns to the page you
+// came from rather than straight to the hub.
+const Trail = [];
+const placeKey = x => `${x.view}|${x.folder || ''}|${x.prov || ''}`;
 function go(view, folder, prov) {
+  const here = { view: S.view, folder: S.folder, prov: S.prov }, there = { view, folder: folder !== undefined ? folder : S.folder, prov: view === 'folder' ? prov || null : S.prov };
+  if (!go.back && placeKey(here) !== placeKey(there)) { Trail.push(here); if (Trail.length > 40) Trail.shift(); if (typeof noteStep === 'function') noteStep(); }
   const from = S.view === 'folder' && !(window.ChatUI && ChatUI.isOpen()) ? S.folder : null;
   if (view === 'folder' && folder !== undefined && folder !== S.folder) S.worldTab = 'chats';
   // The state changes now; the page redraws inside the transition.
@@ -200,6 +214,18 @@ function go(view, folder, prov) {
   const t = transition(run);
   return t ? t.updateCallbackDone.catch(() => {}) : Promise.resolve();
 }
+// Back to the page before this one (skipping any that are gone). False if there's nowhere to go back to.
+function goBackPage() {
+  const now = placeKey({ view: S.view, folder: S.folder, prov: S.prov });
+  while (Trail.length) {
+    const prev = Trail.pop();
+    if (placeKey(prev) === now || (prev.view === 'folder' && !S.projects.some(p => p.cwd === prev.folder))) continue;
+    go.back = true;
+    try { go(prev.view, prev.folder, prev.prov); } finally { go.back = false; }
+    return true;
+  }
+  return false;
+}
 // Go to the hub, then bring one of its sections into view.
 const hubTo = id => (S.view !== 'hub' || (window.ChatUI && ChatUI.isOpen()) ? go('hub') : Promise.resolve()).then(() => setTimeout(() => $(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30));
 
@@ -214,3 +240,22 @@ function tick() {
   for (const el of document.querySelectorAll('[data-clock]')) set(el, clock(now));
 }
 setInterval(tick, 1000);
+
+/* ---------- rest ---------- */
+// The world rests when you do: after a while with no one using the window (unfocused for 90 seconds,
+// or untouched for 5 minutes), every looping animation pauses and the scene dims a little; the first
+// touch, key or look back wakes it. Nothing redraws while you're away, however fast the screen.
+const REST_AWAY_MS = 90 * 1000, REST_IDLE_MS = 5 * 60 * 1000;
+let restSeen = Date.now();
+function restCheck() {
+  const idle = Date.now() - restSeen;
+  const rest = document.hidden || (!document.hasFocus() && idle > REST_AWAY_MS) || idle > REST_IDLE_MS;
+  document.documentElement.classList.toggle('at-rest', rest);
+}
+function restWake() {
+  restSeen = Date.now();
+  if (document.documentElement.classList.contains('at-rest')) restCheck();
+}
+for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'focus']) window.addEventListener(ev, restWake, { passive: true, capture: true });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) restSeen = Date.now(); restCheck(); });
+setInterval(restCheck, 15000);

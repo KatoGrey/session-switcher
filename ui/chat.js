@@ -22,14 +22,14 @@ function isViewing(x) {
 }
 function railItem(x) {
   // A pinned chat that isn't running: it stays listed, and a click opens it again.
-  if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}"><span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
   const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;   // w: the one the status is about
   const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (w.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
   const doing = w.phase === 'tool' && (w.detail || w.tool) ? `${VERB_NOW[w.tool] || 'Using'} ${w.detail || w.tool}` : w.phase === 'writing' ? 'Writing…' : w.phase === 'starting' ? 'Starting…' : 'Thinking…';
   let sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
   if (w !== x) sub = `${PROV_NAME[w.provider || 'claude']}: ${sub}`;
   else if (x.partner && (st === 'quiet' || st === 'reply')) sub += ` · with ${PROV_NAME[x.partner.provider || 'claude']}`;
-  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}" aria-current="${isViewing(x)}"><span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
 }
 // The rail: chats you pinned (they stay, running or not), then the rest of what's open, each list in
 // the order you dragged it into. Chats it hasn't placed yet keep their places after those.
@@ -186,7 +186,7 @@ function railSettle(d, keep) {
 }
 
 /* ---------- open / close ---------- */
-function findSession(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
+function findSession(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
 
 async function loadHistory(before) {
   if (!C.sessionId) return null;
@@ -196,15 +196,20 @@ async function loadHistory(before) {
   const until = C.info && !C.watch ? C.info.bufferFrom || C.info.startedAt : null;
   if (until) params.set('until', until);
   if (before !== undefined && C.historyCursor) params.set('cursor', C.historyCursor);
-  const h = await api(`/api/chat/history?${params}`);
+  // The chat's own history may run out before its partner's does; then only the partner's is paged.
+  const ownDone = before !== undefined && C.historyStart <= 0;
+  const h = ownDone ? { items: [], start: 0, cursor: null } : await api(`/api/chat/history?${params}`);
   if (gen !== C.gen) return null;   // you've moved on to another chat
   C.historyStart = h.start;
   C.historyCursor = h.cursor || null;
   let rows = h.items.map(it => ({ it, prov: C.provider }));
-  // The partner's earlier messages (Codex in a Claude chat, or Claude in a Codex chat) slot in by time.
-  if (before === undefined && C.compThread) {
-    try { rows = mergeHelper(rows, (await api(`/api/chat/history?${new URLSearchParams({ id: C.compThread, provider: partnerProv() })}`)).items); } catch { /* shown without them */ }
-    if (gen !== C.gen) return null;
+  // The partner's earlier messages (Codex in a Claude chat, or Claude in a Codex chat) slot in by time,
+  // paged back as far as this page of the chat's own reaches.
+  if (C.compThread) {
+    const first = rows.find(r => r.it.at);
+    const mine = await partnerBack(h.start > 0 && first ? Date.parse(first.it.at) : -Infinity, gen, before === undefined);
+    if (mine === null) return null;
+    rows = mergeHelper(rows, mine);
   }
   const tmp = document.createElement('div');
   for (const r of rows) { curProv = r.prov; try { renderItem(tmp, r.it, false); } finally { curProv = null; } }
@@ -215,9 +220,33 @@ async function loadHistory(before) {
     $c('cEarlier').after(...tmp.childNodes);
     s.scrollTop += s.scrollHeight - oldH;
   }
-  $c('cEarlier').hidden = h.start <= 0;
+  $c('cEarlier').hidden = h.start <= 0 && !(C.compThread && (C.compPending.length || C.compMore));
   $c('cEarlier').textContent = 'Show earlier messages';
+  // The changes, undos and reviews that go with it (kept by the PC).
+  if (before === undefined) loadExtras(gen, until).catch(() => {}); else applyExtras();
   return h;
+}
+// The partner's history, page by page, back to `since` (a time; -Infinity for all of it). Its turns
+// older than that wait for the next "Show earlier messages", so the two always read in order.
+const partnerReached = since => { const o = C.compPending.find(it => it.at); return !!o && Date.parse(o.at) <= since; };
+async function partnerBack(since, gen, fresh) {
+  if (fresh) { C.compPending = []; C.compCursor = null; C.compMore = true; }
+  try {
+    for (let pages = 0; C.compMore && pages < 8 && !partnerReached(since); pages++) {
+      const q = new URLSearchParams({ id: C.compThread, provider: partnerProv() });
+      if (C.compCursor) q.set('cursor', C.compCursor);
+      const h = await api(`/api/chat/history?${q}`);
+      if (gen !== C.gen) return null;
+      C.compPending = h.items.concat(C.compPending);
+      C.compCursor = h.cursor || null;
+      C.compMore = !!h.cursor && h.start > 0;
+    }
+  } catch { C.compMore = false; /* shown without the rest */ }
+  let k = since === -Infinity ? 0 : C.compPending.length;
+  if (k) for (let j = 0; j < C.compPending.length; j++) { const it = C.compPending[j]; if (it.kind === 'user' && it.at && Date.parse(it.at) >= since) { k = j; break; } }
+  const out = C.compPending.slice(k);
+  C.compPending = C.compPending.slice(0, k);
+  return out;
 }
 // Waits (briefly) for the last pictures to size themselves, so "the bottom" is really the bottom.
 async function settle() {
@@ -253,11 +282,18 @@ function connect() {
   const key = C.key;
   C.es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=${C.lastSeq}`);
   C.es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); C.info = { ...C.info, ...info }; C.sessionId = info.sessionId || C.sessionId; headerAccount(info.accountId, info.accountName); if (info.permissionMode) setMode(info.permissionMode); if (info.context) setCtx('main', info.context); } catch { /* ignore */ } });
-  C.es.addEventListener('chat', e => { if (C.key !== key) return; try { handle(JSON.parse(e.data)); } catch (err) { console.error(err); } });
+  C.es.addEventListener('chat', e => { if (C.key !== key) return; try { feedIn(JSON.parse(e.data), 'main'); } catch (err) { console.error(err); } });
+  C.es.addEventListener('replayed', () => { if (C.key === key) replayed('main'); });
   C.es.onerror = () => { if (C.state === 'ended' && C.es) { C.es.close(); C.es = null; } };
 }
 
 function reset() {
+  mergeStart(false);
+  C.compPending = []; C.compCursor = null; C.compMore = false; C.extras = [];
+  Recent.main = []; Recent.comp = [];
+  PARTS.clear();
+  C.planCard = null;
+  Preview.comments = [];
   if (C.es) { C.es.close(); C.es = null; }
   clearTimeout(C.liveTimer);
   if (C.comp && C.comp.es) C.comp.es.close();
@@ -270,7 +306,8 @@ function reset() {
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
   Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
-  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null;
+  C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
+  closePreview();
   Review.loop = null;
   closePick();
   $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
@@ -282,8 +319,23 @@ function reset() {
   $c('cCompose').hidden = false; $c('cWatch').hidden = true; $c('cWatch').innerHTML = '';
   closeSlash(); Slash.dismissed = null;
 }
+// Opening a chat from a card or a row: the window grows out of what you clicked.
+let launchFrom = null;
+document.addEventListener('pointerdown', e => {
+  const el = e.target instanceof Element && e.target.closest('.omen, .qchip, .row, .wb-chip, .welcome, .dial-card, .pal-i, .nav-chat');
+  launchFrom = el ? { rect: el.getBoundingClientRect(), at: Date.now() } : null;
+}, true);
+function growFrom(chat) {
+  const p = launchFrom; launchFrom = null;
+  if (!p || Date.now() - p.at > 1500 || !motionOk()) return;
+  const r = chat.getBoundingClientRect(), s = p.rect;
+  if (!r.width || !r.height) return;
+  const px = n => `${Math.max(0, Math.round(n))}px`;
+  const from = `inset(${px(s.top - r.top)} ${px(r.right - s.right)} ${px(r.bottom - s.bottom)} ${px(s.left - r.left)} round 14px)`;
+  chat.animate([{ clipPath: from, opacity: 0.4 }, { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 }], { duration: 440, easing: 'cubic-bezier(.2,.8,.2,1)' });
+}
 function show() {
-  const chat = $c('chat');
+  const chat = $c('chat'), opening = chat.hidden;
   chat.hidden = false;
   chat.classList.remove('show-rail', 'show-ledger');
   let noLedger = false; try { noLedger = localStorage.getItem('ledger') === 'off'; } catch { /* default */ }
@@ -292,6 +344,7 @@ function show() {
   document.body.classList.remove('nav-open');
   if (!$c('drawer').hidden) $c('drawer').hidden = true;
   renderRail();
+  if (opening) { growFrom(chat); if (typeof noteStep === 'function') noteStep(); }
 }
 
 async function begin(info, { mode = 'resume', sessionId = null, cwd = null, parent = null } = {}) {
@@ -302,13 +355,16 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
   if (info.modes) modeOptions(info.modes);
   if (info.models && info.models.length) C.mi.main = info;
   C.compThread = info.companionThread || null;
-  if (info.companionKey) { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { /* the helper has stopped */ } }
+  mergeStart(!!info.companionKey);
+  if (info.companionKey) { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { replayed('comp'); /* the helper has stopped */ } }
   if (gen !== C.gen) return;
   setTarget('main', false);
   $c('chat').classList.toggle('codex', C.provider === 'codex');
   const [s, p] = findSession(C.sessionId);
+  noteLastChat(C.sessionId, (s && s.title) || info.title, p && p.name);
   C.title = info.title && info.title !== 'New chat' ? info.title : mode === 'new' ? 'New chat' : mode === 'fork' ? `${s ? s.title : 'Chat'} (copy)` : (s ? s.title : info.title || 'Chat');
   C.folder = info.folder || (p ? p.name : (cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() : ''));
+  $c('cCrest').innerHTML = crestHtml(p || (C.folder ? { name: C.folder, cwd: info.cwd || cwd } : null), 40);
   $c('cTitle').textContent = C.title;
   $c('cFolder').textContent = C.folder;
   C.parent = parent; refreshCrumb();
@@ -402,12 +458,15 @@ async function watch({ sessionId, source = 'terminal' }) {
   C.title = s ? s.title : 'Chat'; C.folder = p ? p.name : '';
   C.info = { cwd: p ? p.cwd : null, accountId: s && s.lastOpened ? s.lastOpened.account : null, accountName: s && s.lastOpened ? s.lastOpened.accountName : '' };
   $c('cTitle').textContent = C.title; $c('cFolder').textContent = C.folder; C.parent = null; refreshCrumb();
+  $c('cCrest').innerHTML = crestHtml(p, 40);
   headerAccount(C.info.accountId, C.info.accountId ? C.info.accountName : (oc ? `OpenClaw · ${PROV_NAME.openclaw}` : source === 'terminal' ? 'In a terminal' : 'In another app'));
-  setState(source === 'terminal' ? 'watching' : 'readonly');
+  setState(source === 'terminal' || source === 'openclaw' ? 'watching' : 'readonly');
   $c('cMode').hidden = true;
-  $c('cCompose').hidden = true;
+  // An OpenClaw session is live AND writable: what you send becomes a follow-up turn in it.
+  $c('cCompose').hidden = !oc;
+  if (oc) { $c('cText').placeholder = `Write to ${PROV_NAME[C.provider]}…`; $c('cText').rows = 1; }
   $c('cWatch').hidden = false;
-  $c('cWatch').innerHTML = oc ? '<p><b>Read-only.</b> An OpenClaw agent’s session. It carries on in OpenClaw; new messages appear here by themselves.</p>'
+  $c('cWatch').innerHTML = oc ? '<p><b>Live.</b> This OpenClaw agent’s session carries on in OpenClaw; new messages appear here by themselves, and what you send becomes your next turn in it.</p>'
     : source === 'terminal'
     ? '<p><b>Watching live.</b> This chat is running in a terminal, so you can read along here and reply in its terminal window. New messages appear by themselves.</p><button type="button" class="btn" data-c="fork">Open a copy here</button>'
     : '<p><b>Read-only.</b> This chat was last used in another app, like the desktop app. Continue it here if it’s closed there.</p><button type="button" class="btn prime" data-c="takeover">Continue it here</button><button type="button" class="btn quiet" data-c="fork">Open a copy</button>';
@@ -480,7 +539,31 @@ function onSelection() {
 document.addEventListener('selectionchange', onSelection);
 
 /* ---------- events ---------- */
-function lightbox(src) { $c('cLight').querySelector('img').src = src; $c('cLight').hidden = false; $c('cLight').focus(); }
+function lightbox(src, from) { openGallery(src, from); }
+// Branch: a new chat with everything up to the end of this reply. Rewind: that, and the files the
+// later replies changed put back as they were (each reply's Undo, newest first).
+async function branchFrom(turn) {
+  const mid = [...turn.querySelectorAll('.part[data-mid]')].map(p => p.dataset.mid).pop();
+  if (!mid || !C.sessionId) { toast('This reply can’t be branched from yet.', 3000); return; }
+  const later = [...$c('cFeed').querySelectorAll('.chg[data-src="main"]:not(.undone)')].filter(b => !turn.contains(b) && (turn.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) && b._ev && ownFiles(b._ev).length);
+  const pick = await appChoice(`Start a new chat from the end of this reply?\n\nIt has everything up to here, and none of what came after. This chat stays as it is.${later.length && C.key ? `\n\n${later.length} later repl${later.length === 1 ? 'y' : 'ies'} changed files. Rewind puts those back as they were here, too.` : ''}`, [
+    { v: 'branch', label: 'Branch from here', kind: 'prime' },
+    ...(later.length && C.key ? [{ v: 'rewind', label: 'Branch and rewind the files' }] : []),
+    { v: '', label: 'Cancel', kind: 'quiet' },
+  ]);
+  if (!pick) return;
+  const r = await api('/api/chat/branch', { sessionId: C.sessionId, mid });
+  let kept = 0;
+  if (pick === 'rewind') {
+    for (const b of later.reverse()) {
+      const u = await api('/api/chat/undo', { key: C.key, turn: b._ev.turn }).catch(() => null);
+      if (u) kept += (u.skipped || []).filter(x => x.why === 'changed since').length;
+    }
+  }
+  await loadSessions().catch(() => {});
+  await open({ sessionId: r.sessionId });
+  toast(pick === 'rewind' ? `Branched, and the files are back as they were${kept ? ` (${kept} changed since were left as they are)` : ''}.` : 'Branched. The original chat is as it was.', 5000);
+}
 function openFile(p) { return Viewer.open({ path: p, key: C.key, session: C.sessionId || (C.watch && C.watch.sessionId), cwd: C.info && C.info.cwd }); }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -493,6 +576,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $c('cRail').addEventListener('click', e => { if (Date.now() - Rail.dropped < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
   chat.addEventListener('click', wrap(async e => {
     const t = e.target;
+    const pv = t.closest('[data-pv]');
+    if (pv) { const at = pv.dataset.turn ? { turn: +pv.dataset.turn, src: pv.dataset.src || 'main', path: pv.dataset.pv } : null; if (at) { const ev = (pv.closest('.chg') || {})._ev; const f = ev && ev.files.find(x => x.path === at.path); if (f) Object.assign(at, { add: f.add, del: f.del, status: f.status }); } return showPreview(pv.dataset.pv, pv.dataset.kind, at); }
+    const po = t.closest('[data-pvopen]'); if (po) return openFile(po.dataset.pvopen);
+    if (t.closest('[data-pvclose]')) return closePreview();
     const fl = t.closest('.flink[data-path], [data-file]');
     if (fl) { e.preventDefault(); return openFile(fl.dataset.path || fl.dataset.file); }
     const rv = t.closest('[data-reveal]');
@@ -508,7 +595,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return isRunning(id) ? watch({ sessionId: id, source: 'terminal' }) : open({ sessionId: id });
     }
     if (ri) { const li = ri.closest('li'); const x = li && findActivity(li.dataset.k); chat.classList.remove('show-rail'); if (x && !isViewing(x)) return openActivity(x); return; }
-    const thumb = t.closest('.thumb'); if (thumb) return lightbox(thumb.dataset.full);
+    const thumb = t.closest('.thumb, .pic-b'); if (thumb) return lightbox(thumb.dataset.full, thumb);
     const cc = t.closest('.code-copy');
     if (cc) return copyText(cc.closest('.code').querySelector('code').textContent, null).then(ok => { if (ok) copiedButton(cc); });
     const more = t.closest('.tg-more'); if (more) { const g = more.closest('.tools'); g.classList.toggle('open'); updateGroup(g); return; }
@@ -516,8 +603,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
     if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
     const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
+    const rl = t.closest('[data-relay]'); if (rl) return setTarget(rl.dataset.relay);
+    const bp = t.closest('[data-build]');
+    if (bp) return buildPlan(bp).catch(err => toast(err.message));
     const crew = t.closest('[data-crew]');
-    if (crew) { const src = crew.dataset.crew; if (src === 'both') return setTarget(C.target === 'both' ? 'main' : 'both'); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
+    if (crew) { const src = crew.dataset.crew; if (src === 'both' || src === 'plan') return setTarget(C.target === src ? 'main' : src); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
     const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });
     const pp = t.closest('#cPick [data-preset]');
     if (pp) { const p = presetsFor(Pick.src).find(x => x.id === pp.dataset.preset); if (p) return pickModel(Pick.src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }); return undefined; }
@@ -541,17 +631,31 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'attach': return attachMenu(c);
       case 'prompts': return c.getAttribute('aria-expanded') === 'true' ? closeMenu() : promptsMenu(c);
       case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
-      case 'stop': C.interruptedAt = Date.now(); return Promise.all(targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting')).map(x => api('/api/chat/interrupt', { key: x.key })));
+      case 'stop': if (C.provider === 'openclaw') return; C.interruptedAt = Date.now(); return Promise.all(targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting')).map(x => api('/api/chat/interrupt', { key: x.key })));
       case 'compact': return compactNow(c.dataset.src || 'main');
       case 'chgview': return viewChanges(c.closest('.chg'));
       case 'chgundo': return undoChanges(c.closest('.chg'));
-      case 'review': return startReview(c.dataset.base || null);
+      case 'review': return startReview(c.dataset.base || null, c.dataset.by || 'codex');
       case 'limitas': return continueAs(c.dataset.acct);
-      case 'limitcodex': return handToCodex();
-      case 'limitwait': { const card = c.closest('.limit-card'); return card && card._ev ? waitForReset(card._ev) : undefined; }
+      case 'limithand': return handOver(c.dataset.to);
+      case 'stuckwait': return c.closest('.stuck-card').remove();
+      case 'stuckstop': { const card = c.closest('.stuck-card'); C.interruptedAt = Date.now(); card.remove(); return api('/api/chat/interrupt', { key: keyFor(card.dataset.src) }); }
+      case 'limitwait': case 'limitnowait': { const card = c.closest('.limit-card'); return card && card._ev ? waitForReset(card._ev, card.dataset.src || 'main', c.dataset.c === 'limitnowait') : undefined; }
       case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
+      case 'branch': return branchFrom(c.closest('.turn'));
+      case 'followup': {
+        // "We should also…": a task for later, in this chat's project, starting from what you selected
+        // in the reply (or its last paragraph).
+        const turn = c.closest('.turn'), sel = getSelection();
+        const picked = sel && !sel.isCollapsed && turn.contains(sel.anchorNode) ? sel.toString().trim() : '';
+        const md = turnMarkdown(turn) || '';
+        const last = picked || md.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean).pop() || '';
+        const title = $c('cTitle')?.textContent || 'a chat';
+        const text = `\n\nFrom “${title}”, ${PROV_NAME[turn.dataset.prov || C.provider]} said:\n\n${last.slice(0, 4000).split('\n').map(l => `> ${l}`).join('\n')}`;
+        return openTaskDialog(C.info && C.info.cwd, text);
+      }
       case 'copyturn': {
         // The reply as written (Markdown), not as shown: headings, lists and code fences come along.
         const text = turnMarkdown(c.closest('.turn'));
@@ -620,7 +724,6 @@ document.addEventListener('DOMContentLoaded', () => {
   chat.addEventListener('dragover', e => { if (!C.watch && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); chat.classList.add('drop'); } });
   chat.addEventListener('dragleave', e => { if (e.target === chat || !chat.contains(e.relatedTarget)) chat.classList.remove('drop'); });
   chat.addEventListener('drop', e => { e.preventDefault(); chat.classList.remove('drop'); if (!C.watch) addFiles([...e.dataTransfer.files]); });
-  $c('cLight').addEventListener('click', () => { $c('cLight').hidden = true; });
   if ('ResizeObserver' in window) new ResizeObserver(() => document.documentElement.style.setProperty('--dock-h', `${Math.round(document.querySelector('.c-dock').getBoundingClientRect().height)}px`)).observe(document.querySelector('.c-dock'));
   $c('cScroll').addEventListener('scroll', () => { if (!jumpRaf) jumpRaf = requestAnimationFrame(() => { jumpRaf = 0; syncJump(); }); }, { passive: true });
   $c('cJump').addEventListener('click', jumpLatest);
@@ -651,7 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $c('pickBack').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closePick(); });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && Rail.drag && Rail.drag.on && !Rail.drag.settling) { e.preventDefault(); e.stopPropagation(); Rail.dropped = Date.now(); railSettle(Rail.drag, false); return; }
-    if (e.key === 'Escape' && !$c('cLight').hidden) { $c('cLight').hidden = true; e.stopPropagation(); return; }
+    if (e.key === 'Escape' && closeLightbox()) { e.stopPropagation(); return; }
     if ($c('chat').hidden) return;
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); (e.shiftKey ? moveInRail : switchRail)(e.key === 'ArrowDown' ? 1 : -1); }
   }, true);
@@ -683,6 +786,8 @@ function modelItems(src) {
   return [
     { glyph: '◈', label: `Choose ${name}’s model…`, run: () => openPick(src) },
     ...presetsFor(src).map(p => ({ glyph: p.glyph, label: `${p.name}: ${p.label}${p.effort ? ` · ${p.effort}` : ''}`, hint: p.note, checked: C.mi[src] && C.mi[src].model === p.model && C.mi[src].effort === p.effort, run: () => pickModel(src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }) })),
+    // The partner's permission mode, changed from its pill (the lead's is in the header).
+    ...(src === 'comp' && C.comp && C.comp.modes && C.comp.modes.length && !C.comp.ended ? ['-', ...C.comp.modes.map(m => ({ glyph: C.comp.mode === m.value ? '●' : '○', label: `May: ${m.label}`, checked: C.comp.mode === m.value, run: () => setCompMode(m.value) }))] : []),
   ];
 }
 // ★ in the header pins this chat to the top of the sidebar.
@@ -704,9 +809,18 @@ function syncFav() {
 function chatHeadItems() {
   const id = C.sessionId;
   return [
-    ...(id ? [{ glyph: window.isFav(id) ? '☆' : '★', label: window.isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => window.toggleFav(id) }, '-'] : []),
-    ...(reviewAvailable() ? [{ glyph: '◆', label: 'Have Codex review the changes', hint: 'read-only', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview() }, '-'] : []),
+    ...(id ? [{ glyph: window.isFav(id) ? '☆' : '★', label: window.isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => window.toggleFav(id) }] : []),
+    // How loudly this chat may alert, on this device.
+    ...(id ? Object.entries(ALERT_LEVELS).map(([lv, label]) => ({ glyph: alertLevelOf(id) === lv ? '●' : '○', label: `Alerts: ${label}`, run: () => setAlertLevel(id, lv) })) : []),
+    ...(id ? ['-'] : []),
+    ...(reviewAvailable() ? [{ glyph: '◆', label: 'Have Codex review the changes', hint: 'read-only', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview() }] : []),
+    ...(claudeReviewOK() ? [{ glyph: '◇', label: 'Have Claude review the changes', hint: 'asked not to change anything', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'claude') }] : []),
+    ...(claudeReviewOK() && codexOK() ? [{ glyph: '◈', label: 'Have both review the changes', hint: 'one card, where they agree first', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'both') }] : []),
+    ...(reviewAvailable() || claudeReviewOK() ? ['-'] : []),
     ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; close(); popOutChat(sid); } }] : []),
+    ...(C.info && C.info.cwd && !C.watch ? [{ glyph: '▶', label: 'Run the project', hint: 'its dev server or start script, with its output', run: () => openRun() }] : []),
+    ...(C.key && !C.watch ? [{ glyph: '❦', label: 'Ask a side question', hint: '/btw · doesn’t derail this chat', run: () => openAside() }] : []),
+    ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark this chat done', hint: 'off the lists until it’s used again', run: () => { const sid = id; close(); return setChatDone(sid, true); } }] : []),
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
     { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },
     '-',
@@ -839,6 +953,8 @@ window.ChatUI = {
     if ($c('chat').hidden || C.watch) return [];
     const out = [];
     if (reviewAvailable() && C.state !== 'ended') out.push({ glyph: '◆', t: 'Have Codex review this chat’s changes', s: 'in a read-only sandbox', run: () => startReview(), text: 'review code codex check changes second opinion bugs' });
+    if (claudeReviewOK() && C.state !== 'ended') out.push({ glyph: '◇', t: 'Have Claude review this chat’s changes', s: 'in its own chat', run: () => startReview(null, 'claude'), text: 'review code claude check changes second opinion bugs' });
+    if (claudeReviewOK() && codexOK() && C.state !== 'ended') out.push({ glyph: '◈', t: 'Have both review this chat’s changes', s: 'where they agree comes first', run: () => startReview(null, 'both'), text: 'review both dual code check changes agree' });
     for (const src of duo() ? ['main', 'comp'] : ['main']) {
       const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
       if (src === 'comp' && (!mi || !mi.models)) { out.push({ glyph: '◆', t: `Choose ${name}’s model…`, s: `${name}, in this chat`, run: () => openPick('comp'), text: `${name.toLowerCase()} model switch effort` }); continue; }
@@ -849,6 +965,6 @@ window.ChatUI = {
     return out;
   },
   // For the phone's Back button: closes the picker, then the chat. True if it did something.
-  back: () => { if (!$c('cLight').hidden) { $c('cLight').hidden = true; return true; } if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { close(); return true; } return false; },
+  back: () => { if (closeLightbox()) return true; if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { close(); return true; } return false; },
   isOpen: () => !$c('chat').hidden, key: () => C.key,
 };

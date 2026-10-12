@@ -40,6 +40,7 @@ function inline(s) {
   const keep = h => `\u0000${slots.push(h) - 1}\u0000`;
   let t = String(s);
   t = t.replace(/`([^`\n]+)`/g, (_, c) => keep(looksLikePath(c.trim()) ? `<code class="flink" data-path="${esc(c.trim())}" role="link" tabindex="0" title="Open ${esc(c.trim())}">${esc(c)}</code>` : `<code>${esc(c)}</code>`));
+  t = t.replace(/!\[([^\]\n]*)\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+"[^"\n]*")?\)/g, (_, alt, a, b) => keep(mdPicture(a || b, alt)));
   t = t.replace(/\[([^\]\n]+)\]\((?:<([^>\n]+)>|([^)\s]+))\)/g, (_, txt, a, b) => {
     const url = a || b;
     if (/^https?:\/\//i.test(url)) return keep(link(url, emphasis(esc(txt))));
@@ -50,6 +51,15 @@ function inline(s) {
   t = t.replace(BARE, (_, pre, p) => `${pre}${keep(fileLink(p, esc(p)))}`);
   t = emphasis(esc(t));
   return t.replace(/\u0000(\d+)\u0000/g, (_, n) => slots[+n]);
+}
+// A picture written into a reply as ![alt](path). One on the web can't load inside the app (it only
+// shows what's on this PC), so it's a link to open in the browser.
+function mdPicture(url, alt) {
+  const label = alt || base(url);
+  if (/^https?:\/\//i.test(url)) return link(url, `<span class="md-weblink">▣ ${esc(label || 'Picture')}</span>`);
+  if (/^(data:|javascript:|#)/i.test(url) || !/\.(png|jpe?g|gif|webp|bmp)$/i.test(url)) return fileLink(url, esc(label));
+  const src = imageUrl(url);
+  return `<span class="mdimg"><button type="button" class="thumb md-pic" data-full="${esc(src)}" data-path="${esc(url)}" data-cap="${esc(label)}"><img src="${esc(src)}" alt="${esc(label)}" loading="lazy" decoding="async" onerror="this.closest('.mdimg').classList.add('gone')"></button>${alt ? `<span class="mdimg-cap">${esc(alt)}</span>` : ''}</span>`;
 }
 function plain(s) {
   const slots = [];
@@ -92,7 +102,7 @@ function hl(code, lang) {
   return out + esc(code.slice(last));
 }
 function codeBlock(code, lang) {
-  return `<div class="code"><div class="code-h"><span>${esc(lang || 'code')}</span><button type="button" class="code-copy">Copy</button></div><pre><code>${hl(code, lang)}</code></pre></div>`;
+  return `<div class="code"><div class="code-h"><span>${esc(lang || 'code')}</span><button type="button" class="code-copy">Copy</button></div><pre tabindex="0"><code>${hl(code, lang)}</code></pre></div>`;
 }
 const LIST_RE = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/;
 function list(lines, i) {
@@ -168,18 +178,21 @@ function md(src) {
 /* ---------- the ledger: what this chat produced ---------- */
 const L = {};
 let ledgerTimer = null;
-function ledgerReset() { Object.assign(L, { arts: new Map(), links: new Map(), files: new Map(), images: new Map(), cmds: [], todos: null, tasks: new Map(), pendingTasks: new Map() }); renderLedgerSoon(); }
+function ledgerReset() { Object.assign(L, { arts: new Map(), links: new Map(), files: new Map(), images: new Map(), cmds: [], plans: { claude: null, codex: null }, tasks: new Map(), pendingTasks: new Map() }); renderLedgerSoon(); }
 ledgerReset();
 const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 function ledgerTool(b) {
   const m = b.meta || {};
   if (FILE_TOOLS.has(b.name) && (m.path || b.summary)) {
-    const p = m.path || b.summary; const f = L.files.get(p) || { n: 0 };
-    f.n++; f.verb = b.name === 'Write' && f.verb !== 'edited' ? 'wrote' : 'edited';
-    L.files.delete(p); L.files.set(p, f);
+    // A Codex change can touch several files at once; each is counted.
+    for (const p of m.paths && m.paths.length ? m.paths : [m.path || b.summary]) {
+      const f = L.files.get(p) || { n: 0 };
+      f.n++; f.verb = b.name === 'Write' && f.verb !== 'edited' ? 'wrote' : 'edited';
+      L.files.delete(p); L.files.set(p, f);
+    }
   } else if ((b.name === 'Bash' || b.name === 'PowerShell') && (b.detail || b.summary)) {
     if (!L.cmds.some(c => c.id && c.id === b.id)) L.cmds.push({ id: b.id, text: typeof b.detail === 'string' && b.detail.trim() ? b.detail : b.summary, desc: b.summary, st: b.result ? (b.result.isError ? 'err' : 'ok') : 'run' });
-  } else if (b.name === 'TodoWrite' && m.todos) L.todos = m.todos;
+  } else if (b.name === 'TodoWrite' && m.todos) L.plans[provNow() || C.provider] = m.todos;
   else if (b.name === 'TaskCreate' && m.subject) L.pendingTasks.set(b.id, m.subject);
   else if (b.name === 'TaskUpdate' && m.taskId) {
     const t = L.tasks.get(m.taskId) || { subject: m.subject || `Task ${m.taskId}`, status: 'pending' };
@@ -211,7 +224,7 @@ function renderLedgerSoon() { if (!ledgerTimer) ledgerTimer = setTimeout(renderL
 const base = p => String(p).split(/[\\/]/).filter(Boolean).pop() || p;
 function renderLedger() {
   ledgerTimer = null;
-  const box = $c('cLedger'); if (!box || $c('chat').hidden) return;
+  const box = $c('cLedgerBody'); if (!box || $c('chat').hidden) return;
   const sec = (title, n, body) => `<p class="lg-h">${esc(title)}${n ? ` <span class="count">${n}</span>` : ''}</p>${body}`;
   const id = C.info && C.info.accountId;
   const a = id && acctById(id);
@@ -230,15 +243,22 @@ function renderLedger() {
   const arts = [...L.arts.entries()].reverse();
   if (arts.length) html += sec('Artifacts', arts.length, `<ul class="lg-list">${arts.map(([u, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">✦</span><span class="lg-t"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">${esc(t)}</a></span></li>`).join('')}</ul>`);
   const imgs = [...L.images.entries()].reverse();
-  if (imgs.length) html += sec('Images it made', imgs.length, `<ul class="lg-list">${imgs.map(([p, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">❖</span><span class="lg-t"><button class="linkish" data-file="${esc(p)}" title="${esc(p)}">${esc(t.length > 60 ? `${t.slice(0, 59)}…` : t)}</button></span></li>`).join('')}</ul>`);
+  if (imgs.length) html += sec('Images it made', imgs.length, `<ul class="lg-list">${imgs.map(([p, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">❖</span><span class="lg-t"><button class="linkish" data-pv="${esc(p)}" data-kind="image" title="Preview ${esc(p)}">${esc(t.length > 60 ? `${t.slice(0, 59)}…` : t)}</button></span></li>`).join('')}</ul>`);
   const links = [...L.links.entries()].reverse().slice(0, 30);
   if (links.length) html += sec('Files it pointed to', links.length, `<ul class="lg-list">${links.map(([p, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${/[\\/]$/.test(p) ? '❖' : '✧'}</span><span class="lg-t"><button class="linkish" data-file="${esc(p)}" title="${esc(p)}">${esc(t === p ? base(p) : t)}</button></span></li>`).join('')}</ul>`);
   const files = [...L.files.entries()].reverse().slice(0, 40);
-  if (files.length) html += sec('Files changed', files.length, `<ul class="lg-list">${files.map(([p, f]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${f.verb === 'wrote' ? '✥' : '◈'}</span><span class="lg-t"><button class="linkish" data-file="${esc(p)}" title="${esc(p)}">${esc(base(p))}</button></span><span class="lg-m">${f.verb}${f.n > 1 ? ` ×${f.n}` : ''}</span></li>`).join('')}</ul>`);
-  const tasks = L.todos ? L.todos.map(t => ({ subject: t.content, status: t.status })) : [...L.tasks.values()];
+  if (files.length) html += sec('Files changed', files.length, `<ul class="lg-list">${files.map(([p, f]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${f.verb === 'wrote' ? '✥' : '◈'}</span><span class="lg-t"><button class="linkish" data-pv="${esc(p)}" data-kind="file" title="See what changed in ${esc(p)}">${esc(base(p))}</button></span><span class="lg-m">${f.verb}${f.n > 1 ? ` ×${f.n}` : ''}</span></li>`).join('')}</ul>`);
+  // The crew plan: each one's own task list, side by side with its owner (they used to overwrite each
+  // other). With one assistant it's simply its tasks.
+  const step = t => `<li class="lg-i ${t.status === 'completed' ? 'done' : t.status === 'in_progress' ? 'doing' : ''}"><span class="glyph" aria-hidden="true">${t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '▸' : '○'}</span><span class="lg-t" title="${esc(t.subject)}">${esc(t.subject)}</span></li>`;
+  const owners = ['claude', 'codex'].filter(p => L.plans[p] && L.plans[p].length).map(p => [p, L.plans[p].map(t => ({ subject: t.content, status: t.status }))]);
+  const tasks = owners.length ? owners.flatMap(([, list]) => list) : [...L.tasks.values()];
   if (tasks.length) {
     const done = tasks.filter(t => t.status === 'completed').length;
-    html += sec('Tasks', `${done}/${tasks.length}`, `<ul class="lg-list">${tasks.map(t => `<li class="lg-i ${t.status === 'completed' ? 'done' : t.status === 'in_progress' ? 'doing' : ''}"><span class="glyph" aria-hidden="true">${t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '▸' : '○'}</span><span class="lg-t" title="${esc(t.subject)}">${esc(t.subject)}</span></li>`).join('')}</ul>`);
+    const body = owners.length > 1
+      ? owners.map(([p, list]) => `<p class="lg-owner ${p}">${PROV_NAME[p]}<small>${list.filter(t => t.status === 'completed').length}/${list.length}</small></p><ul class="lg-list">${list.map(step).join('')}</ul>`).join('')
+      : `<ul class="lg-list">${tasks.map(step).join('')}</ul>`;
+    html += sec(owners.length > 1 ? voice('Crew plan') : 'Tasks', `${done}/${tasks.length}`, body);
   }
   const cmds = L.cmds.slice(-14).reverse();
   if (cmds.length) html += sec('Commands', L.cmds.length, `<ul class="lg-list">${cmds.map(c => `<li class="lg-i" title="${esc(c.text)}"><span class="t-st ${c.st}" aria-hidden="true" style="margin-top:6px"></span><span class="lg-t"><code>${esc(c.text.split('\n')[0])}</code></span></li>`).join('')}</ul>`);
@@ -334,6 +354,7 @@ function setToolResult(root, id, result) {
   d.querySelector('.t-time').textContent = '';
   d.querySelector('.t-res').innerHTML = toolResultHtml(result);
   ledgerResult(d._view, result);
+  picsFromTool(d.closest('.turn'), d._view, result);
   if (d.dataset.name === 'Artifact') {
     const cards = artifactCards(result.text, learnArtifact(d._view, result), d.closest('.turn'));
     if (cards) d.closest('.tools').insertAdjacentHTML('afterend', `<div class="arts">${cards}</div>`);
@@ -343,7 +364,7 @@ function setToolResult(root, id, result) {
 // When a reply is done, its steps fold to their one line (click it to see them).
 function foldSteps(src) {
   const prov = provFor(src);
-  const turn = [...$c('cFeed').querySelectorAll('.turn')].filter(t => (t.dataset.prov || C.provider) === prov).pop();
+  const turn = lastTurnOf(prov);
   if (!turn) return;
   for (const g of turn.querySelectorAll('.tools')) if (g.querySelectorAll('.tool').length >= 3 && !g._opened) { g.classList.add('folded'); updateGroup(g); }
 }
@@ -352,7 +373,7 @@ const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']);
 function stepsSummary(g) {
   const steps = [...g.querySelectorAll('.tool')].map(d => ({ name: d.dataset.name, v: d._view || {}, st: d.querySelector('.t-st').className }));
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-  const edited = [...new Set(steps.filter(x => FILE_TOOLS.has(x.name)).map(x => base((x.v.meta && x.v.meta.path) || x.v.summary || '')).filter(Boolean))];
+  const edited = [...new Set(steps.filter(x => FILE_TOOLS.has(x.name)).flatMap(x => (x.v.meta && x.v.meta.paths && x.v.meta.paths.length ? x.v.meta.paths : [(x.v.meta && x.v.meta.path) || x.v.summary || ''])).map(base).filter(Boolean))];
   const cmds = steps.filter(x => x.name === 'Bash' || x.name === 'PowerShell').length;
   const reads = steps.filter(x => READ_TOOLS.has(x.name)).length;
   const web = steps.filter(x => /^Web/.test(x.name)).length;
@@ -405,7 +426,10 @@ function lastTurn(root, make) {
   t.dataset.prov = prov;
   const relay = duo(), mine = prov === C.provider, them = PROV_NAME[mine ? partnerProv() : C.provider];
   const acts = `<button type="button" class="ta" data-c="copyturn" title="Copy this reply, as Markdown">Copy</button>
+      ${prov === 'claude' && C.provider === 'claude' && !C.watch ? '<button type="button" class="ta" data-c="branch" title="Start a new chat from the end of this reply (this one stays as it is)">Branch from here</button>' : ''}
+      <button type="button" class="ta" data-c="followup" title="Queue a follow-up from this reply as a task (select part of it first to use just that)">Follow up later</button>
       ${prov === 'claude' && C.provider === 'claude' && codexOK() ? '<button type="button" class="ta rv" data-c="review" title="Codex reviews the changes so far, in a read-only sandbox">Review with Codex</button>' : ''}
+      ${prov === 'codex' && claudeReviewOK() ? '<button type="button" class="ta rv" data-c="review" data-by="claude" title="Claude reviews the changes so far, and is asked not to change anything">Review with Claude</button>' : ''}
       ${relay ? `<button type="button" class="ta relay" data-c="relay" title="Quote this to ${them}${mine && them === 'Codex' ? ', for an image, a test or a second opinion' : ''}">${mine ? `Ask ${them}` : `Send to ${them}`}</button>` : ''}`;
   // The same buttons twice: beside the name (with a mouse, on hover) and under the reply (on a phone,
   // where you finish reading; it stays last however the reply grows).
@@ -413,8 +437,18 @@ function lastTurn(root, make) {
   root.appendChild(t);
   return t;
 }
+// The newest reply from one of them: searched back from the end of the feed, where it nearly always
+// is, instead of through every turn (which grows all day in a long chat).
+function lastTurnOf(prov) {
+  for (let el = $c('cFeed').lastElementChild; el; el = el.previousElementSibling) if (el.classList.contains('turn') && (el.dataset.prov || C.provider) === prov) return el;
+  return null;
+}
+// Reply parts by their message id, so each streamed piece finds its place without a search.
+const PARTS = new Map();
 function part(root, mid, model) {
-  let p = mid ? root.querySelector(`.part[data-mid="${CSS.escape(mid)}"]`) : null;
+  let p = mid ? PARTS.get(mid) : null;
+  if (p && !root.contains(p)) p = null;
+  if (!p && mid && !liveRender) p = root.querySelector(`.part[data-mid="${CSS.escape(mid)}"]`);
   if (p) return p;
   const had = !!lastTurn(root, false);
   const turn = lastTurn(root, true);
@@ -422,7 +456,7 @@ function part(root, mid, model) {
   if (!p) {
     p = document.createElement('div');
     p.className = liveRender && had ? 'part fresh' : 'part';
-    if (mid) p.dataset.mid = mid;
+    if (mid) { p.dataset.mid = mid; PARTS.set(mid, p); }
     p.innerHTML = '<div class="final"></div><div class="md live"></div>';
     turn.appendChild(p);
   }
@@ -431,12 +465,12 @@ function part(root, mid, model) {
 // A picture Codex is making or made.
 function genImage(b, develop) {
   const src = b.src || (b.path ? imageUrl(b.path) : null);
-  const frame = src ? `<button type="button" class="thumb gen-img" data-full="${esc(src)}"><img src="${esc(src)}" alt="${esc(b.prompt || 'Generated image')}"></button>`
+  const frame = src ? `<button type="button" class="thumb gen-img" data-full="${esc(src)}"><img src="${esc(src)}" alt="${esc(b.prompt || 'Generated image')}" onerror="this.closest('.gen').classList.add('gone')"></button>`
     : b.status === 'failed' ? `<div class="gen-wait failed">${esc(b.failure || 'The image couldn’t be made.')}</div>`
     : '<div class="gen-wait"><span class="gen-spin" aria-hidden="true"></span>Drawing the image…</div>';
   const give = b.path && C.provider === 'claude' ? `<button type="button" class="btn sm codexbtn" data-giveimg="${esc(b.path)}" title="Attach this picture to your next message to Claude">Give to Claude</button>` : '';
   const acts = b.path ? `<div class="gen-act">${give}<button type="button" class="btn quiet sm" data-file="${esc(b.path)}">Open</button><button type="button" class="btn quiet sm" data-reveal="${esc(b.path)}">Show in folder</button><button type="button" class="btn quiet sm" data-copy="${esc(b.path)}">Copy path</button></div>` : '';
-  return `<figure class="gen ${b.status || ''} ${develop && src ? 'develop' : ''}" data-gid="${esc(b.id || '')}"><div class="gen-frame">${frame}</div>${b.prompt ? `<figcaption>${esc(b.prompt)}</figcaption>` : ''}${acts}</figure>`;
+  return `<figure class="gen ${b.status || ''} ${develop && src ? 'develop' : ''}" data-gid="${esc(b.id || '')}"><div class="gen-frame">${frame}</div><p class="gen-gone">This picture can’t be shown here; it may have moved or been deleted.</p>${b.prompt ? `<figcaption>${esc(b.prompt)}</figcaption>` : ''}${acts}</figure>`;
 }
 function addBlock(p, b, live) {
   const fin = p.querySelector('.final');
@@ -445,6 +479,7 @@ function addBlock(p, b, live) {
     // A picture that finishes while you watch develops in place.
     const develop = liveRender && !!(old && !old.querySelector('img'));
     if (old) old.outerHTML = genImage(b, develop); else fin.insertAdjacentHTML('beforeend', genImage(b, liveRender));
+    picShown(p.closest('.turn'), b.path);
     if (b.path) { L.images.set(b.path, b.prompt || base(b.path)); renderLedgerSoon(); }
     return;
   }
@@ -458,6 +493,7 @@ function addBlock(p, b, live) {
     }
     const te = toolEl(b, live); if (liveRender) te.classList.add('fresh');
     g.appendChild(te);
+    if (b.result) picsFromTool(p.closest('.turn'), b);
     // From history, a finished reply's steps start folded to their one line.
     if (!liveRender && g.querySelectorAll('.tool').length >= 3) g.classList.add('folded');
     if (b.result && b.name === 'Artifact') { const cards = artifactCards(b.result.text, learnArtifact(b, b.result), p.closest('.turn')); if (cards) g.insertAdjacentHTML('afterend', `<div class="arts">${cards}</div>`); }
@@ -475,6 +511,7 @@ function addBlock(p, b, live) {
   div.innerHTML = md(b.text);
   RAW.set(div, b.text);
   fin.appendChild(div);
+  picsFromText(p.closest('.turn'), div);
   if (cards) fin.insertAdjacentHTML('beforeend', `<div class="arts">${cards}</div>`);
 }
 // The markdown behind each reply and message, for copying, quoting and exporting.
@@ -487,6 +524,7 @@ function renderItem(root, it, live) {
     // From the partner's side: your message to Codex in a Claude chat (or to Claude in a Codex chat).
     const toPartner = provNow() !== C.provider;
     const sh = splitShared(it.text);
+    const oc = splitOther(sh.own); sh.own = oc.own;
     // "Both": your message, passed on once the first one answered it. A hand-over, not your words again.
     if (toPartner && (it.relay || /sent the message below to both of you/.test(sh.context))) { root.insertAdjacentHTML('beforeend', handoverHtml(provNow(), sh)); return; }
     // A nudge from the Commander arrives as "From Commander: …"; it's marked, not shown as yours.
@@ -500,7 +538,7 @@ function renderItem(root, it, live) {
     const text = sh.own.split('\n').filter(l => { const m = l.trim().match(ATTACH_LINE); if (m) files.push([m[1], m[2] || '']); return !m; }).join('\n').trim();
     RAW.set(d, sh.own);
     d._at = at;
-    d.innerHTML = `${toPartner ? `<span class="to-tag">to ${PROV_NAME[provNow()]}</span>` : ''}${cmdr ? '<span class="to-tag cmdr-tag">from Commander</span>' : ''}${sh.context ? `<details class="shared"><summary>${PROV_NAME[provNow()]} was caught up on ${sh.items ? `${sh.items} message${sh.items === 1 ? '' : 's'}` : 'the conversation'}</summary><div class="sh-body">${plain(sh.context)}</div></details>` : ''}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
+    d.innerHTML = `${toPartner ? `<span class="to-tag">to ${PROV_NAME[provNow()]}</span>` : ''}${cmdr ? '<span class="to-tag cmdr-tag">from Commander</span>' : ''}${sh.context ? `<details class="shared"><summary>${PROV_NAME[provNow()]} was caught up on ${sh.items ? `${sh.items} message${sh.items === 1 ? '' : 's'}` : 'the conversation'}</summary><div class="sh-body">${plain(sh.context)}</div></details>` : ''}${otherChatsHtml(oc.chats)}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
     root.appendChild(d);
   } else if (it.kind === 'assistant') {
     const mi = C.mi[provNow() !== C.provider ? 'comp' : 'main'];
