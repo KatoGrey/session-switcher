@@ -606,7 +606,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'compact': return compactNow(c.dataset.src || 'main');
       case 'chgview': return viewChanges(c.closest('.chg'));
       case 'chgundo': return undoChanges(c.closest('.chg'));
-      case 'review': return startReview(c.dataset.base || null);
+      case 'review': return startReview(c.dataset.base || null, c.dataset.by || 'codex');
       case 'limitas': return continueAs(c.dataset.acct);
       case 'limitcodex': return handToCodex();
       case 'limitwait': { const card = c.closest('.limit-card'); return card && card._ev ? waitForReset(card._ev) : undefined; }
@@ -759,7 +759,10 @@ function chatHeadItems() {
   const id = C.sessionId;
   return [
     ...(id ? [{ glyph: window.isFav(id) ? '☆' : '★', label: window.isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => window.toggleFav(id) }, '-'] : []),
-    ...(reviewAvailable() ? [{ glyph: '◆', label: 'Have Codex review the changes', hint: 'read-only', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview() }, '-'] : []),
+    ...(reviewAvailable() ? [{ glyph: '◆', label: 'Have Codex review the changes', hint: 'read-only', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview() }] : []),
+    ...(claudeReviewOK() ? [{ glyph: '◇', label: 'Have Claude review the changes', hint: 'asked not to change anything', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'claude') }] : []),
+    ...(claudeReviewOK() && codexOK() ? [{ glyph: '◈', label: 'Have both review the changes', hint: 'one card, where they agree first', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'both') }] : []),
+    ...(reviewAvailable() || claudeReviewOK() ? ['-'] : []),
     ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; close(); popOutChat(sid); } }] : []),
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
     { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },
@@ -891,6 +894,8 @@ window.ChatUI = {
     if ($c('chat').hidden || C.watch) return [];
     const out = [];
     if (reviewAvailable() && C.state !== 'ended') out.push({ glyph: '◆', t: 'Have Codex review this chat’s changes', s: 'in a read-only sandbox', run: () => startReview(), text: 'review code codex check changes second opinion bugs' });
+    if (claudeReviewOK() && C.state !== 'ended') out.push({ glyph: '◇', t: 'Have Claude review this chat’s changes', s: 'in its own chat', run: () => startReview(null, 'claude'), text: 'review code claude check changes second opinion bugs' });
+    if (claudeReviewOK() && codexOK() && C.state !== 'ended') out.push({ glyph: '◈', t: 'Have both review this chat’s changes', s: 'where they agree comes first', run: () => startReview(null, 'both'), text: 'review both dual code check changes agree' });
     for (const src of duo() ? ['main', 'comp'] : ['main']) {
       const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
       if (src === 'comp' && (!mi || !mi.models)) { out.push({ glyph: '◆', t: `Choose ${name}’s model…`, s: `${name}, in this chat`, run: () => openPick('comp'), text: `${name.toLowerCase()} model switch effort` }); continue; }

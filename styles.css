@@ -2094,6 +2094,11 @@ dialog.confirm-dlg{width:min(480px,calc(100vw - 32px))}
 /* ---------- Codex reviews Claude's work ---------- */
 .turn:not(.edits) .ta.rv{display:none}
 .ta.rv{color:rgb(var(--c-6f97d8))}
+.ta.rv[data-by="claude"]{color:var(--ember)}
+.rv-by{margin-left:auto;flex:none;padding:2px 7px;border-radius:999px;font:600 10px/1.3 var(--f-label);letter-spacing:.08em;text-transform:uppercase;border:1px solid currentColor;color:var(--ash)}
+.rv-by.both{color:var(--gilt);background:rgb(var(--c-d9bf74) / .1)}
+.rv-by.claude{color:var(--ember)}
+.rv-by.codex{color:rgb(var(--c-6f97d8))}
 .review{margin:16px 0;padding:14px 16px 12px;border:1px solid rgb(var(--c-6f97d8) / .4);border-left:3px solid rgb(var(--c-6f97d8));border-radius:8px;background:rgb(var(--c-6f97d8) / .05)}
 .rv-h{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 9px;margin:0 0 8px;font-size:15px}
 .rv-g{color:rgb(var(--c-6f97d8))}

@@ -63,3 +63,22 @@ test('reviewloop: one at a time per chat, and not while Claude is busy', async (
   assert.throws(() => loop.start(busy, { id: 'r0', what: 'x', findings: [finding('Z')] }), /busy/);
   c.finish();
 });
+
+/* ---------- reviews both ways (lib/review.js) ---------- */
+const { reviewAsk, parseFindings, mergeFindings } = require('../lib/review');
+
+test('review: Claude is asked for findings as JSON, and its answer is read back', () => {
+  const ask = reviewAsk({ target: { type: 'uncommittedChanges' } }, 'Add a save system');
+  assert.match(ask, /git diff HEAD/);
+  assert.match(ask, /What was asked for: Add a save system/);
+  assert.match(ask, /Don't change any files/);
+  const r = parseFindings('Mostly solid.\n```json\n{"findings":[{"title":"Save can overwrite","file":"save.lua","start":"40","priority":"P1"},{"nope":1}]}\n```');
+  assert.equal(r.overall, 'Mostly solid.');
+  assert.deepEqual(r.findings.map(f => [f.title, f.file, f.start, f.priority]), [['Save can overwrite', 'save.lua', 40, 'P1']]);
+  assert.deepEqual(parseFindings('No JSON here, all good.').findings, []);
+});
+
+test('review: a dual review marks what both found, and puts it first', () => {
+  const m = mergeFindings([{ title: 'Off by one', file: 'a.js', start: 10, priority: 'P2' }, { title: 'Slow loop', file: 'b.js' }], [{ title: 'Index error', file: 'A.js', start: 12 }, { title: 'Typo', file: 'c.js', priority: 'P3' }]);
+  assert.deepEqual(m.map(f => `${f.by}:${f.title}`), ['both:Off by one', 'claude:Typo', 'codex:Slow loop']);
+});

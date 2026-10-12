@@ -1101,6 +1101,13 @@ module.exports = [
       t.check('Plan first is a choice under the message box', pf.pill && /Plan first/.test(pf.placeholder) && pf.sent && pf.sent.to === 'plan' && pf.sent.text === 'Add a save system.', pf);
       t.check('one card follows it: drafting, then who builds it, under the plan', /Claude is drafting a plan; Codex checks it next/.test(pf.drafting) && /checked by Codex\. Who builds it\?/.test(pf.ready) && pf.last, pf);
       t.check('picking a builder sends it the go-ahead', pf.build && pf.build.to === 'partner' && /Build it as planned above/.test(pf.build.text) && /Codex is building it/.test(pf.after), pf);
+      // Reviews both ways: a dual review card shows who found each finding, and fixes go to the writer.
+      const rv = await b.eval(`handle({ kind: 'review', id: 'dual1', by: 'both', what: 'your uncommitted changes', state: 'done', overall: 'Both found one problem.', findings: [{ title: 'Off by one', by: 'both', file: 'a.js', start: 10 }, { title: 'Typo', by: 'claude' }], seq: 950 });
+        handle({ kind: 'review', id: 'cl1', by: 'claude', what: 'the last commit', state: 'done', overall: 'One thing.', findings: [{ title: 'Missing check' }], seq: 951 });
+        const d = document.querySelector('.review[data-rid="dual1"]'), c = document.querySelector('.review[data-rid="cl1"]');
+        return { dualHead: d.querySelector('.rv-h').textContent, tags: [...d.querySelectorAll('.rv-by')].map(x => x.textContent), clHead: c.querySelector('.rv-h').textContent, fix: c.querySelector('[data-c="rvfixall"]').textContent, loop: !!c.querySelector('[data-c="rvloop"]') }`);
+      t.check('a dual review marks what both found', /Dual review/.test(rv.dualHead) && rv.tags.join() === 'Both found this,Claude', rv);
+      t.check('Claude’s review of Codex’s work sends the fixes to Codex', /Claude review/.test(rv.clHead) && /Ask Codex to fix/.test(rv.fix) && !rv.loop, rv);
     },
   },
   {

@@ -23,7 +23,7 @@ const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
-const { reviewTarget, fixText } = require('./lib/review');
+const { reviewTarget, fixText, reviewAsk, parseFindings, mergeFindings } = require('./lib/review');
 const { createReviewLoop } = require('./lib/reviewloop');
 const rulesLib = require('./lib/rules');
 const store = require('./lib/store');
@@ -591,11 +591,11 @@ async function copyTool(name, to, cwd) {
 
 // Codex reviews a chat's work; progress and the result arrive in that chat as 'review' events.
 // `done` settles with the outcome ({ state: 'done', findings } or { state: 'failed' }).
-async function runReview(chat, files, base) {
+async function runReview(chat, files, base, { quiet = false } = {}) {
   requireCodexSignedIn();
   const t = await reviewTarget(chat.cwd, files, base);
   const id = crypto.randomBytes(6).toString('hex');
-  const ev = extra => chat.emit({ kind: 'review', id, what: t.what, base: t.base, ...extra });
+  const ev = extra => { if (!quiet) chat.emit({ kind: 'review', id, by: 'codex', what: t.what, base: t.base, ...extra }); };
   ev({ state: 'running', progress: 'Starting…' });
   let last = 0;
   const done = codexActive().review({
@@ -605,7 +605,48 @@ async function runReview(chat, files, base) {
     .catch(err => { ev({ state: 'failed', error: err.message }); log(`Review failed: ${err.message}`); return { state: 'failed', findings: [] }; });
   return { id, what: t.what, base: t.base, done };
 }
-async function startReview(chat, files, base) { const r = await runReview(chat, files, base); return { id: r.id, what: r.what, base: r.base }; }
+// Claude reviews (usually Codex's work): asked in its own chat, it answers with its findings as JSON
+// (lib/review.js), which arrive as the same kind of review card. quiet: no card of its own (a dual review).
+async function runClaudeReview(chat, files, base, { quiet = false, ask = '' } = {}) {
+  const lead = pairs.leadOf(chat);
+  const claude = (lead.provider || 'claude') === 'claude' ? lead : await pairs.ensure(lead);
+  const t = await reviewTarget(lead.cwd, files, base);
+  const id = crypto.randomBytes(6).toString('hex');
+  const ev = extra => { if (!quiet) lead.emit({ kind: 'review', id, by: 'claude', what: t.what, base: t.base, ...extra }); };
+  ev({ state: 'running', progress: 'Claude is reading the changes…' });
+  const sentAt = new Date().toISOString();
+  const done = (async () => {
+    await pairs.send(claude, reviewAsk(t, ask));
+    const end = await claude.turnDone();
+    if (end.kind === 'ended' || end.ok === false) throw new Error('Claude stopped before finishing the review.');
+    const text = claude.buffer.filter(e => e.kind === 'assistant' && e.at >= sentAt).flatMap(e => (e.blocks || []).filter(b => b.type === 'text').map(b => b.text)).join('\n\n');
+    const r = parseFindings(text);
+    ev({ state: 'done', overall: r.overall, findings: r.findings });
+    log(`Claude's review of ${t.what} in ${lead.cwd}: ${r.findings.length} finding${r.findings.length === 1 ? '' : 's'}.`);
+    return { state: 'done', overall: r.overall, findings: r.findings };
+  })().catch(err => { ev({ state: 'failed', error: err.message }); return { state: 'failed', findings: [] }; });
+  return { id, what: t.what, base: t.base, done };
+}
+// Both review the same changes at once; one card shows every finding, marking those they both made.
+async function runBothReview(chat, files, base) {
+  const lead = pairs.leadOf(chat);
+  const t = await reviewTarget(lead.cwd, files, base);
+  const id = crypto.randomBytes(6).toString('hex');
+  const ev = extra => lead.emit({ kind: 'review', id, by: 'both', what: t.what, base: t.base, ...extra });
+  ev({ state: 'running', progress: 'Codex and Claude are both reviewing…' });
+  const [cx, cl] = await Promise.all([runReview(lead, files, base, { quiet: true }), runClaudeReview(lead, files, base, { quiet: true })]);
+  Promise.all([cx.done, cl.done]).then(([a, b]) => {
+    if (a.state === 'failed' && b.state === 'failed') return ev({ state: 'failed', error: 'Neither review finished.' });
+    const findings = mergeFindings(a.findings || [], b.findings || []);
+    const agree = findings.filter(f => f.by === 'both').length;
+    ev({ state: 'done', findings, overall: `${a.state === 'failed' ? 'Codex’s review didn’t finish. ' : ''}${b.state === 'failed' ? 'Claude’s review didn’t finish. ' : ''}${findings.length ? `${agree ? `Both found ${agree === 1 ? 'one problem' : `${agree} problems`}; those come first.` : 'They found different things.'}` : 'Neither found a problem.'}` });
+  });
+  return { id, what: t.what, base: t.base, done: null };
+}
+async function startReview(chat, files, base, by = 'codex') {
+  const r = by === 'both' ? await runBothReview(chat, files, base) : by === 'claude' ? await runClaudeReview(chat, files, base) : await runReview(chat, files, base);
+  return { id: r.id, what: r.what, base: r.base };
+}
 
 // "Fix and recheck until clean" (lib/reviewloop.js), run here so it carries on whatever the window does.
 const reviewLoop = createReviewLoop({ send: (chat, text) => pairs.send(chat, text), review: runReview, fixText });
@@ -1609,7 +1650,7 @@ async function handleChat(req, res, url, body, c) {
       if (r && r.restored && r.restored.length) (chat.undoneFiles || (chat.undoneFiles = [])).push(r.restored);
       return send(res, 200, r);
     }
-    case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base));
+    case '/api/chat/review': return send(res, 200, await startReview(chats.get(body.key), body.files, body.base, ['claude', 'both'].includes(body.by) ? body.by : 'codex'));
     // stop: stop after the current step; otherwise start, from a finished review with findings.
     case '/api/chat/review-loop': {
       const chat = chats.get(body.key);
