@@ -997,3 +997,4 @@ blockquote p { margin: 4px 0; }
 .fam-n:hover { color: var(--fg); background: var(--hover); }
 .fam-n .fam-caret { width: auto; font-size: 12px; }
 .fam-n .dot, .fam-n .live-dot { margin-right: 2px; }
+.usage .bar + .top { margin-top: 4px; }

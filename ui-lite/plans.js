@@ -142,12 +142,12 @@ function addReset(planId, anchor) {
 
 // The sidebar chip: which plan to use next, at a glance.
 function renderChip() {
-  const p = useNext('chatgpt') || useNext('claude') || metered()[0];
-  if (!p) { $('chipWho').textContent = 'This week'; $('chipNote').textContent = S.plans ? 'No plan has room above the floor' : 'Reading plans…'; $('chipBar').style.width = '0%'; return; }
-  $('chipWho').textContent = 'Current';
-  $('chipNote').textContent = `${p.label} ${famName(p.family)} · ${p.left}%${p.resetsAt ? ` · ${wd(p.resetsAt)}` : ''}`;
-  $('usageBtn').title = `Current plan (next in the use-next order): ${p.label} ${famName(p.family)}, ${p.left}% left${p.resetsAt ? `, resets ${dayName(p.resetsAt)}` : ''}`;
-  $('chipBar').style.width = p.left + '%';
+  // The plan each family is on now (next in its use-next order): Claude first, then ChatGPT.
+  const on = ['claude', 'chatgpt'].map(useNext).filter(Boolean);
+  const btn = $('usageBtn');
+  if (!on.length) { btn.innerHTML = `<span class="top"><span class="who">This week</span><small>${S.plans ? 'No plan has room above the floor' : 'Reading plans…'}</small></span><span class="bar"><i style="width:0%"></i></span>`; return; }
+  btn.innerHTML = on.map(p => `<span class="top"><span class="who">${esc(famName(p.family))}</span><small>${esc(p.label)} · ${p.left}%${p.resetsAt ? ` · ${wd(p.resetsAt)}` : ''}</small></span><span class="bar"><i style="width:${p.left}%"></i></span>`).join('');
+  btn.title = `Plans in use now: ${on.map(p => `${p.label} ${famName(p.family)}, ${p.left}% left${p.resetsAt ? `, resets ${dayName(p.resetsAt)}` : ''}`).join('; ')}`;
 }
 
 /* ---------- signing a Claude account in, without a terminal ----------
