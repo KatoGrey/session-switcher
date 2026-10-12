@@ -2,7 +2,7 @@
 /* The sidebar (pages, bucket switcher, status labels with quiet folding), routing (with real browser
    history, so back and forward work), redraws, and every click and drag on the page. */
 
-const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'routines', 'routine', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
+const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'automation', 'routines', 'routine', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
 const small = () => matchMedia('(max-width: 760px)').matches;
 
 function sideChat(c, depth = 0) {
@@ -33,6 +33,7 @@ function renderSide() {
       ${nav('hack', IC.flag, 'Hackathon', `<span class="n">${esc(hackLabel())}</span>`)}
       ${nav('routines', IC.clock, 'Routines', (n => (n ? `<span class="badge">${n}</span>` : ''))(rtEventsOpen().filter(e => e.kind !== 'ran').length))}
       ${nav('bugs', IC.bug, 'Bugs', (n => (n ? `<span class="n">${n}</span>` : ''))(bugList().filter(c => statusOf(c) !== 'done').length))}
+      ${nav('automation', IC.clock, 'Automation', (n => (n ? `<span class="n">${n}</span>` : ''))(automationList().filter(c => Date.now() - c.updated < 864e5).length))}
     </div>
     <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
   const focusSt = { id: 'focus', name: 'Focus', c: 'var(--st-priority)' };
@@ -50,8 +51,20 @@ function renderSide() {
   const nArch = S.chats.filter(c => c.archived).length + S.projects.filter(p => p.archived).length;
   const mode = S.sideMode || 'projects';
   const modeSeg = `<span class="side-seg" role="group" aria-label="Sidebar shows"><button data-sidemode="projects" aria-pressed="${mode === 'projects'}">Projects</button><button data-sidemode="stages" aria-pressed="${mode === 'stages'}">Status</button></span>`;
-  $('sideScroll').innerHTML = top + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders : sideProjects(chats)}</div>`
+  $('sideScroll').innerHTML = top + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders : sideBugs(chats) + sideProjects(chats.filter(c => !isBug(c)))}</div>`
     + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`;
+}
+
+// Open bugs, together above the projects (their own group, whatever project they're in).
+function sideBugs(chats) {
+  const open = chats.filter(c => isBug(c) && statusOf(c) !== 'done' && isTop(c));
+  if (!open.length) return '';
+  const folded = !!S.folded['p:__bugs'];
+  const shown = open.slice(0, S.more['all-bugs'] ? 400 : 10);
+  return `<div class="group folder" data-folded="${folded}">
+    <button class="nav-i folder-btn" data-foldproj="__bugs" aria-expanded="${!folded}"><span class="ic">${IC.bug}</span><span class="lbl">Bugs</span><span class="n">${open.length}</span></button>
+    <div class="folder-items">${shown.map(c => sideChat(c)).join('')}${open.length > shown.length ? `<button class="nav-i chat-i quiet-toggle" data-more-all="bugs"><span class="lbl">${open.length - shown.length} more</span></button>` : ''}</div>
+  </div>`;
 }
 
 // The sidebar by project (the default): each project with its chats, Focus first. In buckets where
@@ -114,7 +127,7 @@ function sideChatDot(c) {
   return sideChat(c).replace('<span class="lbl">', `<span class="st-dot" style="background:${st.c}" title="${st.name}"></span><span class="lbl">`);
 }
 
-const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), bugs: () => bugsView(), routines: () => routinesView(), routine: () => routineEditorView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
+const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), bugs: () => bugsView(), automation: () => automationView(), routines: () => routinesView(), routine: () => routineEditorView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
 function render() {
   famMemo = null;
   applyLook();
@@ -293,6 +306,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-quietproj]'))) { S.more.quietProj = !S.more.quietProj; return renderSide(); }
   if ((b = el('[data-fold]'))) { S.folded[b.dataset.fold] = b.getAttribute('aria-expanded') === 'true'; local.set('folded', S.folded); return renderSide(); }
   if ((b = el('[data-more-st]'))) { S.more[b.dataset.moreSt] = !S.more[b.dataset.moreSt]; return renderSide(); }
+  if ((b = el('[data-automore]'))) { S.more['auto-all'] = true; return render(); }
   if ((b = el('[data-more-all]'))) { S.more['all-' + b.dataset.moreAll] = true; return renderSide(); }
   if ((b = el('[data-pfold]'))) { S.more['p-done'] = !S.more['p-done']; return render(); }
   if ((b = el('[data-bfold]'))) { S.more['b-done'] = !S.more['b-done']; return render(); }

@@ -170,6 +170,28 @@ function bugsView() {
     ${sections || '<p class="empty-note">No bugs. A chat becomes one from its menu (Kind → Bug), and new chats about fixing something are guessed as bugs.</p>'}${selHint()}</div>`;
 }
 
+/* ---------- Automation: runs started by routines, scripts and other agents ---------- */
+const AUTO_GROUPS = [
+  ['routine', 'Routine runs', 'Each scheduled run of a routine.'],
+  ['helper', 'Helper runs', 'Codex runs other chats started (codex exec), like GPT Sol doing research or a fix for an Opus chat.'],
+  ['script', 'Script runs', 'Claude Code runs started from a script (claude -p), like GLM gathering for a sweep.'],
+  ['starter', 'Starter chats', 'Chats Lite started on its own, like starting a plan\'s week.'],
+];
+function automationView() {
+  const all = automationList();
+  const kindOfRun = c => c.autoKind || (c.routineRun ? 'routine' : 'helper');
+  const shown = S.more['auto-all'] ? 400 : 25;
+  const sections = AUTO_GROUPS.map(([k, name, hint]) => {
+    const list = all.filter(c => kindOfRun(c) === k);
+    if (!list.length) return '';
+    return `<section class="section"><div class="sec-h"><h2>${name}</h2><span class="n">${list.length}</span></div><p class="hint-line">${hint}</p>
+      <div class="rows">${list.slice(0, shown).map(c => rowHtml(c, { showProject: true })).join('')}</div>${list.length > shown ? `<button class="linkish" data-automore="1">Show all ${list.length}</button>` : ''}</section>`;
+  }).join('');
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Automation</h1></div></div>
+    <p class="hint-line" style="margin-top:-12px">Runs started by routines, scripts and other agents. They stay out of your projects so they don't crowd your own chats; open any of them here, or archive the ones you're done with.</p>
+    ${sections || '<p class="empty-note">Nothing yet. Routine runs, helper runs and script runs show up here.</p>'}</div>`;
+}
+
 /* ---------- Archived: out of every list, never deleted ---------- */
 function archivedView() {
   const recs = S.lite.archived.chats || {};

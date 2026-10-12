@@ -920,3 +920,11 @@ body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr
 .ci-passing { background: #3f9a5c; } .ci-pending { background: #d29b2a; } .ci-failing { background: #d0453b; }
 .tag.warn { color: #b8442f; border-color: currentColor; }
 @media (max-width: 760px) { .pipe { grid-template-columns: minmax(0, 1fr); } }
+
+/* Phone: once a page has slid over the sidebar, hide the sidebar, so an overscroll or the keyboard
+   moving the page can't show it behind. It comes back the moment you go back. */
+@media (max-width: 760px) {
+  body.in-main .side { visibility: hidden; transition: visibility 0s linear .25s; }
+  body:not(.in-main) .side { visibility: visible; transition: none; }
+  html, body { background: var(--bg); overscroll-behavior: none; }
+}
