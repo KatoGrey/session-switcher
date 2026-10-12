@@ -258,6 +258,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-unqueue]'))) { CV.queue.splice(Number(b.dataset.unqueue), 1); paintQueue(); return undefined; }
   if ((b = el('[data-rtnew]'))) return newRoutine(b.dataset.rtnew);
   if ((b = el('[data-rtmenu]'))) { e.stopPropagation(); return routineMenu(b, b.dataset.rtmenu); }
+  if ((b = el('[data-inrepo]'))) { CV.inRepo = true; COMP.perm = 'read-only'; const g = $('folderGone'); if (g) g.outerHTML = folderNotice(); if (typeof paintBar === 'function') paintBar(); $('msgBox')?.focus(); return undefined; }
   if ((b = el('[data-evseen]'))) { e.stopPropagation(); return wrap(seeEvents)(b.dataset.evseen === 'all' ? 'all' : b.dataset.evseen.split(',')); }
   if ((b = el('[data-rtrun]'))) { e.stopPropagation(); return openChat(b.dataset.rtrun, { provider: b.dataset.prov === 'codex' ? 'codex' : null }); }
   if ((b = el('[data-rtproj]'))) { readRoutineForm(); return pickProject(b, k => { const p = projBy.get(k); if (p && p.cwd) { S.rtEdit.cwd = p.cwd; render(); } }); }

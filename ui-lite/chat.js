@@ -71,7 +71,7 @@ function chatTitle() { const c = chatBy.get(CV.id); return c ? c.title : (CV.inf
 
 async function openChatView(id, { key = null, provider = null } = {}) {
   if (CV.es) { CV.es.close(); CV.es = null; }
-  Object.assign(CV, { id, key, info: null, items: [], queue: queueFor(id), cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
+  Object.assign(CV, { id, key, inRepo: false, info: null, items: [], queue: queueFor(id), cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
   resetComposer();
   const c = chatBy.get(id);
   CV.provider = provider || (c ? c.provider : 'claude');
@@ -272,6 +272,11 @@ function folderNotice() {
   const dir = c.runDir || c.cwd || '';
   const scratch = /[\\/]scratch-workspaces[\\/]/.test(dir);
   const where = scratch ? 'This chat ran in a Claude scratch folder, which was cleaned up.' : `It ran in <span class="mono">${esc(dir.replace(/^\/Users\/[^/]+/, '~'))}</span>, which was deleted or moved.`;
+  if (c.runIsWorktree && c.provider === 'codex') {
+    if (CV.inRepo) return `<div class="folder-gone" id="folderGone"><p><b>Asking from the main checkout, read-only.</b> It can look things up (GitHub, Slack, the repo) but won’t change files there. Its branch’s own files aren’t in that folder.</p></div>`;
+    return `<div class="folder-gone" id="folderGone"><p><b>Its worktree is gone.</b> ${where} You can still ask it things from the main checkout (read-only), or archive it and rebuild the worktree on the Archived page.</p>
+    <button class="btn sm prime" data-inrepo="1">Ask from the main checkout</button></div>`;
+  }
   if (c.runIsWorktree) return `<div class="folder-gone" id="folderGone"><p><b>Its worktree is gone.</b> ${where} Archive the chat, then rebuild the worktree from its branch on the Archived page.</p></div>`;
   return `<div class="folder-gone" id="folderGone"><p><b>Its folder is gone.</b> ${where} Make the folder again (empty) and the chat carries on with its whole history; files that were in that folder are gone${scratch ? ', but work it did in your repos is untouched' : ''}.</p>
     <button class="btn sm prime" data-recreate="${esc(c.id)}">Make the folder again</button></div>`;
@@ -580,7 +585,7 @@ async function sendInChat({ fromQueue = false } = {}) {
       const c = chatBy.get(CV.id);
       const claudeAcct = CV.provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
       // An Ollama chat goes back to the Ollama account (its thread isn't OpenAI's).
-      const info = await api('/api/chat/open', { sessionId: CV.id, mode: 'resume', ...(CV.provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
+      const info = await api('/api/chat/open', { sessionId: CV.id, mode: 'resume', ...(CV.inRepo ? { inRepo: true } : {}), ...(CV.provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
       CV.key = info.key; CV.info = info;
       // Already running (picked up from elsewhere): its stream replays this run, so history stops where it starts.
       if (info.attached) { const from = Date.parse(info.bufferFrom || info.startedAt || '') - 1000; if (from) { CV.items = CV.items.filter(x => x === local || !x.at || Date.parse(x.at) < from); paintFeed(); } }
