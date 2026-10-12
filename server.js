@@ -928,7 +928,7 @@ const liteRoutes = createLiteRoutes({
   // provider is said), starting a bug chat from a routine's findings, and the routines API.
   // A chat's recent replies, newest last, joined (for finding things a chat reported earlier, like its PR).
   recentReplies: async (id, provider, turns = 12) => {
-    const items = provider === 'codex' || isCodexId(id) ? ((await codex.history(id, null, null)).items || []) : (await chatLib.readHistory(sessions.fileFor(id), { limit: 60 })).items;
+    const items = provider === 'codex' || isCodexId(id) ? ((await codex.history(id, null, null)).items || []) : (await chatLib.readHistory(sessions.fileFor(id), { limit: 400 })).items;
     const texts = items.filter(it => it.kind === 'assistant').map(it => (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n')).filter(Boolean);
     return texts.slice(-turns).join('\n\n').slice(-120000);
   },
