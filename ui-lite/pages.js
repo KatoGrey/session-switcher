@@ -135,6 +135,12 @@ function bugRow(c) {
   const marks = [];
   if (needs(c)) marks.push('<span class="dot needs-dot" title="Needs you"></span>');
   else if (running(c)) marks.push('<span class="live-dot" title="Working now"></span>');
+  // What its last report said, and whether it has gone quiet.
+  const rep = it && it.report, stage = bugStage(c);
+  if (rep === 'NEEDS-RYAN' || rep === 'READY-FOR-RYAN') marks.push(`<span class="bug-tag you" title="Its last report: ${rep}">${rep === 'READY-FOR-RYAN' ? 'ready for you' : 'your call'}</span>`);
+  else if (rep === 'BLOCKED') marks.push('<span class="bug-tag blocked" title="Its last report: BLOCKED">blocked</span>');
+  const quiet = Math.floor((Date.now() - (c.updated || 0)) / 864e5);
+  if (stage !== 'done' && !running(c) && quiet >= 2) marks.push(`<span class="bug-tag" title="No activity for ${quiet} days">quiet ${quiet}d</span>`);
   if (pr) {
     if (it.stage === 'testers' || it.stage === 'preview') {
       const prev = previewUrl(pr);

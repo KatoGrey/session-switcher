@@ -16,13 +16,20 @@ const permDefault = provider => { const f = permFam(provider); return (S.lite.pe
 function mdHtml(src) {
   const blocks = [];
   let t = String(src || '').replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (m, lang, code) => { blocks.push(`<pre><code>${esc(code.replace(/\n$/, ''))}</code></pre>`); return `\u0000${blocks.length - 1}\u0000`; });
-  const inline = x => esc(x)
-    .replace(/`([^`\n]+)`/g, (m, c) => `<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`)
-    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
-    .replace(/(^|[^*\w])\*([^*\n]+)\*(?=[^*\w]|$)/g, '$1<i>$2</i>')
-    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`)
-    // A link to a file (a relative path, ~/…, /Users/…) opens it beside the chat.
-    .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : `<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`));
+  // Code, links and bare addresses are set aside first, so bold and italics can't reach inside them.
+  const inline = x => {
+    const held = [], hold = h => `\u0001${held.push(h) - 1}\u0001`;
+    return esc(x)
+      .replace(/`([^`\n]+)`/g, (m, c) => hold(`<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`))
+      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => hold(`<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`))
+      // A link to a file (a relative path, ~/…, /Users/…) opens it beside the chat.
+      .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : hold(`<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`)))
+      // A bare address is a link too (without the full stop or bracket that ends its sentence).
+      .replace(/\bhttps?:\/\/[^\s<>"')\]]+/g, u => { const t = u.replace(/(&quot;|&#39;|[.,;:!?*_])+$/, ''); return hold(`<a href="${t}" target="_blank" rel="noopener noreferrer">${t}</a>`) + u.slice(t.length); })
+      .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+      .replace(/(^|[^*\w])\*([^*\n]+)\*(?=[^*\w]|$)/g, '$1<i>$2</i>')
+      .replace(/\u0001(\d+)\u0001/g, (m, i) => held[Number(i)]);
+  };
   const out = [];
   let list = null;
   const flush = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${i}</li>`).join('')}</${list.tag}>`); list = null; } };
