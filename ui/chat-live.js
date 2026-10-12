@@ -395,7 +395,7 @@ function crewPill(src) {
   const f = ctxFill(C.ctx[src]);
   const ring = f === null ? '' : `<span class="crew-ctx ${ctxClass(f)}" style="--p:${Math.round(f * 100)}" aria-hidden="true"></span>`;
   return `<button type="button" class="crew ${prov}${on ? ' on' : ''}${busy ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}" data-crew="${src}" aria-pressed="${on}" title="${esc(tip)}">
-      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${mode && !busy && st !== 'waiting' ? `<span class="crew-mode">${esc(mode)}</span>` : ''}${left !== null && left <= 25 ? `<span class="crew-room${left <= 5 ? ' low' : ''}" title="${esc(room)}">${left}% left</span>` : ''}${ring}${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
+      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${mode && !busy && st !== 'waiting' ? `<span class="crew-mode">${esc(mode)}</span>` : ''}${left !== null && left <= 25 ? `<span class="crew-room${left <= 5 ? ' low' : ''}" title="${esc(room)}">${left}%<span class="cr-l"> left</span></span>` : ''}${ring}${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
 }
 // The partner's permission mode, by its own label ("Ask before acting", Codex's "Agent", …).
 // Percent left on an account's tightest window, or null when it isn't known.

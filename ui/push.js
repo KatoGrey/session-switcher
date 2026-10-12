@@ -71,7 +71,7 @@ function pushBoxHtml() {
     const st = appNotifyState();
     return `${head}<label class="toggle"><input type="checkbox" data-push="app" ${st.on ? 'checked' : ''}><span><b>Notifications on this phone</b><span>When a chat needs your OK, with Allow and Deny right on it, or replies. They come while this phone is on your home Wi-Fi; when you’re back, it shows what’s waiting. Each chat’s alert level and your quiet hours count.</span></span></label>
       ${st.on && !st.allowed ? '<p class="ph-note warn">Android is blocking this app’s notifications. <button class="btn sm" data-push="settings">Allow them</button></p>' : ''}
-      ${st.on && st.allowed && !st.battery ? '<p class="ph-note">To get them straight away while the phone sleeps, let the app run in the background. <button class="btn quiet sm" data-push="battery">Allow</button></p>' : ''}
+      ${st.on && st.allowed && !st.battery ? '<p class="ph-note">To get them straight away while the phone sleeps, let the app run in the background. <button class="btn sm" data-push="battery">Allow</button></p>' : ''}
       ${st.on ? `${repliesField()}<p><button class="btn quiet sm" data-push="test">Send a test</button> <button class="btn quiet sm" data-push="settings">Notification settings</button></p>` : ''}`;
   }
   if (window.Android) return `${head}<p class="ph-note">Update the app to get notifications: <button class="btn sm" data-push="get">Get the new app</button> Download it, open it and install it over this one; your pairing stays.</p>`;

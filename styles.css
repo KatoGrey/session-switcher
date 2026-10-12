@@ -538,6 +538,7 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .ri-s{font:400 11px/1.35 var(--f-label);color:var(--ash);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
 .ri.needs .ri-s{color:var(--gilt)}
 .ri-empty{padding:8px 16px;font:italic 14px var(--f-body);color:var(--ash-2)}
+@media (hover:none){.rail-keys{display:none}}
 .rail-keys{padding:10px 14px 14px;border-top:1px solid var(--seam);font:400 10.5px/1.6 var(--f-label);color:var(--ash-2)}
 
 /* conversation */
@@ -1392,6 +1393,8 @@ dialog.np-dlg{width:min(600px,calc(100vw - 32px));padding:0}
 .ts-steps li{margin:3px 0}
 #pushBox{margin-top:10px}
 #pushBox .ph-note .btn{margin-left:4px}
+#pushBox .toggle + .ph-note{font-size:13.5px;margin:6px 0 0 34px;color:var(--ash)}
+#pushBox .ph-h{margin-top:12px}
 .ts-more{margin:8px 0 0;padding:8px 12px;border:1px solid var(--seam);border-radius:9px}
 .ts-more summary{cursor:pointer;color:var(--parch-2);font-size:14px}
 .ts-more[open] summary{margin-bottom:6px}
@@ -1882,6 +1885,7 @@ body.chat-open #toast{bottom:calc(var(--dock-h, 150px) + 14px)}
 
 /* Setup: a quick way around the Options tab; Quit looks like what it is */
 .setup-toc{position:sticky;top:-24px;z-index:3;display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 10px;padding:10px 0 8px;background:linear-gradient(180deg,rgb(var(--c-1a161d)) 75%,transparent)}
+@media (max-width:640px){.setup-toc{background:rgb(var(--c-1a161d));flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.setup-toc a{flex:none}}
 .setup-toc a{font:500 12px var(--f-label);letter-spacing:.06em;color:var(--ash);text-decoration:none;padding:5px 10px;border:1px solid var(--seam);border-radius:999px}
 .setup-toc a:hover{color:var(--parch);border-color:var(--ash-2)}
 .btn.danger{border-color:rgb(var(--c-cf8274) / .55);color:var(--ember-soft)}
@@ -2348,6 +2352,12 @@ body.solo .c-head .icon.c-backm{display:none}
   .c-crew .crew-m{grid-area:model;justify-self:stretch;text-align:left;font:400 12.5px/1.2 var(--f-body);max-width:none}
   .c-crew .crew-ctx{grid-area:ring}
   .c-crew .crew-caret{grid-area:caret}
+  /* The mode is in the pill's menu; the low-room chip sits beside the name. */
+  .c-crew .crew-mode{display:none}
+  .c-crew .crew:not(.both):has(.crew-room){grid-template-columns:auto auto minmax(0,1fr) auto auto;grid-template-areas:'dot name room ring caret' 'dot model model ring caret'}
+  .c-crew .crew-room{grid-area:room;justify-self:start;margin-left:2px;padding:0 5px;font-size:9.5px}
+  .c-crew .crew-room .cr-l{display:none}
+  .c-crew .crew-n{flex:none}
 }
 
 /* ---------- the first-run tour ---------- */
@@ -2383,11 +2393,12 @@ body.solo .c-head .icon.c-backm{display:none}
 .cs-sep{padding:6px 12px 2px;font:500 10.5px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ash);pointer-events:none}
 .cs-chat b::before{content:'◆ ';color:var(--gilt);font-size:.8em}
 .shared.other summary{color:var(--gilt)}
-.aside-card{position:absolute;right:22px;bottom:calc(var(--dock-h, 120px) + 10px);z-index:12;width:min(440px,calc(100% - 44px));max-height:min(60vh,520px);display:flex;flex-direction:column;border:1px solid var(--seam-2);border-radius:12px;background:rgb(var(--c-141117) / .97);box-shadow:0 18px 48px -18px rgb(var(--c-000000) / .8)}
+.aside-card{position:absolute;right:22px;bottom:calc(var(--dock-h, 120px) + 10px);z-index:12;width:min(440px,calc(100% - 44px));max-height:min(60vh,520px);display:flex;flex-direction:column;border:1px solid var(--seam-2);border-radius:12px;background:rgb(var(--c-141117));box-shadow:0 18px 48px -18px rgb(var(--c-000000) / .8)}
 .aside-card[hidden]{display:none}
 .as-h{display:flex;align-items:baseline;gap:8px;padding:10px 12px 8px 14px;border-bottom:1px solid var(--seam)}
 .as-h .glyph{color:var(--gilt)}
-.as-h b{font:600 12px/1 var(--f-caps);letter-spacing:.08em;color:var(--parch)}
+.as-h b{font:600 12px/1 var(--f-caps);letter-spacing:.08em;color:var(--parch);white-space:nowrap;flex:none}
+.chat:has(#cAside:not([hidden])) .c-jump{display:none}
 .as-h small{color:var(--ash);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .as-x{margin-left:auto}
 .as-body{overflow:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px;min-height:0}
@@ -2405,7 +2416,7 @@ body.solo .c-head .icon.c-backm{display:none}
 .lt-step{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;padding:6px 8px;border:1px solid var(--seam);border-radius:8px;cursor:pointer}
 .lt-step:has(:checked){border-color:var(--gilt)}
 .lt-step input{margin-top:6px;accent-color:var(--gilt)}
-.lt-step textarea{width:100%;box-sizing:border-box;resize:vertical;border:0;background:transparent;color:var(--parch);font:400 14.5px/1.45 var(--f-body);padding:2px 0}
+.lt-step textarea{width:100%;box-sizing:border-box;resize:none;overflow:hidden;field-sizing:content;min-height:1.5em;border:0;background:transparent;color:var(--parch);font:400 14.5px/1.45 var(--f-body);padding:2px 0}
 .lt-none{margin:0 0 8px;color:var(--ash);font-size:14px}
 .lt-row{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:end;margin:6px 0 12px}
 .lt-row > label{display:grid;gap:5px;font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ash)}
@@ -2455,7 +2466,7 @@ body.solo .c-head .icon.c-backm{display:none}
 .done-chats .rows{opacity:.8}
 .crew-room{margin-left:6px;padding:1px 6px;border-radius:999px;font:500 10.5px/1.5 var(--f-mono);color:var(--gilt);border:1px solid rgb(var(--c-d9bf74) / .45);white-space:nowrap}
 .crew-room.low{color:var(--crimson);border-color:var(--crimson)}
-.crew-mode{margin-left:6px;padding:1px 6px;border:1px solid var(--seam-2);border-radius:999px;font:400 10.5px/1.5 var(--f-mono);color:var(--ash);white-space:nowrap}
+.crew-mode{max-width:9em;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto;margin-left:6px;padding:1px 6px;border:1px solid var(--seam-2);border-radius:999px;font:400 10.5px/1.5 var(--f-mono);color:var(--ash);white-space:nowrap}
 .rc-part{margin:0;font-size:13.5px;line-height:1.4;color:var(--parch);overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 .rc-mode{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
 .rc-mode label{display:flex;align-items:center;gap:6px;padding:6px 11px;border:1px solid var(--seam-2);border-radius:999px;font-size:13.5px;color:var(--parch-2);cursor:pointer}

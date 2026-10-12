@@ -116,6 +116,6 @@ function laterMarks() {
     const part = feed.querySelector(`.part[data-mid="${CSS.escape(mid)}"]`), turn = part && part.closest('.turn');
     if (!turn) continue;
     const q = list.filter(t => t.state === 'queued').length, started = list.filter(t => t.state === 'started').length;
-    turn.insertAdjacentHTML('beforeend', `<p class="later-mark"><span class="glyph" aria-hidden="true">⏳</span>${[q ? `${q} queued for later` : '', started ? `${started} started` : '', list.length - q - started ? `${list.length - q - started} couldn’t start` : ''].filter(Boolean).join(' · ') || 'Queued for later'}: ${list.slice(0, 3).map(t => `<i>${esc(t.prompt.split('\n')[0].slice(0, 60))}</i>`).join(', ')}${list.length > 3 ? '…' : ''} <button type="button" class="linkish" data-c="laterhub">See the queue</button></p>`);
+    turn.insertAdjacentHTML('beforeend', `<p class="later-mark"><span class="glyph" aria-hidden="true">⏳</span>${[q ? `${q} queued for later` : '', started ? `${started} started` : '', list.length - q - started ? `${list.length - q - started} couldn’t start` : ''].filter(Boolean).join(' · ') || 'Queued for later'}: ${list.slice(0, 3).map(t => `<i>${esc(t.prompt.split('\n')[0].slice(0, 60).trim())}</i>`).join(', ')}${list.length > 3 ? '…' : ''} <button type="button" class="linkish" data-c="laterhub">See the queue</button></p>`);
   }
 }

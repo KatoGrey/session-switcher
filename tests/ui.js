@@ -1357,6 +1357,28 @@ module.exports = [
     },
   },
   {
+    name: 'phone crew',
+    // On a phone: the crew pills and the side question card fit, and nothing sits on anything else.
+    async run(t) {
+      const b = await t.open({ width: 412, height: 880, mobile: true });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      await b.eval(`if (C.comp) { C.comp.mode = 'full'; C.comp.modes = [{ value: 'full', label: 'Edit files without asking' }]; C.comp.accountId = 'codex'; } window.roomLeft = () => 4; renderCrew(); return 1`); await sleep(300);
+      const crew = await b.eval(`const box = document.getElementById('cCrew').getBoundingClientRect(); const pills = [...document.querySelectorAll('#cCrew .crew')].map(p => p.getBoundingClientRect());
+        const inside = pills.every(r => r.right <= innerWidth + 1 && r.left >= -1);
+        const c = document.querySelector('#cCrew .crew.codex'), n = c && c.querySelector('.crew-n').getBoundingClientRect(), m = c && c.querySelector('.crew-mode');
+        const overlap = (a, b) => a && b && !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+        const room = c && c.querySelector('.crew-room');
+        return { inside, modeShown: !!m && getComputedStyle(m).display !== 'none', roomOverName: !!room && overlap(n, room.getBoundingClientRect()) && room.getBoundingClientRect().left < n.right - 2 }`);
+      t.check('the crew pills stay on the screen', crew.inside, crew);
+      t.check('the partner’s mode moves into its menu on a phone, and its room doesn’t cover its name', !crew.modeShown && !crew.roomOverName, crew);
+      await b.eval(`openAside(); return 1`); await sleep(300);
+      const card = await b.eval(`const c = document.getElementById('cAside'); const bg = getComputedStyle(c).backgroundColor; const h = c.querySelector('.as-h b').getBoundingClientRect(); return { solid: !/rgba\\(.*,\\s*0?\\.\\d+\\)/.test(bg), bg, titleOneLine: h.height < 22, jumpHidden: getComputedStyle(document.getElementById('cJump')).display === 'none' }`);
+      t.check('the side question card is solid, with its title on one line', card.solid && card.titleOneLine, card);
+      t.check('and the jump button doesn’t hide under it', card.jumpHidden, card);
+      await t.shot(b, 'crew');
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {
