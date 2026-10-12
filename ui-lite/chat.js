@@ -71,7 +71,7 @@ function chatTitle() { const c = chatBy.get(CV.id); return c ? c.title : (CV.inf
 
 async function openChatView(id, { key = null, provider = null } = {}) {
   if (CV.es) { CV.es.close(); CV.es = null; }
-  Object.assign(CV, { id, key, info: null, items: [], queue: [], cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
+  Object.assign(CV, { id, key, info: null, items: [], queue: queueFor(id), cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
   resetComposer();
   const c = chatBy.get(id);
   CV.provider = provider || (c ? c.provider : 'claude');
@@ -95,8 +95,10 @@ async function openChatView(id, { key = null, provider = null } = {}) {
   } catch (err) { CV.error = err.message; }
   CV.loading = false;
   if (S.view !== 'chat' || CV.id !== id) return;
-  paintChat();
+  paintChat(); paintQueue();
   if (CV.key) listen(CV.key);
+  // Anything queued while you were away goes once it's free.
+  if (CV.queue.length) setTimeout(sendQueued, 1500);
 }
 async function loadEarlier() {
   if (!CV.cursor) return;
@@ -471,14 +473,38 @@ const imagesOut = () => COMP.images.map(i => ({ mediaType: i.mediaType, data: i.
 
 // While it works: ↵ queues a message for when the turn ends (shown above the box, with Send now
 // to tell it straight away); ⌥↵ tells it now.
-CV.queue = [];
+// Queues are kept per chat, so leaving a chat (or reloading) doesn't lose them; while you're
+// elsewhere, sendBackgroundQueues sends the next one when that chat finishes its turn. Pictures stay
+// only for this visit (too big to keep in the browser).
+const QUEUES = (() => { try { return JSON.parse(localStorage.getItem('lite.queues') || '{}') || {}; } catch { return {}; } })();
+const queueFor = id => (id ? (QUEUES[id] = QUEUES[id] || []) : []);
+function saveQueues() {
+  for (const k of Object.keys(QUEUES)) if (!QUEUES[k].length) delete QUEUES[k];
+  try { localStorage.setItem('lite.queues', JSON.stringify(Object.fromEntries(Object.entries(QUEUES).map(([k, v]) => [k, v.map(q => ({ text: q.text, images: [] }))])))); } catch { /* fine */ }
+}
+let bgSending = false;
+async function sendBackgroundQueues() {
+  if (bgSending) return;
+  for (const [id, q] of Object.entries(QUEUES)) {
+    if (!q.length || (S.view === 'chat' && CV.id === id)) continue;
+    const x = S.live.find(l => l.sessionId && l.sessionId.toLowerCase() === id.toLowerCase());
+    if (!x || !x.key || x.source !== 'app' || x.working || (x.pending || []).length) continue;
+    const item = q.shift(); saveQueues(); bgSending = true;
+    try { await api('/api/chat/send', { key: x.key, text: item.text, ...(item.images.length ? { images: item.images.map(i => ({ mediaType: i.mediaType, data: i.data })) } : {}) }); toast('Sent a queued message.'); }
+    catch (err) { q.unshift(item); saveQueues(); toast(err.message); }
+    finally { bgSending = false; }
+    return;
+  }
+}
 function paintQueue() {
+  if (CV.id && CV.queue && CV.queue.length) QUEUES[CV.id] = CV.queue;
+  saveQueues();
   const el = $('queueBox'); if (!el) return;
   el.innerHTML = (CV.queue || []).map((q, i) => `<div class="q-item"><span class="tag">Queued</span><span class="q-text">${esc(q.text.slice(0, 160))}${q.images.length ? ` · ${q.images.length} picture${q.images.length === 1 ? '' : 's'}` : ''}</span><button type="button" class="btn" data-steerq="${i}" title="Tell it now, while it works">Send now</button><button type="button" class="iconbtn" data-unqueue="${i}" aria-label="Remove from the queue">×</button></div>`).join('');
   el.hidden = !(CV.queue || []).length;
 }
 async function sendQueued() {
-  if (!CV.queue || !CV.queue.length || !CV.key || CV.busy || CV.sending) return;
+  if (!CV.queue || !CV.queue.length || CV.busy || CV.sending) return;
   const q = CV.queue.shift(); paintQueue();
   const box = $('msgBox'); const typed = box ? box.value : '';
   if (box) box.value = q.text;
