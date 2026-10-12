@@ -1278,6 +1278,16 @@ module.exports = [
       const text = await b.eval(`return document.getElementById('cText').value`);
       t.check('“Put it in my message” brings the answer into your message, and closes it', /^Side question: what does rally_bonus do\?\n\n> It sets/.test(text) && await b.eval(`return document.getElementById('cAside').hidden`) && calls.some(([p]) => p === '/api/chat/aside-end'), text);
       await b.eval(`document.getElementById('cText').value = ''; return 1`);
+      // Run the project, beside the chat.
+      await b.eval(`openRun(); return 1`); await sleep(800);
+      const run = await b.eval(`const r = document.getElementById('cRun'); return r && { shown: !r.hidden, text: r.textContent.replace(/\\s+/g, ' ') }`);
+      t.check('Run the project starts it and shows where it’s serving', run && run.shown && /Running ?npm run dev/.test(run.text) && /Open localhost:5173/.test(run.text) && /VITE v6\.0\.0 ready/.test(run.text), run);
+      await t.shot(b, 'run');
+      await b.clickOn('#cRun [data-run="tell"]'); await sleep(300);
+      t.check('“Show Claude the output” puts it in your message', /^Here’s what `npm run dev` printed:\n\n```\n> starfall/.test(await b.eval(`return document.getElementById('cText').value`)));
+      await b.clickOn('#cRun [data-run="stop"]'); await sleep(400);
+      t.check('Stop stops it', /Stopped|Not running/.test(await b.eval(`return document.getElementById('cRun').textContent`)) && !!(await b.eval(`return document.querySelector('#cRun [data-run="start"]')`)));
+      await b.eval(`document.getElementById('cText').value = ''; return 1`);
       // Follow up later: a task from a reply.
       await b.eval(`document.querySelector('#cFeed .turn [data-c="followup"]').click(); return 1`); await sleep(500);
       const task = await b.eval(`const d = document.getElementById('taskDlg'); return d && { open: d.open, text: document.getElementById('tkText').value, project: document.getElementById('tkProject').selectedOptions[0]?.textContent }`);

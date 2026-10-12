@@ -809,6 +809,7 @@ function chatHeadItems() {
     ...(claudeReviewOK() && codexOK() ? [{ glyph: '◈', label: 'Have both review the changes', hint: 'one card, where they agree first', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'both') }] : []),
     ...(reviewAvailable() || claudeReviewOK() ? ['-'] : []),
     ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; close(); popOutChat(sid); } }] : []),
+    ...(C.info && C.info.cwd && !C.watch ? [{ glyph: '▶', label: 'Run the project', hint: 'its dev server or start script, with its output', run: () => openRun() }] : []),
     ...(C.key && !C.watch ? [{ glyph: '❦', label: 'Ask a side question', hint: '/btw · doesn’t derail this chat', run: () => openAside() }] : []),
     ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark this chat done', hint: 'off the lists until it’s used again', run: () => { const sid = id; close(); return setChatDone(sid, true); } }] : []),
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },

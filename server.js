@@ -37,6 +37,7 @@ const themeStudioLib = require('./lib/theme-studio');
 const pushLib = require('./lib/push');
 const extrasLib = require('./lib/extras');
 const { branchSession } = require('./lib/branch');
+const runnerLib = require('./lib/runner');
 const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.0.0';
@@ -136,10 +137,12 @@ const restarted = (() => {
     return { ...j, chats: list };
   } catch { return null; }
 })();
-function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.stopAll(); }
+function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.stopAll(); try { runner.stopAll(); } catch { /* not started yet */ } }
 
 // Each conversation's changes, undos and reviews, kept beyond the chat's run (lib/extras.js).
 const chatExtras = extrasLib.createExtras({ dir: path.join(DATA_DIR, 'chat-extras'), log });
+// Run the project (lib/runner.js): one run per project, its output kept for the page.
+const runner = runnerLib.createRunner({ dataDir: DATA_DIR, log, onChange: cwd => broadcast('run', { cwd }) });
 const chats = chatLib.createChatManager({
   log,
   extras: chatExtras,
@@ -941,6 +944,7 @@ async function handleApi(req, res, url, remote = false) {
   const route = `${req.method} ${url.pathname}`;
   if (remote && (LOCAL_ONLY.has(url.pathname) || url.pathname.startsWith('/api/phone'))) throw fail(403, 'That can only be done on the PC itself.');
   if (route === 'GET /api/phone') return send(res, 200, { ...phone.status(), pushPhones: pushes.count(), appsListening: [...new Set([...appWatchers].map(w => w.device.id))] });
+  if (route === 'GET /api/run') { const p = projectAt(url.searchParams.get('cwd')); if (!p) throw fail(404, 'Pick one of your projects.'); return send(res, 200, runner.status(p.cwd)); }
   if (route === 'GET /api/phone/tailscale') return send(res, 200, await tailscaleStatus());
   if (route === 'POST /api/phone/tailscale-serve') return send(res, 200, await tailscaleServe());
   if (url.pathname.startsWith('/api/push') || url.pathname.startsWith('/api/notify')) return pushApi(req, res, route, remote);
@@ -1769,6 +1773,16 @@ async function handleChat(req, res, url, body, c) {
       // after: wait for the other one to finish first (you chose "Send when it's done").
       await (body.after ? pairs.sendAfter(target, text, images) : pairs.send(target, text, images));
       return send(res, 200, { ok: true, key: target.key });
+    }
+    case '/api/run': {
+      // Run, stop or restart a project, or set the command it runs with.
+      const p = projectAt(body.cwd);
+      if (!p || !p.exists) throw fail(404, 'Pick one of your projects.');
+      if (body.command !== undefined) runner.setCommand(p.cwd, body.command);
+      if (body.action === 'stop') return send(res, 200, await runner.stop(p.cwd));
+      if (body.action === 'restart') { await runner.stop(p.cwd); return send(res, 200, runner.start(p.cwd)); }
+      if (body.action === 'start') return send(res, 200, runner.start(p.cwd));
+      return send(res, 200, runner.status(p.cwd));
     }
     case '/api/chat/branch': {
       // A new chat from one of this chat's replies (lib/branch.js); the original stays as it is.

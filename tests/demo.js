@@ -171,6 +171,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
   } }];
   let keepTries = 0, bothTries = 0, tsServing = false;
   const doneMarks = {};
+  let runState = { running: false, cmd: 'npm run dev', custom: false, url: null, exit: null, lines: [] };
   const rulesOut = () => ({ scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
@@ -205,6 +206,8 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/chat/history' && q.get('provider') === 'openclaw') return { body: { items: ocHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history') return { body: { items: q.get('provider') === 'codex' || q.get('id') === 't-bard-codex' ? codexHistory : claudeHistory, start: 0, cursor: null } };
     // A side question: its own chat, which answers once.
+    // Run the project: npm run dev, up on a local address.
+    if (p === '/api/run') { if (body.action === 'start' || body.action === 'restart') runState = { running: true, cmd: 'npm run dev', custom: false, url: 'http://localhost:5173/', exit: null, lines: ['> starfall@1.0.0 dev', '> vite', '', '  VITE v6.0.0  ready in 312 ms', '  ➜  Local:   http://localhost:5173/'] }; if (body.action === 'stop') runState = { ...runState, running: false, exit: 0 }; return { body: runState }; }
     if (p === '/api/chat/branch') return { body: { sessionId: ID['s-brawl'] } };
     if (p === '/api/chat/aside') return { body: { key: 'k-aside', provider: 'claude' } };
     if (p === '/api/chat/aside-end') return { body: { ok: true } };

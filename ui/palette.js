@@ -20,6 +20,7 @@ function palItems(q) {
     { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health' },
     { glyph: '✧', t: 'Take the tour', s: 'a minute on what’s where', run: () => startTour(), alias: 'tour help guide intro getting started' },
     { glyph: '⚑', t: 'Race Claude and Codex', s: 'the same task in two copies of a project; keep the better one', run: () => openRaceDialog(S.view === 'folder' ? S.folder : null), alias: 'race compete compare both versus head to head' },
+    ...(window.ChatUI && ChatUI.isOpen() && C.info && C.info.cwd ? [{ glyph: '▶', t: 'Run the project', s: 'its dev server or start script, with its output, beside the chat', run: () => openRun(), alias: 'run start dev server preview serve launch' }] : []),
     { glyph: '⑂', t: 'Split the work', s: 'Claude and Codex each take a part, in their own copies; keep both', run: () => openRaceDialog(S.view === 'folder' ? S.folder : null, 'split'), alias: 'split divide parallel share both halves worktree' },
     { glyph: '⏳', t: 'Queue a task', s: 'starts as a new chat when an account has room, or at a time', run: () => openTaskDialog(S.view === 'folder' ? S.folder : null), alias: 'queue later schedule task when limit resets' },
     { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, shared by Claude and Codex', run: () => openRules(S.view === 'folder' ? S.folder : null), alias: 'claude.md agents.md mcp servers tools rules instructions memory' },

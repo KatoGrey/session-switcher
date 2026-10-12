@@ -773,3 +773,30 @@ test('race: keep file by file, from either copy; the same file from both is refu
   assert.equal(readLF(path.join(dir, 'c.txt')), 'codex c\n');
   await race.dropRace(r);
 });
+
+/* ---------- run the project ---------- */
+test('run: starts the project’s dev script, finds its address, keeps its output, and stops it', async () => {
+  const { createRunner, guessCommand } = require('../lib/runner');
+  const dir = tmp(), data = tmp();
+  put(dir, 'srv.js', "console.log('\u001b[32m  VITE ready\u001b[0m'); console.log('  ➜  Local:   http://localhost:51734/'); setInterval(() => {}, 1000);\n");
+  put(dir, 'package.json', JSON.stringify({ scripts: { dev: 'node srv.js', build: 'x' } }));
+  assert.equal(guessCommand(dir), 'npm run dev');
+  assert.equal(guessCommand(tmp()), null, 'nothing to go on');
+  const changes = [];
+  const run = createRunner({ dataDir: data, onChange: c => changes.push(c) });
+  run.setCommand(dir, 'node srv.js');   // npm isn't needed for the test
+  run.start(dir);
+  const t0 = Date.now();
+  while (!run.status(dir).url && Date.now() - t0 < 10000) await new Promise(r => setTimeout(r, 100));
+  const st = run.status(dir);
+  assert.equal(st.running, true);
+  assert.equal(st.url, 'http://localhost:51734/');
+  assert.ok(st.lines.some(l => /VITE ready/.test(l) && !/\u001b/.test(l)), 'its output, without colour codes');
+  assert.ok(changes.length > 0);
+  const stopped = await run.stop(dir);
+  const t1 = Date.now();
+  while (run.status(dir).running && Date.now() - t1 < 5000) await new Promise(r => setTimeout(r, 100));
+  assert.equal(run.status(dir).running, false, stopped);
+  // The command you set is remembered for the project.
+  assert.equal(createRunner({ dataDir: data }).status(dir).cmd, 'node srv.js');
+});

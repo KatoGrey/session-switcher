@@ -2400,6 +2400,18 @@ body.solo .c-head .icon.c-backm{display:none}
 .as-b{margin:0;padding:0 10px 10px}
 .as-b [hidden]{display:none}
 @media (max-width:640px){.aside-card{right:8px;width:calc(100% - 16px)}}
+.lg-run{margin:0 0 12px;padding:10px 12px;border:1px solid var(--seam-2);border-radius:9px;background:rgb(var(--c-100e12))}
+.lg-run[hidden]{display:none}
+.rn-h{display:flex;align-items:center;gap:8px;min-width:0}
+.rn-h b{font:600 12px/1 var(--f-caps);letter-spacing:.06em;color:var(--parch);white-space:nowrap}
+.rn-h code{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px var(--f-mono);color:var(--ash)}
+.rn-x{margin-left:auto}
+.rn-dot{width:8px;height:8px;border-radius:50%;background:var(--ash-2);flex:none}
+.rn-dot.on{background:rgb(var(--c-7fb79a))}
+.rn-dot.err{background:var(--crimson)}
+.rn-b{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 0}
+.rn-b .btn{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rn-log{margin:8px 0 0;max-height:240px;overflow:auto;padding:8px 10px;border-radius:6px;background:rgb(var(--c-0a090c));color:var(--parch-2);font:11.5px/1.45 var(--f-mono);white-space:pre-wrap;overflow-wrap:anywhere}
 .race-j{display:flex;align-items:center;gap:8px;margin:10px 0 0;font-size:14px;color:var(--parch-2)}
 .race-j .glyph{color:var(--gilt)}
 .pick-files .pf-body{padding:4px 22px 18px;display:grid;gap:4px}
