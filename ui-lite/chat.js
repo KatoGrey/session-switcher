@@ -167,13 +167,23 @@ setInterval(async () => {
     else CV.lastEventAt = Date.now();
   } catch { /* try again next time */ } finally { healBusy = false; }
 }, 1000);
+// One message arrives as several events under the same id (its text, then each tool call, and an
+// update when a picture finishes): each adds to the message, and a block it already has is updated.
+const blockKey = b => (b.id ? `id:${b.id}` : b.type === 'text' ? `text:${b.text}` : b.path ? `path:${b.path}` : JSON.stringify(b));
+function mergeBlocks(have = [], more = []) {
+  const out = [...have];
+  for (const b of more) { const i = out.findIndex(x => blockKey(x) === blockKey(b)); if (i >= 0) out[i] = b; else out.push(b); }
+  return out;
+}
+// When the page joins a turn already under way, the time counts from when the turn began.
+const evAt = ev => Date.parse(ev.at) || Date.now();
 function onEvent(ev) {
   switch (ev.kind) {
     case 'state':
       // While a first message is on its way, the line under it stays up (no blink as it starts).
       CV.busy = ['busy', 'waiting', 'starting'].includes(ev.state) || CV.sending;
       if (CV.info) CV.info.state = ev.state;
-      if (ev.state === 'busy' && !CV.startedAt) CV.startedAt = Date.now();
+      if (ev.state === 'busy' && !CV.startedAt) CV.startedAt = evAt(ev);
       if (ev.state === 'ended') { CV.busy = false; CV.status = ''; if (CV.es) { CV.es.close(); CV.es = null; } CV.key = null; }
       paintBar(); paintStatus(); break;
     case 'init': if (ev.sessionId && !CV.id) adoptChatId(ev.sessionId); break;
@@ -186,10 +196,10 @@ function onEvent(ev) {
       // (It goes to the bottom: joining a run in progress replays what came before it.)
       if (i >= 0) { const was = CV.items.splice(i, 1)[0]; CV.items.push({ ...ev, images: (was.images || []).length ? was.images : ev.images }); }
       else CV.items.push(ev);
-      CV.live = ''; CV.thinking = ''; CV.startedAt = CV.startedAt || Date.now(); appendItem(ev); break;
+      CV.live = ''; CV.thinking = ''; CV.startedAt = CV.startedAt || evAt(ev); appendItem(ev); break;
     }
     case 'delta': if (!ev.thinking) { CV.live += ev.text || ''; CV.status = 'Writing'; CV.thinking = ''; } else { CV.status = 'Thinking'; if (ev.text) CV.thinking = ((CV.thinking || '') + ev.text).slice(-600); } paintLive(); paintStatus(); break;
-    case 'assistant': { CV.live = ''; const last = CV.items[CV.items.length - 1]; if (last && last.kind === 'assistant' && last.mid === ev.mid) last.blocks = ev.blocks; else CV.items.push(ev); paintFeed(); const tool = (ev.blocks || []).filter(b => b.type === 'tool').pop(); if (tool) CV.status = `${tool.name}${tool.summary ? ` · ${tool.summary}` : ''}`; paintStatus(); break; }
+    case 'assistant': { CV.live = ''; const last = CV.items[CV.items.length - 1]; if (last && last.kind === 'assistant' && last.mid === ev.mid) last.blocks = mergeBlocks(last.blocks, ev.blocks); else CV.items.push({ ...ev, blocks: [...(ev.blocks || [])] }); paintFeed(); const tool = (ev.blocks || []).filter(b => b.type === 'tool').pop(); if (tool) CV.status = `${tool.name}${tool.summary ? ` · ${tool.summary}` : ''}`; paintStatus(); break; }
     case 'tool_start': CV.status = `Using ${ev.name}`; CV.thinking = ''; paintStatus(); break;
     case 'notice': CV.items.push(ev); appendItem(ev); break;
     case 'permission': CV.pending.set(ev.requestId, ev); paintPending(); break;
@@ -226,11 +236,12 @@ function feedSegments() {
   const flushTools = () => { if (tools.length) { segs.push(`<details class="step"><summary>${esc(stepLine(tools))}</summary><ul>${tools.map(t => `<li><b>${esc(t.name)}</b> ${esc(t.summary || '')}</li>`).join('')}</ul></details>`); tools = []; } };
   for (const it of CV.items) {
     if (it.kind === 'assistant') {
-      const bl = it.blocks || [];
-      const text = bl.filter(b => b.type === 'text').map(b => b.text).join('\n\n');
-      tools.push(...bl.filter(b => b.type === 'tool'));
-      if (text) { flushTools(); segs.push(`<div class="msg-ai">${mdHtml(text)}</div>`); }
-      for (const im of bl.filter(b => b.type === 'image')) { flushTools(); segs.push(genImageHtml(im)); }
+      // In the order it happened: what it said, then the steps it took after saying it.
+      for (const b of it.blocks || []) {
+        if (b.type === 'tool') tools.push(b);
+        else if (b.type === 'text' && String(b.text || '').trim()) { flushTools(); segs.push(`<div class="msg-ai">${mdHtml(b.text)}</div>`); }
+        else if (b.type === 'image') { flushTools(); segs.push(genImageHtml(b)); }
+      }
       continue;
     }
     flushTools();
