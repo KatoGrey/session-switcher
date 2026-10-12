@@ -931,6 +931,19 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
   if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
+  // Since you left (for the welcome-back card): files the chats changed and reviews that came back.
+  if (route === 'GET /api/away') {
+    const since = new Date(Number(url.searchParams.get('since')) || 0).toISOString();
+    const files = new Set(), reviews = [];
+    for (const c of chats.chats.values()) {
+      for (const e of c.buffer) {
+        if (!e.at || e.at < since) continue;
+        if (e.kind === 'changes') for (const f of e.files || []) if (!f.meanwhile) files.add(`${c.cwd}|${f.path}`);
+        if (e.kind === 'review' && e.state === 'done') reviews.push({ by: e.by || 'codex', findings: (e.findings || []).length });
+      }
+    }
+    return send(res, 200, { files: files.size, reviews });
+  }
   // What used each account's window: tokens per chat over the last five hours and the week, counted
   // while this app runs (kept after a chat closes).
   if (route === 'GET /api/usage/chats') {

@@ -15,7 +15,11 @@ const lastChat = () => { try { return JSON.parse(store('last-chat') || 'null'); 
 // Back after a while: the card is worked out from when you were last here.
 function checkAway() {
   const was = seenAt(), now = Date.now();
-  if (was && now - was >= AWAY_MS && !Welcome.card) Welcome.card = { since: was, at: now };
+  if (was && now - was >= AWAY_MS && !Welcome.card) {
+    const card = Welcome.card = { since: was, at: now, away: null };
+    // What the chats did meanwhile: files changed and reviews that came back (from the PC).
+    api(`/api/away?since=${was}`).then(r => { if (Welcome.card === card) { card.away = r; renderWelcome(); } }).catch(() => {});
+  }
   noteSeen();
   if (Welcome.card && S.view === 'hub' && !(window.ChatUI && ChatUI.isOpen())) renderWelcome();
 }
@@ -35,8 +39,14 @@ function welcomeHtml() {
   const working = atWork();
   const last = lastChat();
   const lastOk = last && allSessions().some(([s]) => s.id === last.sessionId);
-  if (!replies.length && !needs.length && !working.length && !lastOk) return '';
+  const away = w.away || { files: 0, reviews: [] };
+  if (!replies.length && !needs.length && !working.length && !lastOk && !away.files && !away.reviews.length) return '';
   const bits = [];
+  if (away.files) bits.push(`<b>${away.files}</b> ${away.files === 1 ? 'file was changed' : 'files were changed'}`);
+  if (away.reviews.length) {
+    const found = away.reviews.reduce((n, r) => n + r.findings, 0);
+    bits.push(away.reviews.length === 1 ? `a review came back ${found ? `with <b>${found}</b> finding${found === 1 ? '' : 's'}` : 'clean'}` : `<b>${away.reviews.length}</b> reviews came back${found ? ` with <b>${found}</b> findings` : ', all clean'}`);
+  }
   if (replies.length) bits.push(`<b>${replies.length}</b> ${replies.length === 1 ? 'reply came in' : 'replies came in'}`);
   if (approvals.length) bits.push(`<b>${approvals.length}</b> ${approvals.length === 1 ? 'needs your OK' : 'need your OK'}`);
   if (attention) bits.push(`<b>${attention}</b> ${attention === 1 ? 'needs your attention' : 'need your attention'}`);

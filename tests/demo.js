@@ -180,6 +180,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/sessions') return { body: { projects: openclaw ? withOpenClaw(projects) : projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
     if (p === '/api/activity') return { body: { list: activity, at: NOW } };
     // The day at a glance: bursts of messages through the last few hours.
+    if (p === '/api/away') return { body: { files: 3, reviews: [{ by: 'codex', findings: 2 }] } };
     if (p === '/api/today') {
       const burst = (k, from, to, n) => Array.from({ length: n }, (_, i) => min(from + ((to - from) * i) / Math.max(1, n - 1)));
       const spec = [['s-bard', 0, 40, 14], ['s-bard', 120, 160, 8], ['s-brawl', 6, 60, 10], ['s-brawl', 200, 260, 12], ['s-quests', 160, 220, 9], ['s-nutrient', 2, 50, 9], ['s-nutrient', 300, 330, 4], ['s-migrate', 75, 110, 6], ['s-route', 1, 90, 16], ['s-notes', 30, 70, 7], ['s-playtest', 220, 280, 5], ['s-readme', 55, 95, 6], ['s-review', 130, 170, 8]];
