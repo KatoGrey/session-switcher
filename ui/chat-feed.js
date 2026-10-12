@@ -346,7 +346,7 @@ function setToolResult(root, id, result) {
 // When a reply is done, its steps fold to their one line (click it to see them).
 function foldSteps(src) {
   const prov = provFor(src);
-  const turn = [...$c('cFeed').querySelectorAll('.turn')].filter(t => (t.dataset.prov || C.provider) === prov).pop();
+  const turn = lastTurnOf(prov);
   if (!turn) return;
   for (const g of turn.querySelectorAll('.tools')) if (g.querySelectorAll('.tool').length >= 3 && !g._opened) { g.classList.add('folded'); updateGroup(g); }
 }
@@ -416,8 +416,18 @@ function lastTurn(root, make) {
   root.appendChild(t);
   return t;
 }
+// The newest reply from one of them: searched back from the end of the feed, where it nearly always
+// is, instead of through every turn (which grows all day in a long chat).
+function lastTurnOf(prov) {
+  for (let el = $c('cFeed').lastElementChild; el; el = el.previousElementSibling) if (el.classList.contains('turn') && (el.dataset.prov || C.provider) === prov) return el;
+  return null;
+}
+// Reply parts by their message id, so each streamed piece finds its place without a search.
+const PARTS = new Map();
 function part(root, mid, model) {
-  let p = mid ? root.querySelector(`.part[data-mid="${CSS.escape(mid)}"]`) : null;
+  let p = mid ? PARTS.get(mid) : null;
+  if (p && !root.contains(p)) p = null;
+  if (!p && mid && !liveRender) p = root.querySelector(`.part[data-mid="${CSS.escape(mid)}"]`);
   if (p) return p;
   const had = !!lastTurn(root, false);
   const turn = lastTurn(root, true);
@@ -425,7 +435,7 @@ function part(root, mid, model) {
   if (!p) {
     p = document.createElement('div');
     p.className = liveRender && had ? 'part fresh' : 'part';
-    if (mid) p.dataset.mid = mid;
+    if (mid) { p.dataset.mid = mid; PARTS.set(mid, p); }
     p.innerHTML = '<div class="final"></div><div class="md live"></div>';
     turn.appendChild(p);
   }

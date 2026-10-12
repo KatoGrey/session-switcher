@@ -289,6 +289,7 @@ function reset() {
   mergeStart(false);
   C.compPending = []; C.compCursor = null; C.compMore = false;
   Recent.main = []; Recent.comp = [];
+  PARTS.clear();
   if (C.es) { C.es.close(); C.es = null; }
   clearTimeout(C.liveTimer);
   if (C.comp && C.comp.es) C.comp.es.close();

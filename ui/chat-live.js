@@ -100,7 +100,7 @@ function landed(src) {
   renderRelay(); setTimeout(renderRelay, 2700);
   if (!motionOk()) return;
   const prov = provFor(src);
-  const turn = [...$c('cFeed').querySelectorAll('.turn')].filter(t => (t.dataset.prov || C.provider) === prov).pop();
+  const turn = lastTurnOf(prov);
   const part = turn && [...turn.querySelectorAll('.part')].pop();
   if (part) { part.classList.remove('landed'); void part.offsetWidth; part.classList.add('landed'); setTimeout(() => part.classList.remove('landed'), 1700); }
 }

@@ -34,7 +34,7 @@ function changesBar(ev, src, clash = []) {
 function renderChanges(ev, src) {
   noteChanges(ev, src);
   const prov = provFor(src);
-  const turn = [...$c('cFeed').querySelectorAll('.turn')].filter(t => (t.dataset.prov || C.provider) === prov).pop();
+  const turn = lastTurnOf(prov);
   if (!turn || turn.querySelector(`.chg[data-turn="${ev.turn}"][data-src="${src}"]`)) return;
   withStick(() => turn.insertAdjacentHTML('beforeend', changesBar(ev, src, clashWith(ev, src))));
   const bar = turn.lastElementChild;
