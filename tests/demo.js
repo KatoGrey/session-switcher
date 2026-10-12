@@ -273,4 +273,4 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
   });
 }
 
-module.exports = { install, ID, projects, accounts };
+module.exports = { install, ID, projects, accounts, NOW };

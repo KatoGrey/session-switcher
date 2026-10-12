@@ -1183,7 +1183,7 @@ module.exports = [
     name: 'kept',
     // A chat opened again after a restart: its earlier changes and reviews are back under their replies.
     async run(t) {
-      const ago = m => new Date(Date.now() - m * 60000).toISOString();
+      const ago = m => new Date(demo.NOW - m * 60000).toISOString();   // on the demo's clock
       const extras = [
         { kind: 'changes', turn: 0, files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 3, del: 1 }], more: 0, since: ago(28), at: ago(27) },
         { kind: 'review', id: 'rv-old', state: 'done', by: 'codex', findings: [], at: ago(26) },
