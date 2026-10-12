@@ -6,16 +6,16 @@ const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'automation', 'routines'
 const small = () => matchMedia('(max-width: 760px)').matches;
 
 function sideChat(c, depth = 0) {
-  const marks = (isBug(c) ? '' : kindTag(c)) + waitTag(c) + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '');
+  // Its sub-chats: a count at the side that opens them in place (with a mark if one needs you).
+  const desc = descOf(c.id), fo = famOpen(c.id);
+  const fam = desc.length ? `<span class="fam-n" role="button" tabindex="0" data-fam="${esc(c.id)}" aria-expanded="${fo}" title="${fo ? 'Hide' : 'Show'} ${desc.length} sub-chat${desc.length === 1 ? '' : 's'}">${!fo && desc.some(needs) ? '<span class="dot needs-dot"></span>' : !fo && desc.some(running) ? '<span class="live-dot"></span>' : ''}${desc.length}<span class="fam-caret">›</span></span>` : '';
+  const marks = (isBug(c) ? '' : kindTag(c)) + waitTag(c) + (needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '') + fam;
   return `<button class="nav-i chat-i${depth ? ' kid' : ''}" ${depth ? `style="--d:${depth}"` : ''} draggable="true" data-chat="${esc(c.id)}" aria-current="${S.view === 'chat' && String(CV.id).toLowerCase() === String(c.id).toLowerCase()}" title="${esc(c.title)} · ${esc(projOf(c).name)}">${focusStar(c)}<span class="lbl">${esc(isBug(c) ? c.title.replace(/\s*\(from [^)]+\)\s*$/, '') : c.title)}</span>${marks}</button>`;
 }
 // Under a top-level chat in the sidebar: one line for its sub-chats, opened in place.
 function sideFam(t, depth = 1) {
-  const kids = kidsOf(t.id); if (!kids.length) return '';
-  const all = descOf(t.id), open = famOpen(t.id);
-  const mark = all.some(needs) ? '<span class="dot needs-dot"></span>' : all.some(running) ? '<span class="live-dot"></span>' : '';
-  const line = `<button class="nav-i chat-i fam-side" style="--d:${depth}" data-fam="${esc(t.id)}" aria-expanded="${open}"><span class="lbl"><span class="fam-caret">›</span>${all.length} sub-chat${all.length === 1 ? '' : 's'}</span>${mark}</button>`;
-  return open ? line + kids.map(k => sideChat(k, depth) + sideFam(k, depth + 1)).join('') : line;
+  const kids = kidsOf(t.id); if (!kids.length || !famOpen(t.id)) return '';
+  return kids.map(k => sideChat(k, depth) + sideFam(k, depth + 1)).join('');
 }
 function renderSide() {
   famMemo = null;
@@ -133,7 +133,7 @@ function sideProjects(all) {
       const many = lv.length > 1;
       return `<div class="group folder flat-proj" data-folded="${!(open && many)}"><div class="proj-row"><button class="nav-i chat-i flat-btn" data-chat="${esc(lead.id)}" aria-current="${cur}" title="${esc(g.p.name)}: ${esc(lead.title)}"><span class="st-dot" style="background:${st.c}"></span><span class="lbl">${esc(g.p.name)}</span><span class="flat-st">${st.name}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : ''}</button>${many ? `<button class="proj-chev flat-n" data-foldproj="${esc(g.p.key)}" data-stageless="1" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} its ${lv.length} chats" title="${lv.length} open chats">${lv.length}</button>` : ''}</div>${many ? `<div class="folder-items">${inner}</div>` : ''}</div>`;
     }
-    return `<div class="group folder" data-folded="${!open}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-project="${esc(g.p.key)}" draggable="true" aria-current="${here}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : `<span class="n">${lv.length || ''}</span>`}</button><button class="proj-chev" data-foldproj="${esc(g.p.key)}" ${stageless ? 'data-stageless="1"' : ''} aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} chats" title="${open ? 'Hide' : 'Show'} chats"></button></div><div class="folder-items">${inner}</div></div>`;
+    return `<div class="group folder" data-folded="${!open}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-project="${esc(g.p.key)}" draggable="true" aria-current="${here}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : ''}<span class="n">${lv.length || ''}</span></button><button class="proj-chev" data-foldproj="${esc(g.p.key)}" ${stageless ? 'data-stageless="1"' : ''} aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} chats" title="${open ? 'Hide' : 'Show'} chats"></button></div><div class="folder-items">${inner}</div></div>`;
   };
   // With every bucket showing, projects sit under their bucket's name.
   let html = '';

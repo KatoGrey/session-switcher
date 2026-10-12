@@ -416,7 +416,16 @@ function rowMenu(anchor, id, at) {
     if (v === 'focus') return wrap(toggleFocus)(ids);
     if (v === 'wait') return askWaiting(ids);
     if (v === 'arch') return wrap(archiveChats)(ids);
-    if (v === 'proj') return pickProject(anchor, k => wrap(async () => { await setChats(ids, { project: k }, `Moved to ${(projBy.get(k) || {}).name || 'the project'}`); await loadState(); render(); })());
+    if (v === 'proj') return pickProject(anchor, k => wrap(async () => {
+      // Its own project in Personal: named for the chat, kept with your home folder.
+      if (k === '__own__') {
+        const home = (/^\/Users\/[^/]+/.exec(c.cwd || '') || /^\/home\/[^/]+/.exec(c.cwd || '') || [''])[0];
+        if (!home) throw new Error('Couldn’t tell which home folder this chat belongs to.');
+        k = `${home}#${c.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'project'}`;
+        await api('/api/lite/project', { key: k, patch: { bucket: 'personal', name: c.title.slice(0, 60) } });
+      }
+      await setChats(ids, { project: k }, `Moved to ${(projBy.get(k) || {}).name || 'its own project'}`); await loadState(); render();
+    })(), { personal: true });
     return undefined;
   }, at);
 }

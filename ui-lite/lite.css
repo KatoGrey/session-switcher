@@ -991,3 +991,9 @@ blockquote p { margin: 4px 0; }
 .flat-proj .flat-btn { padding-left: 22px; }
 .flat-proj .proj-chev.flat-n { font-size: 11px; color: var(--muted); opacity: 1; }
 .flat-proj .proj-chev.flat-n::before, .flat-proj .proj-chev.flat-n::after { display: none; }
+
+/* A chat's sub-chats: a count at the side of its row. */
+.fam-n { display: inline-flex; align-items: center; gap: 3px; flex: none; margin-left: 4px; padding: 0 4px; border-radius: 5px; font-size: 11px; color: var(--muted); cursor: pointer; }
+.fam-n:hover { color: var(--fg); background: var(--hover); }
+.fam-n .fam-caret { width: auto; font-size: 12px; }
+.fam-n .dot, .fam-n .live-dot { margin-right: 2px; }

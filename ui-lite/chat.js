@@ -866,9 +866,13 @@ function startAndSend(key, text, images = [], beforeSend = null) {
     });
   });
 }
-function pickProject(anchor, onPick) {
-  const ps = ncProjects();
-  pop(anchor, `<div class="ph">Project</div><input class="pop-q" id="ppQ" placeholder="Type to filter" aria-label="Filter projects"><div id="ppList">${ps.map(p => `<button data-v="${esc(p.key)}">${esc(p.name)}<small>${esc(bucketName(p.bucket))}</small></button>`).join('')}</div>`, onPick);
+function pickProject(anchor, onPick, { personal = false } = {}) {
+  // By bucket, in the sidebar's order; each bucket's projects in their set order, then the busiest.
+  const bi = k => { const i = buckets().findIndex(b => b.id === k); return i < 0 ? 99 : i; };
+  const ord = p => (typeof p.order === 'number' ? p.order : 1e9);
+  const ps = ncProjects().sort((a, b) => bi(a.bucket) - bi(b.bucket) || ord(a) - ord(b) || b.updated - a.updated);
+  const own = personal && buckets().find(b => b.id === 'personal');
+  pop(anchor, `<div class="ph">Project</div><input class="pop-q" id="ppQ" placeholder="Type to filter" aria-label="Filter projects"><div id="ppList">${own ? `<button data-v="__own__"><b>${esc(own.name)}, as its own project</b><small>One line in ${esc(own.name)}</small></button>` : ''}${ps.map(p => `<button data-v="${esc(p.key)}">${esc(p.name)}<small>${esc(bucketName(p.bucket))}</small></button>`).join('')}</div>`, onPick);
   const q = $('ppQ'); if (!q) return;
   q.focus();
   q.addEventListener('input', () => { const t = q.value.toLowerCase(); for (const b of $('ppList').querySelectorAll('button')) b.hidden = !b.textContent.toLowerCase().includes(t); });

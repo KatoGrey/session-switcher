@@ -56,9 +56,12 @@ const wrap = fn => async (...a) => { try { return await fn(...a); } catch (err) 
 
 // Whole state (projects, chats, lite.json) only when chats or lite.json change; just the live list
 // (what's running or waiting on you) on every live event. Nothing redraws unless something changed.
-let loading = null, stateSig = '';
+let loading = null, again = null, stateSig = '';
+// What you just archived (or brought back), by id, so a reload that crossed it doesn't undo it on screen.
+const justSet = new Map();
 function loadState() {
-  if (loading) return loading;
+  // One already on its way may have left before your change: ask again once it's back.
+  if (loading) return (again = again || loading.catch(() => {}).then(() => { again = null; return loadState(); }));
   loading = fetch('/api/lite/state', { headers: { 'X-Switcher-Token': TOKEN } }).then(async r => {
     if (r.status === 403) { location.reload(); return false; }
     const text = await r.text();
@@ -67,6 +70,11 @@ function loadState() {
     const sig = text.replace(/"now":\d+/, '');
     const changed = sig !== stateSig;
     stateSig = sig;
+    for (const [k, v] of justSet) {
+      if (Date.now() - v.at > 15e3) { justSet.delete(k); continue; }
+      const x = k.startsWith('p:') ? j.projects.find(p => p.key === k.slice(2)) : j.chats.find(c => c.id === k);
+      if (x) x.archived = v.on;
+    }
     Object.assign(S, { lite: j.lite, projects: j.projects, chats: j.chats, routines: j.routines, now: j.now, appPermissions: j.appPermissions, permissionModes: j.permissionModes, loaded: true });
     for (const [k, v] of Object.entries(j.lite.seen || {})) if (!S.seen[k] || S.seen[k] < v) S.seen[k] = v;
     setLive(j.live);
@@ -397,15 +405,15 @@ async function archiveChats(picked) {
   const extra = ids.length - picked.length;
   const records = Object.fromEntries(ids.map(id => [id, recordOf(chatBy.get(id) || {})]));
   await api('/api/lite/archive', { chats: ids, records });
-  for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = true; }
+  for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = true; justSet.set(id, { on: true, at: Date.now() }); }
   S.sel.clear(); sfx('shove'); render();
-  toast(`Archived ${picked.length === 1 ? '1 chat' : `${picked.length} chats`}${extra ? ` and ${extra === 1 ? 'its sub-chat' : `${extra} sub-chats`}` : ''}`, async () => { await api('/api/lite/archive', { chats: ids, on: false }); for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = false; } sfx('undo'); render(); });
+  toast(`Archived ${picked.length === 1 ? '1 chat' : `${picked.length} chats`}${extra ? ` and ${extra === 1 ? 'its sub-chat' : `${extra} sub-chats`}` : ''}`, async () => { await api('/api/lite/archive', { chats: ids, on: false }); for (const id of ids) { justSet.set(id, { on: false, at: Date.now() }); const c = chatBy.get(id); if (c) c.archived = false; } sfx('undo'); render(); });
 }
 async function unarchiveChats(picked) {
   const ids = [...new Set([...picked, ...picked.flatMap(id => descAll(id).filter(k => (chatBy.get(k) || {}).archived))])];
   const extra = ids.length - picked.length;
   await api('/api/lite/archive', { chats: ids, on: false });
-  for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = false; }
+  for (const id of ids) { const c = chatBy.get(id); if (c) c.archived = false; justSet.set(id, { on: false, at: Date.now() }); }
   sfx('slide'); await loadState(); render();
   toast(`Brought back ${picked.length === 1 ? '1 chat' : `${picked.length} chats`}${extra ? ` and ${extra === 1 ? 'its sub-chat' : `${extra} sub-chats`}` : ''}`);
 }
@@ -433,6 +441,7 @@ function pickParent(anchor, ids) {
 async function archiveProject(k, on = true) {
   await api('/api/lite/archive', { projects: [k], on });
   const p = projBy.get(k); if (p) p.archived = on;
+  justSet.set('p:' + k, { on, at: Date.now() });
   if (on && S.view === 'project' && S.project === k) go('home');
   sfx(on ? 'shove' : 'slide'); render();
   if (on) toast(`Archived ${p ? p.name : 'the project'}`, () => archiveProject(k, false));
