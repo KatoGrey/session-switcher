@@ -651,3 +651,15 @@ test('changes: a reply’s own edits are told apart from files changed meanwhile
   assert.equal(LiveChat.prototype.ownPaths.call({ buffer: [tool('Edit', { path: 'a' }), tool('Bash', null)] }, at(0)), null, 'a command may have changed anything');
   assert.deepEqual(LiveChat.prototype.ownPaths.call({ buffer: [tool('Edit', { path: 'old.js' })] }, at(9)), [], 'edits from before the reply don’t count');
 });
+
+/* ---------- what used my window ---------- */
+test('usage per chat: each turn’s tokens are tallied, cache reads left out', () => {
+  const { LiveChat, translate } = require('../lib/chat');
+  const out = translate({ type: 'result', subtype: 'success', usage: { input_tokens: 1200, cache_creation_input_tokens: 300, cache_read_input_tokens: 90000, output_tokens: 500 } });
+  assert.equal(out[0].tokens, 2000);
+  const fake = { spent: [] };
+  LiveChat.prototype.spend.call(fake, 2000);
+  LiveChat.prototype.spend.call(fake, 0);
+  fake.spent.push({ at: Date.now() - 6 * 3600e3, tokens: 999 });
+  assert.equal(LiveChat.prototype.spentSince.call(fake, Date.now() - 5 * 3600e3), 2000, 'only the last five hours');
+});

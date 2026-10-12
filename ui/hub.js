@@ -560,12 +560,21 @@ function dialShell(a, u, cur, blocked, locked, detail) {
       <h3 class="dc-name">${esc(a.name)}${locked ? `<span class="lock ${blocked ? 'bad' : ''}" title="${esc(lockTitle)}">${ICON.lock}<span class="sr">${esc(lockTitle)}</span></span>` : ''}</h3>
       <p class="dc-who">${a.signedIn ? esc(a.email || 'Signed in') : 'Not signed in'}${blocked ? ` · <span style="color:var(--ember)">${esc(a.lockMessage || 'blocked')}</span>` : ''}${!a.shared ? ' · some data isn’t shared yet (see Setup)' : ''}</p>
       ${detail}
+      ${usedBy(a.id)}
       ${checked ? `<p class="dc-checked">${esc(checked)}</p>` : ''}
       <div class="dc-act">${acts.join('')}</div>
     </div>
   </article>`;
 }
 
+// What used this account's last five hours, chat by chat (counted while the app runs).
+function usedBy(id) {
+  const list = ((S.spent || {})[id] || []).filter(x => x.five > 0);
+  const total = list.reduce((n, x) => n + x.five, 0);
+  if (!total) return '';
+  const name = x => x.title || (findSession(x.sessionId)[0] || {}).title || 'A chat';
+  return `<p class="dc-used"><span>Used most, last 5 hours</span>${list.slice(0, 3).map(x => `<button type="button" class="linkish" data-navchat="${esc(x.sessionId || '')}" title="${esc(name(x))}">${esc(name(x))}</button> <b>${Math.round((x.five / total) * 100)}%</b>`).join(' · ')}</p>`;
+}
 // Codex, shown beside the Claude accounts.
 function codexCard(c = S.codex) {
   const u = usageOf(c.id);
@@ -603,6 +612,7 @@ function codexCard(c = S.codex) {
       <h3 class="dc-name">${esc(c.name || 'Codex')}</h3>
       <p class="dc-who">${c.signedIn ? esc(c.email || 'Signed in') : c.installed === false ? 'Not installed' : 'Not signed in'}</p>
       ${detail}
+      ${usedBy(c.id)}
       ${checked ? `<p class="dc-checked">${esc(checked)}</p>` : ''}
       <div class="dc-act">${acts.join('')}</div>
     </div>

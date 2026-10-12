@@ -425,7 +425,11 @@ async function loadSessions() {
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
 async function loadActivity() { const j = await api('/api/activity'); S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }
-async function loadUsage() { const j = await api('/api/usage'); S.usage = j.usage || {}; }
+async function loadUsage() {
+  const [j, sp] = await Promise.all([api('/api/usage'), api('/api/usage/chats').catch(() => null)]);
+  S.usage = j.usage || {};
+  if (sp) S.spent = sp.byAccount || {};   // what used each account's window, chat by chat
+}
 async function reload() {
   await loadState();
   await Promise.all([loadSessions(), loadActivity().catch(() => {}), loadUsage().catch(() => {})]);

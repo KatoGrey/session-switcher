@@ -3300,3 +3300,8 @@ body.remote .petals[data-kind]:not([data-kind="petals"]){display:block}
   /* A wide crop of the painting on phones, so the chats that need you are close below it. */
   [data-family="anime"] .hero-art.painted:not(.status){aspect-ratio:2 / 1}
 }
+/* What used an account's window, chat by chat (on its card). */
+.dc-used{margin:8px 0 0;font:13px/1.5 var(--f-body);color:var(--ash)}
+.dc-used span{display:block;font:500 10.5px/1.6 var(--f-label);letter-spacing:.14em;text-transform:uppercase;color:var(--ash-2)}
+.dc-used .linkish{max-width:14em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;color:var(--parch-2)}
+.dc-used b{color:var(--gilt);font-weight:600}

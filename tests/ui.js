@@ -1054,6 +1054,10 @@ module.exports = [
         return { played, night, morning, day }`);
       t.check('a chat can alert only when it needs you, or not at all', al.played.join() === 'needs', al);
       t.check('quiet hours hush alerts, overnight too', al.night && al.morning && !al.day, al);
+      const used = await b.eval(`ChatUI.close(); S.spent = { studio: [{ sessionId: ${JSON.stringify(demo.ID['s-bard'])}, title: '', provider: 'claude', five: 7500, week: 9000 }, { sessionId: 'x', title: 'Old chat', provider: 'claude', five: 2500, week: 3000 }] };
+        renderLive(true); await new Promise(r => setTimeout(r, 300));
+        const p = document.querySelector('.dc-used'); return p && p.textContent.replace(/\\s+/g, ' ').trim()`);
+      t.check('each account says which chats used most of its last five hours', /Used most, last 5 hours/.test(used) && /Balance pass on the bard’s songs 75%/.test(used) && /Old chat 25%/.test(used), used);
     },
   },
   {

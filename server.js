@@ -651,6 +651,7 @@ async function startReview(chat, files, base, by = 'codex') {
 // "Carry on when it's back": a minute after the account's limit resets, the chat is told to pick up
 // where it left off (if it's still open and idle; otherwise it just says the usage is back). Kept here,
 // not in a window, while the app runs.
+const spentBook = new Map();   // session -> its token tally, kept after the chat closes (see /api/usage/chats)
 const resumeTimers = new Map();   // chat key -> timeout
 function resumeAt(chat, at, cancel = false) {
   clearTimeout(resumeTimers.get(chat.key)); resumeTimers.delete(chat.key);
@@ -930,6 +931,19 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
   if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
+  // What used each account's window: tokens per chat over the last five hours and the week, counted
+  // while this app runs (kept after a chat closes).
+  if (route === 'GET /api/usage/chats') {
+    const now = Date.now(), out = {};
+    for (const c of chats.chats.values()) if (c.spent && c.spent.length) spentBook.set(c.sessionId || c.key, { c, title: (c.info().title || c.title || ''), spent: c.spent, account: c.account.id, provider: c.provider || 'claude', sessionId: c.sessionId });
+    for (const [k, e] of spentBook) {
+      const five = e.spent.reduce((n, x) => n + (now - x.at < 5 * 3600e3 ? x.tokens : 0), 0), week = e.spent.reduce((n, x) => n + (now - x.at < 7 * 24 * 3600e3 ? x.tokens : 0), 0);
+      if (!week) { spentBook.delete(k); continue; }
+      (out[e.account] = out[e.account] || []).push({ sessionId: e.sessionId, title: e.title, provider: e.provider, five, week });
+    }
+    for (const list of Object.values(out)) list.sort((a, b) => b.five - a.five || b.week - a.week);
+    return send(res, 200, { byAccount: out });
+  }
   if (route === 'GET /api/file') {
     const q = Object.fromEntries(url.searchParams);
     return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
