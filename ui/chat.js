@@ -224,6 +224,7 @@ async function loadHistory(before) {
   $c('cEarlier').textContent = 'Show earlier messages';
   // The changes, undos and reviews that go with it (kept by the PC).
   if (before === undefined) loadExtras(gen, until).catch(() => {}); else applyExtras();
+  laterMarks();
   return h;
 }
 // The partner's history, page by page, back to `since` (a time; -Infinity for all of it). Its turns
@@ -643,17 +644,8 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
       case 'branch': return branchFrom(c.closest('.turn'));
-      case 'followup': {
-        // "We should also…": a task for later, in this chat's project, starting from what you selected
-        // in the reply (or its last paragraph).
-        const turn = c.closest('.turn'), sel = getSelection();
-        const picked = sel && !sel.isCollapsed && turn.contains(sel.anchorNode) ? sel.toString().trim() : '';
-        const md = turnMarkdown(turn) || '';
-        const last = picked || md.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean).pop() || '';
-        const title = $c('cTitle')?.textContent || 'a chat';
-        const text = `\n\nFrom “${title}”, ${PROV_NAME[turn.dataset.prov || C.provider]} said:\n\n${last.slice(0, 4000).split('\n').map(l => `> ${l}`).join('\n')}`;
-        return openTaskDialog(C.info && C.info.cwd, text);
-      }
+      case 'followup': return openLaterDialog(c.closest('.turn'));
+      case 'laterhub': { close(); go('hub'); setTimeout(() => $('secQueue')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 300); return undefined; }
       case 'copyturn': {
         // The reply as written (Markdown), not as shown: headings, lists and code fences come along.
         const text = turnMarkdown(c.closest('.turn'));

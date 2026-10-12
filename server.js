@@ -378,7 +378,9 @@ async function startTask(t, account) {
   const chat = chats.get(info.key);
   await waitReady(chat, 45000);
   await chat.beforeTurn();
-  chat.send(t.prompt, []);
+  // From "Do this later": the chat it came from, as background (its latest messages).
+  const background = t.from && t.from.id ? await otherChatBlock({ id: t.from.id }).catch(() => '') : '';
+  chat.send(background + t.prompt, []);
   Object.assign(t, { state: 'started', key: info.key, accountName: info.accountName || account.name || null, doneAt: new Date().toISOString(), error: null });
   // A routine: its next run waits in the queue.
   const next = tasksLib.nextOf(t);

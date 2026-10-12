@@ -2400,6 +2400,26 @@ body.solo .c-head .icon.c-backm{display:none}
 .as-b{margin:0;padding:0 10px 10px}
 .as-b [hidden]{display:none}
 @media (max-width:640px){.aside-card{right:8px;width:calc(100% - 16px)}}
+.lt-h{margin:4px 0 6px;font:500 11px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ash)}
+.lt-steps{display:grid;gap:6px;margin-bottom:10px}
+.lt-step{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;padding:6px 8px;border:1px solid var(--seam);border-radius:8px;cursor:pointer}
+.lt-step:has(:checked){border-color:var(--gilt)}
+.lt-step input{margin-top:6px;accent-color:var(--gilt)}
+.lt-step textarea{width:100%;box-sizing:border-box;resize:vertical;border:0;background:transparent;color:var(--parch);font:400 14.5px/1.45 var(--f-body);padding:2px 0}
+.lt-none{margin:0 0 8px;color:var(--ash);font-size:14px}
+.lt-row{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:end;margin:6px 0 12px}
+.lt-row > label{display:grid;gap:5px;font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ash)}
+.lt-row select{font:400 14px var(--f-body);letter-spacing:0;text-transform:none;padding:7px 9px;border:1px solid var(--seam-2);border-radius:7px;background:rgb(var(--c-100e12));color:var(--parch)}
+.lt-when{flex:1 1 360px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.lt-k{width:100%;font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ash)}
+.lt-chip{display:flex;align-items:center;gap:6px;white-space:nowrap;padding:6px 11px;border:1px solid var(--seam-2);border-radius:999px;font-size:13.5px;color:var(--parch-2);cursor:pointer}
+.lt-chip:has(:checked){border-color:var(--gilt);color:var(--parch)}
+.lt-chip input{accent-color:var(--gilt);margin:0}
+.lt-when input[type="datetime-local"]{padding:6px 9px;border:1px solid var(--seam-2);border-radius:7px;background:rgb(var(--c-100e12));color:var(--parch);font:400 13.5px var(--f-body)}
+.later-mark{order:88;margin:0;font-size:13.5px;color:var(--ash)}
+.later-mark .glyph{margin-right:6px}
+.later-mark i{color:var(--parch-2)}
+.tk-from{color:var(--parch-2)}
 .lg-run{margin:0 0 12px;padding:10px 12px;border:1px solid var(--seam-2);border-radius:9px;background:rgb(var(--c-100e12))}
 .lg-run[hidden]{display:none}
 .rn-h{display:flex;align-items:center;gap:8px;min-width:0}

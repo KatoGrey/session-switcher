@@ -2,7 +2,7 @@
 /* Queued tasks: a prompt for a project, for Claude or Codex, that starts as a new chat when its time
    comes and an account has room (the server starts them). The hub lists them under "Queued". */
 
-async function loadTasks() { S.tasks = (await api('/api/tasks')).tasks || []; renderQueue(); }
+async function loadTasks() { S.tasks = (await api('/api/tasks')).tasks || []; renderQueue(); if (window.ChatUI && ChatUI.isOpen()) laterMarks(); }
 
 const REPEAT_LABEL = { daily: 'every day', weekdays: 'every weekday', weekly: 'every week' };
 const taskWaiting = t => (t.why === 'time' ? `Starts ${new Date(t.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
@@ -15,7 +15,7 @@ function taskRow(t) {
     ? `<button class="btn sm" data-act="task-start" data-id="${esc(t.id)}">Start now</button><button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Remove from the queue" title="Remove">✕</button>`
     : t.state === 'started' && t.key ? `<button class="btn sm" data-act="task-open" data-key="${esc(t.key)}">Open it</button><button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Clear" title="Clear">✕</button>`
       : `<button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Remove" title="Remove">✕</button>`;
-  return `<li class="task ${t.state}" data-task="${esc(t.id)}"><div class="tk-in"><b class="tk-p">${esc(first.slice(0, 160))}</b><small>${esc(t.folder)} · ${esc(who)}${t.repeat ? ` · <span class="tk-rep" title="A routine: each time it starts, the next one is queued">↻ ${esc(REPEAT_LABEL[t.repeat] || t.repeat)}</span>` : ''}</small>${st}</div><div class="tk-b">${btns}</div></li>`;
+  return `<li class="task ${t.state}" data-task="${esc(t.id)}"><div class="tk-in"><b class="tk-p">${esc(first.slice(0, 160))}</b><small>${esc(t.folder)} · ${esc(who)}${t.from && t.from.title ? ` · <span class="tk-from" title="It starts knowing that chat’s latest messages">from “${esc(t.from.title.slice(0, 50))}”</span>` : ''}${t.repeat ? ` · <span class="tk-rep" title="A routine: each time it starts, the next one is queued">↻ ${esc(REPEAT_LABEL[t.repeat] || t.repeat)}</span>` : ''}</small>${st}</div><div class="tk-b">${btns}</div></li>`;
 }
 function renderQueue() {
   const sec = $('secQueue'), list = $('queueList');

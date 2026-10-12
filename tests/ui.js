@@ -1288,10 +1288,19 @@ module.exports = [
       await b.clickOn('#cRun [data-run="stop"]'); await sleep(400);
       t.check('Stop stops it', /Stopped|Not running/.test(await b.eval(`return document.getElementById('cRun').textContent`)) && !!(await b.eval(`return document.querySelector('#cRun [data-run="start"]')`)));
       await b.eval(`document.getElementById('cText').value = ''; return 1`);
-      // Follow up later: a task from a reply.
-      await b.eval(`document.querySelector('#cFeed .turn [data-c="followup"]').click(); return 1`); await sleep(500);
-      const task = await b.eval(`const d = document.getElementById('taskDlg'); return d && { open: d.open, text: document.getElementById('tkText').value, project: document.getElementById('tkProject').selectedOptions[0]?.textContent }`);
-      t.check('Follow up later opens a task for this project, quoting the reply', task && task.open && task.project === 'Starfall Tavern' && /Claude said:\n\n> /.test(task.text), task);
+      // Do this later: the reply's next steps, each its own chat later, knowing this one.
+      await b.eval(`document.querySelector('#cFeed .turn[data-prov="claude"] [data-c="followup"]').click(); return 1`); await sleep(500);
+      const lt = await b.eval(`const d = document.getElementById('laterDlg'); return d && { open: d.open, title: document.getElementById('ltTitle').textContent, intro: document.getElementById('ltIntro').textContent, steps: [...d.querySelectorAll('.lt-step textarea')].map(x => x.value), go: document.getElementById('ltGo').textContent }`);
+      t.check('Do this later explains itself; a reply without next steps says so (no made-up ones)', lt && lt.open && lt.title === 'Do this later' && /its own chat in Starfall Tavern/.test(lt.intro) && lt.steps.length === 0 && await b.eval(`return !!document.querySelector('#ltSteps .lt-none')`), lt);
+      t.check('a reply’s list of next steps is offered, without code or questions', await b.eval(`return JSON.stringify(laterSteps('Done.\\n\\n\`\`\`js\\nx()\\n\`\`\`\\n\\nNext:\\n1. Add a **co-op** test\\n2. Update the patch notes\\n\\nShould I push it?'))`) === '["Add a co-op test","Update the patch notes"]');
+      await b.eval(`const d = document.getElementById('laterDlg'); d.querySelector('#ltSteps').innerHTML = '<label class="lt-step"><input type="checkbox" checked><textarea rows="1">Add a co-op test for four bards</textarea></label>'; document.getElementById('ltOwn').value = 'Write patch notes for the Rally change'; d.querySelector('[name="ltWhen"][value="tonight"]').click(); document.getElementById('ltOwn').dispatchEvent(new Event('input', { bubbles: true })); return 1`);
+      t.check('the button counts what it queues', await b.eval(`return document.getElementById('ltGo').textContent`) === 'Queue 2 tasks');
+      await t.shot(b, 'later');
+      await b.clickOn('#ltGo'); await sleep(900);
+      const adds = calls.filter(([p, body]) => p === '/api/tasks' && body.action === 'add').map(([, body]) => body.task);
+      t.check('each queues as its own task, for tonight, carrying where it came from', adds.length >= 2 && adds.every(x => x.when === 'at' && new Date(x.at).getHours() === 22 && x.from && x.from.id === demo.ID['s-bard'] && x.from.mid === 'm1') && adds.some(x => x.prompt === 'Write patch notes for the Rally change'), adds);
+      const mark = await b.eval(`const m = document.querySelector('#cFeed .turn .later-mark'); return m && m.textContent.replace(/\\s+/g, ' ')`);
+      t.check('the reply then says what’s queued from it', /\d+ queued for later/.test(mark || '') && /See the queue/.test(mark || ''), mark);
     },
   },
   {

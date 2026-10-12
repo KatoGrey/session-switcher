@@ -800,3 +800,10 @@ test('run: starts the project’s dev script, finds its address, keeps its outpu
   // The command you set is remembered for the project.
   assert.equal(createRunner({ dataDir: data }).status(dir).cmd, 'node srv.js');
 });
+
+test('tasks: one from "Do this later" remembers the chat and reply it came from', () => {
+  const ctx = { projectAt: () => ({ cwd: 'C:\\p', name: 'P', exists: true }), accounts: [] };
+  const t = tasks.validTask({ cwd: 'C:\\p', prompt: 'Add a co-op test', from: { id: 'c6e577cb-c6e5-46e5-ae57-c6e577cbc6e5', title: 'Balance pass', mid: 'msg_1' } }, ctx);
+  assert.deepEqual(t.from, { id: 'c6e577cb-c6e5-46e5-ae57-c6e577cbc6e5', title: 'Balance pass', mid: 'msg_1' });
+  assert.equal(tasks.validTask({ cwd: 'C:\\p', prompt: 'x', from: { id: '../../etc' } }, ctx).from, null, 'only a real chat id');
+});
