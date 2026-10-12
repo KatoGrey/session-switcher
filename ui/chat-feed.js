@@ -426,8 +426,8 @@ function lastTurn(root, make) {
   t.dataset.prov = prov;
   const relay = duo(), mine = prov === C.provider, them = PROV_NAME[mine ? partnerProv() : C.provider];
   const acts = `<button type="button" class="ta" data-c="copyturn" title="Copy this reply, as Markdown">Copy</button>
-      ${prov === 'claude' && C.provider === 'claude' && codexOK() ? '<button type="button" class="ta rv" data-c="review" title="Codex reviews the changes so far, in a read-only sandbox">Review with Codex</button>' : ''}
-      ${prov === 'codex' && claudeReviewOK() ? '<button type="button" class="ta rv" data-c="review" data-by="claude" title="Claude reviews the changes so far, and is asked not to change anything">Review with Claude</button>' : ''}
+      ${prov === 'claude' && C.provider === 'claude' && codexOK() ? '<button type="button" class="ta rv" data-c="review" title="Codex reviews the changes so far, in a read-only sandbox">Review<span class="ta-long"> with Codex</span></button>' : ''}
+      ${prov === 'codex' && claudeReviewOK() ? '<button type="button" class="ta rv" data-c="review" data-by="claude" title="Claude reviews the changes so far, and is asked not to change anything">Review<span class="ta-long"> with Claude</span></button>' : ''}
       ${relay ? `<button type="button" class="ta relay" data-c="relay" title="Quote this to ${them}${mine && them === 'Codex' ? ', for an image, a test or a second opinion' : ''}">${mine ? `Ask ${them}` : `Send to ${them}`}</button>` : ''}
       ${C.watch ? '' : '<button type="button" class="ta tmore" data-c="turnmore" aria-label="More for this reply" title="More: do this later, branch from here">⋯</button>'}`;
   // The same buttons twice: beside the name (with a mouse, on hover) and under the reply (on a phone,
