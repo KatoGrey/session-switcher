@@ -329,6 +329,7 @@ function chatLinks() {
   const add = u => {
     u = String(u).replace(/[.,;:!?)\]}>'"`*_]+$/, '');
     if (/\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(u)) return;
+    try { const h = new URL(u).hostname; if (!h.includes('.') && h !== 'localhost') return; } catch { return; }
     const k = u.replace(/\/+$/, '');
     if (seen.has(k)) return; seen.add(k); list.push({ url: u, ...linkLabel(u) });
   };

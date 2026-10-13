@@ -409,6 +409,29 @@ async function otherChatBlock(ref) {
   const attr = v => String(v).replace(/["<>\n]/g, ' ').slice(0, 120);
   return `<other-chat title="${attr(title)}" folder="${attr(folder)}" items="${keep.length}">\nFrom the user’s other chat “${title}”${folder ? ` (in ${folder})` : ''}, its latest messages, for context (that chat carries on separately):\n\n${keep.join('\n\n') || '(Nothing in it yet.)'}\n</other-chat>\n\n`;
 }
+// The model and effort a Codex chat started on, read from its own log, so picking it up again
+// doesn't drop it to Codex's default. A chat a routine started never had its choice saved, and
+// once one turn has run on the wrong model, its latest turn would only repeat the mistake.
+function codexStartedOn(threadId) {
+  try {
+    const root = path.join(codexHomes.MAIN_HOME(), 'sessions');
+    const kids = d => fs.readdirSync(d).filter(n => /^\d+$/.test(n)).sort().reverse();
+    for (const y of kids(root)) for (const m of kids(path.join(root, y))) for (const d of kids(path.join(root, y, m))) {
+      const dir = path.join(root, y, m, d);
+      const f = fs.readdirSync(dir).find(n => n.endsWith(`${threadId}.jsonl`));
+      if (!f) continue;
+      const file = path.join(dir, f), len = Math.min(fs.statSync(file).size, 2 * 1024 * 1024);
+      const fd = fs.openSync(file, 'r'), buf = Buffer.alloc(len);
+      try { fs.readSync(fd, buf, 0, len, 0); } finally { fs.closeSync(fd); }
+      for (const l of buf.toString('utf8').split('\n')) {
+        if (!l.includes('"turn_context"')) continue;
+        try { const p = JSON.parse(l).payload || {}; if (p.model) return { model: p.model, effort: p.effort || null }; } catch { /* a cut line */ }
+      }
+      return null;
+    }
+  } catch { /* no log */ }
+  return null;
+}
 function codexFind(id) {
   const t = id && codex.known(String(id));
   if (!t) return null;
@@ -588,8 +611,9 @@ async function openChatInner(c, body) {
     const art = themeStudio.project(cwd);
     const folder = art ? `Theme Studio · ${art.name}` : cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
     const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
-    const model = [body.model, pref.model].find(m => m && modelFits(inst, m)) || null;
-    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
+    const last = threadId && mode !== 'new' && !body.model && !pref.model ? codexStartedOn(threadId) : null;
+    const model = [body.model, pref.model, last && last.model].find(m => m && modelFits(inst, m)) || null;
+    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort || (last && model === last.model ? last.effort : null), title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
     if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
     log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
     return { ...chat.info(), attached: false, remembered: !!pref.mode, companionThread: threadId && mode !== 'new' ? chatPrefs.companionOf(threadId) : null };
@@ -1103,6 +1127,9 @@ const liteRoutes = createLiteRoutes({
     for (const t0 = Date.now(); chat.state === 'starting' && Date.now() - t0 < 30000;) await new Promise(r => setTimeout(r, 250));
     if (chat.state === 'ended') throw new Error('The chat stopped as it started.');
     if (!chat.title || chat.title === 'New chat') chat.title = title;
+    // Kept for this chat (not as the project's default), so it resumes on the same model and effort.
+    const choice = { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+    if (Object.keys(choice).length) { if (chat.sessionId) chatPrefs.set({ sessionId: chat.sessionId, provider: chat.provider || 'claude' }, choice); else chat.choices = { ...(chat.choices || {}), ...choice }; }
     chat.send(prompt);
     return chat;
   },
