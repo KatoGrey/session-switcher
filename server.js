@@ -725,7 +725,7 @@ async function openChatInner(c, body) {
         const now = await sys.runningSessions().catch(() => ({}));
         running = now;
         const pids = now[session.id.toLowerCase()];
-        if (pids) throw fail(409, `This chat is already open in a terminal (process ${pids.join(', ')}). Opening it twice can mix up its history.`, 'running');
+        if (pids) throw fail(409, `This chat is already open in the Claude app or a terminal (process ${pids.join(', ')}). Close it there first: two copies of one chat mix up its history.`, 'running');
       }
     }
   } else {
@@ -1794,7 +1794,7 @@ async function handleApi(req, res, url, remote = false) {
         const now = await sys.runningSessions().catch(() => ({}));
         running = now;
         const pids = now[session.id.toLowerCase()];
-        if (pids) throw fail(409, `This chat is already open in a terminal (process ${pids.join(', ')}). Opening it twice can mix up its history.`, 'running');
+        if (pids) throw fail(409, `This chat is already open in the Claude app or a terminal (process ${pids.join(', ')}). Close it there first: two copies of one chat mix up its history.`, 'running');
       }
       const prepared = acc.prepareForLaunch(c, a);
       const args = mode === 'fork' ? `--resume ${session.id} --fork-session` : `--resume ${session.id}`;
@@ -2391,6 +2391,13 @@ async function reopenChats(list, what) {
   for (const c of list) {
     try {
       if (chats.bySession(c.sessionId)) { reopened.push(c.sessionId); continue; }
+      // Not over a copy the Claude app or a terminal has open (this app's own copies are gone by now;
+      // a moment's grace in case one is still closing).
+      if (c.provider !== 'codex') {
+        let open = (await sys.runningSessions().catch(() => ({})))[String(c.sessionId).toLowerCase()];
+        if (open) { await new Promise(r => setTimeout(r, 3000)); sys.forget('running'); open = (await sys.runningSessions().catch(() => ({})))[String(c.sessionId).toLowerCase()]; }
+        if (open) { failed.push({ sessionId: c.sessionId, title: c.title, error: 'open in the Claude app or a terminal' }); continue; }
+      }
       await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true, ...(c.permissionMode ? { permissionMode: c.permissionMode } : {}), ...(c.model ? { model: c.model } : {}), ...(c.fast ? { fast: true } : {}) });
       reopened.push(c.sessionId);
     } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
