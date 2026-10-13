@@ -118,6 +118,7 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
   // When it catches up on a chat you're reading higher up in, you stay where you were; otherwise it opens at the end.
   const readAt = keepRead ? CV.readAt : null;
   Object.assign(CV, { readAt, id, key, inRepo: false, info: null, items: [], queue: queueFor(id), cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
+  CV.to = toFor(id); partnerReset();
   resetComposer();
   const c = chatBy.get(id);
   CV.provider = provider || (c ? c.provider : 'claude');
@@ -142,7 +143,7 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
   CV.loading = false;
   if (S.view !== 'chat' || CV.id !== id) return;
   paintChat(); paintQueue();
-  if (CV.key) listen(CV.key);
+  if (CV.key) { listen(CV.key); partnerFind(); }
   // Anything queued while you were away goes once it's free.
   if (CV.queue.length) setTimeout(sendQueued, 1500);
 }
@@ -216,6 +217,7 @@ function onEvent(ev) {
     }
     case 'delta': if (!ev.thinking) { CV.live += ev.text || ''; CV.status = 'Writing'; CV.thinking = ''; } else { CV.status = 'Thinking'; if (ev.text) CV.thinking = ((CV.thinking || '') + ev.text).slice(-600); } paintLive(); paintStatus(); break;
     case 'assistant': { CV.live = ''; const last = CV.items[CV.items.length - 1]; if (last && last.kind === 'assistant' && last.mid === ev.mid) last.blocks = mergeBlocks(last.blocks, ev.blocks); else CV.items.push({ ...ev, blocks: [...(ev.blocks || [])] }); paintFeed(); const tool = (ev.blocks || []).filter(b => b.type === 'tool').pop(); if (tool) CV.status = `${tool.name}${tool.summary ? ` · ${tool.summary}` : ''}`; paintStatus(); break; }
+    case 'handoff': if (ev.state === 'sent') { const n = { kind: 'notice', level: 'info', text: `${partnerName()} picks it up now.` }; CV.items.push(n); appendItem(n); } break;
     case 'tool_start': CV.status = `Using ${ev.name}`; CV.thinking = ''; paintStatus(); break;
     case 'notice': CV.items.push(ev); appendItem(ev); break;
     case 'permission': CV.pending.set(ev.requestId, ev); paintPending(); break;
@@ -249,13 +251,16 @@ function itemHtml(it) {
 // (or run of steps) is one segment, so only what changed is redrawn.
 function feedSegments() {
   const segs = []; let tools = [];
+  // With a partner in the chat (Both), each reply says who wrote it.
+  const duo = CV.items.some(x => x.partner);
+  const who = it => (duo ? `<span class="who">${esc(it.partner || selfName())}</span>` : '');
   const flushTools = () => { if (tools.length) { segs.push(`<details class="step"><summary>${esc(stepLine(tools))}</summary><ul>${tools.map(t => `<li><b>${esc(t.name)}</b> ${esc(t.summary || '')}</li>`).join('')}</ul></details>`); tools = []; } };
   for (const it of CV.items) {
     if (it.kind === 'assistant') {
       // In the order it happened: what it said, then the steps it took after saying it.
       for (const b of it.blocks || []) {
         if (b.type === 'tool') tools.push(b);
-        else if (b.type === 'text' && String(b.text || '').trim()) { flushTools(); segs.push(`<div class="msg-ai">${mdHtml(b.text)}</div>`); }
+        else if (b.type === 'text' && String(b.text || '').trim()) { flushTools(); segs.push(`<div class="msg-ai${it.partner ? ' from-partner' : ''}">${who(it)}${mdHtml(b.text)}</div>`); }
         else if (b.type === 'image') { flushTools(); segs.push(genImageHtml(b)); }
       }
       continue;
@@ -365,6 +370,7 @@ function chatHead() {
       ${st ? `${kindTag(c)}${waitTag(c)}<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>` : ''}
       ${(n => (n ? `<button class="iconbtn pics-btn" data-chatpics="1" aria-haspopup="menu" title="Pictures in this chat">${IC.image}<span>${n}</span></button>` : ''))(chatPictures().length)}
       ${headLinks()}
+      ${c ? '<button class="iconbtn side-btn" data-sidechat="1" title="Side chat: ask or try something beside this chat, without derailing it">Side chat</button>' : ''}
       ${typeof chatFiles === 'function' && chatFiles().length ? `<button class="iconbtn files-btn" data-viewfiles="1" title="Files this chat read or changed (opens beside the chat)">Files</button>` : ''}
       <button class="iconbtn" data-chatmenu="1" aria-haspopup="menu" aria-label="More">${IC.dots}</button></div>`;
 }
@@ -437,14 +443,16 @@ function paintFeed() {
   if (stick) $('feed').scrollTop = $('feed').scrollHeight;
 }
 function appendItem() { paintFeed(); }
-function paintLive() { const el = $('liveText'); if (!el) return; const stick = nearBottom(); el.innerHTML = CV.live ? mdHtml(CV.live) : ''; el.hidden = !CV.live; if (stick) $('feed').scrollTop = $('feed').scrollHeight; }
+function paintLive() { const el = $('liveText'); if (!el) return; const stick = nearBottom(); const pl = typeof PARTNER !== 'undefined' ? PARTNER.live : ''; el.innerHTML = (CV.live ? mdHtml(CV.live) : '') + (pl ? `<div class="from-partner"><span class="who">${esc(partnerName())}</span>${mdHtml(pl)}</div>` : ''); el.hidden = !CV.live && !pl; if (stick) $('feed').scrollTop = $('feed').scrollHeight; }
 // How long it's been working, to the second (the page's own clock, not the list's).
 const workedFor = t => { const s = Math.max(0, Math.floor((Date.now() - t) / 1000)); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m ${String(s % 60).padStart(2, '0')}s` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 // The line under the conversation while it works: what it's doing, the end of its thinking when the
 // model shares it (Claude does; Codex only says it's thinking), and the time.
 function paintStatus() {
   const el = $('statusLine'); if (!el) return;
-  el.hidden = !CV.busy;
+  const pBusy = typeof PARTNER !== 'undefined' && PARTNER.busy;
+  el.hidden = !CV.busy && !pBusy;
+  if (!CV.busy && pBusy) { el.innerHTML = `<span class="live-dot"></span><span class="st-what">${esc(partnerName())} is working</span>`; return; }
   if (!CV.busy) { el.innerHTML = ''; return; }
   // While it waits on a question or an approval, the card says what; this line just says it's waiting.
   const what = CV.pending.size ? 'Waiting for your answer' : String(CV.status || 'Thinking').replace(/^mcp__(.+?)__/, '$1: ');
@@ -544,6 +552,7 @@ function toolsHtml({ fresh }) {
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
     <button type="button" class="model" data-barmodel="1" aria-haspopup="menu" title="Model">${esc(model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model')}<span>▾</span></button>
     <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
+    ${!fresh && hasProv('claude') && hasProv('codex') ? `<button type="button" class="model${CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barto="1" aria-haspopup="menu" title="Who your messages go to: this chat, its ${esc(partnerName())} partner, or both taking turns">To: ${esc(toLabel(CV.to || 'chat'))}<span>▾</span></button>` : ''}
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
     ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button><button type="submit" class="send" aria-label="Queue (↵) · tell it now (⌥↵)" title="↵ queues it for when it finishes · ⌥↵ tells it now, while it works">↑</button>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
@@ -745,7 +754,9 @@ async function sendInChat({ fromQueue = false } = {}) {
     const out = withFiles(text, files); local.text = out;
     for (const i of sentImages) if (i.url) URL.revokeObjectURL(i.url);
     resetComposer(); paintAttachments();
-    await api('/api/chat/send', { key: CV.key, text: out, ...(images.length ? { images } : {}) });
+    const to = CV.to && CV.to !== 'chat' ? CV.to : null;
+    await api('/api/chat/send', { key: CV.key, text: out, ...(images.length ? { images } : {}), ...(to ? { to } : {}) });
+    if (to) partnerSoon();
     CV.busy = true; if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
   } catch (err) {
     // Didn't go: the message comes back to the box, as you wrote it.

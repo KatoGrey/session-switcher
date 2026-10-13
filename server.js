@@ -1800,6 +1800,7 @@ async function handleApi(req, res, url, remote = false) {
     }
     case '/api/commander/tool/send': return send(res, 200, await commanderSend(c, String(body.id || ''), body.text));
     case '/api/commander/tool/answer': return send(res, 200, commanderAnswer(String(body.id || ''), { decision: body.decision, requestId: body.requestId ? String(body.requestId) : null, reason: typeof body.reason === 'string' ? body.reason.slice(0, 2000) : '' }));
+    case '/api/chat/side': return send(res, 200, await startSideChat(c, String(body.id || ''), body.text));
     case '/api/commander/tool/sub': return send(res, 200, await commanderSub(c, String(body.parent || ''), body.task, body.includeContext !== false));
     case '/api/organize': {
       // Groups you made: create, rename, reorder, collapse, remove, and moving chats between them.
@@ -2115,10 +2116,9 @@ function commanderAnswer(id, { decision, requestId, reason }) {
   log(`Commander ${decision === 'allow' ? 'allowed' : 'denied'} ${p.event.toolName} in ${chat.sessionId}`);
   return { ok: true, title: chat.title, decision };
 }
-async function commanderSub(c, parentId, task, includeContext = true) {
-  task = String(task || '').trim().slice(0, 20000);
-  if (!task) throw fail(400, 'Say what the sub-session should do.');
-  const pid = parentFor(parentId);
+// A new chat in the same folder as another one (Claude or Codex, as that one is), with the folder's
+// usual choices, for the chat to run under it as a sub-chat.
+async function openSubChat(c, pid) {
   let cwd, folder, title, chat;
   if (isCodexId(pid)) {
     const cx = codexFind(pid); cwd = cx.cwd; folder = cx.folder; title = cx.session ? cx.session.title : 'a Codex chat';
@@ -2135,6 +2135,29 @@ async function commanderSub(c, parentId, task, includeContext = true) {
     chat = chats.open({ cfg: c, account: a, cwd, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: 'New chat', folder });
   }
   chat.parentSession = pid;
+  return { chat, cwd, folder, title };
+}
+// A side chat (Switcher Lite): a sub-chat beside this one that starts knowing its latest messages,
+// for a quick question or a try at something without derailing it. It stays under its parent.
+async function startSideChat(c, parentId, text) {
+  text = String(text || '').trim().slice(0, 20000);
+  if (!text) throw fail(400, 'Type your question.');
+  const pid = parentFor(parentId);
+  const { chat, title } = await openSubChat(c, pid);
+  chat.title = `Side: ${text.split('\n')[0].slice(0, 60)}`;
+  await waitReady(chat, 45000);
+  if (chat.state === 'ended') throw fail(500, 'The side chat stopped as it started.');
+  const ctx = await otherChatBlock({ id: pid }).catch(() => '');
+  chat.send(`${ctx}You're a side chat opened beside “${title}”, another chat in this folder; that chat carries on separately. Help with this:\n\n${text}`);
+  for (let i = 0; i < 40 && !chat.sessionId && chat.state !== 'ended'; i++) await new Promise(r => setTimeout(r, 250));
+  log(`Side chat from ${pid}: ${chatLib.one(text, 120)}`);
+  return { key: chat.key, sessionId: chat.sessionId || null, provider: chat.provider || 'claude' };
+}
+async function commanderSub(c, parentId, task, includeContext = true) {
+  task = String(task || '').trim().slice(0, 20000);
+  if (!task) throw fail(400, 'Say what the sub-session should do.');
+  const pid = parentFor(parentId);
+  const { chat, folder, title } = await openSubChat(c, pid);
   const last = includeContext ? await lastReply(pid).catch(() => '') : '';
   cmdNote(chat, 'The Commander started this sub-session and sent it the task below.');
   chat.send(`From Commander: ${task}\n\nContext: you’re a sub-session of “${title}”, another chat in this folder.${last ? ` Its latest reply:\n\n${last.split('\n').map(l => `> ${l}`).join('\n')}` : ''}`);

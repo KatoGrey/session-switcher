@@ -69,6 +69,7 @@ function closeViewer() {
 }
 
 function viewerBody() {
+  if (VW.kind === 'side') return sideBody();
   // Sandboxed: the page runs and signs in, but can't take over Lite's own tab.
   if (VW.kind === 'url') return `<iframe class="vw-frame" src="${esc(VW.target)}" title="${esc(VW.target)}" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"></iframe>`;
   if (VW.kind === 'list') {
@@ -95,7 +96,7 @@ function viewerBody() {
   return '<p class="empty-note vw-pad">Nothing to show.</p>';
 }
 function viewerHead() {
-  const label = VW.kind === 'list' ? 'Files in this chat' : VW.kind === 'url' ? VW.target.replace(/^https?:\/\//, '') : baseName(VW.target);
+  const label = VW.kind === 'side' ? 'Side chat' : VW.kind === 'list' ? 'Files in this chat' : VW.kind === 'url' ? VW.target.replace(/^https?:\/\//, '') : baseName(VW.target);
   const sub = VW.kind === 'file' ? (VW.data && VW.data.path) || VW.target : '';
   const acts = [
     VW.back.length ? '<button class="iconbtn" data-vw="back" aria-label="Back" title="Back">‹</button>' : '',
@@ -103,7 +104,8 @@ function viewerHead() {
     VW.kind === 'url' ? '<button class="iconbtn" data-vw="reload" aria-label="Reload" title="Reload">↻</button>' : '',
     VW.kind === 'url' ? `<a class="iconbtn" href="${esc(VW.target)}" target="_blank" rel="noopener noreferrer" aria-label="Open in a new tab" title="Open in a new tab">↗</a>` : '',
     VW.kind === 'file' && VW.data && VW.data.kind === 'text' ? '<button class="iconbtn" data-vw="copy" aria-label="Copy" title="Copy the text">⧉</button>' : '',
-    VW.kind !== 'list' ? '<button class="iconbtn" data-vw="files" aria-label="Files in this chat" title="Files in this chat">☰</button>' : '',
+    VW.kind === 'side' && SD.sessionId ? '<button class="iconbtn sd-act" data-sidenew="1" title="Start another side chat">New</button><button class="iconbtn sd-act" data-sideopen="1" title="Open the side chat in full">Open</button>' : '',
+    VW.kind !== 'list' && VW.kind !== 'side' ? '<button class="iconbtn" data-vw="files" aria-label="Files in this chat" title="Files in this chat">☰</button>' : '',
     '<button class="iconbtn" data-vw="close" aria-label="Close" title="Close (Esc)">×</button>',
   ];
   return `<div class="vw-h">${acts.join('')}</div>`;
@@ -115,6 +117,8 @@ function paintViewer() {
   el.hidden = !show;
   if (!show) { if (el.innerHTML) { el.innerHTML = ''; el._h = ''; } return; }
   const h = `${viewerHead()}<div class="vw-body">${viewerBody()}</div>`;
+  // The side chat keeps its box (and what you're typing); only its messages and header redraw.
+  if (VW.kind === 'side' && el.querySelector('#sideForm')) { el._h = h; return paintSide(); }
   if (el._h === h) return;
   // A page in the frame keeps running while the header changes; only swap it when the link does.
   const frame = el.querySelector('iframe.vw-frame');

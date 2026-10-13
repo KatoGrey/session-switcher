@@ -1039,3 +1039,18 @@ blockquote p { margin: 4px 0; }
 .ask-card.ask { align-items: stretch; padding: 12px 14px; margin-top: 0; flex-wrap: nowrap; }
 .ask-card.ask .ask-opt input[type=radio], .ask-card.ask .ask-opt input[type=checkbox] { flex: none; min-width: 0; width: auto; padding: 0; border: 0; accent-color: var(--accent); }
 .ask-card.ask .other-t { min-width: 0; }
+
+/* The side chat, in the side panel. */
+.side-btn, .sd-act { width: auto; padding: 0 8px; font-size: 12.5px; }
+.sd { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.sd-feed { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 12px; }
+.sd-feed .msg-you { max-width: 90%; }
+.sd-steps, .sd-note { margin: 0; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.sd-err { margin: 0; font-size: 12.5px; color: var(--st-bug); }
+.sd-f { display: flex; gap: 8px; align-items: flex-end; padding: 10px 12px 12px; border-top: 1px solid var(--line); }
+.sd-f textarea { flex: 1; min-width: 0; resize: none; font: inherit; font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--pane); color: var(--fg); max-height: 160px; }
+
+/* Both: who wrote each reply, and the To chip when it isn't just this chat. */
+.msg-ai .who, .from-partner .who { display: block; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.msg-ai.from-partner, #liveText .from-partner { border-left: 2px solid var(--accent); padding-left: 12px; }
+.model.to-on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
