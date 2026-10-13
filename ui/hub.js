@@ -40,6 +40,7 @@ function renderBar() {
 function updateTitle() {
   const n = awaiting().length;
   document.title = n ? `(${n}) Session Switcher` : 'Session Switcher';
+  deskStatus();
 }
 
 /* ---------- nav ---------- */

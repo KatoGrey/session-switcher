@@ -15,7 +15,7 @@ function renderSetup(j) {
   const p = j.prefs;
   const t = (k, label, text, local) => `<label class="toggle"><input type="checkbox" ${local ? `data-local="${k}"` : `data-pref="${k}"`} ${(local ? Local[k] : p[k]) ? 'checked' : ''}><span><b>${label}</b><span>${text}</span></span></label>`;
   $('setupBody').innerHTML = `
-    <nav class="setup-toc" aria-label="Sections"><a href="#st-health">Health</a><a href="#st-alerts">Alerts</a><a href="#st-prefs">Preferences</a><a href="#st-codex">Codex</a><a href="#st-phone">Phone</a><a href="#st-problems">Problems</a><a href="#st-app">App</a></nav>
+    <nav class="setup-toc" aria-label="Sections"><a href="#st-health">Health</a><a href="#st-alerts">Alerts</a><a href="#st-prefs">Preferences</a><a href="#st-codex">Codex</a><a href="#st-phone">Phone</a>${window.desktop ? '<a href="#st-desktop">Desktop app</a>' : ''}<a href="#st-problems">Problems</a><a href="#st-app">App</a></nav>
     <ul class="checks" id="st-health">${j.checks.map(c => `<li class="check ${c.state}"><span class="st" aria-label="${c.state}"></span><span><b>${esc(c.label)}</b><span class="dt">${esc(c.detail)}</span></span>
       ${c.fix ? `<button class="btn sm" data-fix="${esc(c.fix.action)}" data-account="${esc(c.fix.account || '')}">${esc(c.fix.label)}</button>` : '<span></span>'}</li>`).join('')}</ul>
     <p class="d-h" id="st-alerts">Alerts and looks</p>
@@ -60,6 +60,7 @@ function renderSetup(j) {
     </div>
     ${window.REMOTE ? `<p class="d-h" id="st-phone">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p><div id="pushBox"></div>
       ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h" id="st-phone">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
+    ${window.desktop ? '<p class="d-h" id="st-desktop">Desktop app</p><div class="prefs" id="deskBox"><p class="loading">Checking…</p></div>' : ''}
     ${window.REMOTE ? '' : '<p class="d-h" id="st-problems">Problems and speed</p><div class="prefs" id="problemsBox"><p class="loading">Checking…</p></div>'}
     <p class="d-h" id="st-app">App</p>
     <div class="app-actions">
@@ -109,7 +110,7 @@ async function openSetup(tab = 'health') {
   if (!$('setup').open) $('setup').showModal();
   if (tab === 'look') return renderLook();
   $('setupBody').innerHTML = '<p class="loading">Checking Claude Code, your accounts and shared data…</p>';
-  try { await loadHealth(true); loadPhone(); renderPushBox(); loadProblems(); } catch (err) {
+  try { await loadHealth(true); loadPhone(); renderPushBox(); loadProblems(); loadDeskBox(); } catch (err) {
     // A slip in the page itself shouldn't show as programmer's text.
     const msg = err instanceof TypeError || err instanceof ReferenceError ? 'Setup couldn’t finish loading. Close it and open it again; if it keeps happening, restart Session Switcher.' : err.message;
     $('setupBody').innerHTML = `<p class="loading">${esc(msg)}</p>`;
@@ -495,7 +496,7 @@ function notify(kind, x) {
       const p = (x.pending || [])[0];
       const body = kind === 'needs' ? (p ? `${wantsTo(p)}${p.detail || p.summary ? `: ${p.detail || p.summary}` : ''}` : 'Waiting for you.') : (plainMd(lastLine(x.lastText)).slice(0, 160) || 'Finished its turn.');
       const n = new Notification(kind === 'needs' ? `${x.title || 'A chat'} needs you` : `${x.title || 'A chat'} replied`, { body, tag: keyOf(x), silent: true });
-      n.onclick = () => { window.focus(); openActivity(findActivity(keyOf(x)) || x); n.close(); };
+      n.onclick = () => { if (window.desktop) desktop.show(); else window.focus(); openActivity(findActivity(keyOf(x)) || x); n.close(); };
     } catch { /* notifications unavailable */ }
   }
 }

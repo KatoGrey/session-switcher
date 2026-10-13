@@ -3567,3 +3567,7 @@ body.from-cache .pulse::after{content:'';position:absolute;inset:-2px;border-rad
 .outbox-msg{align-self:flex-end;max-width:min(680px,88%);margin:8px 0 8px auto;padding:10px 14px;border:1px dashed var(--seam-2);border-radius:14px;opacity:.8}
 .outbox-msg .ob-text{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--parch)}
 .outbox-msg .ob-note{display:block;margin-top:6px;color:var(--ash);font-size:12px}
+/* The desktop app: its update card and Setup section. */
+.whats-new .wn-sub{margin:6px 0 0;color:var(--parch-2)}
+.desk-up{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;margin:0 0 10px}
+.desk-up p{margin:0;color:var(--parch-2)}

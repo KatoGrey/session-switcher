@@ -18,7 +18,15 @@ Download the newest installer from the [Releases page](https://github.com/KatoGr
 
 Your accounts, settings and the rest live in `%APPDATA%\Session Switcher` (Mac: `~/Library/Application Support/Session Switcher`), so updates and reinstalls keep them. The first time, if it finds a folder copy of Session Switcher, it offers to bring in its accounts and settings (it copies them; the folder copy keeps working).
 
-Closing the window keeps it running in the tray (Mac: the menu bar), so chats keep going and notifications come; **Quit** is in the tray menu and in Setup. The tray menu also has **Start with Windows** (Mac: **Open at login**) and **Check for updates**.
+Closing the window keeps it running in the tray (Mac: the menu bar), so chats keep going and notifications come; **Quit** is in the tray menu and in Setup. What the installed app adds:
+
+- **What's waiting, at a glance:** the tray icon's tooltip and menu list the chats that need you (click one to open it), the taskbar button shows their count (Mac: the Dock badge), and it flashes (bounces) when a new one needs you while you're elsewhere.
+- **Taskbar shortcuts:** right-click the taskbar button for **New chat**, **Search every chat** and **Queue a task**. The tray menu has New chat and Search too.
+- **From anywhere:** `Ctrl+Shift+Space` (Mac: `⌘⇧Space`) brings Session Switcher up over whatever you're doing, and puts it away again.
+- **Awake while chats work:** the PC doesn't go to sleep in the middle of a reply (the screen still turns off as usual).
+- **Updates in the app:** Setup → **Desktop app** shows the version, whether an update is downloading or ready, and **Check for updates**; a ready update shows as a card on the hub with **Restart to update**.
+- **A browser's comforts:** right-click for spelling suggestions, cut, copy and paste, copying links and pictures; `F5` reloads, `Ctrl` `+`/`-`/`0` zooms.
+- Setup → **Desktop app** turns each of these on or off, with **Start with Windows** (Mac: **Open at login**), which starts it quietly in the tray.
 
 **Making a release:** `node desktop/release.js 6.2.0 --push` sets the version, brings in the newest phone app, commits, tags and pushes. GitHub Actions (`.github/workflows/desktop.yml`) builds the Windows installer and the Mac apps and publishes the release; installed copies update to it. To build one here: `cd desktop && npm install && npm run dist:win`.
 

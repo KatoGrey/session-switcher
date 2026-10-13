@@ -1,13 +1,10 @@
-# Faster, and more out of your way
+# The desktop app
 
-- **Opens instantly.** The hub shows what it knew last time while it catches up, and a chat starts loading when you point at it.
-- **Ctrl+Z takes it back.** Closing a chat, marking it done, unpinning and removing can all be undone for a few seconds.
-- **Account autopilot.** When an account runs out mid-chat, the chat carries on as one with room (you can say no, or turn it off in Setup).
-- **Drafts follow you.** Start a message on the PC and finish it on the phone, or the other way round.
-- **Focus mode.** Ctrl+\ shows just the conversation.
-- **Plain words in Ctrl+K.** Try “codex chat in my project to make the icons” or “queue the patch notes in my project tonight”.
-- **Good morning.** The first visit of the day offers yesterday’s chats to pick back up.
-- **Problems, caught.** Setup → Problems lists anything that went wrong, with Ask Claude to fix this.
-- **Phone.** A home-screen widget, replies gathered into a digest if you’d like, and messages written offline send when you’re back.
-- **Both: Codex follows your mode.** What you let Claude do without asking carries over to Codex, so it stops asking about every step.
-- **Crew.** An optional automatic Codex review after a big change, and a forecast of when an account will run out.
+- **A real app.** Install it once (Windows or Mac); it updates itself from GitHub, and your accounts and settings live in their own folder, so updates never touch them.
+- **What's waiting, at a glance.** The tray lists the chats that need you, the taskbar shows their count, and it flashes when a new one needs you while you're elsewhere.
+- **Taskbar shortcuts.** Right-click the taskbar button: New chat, Search every chat, Queue a task.
+- **Ctrl+Shift+Space from anywhere** brings it up, and puts it away again.
+- **Stays awake while chats work.** A long reply isn't cut off by the PC going to sleep.
+- **Updates, in the app.** Setup → Desktop app shows the version and what's coming; a ready update shows on the hub with Restart to update, and open chats come back where they were.
+- **Right-click** for spelling suggestions, copy and paste; F5 reloads, Ctrl +/− zooms.
+- **Fixed:** bringing Codex into a chat could fail ("ensureCompanion") and leave its models unlisted; tips come at most once a day.

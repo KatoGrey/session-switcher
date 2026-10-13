@@ -1623,6 +1623,37 @@ module.exports = [
     },
   },
   {
+    name: 'desktop app',
+    // In the installed app (a stand-in for it here): what's waiting is told to it, an update shows as
+    // a card on the hub, and Setup has its settings.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`window._sent = []; window._set = [];
+        window.desktop = { platform: 'win32', status: s => _sent.push(s), show: () => {}, onOpen: () => {}, onDo: () => {}, onUpdate: () => {},
+          update: async () => Desk.update, checkUpdates: async () => ({ status: 'current', version: '6.1.0', checkedAt: Date.now() }), installUpdate: async () => { window._installed = true; },
+          settings: async () => ({ version: '6.1.0', keepAwake: true, hotkey: 'CommandOrControl+Shift+Space', hotkeyOn: true, openAtLogin: false, dataDir: 'C:\\\\Users\\\\alex\\\\AppData\\\\Roaming\\\\Session Switcher' }),
+          set: async p => { _set.push(p); return p; } };
+        Desk.last = ''; deskStatus(); return 1`);
+      const sent = await b.eval(`return _sent[0]`);
+      t.check('what’s waiting is told to the app, with a count for the taskbar', !!sent && sent.needs >= 1 && sent.list.length === sent.needs && /^data:image\/png/.test(sent.badge || ''), sent && { needs: sent.needs, working: sent.working });
+      await b.eval(`Desk.update = { status: 'ready', next: '6.2.0', version: '6.1.0' }; localStorage.removeItem('desk-update-seen'); renderLive(true); return 1`); await sleep(300);
+      const card = await b.eval(`return document.getElementById('deskUpdate')?.textContent.replace(/\\s+/g, ' ') || ''`);
+      t.check('an update that’s ready shows on the hub', /Session Switcher 6\.2\.0 is ready/.test(card) && /Restart to update/.test(card), card);
+      await t.shot(b, 'update');
+      await b.clickOn('#deskUpdate [data-desk="install"]'); await sleep(200);
+      t.check('Restart to update asks the app to install it', await b.eval(`return !!window._installed`));
+      await b.clickOn('#deskUpdate .wn-b [data-desk="later"]'); await sleep(200);
+      t.check('Later puts the card away for that version', await b.eval(`return !document.getElementById('deskUpdate')`));
+      await b.eval(`openSetupAt('st-desktop'); return 1`); await sleep(1300);
+      const box = await b.eval(`return document.getElementById('deskBox')?.textContent.replace(/\\s+/g, ' ') || ''`);
+      t.check('Setup has the desktop app: its version, updates and settings', /6\.1\.0/.test(box) && /Start with Windows/.test(box) && /Keep the PC awake/.test(box) && /Ctrl \+ Shift \+ Space/.test(box), box.slice(0, 240));
+      await b.eval(`document.getElementById('st-desktop').scrollIntoView(); return 1`); await sleep(200);
+      await t.shot(b, 'setup');
+      await b.clickOn('#deskBox [data-deskset="keepAwake"]'); await sleep(300);
+      t.check('a setting changes in the app', await b.eval(`return _set.some(p => p.keepAwake === false)`));
+    },
+  },
+  {
     name: 'partner starts',
     // Bringing Codex in, in a chat whose partner's earlier messages are being paged: it starts and
     // its models are there (that list once stood in for the start, and nothing happened).
