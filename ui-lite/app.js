@@ -59,7 +59,11 @@ function renderSide() {
     <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
   const focusSt = { id: 'focus', name: 'Focus', c: 'var(--st-priority)' };
   const waitSt = { id: 'waiting', name: 'Waiting on others', c: 'var(--muted)' };
-  const folders = [focusSt, ...STATUSES.filter(x => !parked(x.id)), waitSt, ...STATUSES.filter(x => parked(x.id))].map(st => {
+  // Later isn't a folder: like quiet, it's one small "N later" row at the end that opens in place.
+  const laterAll = chats.filter(c => isTop(c) && statusOf(c) === 'later');
+  const laterOpen = !!S.more['side-later'];
+  const laterRow = laterAll.length ? `<div class="group">${laterOpen ? `<div class="quiet-chats">${laterAll.map(c => sideChat(c) + sideFam(c)).join('')}</div>` : ''}<button class="nav-i chat-i quiet-toggle" data-side-later="*" aria-expanded="${laterOpen}"><span class="lbl">${laterOpen ? 'Hide later' : `${laterAll.length} later`}</span></button></div>` : '';
+  const folders = [focusSt, ...STATUSES.filter(x => !parked(x.id)), waitSt, ...STATUSES.filter(x => x.id === 'done')].map(st => {
     const all = chats.filter(c => (st.id === 'focus' ? c.focus && !parked(statusOf(c)) : st.id === 'waiting' ? isTop(c) && c.waiting && !c.focus && !parked(statusOf(c)) : isTop(c) && statusOf(c) === st.id && !(c.focus && !parked(st.id)) && !(c.waiting && !parked(st.id))));
     const act = st.id === 'later' ? all : all.filter(c => !famQuiet(c)), quiet = st.id === 'later' ? [] : all.filter(famQuiet);
     const open = all.length && !S.folded[st.id];
@@ -69,11 +73,13 @@ function renderSide() {
       <button class="nav-i folder-btn" data-fold="${st.id}" ${st.id === 'focus' ? 'data-drop-focus="1"' : `data-drop-stage="${st.id}"`} aria-expanded="${!!open}"><span class="ic"><span class="label-dot" style="background:${st.c}"></span></span><span class="lbl">${st.name}</span><span class="n">${act.length || ''}</span></button>
       <div class="folder-items">${shown.map(c => sideChat(c) + (st.id === 'focus' ? '' : sideFam(c))).join('')}${act.length > shown.length ? `<button class="nav-i chat-i quiet-toggle" data-more-all="${st.id}"><span class="lbl">${act.length - shown.length} more</span></button>` : ''}${quiet.length ? (showQuiet ? `<div class="quiet-chats">${quiet.slice(0, 60).map(sideChat).join('')}</div>` : '') + `<button class="nav-i chat-i quiet-toggle" data-more-st="${st.id}"><span class="lbl">${showQuiet ? 'Hide quiet' : `${quiet.length} quiet`}</span></button>` : ''}</div>
     </div>`;
-  }).join('');
+  });
+  // The backlog line goes just before Done.
+  folders.splice(folders.length - 1, 0, laterRow);
   const nArch = S.chats.filter(c => c.archived).length + S.projects.filter(p => p.archived).length;
   const mode = S.sideMode || 'projects';
   const modeSeg = `<span class="side-seg" role="group" aria-label="Sidebar shows"><button data-sidemode="projects" aria-pressed="${mode === 'projects'}">Projects</button><button data-sidemode="stages" aria-pressed="${mode === 'stages'}">Status</button></span>`;
-  swapHtml($('sideScroll'), top + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders : sideProjects(chats)}</div>`
+  swapHtml($('sideScroll'), top + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders.join('') : sideProjects(chats)}</div>`
     + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`);
 }
 
@@ -310,7 +316,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-addimg]'))) return wrap(addImageFromUrl)(b.dataset.addimg);
   if ((b = el('[data-chatpics]'))) return picturesMenu(b);
   if ((b = el('[data-chatlinks]'))) return linksMenu(b);
-  if ((b = el('[data-side-later]'))) { const k = 'pl:' + b.dataset.sideLater; S.more[k] = !S.more[k]; return renderSide(); }
+  if ((b = el('[data-side-later]'))) { const k = b.dataset.sideLater === '*' ? 'side-later' : 'pl:' + b.dataset.sideLater; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-steerq]'))) { steerQueued(Number(b.dataset.steerq)); return undefined; }
   if ((b = el('[data-unqueue]'))) { CV.queue.splice(Number(b.dataset.unqueue), 1); paintQueue(); return undefined; }
   if ((b = el('[data-rtnew]'))) return newRoutine(b.dataset.rtnew);

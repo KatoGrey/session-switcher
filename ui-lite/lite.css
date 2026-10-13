@@ -1072,3 +1072,8 @@ blockquote p { margin: 4px 0; }
 
 .live-dot.stall { background: var(--hazard, #d9a400); animation: none; }
 #statusLine .btn.sm { padding: 1px 8px; font-size: 12px; }
+
+/* Later (the backlog): a small line like quiet, muted when open. */
+.later-sec { gap: 6px; }
+.later-line { align-self: flex-start; }
+.quiet-rows { opacity: .78; }

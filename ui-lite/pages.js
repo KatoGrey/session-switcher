@@ -95,6 +95,8 @@ function project() {
     const act = parked(s.id) ? all : all.filter(c => !famQuiet(c)), quiet = parked(s.id) ? [] : all.filter(famQuiet);
     const showQ = S.more['pq-' + s.id];
     const shown = showQ ? [...act, ...quiet] : act;
+    // Later: one small "N later" line, out of the way like quiet; it opens in place.
+    if (s.id === 'later') return `<section class="section later-sec" data-drop-stage="later"><button class="hint later-line" data-pfold="later">${folded ? `${all.length} later` : 'Hide later'}</button>${folded ? '' : `<div class="rows quiet-rows">${famRowsHtml(all)}</div>`}</section>`;
     return `<section class="section" data-drop-stage="${s.id}">
       <div class="sec-h">${parked(s.id) ? `<button class="fold" data-pfold="${s.id}"><h2>${s.name}</h2><span class="n">${all.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${act.length}</span>`}
         ${quiet.length ? `<button class="hint" data-pq="${s.id}">${showQ ? 'Hide quiet' : `${quiet.length} quiet`}</button>` : ''}</div>
