@@ -133,6 +133,7 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
   const readAt = keepRead ? CV.readAt : null;
   Object.assign(CV, { readAt, id, key, inRepo: false, info: null, items: [], queue: queueFor(id), cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
   CV.to = toFor(id); partnerReset();
+  CV.progressAt = 0; CV.lastStep = null;
   resetComposer();
   const hit = !keepRead && CHAT_CACHE.get(String(id));
   if (hit) { CV.items = hit.items.slice(); CV.cursor = hit.cursor; CV.loading = false; }
@@ -197,9 +198,9 @@ setInterval(async () => {
   if (!CV.key || healBusy || Date.now() - (CV.lastEventAt || 0) < 15000) return;
   healBusy = true;
   try {
-    const j = await api('/api/lite/live');
-    const x = (j.live || []).find(l => l.key === CV.key || (l.sessionId && String(l.sessionId).toLowerCase() === String(CV.id).toLowerCase()));
-    if (x && !x.working && !(x.pending || []).length && S.view === 'chat') {
+    // The chat itself says whether it's still on its turn (the running list can disagree).
+    const key = CV.key, info = await api('/api/chat/attach', { key });
+    if (CV.key === key && !['busy', 'starting', 'waiting'].includes(info.state) && S.view === 'chat') {
       const typed = $('msgBox') ? $('msgBox').value : '';
       await openChatView(CV.id, { key: CV.key, keepRead: true });
       if (typed && $('msgBox') && !$('msgBox').value) { $('msgBox').value = typed; autosize($('msgBox')); }
@@ -220,7 +221,16 @@ const evAt = ev => Date.parse(ev.at) || Date.now();
 // Both: a message can carry a catch-up on what the other assistant said; it's for them, not shown.
 // A side chat's first message carries this chat's latest messages too; only your question shows.
 const ownWords = t => String(t || '').replace(/<shared-context[^>]*>[\s\S]*?<\/shared-context>\s*/g, '').replace(/^[\s\S]*?You're a side chat opened beside[\s\S]*?Help with this:\n\n/, '');
+// The last sign of real progress (words, thinking, a step, a question, the end of a turn), from
+// each event's own time, so a chat that's gone quiet shows it even right after you open it.
+const PROGRESS = new Set(['delta', 'assistant', 'tool_start', 'permission', 'result', 'user']);
+function noteProgress(ev) {
+  if (!PROGRESS.has(ev.kind)) return;
+  const t = ev.at ? Date.parse(ev.at) : Date.now();
+  if (!CV.progressAt || t > CV.progressAt) { CV.progressAt = t; CV.lastStep = ev.kind === 'tool_start' || (ev.kind === 'assistant' && (ev.blocks || []).some(b => b.type === 'tool')) ? 'tool' : ev.kind; }
+}
 function onEvent(ev) {
+  noteProgress(ev);
   if (ev.kind === 'user' && ev.text) ev = { ...ev, text: ownWords(ev.text) };
   switch (ev.kind) {
     case 'state':
@@ -492,6 +502,14 @@ const workedFor = t => { const s = Math.max(0, Math.floor((Date.now() - t) / 100
 // model shares it (Claude does; Codex only says it's thinking), and the time.
 function paintStatus() {
   const el = $('statusLine'); if (!el) return;
+  const quietMin = CV.busy && CV.progressAt && CV.lastStep !== 'tool' && !CV.pending.size ? Math.floor((Date.now() - CV.progressAt) / 60000) : 0;
+  if (quietMin >= 4) {
+    el.hidden = false;
+    const h = `<span class="live-dot stall"></span><span class="st-what">Nothing from it for ${quietMin} min. It may be stuck.</span><button type="button" class="btn sm" data-nudge="1" title="Stop this turn and tell it to carry on">Nudge</button><span class="st-time">${CV.startedAt ? workedFor(CV.startedAt) : ''}</span>`;
+    if (el._h !== h) { el.innerHTML = h; el._h = h; }
+    return;
+  }
+  el._h = null;
   const pBusy = typeof PARTNER !== 'undefined' && PARTNER.busy;
   el.hidden = !CV.busy && !pBusy;
   if (!CV.busy && pBusy) { el.innerHTML = `<span class="live-dot"></span><span class="st-what">${esc(partnerName())} is working</span>`; return; }
@@ -1119,3 +1137,16 @@ document.addEventListener('pointerover', e => {
     } catch { /* it loads when opened */ } finally { prefetching = null; }
   }, 120);
 }, { passive: true });
+
+// Nudge a chat that's gone quiet: stop the turn that never got going, then tell it to carry on.
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-nudge]'); if (!b || !CV.key) return;
+  b.disabled = true;
+  const key = CV.key;
+  wrap(async () => {
+    await api('/api/chat/interrupt', { key });
+    for (let i = 0; i < 20 && CV.key === key && CV.busy; i++) await new Promise(r => setTimeout(r, 250));
+    await api('/api/chat/send', { key, text: 'You went quiet (nothing for several minutes), so I stopped that turn. Carry on where you left off.' });
+    CV.progressAt = Date.now(); toast('Nudged. It should pick up again in a moment.');
+  })();
+});
