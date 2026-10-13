@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The "What needs you" home-screen widget (NeedsWidget.java, layout/needs_widget.xml). -->
+<resources>
+    <string name="widget_label">What needs you</string>
+    <string name="widget_description">Chats on your PC waiting for your OK, with Allow and Deny right on the home screen.</string>
+
+    <color name="widget_bg">#F217100E</color>
+    <color name="widget_row">#FF2A1D1A</color>
+    <color name="widget_line">#FF3A2A25</color>
+    <color name="widget_text">#FFF3E9E2</color>
+    <color name="widget_dim">#FFB3A39A</color>
+    <color name="widget_gold">#FFD9BF74</color>
+
+    <style name="WidgetRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/widget_row</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">5dp</item>
+        <item name="android:paddingBottom">5dp</item>
+        <item name="android:visibility">gone</item>
+    </style>
+    <style name="WidgetRowTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/widget_text</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+    <style name="WidgetRowBody">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/widget_dim</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+</resources>

@@ -3516,3 +3516,9 @@ body.mini{margin:0;min-height:calc(100vh / var(--look-ui, 1));background:linear-
 @media (min-width:2200px){
   .c-feed,.c-pending,.c-compose,.watchbar{max-width:1040px}
 }
+
+/* Drawn from last time while today's state arrives: a quiet sign it's catching up. */
+body.from-cache .live-pill,body.from-cache #livepill{opacity:.7}
+body.from-cache .pulse{position:relative}
+body.from-cache .pulse::after{content:'';position:absolute;inset:-2px;border-radius:inherit;border:1px solid var(--gilt);opacity:.35;animation:pulseWait 1.4s ease-in-out infinite}
+@keyframes pulseWait{50%{opacity:.08}}

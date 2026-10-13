@@ -110,10 +110,13 @@ public class NotifyService extends Service {
         if (ACTION_ACT.equals(action)) {
             final String token = intent.getStringExtra("token"), decision = intent.getStringExtra("decision");
             final String tag = intent.getStringExtra("tag"), title = intent.getStringExtra("title");
-            final String key = intent.getStringExtra("key");
+            final String key = intent.getStringExtra("key"), id = intent.getStringExtra("id");
+            NeedsWidget.busy(this, id, decision);
             new Thread(new Runnable() {
                 @Override public void run() {
-                    answer(token, decision, tag, title, key);
+                    // Answered: it no longer needs you. Not answered: the widget offers it again.
+                    if (answer(token, decision, tag, title, key)) NeedsWidget.remove(NotifyService.this, id, id == null || id.isEmpty() ? tag : null, null);
+                    else NeedsWidget.busy(NotifyService.this, id, null);
                     if (!isOn(NotifyService.this)) stopSelf();
                 }
             }, "ss-answer").start();
@@ -150,6 +153,8 @@ public class NotifyService extends Service {
         if (c != null) c.disconnect();
         nudge();
         if (worker != null) worker.interrupt();
+        NeedsWidget.live(this, false);
+        if (!isOn(this)) NeedsWidget.reset(this);   // turned off: nothing will keep the list fresh
         if (netCallback != null) {
             try { ((ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE)).unregisterNetworkCallback(netCallback); } catch (RuntimeException ignored) { }
         }
@@ -167,6 +172,7 @@ public class NotifyService extends Service {
             String server = p.getString(KEY_SERVER, ""), cookie = p.getString(KEY_COOKIE, "");
             if (server.isEmpty() || cookie.isEmpty()) {
                 status("Open the app once to connect it to your PC.");
+                NeedsWidget.live(this, false);
                 pause(60000);
                 continue;
             }
@@ -190,6 +196,7 @@ public class NotifyService extends Service {
                 connected = true;
                 backoff = 0;
                 status("Connected to your PC.");
+                NeedsWidget.live(this, true);
                 StringBuilder data = new StringBuilder();
                 String line;
                 while (running && (line = r.readLine()) != null) {
@@ -206,6 +213,7 @@ public class NotifyService extends Service {
                 conn = null;
                 if (c != null) c.disconnect();
             }
+            NeedsWidget.live(this, false);
             if (!running) break;
             status("Waiting for your PC: on your home Wi-Fi, with Session Switcher running there.");
             backoff = connected ? 2 : Math.min(backoff == 0 ? 5 : backoff * 2, 120);
@@ -227,8 +235,16 @@ public class NotifyService extends Service {
             JSONObject m = new JSONObject(json);
             String kind = m.optString("kind");
             long at = m.optLong("at", 0);
-            if ("hello".equals(kind)) { if (at > 0) prefs(this).edit().putLong(KEY_SINCE, at).apply(); return; }
-            if ("clear".equals(kind)) { nm().cancel(m.optString("tag"), 0); return; }
+            if ("hello".equals(kind)) {
+                if (at > 0) prefs(this).edit().putLong(KEY_SINCE, at).apply();
+                // The PC resends everything still waiting right after hello, so the widget starts over.
+                NeedsWidget.reset(this);
+                return;
+            }
+            if ("clear".equals(kind)) { nm().cancel(m.optString("tag"), 0); NeedsWidget.remove(this, null, m.optString("tag"), null); return; }
+            // Before the "shown already" check: a catch-up after hello must put it back on the widget.
+            if ("needs".equals(kind)) NeedsWidget.add(this, m);
+            if ("reply".equals(kind)) NeedsWidget.remove(this, null, null, m.optString("key"));   // it finished its turn
             String id = m.optString("id");
             if (!id.isEmpty() && !seen.add(id)) return;   // shown already
             remember();
@@ -314,7 +330,8 @@ public class NotifyService extends Service {
                 .putExtra("decision", decision)
                 .putExtra("tag", m.optString("tag"))
                 .putExtra("title", m.optString("chatTitle", "A chat"))
-                .putExtra("key", m.optString("key"));
+                .putExtra("key", m.optString("key"))
+                .putExtra("id", m.optString("id").replaceFirst("#\\d+$", ""));   // a choice's id is "<id>#n"
         i.setData(android.net.Uri.parse("ss://act/" + decision + "/" + m.optString("id")));   // one per notification and button
         return Build.VERSION.SDK_INT >= 26
                 ? PendingIntent.getForegroundService(this, code, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
@@ -372,7 +389,8 @@ public class NotifyService extends Service {
 
     // ---------------------------------------------------------------- Allow / Deny
 
-    private void answer(String token, String decision, String tag, String title, String key) {
+    /** True when the PC took the answer. */
+    private boolean answer(String token, String decision, String tag, String title, String key) {
         nm().notify(tag, 0, builder(CH_NEEDS).setContentTitle(title).setContentText("allow".equals(decision) ? "Allowing…" : "Denying…").setOnlyAlertOnce(true).build());
         String why;
         try {
@@ -391,7 +409,7 @@ public class NotifyService extends Service {
             out.write(body.toString().getBytes("UTF-8"));
             out.close();
             int code = c.getResponseCode();
-            if (code == 200) { nm().cancel(tag, 0); c.disconnect(); return; }
+            if (code == 200) { nm().cancel(tag, 0); c.disconnect(); return true; }
             why = errorOf(c.getErrorStream(), "It didn’t go through (" + code + ").");
             c.disconnect();
         } catch (IOException | JSONException e) {
@@ -401,6 +419,7 @@ public class NotifyService extends Service {
         nm().notify(tag, 0, builder(CH_NEEDS).setContentTitle(title + ": not answered").setContentText(why + " Tap to open it.")
                 .setStyle(new Notification.BigTextStyle().bigText(why + " Tap to open it."))
                 .setAutoCancel(true).setOnlyAlertOnce(true).setContentIntent(openApp(key, null, code)).build());
+        return false;
     }
 
     private void sendReply(String token, String text, String tag, String title, String key) {

@@ -440,29 +440,55 @@ function openActivity(x) {
 }
 
 /* ---------- data ---------- */
-async function loadState() {
-  const j = await api('/api/state');
+// Each loader takes what to show (from the last time, for an instant start) or asks the PC.
+const Boot = { raw: {} };
+async function loadState(pre) {
+  const j = pre || await api('/api/state');
+  Boot.raw.state = j;
   S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null; S.reopen = j.reopen || []; S.restart = j.restart || { pending: false }; S.update = !!j.update; S.pid = j.pid || null;
   const saved = store('acct');
   if (!S.accounts.some(a => a.id === S.acct)) S.acct = S.accounts.some(a => a.id === saved) ? saved : S.accounts[0].id;
 }
-async function loadSessions() {
-  const j = await api('/api/sessions');
+async function loadSessions(pre) {
+  const j = pre || await api('/api/sessions');
+  Boot.raw.sessions = j;
   S.projects = j.projects; S.root = j.root; S.running = j.running || {}; S.live = j.live || {};
   S.doneMarks = j.doneMarks || {};
   sortDone();
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
-async function loadActivity() { const j = await api('/api/activity'); S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }
-async function loadUsage() {
-  const [j, sp] = await Promise.all([api('/api/usage'), api('/api/usage/chats').catch(() => null)]);
+async function loadActivity(pre) { const j = pre || await api('/api/activity'); Boot.raw.activity = j; S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }
+async function loadUsage(pre) {
+  const [j, sp] = pre || await Promise.all([api('/api/usage'), api('/api/usage/chats').catch(() => null)]);
+  Boot.raw.usage = [j, sp];
   S.usage = j.usage || {};
   if (sp) S.spent = sp.byAccount || {};   // what used each account's window, chat by chat
+}
+// Instant start: the hub as it was last time, drawn at once, then brought up to date (a few seconds
+// with many chats). Kept on this device; too big to keep, and it simply isn't.
+function saveBootCache() {
+  if (!Boot.raw.state || !Boot.raw.sessions) return;
+  try { localStorage.setItem('boot-cache', JSON.stringify({ at: Date.now(), v: S.appVersion, ...Boot.raw })); } catch { try { localStorage.removeItem('boot-cache'); } catch { /* no room */ } }
+}
+async function bootFromCache() {
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem('boot-cache') || 'null'); } catch { c = null; }
+  if (!c || !c.state || !c.sessions || Date.now() - c.at > 7 * 864e5) return false;
+  try {
+    await loadState(c.state); await loadSessions(c.sessions);
+    if (c.activity) await loadActivity(c.activity);
+    if (c.usage) await loadUsage(c.usage);
+    document.body.classList.add('from-cache');
+    renderAll();
+    return true;
+  } catch { return false; }
 }
 async function reload() {
   await loadState();
   await Promise.all([loadSessions(), loadActivity().catch(() => {}), loadUsage().catch(() => {})]);
   renderAll();
+  document.body.classList.remove('from-cache');
+  saveBootCache();
   if (S.drawerId) openDrawer(S.drawerId, true);
 }
 

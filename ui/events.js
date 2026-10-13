@@ -555,6 +555,7 @@ sayStatic();
 renderLivePill();
 if (SOLO) document.body.classList.add('solo');
 wrap(async () => {
+  if (!SOLO && !PAGE_ARGS.get('chat')) await bootFromCache();   // drawn at once from last time
   await Promise.all([reload(), loadPrompts()]); connectLive(); watchActivity(); checkAway(); loadHealth(false).catch(() => {}); loadTasks().catch(() => {}); loadRaces().catch(() => {});
   // A popped-out window opens straight into its chat.
   if (PAGE_ARGS.get('chat')) await ChatUI.open({ sessionId: PAGE_ARGS.get('chat') });
