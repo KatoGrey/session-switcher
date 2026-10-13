@@ -216,13 +216,14 @@ const pairs = pairsLib.createPairs({
       await guarded(a);
       acc.prepareForLaunch(c, a);
       const pref = chatPrefs.get({ sessionId, cwd: lead.cwd, provider: 'claude' });
-      return chats.open({ cfg: c, account: a, cwd: lead.cwd, sessionId, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: `Claude · ${lead.title || 'New chat'}`, folder: lead.folder });
+      const follow = codexLib.TO_CLAUDE[lead.permissionMode];
+      return chats.open({ cfg: c, account: a, cwd: lead.cwd, sessionId, permissionMode: chatLib.MODES.includes(follow) ? follow : chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: `Claude · ${lead.title || 'New chat'}`, folder: lead.folder });
     }
     let inst = await codexChecked(codexForThread(remembered));
     if (!inst.publicState().signedIn) inst = await codexChecked(codexActive());
     requireCodexSignedIn(inst);
     const pref = chatPrefs.get({ sessionId: remembered, cwd: lead.cwd, provider: 'codex' });
-    return inst.open({ cfg: c, cwd: lead.cwd, threadId: remembered || null, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, companion: true, title: `Codex · ${lead.title || 'New chat'}`, folder: lead.folder });
+    return inst.open({ cfg: c, cwd: lead.cwd, threadId: remembered || null, mode: codexLib.FROM_CLAUDE[lead.permissionMode] || pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, companion: true, title: `Codex · ${lead.title || 'New chat'}`, folder: lead.folder });
   },
 });
 
@@ -1995,6 +1996,12 @@ async function handleChat(req, res, url, body, c) {
       const chat = chats.get(body.key);
       await chat.setMode(body.mode);
       remember(chat, { mode: chat.permissionMode });
+      // Its partner follows (Codex in a Claude chat, or Claude in a Codex chat), from its next turn.
+      const mate = !chat.parentKey && pairs.partnerOf(chat);
+      if (mate) {
+        const m = mate.provider === 'codex' ? codexLib.FROM_CLAUDE[chat.permissionMode] : codexLib.TO_CLAUDE[chat.permissionMode];
+        if (m) { try { await mate.setMode(m); } catch (err) { log(`The partner couldn’t follow the mode: ${err.message}`); } }
+      }
       return send(res, 200, { ok: true });
     }
     case '/api/chat/model': {

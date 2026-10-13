@@ -105,3 +105,14 @@ test('duo: undoing one’s changes is told to the other, who may have built on t
   assert.match(t, /The user undid Claude’s file changes from one of its replies: scripts\/bard\/songs\.lua is back as before/);
   assert.match(catchUp({ to: 'claude', theirUndone: [['a.js', 'b.js']] }), /undid Codex’s .*a\.js, b\.js are back/);
 });
+
+test('a partner follows the chat’s mode: hands-off for Claude is hands-off for Codex, and back', () => {
+  const { FROM_CLAUDE, TO_CLAUDE, MODES } = require('../lib/codex');
+  const chatModes = require('../lib/chat').MODES;
+  for (const m of ['bypassPermissions', 'dontAsk', 'auto']) assert.equal(FROM_CLAUDE[m], 'full', m);
+  assert.equal(FROM_CLAUDE.acceptEdits, 'agent');
+  assert.equal(FROM_CLAUDE.plan, 'read-only');
+  assert.equal(FROM_CLAUDE.default, undefined, 'asking first keeps the partner’s own choice');
+  for (const v of Object.values(FROM_CLAUDE)) assert.ok(MODES.some(x => x.value === v), v);
+  for (const v of Object.values(TO_CLAUDE)) assert.ok(chatModes.includes(v), v);
+});
