@@ -224,6 +224,8 @@ function renderPlansOnly() {
   renderChip();
   if (S.view === 'now' && $('planBox')) $('planBox').innerHTML = plansBoxHtml();
   else if (S.view === 'hack') render();
+  // The chat's bar too: the To chip shows once both kinds of plan are known.
+  else if (S.view === 'chat' && typeof paintBar === 'function') paintBar();
 }
 
 /* ---------- going places (browser history included) ---------- */

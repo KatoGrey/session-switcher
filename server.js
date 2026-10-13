@@ -1190,6 +1190,7 @@ const liteRoutes = createLiteRoutes({
   codexAll: () => codexAll(),
   sessionsWithCodex: () => sessionsWithCodex(),
   activityList: () => activityList(),
+  companionOf: id => chatPrefs.companionOf(id),
   routinesList: () => routines.list(),
   parentOf: id => organize.parentOf(id),
   // Routines in Lite: a run's last reply (Ollama's Codex threads aren't in Codex's list, so the
@@ -1857,7 +1858,7 @@ async function handleApi(req, res, url, remote = false) {
     }
     case '/api/commander/tool/send': return send(res, 200, await commanderSend(c, String(body.id || ''), body.text));
     case '/api/commander/tool/answer': return send(res, 200, commanderAnswer(String(body.id || ''), { decision: body.decision, requestId: body.requestId ? String(body.requestId) : null, reason: typeof body.reason === 'string' ? body.reason.slice(0, 2000) : '' }));
-    case '/api/chat/side': return send(res, 200, await startSideChat(c, String(body.id || ''), body.text));
+    case '/api/side-chat': return send(res, 200, await startSideChat(c, String(body.id || ''), body.text));
     case '/api/commander/tool/sub': return send(res, 200, await commanderSub(c, String(body.parent || ''), body.task, body.includeContext !== false));
     case '/api/organize': {
       // Groups you made: create, rename, reorder, collapse, remove, and moving chats between them.
@@ -2229,6 +2230,15 @@ async function startSideChat(c, parentId, text) {
   const ctx = await otherChatBlock({ id: pid }).catch(() => '');
   chat.send(`${ctx}You're a side chat opened beside “${title}”, another chat in this folder; that chat carries on separately. Help with this:\n\n${text}`);
   for (let i = 0; i < 40 && !chat.sessionId && chat.state !== 'ended'; i++) await new Promise(r => setTimeout(r, 250));
+  // Named for your question, not for the context it was sent with (once its conversation is on disk).
+  const name = `Side: ${text.split('\n')[0].slice(0, 60)}`;
+  const nameIt = async (tries = 0) => {
+    try {
+      if (!chat.sessionId) throw new Error('no id yet');
+      if (chat.provider === 'codex') { await codex.rename(chat.sessionId, name); codexSessions(0); } else { sessions.rename(chat.sessionId, name); broadcast('sessions'); }
+    } catch { if (tries < 12) setTimeout(() => nameIt(tries + 1), 1500); }
+  };
+  nameIt();
   log(`Side chat from ${pid}: ${chatLib.one(text, 120)}`);
   return { key: chat.key, sessionId: chat.sessionId || null, provider: chat.provider || 'claude' };
 }

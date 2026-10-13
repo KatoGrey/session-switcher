@@ -70,3 +70,26 @@ function toMenu(anchor) {
     if (v !== 'chat') toast(v === 'both' ? `Both: ${me} answers, then ${p} picks it up.` : `Your messages go to ${p}, in this chat.`);
   });
 }
+
+// Opening a chat that has a partner: its replies (not the catch-ups it was sent) join the feed in
+// time order, so a Both chat reads the same after a reload.
+async function partnerHistory(id) {
+  try {
+    const { thread } = await api(`/api/lite/companion?id=${encodeURIComponent(id)}`);
+    if (!thread || CV.id !== id) return;
+    const prov = provNow() === 'codex' ? 'claude' : 'codex';
+    const h = await api(`/api/chat/history?${new URLSearchParams({ id: thread, ...(prov === 'codex' ? { provider: 'codex' } : {}) })}`);
+    const theirs = (h.items || []).filter(it => it.kind === 'assistant').map(it => ({ ...it, partner: NAME_OF[prov] }));
+    if (!theirs.length || CV.id !== id) return;
+    const t = it => (it.at ? Date.parse(it.at) : NaN);
+    const out = []; let i = 0, j = 0;
+    const mine = CV.items;
+    while (i < mine.length || j < theirs.length) {
+      if (j >= theirs.length) out.push(mine[i++]);
+      else if (i >= mine.length) out.push(theirs[j++]);
+      else if (!(t(theirs[j]) < t(mine[i]))) out.push(mine[i++]);
+      else out.push(theirs[j++]);
+    }
+    CV.items = out;
+  } catch { /* the chat reads fine without them */ }
+}

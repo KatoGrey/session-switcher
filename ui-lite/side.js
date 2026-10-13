@@ -3,11 +3,11 @@
    chat's latest messages, so a quick question or a try at something doesn't derail the chat. It's a
    real chat: it stays under its parent in the sidebar, and opens in full from its header. */
 
-const SD = { parent: null, key: null, sessionId: null, provider: null, items: [], live: '', busy: false, error: null, es: null };
+const SD = { parent: null, key: null, sessionId: null, provider: null, items: [], live: '', busy: false, error: null, es: null, pending: '' };
 
 function resetSide() {
   if (SD.es) SD.es.close();
-  Object.assign(SD, { parent: null, key: null, sessionId: null, provider: null, items: [], live: '', busy: false, error: null, es: null });
+  Object.assign(SD, { parent: null, key: null, sessionId: null, provider: null, items: [], live: '', busy: false, error: null, es: null, pending: '' });
 }
 function openSideChat() {
   if (SD.parent !== CV.id) resetSide();   // another chat: a fresh side chat
@@ -21,6 +21,8 @@ function openSideChat() {
 // What you asked, without the context it was sent with.
 const sideAsked = t => String(t || '').split('Help with this:\n\n').pop();
 function sideFeedHtml() {
+  // Your first question shows at once, while the side chat starts (it takes a few seconds).
+  if (SD.pending && !SD.items.length) return `<div class="msg-you">${esc(SD.pending).replace(/\n/g, '<br>')}</div><p class="sd-note"><span class="live-dot"></span> Starting the side chat…</p>`;
   if (!SD.key && !SD.sessionId) {
     return `<p class="empty-note">Ask or try something beside this chat. The side chat starts knowing this chat’s latest messages and stays under it in the sidebar; this chat isn’t touched.</p>${SD.error ? `<p class="sd-err">${esc(SD.error)}</p>` : ''}`;
   }
@@ -86,7 +88,8 @@ async function sendSide() {
   box.value = ''; SD.error = null; SD.busy = true; paintSide();
   try {
     if (!SD.sessionId && !SD.key) {
-      const r = await api('/api/chat/side', { id: SD.parent, text });
+      SD.pending = text; paintSide();
+      const r = await api('/api/side-chat', { id: SD.parent, text }).finally(() => { SD.pending = ''; });
       Object.assign(SD, { key: r.key, sessionId: r.sessionId, provider: r.provider });
       sideListen(r.key);
       sfx('slide');

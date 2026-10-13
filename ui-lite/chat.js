@@ -139,6 +139,7 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
     // The live stream replays everything since this run started; history stops where that begins.
     if (until) { const bf = Date.parse(until) - 1000; const i = items.findIndex(it => it.at && Date.parse(it.at) >= bf); if (i >= 0) items = items.slice(0, i); }
     CV.items = items; CV.cursor = h.cursor || null;
+    await partnerHistory(id);
   } catch (err) { CV.error = err.message; }
   CV.loading = false;
   if (S.view !== 'chat' || CV.id !== id) return;
@@ -194,7 +195,11 @@ function mergeBlocks(have = [], more = []) {
 }
 // When the page joins a turn already under way, the time counts from when the turn began.
 const evAt = ev => Date.parse(ev.at) || Date.now();
+// Both: a message can carry a catch-up on what the other assistant said; it's for them, not shown.
+// A side chat's first message carries this chat's latest messages too; only your question shows.
+const ownWords = t => String(t || '').replace(/<shared-context[^>]*>[\s\S]*?<\/shared-context>\s*/g, '').replace(/^[\s\S]*?You're a side chat opened beside[\s\S]*?Help with this:\n\n/, '');
 function onEvent(ev) {
+  if (ev.kind === 'user' && ev.text) ev = { ...ev, text: ownWords(ev.text) };
   switch (ev.kind) {
     case 'state':
       // While a first message is on its way, the line under it stays up (no blink as it starts).
@@ -230,7 +235,7 @@ function onEvent(ev) {
 /* ---------- painting ---------- */
 function itemHtml(it) {
   if (it.kind === 'user') {
-    const text = String(it.text || '');
+    const text = ownWords(it.text);
     const cmdr = /^From Commander:\s*/.test(text);
     const pics = (it.images || []).map(i => i.src).concat((Array.isArray(it.imgRaw) ? it.imgRaw : []).filter(b => b && b.type === 'image' && b.source && b.source.data).map(b => `data:${b.source.media_type};base64,${b.source.data}`)).filter(src => /^data:image\/(png|jpeg|gif|webp);base64,/.test(src));
     const shown = text.replace(/^From Commander:\s*/, '').split('\n').filter(l => !/^Attached file: `[^`]+`/.test(l.trim()));
