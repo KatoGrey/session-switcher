@@ -352,7 +352,7 @@ function reset() {
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
-  Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+  Object.assign(C, { compPending: [], compStarting: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
   closePreview();
   Review.loop = null;

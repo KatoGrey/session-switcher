@@ -563,12 +563,12 @@ async function quickSwitch(kind, value) {
 // Starts (or reconnects to) the Codex helper for this Claude chat.
 function ensureCompanion() {
   if (C.comp && !C.comp.ended) return Promise.resolve(C.comp);
-  if (C.compPending) return C.compPending;
+  if (C.compStarting) return C.compStarting;
   const gen = C.gen;
-  C.compPending = api('/api/chat/companion', { key: C.key, account: S.acct })
+  C.compStarting = api('/api/chat/companion', { key: C.key, account: S.acct })
     .then(info => { if (gen !== C.gen) throw new Error('You switched chats.'); attachComp(info); return C.comp; })
-    .finally(() => { C.compPending = null; });
-  return C.compPending;
+    .finally(() => { C.compStarting = null; });
+  return C.compStarting;
 }
 // Opening a duo chat: both chats replay what they've done so far. The two replays are held until each
 // has finished and then played in time order, so the feed reads as one conversation (an event without

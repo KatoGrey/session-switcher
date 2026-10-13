@@ -1,26 +1,23 @@
 'use strict';
 /* Tips the first time, and What's new after an update.
    Tips: the first time something appears (a chat, a picture strip, Claude and Codex together, a
-   project page, Ctrl+K), a one-line tip says what it can do, once, one at a time, never while you're
-   typing. Setup → Preferences can turn them off.
+   project page, Ctrl+K), a one-line tip says what it can do: once each, at most one a day, never in
+   the first minutes after opening or while you're typing. Setup → Preferences can turn them off.
    What's new: after an update, a card on the hub with the newest notes (docs/whats-new.md), once. */
 
-const Tips = { last: 0 };
+const Tips = { last: Number(store('tips-last')) || 0, opened: Date.now() };
+const TIP_GAP = 24 * 3600e3, TIP_SETTLE = 2 * 60e3;
 const TIPS = [
   { id: 'chat', when: () => window.ChatUI && ChatUI.isOpen() && !C.watch, text: 'Tip: /btw asks a quick question beside the chat, and a reply’s ⋯ has Do this later and Branch from here.' },
-  { id: 'focus', when: () => window.ChatUI && ChatUI.isOpen() && tipSeen('chat') && Date.now() - tipSeenAt('chat') > 10 * 60e3, text: 'Tip: Ctrl+\\ is focus mode: just the conversation, the side list and panel out of the way.' },
   { id: 'pics', when: () => !!document.querySelector('#cFeed .pics, #cFeed .md-pic'), text: 'Tip: click a picture to see every picture in this chat; ← → steps through them.' },
   { id: 'duo', when: () => window.ChatUI && ChatUI.isOpen() && typeof duo === 'function' && duo(), text: 'Tip: Both sends your message to each in turn; Plan has one draft a plan and the other check it before anything changes.' },
   { id: 'project', when: () => S.view === 'folder', text: 'Tip: a project’s ⋯ has Rules and tools, Queue a task, Race and Split, and its chats that are done wait at the bottom.' },
   { id: 'palette', when: () => { const p = document.getElementById('palette'); return !!p && !p.hidden; }, text: 'Tip: Ctrl+K understands plain words: try “codex chat in <a project> to make the icons”.' },
-  { id: 'undo', when: () => !!(Undo && Undo.run), text: 'Tip: Ctrl+Z takes back what you just did (closing, marking done, removing), for ten seconds.' },
 ];
 const tipsOn = () => store('tips') !== 'off';
 const tipsSeen = () => { try { return JSON.parse(store('tips-seen') || '{}') || {}; } catch { return {}; } };
-const tipSeen = id => !!tipsSeen()[id];
-const tipSeenAt = id => tipsSeen()[id] || 0;
 function tipsTick() {
-  if (!tipsOn() || document.hidden || Date.now() - Tips.last < 30000) return;
+  if (!tipsOn() || document.hidden || Date.now() - Tips.last < TIP_GAP || Date.now() - Tips.opened < TIP_SETTLE) return;
   if ($('toast').classList.contains('show')) return;   // something else is being said
   const el = document.activeElement;
   if (el && (el.isContentEditable || /^(INPUT|TEXTAREA)$/.test(el.tagName)) && el.value) return;   // you're typing
@@ -29,7 +26,7 @@ function tipsTick() {
   if (!tip) return;
   seen[tip.id] = Date.now();
   store('tips-seen', JSON.stringify(seen));
-  Tips.last = Date.now();
+  Tips.last = Date.now(); store('tips-last', String(Tips.last));
   toast(tip.text, 9000);
 }
 setInterval(tipsTick, 4000);

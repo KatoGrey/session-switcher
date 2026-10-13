@@ -1561,11 +1561,12 @@ module.exports = [
       t.check('the first visit of a day offers yesterday’s chats to pick back up', !!m && /yesterday/.test(m.sub || '') && m.chips.length >= 1, m);
       await t.shot(b, 'morning');
       // A tip the first time something appears, once.
-      await b.eval(`localStorage.removeItem('tips'); localStorage.removeItem('tips-seen'); Tips.last = 0; go('folder', S.projects[0].cwd); return 1`); await sleep(700);
+      await b.eval(`localStorage.removeItem('tips'); localStorage.removeItem('tips-seen'); Tips.last = 0; Tips.opened = 0; go('folder', S.projects[0].cwd); return 1`); await sleep(700);
       await b.eval(`document.getElementById('toast').classList.remove('show'); tipsTick(); return 1`);
       const tip = await b.eval(`return document.getElementById('toast').textContent`);
       t.check('a project page shows its tip the first time', /Rules and tools, Queue a task/.test(tip), tip);
-      t.check('and only once', await b.eval(`Tips.last = 0; document.getElementById('toast').classList.remove('show'); document.getElementById('toast').textContent = ''; tipsTick(); return !/Rules and tools/.test(document.getElementById('toast').textContent)`));
+      t.check('at most one a day', await b.eval(`localStorage.removeItem('tips-seen'); document.getElementById('toast').classList.remove('show'); document.getElementById('toast').textContent = ''; tipsTick(); return !/Rules and tools/.test(document.getElementById('toast').textContent)`));
+      t.check('and only once', await b.eval(`Tips.last = 0; localStorage.setItem('tips-seen', JSON.stringify({ project: Date.now() })); document.getElementById('toast').classList.remove('show'); document.getElementById('toast').textContent = ''; tipsTick(); return !/Rules and tools/.test(document.getElementById('toast').textContent)`));
       // The project's week at a glance.
       await b.eval(`renderFolder(); return 1`); await sleep(500);
       const br = await b.eval(`return document.querySelector('.wp-brief')?.textContent.replace(/\\s+/g, ' ') || ''`);
@@ -1619,6 +1620,18 @@ module.exports = [
       await b.eval(`window.fetch = window._fetch; await outboxFlush(); return 1`); await sleep(400);
       const sent = calls.filter(([p, body]) => p === '/api/chat/send' && /second verse/.test(body.text || ''));
       t.check('back in reach, it sends by itself, once', sent.length === 1 && await b.eval(`return !document.querySelector('#cFeed .outbox-msg') && JSON.parse(localStorage.getItem('outbox') || '[]').length === 0`), sent.length);
+    },
+  },
+  {
+    name: 'partner starts',
+    // Bringing Codex in, in a chat whose partner's earlier messages are being paged: it starts and
+    // its models are there (that list once stood in for the start, and nothing happened).
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const r = await b.eval(`C.comp = null; C.compPending = [{ kind: 'user', at: new Date().toISOString() }]; let err = null; try { await ensureCompanion(); } catch (e) { err = e.message; } return { err, comp: !!C.comp, models: !!(C.mi.comp && C.mi.comp.models && C.mi.comp.models.length) }`);
+      t.check('Codex starts even while its earlier messages are being paged', !r.err && r.comp, r);
+      t.check('and its models are listed', r.models, r);
     },
   },
   {
