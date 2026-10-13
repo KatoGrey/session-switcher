@@ -58,6 +58,10 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
   await send('Runtime.enable'); await send('Page.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { if (!sessionStorage.getItem('tour-test')) localStorage.setItem('toured', '1'); if (!sessionStorage.getItem('tips-test')) { localStorage.setItem('tips', 'off'); localStorage.setItem('whats-new-seen', 'test'); } } catch (e) {}" });
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale || (mobile ? 2.6 : 1), mobile });
+  // The same on every machine: some (GitHub's, Windows Server) have the system's "reduce motion" on,
+  // which the app rightly follows, and then its animations couldn't be checked. A test that wants
+  // reduced motion asks for it itself.
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   if (mobile) await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
 
   const fetchHandlers = [];

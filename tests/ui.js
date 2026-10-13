@@ -542,7 +542,7 @@ module.exports = [
       const wait = calls.find(([p]) => p === '/api/chat/resume-at');
       t.check('“Carry on when it’s back” asks the PC to send “carry on” at the reset', wait && wait[1].at === resetsAt && wait[1].key === 'k-bard', wait && wait[1]);
       await b.eval(`handle({ kind: 'resumeat', at: ${JSON.stringify(resetsAt)}, seq: 700 }); return 1`); await sleep(100);
-      t.check('and the card says when it will', /Claude carries on by itself at/.test(await b.eval(`return document.querySelector('.limit-card .lm-wait').textContent`)));
+      t.check('and the card says when it will', /Claude carries on by itself at/.test(await b.eval(`for (let i = 0; i < 50 && !document.querySelector('.limit-card .lm-wait'); i++) await new Promise(r => setTimeout(r, 100)); return document.querySelector('.limit-card .lm-wait')?.textContent || ''`)));
       await b.eval(`handle({ kind: 'limit', which: null, resetsAt: ${JSON.stringify(resetsAt)}, seq: 1 }, 'comp'); return 1`).catch(() => null);
       await b.clickOn('[data-c="limithand"]'); await sleep(300);
       const cx = await b.eval(`return { target: C.target, box: document.getElementById('cText').value }`);
