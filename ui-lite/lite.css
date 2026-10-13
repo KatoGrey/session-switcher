@@ -329,13 +329,13 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .chat-h .ch-name { min-width: 0; flex: 1; display: flex; flex-direction: column; }
 .chat-h .ttl { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feed { flex: 1; overflow-y: auto; }
-.feed .inner { max-width: 720px; margin: 0 auto; padding: 28px 24px; display: flex; flex-direction: column; gap: 20px; }
+.feed .inner { max-width: 900px; margin: 0 auto; padding: 28px 24px; display: flex; flex-direction: column; gap: 20px; }
 .msg-you { align-self: flex-end; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; max-width: 80%; }
-.msg-ai { max-width: 65ch; }
+.msg-ai { max-width: 100%; min-width: 0; }
 .msg-ai p { margin: 0 0 8px; }
 .step { color: var(--muted); font-size: 12.5px; display: flex; gap: 8px; align-items: center; }
 .composer { border-top: 1px solid var(--line); padding: 12px 24px 18px; }
-.box { max-width: 720px; margin: 0 auto; border: 1px solid var(--line-2); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--pane); }
+.box { max-width: 900px; margin: 0 auto; border: 1px solid var(--line-2); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--pane); }
 .box textarea { border: 0; outline: none; resize: none; font: inherit; background: none; color: var(--fg); min-height: 44px; }
 .box .tools { display: flex; align-items: center; gap: 4px; }
 .model { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 7px; color: var(--fg-2); font-size: 12.5px; }
@@ -915,6 +915,14 @@ body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr
 .msg-ai code.vpath:hover { border-color: var(--line-2); }
 .vpath-btn { font: inherit; color: inherit; text-align: left; overflow-wrap: anywhere; text-decoration: underline dotted; text-underline-offset: 2px; }
 .files-btn { width: auto; padding: 0 8px; font-size: 12.5px; }
+/* The chat's links (its PR, its preview), one click from the top. */
+.hlinks { display: inline-flex; gap: 4px; align-items: center; flex-wrap: nowrap; min-width: 0; }
+.hlink { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; font-size: 12px; color: var(--fg-2); text-decoration: none; white-space: nowrap; }
+.hlink:hover { background: var(--hover); color: var(--fg); }
+.hlink svg { width: 13px; height: 13px; }
+.links-btn { width: auto; padding: 0 8px; font-size: 12.5px; }
+.pop .lk small { color: var(--muted); margin-left: 6px; }
+@media (max-width: 760px) { .hlinks .hlink.prev { display: none; } }
 @media (max-width: 1100px) { body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr) min(52vw, 560px); } }
 @media (max-width: 760px) {
   body.has-viewer .app { grid-template-columns: minmax(0, 1fr); }

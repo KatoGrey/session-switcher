@@ -309,6 +309,51 @@ function paintHead() {
   h.outerHTML = n; const nh = $('chatHead'); if (nh) nh._h = n;
 }
 
+// Every link the chat mentioned (its PRs, previews, local servers, threads), newest first, named
+// for what it is, so they're a click away at the top instead of somewhere up the scroll.
+function linkLabel(u) {
+  let m;
+  if ((m = /github\.com\/[^/]+\/([^/]+)\/pull\/(\d+)/.exec(u))) return { kind: 'pr', label: `PR #${m[2]}${m[1] === 'latitude' ? '' : ` · ${m[1]}`}` };
+  if ((m = /\/\/pr-(\d+)\.preview\.(voyage\.io|aidungeon\.com)/.exec(u))) return { kind: 'preview', label: `Preview #${m[1]} · ${m[2] === 'voyage.io' ? 'Voyage' : 'AI Dungeon'}` };
+  if ((m = /\/\/(localhost|127\.0\.0\.1)(:\d+)?/.exec(u))) return { kind: 'local', label: `localhost${m[2] || ''}` };
+  if ((m = /linear\.app\/[^/]+\/issue\/([A-Z]+-\d+)/.exec(u))) return { kind: 'other', label: m[1] };
+  if ((m = /github\.com\/[^/]+\/([^/?#]+)/.exec(u))) return { kind: 'other', label: `GitHub · ${m[1]}` };
+  if (/slack\.com\/archives\//.test(u)) return { kind: 'other', label: 'Slack thread' };
+  if (/discord\.com\/channels\//.test(u)) return { kind: 'other', label: 'Discord' };
+  try { const x = new URL(u); return { kind: 'other', label: (x.host.replace(/^www\./, '') + (x.pathname.length > 1 ? x.pathname : '')).slice(0, 48) }; } catch { return { kind: 'other', label: u.slice(0, 48) }; }
+}
+function chatLinks() {
+  const key = `${CV.id}:${CV.items.length}`;
+  if (chatLinks.memo && chatLinks.memo.key === key) return chatLinks.memo.list;
+  const seen = new Set(), list = [];
+  const add = u => {
+    u = String(u).replace(/[.,;:!?)\]}>'"`*_]+$/, '');
+    if (/\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(u)) return;
+    const k = u.replace(/\/+$/, '');
+    if (seen.has(k)) return; seen.add(k); list.push({ url: u, ...linkLabel(u) });
+  };
+  for (const it of [...CV.items].reverse()) {
+    const text = it.kind === 'assistant' ? (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n') : it.kind === 'user' ? it.text || '' : '';
+    const found = [...String(text).matchAll(/https?:\/\/[^\s<>()\[\]"'`]+/g)].map(x => x[0]);
+    for (const u of found.reverse()) add(u);
+  }
+  // A bug chat's PR is known even when the chat never wrote its link.
+  const c = chatBy.get(CV.id), it = c && typeof pipeItem === 'function' ? pipeItem(c) : null;
+  if (it && it.pr && it.pr.url) { add(it.pr.url); const prev = typeof previewUrl === 'function' ? previewUrl(it.pr) : null; if (prev) add(prev); }
+  chatLinks.memo = { key, list: list.slice(0, 20) };
+  return chatLinks.memo.list;
+}
+function headLinks() {
+  const all = chatLinks(); if (!all.length) return '';
+  const top = [all.find(l => l.kind === 'pr'), all.find(l => l.kind === 'preview')].filter(Boolean);
+  const chip = l => `<a class="hlink ${l.kind === 'preview' ? 'prev' : ''}" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" title="${esc(l.url)}">${l.kind === 'pr' ? IC.pr : ''}${esc(l.label)}</a>`;
+  const rest = all.length - top.length;
+  return `<span class="hlinks">${top.map(chip).join('')}${rest > 0 ? `<button class="iconbtn links-btn" data-chatlinks="1" aria-haspopup="menu" title="Every link in this chat, newest first">Links ${all.length}</button>` : ''}</span>`;
+}
+function linksMenu(anchor) {
+  const all = chatLinks();
+  pop(anchor, all.map(l => `<button class="lk" data-v="${esc(l.url)}" title="${esc(l.url)}">${esc(l.label)}</button>`).join(''), u => { window.open(u, '_blank', 'noopener'); });
+}
 function chatHead() {
   const c = chatBy.get(CV.id);
   // A chat the list hasn't caught up with yet still shows where it runs.
@@ -318,6 +363,7 @@ function chatHead() {
       <div class="ch-name"><div class="crumb">${p ? `<span>${esc(bucketName(p.bucket))}</span>›<button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div>${c ? `<button class="ttl" id="chatTitle" data-renamechat="1" title="Rename">${esc(chatTitle())}</button>` : `<span class="ttl" id="chatTitle">${esc(chatTitle())}</span>`}</div>
       ${st ? `${kindTag(c)}${waitTag(c)}<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>` : ''}
       ${(n => (n ? `<button class="iconbtn pics-btn" data-chatpics="1" aria-haspopup="menu" title="Pictures in this chat">${IC.image}<span>${n}</span></button>` : ''))(chatPictures().length)}
+      ${headLinks()}
       ${typeof chatFiles === 'function' && chatFiles().length ? `<button class="iconbtn files-btn" data-viewfiles="1" title="Files this chat read or changed (opens beside the chat)">Files</button>` : ''}
       <button class="iconbtn" data-chatmenu="1" aria-haspopup="menu" aria-label="More">${IC.dots}</button></div>`;
 }
