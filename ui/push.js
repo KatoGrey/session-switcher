@@ -11,7 +11,12 @@ const Push = { reg: null, sub: null, ts: null, tsBusy: false, prefsTimer: 0 };
 const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const pushCapable = () => window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-const pushPrefs = () => ({ levels: alertLevels(), quiet: quietHours(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || '' });
+const pushReplies = () => store('push-replies') || 'recent';
+const pushDigest = () => Number(store('push-digest')) || 0;
+const pushPrefs = () => ({ levels: alertLevels(), quiet: quietHours(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || '', replies: pushReplies(), digest: pushDigest() });
+// Which replies notify this phone ("needs your OK" always does).
+const repliesField = () => `<label class="ph-rep">Replies<select data-push="replies">${[['recent', 'From chats I wrote to in the last few hours'], ['all', 'From every chat'], ['none', 'None: only when a chat needs me']].map(([v, l]) => `<option value="${v}"${pushReplies() === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`
+  + (`<label class="ph-rep">When<select data-push="digest">${[[0, 'Right away, one each'], [15, 'Gathered: one every 15 minutes'], [60, 'Gathered: one an hour']].map(([v, l]) => `<option value="${v}"${pushDigest() === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`);
 // The Android app (5.3 and later) shows notifications itself.
 const appNotify = () => !!(window.Android && window.Android.notifyState);
 const appNotifyState = () => { try { return JSON.parse(window.Android.notifyState()); } catch { return { on: false }; } };
@@ -68,8 +73,8 @@ function pushBoxHtml() {
     const st = appNotifyState();
     return `${head}<label class="toggle"><input type="checkbox" data-push="app" ${st.on ? 'checked' : ''}><span><b>Notifications on this phone</b><span>When a chat needs your OK, with Allow and Deny right on it, or replies. They come while this phone is on your home Wi-Fi; when you’re back, it shows what’s waiting. Each chat’s alert level and your quiet hours count.</span></span></label>
       ${st.on && !st.allowed ? '<p class="ph-note warn">Android is blocking this app’s notifications. <button class="btn sm" data-push="settings">Allow them</button></p>' : ''}
-      ${st.on && st.allowed && !st.battery ? '<p class="ph-note">To get them straight away while the phone sleeps, let the app run in the background. <button class="btn quiet sm" data-push="battery">Allow</button></p>' : ''}
-      ${st.on ? '<p><button class="btn quiet sm" data-push="test">Send a test</button> <button class="btn quiet sm" data-push="settings">Notification settings</button></p>' : ''}`;
+      ${st.on && st.allowed && !st.battery ? '<p class="ph-note">To get them straight away while the phone sleeps, let the app run in the background. <button class="btn sm" data-push="battery">Allow</button></p>' : ''}
+      ${st.on ? `${repliesField()}<p><button class="btn quiet sm" data-push="test">Send a test</button> <button class="btn quiet sm" data-push="settings">Notification settings</button></p>` : ''}`;
   }
   if (window.Android) return `${head}<p class="ph-note">Update the app to get notifications: <button class="btn sm" data-push="get">Get the new app</button> Download it, open it and install it over this one; your pairing stays.</p>`;
   if (!window.isSecureContext) return `${head}<p class="ph-note">Phones only allow notifications on a secure address. On your PC, open Setup → <b>Phone access</b> → <b>Notifications on your phone</b> to set one up with Tailscale, then open that address here and pair once.</p>`;
@@ -77,7 +82,7 @@ function pushBoxHtml() {
   if (!pushCapable()) return `${head}<p class="ph-note">This browser can’t receive notifications.</p>`;
   if (Notification.permission === 'denied') return `${head}<p class="ph-note">Notifications are blocked for this page. Allow them in the browser’s settings for this site, then come back.</p>`;
   return `${head}<label class="toggle"><input type="checkbox" data-push="on" ${Push.sub ? 'checked' : ''}><span><b>Notifications on this phone</b><span>When a chat needs your OK${isIOS() ? ' (tap to answer it)' : ', with Allow and Deny right on it,'} or replies, even with Session Switcher closed. Each chat’s alert level and your quiet hours count.</span></span></label>
-    ${Push.sub ? '<p><button class="btn quiet sm" data-push="test">Send a test</button></p>' : ''}`;
+    ${Push.sub ? `${repliesField()}<p><button class="btn quiet sm" data-push="test">Send a test</button></p>` : ''}`;
 }
 function renderPushBox() { const b = $('pushBox'); if (b) b.innerHTML = pushBoxHtml(); }
 
@@ -90,7 +95,8 @@ async function loadTailscale(force = false) {
 function renderTailscale(phones = Push.phones || 0) {
   const box = $('tsBox'); if (!box) return;
   const t = Push.ts, apps = Push.apps || 0;
-  const intro = `<p class="ph-h">Notifications on your phone</p><p class="ph-note"><b>Android:</b> in the app, open Setup → <b>Notifications on this phone</b>. They come while the phone is on your Wi-Fi, with Allow and Deny on them. ${apps ? `<b>${apps}</b> ${apps === 1 ? 'phone is' : 'phones are'} listening now.` : ''}</p><details class="ts-more"${t && t.serving ? ' open' : ''}><summary>iPhone, or a browser (needs Tailscale)</summary><p class="ph-note">Phones only allow a browser’s notifications on a secure (https) address. Tailscale gives this PC one for free, reachable only by your own devices, and it works away from home too.</p>`;
+  const wasOpen = !!box.querySelector('details.ts-more[open]');   // a click inside it doesn't fold it
+  const intro = `<p class="ph-h">Notifications on your phone</p><p class="ph-note"><b>Android:</b> in the app, open Setup → <b>Notifications on this phone</b>. They come while the phone is on your Wi-Fi, with Allow and Deny on them. ${apps ? `<b>${apps}</b> ${apps === 1 ? 'phone is' : 'phones are'} listening now.` : ''}</p><details class="ts-more"${(t && t.serving) || wasOpen ? ' open' : ''}><summary>iPhone, or a browser (needs Tailscale)</summary><p class="ph-note">Phones only allow a browser’s notifications on a secure (https) address. Tailscale gives this PC one for free, reachable only by your own devices, and it works away from home too.</p>`;
   let body;
   if (!t) body = '<p class="loading">Checking for Tailscale…</p>';
   else if (t.error) body = `<p class="ph-note warn">${esc(t.error)}</p>`;
@@ -102,6 +108,10 @@ function renderTailscale(phones = Push.phones || 0) {
 }
 
 document.addEventListener('change', wrap(async e => {
+  const dg = e.target.closest('[data-push="digest"]');
+  if (dg) { store('push-digest', dg.value); pushSyncPrefs(); toast(dg.value === '0' ? 'Each reply right away. Needing your OK always is.' : `Replies gathered into one notification ${dg.value === '60' ? 'an hour' : 'every 15 minutes'}. Needing your OK still comes right away.`, 3500); return; }
+  const rp = e.target.closest('[data-push="replies"]');
+  if (rp) { store('push-replies', rp.value); pushSyncPrefs(); toast(rp.value === 'none' ? 'Only when a chat needs you.' : rp.value === 'all' ? 'Replies from every chat.' : 'Replies from chats you wrote to lately.', 2500); return; }
   const a = e.target.closest('[data-push="app"]');
   if (a) {
     window.Android.setNotify(a.checked);

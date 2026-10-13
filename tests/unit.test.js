@@ -12,7 +12,7 @@ const put = (dir, rel, text = 'x') => { const p = path.join(dir, rel); fs.mkdirS
 
 /* ---------- "Make a copy to share" never takes anything personal ---------- */
 const { appFiles, zip } = require('../lib/sharecopy');
-const PERSONAL = ['accounts.json', 'push.json', 'accounts.json.bak', 'history.json', 'chat-names.json', 'projects.json', 'banners.json', 'prompts.json',
+const PERSONAL = ['accounts.json', 'push.json', 'drafts.json', 'problems.json', 'selfcheck.json', 'accounts.json.bak', 'history.json', 'chat-names.json', 'projects.json', 'banners.json', 'prompts.json',
   'chat-prefs.json', 'devices.json', 'tasks.json', 'races.json', 'open-chats.json', 'reopen.json', 'switcher.log', 'attachments/2026-10-09/clip.mp4', 'mobile/android/debug.keystore', '.claude/settings.local.json'];
 
 test('share copy: personal files stay out', () => {
@@ -778,7 +778,7 @@ test('race: keep file by file, from either copy; the same file from both is refu
 test('run: starts the project’s dev script, finds its address, keeps its output, and stops it', async () => {
   const { createRunner, guessCommand } = require('../lib/runner');
   const dir = tmp(), data = tmp();
-  put(dir, 'srv.js', "console.log('\u001b[32m  VITE ready\u001b[0m'); console.log('  ➜  Local:   http://localhost:51734/'); setInterval(() => {}, 1000);\n");
+  put(dir, 'srv.js', "console.log('\u001b[32m  VITE ready\u001b[0m'); console.log('  ➜  Local:   http://localhost:51734/'); console.log('  ➜  Network: http://192.168.1.20:51734/'); setInterval(() => {}, 1000);\n");
   put(dir, 'package.json', JSON.stringify({ scripts: { dev: 'node srv.js', build: 'x' } }));
   assert.equal(guessCommand(dir), 'npm run dev');
   assert.equal(guessCommand(tmp()), null, 'nothing to go on');
@@ -791,12 +791,35 @@ test('run: starts the project’s dev script, finds its address, keeps its outpu
   const st = run.status(dir);
   assert.equal(st.running, true);
   assert.equal(st.url, 'http://localhost:51734/');
+  assert.equal(st.lanUrl, 'http://192.168.1.20:51734/', 'the address the phone can use');
   assert.ok(st.lines.some(l => /VITE ready/.test(l) && !/\u001b/.test(l)), 'its output, without colour codes');
   assert.ok(changes.length > 0);
   const stopped = await run.stop(dir);
   const t1 = Date.now();
   while (run.status(dir).running && Date.now() - t1 < 5000) await new Promise(r => setTimeout(r, 100));
   assert.equal(run.status(dir).running, false, stopped);
+  // Restart: stop waits until it's gone, so starting again really starts it.
+  run.start(dir);
+  const t2 = Date.now();
+  while (!run.status(dir).url && Date.now() - t2 < 10000) await new Promise(r => setTimeout(r, 100));
+  await run.stop(dir);
+  const again = run.start(dir);
+  assert.equal(again.running, true, 'a new run, not the old one’s status');
+  assert.deepEqual(again.lines, [], 'with fresh output');
+  await run.stop(dir);
+  // A progress bar's \r redraws are lines of their own.
+  put(dir, 'bar.js', "process.stdout.write('10%\\r50%\\r100%\\ndone\\n');\n");
+  run.setCommand(dir, 'node bar.js'); run.start(dir);
+  const t3 = Date.now();
+  while (run.status(dir).running && Date.now() - t3 < 5000) await new Promise(r => setTimeout(r, 100));
+  assert.deepEqual(run.status(dir).lines.filter(l => l.trim()), ['10%', '50%', '100%', 'done']);
   // The command you set is remembered for the project.
-  assert.equal(createRunner({ dataDir: data }).status(dir).cmd, 'node srv.js');
+  assert.equal(createRunner({ dataDir: data }).status(dir).cmd, 'node bar.js');
+});
+
+test('tasks: one from "Do this later" remembers the chat and reply it came from', () => {
+  const ctx = { projectAt: () => ({ cwd: 'C:\\p', name: 'P', exists: true }), accounts: [] };
+  const t = tasks.validTask({ cwd: 'C:\\p', prompt: 'Add a co-op test', from: { id: 'c6e577cb-c6e5-46e5-ae57-c6e577cbc6e5', title: 'Balance pass', mid: 'msg_1' } }, ctx);
+  assert.deepEqual(t.from, { id: 'c6e577cb-c6e5-46e5-ae57-c6e577cbc6e5', title: 'Balance pass', mid: 'msg_1' });
+  assert.equal(tasks.validTask({ cwd: 'C:\\p', prompt: 'x', from: { id: '../../etc' } }, ctx).from, null, 'only a real chat id');
 });

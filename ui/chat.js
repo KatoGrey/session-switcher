@@ -26,10 +26,12 @@ function railItem(x) {
   const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;   // w: the one the status is about
   const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (w.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
   const doing = w.phase === 'tool' && (w.detail || w.tool) ? `${VERB_NOW[w.tool] || 'Using'} ${w.detail || w.tool}` : w.phase === 'writing' ? 'Writing…' : w.phase === 'starting' ? 'Starting…' : 'Thinking…';
-  let sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
+  let sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal, outside this app' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
   if (w !== x) sub = `${PROV_NAME[w.provider || 'claude']}: ${sub}`;
   else if (x.partner && (st === 'quiet' || st === 'reply')) sub += ` · with ${PROV_NAME[x.partner.provider || 'claude']}`;
-  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  const pin = railPinned(x) ? '<span class="ri-pin" title="Pinned" aria-label="Pinned">★</span>' : '';
+  const outside = x.source !== 'app' ? ` title="${x.source === 'terminal' ? 'Running in a terminal window, not in this app: click to watch it here' : 'Used in another app (like the desktop app) in the last few minutes'}"` : '';
+  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}${x.source !== 'app' ? ' outside' : ''}" aria-current="${isViewing(x)}"${outside}>${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${pin}${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
 }
 // The rail: chats you pinned (they stay, running or not), then the rest of what's open, each list in
 // the order you dragged it into. Chats it hasn't placed yet keep their places after those.
@@ -41,15 +43,28 @@ function inRailOrder(list) {
   const at = x => { for (const id of activityIds(x)) if (id && pos.has(id)) return pos.get(id); return Infinity; };
   return list.map((x, i) => [at(x), i, x]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(r => r[2]);
 }
+// One list of what's open: pinned chats first (★), then the rest. Pinned chats that aren't open wait
+// below it, one click from opening again. A chat's pin follows it if its id changes as it starts.
+const railPinned = x => isFav(x.sessionId) || isFav(x.startedAs);
+function followPins(open) {
+  let moved = false;
+  for (const x of open) {
+    if (!x.startedAs || !x.sessionId || x.startedAs.toLowerCase() === String(x.sessionId).toLowerCase()) continue;
+    if (isFav(x.startedAs) && !isFav(x.sessionId)) { S.favs.delete(x.startedAs.toLowerCase()); S.favs.add(String(x.sessionId).toLowerCase()); moved = true; }
+  }
+  if (moved) store('favChats', JSON.stringify([...S.favs]));
+}
 function railRows() {
   const open = S.activity.filter(x => !x.parentKey);
-  const pinned = open.filter(x => isFav(x.sessionId)), active = open.filter(x => !isFav(x.sessionId));
+  followPins(open);
+  const pinnedOpen = open.filter(railPinned), rest = open.filter(x => !railPinned(x));
+  const closed = [];
   for (const id of S.favs) {
-    if (pinned.some(x => String(x.sessionId).toLowerCase() === id)) continue;
+    if (open.some(x => [x.sessionId, x.startedAs].some(v => v && String(v).toLowerCase() === id))) continue;
     const [s, p] = sessionById(id);
-    if (s) pinned.push({ pinnedOnly: true, sessionId: s.id, title: s.title, folder: p.name });
+    if (s) closed.push({ pinnedOnly: true, sessionId: s.id, title: s.title, folder: p.name });
   }
-  return { pinned: inRailOrder(pinned), active: inRailOrder(active) };
+  return { pinned: inRailOrder(closed), active: [...inRailOrder(pinnedOpen), ...inRailOrder(rest)] };
 }
 const railOpen = () => { const { pinned, active } = railRows(); return [...pinned, ...active].filter(x => !x.pinnedOnly); };
 function renderRail() {
@@ -61,7 +76,7 @@ function renderRail() {
   // Changes glide: a pinned chat rises into Pinned, a closed one fades where it stood, a new one fades in.
   flip([$c('cPinList'), $c('cRailList')], () => {
     patch($c('cPinList'), pinned, railKey, railItem);
-    patch($c('cRailList'), active, railKey, railItem, `<li class="ri-empty">${pinned.length ? 'Nothing else is open.' : 'Only this chat is open.'}</li>`);
+    patch($c('cRailList'), active, railKey, railItem, '<li class="ri-empty">Nothing is open right now.</li>');
   });
 }
 function switchRail(step) {
@@ -188,6 +203,34 @@ function railSettle(d, keep) {
 /* ---------- open / close ---------- */
 function findSession(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
 
+// A chat's latest page, fetched a moment early (you hovered it, or it's next with Alt+↓), so opening
+// it is instant. Kept for twenty seconds; only the plain first page (no paging, no live replay).
+const HistAhead = new Map();
+function prefetchHistory(sessionId, provider) {
+  if (!sessionId) return;
+  const q = new URLSearchParams({ id: sessionId, provider: provider || 'claude' }).toString();
+  const was = HistAhead.get(q);
+  if (was && Date.now() - was.at < 20000) return;
+  const p = api(`/api/chat/history?${q}`); p.catch(() => {});
+  HistAhead.set(q, { at: Date.now(), p });
+  if (HistAhead.size > 12) HistAhead.delete(HistAhead.keys().next().value);
+}
+// Pointing at a chat (a row on the hub or a project page, or a closed pinned chat in the side list)
+// fetches it ahead, after a short pause so passing over a list doesn't fetch them all.
+let aheadTimer = 0;
+document.addEventListener('pointerover', e => {
+  const el = e.target.closest && e.target.closest('[data-chat], [data-navchat]');
+  clearTimeout(aheadTimer);
+  if (!el || e.pointerType === 'touch') return;
+  const id = el.dataset.chat || el.dataset.navchat;
+  aheadTimer = setTimeout(() => { const [s] = sessionById(id); if (s && !liveOf(id)) prefetchHistory(id, s.provider === 'codex' ? 'codex' : 'claude'); }, 180);
+});
+function historyPage(params) {
+  const q = params.toString(), was = HistAhead.get(q);
+  HistAhead.delete(q);
+  if (was && Date.now() - was.at < 20000) return was.p.catch(() => api(`/api/chat/history?${q}`));
+  return api(`/api/chat/history?${q}`);
+}
 async function loadHistory(before) {
   if (!C.sessionId) return null;
   const gen = C.gen;
@@ -198,7 +241,7 @@ async function loadHistory(before) {
   if (before !== undefined && C.historyCursor) params.set('cursor', C.historyCursor);
   // The chat's own history may run out before its partner's does; then only the partner's is paged.
   const ownDone = before !== undefined && C.historyStart <= 0;
-  const h = ownDone ? { items: [], start: 0, cursor: null } : await api(`/api/chat/history?${params}`);
+  const h = ownDone ? { items: [], start: 0, cursor: null } : await historyPage(params);
   if (gen !== C.gen) return null;   // you've moved on to another chat
   C.historyStart = h.start;
   C.historyCursor = h.cursor || null;
@@ -214,7 +257,7 @@ async function loadHistory(before) {
   const tmp = document.createElement('div');
   for (const r of rows) { curProv = r.prov; try { renderItem(tmp, r.it, false); } finally { curProv = null; } }
   const feed = $c('cFeed');
-  if (before === undefined) { feed.prepend(...tmp.childNodes); feed.prepend($c('cEarlier')); }
+  if (before === undefined) { feed.prepend(...tmp.childNodes); feed.prepend($c('cEarlier')); speedDone('chat'); }
   else {
     const s = scroller(), oldH = s.scrollHeight;
     $c('cEarlier').after(...tmp.childNodes);
@@ -224,6 +267,7 @@ async function loadHistory(before) {
   $c('cEarlier').textContent = 'Show earlier messages';
   // The changes, undos and reviews that go with it (kept by the PC).
   if (before === undefined) loadExtras(gen, until).catch(() => {}); else applyExtras();
+  laterMarks();
   return h;
 }
 // The partner's history, page by page, back to `since` (a time; -Infinity for all of it). Its turns
@@ -289,7 +333,10 @@ function connect() {
 
 function reset() {
   mergeStart(false);
-  C.compPending = []; C.compCursor = null; C.compMore = false; C.extras = [];
+  C.compPending = []; C.compCursor = null; C.compMore = false; C.extras = []; C.chatRefs = new Map();
+  // Nothing from the chat you were in carries over: its side question ends, its run panel and the
+  // picture viewer close.
+  closeAside(); closeLightbox(); resetRun();
   Recent.main = []; Recent.comp = [];
   PARTS.clear();
   C.planCard = null;
@@ -305,7 +352,7 @@ function reset() {
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
-  Object.assign(C, { compPending: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+  Object.assign(C, { compPending: [], compStarting: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
   closePreview();
   Review.loop = null;
@@ -391,8 +438,10 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
   $c('cText').focus();
 }
 
-async function open({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false, parent = null } = {}) {
+// (Not "open"/"close": as page-wide names those would replace the browser's window.open and window.close.)
+async function openChatView({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false, parent = null } = {}) {
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
+  if (sessionId) speedMark('chat');
   const [known] = sessionId ? findSession(sessionId) : [null];
   // An OpenClaw agent's session is read here; it carries on in OpenClaw.
   if (known && known.provider === 'openclaw') return watch({ sessionId: known.id, source: 'openclaw' });
@@ -406,7 +455,7 @@ async function open({ sessionId = null, cwd = null, mode = 'resume', force = fal
       const name = PROV_NAME[prov];
       const join = await window.appConfirm(`Add ${name} to “${here.title || 'the open chat'}”?\n\nThat chat is already open in this project. ${name} joins it and reads everything in it, so the work stays in one place.`, { ok: `Add ${name} to it`, cancel: `Start a separate ${name} chat`, escape: null });
       if (join === null) return undefined;
-      if (!join) return open({ sessionId, cwd, mode, force, accountId, provider, initialText, separate: true });
+      if (!join) return openChatView({ sessionId, cwd, mode, force, accountId, provider, initialText, separate: true });
       await openKey(here.key);
       setTarget('comp');
       if (initialText) placeText(initialText, true);
@@ -416,7 +465,7 @@ async function open({ sessionId = null, cwd = null, mode = 'resume', force = fal
   // A new Claude chat about to open as an account that's out of usage: offer the one with room.
   if (mode === 'new' && prov === 'claude' && !accountId && a) {
     const alt = await roomierAccount(a);
-    if (alt) return open({ sessionId, cwd, mode, force, accountId: alt.id, provider, initialText });
+    if (alt) return openChatView({ sessionId, cwd, mode, force, accountId: alt.id, provider, initialText });
   }
   let info;
   try {
@@ -424,7 +473,7 @@ async function open({ sessionId = null, cwd = null, mode = 'resume', force = fal
   } catch (err) {
     if (err.reason === 'codex-signin' || err.reason === 'codex-missing') { toast(err.message, 9000); return undefined; }
     if (err.reason === 'running') {
-      if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return open({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText, parent });
+      if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return openChatView({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText, parent });
       return watch({ sessionId, source: 'terminal' });
     }
     throw err;
@@ -498,6 +547,9 @@ async function refreshWatch() {
     $c('cFeed').innerHTML = '<button type="button" class="c-earlier" id="cEarlier" hidden></button>';
     for (const it of h.items) renderItem($c('cFeed'), it, false);
     for (const d of $c('cFeed').querySelectorAll('details[data-tool-id]')) if (open.has(d.dataset.toolId)) d.open = true;
+    // The rebuilt feed gets its kept changes, reviews and "queued for later" marks again.
+    for (const x of C.extras || []) x.done = false;
+    applyExtras(); laterMarks();
     C.historyStart = h.start; C.historyCursor = h.cursor || null;
     $c('cEarlier').hidden = h.start <= 0;
     $c('cEarlier').textContent = 'Show earlier messages';
@@ -505,10 +557,11 @@ async function refreshWatch() {
   } catch { /* try again next time */ } finally { watchBusy = false; }
 }
 
-function close(silent) {
+function closeChatView(silent) {
   if (C.es) { C.es.close(); C.es = null; }
   if (C.comp && C.comp.es) { C.comp.es.close(); C.comp.es = null; }
   closePick();
+  closeAside(); closeLightbox(); resetRun();
   clearInterval(C.watchTimer);
   $c('chat').hidden = true;
   document.body.classList.remove('chat-open');
@@ -538,6 +591,23 @@ function onSelection() {
 }
 document.addEventListener('selectionchange', onSelection);
 
+// Focus mode: just the conversation (and its partner); the side list and panel step aside. Ctrl+\
+// toggles it; it's remembered on this device.
+function toggleFocus(on = !$c('chat').classList.contains('focus')) {
+  $c('chat').classList.toggle('focus', on);
+  store('chat-focus', on ? '1' : '');
+  toast(on ? 'Focus mode: just the conversation. Ctrl+\\ brings the rest back.' : 'The side list and panel are back.', 2500);
+}
+if (store('chat-focus') === '1') document.addEventListener('DOMContentLoaded', () => $c('chat').classList.add('focus'));
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === '\\' && !$c('chat').hidden) { e.preventDefault(); toggleFocus(); }
+});
+// The side panel is a pull-out drawer when the window, at its interface size, is 1320px or narrower.
+const ledgerDrawer = () => window.innerWidth / uiScale() <= 1320;
+function syncNarrow() { document.documentElement.classList.toggle('ui-narrow', uiScale() > 1 && ledgerDrawer()); }
+window.addEventListener('resize', syncNarrow);
+document.addEventListener('lookchange', syncNarrow);
+syncNarrow();
 /* ---------- events ---------- */
 function lightbox(src, from) { openGallery(src, from); }
 // Branch: a new chat with everything up to the end of this reply. Rewind: that, and the files the
@@ -561,7 +631,7 @@ async function branchFrom(turn) {
     }
   }
   await loadSessions().catch(() => {});
-  await open({ sessionId: r.sessionId });
+  await openChatView({ sessionId: r.sessionId });
   toast(pick === 'rewind' ? `Branched, and the files are back as they were${kept ? ` (${kept} changed since were left as they are)` : ''}.` : 'Branched. The original chat is as it was.', 5000);
 }
 function openFile(p) { return Viewer.open({ path: p, key: C.key, session: C.sessionId || (C.watch && C.watch.sessionId), cwd: C.info && C.info.cwd }); }
@@ -592,7 +662,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const id = ri.dataset.navchat;
       chat.classList.remove('show-rail'); S.closed.delete(`s:${id.toLowerCase()}`);
       if (isViewing({ sessionId: id })) return;
-      return isRunning(id) ? watch({ sessionId: id, source: 'terminal' }) : open({ sessionId: id });
+      return isRunning(id) ? watch({ sessionId: id, source: 'terminal' }) : openChatView({ sessionId: id });
     }
     if (ri) { const li = ri.closest('li'); const x = li && findActivity(li.dataset.k); chat.classList.remove('show-rail'); if (x && !isViewing(x)) return openActivity(x); return; }
     const thumb = t.closest('.thumb, .pic-b'); if (thumb) return lightbox(thumb.dataset.full, thumb);
@@ -619,10 +689,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const gi = t.closest('[data-giveimg]'); if (gi) return giveImage(gi.dataset.giveimg);
     const c = t.closest('[data-c]'); if (!c) return;
     switch (c.dataset.c) {
-      case 'back': if (SOLO) { window.close(); return undefined; } return close();
+      case 'back': if (SOLO) { window.close(); return undefined; } return closeChatView();
       case 'rail': return chat.classList.toggle('show-rail');
       case 'ledger': {
-        if (matchMedia('(max-width: 1320px)').matches) return chat.classList.toggle('show-ledger');
+        if (ledgerDrawer()) return chat.classList.toggle('show-ledger');
         const off = !chat.classList.contains('no-ledger');
         chat.classList.toggle('no-ledger', off);
         try { localStorage.setItem('ledger', off ? 'off' : 'on'); } catch { /* fine */ }
@@ -636,7 +706,8 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'chgview': return viewChanges(c.closest('.chg'));
       case 'chgundo': return undoChanges(c.closest('.chg'));
       case 'review': return startReview(c.dataset.base || null, c.dataset.by || 'codex');
-      case 'limitas': return continueAs(c.dataset.acct);
+      case 'limitas': { const card = c.closest('.limit-card'); if (card && card._auto) { clearTimeout(card._auto); card._auto = 0; } return continueAs(c.dataset.acct); }
+      case 'limitnoauto': { const card = c.closest('.limit-card'); if (card) { clearTimeout(card._auto); card._auto = 0; c.closest('.lm-auto').remove(); } return undefined; }
       case 'limithand': return handOver(c.dataset.to);
       case 'stuckwait': return c.closest('.stuck-card').remove();
       case 'stuckstop': { const card = c.closest('.stuck-card'); C.interruptedAt = Date.now(); card.remove(); return api('/api/chat/interrupt', { key: keyFor(card.dataset.src) }); }
@@ -645,28 +716,29 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
       case 'branch': return branchFrom(c.closest('.turn'));
-      case 'followup': {
-        // "We should also…": a task for later, in this chat's project, starting from what you selected
-        // in the reply (or its last paragraph).
-        const turn = c.closest('.turn'), sel = getSelection();
-        const picked = sel && !sel.isCollapsed && turn.contains(sel.anchorNode) ? sel.toString().trim() : '';
-        const md = turnMarkdown(turn) || '';
-        const last = picked || md.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean).pop() || '';
-        const title = $c('cTitle')?.textContent || 'a chat';
-        const text = `\n\nFrom “${title}”, ${PROV_NAME[turn.dataset.prov || C.provider]} said:\n\n${last.slice(0, 4000).split('\n').map(l => `> ${l}`).join('\n')}`;
-        return openTaskDialog(C.info && C.info.cwd, text);
+      case 'turnmore': {
+        // The rest of what a reply offers, in one small menu (the row keeps Copy, review and hand-off).
+        const turn = c.closest('.turn'), claudeReply = (turn.dataset.prov || C.provider) === 'claude' && C.provider === 'claude';
+        return showMenu(c, [
+          { glyph: '⏳', label: 'Do this later', hint: 'its next steps, each its own chat later', run: () => openLaterDialog(turn) },
+          ...(claudeReply ? [{ glyph: '⑂', label: 'Branch from here', hint: 'a new chat up to this reply; this one stays', run: () => branchFrom(turn) }] : []),
+          '-',
+          { glyph: '⧉', label: 'Copy as Markdown', run: () => { const text = turnMarkdown(turn); if (text) copyText(text); } },
+        ]);
       }
+      case 'followup': return openLaterDialog(c.closest('.turn'));
+      case 'laterhub': { closeChatView(); go('hub'); setTimeout(() => $('secQueue')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 300); return undefined; }
       case 'copyturn': {
         // The reply as written (Markdown), not as shown: headings, lists and code fences come along.
         const text = turnMarkdown(c.closest('.turn'));
         if (!text) { toast('This reply has no text to copy yet.', 2500); return undefined; }
         return copyText(text, null).then(ok => { if (ok) copiedButton(c); });
       }
-      case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return open({ sessionId: id, mode: 'resume', accountId: provider === 'codex' ? null : accountId, provider }); }
-      case 'fork': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'fork' }); }
-      case 'takeover': { const id = C.watch && C.watch.sessionId; return open({ sessionId: id, mode: 'resume' }); }
+      case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return openChatView({ sessionId: id, mode: 'resume', accountId: provider === 'codex' ? null : accountId, provider }); }
+      case 'fork': { const id = C.watch && C.watch.sessionId; return openChatView({ sessionId: id, mode: 'fork' }); }
+      case 'takeover': { const id = C.watch && C.watch.sessionId; return openChatView({ sessionId: id, mode: 'resume' }); }
       case 'more': return showMenu(c, C.watch && C.provider === 'openclaw' ? chatHeadItems() : C.watch ? [
-        { glyph: '⧉', label: 'Open a copy here', hint: 'keeps the original', run: () => open({ sessionId: C.watch.sessionId, mode: 'fork' }) },
+        { glyph: '⧉', label: 'Open a copy here', hint: 'keeps the original', run: () => openChatView({ sessionId: C.watch.sessionId, mode: 'fork' }) },
         '-',
         ...chatHeadItems(),
         { label: 'Copy terminal command', run: async () => { const r = await api('/api/command', { account: S.acct, sessionId: C.watch.sessionId }); return copyText(r.command, 'Copied the command.'); } },
@@ -675,7 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
         '-',
         { glyph: '➤', label: 'Move to a terminal', hint: 'same account', disabled: !C.sessionId, why: 'Send a message first', run: async () => {
           if (!(await window.appConfirm('Continue this chat in a terminal?\n\nIt stops here and resumes in a terminal window as the same account.', { ok: 'Move it' }))) return;
-          const key = C.key; close(); const r = await api('/api/chat/handoff', { key });
+          const key = C.key; closeChatView(); const r = await api('/api/chat/handoff', { key });
           toast(r.dryRun ? `Would open a ${r.how}:\n${r.script}` : `Continuing in a ${r.how}.`, 7000);
         } },
         { label: 'Copy terminal command', disabled: !C.sessionId, run: async () => { const r = await api('/api/command', { account: C.info.accountId, sessionId: C.sessionId }); return copyText(r.command, 'Copied the command.'); } },
@@ -817,10 +889,11 @@ function chatHeadItems() {
     ...(claudeReviewOK() ? [{ glyph: '◇', label: 'Have Claude review the changes', hint: 'asked not to change anything', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'claude') }] : []),
     ...(claudeReviewOK() && codexOK() ? [{ glyph: '◈', label: 'Have both review the changes', hint: 'one card, where they agree first', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => startReview(null, 'both') }] : []),
     ...(reviewAvailable() || claudeReviewOK() ? ['-'] : []),
-    ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; close(); popOutChat(sid); } }] : []),
+    ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; closeChatView(); popOutChat(sid); } }] : []),
     ...(C.info && C.info.cwd && !C.watch ? [{ glyph: '▶', label: 'Run the project', hint: 'its dev server or start script, with its output', run: () => openRun() }] : []),
     ...(C.key && !C.watch ? [{ glyph: '❦', label: 'Ask a side question', hint: '/btw · doesn’t derail this chat', run: () => openAside() }] : []),
-    ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark this chat done', hint: 'off the lists until it’s used again', run: () => { const sid = id; close(); return setChatDone(sid, true); } }] : []),
+    ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark done', hint: 'off the lists until it’s used again', run: () => { const sid = id; closeChatView(); return setChatDone(sid, true); } }] : []),
+    { glyph: '◻', label: document.getElementById('chat').classList.contains('focus') ? 'Leave focus mode' : 'Focus mode', hint: 'just the conversation', keys: 'Ctrl \\', run: () => toggleFocus() },
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
     { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },
     '-',
@@ -938,9 +1011,9 @@ function chatContextItems(t, at) {
 }
 
 window.ChatUI = {
-  open, openKey, watch, close, md, renderRail, refreshUsage: refreshChatUsage, isViewing, neighbor: railNeighbor,
+  open: openChatView, openKey, watch, close: closeChatView, md, renderRail, refreshUsage: refreshChatUsage, isViewing, neighbor: railNeighbor,
   accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
-  showLedger: () => { const chat = $c('chat'); if (matchMedia('(max-width: 1320px)').matches) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
+  showLedger: () => { const chat = $c('chat'); if (ledgerDrawer()) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
   sessionsChanged: () => { if (C.watch) refreshWatch(); if (!$c('chat').hidden) refreshCrumb(); },
   refreshCrumb: () => { if (!$c('chat').hidden) refreshCrumb(); },
   refreshCrew: () => { if (!$c('chat').hidden) renderCrew(); },
@@ -965,6 +1038,6 @@ window.ChatUI = {
     return out;
   },
   // For the phone's Back button: closes the picker, then the chat. True if it did something.
-  back: () => { if (closeLightbox()) return true; if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { close(); return true; } return false; },
+  back: () => { if (closeLightbox()) return true; if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { closeChatView(); return true; } return false; },
   isOpen: () => !$c('chat').hidden, key: () => C.key,
 };

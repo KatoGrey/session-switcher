@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- About 4x2 by default (70 x cells - 30 dp), and resizable: NeedsWidget shows 1 to 3 rows by height.
+     No periodic updates: NotifyService redraws it whenever the list changes. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="70dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/needs_widget"
+    android:previewLayout="@layout/needs_widget"
+    android:previewImage="@mipmap/ic_launcher"
+    android:description="@string/widget_description" />

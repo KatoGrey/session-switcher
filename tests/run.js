@@ -6,6 +6,8 @@
 //   node tests/run.js                 everything
 //   node tests/run.js menus chat      only the browser suites named
 //   SHOTS=folder node tests/run.js    also save screenshots there
+//   node tests/run.js "look checks"   compare every theme with how it looked last time (LOOKS=folder
+//                                     for where; the first run, or LOOKS_RESET=1, keeps a new baseline)
 //   BROWSER=/path/to/chrome           use a particular browser (Edge or Chrome is found by itself)
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
@@ -50,7 +52,7 @@ async function main() {
 
   if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
   for (const suite of suites) {
-    if (only.length && !only.includes(suite.name)) continue;
+    if (only.length ? !only.includes(suite.name) : suite.onlyByName) continue;
     console.log(`— ${suite.name}`);
     const browsers = [];
     const t = {

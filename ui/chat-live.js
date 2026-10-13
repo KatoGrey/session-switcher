@@ -191,6 +191,7 @@ function handleEvent(ev, src) {
       renderCrew(); break;
     case 'stream_start': withStick(() => part(feed, ev.mid)); break;
     case 'delta':
+      if (liveRender) speedDone('reply');
       if (ev.thinking) { setStatus(src, 'Thinking…'); break; }
       setStatus(src, comp ? 'Writing…' : '');
       part(feed, ev.mid);
@@ -396,7 +397,7 @@ function crewPill(src) {
   const f = ctxFill(C.ctx[src]);
   const ring = f === null ? '' : `<span class="crew-ctx ${ctxClass(f)}" style="--p:${Math.round(f * 100)}" aria-hidden="true"></span>`;
   return `<button type="button" class="crew ${prov}${on ? ' on' : ''}${busy ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}" data-crew="${src}" aria-pressed="${on}" title="${esc(tip)}">
-      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${mode && !busy && st !== 'waiting' ? `<span class="crew-mode">${esc(mode)}</span>` : ''}${left !== null && left <= 25 ? `<span class="crew-room${left <= 5 ? ' low' : ''}" title="${esc(room)}">${left}% left</span>` : ''}${ring}${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
+      <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${mode && !busy && st !== 'waiting' && !['agent', 'default'].includes(C.comp && C.comp.mode) ? `<span class="crew-mode">${esc(mode)}</span>` : ''}${left !== null && left <= 25 ? `<span class="crew-room${left <= 5 ? ' low' : ''}" title="${esc(room)}">${left}%<span class="cr-l"> left</span></span>` : ''}${ring}${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
 }
 // The partner's permission mode, by its own label ("Ask before acting", Codex's "Agent", …).
 // Percent left on an account's tightest window, or null when it isn't known.
@@ -558,12 +559,12 @@ async function quickSwitch(kind, value) {
 // Starts (or reconnects to) the Codex helper for this Claude chat.
 function ensureCompanion() {
   if (C.comp && !C.comp.ended) return Promise.resolve(C.comp);
-  if (C.compPending) return C.compPending;
+  if (C.compStarting) return C.compStarting;
   const gen = C.gen;
-  C.compPending = api('/api/chat/companion', { key: C.key, account: S.acct })
+  C.compStarting = api('/api/chat/companion', { key: C.key, account: S.acct })
     .then(info => { if (gen !== C.gen) throw new Error('You switched chats.'); attachComp(info); return C.comp; })
-    .finally(() => { C.compPending = null; });
-  return C.compPending;
+    .finally(() => { C.compStarting = null; });
+  return C.compStarting;
 }
 // Opening a duo chat: both chats replay what they've done so far. The two replays are held until each
 // has finished and then played in time order, so the feed reads as one conversation (an event without

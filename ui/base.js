@@ -38,14 +38,35 @@ function togglePin(cwd) {
   if (on) S.pins.add(cwd); else S.pins.delete(cwd);
   savePins(); renderNav();
   if (S.view === 'hub') renderHubLists(); else if (S.view === 'folder') renderPage();
-  toast(on ? `Pinned ${S.projects.find(p => p.cwd === cwd)?.name || 'it'} to the sidebar.` : 'Unpinned.', 4000, { label: 'Undo', run: () => togglePin(cwd) });
+  offerUndo(on ? `Pinned ${S.projects.find(p => p.cwd === cwd)?.name || 'it'} to the sidebar.` : 'Unpinned.', () => togglePin(cwd));
 }
+/* ---------- undo ---------- */
+// Most things you do can be taken back for ten seconds: the toast's Undo, or Ctrl+Z (when you're not
+// typing). One at a time: the newest.
+const Undo = { run: null, until: 0 };
+function offerUndo(msg, run, ms = 10000) {
+  Undo.run = run; Undo.until = Date.now() + ms;
+  toast(msg, ms, { label: 'Undo', run: () => takeBackLast() });
+}
+async function takeBackLast() {
+  if (!Undo.run || Date.now() > Undo.until) return false;
+  const run = Undo.run; Undo.run = null;
+  $('toast').classList.remove('show');
+  await run();
+  return true;
+}
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+  const el = document.activeElement;
+  if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;   // the text's own undo
+  if (Undo.run && Date.now() <= Undo.until) { e.preventDefault(); wrap(takeBackLast)(); }
+});
 function toggleFav(id) {
   const k = String(id).toLowerCase(), on = !S.favs.has(k);
   if (on) S.favs.add(k); else S.favs.delete(k);
   store('favChats', JSON.stringify([...S.favs]));
   renderNav(); if (window.ChatUI && ChatUI.refreshFav) { ChatUI.refreshFav(); ChatUI.renderRail(); }
-  toast(on ? 'Pinned the chat to the sidebar.' : 'Unpinned the chat.', 4000, { label: 'Undo', run: () => toggleFav(id) });
+  offerUndo(on ? 'Pinned the chat to the sidebar.' : 'Unpinned the chat.', () => toggleFav(id));
 }
 const isFav = id => !!id && S.favs.has(String(id).toLowerCase());
 window.toggleFav = toggleFav; window.isFav = isFav;
@@ -61,7 +82,7 @@ async function api(p, body) {
   try {
     r = await fetch(p, { method: body ? 'POST' : 'GET', headers: { 'X-Switcher-Token': TOKEN, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   } catch {
-    throw new Error('Session Switcher isn’t running. Start it again from its shortcut or “Start Claude Switcher.bat”.');
+    throw Object.assign(new Error(window.REMOTE ? 'Can’t reach your PC. Check you’re on your home Wi-Fi and Session Switcher is running there.' : 'Session Switcher isn’t running. Start it again from its shortcut or “Start Claude Switcher.bat”.'), { offline: true });
   }
   const j = await r.json().catch(() => ({ error: 'Unexpected answer from the app.' }));
   if (r.status === 403 && (j.reason === 'stale' || !j.error)) { location.reload(); throw new Error('Reloading…'); }
@@ -209,29 +230,35 @@ function highlight(text, q) {
 // Done chats: ones you marked done (until they're used again), and, with tidy-up on, ones with
 // nothing new for a while. They leave every list; each project keeps them under Done.
 function isDoneChat(s) {
-  if (!s || (S.running && S.running[s.id]) || (S.live && Object.values(S.live).some(c => c.sessionId && c.sessionId.toLowerCase() === s.id.toLowerCase()))) return false;
+  if (!s || (S.running && S.running[String(s.id).toLowerCase()]) || (S.live && Object.values(S.live).some(c => c.sessionId && c.sessionId.toLowerCase() === s.id.toLowerCase()))) return false;
   const m = (S.doneMarks || {})[s.id.toLowerCase()] || {};
   if (m.done && (s.updated || 0) <= m.done + 60000) return true;
   const days = (S.prefs && S.prefs.autoDone) || 0;
   return !!days && Date.now() - Math.max(s.updated || 0, m.undone || 0) > days * 864e5;
 }
+// Any chats at all, done ones included.
+const hasChats = p => !!((p.sessions || []).length || (p.done || []).length);
 function sortDone() {
   for (const p of S.projects) {
     const all = (p.sessions || []).concat(p.done || []).sort((a, b) => (b.updated || 0) - (a.updated || 0));
     p.done = all.filter(isDoneChat); p.sessions = all.filter(x => !isDoneChat(x));
   }
 }
-async function setChatDone(id, done) {
+async function setChatDone(id, done, quiet = false) {
   const r = await api('/api/chat/done', { id, done });
   S.doneMarks = r.doneMarks || {};
   if (!done) { const m = S.doneMarks[id.toLowerCase()]; if (m) m.undone = Date.now(); }
   sortDone(); renderAll();
-  toast(done ? 'Done. It’s off the lists; find it under Done in its project, and it comes back if it’s used again.' : 'Back on the lists.', 4000);
+  if (quiet) return;
+  offerUndo(done ? 'Done. It’s off the lists; find it under Done in its project, and it comes back if it’s used again.' : 'Back on the lists.', () => setChatDone(id, !done, true));
 }
 function allSessions() { const all = []; for (const p of S.projects) for (const s of p.sessions) all.push([s, p]); return all; }
 function sessionById(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
 const lastLine = t => { const parts = String(t || '').trim().split(/\n\s*\n/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean); return parts.length ? parts[parts.length - 1] : ''; };
-const plainMd = t => String(t || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*_`#>|]+/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\s+/g, ' ').trim();
+// Markdown as plain text for a one-line preview: emphasis, code marks, headings and links go; an
+// asterisk that's part of the words (A*, 2*3) stays.
+const plainMd = t => String(t || '').replace(/```[\s\S]*?```/g, ' ').replace(/`([^`]*)`/g, '$1').replace(/(\*\*|__)(.+?)\1/g, '$2')
+  .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,;:!?]|$)/g, '$1$2').replace(/^\s{0,3}(#{1,6}|>)\s*/gm, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\s+/g, ' ').trim();
 
 const ICON = {
   lock: '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.4" fill="currentColor"/><path d="M5.2 7V5.2a2.8 2.8 0 015.6 0V7" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
@@ -435,29 +462,72 @@ function openActivity(x) {
 }
 
 /* ---------- data ---------- */
-async function loadState() {
-  const j = await api('/api/state');
+// Each loader takes what to show (from the last time, for an instant start) or asks the PC.
+const Boot = { raw: {} };
+async function loadState(pre) {
+  const j = pre || await api('/api/state');
+  Boot.raw.state = j;
   S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null; S.reopen = j.reopen || []; S.restart = j.restart || { pending: false }; S.update = !!j.update; S.pid = j.pid || null;
   const saved = store('acct');
   if (!S.accounts.some(a => a.id === S.acct)) S.acct = S.accounts.some(a => a.id === saved) ? saved : S.accounts[0].id;
 }
-async function loadSessions() {
-  const j = await api('/api/sessions');
+async function loadSessions(pre) {
+  const j = pre || await api('/api/sessions');
+  Boot.raw.sessions = j;
   S.projects = j.projects; S.root = j.root; S.running = j.running || {}; S.live = j.live || {};
   S.doneMarks = j.doneMarks || {};
   sortDone();
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
-async function loadActivity() { const j = await api('/api/activity'); S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }
-async function loadUsage() {
-  const [j, sp] = await Promise.all([api('/api/usage'), api('/api/usage/chats').catch(() => null)]);
+async function loadActivity(pre) { const j = pre || await api('/api/activity'); Boot.raw.activity = j; S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }
+async function loadUsage(pre) {
+  const [j, sp] = pre || await Promise.all([api('/api/usage'), api('/api/usage/chats').catch(() => null)]);
+  Boot.raw.usage = [j, sp];
   S.usage = j.usage || {};
   if (sp) S.spent = sp.byAccount || {};   // what used each account's window, chat by chat
+  if (!pre) forecastLimit();
+}
+// The limit forecast: when the account you're working as will run out within the hour at this pace,
+// a heads-up, once per window, with the account that has the most room.
+function forecastLimit() {
+  const a = current(), u = a && usageOf(a.id), d = u && u.data;
+  if (!d || !d.available) return;
+  for (const [k, label] of [['fiveHour', 'five-hour window'], ['week', 'week']]) {
+    const w = d[k], p = paceOf(w, SPAN[k]);
+    if (!p || !p.runsOut || p.runsOut - Date.now() > 3600e3) continue;
+    const once = `forecast:${a.id}:${k}:${w.resetsAt}`;
+    if (store(once)) return;
+    store(once, '1');
+    const alt = typeof headroomPick === 'function' ? headroomPick() : null;
+    toast(`At this pace, ${a.name}’s ${label} runs out around ${when(new Date(p.runsOut).toISOString())}, ${dur(p.early)} before it resets.${alt ? ` ${alt.a.name} has ${alt.r}% left.` : ''}`, 12000, alt ? { label: `Work as ${alt.a.name}`, run: () => useAccount(alt.a.id) } : null);
+    return;
+  }
+}
+// Instant start: the hub as it was last time, drawn at once, then brought up to date (a few seconds
+// with many chats). Kept on this device; too big to keep, and it simply isn't.
+function saveBootCache() {
+  if (!Boot.raw.state || !Boot.raw.sessions) return;
+  try { localStorage.setItem('boot-cache', JSON.stringify({ at: Date.now(), v: S.appVersion, ...Boot.raw })); } catch { try { localStorage.removeItem('boot-cache'); } catch { /* no room */ } }
+}
+async function bootFromCache() {
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem('boot-cache') || 'null'); } catch { c = null; }
+  if (!c || !c.state || !c.sessions || Date.now() - c.at > 7 * 864e5) return false;
+  try {
+    await loadState(c.state); await loadSessions(c.sessions);
+    if (c.activity) await loadActivity(c.activity);
+    if (c.usage) await loadUsage(c.usage);
+    document.body.classList.add('from-cache');
+    renderAll();
+    return true;
+  } catch { return false; }
 }
 async function reload() {
   await loadState();
   await Promise.all([loadSessions(), loadActivity().catch(() => {}), loadUsage().catch(() => {}), loadOrganize()]);
   renderAll();
+  document.body.classList.remove('from-cache');
+  saveBootCache();
   if (S.drawerId) openDrawer(S.drawerId, true);
 }
 

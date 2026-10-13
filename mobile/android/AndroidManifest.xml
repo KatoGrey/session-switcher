@@ -62,6 +62,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- The "What needs you" home-screen widget (see NeedsWidget.java). -->
+        <receiver
+            android:name=".NeedsWidget"
+            android:label="@string/widget_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/needs_widget_info" />
+        </receiver>
+
         <!-- Where "Take a photo" saves the picture, and where an update waits (see CaptureProvider.java). -->
         <provider
             android:name=".CaptureProvider"

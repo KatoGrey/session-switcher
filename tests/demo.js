@@ -160,6 +160,8 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     { name: 'latitude', claude: tool('latitude', 'user', { transport: 'http', url: 'https://mcp.example.com/mcp' }), codex: null },
   ];
   // Queued tasks: one waiting for room, one for its time.
+  let problemList = [{ id: "pb-a", where: "PC", message: "GET /api/usage: Cannot read properties of undefined (reading 'five_hour')", stack: "TypeError: Cannot read properties of undefined\n    at usage.js:42", at: new Date(NOW - 3600e3).toISOString(), count: 3 }];
+  const selfCheck = { at: new Date(NOW - 5 * 3600e3).toISOString(), ok: false, ms: 312000, why: "nightly", failures: ["looks: crimson light: faint text readable (≥4.5:1)"] };
   let taskList = [
     { id: 'tk1', cwd: P('Tidecaller'), folder: 'Tidecaller', provider: 'claude', accountId: 'auto', prompt: 'Write patch notes for 1.5', when: 'now', state: 'queued', why: 'room', createdAt: iso(min(20)) },
     { id: 'tk2', cwd: P('Neon Courier'), folder: 'Neon Courier', provider: 'codex', accountId: 'codex', prompt: 'Make a 512px app icon: a courier on a neon bike', when: 'at', at: later(3), state: 'queued', why: 'time', createdAt: iso(min(5)) },
@@ -183,6 +185,13 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/sessions') return { body: { doneMarks, projects: openclaw ? withOpenClaw(projects) : projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
     if (p === '/api/activity') return { body: { list: activity, at: NOW } };
     // The day at a glance: bursts of messages through the last few hours.
+    if (p === '/api/problems' && body.message) { problemList.unshift({ id: `pb${problemList.length}`, where: 'Page', message: body.message, stack: body.stack || '', at: new Date(NOW).toISOString(), count: 1 }); return { body: { ok: true } }; }
+    if (p === '/api/problems' && body.clear) { problemList = body.clear === 'all' ? [] : problemList.filter(x => x.id !== body.clear); return { body: { ok: true } }; }
+    if (p === '/api/problems') return { body: { problems: problemList, appDir: 'C:\\Apps\\SessionSwitcher', log: '[2026] Error on GET /api/x: boom' } };
+    if (p === '/api/health') return { body: { checks: [{ id: 'node', label: 'Node.js', state: 'ok', detail: 'v24' }, { id: 'claude', label: 'Claude Code', state: 'ok', detail: '2.1' }], prefs: { terminal: 'auto', openIn: 'app' }, claudeCommand: 'claude', codex, appVersion: '5.5.0' } };
+    if (p === '/api/selfcheck' && method === 'POST') return { body: { running: true, last: selfCheck } };
+    if (p === '/api/selfcheck') return { body: { last: selfCheck, running: false } };
+    if (p === '/api/whats-new') return { body: { id: 'wn-1', title: 'Faster, and more out of your way', md: '- **Opens instantly.** It draws at once.\n- **Ctrl+Z takes it back.**' } };
     if (p === '/api/away') return { body: { files: 3, reviews: [{ by: 'codex', findings: 2 }] } };
     if (p === '/api/today') {
       const burst = (k, from, to, n) => Array.from({ length: n }, (_, i) => min(from + ((to - from) * i) / Math.max(1, n - 1)));

@@ -21,6 +21,9 @@ lite-thumbs/
 devices.json
 push.json
 chat-extras/
+drafts.json
+problems.json
+selfcheck.json
 push.json.bak
 tasks.json
 races.json
