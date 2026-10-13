@@ -1841,6 +1841,14 @@ setInterval(() => { const was = diskBuild.id !== BUILD; if (newBuildReady() !== 
 // Reopens chats (each started again, resuming its conversation, as the account it ran as).
 async function reopenChats(list, what) {
   const reopened = [], failed = [];
+  // Codex chats are found in Codex's own list, which loads a moment after a start: wait for it (and
+  // for Codex's sign-in to be checked), or they'd look like chats that no longer exist.
+  if (list.some(c => c.provider === 'codex') && config().codex.enabled) {
+    try {
+      await codexChecked(codexActive());
+      await codex.list({ maxAgeMs: 0, lastOpened: sessions.lastOpened });
+    } catch (err) { log(`Codex wasn’t ready to reopen its chats: ${err.message}`); }
+  }
   for (const c of list) {
     try {
       if (chats.bySession(c.sessionId)) { reopened.push(c.sessionId); continue; }
