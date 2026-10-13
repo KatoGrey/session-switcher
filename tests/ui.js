@@ -1399,7 +1399,7 @@ module.exports = [
         }
         return out;`);
       console.log('    per round (median of 5, including the paint):', JSON.stringify(res));
-      t.check('a live round stays quick in a chat of 800 replies', res[800].ms < 40, res);
+      t.check('a live round stays quick in a chat of 800 replies', res[800].ms < (process.env.CI ? 80 : 40), res);   // GitHub's shared machines are slower and noisier
       t.check('and doesn’t grow much with the chat’s length', res[800].ms < res[100].ms * 4 + 20, res);
     },
   },

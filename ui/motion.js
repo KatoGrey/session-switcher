@@ -284,7 +284,9 @@ setInterval(restCheck, 15000);
 // On battery and below 40% (a phone, a laptop unplugged), the scene stays still: the looping
 // decoration pauses, as at rest, without dimming. Plugged in again, it moves again.
 if (navigator.getBattery) navigator.getBattery().then(bat => {
-  const sync = () => document.documentElement.classList.toggle('low-power', !bat.charging && bat.level < 0.4);
+  // A machine with no battery (a desktop, a virtual machine) can report "not charging, 0%": that's
+  // no battery at all, not an empty one (nothing runs at 0%).
+  const sync = () => document.documentElement.classList.toggle('low-power', !bat.charging && bat.level > 0 && bat.level < 0.4);
   for (const ev of ['chargingchange', 'levelchange']) bat.addEventListener(ev, sync);
   sync();
 }).catch(() => {});
