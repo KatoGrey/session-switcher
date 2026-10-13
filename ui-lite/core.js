@@ -41,7 +41,9 @@ const S = {
 // A Pro look is its base look (names, icon, the base styles) with a richer layer on top.
 const baseSkin = s => String(s || 'plain').replace(/-pro$/, '');
 const L = t => (COPY[baseSkin(skin())] && COPY[baseSkin(skin())][t]) || t;
-const skin = () => (S.lite && S.lite.look.skin) || local.get('skin', 'plain');
+// A Pro look the app can't store yet (it needs a restart to know them) is kept on this device: the
+// app says "imperial", this device says "imperial-pro", and the device wins for that base look.
+const skin = () => { const sv = (S.lite && S.lite.look.skin) || null, loc = local.get('skin', 'plain'); return !sv ? loc : (/-pro$/.test(loc) && loc.replace(/-pro$/, '') === sv ? loc : sv); };
 
 /* ---------- server ---------- */
 async function api(p, body) {
@@ -416,7 +418,9 @@ function askRename(id) {
 // f: Focus on, or off when every one of them is already in Focus.
 const toggleFocus = ids => setChats(ids, { focus: !ids.every(id => (chatBy.get(id) || {}).focus) });
 async function setLook(patch) {
-  const j = await api('/api/lite/look', patch);
+  let j = await api('/api/lite/look', patch);
+  // An app that doesn't know the Pro looks yet keeps the base look; this device keeps the Pro one.
+  if (patch.skin && /-pro$/.test(patch.skin) && j.look && j.look.skin !== patch.skin) j = await api('/api/lite/look', { skin: baseSkin(patch.skin) });
   Object.assign(S.lite.look, j.look); S.lite.plans.floor = j.floor; S.lite.quietDays = j.quietDays; S.lite.permissions = j.permissions; S.lite.routinesFollow = j.routinesFollow; S.lite.openLite = j.openLite; S.lite.autoStartWeeks = j.autoStartWeeks;
   if (patch.skin) local.set('skin', patch.skin);
   if (patch.mode) local.set('mode', patch.mode);
@@ -426,9 +430,10 @@ async function setLook(patch) {
 function applyLook() {
   const root = document.documentElement;
   const look = S.lite ? S.lite.look : { skin: local.get('skin', 'plain'), mode: local.get('mode', 'system') };
-  root.dataset.skin = baseSkin(look.skin);
-  if (/-pro$/.test(look.skin)) root.dataset.pro = ''; else delete root.dataset.pro;
-  if (typeof applyIcon === 'function') applyIcon(baseSkin(look.skin));
+  const sk = skin();
+  root.dataset.skin = baseSkin(sk);
+  if (/-pro$/.test(sk)) root.dataset.pro = ''; else delete root.dataset.pro;
+  if (typeof applyIcon === 'function') applyIcon(baseSkin(sk));
   if (look.mode === 'system') delete root.dataset.theme; else root.dataset.theme = look.mode;
 }
 

@@ -463,7 +463,7 @@ async function sendQuick(key) {
 
 function lookMenu(anchor) {
   const look = S.lite.look;
-  pop(anchor, `<div class="ph">Skin</div>${[['plain', 'Plain'], ['imperial', 'Imperial'], ['imperial-pro', 'Imperial Pro'], ['rebel', 'Rebel'], ['rebel-pro', 'Rebel Pro']].map(([v, n]) => `<button data-v="skin:${v}" role="menuitemradio" aria-checked="${look.skin === v}">${n}</button>`).join('')}
+  pop(anchor, `<div class="ph">Skin</div>${[['plain', 'Plain'], ['imperial', 'Imperial'], ['imperial-pro', 'Imperial Pro'], ['rebel', 'Rebel'], ['rebel-pro', 'Rebel Pro']].map(([v, n]) => `<button data-v="skin:${v}" role="menuitemradio" aria-checked="${skin() === v}">${n}</button>`).join('')}
     <hr><div class="ph">Light or dark</div>${[['system', 'Match device'], ['light', 'Light'], ['dark', 'Dark']].map(([v, n]) => `<button data-v="mode:${v}" role="menuitemradio" aria-checked="${look.mode === v}">${n}</button>`).join('')}
     <hr><div class="ph">Icon</div><div class="kind-seg">${[['look', 'Match the look'], ...Object.entries(ICONS).map(([k, v]) => [k, v.name])].map(([k, n]) => `<button data-v="icon:${k}" role="menuitemradio" aria-checked="${iconChoice() === k}">${k === 'look' ? '' : `<img src="${iconUrl(k)}" alt="" width="16" height="16" style="border-radius:4px;margin-right:6px;vertical-align:-3px">`}${n}</button>`).join('')}</div>
     <hr><div class="ph">Drain each plan to (then the next takes over)</div><div class="kind-seg">${[10, 15, 20].map(d => `<button data-v="floor:${d}" role="menuitemradio" aria-checked="${floor() === d}">${d}%</button>`).join('')}</div>
