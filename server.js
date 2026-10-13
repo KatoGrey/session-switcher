@@ -42,6 +42,13 @@ const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.0.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
+// Installed as a desktop app (desktop/main.js): the app starts and stops this server, and does restarts.
+const SHELL = process.env.SWITCHER_SHELL === 'electron' && typeof process.send === 'function' ? 'electron' : null;
+// The desktop app runs this server on its own Electron, as Node. Programs it starts (an editor that is
+// itself an Electron app, say) mustn't inherit that; only its own tests, run the same way, need it.
+const RUN_AS_NODE = process.env.ELECTRON_RUN_AS_NODE ? { ELECTRON_RUN_AS_NODE: '1' } : {};
+delete process.env.ELECTRON_RUN_AS_NODE;
+const toShell = msg => { if (SHELL) { try { process.send(msg); } catch { /* the app has gone */ } } };
 const APP_DIR = __dirname;
 // Your accounts, history and settings live next to the app, unless SWITCHER_DATA_DIR points
 // elsewhere (the tests use a throwaway folder, so they never touch your real data).
@@ -1011,7 +1018,7 @@ function stateFor() {
   return {
     accounts: c.accounts.map(a => acc.publicAccount(c, a)),
     prefs: c.prefs, claudeCommand: c.claudeCommand,
-    dryRun: sys.DRY_RUN, appVersion: APP_VERSION, platform: process.platform,
+    dryRun: sys.DRY_RUN, appVersion: APP_VERSION, shell: SHELL, platform: process.platform,
     index: sessions.progress,
     codex: codexPublic(),
     reopen: restarted ? [] : toReopen(),
@@ -1678,6 +1685,9 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/quit': {
       send(res, 200, { ok: true });
       log('Quit from the app.');
+      // For an update, the open chats come back when the new version starts, as after a restart.
+      if (body.forUpdate) { try { writeOpenChats(); store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid }); } catch (err) { log(`Couldn’t keep the open chats for the update: ${err.message}`); } }
+      else toShell({ type: 'quit' });
       chatPrefs.flush();
       phone.stop();
       stopForQuit();
@@ -1708,7 +1718,7 @@ function runSelfCheck(why) {
   const started = Date.now();
   const pass = args => new Promise(resolve => {
     let out = '';
-    const child = spawn(process.execPath, ['tests/run.js', ...args], { cwd: APP_DIR, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['tests/run.js', ...args], { cwd: APP_DIR, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...RUN_AS_NODE } });
     try { os.setPriority(child.pid, os.constants.priority.PRIORITY_LOW); } catch { /* not allowed */ }
     child.stdout.on('data', d => { out += d; if (out.length > 4e6) out = out.slice(-2e6); });
     child.stderr.on('data', d => { out += d; });
@@ -1756,7 +1766,9 @@ async function restartNow(why) {
     chatPrefs.flush();
     if (!writeOpenChats()) throw new Error('Could not save the open chats.');
     store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid });
-    await restartLib.startReplacement({ executable: process.execPath, args: process.argv.slice(1), cwd: process.cwd(), env: { ...process.env, SWITCHER_RESTART_FROM: String(process.pid) } });
+    // In the desktop app, the app starts the new copy once this one has gone.
+    if (SHELL) toShell({ type: 'restart' });
+    else await restartLib.startReplacement({ executable: process.execPath, args: process.argv.slice(1), cwd: process.cwd(), env: { ...process.env, SWITCHER_RESTART_FROM: String(process.pid) } });
   } catch (err) {
     restartStarting = false;
     restartError = `Couldn’t start the new copy: ${err.message}`;

@@ -9,7 +9,20 @@ Session Switcher lists every Claude Code chat on this computer (Windows or Mac),
 - Claude Code, signed in at least once. Setup can install or update it for you.
 - Optional: Codex (OpenAI's coding agent) and a ChatGPT plan. Setup can install it too.
 
-## Install or update
+## Install the app (recommended)
+
+Download the newest installer from the [Releases page](https://github.com/KatoGrey/session-switcher/releases/latest):
+
+- **Windows:** `SessionSwitcher-<version>-win-x64.exe`. It installs for you alone (no admin), adds Start menu and desktop shortcuts, and opens. It isn't signed, so the first time Windows says "Windows protected your PC": click **More info → Run anyway**. It updates itself: when a new version is ready it asks to restart, and open chats come back where they were (or it updates the next time you quit).
+- **Mac:** `SessionSwitcher-<version>-mac-arm64.dmg` (Apple silicon) or `-mac-x64.dmg` (Intel). Open it and drag Session Switcher into Applications. It isn't signed, so the first time macOS refuses to open it: open **System Settings → Privacy & Security** and click **Open Anyway**. When a new version is out, it offers the download (an unsigned Mac app can't replace itself).
+
+Your accounts, settings and the rest live in `%APPDATA%\Session Switcher` (Mac: `~/Library/Application Support/Session Switcher`), so updates and reinstalls keep them. The first time, if it finds a folder copy of Session Switcher, it offers to bring in its accounts and settings (it copies them; the folder copy keeps working).
+
+Closing the window keeps it running in the tray (Mac: the menu bar), so chats keep going and notifications come; **Quit** is in the tray menu and in Setup. The tray menu also has **Start with Windows** (Mac: **Open at login**) and **Check for updates**.
+
+**Making a release:** `node desktop/release.js 6.2.0 --push` sets the version, brings in the newest phone app, commits, tags and pushes. GitHub Actions (`.github/workflows/desktop.yml`) builds the Windows installer and the Mac apps and publishes the release; installed copies update to it. To build one here: `cd desktop && npm install && npm run dist:win`.
+
+## Install or update a folder copy
 
 1. Unzip this folder somewhere permanent, for example `C:\Users\<you>\Apps\Session Switcher`.
    - Updating? Unzip over the old copy. Your `accounts.json`, `history.json`, `chat-names.json`, `projects.json`, `banners.json` and `prompts.json` are kept.

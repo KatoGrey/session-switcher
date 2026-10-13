@@ -1,0 +1,62 @@
+name: Desktop app
+
+# A version tag (v6.0.1, say: made by `node desktop/release.js 6.0.1`) builds the Windows installer
+# and the Mac app and publishes them as a GitHub release. Installed copies update from it.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches the app's version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          APP=$(node -p "require('./desktop/package.json').version")
+          SRV=$(grep -oP "APP_VERSION = '\K[^']+" server.js)
+          echo "tag $TAG, desktop $APP, server $SRV"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && { [ "$TAG" != "$APP" ] || [ "$TAG" != "$SRV" ]; }; then echo "Versions differ"; exit 1; fi
+      - name: Create the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Session Switcher ${GITHUB_REF_NAME#v}" --notes-file docs/whats-new.md
+
+  build:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        working-directory: desktop
+        run: npm ci
+      - name: Build and publish
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Not signed: shared with people who know where it's from.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder ${{ matrix.os == 'windows-latest' && '--win' || '--mac' }} --publish ${{ github.ref_type == 'tag' && 'always' || 'never' }}
+      - name: Keep the build (runs without a tag)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+            desktop/dist/*.yml

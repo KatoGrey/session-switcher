@@ -47,3 +47,8 @@ mobile/ios/**/xcuserdata/
 # The themes' paintings: full-size originals stay local; the app uses the WebP copies in art/
 art/src/
 theme-studio/
+
+# The desktop app: its build output. The phone app it ships with is kept (desktop/phone).
+desktop/dist*/
+!desktop/phone/SessionSwitcher.apk
+!desktop/phone/SessionSwitcher.apk.json

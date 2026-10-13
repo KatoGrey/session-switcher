@@ -44,7 +44,7 @@ function renderSetup(j) {
       <label class="toggle"><input type="checkbox" data-pref="autoSwitch" ${p.autoSwitch !== false ? 'checked' : ''}><span><b>Carry on when an account runs out</b><span>A chat that runs out of room mid-reply carries on as the account with the most room, by itself (you get a moment to say no).</span></span></label>
       <label class="toggle"><input type="checkbox" data-tips ${store('tips') !== 'off' ? 'checked' : ''}><span><b>Show tips</b><span>A one-line tip the first time something new appears, once each (on this device).</span></span></label>
       ${t('cleanEnv', 'Use only account sign-ins', 'Ignores ANTHROPIC_API_KEY and similar settings on this PC, so the account you pick is always the one used.')}
-      ${t('appWindow', 'Open as its own window', `Uses ${S.platform === 'darwin' ? 'Chrome (or Edge or Brave)' : 'Chrome or Edge'} to show Session Switcher without browser tabs or an address bar.`)}
+      ${S.shell ? '' : t('appWindow', 'Open as its own window', `Uses ${S.platform === 'darwin' ? 'Chrome (or Edge or Brave)' : 'Chrome or Edge'} to show Session Switcher without browser tabs or an address bar.`)}
       <div class="field"><label for="prefClaude">Claude Code command</label>
         <div class="row2"><input id="prefClaude" value="${esc(j.claudeCommand)}" spellcheck="false"><button class="btn" id="saveClaude">Save</button></div>
         <small>Leave as “claude” unless Setup can’t find Claude Code; then paste the full path to ${S.platform === 'darwin' ? 'claude (try <code>which claude</code> in Terminal)' : 'claude.exe'}.</small></div>
@@ -63,7 +63,7 @@ function renderSetup(j) {
     ${window.REMOTE ? '' : '<p class="d-h" id="st-problems">Problems and speed</p><div class="prefs" id="problemsBox"><p class="loading">Checking…</p></div>'}
     <p class="d-h" id="st-app">App</p>
     <div class="app-actions">
-      <button class="btn" data-fix="shortcut">${S.platform === 'darwin' ? 'Add to Applications' : 'Create desktop shortcut'}</button>
+      ${S.shell ? '' : `<button class="btn" data-fix="shortcut">${S.platform === 'darwin' ? 'Add to Applications' : 'Create desktop shortcut'}</button>`}
       <button class="btn" data-fix="share-copy" title="A zip of the app for someone else, without your accounts, chats or settings">Make a copy to share</button>
       <button class="btn" data-fix="update-claude">Update Claude Code</button>
       <button class="btn" data-fix="tour">Take the tour</button>
