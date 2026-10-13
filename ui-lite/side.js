@@ -112,7 +112,7 @@ async function sendSide() {
 
 document.addEventListener('submit', e => { if (e.target.id !== 'sideForm') return; e.preventDefault(); sendSide(); });
 document.addEventListener('keydown', e => {
-  if (e.target.id === 'sideBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendSide(); }
+  if (e.target.id === 'sideBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && !TOUCH()) { e.preventDefault(); sendSide(); }
 });
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-sidechat], [data-sideopen], [data-sidenew]'); if (!b) return;

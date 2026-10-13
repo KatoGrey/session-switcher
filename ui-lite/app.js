@@ -421,6 +421,8 @@ document.addEventListener('submit', e => {
   return undefined;
 });
 document.addEventListener('keydown', e => {
+  // On a phone, Return is a new line in a message box (the ↑ button sends); with a keyboard, Enter sends.
+  if (e.key === 'Enter' && TOUCH() && e.target.tagName === 'TEXTAREA') return;
   if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); COMP.steerNow = e.altKey; $('composer').requestSubmit(); return; }
   if (e.target.id === 'trBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); triageReply(); return; }
   if (e.target.id === 'msgBox' && e.key.toLowerCase() === 'p' && (e.metaKey || e.ctrlKey) && S.view === 'newchat') { e.preventDefault(); document.querySelector('[data-ncproject]')?.click(); return; }

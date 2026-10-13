@@ -138,6 +138,8 @@ function keepFocused(root, rewrite) {
   if (fresh && fresh !== keep) { keep.disabled = fresh.disabled; keep.placeholder = fresh.placeholder; fresh.replaceWith(keep); }
   if (keep.isConnected) { keep.focus(); try { keep.setSelectionRange(start, end); } catch { /* not a text box */ } }
 }
+// A phone or tablet (no mouse): its keyboard's Return makes new lines; sending is the ↑ button.
+const TOUCH = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
 let pressAt = 0;
 const pressing = () => pressAt && Date.now() - pressAt < 5000;
 const heldSwaps = new Map();
