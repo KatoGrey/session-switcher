@@ -1667,6 +1667,26 @@ module.exports = [
     },
   },
   {
+    name: 'stays light',
+    // Beside another app (visible, not in use), the looping decoration holds still after a few
+    // seconds, without dimming; back in it, it moves again.
+    async run(t) {
+      const b = await t.open();
+      await sleep(800);
+      const r = await b.eval(`const looping = () => document.getAnimations().filter(a => a.playState === 'running' && a.effect && a.effect.getTiming().iterations === Infinity).length;
+        const before = looping();
+        const real = document.hasFocus; document.hasFocus = () => false;
+        window.dispatchEvent(new Event('blur')); awaySince = Date.now() - 20000; restCheck();
+        await new Promise(r => setTimeout(r, 300));
+        const still = document.documentElement.classList.contains('still'), dimmed = document.documentElement.classList.contains('at-rest'), during = looping();
+        document.hasFocus = real; document.hasFocus = () => true; window.dispatchEvent(new Event('focus'));
+        await new Promise(r => setTimeout(r, 300));
+        return { before, still, dimmed, during, back: !document.documentElement.classList.contains('still') && looping() > 0 }`);
+      t.check('beside another app, the decoration holds still (not dimmed)', r.before > 0 && r.still && !r.dimmed && r.during === 0, r);
+      t.check('back in it, it moves again', r.back, r);
+    },
+  },
+  {
     name: 'crew extras',
     // Review big changes by itself (when on), and a heads-up before the account runs out.
     async run(t) {

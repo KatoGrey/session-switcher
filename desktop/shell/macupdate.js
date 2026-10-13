@@ -52,21 +52,26 @@ async function prepare({ version, release, arch = process.arch, onProgress = () 
   const yml = (release.assets || []).find(a => a.name === 'latest-mac.yml');
   if (!asset || !yml) throw new Error('This release has no Mac update.');
   const sums = checksums((await get(yml.browser_download_url)).toString('utf8'));
+  // No checksum for it, no update: a download is only used once it's checked.
+  if (!sums[asset.name]) throw new Error('This release doesn’t list a checksum for the Mac download.');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-update-'));
+  try {
   const zip = path.join(dir, asset.name);
   const out = fs.createWriteStream(zip);
   const hash = crypto.createHash('sha512');
   await get(asset.browser_download_url, { onData: (d, got, total) => { out.write(d); hash.update(d); if (total) onProgress(Math.round((got / total) * 100)); } });
   await new Promise(r => out.end(r));
   const sum = hash.digest('base64');
-  if (sums[asset.name] && sums[asset.name] !== sum) throw new Error('The download didn’t match its checksum; not using it.');
+  if (sums[asset.name] !== sum) throw new Error('The download didn’t match its checksum; not using it.');
   execFileSync('ditto', ['-x', '-k', zip, dir], { timeout: 120000 });
   const app = fs.readdirSync(dir).map(f => path.join(dir, f)).find(f => f.endsWith('.app'));
   if (!app) throw new Error('The download had no app in it.');
   try { execFileSync('xattr', ['-dr', 'com.apple.quarantine', app], { timeout: 30000 }); } catch { /* not quarantined */ }
   log(`Mac update ${version}: downloaded and checked (${asset.name}).`);
   return { app, dir };
+  } catch (err) { remove(dir); throw err; }   // nothing half-downloaded is left behind
 }
+const remove = dir => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* in use */ } };
 
 // Can it replace itself here? Not from the disk image, nor without write access to its folder.
 function canSwap(bundle) {
@@ -89,4 +94,4 @@ function swapOnQuit({ app: fresh, dir }, bundle, pid) {
   spawn('/bin/sh', ['-c', script], { detached: true, stdio: 'ignore' }).unref();
 }
 
-module.exports = { prepare, canSwap, swapOnQuit, bundleOf, checksums, REPO };
+module.exports = { remove, prepare, canSwap, swapOnQuit, bundleOf, checksums, REPO };

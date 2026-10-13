@@ -24,9 +24,6 @@ function log(msg) {
   try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.appendFileSync(LOG, `[${new Date().toISOString()}] ${msg}\n`); } catch { /* read-only */ }
 }
 
-// A copy pointed at another data folder (a test) keeps everything there, browser storage and the
-// one-copy lock too, so it never touches the real app.
-if (process.env.SWITCHER_DATA_DIR) app.setPath('userData', DATA_DIR);
 // One copy: opening it again brings the window up.
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 app.setAppUserModelId(APP_ID);
@@ -44,10 +41,10 @@ function shellPath() {
   return { PATH: `${process.env.PATH || ''}:/opt/homebrew/bin:/usr/local/bin` };
 }
 
-let win = null, tray = null, quitting = false, updates = null;
+let win = null, tray = null, quitting = false, updates = null, started = false, showLater = false, mini = null;
 const desk = createDesk({
   show, tray: () => tray, window: () => win, log,
-  send: (ch, v) => { if (win) win.webContents.send(ch, v); },
+  send: (ch, v) => { if (win && !win.isDestroyed()) win.webContents.send(ch, v); },
   settings: () => notes(DATA_DIR).desk, saveSettings: v => setNotes(DATA_DIR, { desk: v }),
 });
 // What the page asks of the app (shell/preload.js). Only the app's own page is listened to.
@@ -84,10 +81,17 @@ const server = createServer({
 // Where the window was, kept between runs.
 const bounds = () => notes(DATA_DIR).window || { width: 1320, height: 920 };
 function saveBounds() {
-  if (!win || win.isMinimized()) return;
+  if (!win || win.isDestroyed() || win.isMinimized()) return;
   setNotes(DATA_DIR, { window: { ...win.getNormalBounds(), maximized: win.isMaximized() } });
 }
 
+// Any of the app's windows: links that go elsewhere open in your browser, never inside the app.
+// popout: a popped-out chat, which may itself pop out nothing but the browser.
+function guard(wc, popout = false) {
+  if (popout) wc.setWindowOpenHandler(({ url }) => { if (/^(https?|mailto):/i.test(url) && !ours(url)) shell.openExternal(url); return { action: 'deny' }; });
+  wc.on('will-navigate', (e, url) => { if (!ours(url) && !url.startsWith('data:')) { e.preventDefault(); if (/^https?:/i.test(url)) shell.openExternal(url); } });
+}
+const ours = u => u.startsWith(URL_BASE) || u.startsWith(`http://localhost:${PORT}/`);
 const iconFile = () => path.join(APP_FILES, IS_MAC ? 'macos/icon.icns' : 'icon.ico');
 const LOADING = `data:text/html;charset=utf-8,${encodeURIComponent('<!doctype html><html><body style="margin:0;height:100vh;display:grid;place-items:center;background:#0a090c;color:#cfc6b6;font:16px Georgia,serif"><div style="text-align:center"><div style="letter-spacing:.3em;font-size:13px;color:#a5463f">SESSION SWITCHER</div><p>Starting…</p></div></body></html>')}`;
 
@@ -115,8 +119,8 @@ function createWindow() {
       new Notification({ title: 'Session Switcher is still running', body: 'Your chats keep going. Open it from the tray icon; Quit is there too.' }).show();
     }
   });
-  const ours = u => u.startsWith(URL_BASE) || u.startsWith(`http://localhost:${PORT}/`);
   // A chat popped out opens in a window of its own; links elsewhere open in your browser.
+  guard(win.webContents);
   win.webContents.setWindowOpenHandler(({ url, frameName }) => {
     // The mini window: a small card that stays on top of other apps (the page fills it in).
     if (frameName === 'ss-mini' && (url === 'about:blank' || url === '')) {
@@ -127,12 +131,13 @@ function createWindow() {
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  win.webContents.on('will-navigate', (e, url) => { if (!ours(url) && !url.startsWith('data:')) { e.preventDefault(); if (/^https?:/i.test(url)) shell.openExternal(url); } });
   // The page asks before it's closed while something is unsaved; the desktop window just goes to the tray.
   win.webContents.on('will-prevent-unload', e => e.preventDefault());
   win.webContents.on('did-create-window', (w, details) => {
     contextMenu(w.webContents); keys(w.webContents);
+    if (!(details && details.frameName === 'ss-mini')) guard(w.webContents, true);
     if (details && details.frameName === 'ss-mini') {
+      mini = w; w.on('closed', () => { if (mini === w) mini = null; });
       w.setAlwaysOnTop(true, 'floating');
       if (IS_MAC) w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       const keep = () => { if (!w.isDestroyed()) setNotes(DATA_DIR, { mini: w.getBounds() }); };
@@ -140,11 +145,15 @@ function createWindow() {
     }
   });
   // A new page load (a reload, or after a restart) says again when it's ready.
-  win.webContents.on('did-start-navigation', (_e, _u, inPlace, main) => { if (main && !inPlace) pageReady = false; });
+  win.webContents.on('did-start-navigation', (_e, _u, inPlace, main) => { if (main && !inPlace) { pageReady = false; if (mini && !mini.isDestroyed()) mini.close(); } });
   win.on('focus', () => { if (!IS_MAC) win.flashFrame(false); });
+  const me = win;
+  win.on('closed', () => { if (win === me) { win = null; pageReady = false; } });
 }
 function show() {
-  if (!win) { createWindow(); win.loadURL(URL_BASE); }
+  // Opened again while it's still starting (the first start's question is up): once it's ready.
+  if (!started) { showLater = true; return; }
+  if (!win || win.isDestroyed()) { createWindow(); win.loadURL(URL_BASE); }
   if (win.isMinimized()) win.restore();
   win.show(); win.focus();
 }
@@ -164,7 +173,7 @@ function createTray() {
     { type: 'separator' },
     { label: 'Start with Windows', visible: !IS_MAC, type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: i => app.setLoginItemSettings({ openAtLogin: i.checked, args: ['--hidden'] }) },
     { label: 'Open at login', visible: IS_MAC, type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: i => app.setLoginItemSettings({ openAtLogin: i.checked }) },
-    { label: updates && updates.state.ready ? `Restart to update to ${updates.state.ready}` : 'Check for updates', click: () => (updates.state.ready ? updates.install() : updates.check(true)) },
+    (u => ({ label: u.status === 'ready' ? `Restart to update to ${u.next}` : u.status === 'available' ? `Download ${u.next}` : u.status === 'downloading' ? `Downloading ${u.next || 'the update'}… ${u.percent || 0}%` : 'Check for updates', enabled: u.status !== 'downloading' && u.status !== 'checking', click: () => (u.status === 'ready' || u.status === 'available' ? updates.install() : updates.check(true)) }))(updates ? updates.state : {}),
     { label: 'Show its files', click: () => shell.openPath(DATA_DIR) },
     { label: `Version ${app.getVersion()}`, enabled: false },
     { type: 'separator' },
@@ -213,15 +222,17 @@ app.whenReady().then(async () => {
     })).response === 0,
   }).catch(err => log(`Couldn’t bring them in: ${err.message}`));
   const hidden = process.argv.includes('--hidden') || app.getLoginItemSettings().wasOpenedAsHidden;
-  if (!hidden) createWindow();
+  if ((!hidden || showLater) && !win) createWindow();
+  started = true;
   createTray();
   server.start();
   updates = createUpdates({
-    window: () => win, beforeInstall: () => server.stop({ forUpdate: true }), log,
+    window: () => win, log,
+    beforeInstall: () => { quitting = true; saveBounds(); desk.stop(); return server.stop({ forUpdate: true }); },
     // While the window is open and its page loaded, the page says it (Setup and a card); else a dialog.
     pageShows: () => !!(pageReady && win && win.isVisible()),
     channel: () => (desk.opt().channel === 'beta' ? 'beta' : 'stable'),
-    onState: st => { if (win) win.webContents.send('desktop:update', st); desk.status(desk.state); },   // the tray's menu shows it too
+    onState: st => { if (win && !win.isDestroyed()) win.webContents.send('desktop:update', st); desk.status(desk.state); },   // the tray's menu shows it too
   });
   desk.jumpList();
   desk.hotkey();

@@ -16,7 +16,7 @@ async function startServer(dataDir, { home = null, preload = null } = {}) {
   const homeEnv = home ? { HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'), CLAUDE_CONFIG_DIR: '' } : {};
   const proc = spawn(process.execPath, [...(preload ? ['--require', preload] : []), 'server.js'], {
     cwd: APP, stdio: 'ignore',
-    env: { ...process.env, ...homeEnv, SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^SWITCHER_/.test(k))), ...homeEnv, SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
   });
   const base = `http://127.0.0.1:${port}`;
   let html = null;
@@ -339,5 +339,21 @@ test('drafts: what you were writing in a chat is kept for your other devices, th
     await s.call('/api/draft', { id, text: '', at: 3000 });
     assert.equal((await s.call(`/api/draft?id=${id}`)).json.text, '', 'sent (or emptied): gone');
     assert.equal((await s.call('/api/draft', { id: '../x', text: 'x' })).status, 400);
+  } finally { await s.stop(); }
+});
+
+test('its own settings stay with it: what it starts doesn’t inherit its data folder or port', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  // Every program the app starts is noted, with whether it was handed the app's own settings.
+  const seen = path.join(dir, 'spawned.txt');
+  const preload = path.join(dir, 'watch-spawn.cjs');
+  fs.writeFileSync(preload, `const cp = require('child_process'), fs = require('fs');
+for (const f of ['spawn', 'execFile', 'exec']) { const real = cp[f]; cp[f] = function (...a) { const o = a.find(x => x && typeof x === 'object' && !Array.isArray(x)) || {}; const env = o.env || process.env; fs.appendFileSync(${JSON.stringify(seen)}, Object.keys(env).filter(k => /^SWITCHER_/.test(k)).join(',') + '\\n'); return real.apply(this, a); }; }`);
+  const s = await startServer(dir, { preload });
+  try {
+    await s.call('/api/health');   // runs claude --version, among others
+    const lines = fs.existsSync(seen) ? fs.readFileSync(seen, 'utf8').split('\n').filter(l => l !== '') : [];
+    assert.ok(fs.existsSync(seen), 'it started something');
+    assert.deepEqual(lines, [], 'nothing it started was given SWITCHER_ settings');
   } finally { await s.stop(); }
 });

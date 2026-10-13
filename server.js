@@ -54,6 +54,12 @@ const APP_DIR = __dirname;
 // Your accounts, history and settings live next to the app, unless SWITCHER_DATA_DIR points
 // elsewhere (the tests use a throwaway folder, so they never touch your real data).
 const DATA_DIR = process.env.SWITCHER_DATA_DIR ? path.resolve(process.env.SWITCHER_DATA_DIR) : APP_DIR;
+// This copy's own settings (its data folder, port, the desktop app's flag) stay with it: the chats,
+// terminals and tools it starts don't inherit them. Otherwise a test, or `node server.js`, run from
+// one of its chats would use this copy's data and port, and could take it over. A restart passes them
+// on to the new copy itself.
+const OWN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => /^SWITCHER_/.test(k) && k !== 'SWITCHER_RESTART_FROM'));
+for (const k of Object.keys(OWN_ENV)) delete process.env[k];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const CONFIG_FILE = path.join(DATA_DIR, 'accounts.json');
 // Nobody has used Session Switcher here before (a co-worker's first start): Setup opens with Getting started.
@@ -1792,7 +1798,7 @@ async function restartNow(why) {
     store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid });
     // In the desktop app, the app starts the new copy once this one has gone.
     if (SHELL) toShell({ type: 'restart' });
-    else await restartLib.startReplacement({ executable: process.execPath, args: process.argv.slice(1), cwd: process.cwd(), env: { ...process.env, SWITCHER_RESTART_FROM: String(process.pid) } });
+    else await restartLib.startReplacement({ executable: process.execPath, args: process.argv.slice(1), cwd: process.cwd(), env: { ...process.env, ...OWN_ENV, ...(SHELL ? {} : { SWITCHER_SHELL: '' }), SWITCHER_RESTART_FROM: String(process.pid) } });   // part of the desktop app only if this copy was
   } catch (err) {
     restartStarting = false;
     restartError = `Couldn’t start the new copy: ${err.message}`;
@@ -2451,6 +2457,16 @@ server.on('error', err => {
 process.on('uncaughtException', err => { log(`Unexpected error: ${err.stack || err.message}`); noteProblem('PC', err.message, err.stack); });
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } } setTimeout(() => process.exit(0), 300); });
 process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
+// In the desktop app: if the app itself goes (it crashed, or was ended in Task Manager), this server
+// goes too, keeping what it can, rather than staying behind on the port with no window.
+if (SHELL) process.on('disconnect', () => {
+  if (shuttingDown) return;
+  log('The desktop app has gone; stopping too.');
+  try { writeOpenChats(); store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid }); } catch { /* best effort */ }
+  stopForQuit();
+  for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } }
+  setTimeout(() => process.exit(0), 300);
+});
 process.on('unhandledRejection', err => { log(`Unexpected error: ${err && (err.stack || err.message)}`); noteProblem('PC', err && err.message, err && err.stack); });
 
 // Started by Restart: the copy being replaced is still exiting, so wait for it (up to 20 s) first.

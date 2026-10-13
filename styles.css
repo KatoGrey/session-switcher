@@ -1941,7 +1941,7 @@ dialog.confirm-dlg{width:min(480px,calc(calc(100vw / var(--look-ui, 1)) - 32px))
    hold still (the top bar's dots keep going: they say something). */
 .chat-open :is(.page,.petals,#brand) *,.hero-off *{animation-play-state:paused !important}
 /* Resting (ui/motion.js): nobody is using the window, so nothing loops and the scene dims a little. */
-.at-rest *,.at-rest *::before,.at-rest *::after,.low-power *,.low-power *::before,.low-power *::after{animation-play-state:paused !important}
+.at-rest *,.at-rest *::before,.at-rest *::after,.still *,.still *::before,.still *::after,.low-power *,.low-power *::before,.low-power *::after{animation-play-state:paused !important}
 .hero-art,.petals{transition:filter 2.4s ease}
 .at-rest:not([data-family="saga"]) :is(.hero-art,.petals){filter:brightness(.72) saturate(.85)}
 

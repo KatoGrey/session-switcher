@@ -556,6 +556,8 @@ A few things move, to show what changed:
 
 Turn **Animations** off in Setup to keep everything still. It's also off automatically if Windows is set to reduce motion.
 
+It stays light on the PC: working in another app with Session Switcher beside it, the looping parts (petals, the seal, the pulsing dots) hold still after 15 seconds, without dimming, and move again when you come back. Left alone in front of you, it rests after two minutes; hidden in the tray, it draws nothing. On a laptop running on battery below 40%, they stay still too.
+
 ## Shortcuts
 
 | Keys | What it does |

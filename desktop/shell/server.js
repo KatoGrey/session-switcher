@@ -40,8 +40,11 @@ function post(pathname, body = {}) {
 }
 
 function createServer({ appFiles, dataDir, env = {}, log = () => {}, onQuit = () => {}, onTrouble = () => {} }) {
-  let child = null, wanted = 'run', crashes = [];
+  let child = null, wanted = 'run', crashes = [], again = null;
   function start() {
+    // Stopping (a quit, an update) wins over a start that was waiting.
+    if (wanted === 'stop' || wanted === 'quit') return;
+    clearTimeout(again); again = null;
     wanted = 'run';
     child = spawn(process.execPath, [path.join(appFiles, 'server.js')], {
       cwd: appFiles,
@@ -63,11 +66,13 @@ function createServer({ appFiles, dataDir, env = {}, log = () => {}, onQuit = ()
       if (wanted === 'restart') { log('Restarting the server.'); return start(); }
       // It stopped by itself. Another copy may have taken the port over (or was already serving it).
       if (await probe()) { log('Another copy of Session Switcher is serving; using it.'); return undefined; }
+      if (wanted !== 'run') return undefined;   // asked to stop meanwhile
       const now = Date.now();
       crashes = crashes.filter(t => now - t < 60000).concat(now);
       log(`The server stopped (code ${code}). ${err.trim().split(/\r?\n/).slice(-3).join(' ')}`);
       if (crashes.length >= 3) return onTrouble(err.trim() || `The server stopped (code ${code}).`);
-      return setTimeout(start, 800);
+      again = setTimeout(start, 800);
+      return undefined;
     });
   }
   // Waits until something serves the app on the port (this server, or another copy).
@@ -82,6 +87,7 @@ function createServer({ appFiles, dataDir, env = {}, log = () => {}, onQuit = ()
   // Stops it the polite way (it keeps what it was doing), then firmly.
   async function stop({ forUpdate = false } = {}) {
     wanted = 'stop';
+    clearTimeout(again); again = null;
     const c = child;
     if (!c) return;
     await post('/api/quit', forUpdate ? { forUpdate: true } : {});

@@ -58,7 +58,7 @@ function renderDeskUpdateCard() {
   if (!box) { $('welcomeSlot').insertAdjacentHTML('afterend', '<section class="whats-new" id="deskUpdate" aria-label="Update"></section>'); box = $('deskUpdate'); }
   const ready = u.status === 'ready', mac = window.desktop.platform === 'darwin';
   const h = `<div class="wn-h"><p class="eyebrow">Update</p><b>Session Switcher ${esc(u.next)} is ${ready ? 'ready' : 'out'}.</b><button type="button" class="icon wn-x" data-desk="later" aria-label="Later">✕</button></div>
-    <p class="wn-sub">${ready ? 'Restart to use it. Open chats come back where they were. (Or it updates the next time you quit.)' : mac ? 'Download it, open it, and drag Session Switcher into Applications. Your accounts and settings stay.' : 'Download and run the installer. Your accounts and settings stay.'}</p>
+    <p class="wn-sub">${ready ? `Restart to use it. Open chats come back where they were.${mac ? '' : ' (Or it updates the next time you quit.)'}` : mac ? 'Download it, open it, and drag Session Switcher into Applications. Your accounts and settings stay.' : 'Download and run the installer. Your accounts and settings stay.'}</p>
     <p class="wn-b"><button type="button" class="btn quiet sm" data-desk="later">Later</button><button type="button" class="btn sm" data-desk="install">${ready ? 'Restart to update' : 'Download it'}</button></p>`;
   if (box._h !== h) { box.innerHTML = h; box._h = h; }
 }

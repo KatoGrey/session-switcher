@@ -43,7 +43,7 @@ async function main() {
   const base = `http://127.0.0.1:${port}/`;
   const server = spawn(process.execPath, ['server.js'], {
     cwd: APP,
-    env: { ...process.env, ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}), SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^SWITCHER_/.test(k))), ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}), SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let serverLog = '';

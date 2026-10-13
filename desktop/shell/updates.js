@@ -128,6 +128,7 @@ function createUpdates({ window, beforeInstall, onState = () => {}, pageShows = 
     state.url = asset ? asset.browser_download_url : r.html_url;
     if (IS_MAC && app.isPackaged && mac.canSwap(mac.bundleOf(process.execPath))) {
       emit({ status: 'downloading', next: v, percent: 0, checkedAt: Date.now(), error: null });
+      if (macReady) { mac.remove(macReady.dir); macReady = null; }   // an older one readied earlier
       macReady = await mac.prepare({ version: v, release: r, onProgress: pc => { if (pc !== state.percent) emit({ percent: pc }); }, log });
       ready(v);
       return;
