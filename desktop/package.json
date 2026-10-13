@@ -1,7 +1,7 @@
 {
   "name": "session-switcher",
   "productName": "Session Switcher",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "description": "Every Claude Code and Codex chat on this computer, in one place, as whichever account you choose.",
   "author": "KatoGrey",
   "license": "UNLICENSED",
@@ -25,24 +25,61 @@
     "productName": "Session Switcher",
     "artifactName": "SessionSwitcher-${version}-${os}-${arch}.${ext}",
     "asar": true,
-    "files": ["main.js", "shell/**", "package.json"],
+    "files": [
+      "main.js",
+      "shell/**",
+      "package.json"
+    ],
     "extraResources": [
       {
         "from": "..",
         "to": "app-files",
         "filter": [
-          "server.js", "index.html", "theme.js", "styles.css", "sw.js", "package.json", "icon.ico", "crest.webp",
-          "lib/**", "ui/**", "fonts/**", "sounds/**", "docs/whats-new.md",
-          "art/**", "!art/src/**",
+          "server.js",
+          "index.html",
+          "theme.js",
+          "styles.css",
+          "sw.js",
+          "package.json",
+          "icon.ico",
+          "crest.webp",
+          "lib/**",
+          "ui/**",
+          "fonts/**",
+          "sounds/**",
+          "docs/whats-new.md",
+          "art/**",
+          "!art/src/**",
           "tests/**",
           "macos/icon.icns"
         ]
       },
-      { "from": "phone", "to": "app-files", "filter": ["SessionSwitcher.apk", "SessionSwitcher.apk.json"] }
+      {
+        "from": "phone",
+        "to": "app-files",
+        "filter": [
+          "SessionSwitcher.apk",
+          "SessionSwitcher.apk.json"
+        ]
+      }
     ],
-    "publish": [{ "provider": "github", "owner": "KatoGrey", "repo": "session-switcher", "releaseType": "release" }],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "KatoGrey",
+        "repo": "session-switcher",
+        "releaseType": "release"
+      }
+    ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "../icon.ico"
     },
     "nsis": {
@@ -54,7 +91,22 @@
       "runAfterFinish": true
     },
     "mac": {
-      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }, { "target": "zip", "arch": ["arm64", "x64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
       "icon": "../macos/icon.icns",
       "category": "public.app-category.developer-tools",
       "identity": null
