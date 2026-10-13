@@ -151,7 +151,13 @@ function createUpdates({ window, beforeInstall, onState = () => {}, pageShows = 
     try {
       if (updater) {
         if (state.ready) { if (manual && !silent) offerRestart(state.ready); return; }
-        const r = await updater.checkForUpdates();
+        let r;
+        try { r = await updater.checkForUpdates(); } catch (err) {
+          // On test versions, the newest release may be a stable one, which has no beta.yml: look at it as stable.
+          if (state.channel !== 'beta' || !/beta\.yml/.test(String(err && err.message))) throw err;
+          updater.channel = 'latest';
+          try { r = await updater.checkForUpdates(); } finally { updater.channel = 'beta'; }
+        }
         const v = r && r.updateInfo && r.updateInfo.version;
         if (manual && !silent) {
           if (v && newer(v, app.getVersion())) new Notification({ title: 'Session Switcher', body: `Downloading ${v}; it’ll ask when it’s ready.` }).show();
