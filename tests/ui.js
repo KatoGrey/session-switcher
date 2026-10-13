@@ -1461,6 +1461,11 @@ module.exports = [
       for (const [q, re] of Object.entries(want)) if (!re.test(await find(q))) missing.push(q);
       t.check('Ctrl+K finds settings and the chat’s own actions by name', !missing.length, missing);
       t.check('Rules and tools from inside a chat is about that chat’s project', await b.eval(`return paletteHere() === C.info.cwd`));
+      // Plain words for an action.
+      const say = await find('codex chat in starfall to make the icons');
+      t.check('“codex chat in starfall to make the icons” offers exactly that', /Start a Codex chat in Starfall Tavern: make the icons/.test(say), say.slice(0, 200));
+      t.check('“queue … in … tonight” offers a queued task', /Queue in Starfall Tavern: write the patch notes \(tonight\)/.test(await find('queue write the patch notes in starfall tonight')));
+      t.check('“race … in …” offers a race', /Race in Starfall Tavern: fixing the save bug/.test(await find('race fixing the save bug in starfall')));
     },
   },
   {
@@ -1484,6 +1489,13 @@ module.exports = [
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(id)} }); return 1`); await sleep(1500);
       const after = calls.filter(([p, u]) => p === '/api/chat/history' && u.includes(id)).length;
       t.check('pointing at a chat fetches it ahead; opening it uses that', row === 1 && before === 1 && after === 1, { row, before, after });
+      // Focus mode: Ctrl+\ leaves just the conversation, and brings the rest back.
+      await b.eval(`document.activeElement && document.activeElement.blur(); return 1`);
+      await b.key('\\', 'Backslash', 220, 2); await sleep(300);
+      const f1 = await b.eval(`return { rail: getComputedStyle(document.getElementById('cRail')).display, ledger: getComputedStyle(document.getElementById('cLedger')).display }`);
+      await b.key('\\', 'Backslash', 220, 2); await sleep(300);
+      const f2 = await b.eval(`return getComputedStyle(document.getElementById('cRail')).display`);
+      t.check('Ctrl+\\ is focus mode: just the conversation, then everything back', f1.rail === 'none' && f1.ledger === 'none' && f2 !== 'none', { f1, f2 });
     },
   },
   {

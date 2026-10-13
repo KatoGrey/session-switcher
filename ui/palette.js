@@ -14,6 +14,31 @@ function score(text, q) {
 const paletteHere = () => (window.ChatUI && ChatUI.isOpen() && C.info && C.info.cwd) || (S.view === 'folder' ? S.folder : null);
 // Setup, at one of its sections.
 async function openSetupAt(id) { await openSetup(); setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 300); }
+// Plain words for an action: "codex chat in starfall to make the icons", "queue the patch notes in
+// starfall tonight", "race fixing the save bug in starfall". Each opens ready to go; nothing is sent.
+function projectNamed(words) {
+  const w = String(words || '').trim().toLowerCase().replace(/^the\s+/, '');
+  if (!w) return null;
+  const ps = S.projects.filter(p => p.exists);
+  return ps.find(p => p.name.toLowerCase() === w) || ps.find(p => p.name.toLowerCase().startsWith(w)) || ps.find(p => p.name.toLowerCase().includes(w)) || null;
+}
+function sayItems(q) {
+  const t = String(q || '').trim(), out = [];
+  let m;
+  if ((m = t.match(/^(?:start\s+|new\s+|open\s+)?(?:an?\s+)?(claude|codex)?\s*chat\s+(?:in|for|on)\s+(.+?)(?:\s*(?::|\bto\b|\babout\b|\bthat\b|\bwhich\b)\s+(.+))?$/i))) {
+    const p = projectNamed(m[2]), prov = (m[1] || 'claude').toLowerCase();
+    if (p && (prov === 'claude' ? canLaunch(current()) : codexReady())) out.push({ glyph: prov === 'codex' ? '◆' : '✦', t: `Start a ${prov === 'codex' ? 'Codex' : 'Claude'} chat in ${p.name}${m[3] ? `: ${m[3]}` : ''}`, s: m[3] ? 'it waits in the message box for you to send' : '', run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: prov === 'codex' ? 'codex' : undefined, initialText: m[3] || '' }) });
+  }
+  if ((m = t.match(/^(?:queue|later|do later)\s+(.+?)\s+(?:in|for)\s+(.+?)(?:\s+(tonight|tomorrow(?:\s+morning)?|now|when there'?s room))?$/i))) {
+    const p = projectNamed(m[2]);
+    if (p) out.push({ glyph: '⏳', t: `Queue in ${p.name}: ${m[1]}${m[3] ? ` (${m[3]})` : ''}`, s: 'opens the task, ready to queue', run: () => { openTaskDialog(p.cwd, m[1]); const w = (m[3] || '').toLowerCase(); if (/tonight|tomorrow/.test(w)) { $('tkWhen').value = 'at'; $('tkAtWrap').hidden = $('tkRepWrap').hidden = false; const d = new Date(laterAt(/tonight/.test(w) ? 'tonight' : 'morning')); $('tkAt').value = new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); } } });
+  }
+  if ((m = t.match(/^(race|split)\s+(.+?)\s+(?:in|for)\s+(.+)$/i))) {
+    const p = projectNamed(m[3]), split = m[1].toLowerCase() === 'split';
+    if (p && codexReady()) out.push({ glyph: split ? '⑂' : '⚑', t: `${split ? 'Split' : 'Race'} in ${p.name}: ${m[2]}`, s: split ? 'each takes a part' : 'Claude and Codex, the same task', run: () => { openRaceDialog(p.cwd, split ? 'split' : 'race'); $('rcText').value = m[2]; } });
+  }
+  return out;
+}
 function palItems(q) {
   const out = [];
   const add = (g, list) => { if (list.length) out.push({ g }, ...list); };
@@ -77,6 +102,7 @@ function palItems(q) {
     return out;
   }
   const rank = list => list.map(x => ({ x, s: score(x.text, q) })).filter(r => r.s >= 0).sort((a, b) => b.s - a.s).map(r => r.x);
+  add('Do it', sayItems(q));
   add('Active now', rank(run).slice(0, 5));
   add('Chats', rank(chats).slice(0, 8));
   add('Projects', rank(folders).slice(0, 5));

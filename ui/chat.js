@@ -588,6 +588,17 @@ function onSelection() {
 }
 document.addEventListener('selectionchange', onSelection);
 
+// Focus mode: just the conversation (and its partner); the side list and panel step aside. Ctrl+\
+// toggles it; it's remembered on this device.
+function toggleFocus(on = !$c('chat').classList.contains('focus')) {
+  $c('chat').classList.toggle('focus', on);
+  store('chat-focus', on ? '1' : '');
+  toast(on ? 'Focus mode: just the conversation. Ctrl+\\ brings the rest back.' : 'The side list and panel are back.', 2500);
+}
+if (store('chat-focus') === '1') document.addEventListener('DOMContentLoaded', () => $c('chat').classList.add('focus'));
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === '\\' && !$c('chat').hidden) { e.preventDefault(); toggleFocus(); }
+});
 // The side panel is a pull-out drawer when the window, at its interface size, is 1320px or narrower.
 const ledgerDrawer = () => window.innerWidth / uiScale() <= 1320;
 function syncNarrow() { document.documentElement.classList.toggle('ui-narrow', uiScale() > 1 && ledgerDrawer()); }
@@ -872,6 +883,7 @@ function chatHeadItems() {
     ...(C.info && C.info.cwd && !C.watch ? [{ glyph: '▶', label: 'Run the project', hint: 'its dev server or start script, with its output', run: () => openRun() }] : []),
     ...(C.key && !C.watch ? [{ glyph: '❦', label: 'Ask a side question', hint: '/btw · doesn’t derail this chat', run: () => openAside() }] : []),
     ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark done', hint: 'off the lists until it’s used again', run: () => { const sid = id; closeChatView(); return setChatDone(sid, true); } }] : []),
+    { glyph: '◻', label: document.getElementById('chat').classList.contains('focus') ? 'Leave focus mode' : 'Focus mode', hint: 'just the conversation', keys: 'Ctrl \\', run: () => toggleFocus() },
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
     { glyph: '↓', label: 'Jump to the latest message', keys: 'End', run: jumpLatest },
     '-',
