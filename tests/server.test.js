@@ -326,3 +326,18 @@ test('push: a paired phone signs up for notifications; Allow/Deny needs its one-
     assert.equal((await call('/api/phone/tailscale')).status, 401);
   } finally { await s.stop(); }
 });
+
+test('drafts: what you were writing in a chat is kept for your other devices, the newest wins', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  const s = await startServer(dataDir);
+  try {
+    const id = 'c6e577cb-c6e5-46e5-ae57-c6e577cbc6e5';
+    assert.equal((await s.call('/api/draft', { id, text: 'Half a thought', at: 2000 })).status, 200);
+    assert.deepEqual((await s.call(`/api/draft?id=${id}`)).json, { text: 'Half a thought', at: 2000 });
+    await s.call('/api/draft', { id, text: 'An older one', at: 1000 });
+    assert.equal((await s.call(`/api/draft?id=${id}`)).json.text, 'Half a thought', 'an older draft doesn’t replace a newer one');
+    await s.call('/api/draft', { id, text: '', at: 3000 });
+    assert.equal((await s.call(`/api/draft?id=${id}`)).json.text, '', 'sent (or emptied): gone');
+    assert.equal((await s.call('/api/draft', { id: '../x', text: 'x' })).status, 400);
+  } finally { await s.stop(); }
+});

@@ -255,13 +255,28 @@ const draftKey = () => (C.sessionId ? `draft:${C.sessionId}` : C.info && C.info.
 let draftTimer = null;
 function saveDraft() {
   clearTimeout(draftTimer);
-  draftTimer = setTimeout(() => { const k = draftKey(); if (!k) return; try { const v = $c('cText').value; if (v.trim()) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch { /* full or private */ } }, 400);
+  draftTimer = setTimeout(() => {
+    const k = draftKey(); if (!k) return;
+    const v = $c('cText').value, at = Date.now();
+    try { if (v.trim()) { localStorage.setItem(k, v); localStorage.setItem(`${k}:at`, String(at)); } else { localStorage.removeItem(k); localStorage.removeItem(`${k}:at`); } } catch { /* full or private */ }
+    // The PC keeps it too, for your other devices.
+    if (C.sessionId) api('/api/draft', { id: C.sessionId, text: v, at }).catch(() => {});
+  }, 400);
 }
 function restoreDraft() {
   const k = draftKey(); if (!k || $c('cText').value) return;
-  try { const v = localStorage.getItem(k); if (v) { $c('cText').value = v; grow(); } } catch { /* none */ }
+  let mine = 0;
+  try { const v = localStorage.getItem(k); if (v) { $c('cText').value = v; grow(); } mine = Number(localStorage.getItem(`${k}:at`)) || 0; } catch { /* none */ }
+  // Written later on your other device (the phone, the PC): that one, if you haven't started typing here.
+  const id = C.sessionId, gen = C.gen, had = $c('cText').value;
+  if (id) api(`/api/draft?id=${encodeURIComponent(id)}`).then(d => {
+    if (gen !== C.gen || !d || !d.text || d.at <= mine || d.text === $c('cText').value || $c('cText').value !== had) return;
+    $c('cText').value = d.text; grow();
+    try { localStorage.setItem(k, d.text); localStorage.setItem(`${k}:at`, String(d.at)); } catch { /* fine */ }
+    toast('Picked up what you were writing on your other device.', 3500);
+  }).catch(() => {});
 }
-function clearDraft() { clearTimeout(draftTimer); const k = draftKey(); try { if (k) localStorage.removeItem(k); if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
+function clearDraft() { clearTimeout(draftTimer); const k = draftKey(); if (C.sessionId) api('/api/draft', { id: C.sessionId, text: '', at: Date.now() }).catch(() => {}); try { if (k) { localStorage.removeItem(k); localStorage.removeItem(`${k}:at`); } if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
 
 async function sendMessage() {
   // An OpenClaw session: the message becomes a follow-up turn in that session (through

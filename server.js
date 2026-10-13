@@ -141,6 +141,11 @@ function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.sto
 
 // Each conversation's changes, undos and reviews, kept beyond the chat's run (lib/extras.js).
 const chatExtras = extrasLib.createExtras({ dir: path.join(DATA_DIR, 'chat-extras'), log });
+// What you were writing in each chat, so the phone and the PC pick up each other's drafts.
+const DRAFTS_FILE = path.join(DATA_DIR, 'drafts.json');
+let drafts = (store.loadOwnJson(DRAFTS_FILE, null, log) || {}).drafts || {};
+let draftsTimer = null;
+function saveDrafts() { clearTimeout(draftsTimer); draftsTimer = setTimeout(() => { try { store.writeJsonAtomic(DRAFTS_FILE, { drafts }); } catch (err) { log(`Couldn’t save drafts.json: ${err.message}`); } }, 1000); }
 // Run the project (lib/runner.js): one run per project, its output kept for the page.
 const runner = runnerLib.createRunner({ dataDir: DATA_DIR, log, onChange: cwd => broadcast('run', { cwd }) });
 const chats = chatLib.createChatManager({
@@ -1042,6 +1047,7 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, await chatLib.readHistory(file, { until: q.get('until') || null, cursor: q.get('cursor'), limit: 60 }));
   }
   // What a chat showed besides its conversation (changes, undos, reviews), up to where its live replay begins.
+  if (route === 'GET /api/draft') { const d = drafts[String(url.searchParams.get('id') || '').toLowerCase()]; return send(res, 200, d || { text: '', at: 0 }); }
   if (route === 'GET /api/chat/extras') return send(res, 200, { extras: chatExtras.list(url.searchParams.get('id') || '', url.searchParams.get('until') || null) });
   if (route === 'GET /api/chat/diff') {
     const q = url.searchParams;
@@ -1556,6 +1562,17 @@ async function handleApi(req, res, url, remote = false) {
       const title = sessions.rename(body.sessionId, body.name);
       broadcast('sessions');
       return send(res, 200, { title });
+    }
+    case '/api/draft': {
+      const id = String(body.id || '').toLowerCase();
+      if (!/^[\w-]{8,80}$/.test(id)) throw fail(400, 'Which chat?');
+      const text = typeof body.text === 'string' ? body.text.slice(0, 100000) : '';
+      const at = Number(body.at) || Date.now();
+      if (!drafts[id] || drafts[id].at <= at) { if (text.trim()) drafts[id] = { text, at }; else delete drafts[id]; }
+      const ids = Object.keys(drafts);
+      if (ids.length > 300) ids.sort((a, b) => drafts[a].at - drafts[b].at).slice(0, ids.length - 300).forEach(k => delete drafts[k]);
+      saveDrafts();
+      return send(res, 200, { ok: true });
     }
     case '/api/chat/done': {
       // Done (off the lists until it's used again) or not done.
