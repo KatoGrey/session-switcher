@@ -1848,7 +1848,14 @@ async function reopenChats(list, what) {
       reopened.push(c.sessionId);
     } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
   }
-  log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} ${what}${failed.length ? `; ${failed.length} couldn’t` : ''}.`);
+  log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} ${what}${failed.length ? `; ${failed.length} couldn’t (${failed.map(f => `“${f.title || f.sessionId}”: ${f.error}`).join('; ')})` : ''}.`);
+  // Just after a start, Codex (and an account's sign-in) may not be ready yet: those get one more try.
+  if (failed.length && !/again/.test(what)) {
+    setTimeout(() => {
+      const again = list.filter(c => failed.some(f => f.sessionId === c.sessionId));
+      reopenChats(again, `${what}, trying again`).catch(err => log(`Couldn’t reopen chats: ${err.message}`));
+    }, 15000).unref();
+  }
   return { reopened, failed };
 }
 
