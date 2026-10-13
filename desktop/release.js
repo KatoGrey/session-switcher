@@ -10,9 +10,17 @@ const ROOT = path.join(__dirname, '..');
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
 const version = process.argv[2];
 const push = process.argv.includes('--push');
-if (!/^\d+\.\d+\.\d+$/.test(version || '')) { console.error('Usage: node desktop/release.js 6.0.1 [--push]'); process.exit(1); }
+// A test version (6.3.0-beta.1) goes out as a pre-release: only copies set to get test versions take it.
+if (!/^\d+\.\d+\.\d+(-(beta|alpha|rc)\.\d+)?$/.test(version || '')) { console.error('Usage: node desktop/release.js 6.3.0 [--push]   (a test version: 6.3.0-beta.1)'); process.exit(1); }
 if (git('status', '--porcelain')) { console.error('Commit or put away your changes first.'); process.exit(1); }
 if (git('tag', '--list', `v${version}`)) { console.error(`v${version} is already tagged.`); process.exit(1); }
+// The notes people see (the release page, and What's new in the app) are docs/whats-new.md: written
+// for this version, not left from the last one.
+const lastTag = (() => { try { return git('describe', '--tags', '--abbrev=0', '--match', 'v*'); } catch { return null; } })();
+if (lastTag && !process.argv.includes('--same-notes') && !git('diff', '--name-only', lastTag, 'HEAD', '--', 'docs/whats-new.md')) {
+  console.error(`docs/whats-new.md hasn't changed since ${lastTag}. Write this version's notes there first (or pass --same-notes).`);
+  process.exit(1);
+}
 
 // The version, in both places.
 const srv = path.join(ROOT, 'server.js');

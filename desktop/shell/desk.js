@@ -111,6 +111,7 @@ function createDesk({ show, send, tray, window, settings, saveSettings, log = ()
   function set(patch) {
     const next = { ...opt() };
     for (const k of ['keepAwake', 'hotkeyOn']) if (typeof patch[k] === 'boolean') next[k] = patch[k];
+    if (patch.channel === 'beta' || patch.channel === 'stable') next.channel = patch.channel;
     if (typeof patch.hotkey === 'string' && /^[\w+]{3,60}$/.test(patch.hotkey)) next.hotkey = patch.hotkey;
     saveSettings(next);
     keepAwake();

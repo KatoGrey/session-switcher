@@ -109,7 +109,8 @@
       ],
       "icon": "../macos/icon.icns",
       "category": "public.app-category.developer-tools",
-      "identity": null
-    }
+      "identity": "-"
+    },
+    "generateUpdatesFilesForAllChannels": true
   }
 }

@@ -93,6 +93,7 @@ function renderDeskBox() {
     ${deskUpdateLine()}
     <label class="toggle"><input type="checkbox" data-deskset="openAtLogin" ${o.openAtLogin ? 'checked' : ''}><span><b>${mac ? 'Open at login' : 'Start with Windows'}</b><span>Starts in the ${mac ? 'menu bar' : 'tray'}, quietly, so notifications come and queued tasks run.</span></span></label>
     <label class="toggle"><input type="checkbox" data-deskset="keepAwake" ${o.keepAwake ? 'checked' : ''}><span><b>Keep the ${mac ? 'Mac' : 'PC'} awake while chats work</b><span>A long reply isn’t cut off by sleep. The screen can still turn off; once nothing is working, sleep is up to ${mac ? 'macOS' : 'Windows'} again.</span></span></label>
+    <label class="toggle"><input type="checkbox" data-deskchannel ${o.channel === 'beta' ? 'checked' : ''}><span><b>Get test versions first</b><span>New versions before everyone else, to try them out. They can have rough edges; turn this off to go back to the stable ones at the next one.</span></span></label>
     <label class="toggle"><input type="checkbox" data-deskset="hotkeyOn" ${o.hotkeyOn ? 'checked' : ''}><span><b>Bring it up from anywhere: ${esc(key)}</b><span>Shows Session Switcher over whatever you’re doing; again puts it away.</span></span></label>
     <p class="pb-act"><button class="btn quiet sm" data-desk="files">Show its files</button></p>
     <p class="pb-none">Closing the window keeps it running in the ${mac ? 'menu bar' : 'tray'}, so chats keep going. Quit is in the ${mac ? 'menu bar' : 'tray'} menu, and below.</p>`;
@@ -106,6 +107,14 @@ document.addEventListener('click', wrap(async e => {
   if (what === 'files') await window.desktop.set({ openData: true });
 }));
 document.addEventListener('change', wrap(async e => {
+  const ch = e.target.closest('[data-deskchannel]');
+  if (ch && deskOn()) {
+    const r = await window.desktop.set({ channel: ch.checked ? 'beta' : 'stable' });
+    if (r) Desk.opts = { ...Desk.opts, ...r };
+    toast(ch.checked ? 'You’ll get test versions first. It’s looking for one now.' : 'Back to stable versions, from the next one.', 3500);
+    renderDeskBox();
+    return;
+  }
   const b = e.target.closest('[data-deskset]'); if (!b || !deskOn()) return;
   const r = await window.desktop.set({ [b.dataset.deskset]: b.checked });
   if (r) Desk.opts = { ...Desk.opts, ...r };

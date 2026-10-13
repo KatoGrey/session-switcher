@@ -15,6 +15,9 @@ const IS_MAC = process.platform === 'darwin';
 // The app's files: packed beside it when installed, the repository's when run from source.
 const APP_FILES = app.isPackaged ? path.join(process.resourcesPath, 'app-files') : path.join(__dirname, '..');
 const DATA_DIR = process.env.SWITCHER_DATA_DIR || app.getPath('userData');
+// A copy with a data folder of its own (a test, say) is a separate app: its own browser profile and
+// its own "one copy at a time", so it never reaches into the copy you're using.
+if (process.env.SWITCHER_DATA_DIR) app.setPath('userData', path.resolve(DATA_DIR));
 const LOG = path.join(DATA_DIR, 'desktop.log');
 
 function log(msg) {
@@ -64,7 +67,10 @@ ipcMain.handle('desktop:set', (e, patch) => {
   if (!fromUs(e) || !patch || typeof patch !== 'object') return null;
   if (typeof patch.openAtLogin === 'boolean') app.setLoginItemSettings({ openAtLogin: patch.openAtLogin, ...(IS_MAC ? {} : { args: ['--hidden'] }) });
   if (patch.openData) { shell.openPath(DATA_DIR); return null; }
-  return { ...desk.set(patch), openAtLogin: app.getLoginItemSettings().openAtLogin };
+  const r = desk.set(patch);
+  // A different channel: look again now (a test version may be waiting, or no longer apply).
+  if (patch.channel && updates) { updates.setChannel(); updates.check(false, { silent: true }); }
+  return { ...r, openAtLogin: app.getLoginItemSettings().openAtLogin };
 });
 const server = createServer({
   appFiles: APP_FILES, dataDir: DATA_DIR, env: shellPath(), log,
@@ -111,7 +117,12 @@ function createWindow() {
   });
   const ours = u => u.startsWith(URL_BASE) || u.startsWith(`http://localhost:${PORT}/`);
   // A chat popped out opens in a window of its own; links elsewhere open in your browser.
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // The mini window: a small card that stays on top of other apps (the page fills it in).
+    if (frameName === 'ss-mini' && (url === 'about:blank' || url === '')) {
+      const m = notes(DATA_DIR).mini || {};
+      return { action: 'allow', overrideBrowserWindowOptions: { width: m.width || 340, height: m.height || 320, x: m.x, y: m.y, minWidth: 260, minHeight: 180, alwaysOnTop: true, minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, title: 'Session Switcher', backgroundColor: '#0a090c', autoHideMenuBar: true, icon: iconFile() } };
+    }
     if (ours(url)) return { action: 'allow', overrideBrowserWindowOptions: { width: 900, height: 860, backgroundColor: '#0a090c', autoHideMenuBar: true, icon: iconFile(), webPreferences: { contextIsolation: true, sandbox: true, spellcheck: true, preload: path.join(__dirname, 'shell', 'preload.js') } } };
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -119,7 +130,15 @@ function createWindow() {
   win.webContents.on('will-navigate', (e, url) => { if (!ours(url) && !url.startsWith('data:')) { e.preventDefault(); if (/^https?:/i.test(url)) shell.openExternal(url); } });
   // The page asks before it's closed while something is unsaved; the desktop window just goes to the tray.
   win.webContents.on('will-prevent-unload', e => e.preventDefault());
-  win.webContents.on('did-create-window', w => { contextMenu(w.webContents); keys(w.webContents); });
+  win.webContents.on('did-create-window', (w, details) => {
+    contextMenu(w.webContents); keys(w.webContents);
+    if (details && details.frameName === 'ss-mini') {
+      w.setAlwaysOnTop(true, 'floating');
+      if (IS_MAC) w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      const keep = () => { if (!w.isDestroyed()) setNotes(DATA_DIR, { mini: w.getBounds() }); };
+      w.on('moved', keep); w.on('resized', keep); w.on('close', keep);
+    }
+  });
   // A new page load (a reload, or after a restart) says again when it's ready.
   win.webContents.on('did-start-navigation', (_e, _u, inPlace, main) => { if (main && !inPlace) pageReady = false; });
   win.on('focus', () => { if (!IS_MAC) win.flashFrame(false); });
@@ -201,6 +220,7 @@ app.whenReady().then(async () => {
     window: () => win, beforeInstall: () => server.stop({ forUpdate: true }), log,
     // While the window is open and its page loaded, the page says it (Setup and a card); else a dialog.
     pageShows: () => !!(pageReady && win && win.isVisible()),
+    channel: () => (desk.opt().channel === 'beta' ? 'beta' : 'stable'),
     onState: st => { if (win) win.webContents.send('desktop:update', st); desk.status(desk.state); },   // the tray's menu shows it too
   });
   desk.jumpList();

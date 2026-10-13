@@ -16,6 +16,7 @@ function renderSetup(j) {
   const t = (k, label, text, local) => `<label class="toggle"><input type="checkbox" ${local ? `data-local="${k}"` : `data-pref="${k}"`} ${(local ? Local[k] : p[k]) ? 'checked' : ''}><span><b>${label}</b><span>${text}</span></span></label>`;
   $('setupBody').innerHTML = `
     <nav class="setup-toc" aria-label="Sections"><a href="#st-health">Health</a><a href="#st-alerts">Alerts</a><a href="#st-prefs">Preferences</a><a href="#st-codex">Codex</a><a href="#st-phone">Phone</a>${window.desktop ? '<a href="#st-desktop">Desktop app</a>' : ''}<a href="#st-problems">Problems</a><a href="#st-app">App</a></nav>
+    ${startHtml(j)}
     <ul class="checks" id="st-health">${j.checks.map(c => `<li class="check ${c.state}"><span class="st" aria-label="${c.state}"></span><span><b>${esc(c.label)}</b><span class="dt">${esc(c.detail)}</span></span>
       ${c.fix ? `<button class="btn sm" data-fix="${esc(c.fix.action)}" data-account="${esc(c.fix.account || '')}">${esc(c.fix.label)}</button>` : '<span></span>'}</li>`).join('')}</ul>
     <p class="d-h" id="st-alerts">Alerts and looks</p>
@@ -72,6 +73,68 @@ function renderSetup(j) {
     </div>
     <p class="ver">Session Switcher ${esc(j.appVersion)}. Your chats are read from your own .claude folder and never leave this PC.</p>`;
 }
+/* ---------- Getting started (the first time, until it's done or put away) ---------- */
+// Shown from a first start until it's put away (across restarts), never to someone already set up.
+const startShown = () => { if (S.firstRun && !store('getting-started')) store('getting-started', 'on'); return store('getting-started') === 'on'; };
+function startHtml(j) {
+  if (!startShown() || window.REMOTE) return '';
+  const chk = id => j.checks.find(c => c.id === id) || null;
+  const cl = chk('claude'), main = S.accounts.find(a => a.isDefault) || S.accounts[0];
+  const acct = main ? chk(`acct-${main.id}`) : null;
+  const done = c => !!c && c.state !== 'error' && !(c.fix && /signin|install/.test(c.fix.action));
+  const step = (n, ok, title, text, act) => `<li class="gs-step ${ok ? 'ok' : ''}"><span class="gs-n" aria-hidden="true">${ok ? '✓' : n}</span><div><b>${title}</b><p>${text}</p></div>${ok ? '' : act || ''}</li>`;
+  const fixBtn = c => (c && c.fix ? `<button class="btn prime sm" data-fix="${esc(c.fix.action)}" data-account="${esc(c.fix.account || '')}">${esc(c.fix.label)}</button>` : '');
+  const essentials = done(cl) && done(acct);
+  return `<section class="gs" aria-label="Getting started"><div class="gs-h"><p class="eyebrow">Getting started</p><b>${essentials ? 'You’re set up. A few extras, if you like:' : 'Two things and you’re ready.'}</b><button type="button" class="icon" data-gs="done" aria-label="Put this away" title="Put this away">✕</button></div>
+    <ol class="gs-list">
+      ${step(1, done(cl), 'Claude Code', done(cl) ? esc(cl.detail) : 'Session Switcher works with Anthropic’s Claude Code. Install it here; a terminal window shows it working.', fixBtn(cl))}
+      ${step(2, done(acct), 'Your Claude account', done(acct) ? esc(acct.detail) : 'Sign in with the Claude account (Pro or Max) you use. More accounts can be added later, under Accounts on the hub.', fixBtn(acct))}
+      ${step(3, !!(S.codex && S.codex.enabled), 'Codex too (optional)', 'Use OpenAI’s Codex next to Claude, even in the same chat.', '<a class="btn quiet sm" href="#st-codex">Codex settings</a>')}
+      ${step(4, false, 'Your phone (optional)', 'Answer chats and approve steps from your phone, over your Wi-Fi.', '<a class="btn quiet sm" href="#st-phone">Phone access</a>')}
+      ${step(5, !!store('toured'), 'A two-minute tour', 'Where everything is: the hub, projects, chats, Ctrl+K.', '<button class="btn quiet sm" data-fix="tour">Take the tour</button>')}
+    </ol>
+    <p class="gs-b"><button class="btn quiet sm" data-gs="check">Check again</button>${essentials ? '<button class="btn sm" data-gs="done">Done</button>' : ''}</p></section>`;
+}
+document.addEventListener('click', wrap(async e => {
+  const b = e.target.closest('[data-gs]'); if (!b) return;
+  if (b.dataset.gs === 'done') { store('getting-started', 'done'); return loadHealth(true); }
+  b.disabled = true;
+  await reload().catch(() => {});
+  return loadHealth(true);
+}));
+
+/* ---------- Windows Firewall: can the phone get in? ---------- */
+async function loadFirewall(fresh) {
+  const box = $('fwBox'); if (!box) return;
+  let f;
+  try { f = await api(`/api/phone/firewall${fresh ? '?fresh=1' : ''}`); } catch { return; }
+  renderFirewall(f);
+}
+function renderFirewall(f) {
+  const box = $('fwBox'); if (!box || !f || !f.known) return;
+  const name = S.shell ? 'Session Switcher' : 'Node.js';
+  const pub = f.network === 'Public';
+  if (!f.firewallOn || (f.allowed && !f.blocked && !pub)) { box.innerHTML = `<p class="fw-ok">✓ Windows Firewall lets your phone in.</p>`; return; }
+  const why = f.blocked ? `Windows Firewall is <b>blocking</b> ${name} (the “allow” question was answered Cancel at some point).`
+    : !f.allowed ? `Windows Firewall hasn’t been told to let ${name} in, so your phone may not reach this PC.` : '';
+  const net = pub ? 'This Wi-Fi is set as a <b>public</b> network, where Windows lets nothing in. At home, set it as private.' : '';
+  box.innerHTML = `<div class="fw-warn"><p>${[why, net].filter(Boolean).join(' ')}</p>
+    ${pub ? '<label class="fw-also"><input type="checkbox" id="fwPrivate" checked><span>Also set this Wi-Fi as a private network (only do this at home)</span></label>' : ''}
+    <p><button class="btn prime sm" data-fw="fix">Let my phone in</button> <button class="btn quiet sm" data-fw="check">Check again</button></p>
+    <small>Windows asks for an administrator’s OK. It adds one rule: ${name} on port ${f.port}, private networks only.</small></div>`;
+}
+document.addEventListener('click', wrap(async e => {
+  const b = e.target.closest('[data-fw]'); if (!b) return;
+  if (b.dataset.fw === 'check') return loadFirewall(true);
+  b.disabled = true; b.textContent = 'Waiting for Windows…';
+  try {
+    const r = await api('/api/phone/firewall', { alsoPrivate: !!($('fwPrivate') && $('fwPrivate').checked) });
+    renderFirewall(r.status);
+    toast(r.status && r.status.allowed ? 'Done: your phone can reach this PC on your Wi-Fi.' : 'Windows didn’t change it. Try again, or check Windows Security → Firewall.', 5000);
+  } catch (err) { toast(err.message, 5000); loadFirewall(true); }
+  return undefined;
+}));
+
 /* ---------- phone access: use this PC's Session Switcher from the Android app ---------- */
 let phoneTimer = null;
 async function loadPhone() {
@@ -92,11 +155,12 @@ function renderPhone(st) {
       <div class="ph-step"><span class="ph-n">2</span><div><b>This computer’s address</b><p>${lan.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ') || '<i>No network found.</i>'}${ts.length ? `<br><small>Away from home with Tailscale: ${ts.map(a => `<code class="ph-addr">${esc(host(a))}</code>`).join(' ')}</small>` : ''}</p></div></div>
       <div class="ph-step"><span class="ph-n">3</span><div><b>Pair it</b>${st.pairing ? `<p class="ph-code" aria-label="Pairing code">${esc(st.pairing.code.slice(0, 4))}<span>·</span>${esc(st.pairing.code.slice(4))}</p><p><small id="phLeft">Works once, for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}.</small> <button class="btn quiet sm" data-phone="cancel">Cancel</button></p>` : '<p><button class="btn prime sm" data-phone="pair">Show a pairing code</button></p>'}</div></div>
     </div>
+    ${S.platform === 'win32' ? '<div class="ph-fw" id="fwBox"></div>' : ''}
     <div class="ph-ts" id="tsBox"></div>
     ${st.devices.length ? `<p class="ph-h">Paired phones</p><ul class="ph-dev">${st.devices.map(d => `<li><span class="glyph" aria-hidden="true">◈</span><span><b>${esc(d.name)}</b><small>paired ${esc(agoL(d.created))}${d.lastSeen ? ` · last used ${esc(agoL(d.lastSeen))}` : ''}</small></span><button class="btn quiet sm" data-phone="forget" data-id="${esc(d.id)}">Remove</button></li>`).join('')}</ul>` : ''}
-    <p class="ph-warn">A paired phone can do anything you can do here, including letting Claude run commands on this PC. Pair only your own phones, and remove one you lose. ${S.platform === 'darwin' ? 'macOS may ask to let Node accept incoming connections; allow it.' : 'Windows may ask to let Node.js through the firewall; allow it on private networks.'}</p>` : ''}`;
+    <p class="ph-warn">A paired phone can do anything you can do here, including letting Claude run commands on this PC. Pair only your own phones, and remove one you lose. ${S.platform === 'darwin' ? `macOS may ask to let ${S.shell ? 'Session Switcher' : 'Node'} accept incoming connections; allow it.` : ''}</p>` : ''}`;
   Push.phones = st.pushPhones || 0; Push.apps = (st.appsListening || []).length;
-  if (st.enabled) loadTailscale();
+  if (st.enabled) { loadTailscale(); loadFirewall(); }
   if (st.pairing) phoneTimer = setInterval(() => {
     const l = Math.max(0, Math.round((st.pairing.expiresAt - Date.now()) / 1000));
     const el = $('phLeft'); if (!el || !$('setup').open) { clearInterval(phoneTimer); return; }
@@ -294,6 +358,7 @@ $('setupBody').addEventListener('click', wrap(async e => {
     toast(r.errors.length ? `Some folders couldn’t be fixed: ${r.errors.join('; ')}` : `Done. Shared ${r.linked.length ? r.linked.join(', ') : 'everything'}${r.moved ? `, moved ${r.moved} item${r.moved === 1 ? '' : 's'} into your main folder` : ''}${r.conflicts ? `; ${r.conflicts} duplicate${r.conflicts === 1 ? ' was' : 's were'} kept aside, not deleted` : ''}.`, 9000);
     await reload(); return loadHealth(true);
   }
+  if (what === 'install-claude') { const r = await api('/api/claude/install', {}); return r.dryRun ? reportLaunch(r) : toast(`Installing Claude Code in a ${r.how}. When it says Done, click Check again here.`, 9000); }
   if (what === 'update-claude') { const r = await api('/api/update-claude', {}); return r.dryRun ? reportLaunch(r) : toast(`Updating Claude Code in a ${r.how}. Close it when it finishes, then reopen Setup.`, 8000); }
   if (what === 'share-copy') return shareCopy();
   if (what === 'shortcut') { const r = await api('/api/shortcut', {}); return toast(r.dryRun ? 'Would create a desktop shortcut.' : S.platform === 'darwin' ? 'Added “Session Switcher” to Applications in your home folder. Find it with Spotlight or Launchpad.' : 'Added “Claude Session Switcher” to your desktop.'); }

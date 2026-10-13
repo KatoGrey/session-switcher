@@ -23,6 +23,7 @@ const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
+const firewallLib = require('./lib/firewall');
 const { reviewTarget, fixText, reviewAsk, parseFindings, mergeFindings } = require('./lib/review');
 const { createReviewLoop } = require('./lib/reviewloop');
 const rulesLib = require('./lib/rules');
@@ -55,6 +56,8 @@ const APP_DIR = __dirname;
 const DATA_DIR = process.env.SWITCHER_DATA_DIR ? path.resolve(process.env.SWITCHER_DATA_DIR) : APP_DIR;
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const CONFIG_FILE = path.join(DATA_DIR, 'accounts.json');
+// Nobody has used Session Switcher here before (a co-worker's first start): Setup opens with Getting started.
+const FIRST_RUN = !fs.existsSync(CONFIG_FILE);
 const LOG_FILE = path.join(DATA_DIR, 'switcher.log');
 const TOKEN = crypto.randomBytes(24).toString('hex');
 // Which code this server is running, so a copy started later can tell if it's out of date.
@@ -162,6 +165,7 @@ function noteProblem(where, message, stack) {
   clearTimeout(problemsTimer);
   problemsTimer = setTimeout(() => { try { store.writeJsonAtomic(PROBLEMS_FILE, { problems }); } catch (err) { console.log(`Couldn’t save problems.json: ${err.message}`); } }, 1000);
 }
+let fwCache = null;   // the firewall check, for half a minute
 const DRAFTS_FILE = path.join(DATA_DIR, 'drafts.json');
 let drafts = (store.loadOwnJson(DRAFTS_FILE, null, log) || {}).drafts || {};
 let draftsTimer = null;
@@ -1018,7 +1022,7 @@ function stateFor() {
   return {
     accounts: c.accounts.map(a => acc.publicAccount(c, a)),
     prefs: c.prefs, claudeCommand: c.claudeCommand,
-    dryRun: sys.DRY_RUN, appVersion: APP_VERSION, shell: SHELL, platform: process.platform,
+    dryRun: sys.DRY_RUN, appVersion: APP_VERSION, shell: SHELL, firstRun: FIRST_RUN, platform: process.platform,
     index: sessions.progress,
     codex: codexPublic(),
     reopen: restarted ? [] : toReopen(),
@@ -1030,12 +1034,19 @@ function stateFor() {
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send']);
+const LOCAL_ONLY = new Set(['/api/claude/install', '/api/phone/firewall', '/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
   const route = `${req.method} ${url.pathname}`;
   if (remote && (LOCAL_ONLY.has(url.pathname) || url.pathname.startsWith('/api/phone'))) throw fail(403, 'That can only be done on the PC itself.');
+  // Windows Firewall: whether the phone can get in (the program serving it, on the phone port).
+  if (route === 'GET /api/phone/firewall') {
+    if (remote) throw fail(403, 'From the PC only.');
+    const now = Date.now();
+    if (!fwCache || now - fwCache.at > 30000 || url.searchParams.get('fresh')) fwCache = { at: now, st: await firewallLib.status(sys, { program: process.execPath, port: phone.status().port }) };
+    return send(res, 200, fwCache.st);
+  }
   if (route === 'GET /api/phone') return send(res, 200, { ...phone.status(), pushPhones: pushes.count(), appsListening: [...new Set([...appWatchers].map(w => w.device.id))] });
   if (route === 'GET /api/run') { const p = projectAt(url.searchParams.get('cwd')); if (!p) throw fail(404, 'Pick one of your projects.'); return send(res, 200, runner.status(p.cwd)); }
   if (route === 'GET /api/phone/tailscale') return send(res, 200, await tailscaleStatus());
@@ -1089,7 +1100,7 @@ async function handleApi(req, res, url, remote = false) {
     try { mdText = fs.readFileSync(path.join(APP_DIR, 'docs', 'whats-new.md'), 'utf8'); } catch { return send(res, 200, {}); }
     const title = (mdText.match(/^#\s+(.+)$/m) || [])[1] || '';
     const body = mdText.replace(/^#\s+.+\r?\n/m, '').trim();
-    return send(res, 200, { id: crypto.createHash('sha1').update(mdText).digest('hex').slice(0, 12), title, md: body });
+    return send(res, 200, { id: crypto.createHash('sha1').update(mdText).digest('hex').slice(0, 12), title, md: body, version: APP_VERSION });
   }
   // Since you left (for the welcome-back card): files the chats changed and reviews that came back.
   if (route === 'GET /api/away') {
@@ -1490,6 +1501,13 @@ async function handleApi(req, res, url, remote = false) {
       setTimeout(() => { if (config().codex.enabled) for (const x of codexAll()) x.refreshAccount().then(st => { if (st.signedIn) x.refreshUsage(); }).catch(() => {}); broadcast('accounts'); broadcast('sessions'); }, 200);
       return send(res, 200, { codex: c.codex });
     }
+    // Claude Code, with Anthropic's own installer, in a terminal window you can watch.
+    case '/api/claude/install': {
+      const r = await sys.runInTerminal(c, os.homedir(), 'Install Claude Code', sys.IS_WIN
+        ? '@echo off\r\ntitle Install Claude Code\r\necho Installing Claude Code (Anthropic)...\r\npowershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://claude.ai/install.ps1 | iex"\r\necho.\r\necho Done. Close this window and click Check again in Session Switcher.\r\npause\r\n'
+        : '#!/bin/sh\necho "Installing Claude Code (Anthropic)..."\ncurl -fsSL https://claude.ai/install.sh | bash\necho\necho "Done. Close this window and click Check again in Session Switcher."\n');
+      return send(res, 200, r);
+    }
     case '/api/codex/install': {
       const r = await sys.runInTerminal(c, os.homedir(), 'Install Codex', sys.IS_WIN
         ? '@echo off\r\ntitle Install Codex\r\necho Installing Codex (OpenAI)...\r\ncall npm install -g @openai/codex\r\necho.\r\necho Done. Close this window and click Check again in Session Switcher.\r\n'
@@ -1679,6 +1697,12 @@ async function handleApi(req, res, url, remote = false) {
       const st = phone.status();
       if (!st.listening) throw fail(409, 'Turn phone access on first.');
       return send(res, 200, { ...phone.startPairing(), status: phone.status() });
+    }
+    case '/api/phone/firewall': {
+      const r = await firewallLib.fix(sys, { program: process.execPath, port: phone.status().port, alsoPrivate: !!body.alsoPrivate, log });
+      fwCache = null;
+      if (r.declined) throw fail(400, 'Nothing was changed (the administrator prompt was answered No).');
+      return send(res, 200, { ...r, status: await firewallLib.status(sys, { program: process.execPath, port: phone.status().port }) });
     }
     case '/api/phone/pair-cancel': phone.cancelPairing(); return send(res, 200, phone.status());
     case '/api/phone/forget': phone.forget(String(body.id || '')); pushes.forgetDevice(String(body.id || '')); for (const w of appWatchers) if (w.device.id === String(body.id || '')) { appWatchers.delete(w); try { w.res.end(); } catch { /* gone */ } } return send(res, 200, { ...phone.status(), pushPhones: pushes.count() });

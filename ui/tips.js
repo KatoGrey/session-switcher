@@ -47,7 +47,7 @@ function renderWhatsNew() {
   const w = WhatsNew.card;
   if (!w || S.view !== 'hub') { if (box) box.remove(); return; }
   if (!box) { slot.insertAdjacentHTML('afterend', '<section class="whats-new" id="whatsNew" aria-label="What’s new"></section>'); box = $('whatsNew'); }
-  box.innerHTML = `<div class="wn-h"><p class="eyebrow">What’s new</p><b>${esc(w.title || 'Session Switcher was updated')}</b><button type="button" class="icon wn-x" data-wn="done" aria-label="Got it">✕</button></div>
+  box.innerHTML = `<div class="wn-h"><p class="eyebrow">What’s new${w.version ? ` in ${esc(w.version)}` : ""}</p><b>${esc(w.title || 'Session Switcher was updated')}</b><button type="button" class="icon wn-x" data-wn="done" aria-label="Got it">✕</button></div>
     <div class="wn-body md ${WhatsNew.open || w.md.split('\n').length <= 3 ? 'open' : ''}">${md(w.md)}</div>
     <p class="wn-b">${w.md.split('\n').length > 3 ? `<button type="button" class="btn quiet sm" data-wn="more">${WhatsNew.open ? 'Show less' : 'Show it all'}</button>` : ''}<button type="button" class="btn sm" data-wn="done">Got it</button></p>`;
 }

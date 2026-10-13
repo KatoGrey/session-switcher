@@ -29,7 +29,12 @@ async function main() {
   if (!only.length) {
     console.log('— logic and server checks');
     const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join(__dirname, f));
-    const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', ...files], { stdio: 'inherit', cwd: APP });
+    // On GitHub the failures are also written as annotations (from a TAP copy of the results).
+    const tap = process.env.GITHUB_ACTIONS ? path.join(os.tmpdir(), `ss-tap-${process.pid}.txt`) : null;
+    const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP });
+    if (tap && r.status !== 0) {
+      try { for (const m of fs.readFileSync(tap, 'utf8').matchAll(/^\s*not ok \d+ - (.+)$/gm)) console.log(`::error title=logic tests::${m[1].slice(0, 400)}`); } catch { /* no TAP copy */ }
+    }
     if (r.status !== 0) failed++;
   }
 
@@ -58,6 +63,8 @@ async function main() {
     const t = {
       check(name, ok, detail) {
         if (!ok) failed++;
+        // On GitHub, each failed check is also an annotation, readable on the run's page without signing in.
+        if (!ok && process.env.GITHUB_ACTIONS) console.log(`::error title=${suite.name.replace(/[\r\n:,]/g, ' ')}::${`${name}${detail !== undefined ? ` (${typeof detail === 'string' ? detail : JSON.stringify(detail)})` : ''}`.replace(/%/g, '%25').replace(/\r?\n/g, '%0A').slice(0, 900)}`);
         console.log(`  ${ok ? '✔' : '✖'} ${name}${!ok && detail !== undefined ? `  (${typeof detail === 'string' ? detail : JSON.stringify(detail)})` : ''}`);
       },
       // path: what follows the address, like "?chat=…" for a popped-out chat.

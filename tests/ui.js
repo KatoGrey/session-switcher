@@ -1688,6 +1688,36 @@ module.exports = [
     },
   },
   {
+    name: 'co-workers',
+    // A first start: Setup opens on Getting started; Claude Code installs from there. A problem's
+    // report leaves nothing personal in. The phone: Windows Firewall checked, and fixed.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ fresh: true, seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`localStorage.removeItem('getting-started'); S.firstRun = true; await openSetup(); return 1`); await sleep(800);
+      const gs = await b.eval(`const g = document.querySelector('.gs'); return g && { text: g.textContent.replace(/\\s+/g, ' '), steps: g.querySelectorAll('.gs-step').length, done: g.querySelectorAll('.gs-step.ok').length }`);
+      t.check('a first start opens Setup on Getting started', !!gs && gs.steps === 5 && /Two things and you’re ready/.test(gs.text) && /Install Claude Code/.test(gs.text) && /Sign in/.test(gs.text), gs);
+      await t.shot(b, 'getting-started');
+      await b.clickOn('.gs [data-fix="install-claude"]'); await sleep(500);
+      t.check('Install Claude Code runs Anthropic’s installer', calls.some(([p]) => p === '/api/claude/install'));
+      await b.clickOn('.gs-h [data-gs="done"]'); await sleep(600);
+      t.check('put away, it stays away', await b.eval(`return !document.querySelector('.gs') && localStorage.getItem('getting-started') === 'done'`));
+      t.check('someone already set up never sees it', await b.eval(`localStorage.removeItem('getting-started'); S.firstRun = false; await loadHealth(true); return !document.querySelector('.gs')`));
+      // A problem's report: nothing personal in it.
+      const rep = await b.eval(`return problemReport({ message: 'EPERM at C:\\\\Users\\\\alex\\\\proj for alex@studio.example', where: 'PC', count: 2, at: new Date().toISOString(), stack: 'token=abcdef0123456789abcdef0123456789abcd' }, 'GET /api/x ghp_abcdefghijklmnopqrstuvwxyz0123456789')`);
+      t.check('a report says what happened, and nothing personal', /What happened/.test(rep) && /Version:/.test(rep) && !/alex|abcdef0123|ghp_/.test(rep), rep.slice(0, 300));
+      // The phone and Windows Firewall.
+      await b.eval(`openSetupAt('st-phone'); return 1`); await sleep(1500);
+      const fw = await b.eval(`return document.getElementById('fwBox')?.textContent.replace(/\\s+/g, ' ') || ''`);
+      t.check('Phone access says when Windows Firewall keeps the phone out', /blocking/.test(fw) && /public/.test(fw) && /Let my phone in/.test(fw), fw);
+      await b.eval(`document.getElementById('fwBox').scrollIntoView({ block: 'center' }); return 1`); await sleep(200);
+      await t.shot(b, 'firewall');
+      await b.clickOn('#fwBox [data-fw="fix"]'); await sleep(800);
+      const fixed = calls.find(([p, body]) => p === '/api/phone/firewall' && body && body.alsoPrivate !== undefined);
+      t.check('Let my phone in fixes it (and sets the Wi-Fi as private, as ticked)', !!fixed && fixed[1].alsoPrivate === true && /lets your phone in/.test(await b.eval(`return document.getElementById('fwBox').textContent`)), fixed);
+    },
+  },
+  {
     name: 'autopilot',
     // Out of room mid-chat, as it happens: it carries on as the account with the most room by itself,
     // after a moment to say no.

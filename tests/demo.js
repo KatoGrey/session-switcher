@@ -145,7 +145,9 @@ const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}
 // Options: state (the chat's state), seen(path, url, body) for every API call, context (how
 // full the chat is), events (more chat events sent after it connects), extras (kept changes and reviews), openclaw (OpenClaw sessions in the list), noHistory (the history
 // isn't there yet, as for a brand-new chat).
-async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null } = {}) {
+async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false } = {}) {
+  // Windows Firewall, as a fresh PC has it: nothing let in, the Wi-Fi set as public.
+  let firewall = { known: true, program: 'C:\\Program Files\\nodejs\\node.exe', port: 4788, firewallOn: true, allowed: false, blocked: true, network: 'Public' };
   const info = { ...chatInfo, ...(context ? { context } : {}) };
   let reviews = 0;
   // Rules and tools: the project's CLAUDE.md and AGENTS.md differ; one tool on each side, and Codex's own.
@@ -188,6 +190,11 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/problems' && body.message) { problemList.unshift({ id: `pb${problemList.length}`, where: 'Page', message: body.message, stack: body.stack || '', at: new Date(NOW).toISOString(), count: 1 }); return { body: { ok: true } }; }
     if (p === '/api/problems' && body.clear) { problemList = body.clear === 'all' ? [] : problemList.filter(x => x.id !== body.clear); return { body: { ok: true } }; }
     if (p === '/api/problems') return { body: { problems: problemList, appDir: 'C:\\Apps\\SessionSwitcher', log: '[2026] Error on GET /api/x: boom' } };
+    // A co-worker's first start: Claude Code isn't installed, nobody is signed in.
+    if (p === '/api/health' && fresh) return { body: { checks: [{ id: 'node', label: 'Node.js', state: 'ok', detail: 'v24' }, { id: 'claude', label: 'Claude Code', state: 'error', detail: 'Couldn’t run “claude”.', fix: { action: 'install-claude', label: 'Install Claude Code' } }, { id: `acct-${accounts[0].id}`, label: accounts[0].name, state: 'warn', detail: 'Not signed in.', fix: { action: 'signin', label: 'Sign in', account: accounts[0].id } }], prefs: { terminal: 'auto', openIn: 'app' }, claudeCommand: 'claude', codex, appVersion: '6.3.0' } };
+    if (p === '/api/phone/firewall' && method === 'POST') { firewall = { ...firewall, allowed: true, blocked: false, network: body.alsoPrivate ? 'Private' : firewall.network }; return { body: { ok: true, status: firewall } }; }
+    if (p === '/api/phone/firewall') return { body: firewall };
+    if (p === '/api/claude/install') return { body: { ok: true, how: 'terminal window' } };
     if (p === '/api/health') return { body: { checks: [{ id: 'node', label: 'Node.js', state: 'ok', detail: 'v24' }, { id: 'claude', label: 'Claude Code', state: 'ok', detail: '2.1' }], prefs: { terminal: 'auto', openIn: 'app' }, claudeCommand: 'claude', codex, appVersion: '5.5.0' } };
     if (p === '/api/selfcheck' && method === 'POST') return { body: { running: true, last: selfCheck } };
     if (p === '/api/selfcheck') return { body: { last: selfCheck, running: false } };

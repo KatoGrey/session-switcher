@@ -559,7 +559,8 @@ renderLivePill();
 if (SOLO) document.body.classList.add('solo');
 wrap(async () => {
   if (!SOLO && !PAGE_ARGS.get('chat')) await bootFromCache();   // drawn at once from last time
-  await Promise.all([reload(), loadPrompts()]); speedNote('hub', performance.now()); connectLive(); watchActivity(); checkAway(); loadWhatsNew(); if (!window.REMOTE) loadSelfCheckCard(); loadHealth(false).catch(() => {}); loadTasks().catch(() => {}); loadRaces().catch(() => {});
+  await Promise.all([reload(), loadPrompts()]); speedNote('hub', performance.now()); connectLive(); watchActivity(); checkAway(); loadWhatsNew(); if (!window.REMOTE) loadSelfCheckCard();
+  if (S.firstRun && !window.REMOTE && !store('getting-started') && !SOLO) setTimeout(() => openSetup(), 600); loadHealth(false).catch(() => {}); loadTasks().catch(() => {}); loadRaces().catch(() => {});
   // A popped-out window opens straight into its chat.
   if (PAGE_ARGS.get('chat')) await ChatUI.open({ sessionId: PAGE_ARGS.get('chat') });
   else if (PAGE_ARGS.get('key')) await ChatUI.openKey(PAGE_ARGS.get('key')).catch(() => {});   // from a notification

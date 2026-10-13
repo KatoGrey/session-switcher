@@ -1,7 +1,9 @@
 name: Desktop app
 
-# A version tag (v6.0.1, say: made by `node desktop/release.js 6.0.1`) builds the Windows installer
-# and the Mac app and publishes them as a GitHub release. Installed copies update from it.
+# A version tag (v6.3.0, or v6.3.0-beta.1 for a test version: made by `node desktop/release.js`)
+# runs every test on Windows and on a Mac first; only if they all pass does it build the Windows
+# installer and the Mac apps and publish them as a GitHub release. Installed copies update from it.
+# A test version is published as a pre-release: only copies set to get test versions take it.
 on:
   push:
     tags: ['v*']
@@ -11,7 +13,31 @@ permissions:
   contents: write
 
 jobs:
+  tests:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run the tests
+        run: node tests/run.js
+        env:
+          SHOTS: shots
+      - name: Keep the screenshots if something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ matrix.os }}
+          path: shots
+
   release:
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +52,9 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Session Switcher ${GITHUB_REF_NAME#v}" --notes-file docs/whats-new.md
+        run: |
+          PRE=""; case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" $PRE --title "Session Switcher ${GITHUB_REF_NAME#v}" --notes-file docs/whats-new.md
 
   build:
     needs: release
@@ -47,7 +75,8 @@ jobs:
         working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Not signed: shared with people who know where it's from.
+          # Not signed with a certificate: shared with people who know where it's from. (The Mac
+          # app gets a free ad-hoc signature, which Apple-silicon Macs need to open it at all.)
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder ${{ matrix.os == 'windows-latest' && '--win' || '--mac' }} --publish ${{ github.ref_type == 'tag' && 'always' || 'never' }}
       - name: Keep the build (runs without a tag)
