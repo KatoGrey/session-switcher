@@ -492,3 +492,41 @@ function askWaiting(ids) {
   f.onsubmit = wrap(async e => { e.preventDefault(); close(); await setChats(ids, { waiting: true, waitingOn: f.who.value.trim(), note: f.note.value.trim() }, `Waiting on ${f.who.value.trim() || 'someone'}. A reminder comes after two days.`); });
   f.who.focus(); f.who.select();
 }
+
+// Input diagnostics (temporary, Oct 13, 2026): what reaches the page when Wispr or ⌘V pastes into a
+// box, and every time Lite itself sets a box's text. Only event types, lengths and which element
+// (never the words), the last 300, kept on this device in localStorage 'lite-input-log'.
+(function inputLog() {
+  const KEY = 'lite-input-log';
+  let buf = []; try { buf = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { buf = []; }
+  let dirty = false;
+  const desc = el => (!el || !el.tagName ? (el === window ? 'window' : el === document ? 'document' : null) : el.id ? `#${el.id}` : `${el.tagName.toLowerCase()}${typeof el.className === 'string' && el.className ? `.${el.className.split(' ')[0]}` : ''}`);
+  const rec = (type, e, extra = {}) => {
+    buf.push({ t: Date.now(), type, target: desc(e && e.target), active: desc(document.activeElement), hasFocus: document.hasFocus(), view: typeof S !== 'undefined' ? S.view : null, ...extra });
+    if (buf.length > 300) buf.splice(0, buf.length - 300);
+    dirty = true;
+  };
+  setInterval(() => { if (!dirty) return; dirty = false; try { localStorage.setItem(KEY, JSON.stringify(buf)); } catch { /* full or blocked */ } }, 1000);
+  const field = t => t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT');
+  addEventListener('keydown', e => { if (e.metaKey || e.ctrlKey || (e.key === 'Enter' && field(e.target))) rec('keydown', e, { key: e.key, meta: e.metaKey }); }, true);
+  addEventListener('paste', e => rec('paste', e, { types: [...((e.clipboardData && e.clipboardData.types) || [])], len: ((e.clipboardData && e.clipboardData.getData('text')) || '').length }), true);
+  addEventListener('paste', e => rec('paste-done', e, { prevented: e.defaultPrevented }));
+  addEventListener('beforeinput', e => { if (field(e.target)) rec('beforeinput', e, { it: e.inputType }); }, true);
+  addEventListener('input', e => { if (field(e.target)) rec('input', e, { it: e.inputType, len: (e.target.value || '').length }); }, true);
+  addEventListener('focusin', e => rec('focusin', e), true);
+  addEventListener('focusout', e => rec('focusout', e, { to: desc(e.relatedTarget) }), true);
+  addEventListener('focus', e => { if (e.target === window) rec('win-focus', e); });
+  addEventListener('blur', e => { if (e.target === window) rec('win-blur', e); });
+  document.addEventListener('visibilitychange', () => rec('visibility', null, { v: document.visibilityState }));
+  addEventListener('pointerdown', e => rec('pointerdown', e), true);
+  // Lite setting a box's text itself (clearing it after a send, a draft coming back, a queued message).
+  const d = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+  Object.defineProperty(HTMLTextAreaElement.prototype, 'value', {
+    configurable: true, enumerable: d.enumerable, get() { return d.get.call(this); },
+    set(v) {
+      const before = d.get.call(this).length;
+      d.set.call(this, v);
+      if (this.id && before !== String(v).length) rec('set-value', { target: this }, { from: before, to: String(v).length, by: (new Error().stack.split('\n')[2] || '').trim().replace(/^at /, '').replace(/\(?https?:\/\/[^)]*\/ui-lite\//, '').slice(0, 80) });
+    },
+  });
+}());
