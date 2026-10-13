@@ -114,6 +114,8 @@ function writeOpenChats() {
   const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId && !(chats.chats.get(c.key) || {}).aside).map(c => ({
     sessionId: c.sessionId, provider: c.provider || 'claude', accountId: c.accountId, accountName: c.accountName,
     cwd: c.cwd, title: c.title || null, folder: c.folder || null,
+    // What it was running with, so it comes back the same (a reopen used to fall back to the app's default mode).
+    ...(ch => (ch ? { permissionMode: ch.permissionMode || null, model: ch.model || null, fast: !!ch.fast } : {}))(chats.chats.get(c.key)),
   }));
   try { store.writeJsonAtomic(OPEN_FILE, { at: Date.now(), chats: list }); return true; } catch (err) { log(`Couldn’t note the open chats: ${err.message}`); return false; }
 }
@@ -654,6 +656,9 @@ function openChat(c, body) {
   p.then(() => opening.delete(id), () => opening.delete(id));
   return p;
 }
+// Chats here are read in a window that shows pictures (Switcher Lite, the chat window); they're told so,
+// or they assume they can't and send links instead.
+const SHOWS_PICTURES = 'This conversation is shown in Session Switcher, which displays Markdown images inline. To show the user a picture or screenshot, write ![short description](/absolute/path/to/file.png) with the absolute path of a local image file (png, jpg, gif, webp, svg). Use this whenever a picture would help instead of only linking to it.';
 async function openChatNow(c, body) {
   // A partner's conversation opens inside the chat it belongs to.
   const lead = (!body.mode || body.mode === 'resume') && body.sessionId ? chatPrefs.parentOf(body.sessionId) : null;
@@ -730,7 +735,7 @@ async function openChatInner(c, body) {
   if (sessionId) { try { title = sessions.find(sessionId).session.title; } catch { /* untitled */ } }
   if (mode === 'fork' && title) title = `${title} (copy)`;
   const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder });
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder, extraArgs: ['--append-system-prompt', SHOWS_PICTURES] });
   if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
   log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
   return { ...chat.info(), attached: false, remembered: !!pref.mode && !body.permissionMode, companionThread: sessionId && mode !== 'new' ? chatPrefs.companionOf(sessionId) : null };
@@ -2378,7 +2383,7 @@ async function reopenChats(list, what) {
   for (const c of list) {
     try {
       if (chats.bySession(c.sessionId)) { reopened.push(c.sessionId); continue; }
-      await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true });
+      await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true, ...(c.permissionMode ? { permissionMode: c.permissionMode } : {}), ...(c.model ? { model: c.model } : {}), ...(c.fast ? { fast: true } : {}) });
       reopened.push(c.sessionId);
     } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
   }

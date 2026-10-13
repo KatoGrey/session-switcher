@@ -141,7 +141,7 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
   CV.provider = provider || (c ? c.provider : 'claude');
   markSeen(id);
   const x = S.live.find(l => l.sessionId && l.sessionId.toLowerCase() === String(id).toLowerCase());
-  if (!key && x && x.key && x.source === 'app') CV.key = x.key;
+  if (!key && x && x.key && x.source === 'app' && x.phase !== 'ended') CV.key = x.key;
   // The Commander isn't in the running list; Now knows its key.
   if (!CV.key && S.cmd.key && S.cmd.sessionId && S.cmd.sessionId.toLowerCase() === String(id).toLowerCase()) CV.key = S.cmd.key;
   if (!CV.key && x && x.source !== 'app' && x.working) CV.readOnly = x.source === 'terminal' ? 'It’s running in a terminal. Answer it there, or wait for it to finish.' : 'It’s running in another app (like the Claude desktop app). Answer it there, or wait for it to finish.';
@@ -823,7 +823,18 @@ async function sendInChat({ fromQueue = false } = {}) {
     const out = withFiles(text, files); local.text = out;
     for (const i of sentImages) if (i.url) URL.revokeObjectURL(i.url);
     if (here()) { resetComposer(); paintAttachments(); }
-    await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...(to ? { to } : {}) });
+    try { await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...(to ? { to } : {}) }); }
+    catch (err) {
+      // It stopped since Lite last looked (idle for a while, or the app restarted): started again, then sent.
+      if (!(err.status === 409 || err.status === 404) || !/stopped|isn.t running|not running/i.test(err.message)) throw err;
+      const c = chatBy.get(id);
+      const claudeAcct = provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
+      const info = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: perm, ...(model ? { model } : {}), ...(fast != null ? { fast: !!fast } : {}) });
+      key = info.key;
+      if (here()) { CV.key = key; CV.info = info; listen(key); }
+      await waitReadyFor(key);
+      await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...(to ? { to } : {}) });
+    }
     if (here()) {
       if (to) partnerSoon();
       CV.busy = true; if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
