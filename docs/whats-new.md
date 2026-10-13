@@ -9,4 +9,5 @@
 - **Good morning.** The first visit of the day offers yesterday’s chats to pick back up.
 - **Problems, caught.** Setup → Problems lists anything that went wrong, with Ask Claude to fix this.
 - **Phone.** A home-screen widget, replies gathered into a digest if you’d like, and messages written offline send when you’re back.
+- **Both: Codex follows your mode.** What you let Claude do without asking carries over to Codex, so it stops asking about every step.
 - **Crew.** An optional automatic Codex review after a big change, and a forecast of when an account will run out.
