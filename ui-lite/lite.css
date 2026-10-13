@@ -329,13 +329,13 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .chat-h .ch-name { min-width: 0; flex: 1; display: flex; flex-direction: column; }
 .chat-h .ttl { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feed { flex: 1; overflow-y: auto; }
-.feed .inner { max-width: 900px; margin: 0 auto; padding: 28px 24px; display: flex; flex-direction: column; gap: 20px; }
+.feed .inner { max-width: 820px; margin: 0 auto; padding: 28px 24px; display: flex; flex-direction: column; gap: 20px; }
 .msg-you { align-self: flex-end; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; max-width: 80%; }
 .msg-ai { max-width: 100%; min-width: 0; }
 .msg-ai p { margin: 0 0 8px; }
 .step { color: var(--muted); font-size: 12.5px; display: flex; gap: 8px; align-items: center; }
 .composer { border-top: 1px solid var(--line); padding: 12px 24px 18px; }
-.box { max-width: 900px; margin: 0 auto; border: 1px solid var(--line-2); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--pane); }
+.box { max-width: 820px; margin: 0 auto; border: 1px solid var(--line-2); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--pane); }
 .box textarea { border: 0; outline: none; resize: none; font: inherit; background: none; color: var(--fg); min-height: 44px; }
 .box .tools { display: flex; align-items: center; gap: 4px; }
 .model { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 7px; color: var(--fg-2); font-size: 12.5px; }
