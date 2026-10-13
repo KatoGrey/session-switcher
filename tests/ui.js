@@ -1622,6 +1622,28 @@ module.exports = [
     },
   },
   {
+    name: 'crew extras',
+    // Review big changes by itself (when on), and a heads-up before the account runs out.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const ev = n => JSON.stringify({ kind: 'changes', turn: 90 + n, files: [{ path: 'src/combat.js', status: 'changed', add: n, del: 4 }], more: 0 });
+      await b.eval(`S.prefs.autoReview = false; liveRender = true; renderChanges(${ev(60)}, 'main'); liveRender = false; return 1`); await sleep(1800);
+      t.check('off: big changes aren’t reviewed by themselves', !calls.some(([p]) => p === '/api/chat/review'));
+      await b.eval(`S.prefs.autoReview = true; liveRender = true; renderChanges(${ev(10)}, 'main'); liveRender = false; return 1`); await sleep(1800);
+      t.check('on: small changes aren’t either', !calls.some(([p]) => p === '/api/chat/review'));
+      await b.eval(`liveRender = true; renderChanges(${ev(70)}, 'main'); liveRender = false; return 1`); await sleep(1800);
+      t.check('on: a reply that changed 40 lines or more is reviewed by Codex, once', calls.filter(([p, body]) => p === '/api/chat/review' && body.by === 'codex').length === 1, calls.filter(([p]) => /review/.test(p)));
+      // At this pace, the five-hour window runs out within the hour: said once, with who has room.
+      const msg = await b.eval(`const id = current().id; S.usage[id] = { data: { available: true, fiveHour: { used: 80, resetsAt: new Date(Date.now() + 2 * 3600e3).toISOString() }, week: { used: 30, resetsAt: new Date(Date.now() + 4 * 864e5).toISOString() } } };
+        document.getElementById('toast').textContent = ''; forecastLimit(); const first = document.getElementById('toast').textContent;
+        document.getElementById('toast').textContent = ''; forecastLimit(); return { first, again: document.getElementById('toast').textContent }`);
+      t.check('a heads-up before the account runs out, with who has room', /five-hour window runs out around/.test(msg.first) && /Work as/.test(msg.first), msg.first);
+      t.check('once per window', msg.again === '', msg.again);
+    },
+  },
+  {
     name: 'autopilot',
     // Out of room mid-chat, as it happens: it carries on as the account with the most room by itself,
     // after a moment to say no.

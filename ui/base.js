@@ -485,6 +485,23 @@ async function loadUsage(pre) {
   Boot.raw.usage = [j, sp];
   S.usage = j.usage || {};
   if (sp) S.spent = sp.byAccount || {};   // what used each account's window, chat by chat
+  if (!pre) forecastLimit();
+}
+// The limit forecast: when the account you're working as will run out within the hour at this pace,
+// a heads-up, once per window, with the account that has the most room.
+function forecastLimit() {
+  const a = current(), u = a && usageOf(a.id), d = u && u.data;
+  if (!d || !d.available) return;
+  for (const [k, label] of [['fiveHour', 'five-hour window'], ['week', 'week']]) {
+    const w = d[k], p = paceOf(w, SPAN[k]);
+    if (!p || !p.runsOut || p.runsOut - Date.now() > 3600e3) continue;
+    const once = `forecast:${a.id}:${k}:${w.resetsAt}`;
+    if (store(once)) return;
+    store(once, '1');
+    const alt = typeof headroomPick === 'function' ? headroomPick() : null;
+    toast(`At this pace, ${a.name}’s ${label} runs out around ${when(new Date(p.runsOut).toISOString())}, ${dur(p.early)} before it resets.${alt ? ` ${alt.a.name} has ${alt.r}% left.` : ''}`, 12000, alt ? { label: `Work as ${alt.a.name}`, run: () => useAccount(alt.a.id) } : null);
+    return;
+  }
 }
 // Instant start: the hub as it was last time, drawn at once, then brought up to date (a few seconds
 // with many chats). Kept on this device; too big to keep, and it simply isn't.
