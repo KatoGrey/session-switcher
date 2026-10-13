@@ -2669,7 +2669,7 @@ function chatEvents(req, res, url) {
 
 // ---------- http ----------
 
-const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
+const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
 // Lite's side viewer shows links beside a chat (previews, dev servers on this Mac), so its page may
 // frame web pages and local servers. The full app's page keeps the stricter policy.
 // Lite's Home Screen icon for the look you picked (Safari reads it from the page, not from scripts).
