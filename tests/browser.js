@@ -109,7 +109,10 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
     // Clicks the middle of the first element matching sel. If it's off-screen or something covers it
     // (a docked message box, say), it's scrolled into view first.
     clickOn: async sel => {
-      const r = await b.eval(`const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null;
+      // Like a person: if it isn't there yet (a slow machine), wait a moment for it, up to 5 s.
+      const r = await b.eval(`let el = document.querySelector(${JSON.stringify(sel)});
+        for (let i = 0; i < 50 && !el; i++) { await new Promise(r => setTimeout(r, 100)); el = document.querySelector(${JSON.stringify(sel)}); }
+        if (!el) return null;
         const mid = () => { const q = el.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; };
         const reachable = ([x, y]) => { const at = document.elementFromPoint(x, y); return !!at && (at === el || el.contains(at)); };
         let p = mid();
