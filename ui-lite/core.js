@@ -493,6 +493,29 @@ function askWaiting(ids) {
   f.who.focus(); f.who.select();
 }
 
+// A paste that never lands: in Ryan's Arc (Oct 13, 2026), after switching chats a ⌘V or a Wispr
+// dictation reached the box and the browser said it would insert it, but something on the page (a
+// browser extension; Lite cancels nothing) dropped it until the box was clicked. If the box is
+// unchanged a moment after a plain-text paste, the text goes in here instead.
+(function pasteRescue() {
+  addEventListener('paste', e => {
+    const t = e.target;
+    if (!t || !(t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|)$/.test(t.type)))) return;
+    const cd = e.clipboardData;
+    const text = cd ? cd.getData('text/plain') : '';
+    if (!text || (cd.files && cd.files.length)) return;
+    const before = t.value, start = t.selectionStart, end = t.selectionEnd;
+    setTimeout(() => {
+      // Handled on purpose (Lite takes pictures itself), gone, or it landed after all: leave it.
+      if (e.defaultPrevented || !t.isConnected || t.disabled || t.value !== before) return;
+      t.focus();
+      t.setRangeText(text, start == null ? t.value.length : start, end == null ? t.value.length : end, 'end');
+      t.dispatchEvent(new Event('input', { bubbles: true }));
+      dispatchEvent(new CustomEvent('lite-paste-rescued', { detail: { len: text.length, id: t.id || null } }));
+    }, 200);
+  }, true);
+}());
+
 // Input diagnostics (temporary, Oct 13, 2026): what reaches the page when Wispr or ⌘V pastes into a
 // box, and every time Lite itself sets a box's text. Only event types, lengths and which element
 // (never the words), the last 300, kept on this device in localStorage 'lite-input-log'.
@@ -511,6 +534,8 @@ function askWaiting(ids) {
   addEventListener('keydown', e => { if (e.metaKey || e.ctrlKey || (e.key === 'Enter' && field(e.target))) rec('keydown', e, { key: e.key, meta: e.metaKey }); }, true);
   addEventListener('paste', e => rec('paste', e, { types: [...((e.clipboardData && e.clipboardData.types) || [])], len: ((e.clipboardData && e.clipboardData.getData('text')) || '').length }), true);
   addEventListener('paste', e => rec('paste-done', e, { prevented: e.defaultPrevented }));
+  addEventListener('beforeinput', e => { if (field(e.target)) rec('beforeinput-done', e, { it: e.inputType, prevented: e.defaultPrevented }); });
+  addEventListener('lite-paste-rescued', e => rec('paste-rescued', null, { len: e.detail.len, to: e.detail.id }));
   addEventListener('beforeinput', e => { if (field(e.target)) rec('beforeinput', e, { it: e.inputType }); }, true);
   addEventListener('input', e => { if (field(e.target)) rec('input', e, { it: e.inputType, len: (e.target.value || '').length }); }, true);
   addEventListener('focusin', e => rec('focusin', e), true);
