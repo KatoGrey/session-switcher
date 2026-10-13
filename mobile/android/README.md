@@ -11,6 +11,14 @@ it has two small native parts:
   Wi-Fi it waits, and when you're back it shows what's waiting. It restarts after a reboot or an update
   (`BootReceiver.java`). Android requires its own "Watching your chats" notification while it runs; it
   is on the quietest channel.
+- **Home-screen widget** (`NeedsWidget.java`, "What needs you"): up to three chats waiting for you,
+  newest first, with the chat's name and what it wants. Allow and Deny on the top one send the same
+  answer as the notification's buttons. Tapping a row opens that chat; tapping the header opens the
+  app. NotifyService keeps the list (adds on `needs`, drops on `clear`, a reply or an answer, starts
+  over on each `hello` before the PC resends what's waiting) and saves it in the app's preferences,
+  so the widget still draws when the service isn't running. Without a connection the header says
+  "Not connected"; with notifications off it shows no list. It's about 4x2 and resizable: it shows
+  one to three rows depending on its height.
 - **Updates**: the PC's `/hello` says which version of the app it has (from `version.json`, written
   next to the APK by the build). When it's newer, the app offers to download and install it.
 

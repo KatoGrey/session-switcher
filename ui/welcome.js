@@ -16,7 +16,8 @@ const lastChat = () => { try { return JSON.parse(store('last-chat') || 'null'); 
 function checkAway() {
   const was = seenAt(), now = Date.now();
   if (was && now - was >= AWAY_MS && !Welcome.card) {
-    const card = Welcome.card = { since: was, at: now, away: null };
+    // The first visit of a new day also offers the chats you were in on the last day you worked.
+    const card = Welcome.card = { since: was, at: now, away: null, morning: new Date(was).toDateString() !== new Date(now).toDateString() };
     // What the chats did meanwhile: files changed and reviews that came back (from the PC).
     api(`/api/away?since=${was}`).then(r => { if (Welcome.card === card) { card.away = r; renderWelcome(); } }).catch(() => {});
   }
@@ -40,7 +41,10 @@ function welcomeHtml() {
   const last = lastChat();
   const lastOk = last && allSessions().some(([s]) => s.id === last.sessionId);
   const away = w.away || { files: 0, reviews: [] };
-  if (!replies.length && !needs.length && !working.length && !lastOk && !away.files && !away.reviews.length) return '';
+  // Resume my day: the chats from the last day you worked (not done), newest first.
+  const dayOf = new Date(since).toDateString();
+  const yday = w.morning ? allSessions().filter(([s]) => new Date(s.updated).toDateString() === dayOf && !isDoneChat(s) && !(last && s.id === last.sessionId) && ![...needs, ...replies].some(x => x.sessionId === s.id)).sort((a, b) => b[0].updated - a[0].updated).slice(0, 4) : [];
+  if (!replies.length && !needs.length && !working.length && !lastOk && !away.files && !away.reviews.length && !yday.length) return '';
   const bits = [];
   if (away.files) bits.push(`<b>${away.files}</b> ${away.files === 1 ? 'file was changed' : 'files were changed'}`);
   if (away.reviews.length) {
@@ -54,12 +58,13 @@ function welcomeHtml() {
   const chips = [...needs, ...replies].slice(0, 4).map(x => `<button class="wb-chip ${NEEDS.has(ownStatus(x)) ? 'needs' : ''}" data-welcome="open" data-k="${esc(keyOf(x))}" title="${esc(x.folder || '')}"><span class="${NEEDS.has(ownStatus(x)) ? 'gilt-dot' : 'reply-dot'}" aria-hidden="true"></span>${esc(x.title || 'Untitled chat')}</button>`).join('');
   return `<section class="welcome" aria-label="Welcome back">
     <div class="wb-in">
-      <p class="eyebrow">${esc(voice('Welcome back'))} · away ${esc(dur(w.at - since))}</p>
+      <p class="eyebrow">${esc(voice(w.morning ? (new Date().getHours() < 12 ? 'Good morning' : 'Welcome back') : 'Welcome back'))} · away ${esc(dur(w.at - since))}</p>
       <p class="wb-h">${bits.length ? `While you were away, ${bits.join(', ').replace(/, ([^,]*)$/, ' and $1')}.` : 'Nothing changed while you were away.'}</p>
       ${chips ? `<div class="wb-chips">${chips}</div>` : ''}
+      ${yday.length ? `<p class="wb-sub">Also from ${new Date(since).toDateString() === new Date(Date.now() - 864e5).toDateString() ? 'yesterday' : esc(new Date(since).toLocaleDateString(undefined, { weekday: 'long' }))}:</p><div class="wb-chips">${yday.map(([s, p]) => `<button class="wb-chip" data-welcome="continue" data-sid="${esc(s.id)}" title="${esc(p.name)}">${esc(s.title || 'Untitled chat')}</button>`).join('')}</div>` : ''}
     </div>
     <div class="wb-act">
-      ${lastOk ? `<button class="btn prime" data-welcome="continue" data-sid="${esc(last.sessionId)}" title="${esc(last.folder || '')}">Back to “${esc(last.title.length > 38 ? `${last.title.slice(0, 37)}…` : last.title || 'your last chat')}”</button>` : ''}
+      ${lastOk ? `<button class="btn prime" data-welcome="continue" data-sid="${esc(last.sessionId)}" title="${esc(last.folder || '')}">${w.morning ? 'Resume my day: ' : 'Back to '}“${esc(last.title.length > 38 ? `${last.title.slice(0, 37)}…` : last.title || 'your last chat')}”</button>` : ''}
       <button class="icon wb-x" data-welcome="dismiss" aria-label="Close" title="Close">✕</button>
     </div>
   </section>`;

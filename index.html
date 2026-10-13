@@ -57,17 +57,17 @@
 </div>
 
 <aside id="drawer" class="drawer" hidden aria-label="Chat details" tabindex="-1"></aside>
-<div id="menuBack" class="menu-back" hidden></div>
-<div id="menu" class="menu" role="menu" hidden></div>
+<div id="menuBack" class="menu-back" popover="manual" hidden></div>
+<div id="menu" class="menu" role="menu" popover="manual" hidden></div>
 
 <section id="chat" class="chat" hidden aria-labelledby="cTitle">
   <aside class="rail" id="cRail" aria-label="Open chats">
-    <div class="rail-top"><button type="button" class="rail-back" data-c="back"><span class="glyph" aria-hidden="true">✦</span>All chats</button></div>
+    <div class="rail-top"><button type="button" class="rail-back" data-c="back"><span class="glyph" aria-hidden="true">✦</span>The hub</button></div>
     <div class="rail-scroll">
-      <div class="nav-h" id="cPinH" hidden>Pinned <span class="count" id="cPinCount"></span></div>
-      <ul class="rail-list" id="cPinList"></ul>
       <div class="nav-h" id="cActH">Active now <span class="count" id="cRailCount"></span></div>
       <ul class="rail-list" id="cRailList"></ul>
+      <div class="nav-h" id="cPinH" hidden title="Pinned chats that aren’t open: click one to open it again">Pinned, not open <span class="count" id="cPinCount"></span></div>
+      <ul class="rail-list" id="cPinList"></ul>
     </div>
     <div class="rail-keys">Alt+↑ and Alt+↓ switch chats<br>Drag to reorder them<br>Right-click to pin or close<br>Ctrl+K jumps anywhere</div>
   </aside>
@@ -78,8 +78,8 @@
       <div class="c-meta">
         <span class="c-acct" id="cAcct"></span>
         <span class="c-state" id="cState" aria-live="polite"></span>
-        <label class="sr" for="cMode">What Claude may do without asking</label>
-        <select id="cMode" class="c-mode" title="What Claude may do without asking"></select>
+        <label class="sr" for="cMode" id="cModeL">What it may do without asking</label>
+        <select id="cMode" class="c-mode" title="What it may do without asking"></select>
       </div>
       <div class="c-icons">
       <button type="button" class="icon c-fav" id="cFav" data-c="fav" aria-pressed="false" aria-label="Pin to the sidebar" hidden>☆</button>
@@ -162,6 +162,8 @@
 <script src="/ui/project-art.js"></script>
 <script src="/ui/motion.js"></script>
 <script src="/ui/welcome.js"></script>
+<script src="/ui/tips.js"></script>
+<script src="/ui/problems.js"></script>
 <script src="/ui/today.js"></script>
 <script src="/ui/scene-depth.js"></script>
 <script src="/ui/actions.js"></script>
@@ -191,7 +193,21 @@
 <script src="/ui/chat-pics.js"></script>
 <script src="/ui/chat-aside.js"></script>
 <script src="/ui/chat-run.js"></script>
+<script src="/ui/chat-later.js"></script>
 <script src="/ui/chat.js"></script>
 <script src="/ui/routines.js"></script>
+<script>
+  // A page that didn't load fully (a script lost on a patchy connection) would just be broken: it
+  // reloads once by itself, and if that doesn't help, says so with a Reload button.
+  (function () {
+    var ok = ['wrap', 'renderAll', 'openRun', 'openLaterDialog'].every(function (n) { return typeof window[n] === 'function'; }) && typeof window.ChatUI === 'object';
+    var k = 'ss-half-loaded';
+    if (ok) { try { sessionStorage.removeItem(k); } catch (e) { /* private mode */ } return; }
+    var again = false;
+    try { again = sessionStorage.getItem(k) === '1'; sessionStorage.setItem(k, '1'); } catch (e) { again = true; }
+    if (!again) { location.reload(); return; }
+    document.body.insertAdjacentHTML('afterbegin', '<p role="alert" style="position:fixed;z-index:999;left:50%;top:16px;transform:translateX(-50%);margin:0;padding:12px 18px;border-radius:10px;background:#1b1519;color:#ede6d9;border:1px solid #a5463f;font:15px Georgia,serif">Session Switcher didn’t load fully. <a href="" style="color:#d9bf74">Reload</a></p>');
+  }());
+</script>
 </body>
 </html>

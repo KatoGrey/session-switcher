@@ -70,6 +70,11 @@ function showMenu(anchor, items) {
   menuReturn = document.activeElement;
   $('menuBack').hidden = false;
   m.hidden = false;
+  // An open dialog makes everything outside it unclickable, so the menu goes inside it while it's
+  // open; and in the top layer (popover), so it shows above the dialog's own content.
+  const host = [...document.querySelectorAll('dialog[open]')].filter(d => d.matches(':modal')).pop() || document.body;
+  if (m.parentElement !== host) host.append($('menuBack'), m);
+  try { $('menuBack').showPopover(); m.showPopover(); } catch { /* an older browser: it's above the page anyway */ }
   placeAt(m, anchor);
   m.classList.remove('pop'); void m.offsetWidth; m.classList.add('pop');
   menuAnchor = anchor instanceof Element ? anchor : null;
@@ -87,8 +92,10 @@ function placeAt(m, anchor, align = 'start') {
   const w = m.offsetWidth * z, h = m.offsetHeight * z;
   let left = align === 'end' || r.left + w > W - 8 ? r.right - w : r.left;
   left = Math.max(8, Math.min(W - w - 8, left));
-  const up = r.bottom + h + 8 > H;
-  const top = up ? Math.max(8, r.top - h - 6) : r.bottom + 6;
+  // Below if it fits, else above if it fits there, else wherever it fits best on screen (it scrolls).
+  const below = r.bottom + h + 8 <= H, above = r.top - h - 6 >= 8;
+  const up = !below && (above || r.top > H - r.bottom);
+  const top = below ? r.bottom + 6 : above ? r.top - h - 6 : Math.max(8, H - h - 8);
   m.style.left = `${left / z}px`; m.style.top = `${top / z}px`;
   // Grows out of the point it was opened from.
   m.style.transformOrigin = `${Math.max(0, Math.min(w, r.left - left)) / z}px ${up ? '100%' : '0'}`;
@@ -97,6 +104,8 @@ function closeMenu(refocus) {
   const m = $('menu'); if (m.hidden) return;
   m.hidden = true;
   $('menuBack').hidden = true;
+  try { m.hidePopover(); $('menuBack').hidePopover(); } catch { /* not shown as a popover */ }
+  if (m.parentElement !== document.body) document.body.append($('menuBack'), m);   // a dialog may be removed later
   if (menuAnchor) menuAnchor.setAttribute('aria-expanded', 'false');
   if (refocus) {
     const back = menuAnchor && document.contains(menuAnchor) ? menuAnchor : menuReturn && document.contains(menuReturn) ? menuReturn : null;
@@ -162,6 +171,7 @@ function codexChatItems(s) {
     { label: 'Browse this chat’s folder', run: () => Viewer.open({ path: '.', session: s.id }) },
     { label: 'Rename chat', run: () => renameChat(s.id) },
     { label: 'Copy terminal command', run: () => copyCommand(s.id) },
+    doneItem(s.id),
   ];
 }
 function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id), doneItem(s.id), ...orgItems(s.id)]); }
@@ -197,6 +207,7 @@ function chatItems(id) {
     { label: 'Rename chat', run: () => renameChat(id) },
     { label: 'Copy terminal command', run: () => copyCommand(id) },
     { label: 'Show transcript file', run: async () => { const r = await api('/api/reveal', { sessionId: id }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
+    doneItem(id),
   ];
 }
 function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id), doneItem(id), ...orgItems(id)]); }

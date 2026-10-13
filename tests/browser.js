@@ -56,7 +56,7 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
   });
   const send = (method, params = {}) => new Promise(r => { const i = ++id; wait.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
   await send('Runtime.enable'); await send('Page.enable');
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { if (!sessionStorage.getItem('tour-test')) localStorage.setItem('toured', '1'); } catch (e) {}" });
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { if (!sessionStorage.getItem('tour-test')) localStorage.setItem('toured', '1'); if (!sessionStorage.getItem('tips-test')) { localStorage.setItem('tips', 'off'); localStorage.setItem('whats-new-seen', 'test'); } } catch (e) {}" });
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale || (mobile ? 2.6 : 1), mobile });
   if (mobile) await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
 
@@ -90,6 +90,7 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
       if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
       return r.result.result.value;
     },
+    shotData: async () => (await send('Page.captureScreenshot', { format: 'png' })).result.data,
     shot: async file => { const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(file, Buffer.from(r.result.data, 'base64')); },
     // Real input, as a person would give it.
     key: async (key, code = key, vk = 0, modifiers = 0) => {

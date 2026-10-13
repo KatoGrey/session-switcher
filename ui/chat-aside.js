@@ -4,13 +4,13 @@
    and it's told this chat's latest messages. It shows in a small card over the chat; closing the card
    ends it (it's kept under Done). "/btw …" in the message box, or the chat's ⋯ menu. */
 
-const Aside = { key: null, es: null, text: new Map(), order: [], busy: false, q: [] };
+const Aside = { key: null, es: null, text: new Map(), order: [], busy: false, q: [], gen: 0, seq: 0, starting: null };
 
 function asideCard() {
   let card = $c('cAside');
   if (card) return card;
   document.querySelector('.c-dock').insertAdjacentHTML('beforebegin', `<section class="aside-card" id="cAside" hidden aria-label="Side question">
-    <header class="as-h"><span class="glyph" aria-hidden="true">❦</span><b>Side question</b><small>doesn’t touch this chat or your files</small><button type="button" class="icon as-x" data-as="close" aria-label="Close the side question">✕</button></header>
+    <header class="as-h"><span class="glyph" aria-hidden="true">❦</span><b>Side question</b><small title="A separate chat answers it, so it uses a little of your account’s room">a separate chat answers; this one isn’t touched</small><button type="button" class="icon as-x" data-as="close" aria-label="Close the side question">✕</button></header>
     <div class="as-body" aria-live="polite"></div>
     <form class="as-f"><textarea rows="1" placeholder="Ask something quick…" aria-label="Side question"></textarea><button type="submit" class="btn sm">Ask</button></form>
     <p class="as-b"><button type="button" class="btn quiet sm" data-as="bring">Put it in my message</button></p>
@@ -30,16 +30,36 @@ async function askAside(q) {
   if (!C.key) { toast('Open the chat first.'); return; }
   const card = asideCard();
   card.hidden = false;
+  // Still starting the first one: this question waits its turn (one side chat, not two).
+  if (Aside.starting) { await Aside.starting.catch(() => {}); if (!Aside.key) return; }
+  const gen = Aside.gen;
   Aside.q.push(q);
   Aside.busy = true;
   renderAside();
-  if (Aside.key) { await api('/api/chat/send', { key: Aside.key, text: q }); return; }
-  const r = await api('/api/chat/aside', { key: C.key, text: q });
-  Aside.key = r.key;
-  const es = Aside.es = new EventSource(`/api/chat/events?key=${encodeURIComponent(r.key)}&token=${TOKEN}&after=0`);
-  es.addEventListener('chat', e => { if (Aside.es === es) { try { asideEvent(JSON.parse(e.data)); } catch (err) { console.error(err); } } });
+  try {
+    if (Aside.key) { await api('/api/chat/send', { key: Aside.key, text: q }); return; }
+    Aside.starting = api('/api/chat/aside', { key: C.key, text: q });
+    const r = await Aside.starting;
+    if (gen !== Aside.gen) { api('/api/chat/aside-end', { key: r.key }).catch(() => {}); return; }   // closed meanwhile
+    Aside.key = r.key; Aside.seq = 0;
+    const es = Aside.es = new EventSource(`/api/chat/events?key=${encodeURIComponent(r.key)}&token=${TOKEN}&after=0`);
+    es.addEventListener('chat', e => {
+      if (Aside.es !== es) return;
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev.seq && ev.seq <= Aside.seq) return;   // replayed after a reconnect: already shown
+        if (ev.seq) Aside.seq = ev.seq;
+        asideEvent(ev);
+      } catch (err) { console.error(err); }
+    });
+  } catch (err) {
+    if (gen === Aside.gen) { Aside.busy = false; renderAside(); }
+    throw err;
+  } finally { Aside.starting = null; }
 }
 function asideEvent(ev) {
+  // It ended (stopped, or its account ran out): the next question starts a fresh one.
+  if (ev.kind === 'ended') { if (Aside.es) Aside.es.close(); Aside.es = null; Aside.key = null; }
   if (ev.kind === 'delta' && !ev.thinking && ev.mid) { if (!Aside.text.has(ev.mid)) Aside.order.push(ev.mid); Aside.text.set(ev.mid, (Aside.text.get(ev.mid) || '') + ev.text); renderAsideSoon(); }
   else if (ev.kind === 'assistant' && ev.mid) {
     const t = (ev.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n');
@@ -57,7 +77,7 @@ function renderAside() {
   const body = card.querySelector('.as-body');
   const answer = Aside.order.map(m => Aside.text.get(m)).filter(Boolean).join('\n\n');
   const p = Aside.perm;
-  body.innerHTML = `${Aside.q.map(q => `<p class="as-q">${esc(q)}</p>`).join('')}${answer ? `<div class="as-a md">${md(answer)}</div>` : ''}${p ? `<p class="as-perm">It wants to ${esc(wantsTo(p))}. <button type="button" class="btn sm" data-as="allow">Allow</button> <button type="button" class="btn quiet sm" data-as="deny">Deny</button></p>` : ''}${Aside.busy ? '<p class="as-wait"><span class="gen-spin" aria-hidden="true"></span>Thinking it over…</p>' : ''}`;
+  body.innerHTML = `${Aside.q.map(q => `<p class="as-q">${esc(q)}</p>`).join('')}${answer ? `<div class="as-a md">${md(answer)}</div>` : ''}${p ? `<p class="as-perm">It wants to ${esc(wantsTo(p))}. <button type="button" class="btn sm" data-as="allow">Allow</button> <button type="button" class="btn quiet sm" data-as="deny">Deny</button></p>` : ''}${Aside.busy ? `<p class="as-wait"><span class="gen-spin" aria-hidden="true"></span>${Aside.key ? 'Thinking it over…' : 'Starting a separate chat… (a few seconds; it uses a little of your account’s room)'}</p>` : ''}`;
   body.scrollTop = body.scrollHeight;
   card.querySelector('[data-as="bring"]').hidden = !answer || Aside.busy;
 }
@@ -76,7 +96,7 @@ function bringAside() {
 function closeAside() {
   const key = Aside.key;
   if (Aside.es) Aside.es.close();
-  Object.assign(Aside, { key: null, es: null, text: new Map(), order: [], busy: false, q: [], perm: null });
+  Object.assign(Aside, { key: null, es: null, text: new Map(), order: [], busy: false, q: [], perm: null, seq: 0, gen: Aside.gen + 1 });
   const card = $c('cAside'); if (card) { card.hidden = true; card.querySelector('.as-body').innerHTML = ''; }
   if (key) api('/api/chat/aside-end', { key }).catch(() => {});
 }

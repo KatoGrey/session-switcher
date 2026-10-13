@@ -18,11 +18,14 @@ const picKey = p => String(p).replace(/\\/g, '/').replace(/^\.\//, '').toLowerCa
 // im: { path } or { src } (a picture sent inline, as Claude's Read returns it); how: looked | made | changed | mentioned.
 function addPic(turn, im, how, label) {
   if (!turn || !im || (!im.path && !im.src)) return;
-  const k = im.path ? picKey(im.path) : im.src.slice(0, 200);
+  // A picture sent inline: known by its length and its end (two screenshots of one size differ there).
+  const k = im.path ? picKey(im.path) : `${im.src.length}:${im.src.slice(-160)}`;
   const st = picsOf(turn);
-  if (st.seen.has(k)) {
+  // The same file by another path ("art/x.png" and its full path) is the same picture.
+  const same = x => x === k || x.endsWith(`/${k}`) || k.endsWith(`/${x}`);
+  if (st.seen.has(k) || (im.path && [...st.seen].some(same))) {
     // Seen before as "mentioned": what it did with it says more.
-    const was = st.list.find(x => x.k === k);
+    const was = st.list.find(x => same(x.k));
     if (was && was.how === 'mentioned' && how !== 'mentioned') { was.how = how; picStripSoon(turn); }
     return;
   }
@@ -77,7 +80,9 @@ function picsFromTool(turn, b, result) {
 }
 // From a reply's changes: pictures it made or changed.
 function picsFromChanges(turn, ev) {
-  for (const f of ev.files || []) if (PIC_RE.test(f.path) && f.status !== 'deleted' && !f.meanwhile) addPic(turn, { path: f.path }, f.status === 'added' ? 'made' : 'changed');
+  // Their paths are from the top of the git repository, which may be above the project's folder.
+  const top = ev.top ? String(ev.top).replace(/[\\/]+$/, '') : '';
+  for (const f of ev.files || []) if (PIC_RE.test(f.path) && f.status !== 'deleted' && !f.meanwhile) addPic(turn, { path: top ? `${top}/${f.path}` : f.path }, f.status === 'added' ? 'made' : 'changed', base(f.path));
 }
 
 /* ---------- the viewer ---------- */
@@ -85,15 +90,22 @@ const Gallery = { list: [], i: 0, zoom: false, drag: null, touch: null };
 // Every picture in the chat, in order (each once).
 function galleryList() {
   const seen = new Set(), out = [];
-  for (const b of $c('cFeed').querySelectorAll('[data-full]')) {
-    const src = b.dataset.full; if (!src || seen.has(src) || b.closest('.gone')) continue;
-    seen.add(src);
-    const img = b.querySelector('img');
-    out.push({ src, path: b.dataset.path || b.closest('.gen')?.querySelector('[data-file]')?.dataset.file || null, cap: b.dataset.cap || (img && img.alt !== 'Image' ? img.alt : '') || '' });
+  const add = x => { if (x.src && !seen.has(x.src)) { seen.add(x.src); out.push(x); } };
+  // In order down the chat; a reply's strip counts all its pictures, the ones behind "+N" too.
+  for (const el of $c('cFeed').querySelectorAll('[data-full], .pics')) {
+    if (el.classList.contains('pics')) {
+      const turn = el.closest('.turn');
+      for (const x of (turn && turn._pics ? turn._pics.list : [])) add({ src: x.src, path: x.path, cap: x.label || '' });
+      continue;
+    }
+    if (el.closest('.pics') || el.closest('.gone')) continue;
+    const img = el.querySelector('img');
+    add({ src: el.dataset.full, path: el.dataset.path || el.closest('.gen')?.querySelector('[data-file]')?.dataset.file || null, cap: el.dataset.cap || (img && img.alt !== 'Image' ? img.alt : '') || '' });
   }
   return out;
 }
 function openGallery(src, from) {
+  Gallery.back = document.activeElement;   // focus goes back there when it closes
   Gallery.list = galleryList();
   let i = Gallery.list.findIndex(x => x.src === src);
   if (i < 0) { Gallery.list.unshift({ src, path: (from && from.dataset.path) || null, cap: (from && from.dataset.cap) || '' }); i = 0; }
@@ -107,6 +119,7 @@ function galleryShow() {
   const lb = $c('cLight'), x = Gallery.list[Gallery.i]; if (!x) return;
   Gallery.zoom = false;
   lb.classList.remove('zoomed');
+  lb.querySelector('[data-lb="zoom"]').textContent = 'Actual size';
   const img = lb.querySelector('.lb-stage img');
   img.src = x.src; img.alt = x.cap || 'A picture from this chat';
   const n = Gallery.list.length;
@@ -134,7 +147,7 @@ function galleryZoom(on = !Gallery.zoom, at = null) {
     requestAnimationFrame(() => { stage.scrollLeft = fx * img.naturalWidth - stage.clientWidth / 2; stage.scrollTop = fy * img.naturalHeight - stage.clientHeight / 2; });
   }
 }
-function galleryClose() { $c('cLight').hidden = true; Gallery.list = []; }
+function galleryClose() { $c('cLight').hidden = true; Gallery.list = []; const back = Gallery.back; Gallery.back = null; if (back && back.isConnected) back.focus({ preventScroll: true }); }
 function closeLightbox() { if ($c('cLight').hidden) return false; galleryClose(); return true; }
 async function galleryAct(what) {
   const x = Gallery.list[Gallery.i]; if (!x) return;

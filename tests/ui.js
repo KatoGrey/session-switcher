@@ -1,6 +1,8 @@
 // What a person sees and does: menus, dialogs, the chat window, the model picker, themes and the
 // phone layout. Each suite drives a real (headless) browser with real clicks and key presses,
 // against the demo world in demo.js, so the results never depend on anyone's own chats.
+const fs = require('fs');
+const path = require('path');
 const { launch, sleep } = require('./browser');
 const demo = require('./demo');
 
@@ -411,13 +413,13 @@ module.exports = [
       const items = await menu();
       t.check('right-click offers Pin and Close', items.includes('Pin to the sidebar') && items.includes('Close'), items);
       await pick('Pin to the sidebar');
-      t.check('a pinned chat moves up to Pinned', (await names('cPinList')).some(n => /^Tavern brawl/.test(n)) && !(await names('cRailList')).some(n => /^Tavern brawl/.test(n)), [await names('cPinList'), await names('cRailList')]);
-      t.check('Pinned has its own heading', await b.eval(`return !document.getElementById('cPinH').hidden`));
+      t.check('a pinned chat that’s open stays in Active now, at the top, marked ★ (not split off)', /^★Tavern brawl/.test((await names('cRailList'))[0] || '') && (await names('cPinList')).length === 0, [await names('cPinList'), await names('cRailList')]);
+      t.check('so there’s no second list while it’s open', await b.eval(`return document.getElementById('cPinH').hidden`));
       await t.shot(b, 'pinned');
       await push(now.filter(x => x.key !== 'k-brawl'));
       const pin = () => b.eval(`const el = document.querySelector('#cPinList .ri'); return el && { n: el.querySelector('.ri-n').textContent, s: el.querySelector('.ri-s').textContent }`);
       const p1 = await pin();
-      t.check('and stays there when it’s no longer running', !!p1 && /^Tavern brawl/.test(p1.n) && /^Closed/.test(p1.s), p1);
+      t.check('when it’s no longer running, it waits under “Pinned, not open”', !!p1 && /^Tavern brawl/.test(p1.n) && /^Closed/.test(p1.s) && await b.eval(`return !document.getElementById('cPinH').hidden && /Pinned, not open/.test(document.getElementById('cPinH').textContent)`), p1);
 
       // Close: a chat in a terminal leaves the list (it keeps running there) until it does something new.
       await push(now);
@@ -430,7 +432,7 @@ module.exports = [
       t.check('and comes back when something does', (await names('cRailList')).some(n => /^Route-finding/.test(n)));
 
       // Closing a chat this app runs stops it; a pinned one stays pinned, closed.
-      p = await at('cPinList', 0);
+      p = await at('cRailList', 0);
       await b.click(p[0], p[1], 'right'); await pick('Close');
       t.check('closing a chat stops it', calls.some(([q, body]) => q === '/api/chat/stop' && body.key === 'k-brawl'), calls.filter(([q]) => /stop/.test(q)));
       const p2 = await pin();
@@ -932,6 +934,47 @@ module.exports = [
     },
   },
   {
+    name: 'look checks',
+    // Every theme, light and dark, the hub and a chat, compared with how it looked the last time
+    // (kept outside the app folder). Run by name, and by the nightly self-check. It only looks: a
+    // theme that changed shows here, it's never changed by this.
+    onlyByName: true,
+    async run(t) {
+      const dir = process.env.LOOKS || path.join(process.env.LOCALAPPDATA || require('os').homedir(), 'SessionSwitcher', 'looks');
+      fs.mkdirSync(dir, { recursive: true });
+      const b = await t.open();
+      // Still pictures: no motion, the same clock.
+      const still = `document.documentElement.classList.add('low-power'); document.body.classList.add('low-power'); for (const el of document.querySelectorAll('[data-clock]')) el.textContent = '9:00 AM'; for (const a of document.getAnimations()) { try { a.finish(); } catch {} } return 1`;
+      const themes = await b.eval(`return Look.THEMES.filter(x => x.family !== 'custom').map(x => x.id)`);
+      const changed = [];
+      let kept = 0;
+      for (const where of ['hub', 'chat']) {
+        if (where === 'chat') { await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2000); }
+        for (const mode of ['dark', 'light']) {
+          for (const theme of themes) {
+            await b.eval(`Look.set({ theme: ${JSON.stringify(theme)}, mode: ${JSON.stringify(mode)} }); return 1`); await sleep(350);
+            await b.eval(still); await sleep(150);
+            const now = await b.shotData();
+            const file = path.join(dir, `${where}-${theme}-${mode}.png`);
+            if (process.env.LOOKS_RESET || !fs.existsSync(file)) { fs.writeFileSync(file, Buffer.from(now, 'base64')); kept++; continue; }
+            const was = fs.readFileSync(file).toString('base64');
+            // Compared in the page: both drawn small, the share of spots that differ clearly.
+            const diff = await b.eval(`const load = s => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/png;base64,' + s; });
+              const [x, y] = await Promise.all([load(${JSON.stringify(was)}), load(${JSON.stringify(now)})]);
+              const w = 360, h = 225, px = img => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(img, 0, 0, w, h); return g.getImageData(0, 0, w, h).data; };
+              const a = px(x), z = px(y); let n = 0;
+              for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - z[i]) + Math.abs(a[i + 1] - z[i + 1]) + Math.abs(a[i + 2] - z[i + 2]) > 60) n++;
+              return n / (w * h)`);
+            if (diff > 0.03) { changed.push(`${where} ${theme} ${mode}: ${(diff * 100).toFixed(1)}% looks different`); fs.writeFileSync(file.replace(/\.png$/, '.now.png'), Buffer.from(now, 'base64')); }
+          }
+        }
+      }
+      if (kept) console.log(`  · kept ${kept} new baseline picture${kept === 1 ? '' : 's'} in ${dir}`);
+      t.check('every theme looks as it did last time', !changed.length, changed.join('; '));
+      await b.eval(`Look.reset(); return 1`);
+    },
+  },
+  {
     name: 'looks',
     async run(t) {
       const b = await t.open();
@@ -1205,7 +1248,7 @@ module.exports = [
       const calls = [];
       const b2 = await t.open({ extras: extras.slice(0, 3), seen: (p, u, body) => calls.push([p, body]) });
       await b2.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
-      await b2.eval(`document.querySelector('#cFeed .turn[data-prov="claude"] [data-c="branch"]').click(); return 1`); await sleep(500);
+      await b2.eval(`document.querySelector('#cFeed .turn[data-prov="claude"] [data-c="turnmore"]').click(); [...document.querySelectorAll('#menu button')].find(x => x.textContent.includes('Branch from here')).click(); return 1`); await sleep(500);
       const opts = await b2.eval(`const d = document.querySelector('dialog.choice-dlg[open]'); return d ? [...d.querySelectorAll('button')].map(x => x.textContent) : null`);
       t.check('Branch from here offers to rewind the files later replies changed', opts && opts.includes('Branch from here') && opts.includes('Branch and rewind the files'), opts);
       await b2.eval(`[...document.querySelectorAll('dialog.choice-dlg[open] button')].find(x => x.textContent === 'Branch and rewind the files').click(); return 1`); await sleep(2500);
@@ -1248,6 +1291,10 @@ module.exports = [
       t.check('a chat is on the lists to begin with', await inNav());
       await b.eval(`setChatDone(${JSON.stringify(id)}, true); return 1`); await sleep(600);
       t.check('marked done, it leaves the lists', !(await inNav()));
+      await b.eval(`document.activeElement && document.activeElement.blur(); return 1`);
+      await b.key('z', 'KeyZ', 90, 2); await sleep(700);
+      t.check('Ctrl+Z takes it back', await inNav());
+      await b.eval(`setChatDone(${JSON.stringify(id)}, true); return 1`); await sleep(600);
       await b.eval(`go('folder', ${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}); return 1`); await sleep(900);
       const dz = await b.eval(`const d = document.querySelector('.done-chats'); return d && { shown: !d.hidden, sum: d.querySelector('summary').textContent, rows: d.textContent }`);
       t.check('its project keeps it under Done', dz && dz.shown && /^Done · 1$/.test(dz.sum) && /Tavern brawl/.test(dz.rows), dz);
@@ -1288,10 +1335,343 @@ module.exports = [
       await b.clickOn('#cRun [data-run="stop"]'); await sleep(400);
       t.check('Stop stops it', /Stopped|Not running/.test(await b.eval(`return document.getElementById('cRun').textContent`)) && !!(await b.eval(`return document.querySelector('#cRun [data-run="start"]')`)));
       await b.eval(`document.getElementById('cText').value = ''; return 1`);
-      // Follow up later: a task from a reply.
-      await b.eval(`document.querySelector('#cFeed .turn [data-c="followup"]').click(); return 1`); await sleep(500);
-      const task = await b.eval(`const d = document.getElementById('taskDlg'); return d && { open: d.open, text: document.getElementById('tkText').value, project: document.getElementById('tkProject').selectedOptions[0]?.textContent }`);
-      t.check('Follow up later opens a task for this project, quoting the reply', task && task.open && task.project === 'Starfall Tavern' && /Claude said:\n\n> /.test(task.text), task);
+      // Do this later: the reply's next steps, each its own chat later, knowing this one.
+      await b.eval(`document.querySelector('#cFeed .turn[data-prov="claude"] [data-c="turnmore"]').click(); [...document.querySelectorAll('#menu button')].find(x => x.textContent.includes('Do this later')).click(); return 1`); await sleep(500);
+      const lt = await b.eval(`const d = document.getElementById('laterDlg'); return d && { open: d.open, title: document.getElementById('ltTitle').textContent, intro: document.getElementById('ltIntro').textContent, steps: [...d.querySelectorAll('.lt-step textarea')].map(x => x.value), go: document.getElementById('ltGo').textContent }`);
+      t.check('Do this later explains itself; a reply without next steps says so (no made-up ones)', lt && lt.open && lt.title === 'Do this later' && /its own chat in Starfall Tavern/.test(lt.intro) && lt.steps.length === 0 && await b.eval(`return !!document.querySelector('#ltSteps .lt-none')`), lt);
+      t.check('a reply’s list of next steps is offered, without code or questions', await b.eval(`return JSON.stringify(laterSteps('Done.\\n\\n\`\`\`js\\nx()\\n\`\`\`\\n\\nNext:\\n1. Add a **co-op** test\\n2. Update the patch notes\\n\\nShould I push it?'))`) === '["Add a co-op test","Update the patch notes"]');
+      await b.eval(`const d = document.getElementById('laterDlg'); d.querySelector('#ltSteps').innerHTML = '<label class="lt-step"><input type="checkbox" checked><textarea rows="1">Add a co-op test for four bards</textarea></label>'; document.getElementById('ltOwn').value = 'Write patch notes for the Rally change'; d.querySelector('[name="ltWhen"][value="tonight"]').click(); document.getElementById('ltOwn').dispatchEvent(new Event('input', { bubbles: true })); return 1`);
+      t.check('the button counts what it queues', await b.eval(`return document.getElementById('ltGo').textContent`) === 'Queue 2 tasks');
+      await t.shot(b, 'later');
+      await b.clickOn('#ltGo'); await sleep(900);
+      const adds = calls.filter(([p, body]) => p === '/api/tasks' && body.action === 'add').map(([, body]) => body.task);
+      t.check('each queues as its own task, for tonight, carrying where it came from', adds.length >= 2 && adds.every(x => x.when === 'at' && new Date(x.at).getHours() === 22 && x.from && x.from.id === demo.ID['s-bard'] && x.from.mid === 'm1') && adds.some(x => x.prompt === 'Write patch notes for the Rally change'), adds);
+      const mark = await b.eval(`const m = document.querySelector('#cFeed .turn .later-mark'); return m && m.textContent.replace(/\\s+/g, ' ')`);
+      t.check('the reply then says what’s queued from it', /\d+ queued for later/.test(mark || '') && /See the queue/.test(mark || ''), mark);
+    },
+  },
+  {
+    name: 'half loaded',
+    // A script lost on the way (a patchy connection): the page reloads once by itself, then says so.
+    async run(t) {
+      const b = await t.open({ demo: false });   // its own interception, not the demo's
+      let tries = 0, block = 2;
+      await b.intercept('*/ui/base.js*', () => (block-- > 0 ? (tries++, { status: 503, type: 'text/plain', body: 'busy' }) : null));
+      await b.nav(`${await b.eval('return location.origin')}/`, 4000);
+      const r = await b.eval(`return { alert: document.querySelector('[role="alert"]')?.textContent || '', loaded: typeof wrap === 'function' }`);
+      t.check('it reloads once by itself, and then says it didn’t load fully', tries === 2 && /didn’t load fully/.test(r.alert) && !r.loaded, { tries, ...r });
+      await b.nav(`${await b.eval('return location.origin')}/`, 3000);
+      t.check('the next time it loads, it’s whole again', await b.eval(`return typeof wrap === 'function' && !document.querySelector('[role="alert"]')`));
+      b.logs.length = 0;   // the lost script's errors were the point of this test
+    },
+  },
+  {
+    name: 'long chat speed',
+    // One live round (your message, a reply with steps and pictures, its changes) in a chat of 100,
+    // 400 and 800 replies: it should stay quick however long the chat gets.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const res = await b.eval(`
+        let n = 0, seq = 100000;
+        const pic = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+        const round = () => {
+          const i = n++, at = new Date().toISOString();
+          handle({ kind: 'user', text: 'Round ' + i + ': tweak the rally numbers and check \`art/hero.png\`', images: [], at, local: true, seq: ++seq });
+          handle({ kind: 'assistant', mid: 'bench' + i, at, model: 'claude-opus-5-5', seq: ++seq, blocks: [
+            { type: 'tool', id: 'bt' + i, name: 'Read', summary: 'shots/round' + i + '.png', detail: '{}', detailKind: 'json', result: { text: '', isError: false, images: [{ src: pic }] } },
+            { type: 'tool', id: 'bu' + i, name: 'Edit', summary: 'scripts/bard/songs.lua', detail: { old: 'a', new: 'b' }, detailKind: 'diff', meta: { path: 'scripts/bard/songs.lua' }, result: { text: 'ok', isError: false, images: [] } },
+            { type: 'text', text: 'Done with round ' + i + '. Changed **songs.lua**; see \`art/hero.png\`.\\n\\n- a next step\\n- another one' },
+          ] });
+          handle({ kind: 'changes', turn: 10000 + i, files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 1, del: 1 }, { path: 'art/hero' + i + '.png', status: 'added', add: 0, del: 0 }], more: 0, since: at, seq: ++seq });
+          handle({ kind: 'result', ok: true, seq: ++seq });
+        };
+        const out = {};
+        for (const size of [100, 400, 800]) {
+          while (n < size) round();
+          // As between real replies: a moment for older chapters out of sight to fold.
+          const sc = document.getElementById('cScroll'); sc.scrollTop = sc.scrollHeight;
+          await new Promise(r => setTimeout(r, 2600));
+          const times = [];
+          for (let k = 0; k < 5; k++) { const t0 = performance.now(); round(); await new Promise(r => requestAnimationFrame(() => r())); times.push(performance.now() - t0); }
+          times.sort((a, b) => a - b);
+          out[size] = { ms: Math.round(times[2] * 10) / 10, nodes: document.querySelectorAll('#cFeed *').length };
+        }
+        return out;`);
+      console.log('    per round (median of 5, including the paint):', JSON.stringify(res));
+      t.check('a live round stays quick in a chat of 800 replies', res[800].ms < 40, res);
+      t.check('and doesn’t grow much with the chat’s length', res[800].ms < res[100].ms * 4 + 20, res);
+    },
+  },
+  {
+    name: 'phone crew',
+    // On a phone: the crew pills and the side question card fit, and nothing sits on anything else.
+    async run(t) {
+      const b = await t.open({ width: 412, height: 880, mobile: true });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      await b.eval(`if (C.comp) { C.comp.mode = 'full'; C.comp.modes = [{ value: 'full', label: 'Edit files without asking' }]; C.comp.accountId = 'codex'; } window.roomLeft = () => 4; renderCrew(); return 1`); await sleep(300);
+      const crew = await b.eval(`const box = document.getElementById('cCrew').getBoundingClientRect(); const pills = [...document.querySelectorAll('#cCrew .crew')].map(p => p.getBoundingClientRect());
+        const inside = pills.every(r => r.right <= innerWidth + 1 && r.left >= -1);
+        const c = document.querySelector('#cCrew .crew.codex'), n = c && c.querySelector('.crew-n').getBoundingClientRect(), m = c && c.querySelector('.crew-mode');
+        const overlap = (a, b) => a && b && !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+        const room = c && c.querySelector('.crew-room');
+        return { inside, modeShown: !!m && getComputedStyle(m).display !== 'none', roomOverName: !!room && overlap(n, room.getBoundingClientRect()) && room.getBoundingClientRect().left < n.right - 2 }`);
+      t.check('the crew pills stay on the screen', crew.inside, crew);
+      t.check('the partner’s mode moves into its menu on a phone, and its room doesn’t cover its name', !crew.modeShown && !crew.roomOverName, crew);
+      await b.eval(`openAside(); return 1`); await sleep(300);
+      const card = await b.eval(`const c = document.getElementById('cAside'); const bg = getComputedStyle(c).backgroundColor; const h = c.querySelector('.as-h b').getBoundingClientRect(); return { solid: !/rgba\\(.*,\\s*0?\\.\\d+\\)/.test(bg), bg, titleOneLine: h.height < 22, jumpHidden: getComputedStyle(document.getElementById('cJump')).display === 'none' }`);
+      t.check('the side question card is solid, with its title on one line', card.solid && card.titleOneLine, card);
+      t.check('and the jump button doesn’t hide under it', card.jumpHidden, card);
+      await t.shot(b, 'crew');
+    },
+  },
+  {
+    name: 'long question',
+    // A question with many answers, on a short screen and a phone: it scrolls, its Send button stays
+    // in view, and the conversation and the message box stay on screen.
+    async run(t) {
+      for (const size of [{ width: 1366, height: 680 }, { width: 412, height: 780, mobile: true }]) {
+        const b = await t.open(size);
+        await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+        await b.eval(`addPermission({ requestId: 'q-long', toolName: 'AskUserQuestion', questions: [{ question: 'Which of these should the bard rework first? Pick the one that matters most for co-op balance.', header: 'Rework', multiSelect: false, options: Array.from({ length: 12 }, (_, i) => ({ label: 'Option ' + (i + 1) + ': Rally, Lullaby or Ballad of Embers, with a longer description', description: 'What this changes for four bards in a co-op party, explained at some length so the card gets tall.' })) }] }); return 1`); await sleep(400);
+        const r = await b.eval(`const box = document.getElementById('cPending'), send = box.querySelector('[data-p="answer"]').getBoundingClientRect(), text = document.getElementById('cText').getBoundingClientRect(), feed = document.getElementById('cScroll').getBoundingClientRect();
+          return { scrolls: box.scrollHeight > box.clientHeight + 10, sendVisible: send.top >= 0 && send.bottom <= innerHeight && send.top >= box.getBoundingClientRect().top - 1, composer: text.bottom <= innerHeight + 1 && text.height > 20, feedLeft: Math.round(feed.height) }`);
+        t.check(`${size.mobile ? 'phone' : 'short screen'}: the answers scroll, with Send answers in view`, r.scrolls && r.sendVisible, r);
+        t.check(`${size.mobile ? 'phone' : 'short screen'}: the message box and some of the conversation stay on screen`, r.composer && r.feedLeft >= 60, r);
+        // The last answer can be reached.
+        const last = await b.eval(`const box = document.getElementById('cPending'); box.scrollTop = box.scrollHeight; await new Promise(r => setTimeout(r, 100)); const opts = box.querySelectorAll('fieldset.q label, fieldset.q button, fieldset.q input'); const l = opts[opts.length - 1].getBoundingClientRect(), bb = box.getBoundingClientRect(); return l.bottom <= bb.bottom + 1 && l.top >= bb.top`);
+        t.check(`${size.mobile ? 'phone' : 'short screen'}: the last answer can be scrolled to`, last);
+        await t.shot(b, size.mobile ? 'phone' : 'short');
+      }
+    },
+  },
+  {
+    name: 'screens',
+    // Every screen size: a long menu stays on screen and scrolls to its last item; dialogs fit, at the
+    // normal and the biggest interface size.
+    async run(t) {
+      const sizes = [{ width: 1280, height: 720 }, { width: 1366, height: 680, ui: 130 }, { width: 768, height: 1024, mobile: true }, { width: 412, height: 780, mobile: true }, { width: 412, height: 780, mobile: true, ui: 130 }];
+      for (const size of sizes) {
+        const name = `${size.width}×${size.height}${size.ui ? ` at ${size.ui}%` : ''}`;
+        const b = await t.open(size);
+        if (size.ui) { await b.eval(`Look.set({ ui: ${size.ui} }); return 1`); await sleep(400); }
+        const bar = await b.eval(`const r = document.querySelector('.bar'); return { fits: r.scrollWidth <= innerWidth + 1 && [...r.children].every(c => c.getBoundingClientRect().right <= innerWidth + 1), w: r.scrollWidth, iw: innerWidth }`);
+        t.check(`${name}: the top bar keeps to the screen`, bar.fits, bar);
+        await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+        await b.eval(`document.querySelector('[data-c="more"]').click(); return 1`); await sleep(400);
+        const m = await b.eval(`const m = document.getElementById('menu'), z = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--look-ui')) || 1, r = m.getBoundingClientRect();
+          const inView = r.top >= -1 && r.bottom * 1 <= innerHeight + 1;
+          m.scrollTop = m.scrollHeight; await new Promise(r => setTimeout(r, 50));
+          const items = m.querySelectorAll('button'), last = items[items.length - 1].getBoundingClientRect();
+          return { inView, top: Math.round(r.top), bottom: Math.round(r.bottom), h: innerHeight, lastReachable: last.bottom <= r.bottom + 1 && last.top >= r.top - 1, n: items.length }`);
+        t.check(`${name}: the chat’s ⋯ menu stays on screen, and its last item can be scrolled to`, m.inView && m.lastReachable, m);
+        if (!size.mobile && !size.ui) {
+          const crew = await b.eval(`return [...document.querySelectorAll('#cCrew .crew:not(.both) .crew-m')].map(x => ({ t: x.textContent, cut: x.scrollWidth > x.clientWidth + 1 }))`);
+          t.check(`${name}: the message box shows both models’ names in full`, crew.length === 2 && crew.every(x => !x.cut), crew);
+          await t.shot(b, `${name.replace(/\W+/g, '-')}-crew`);
+        }
+        await b.eval(`closeMenu(); ChatUI.close(); openTaskDialog(); return 1`); await sleep(400);
+        const d = await b.eval(`const d = document.getElementById('taskDlg'), r = d.getBoundingClientRect(); const go = d.querySelector('[type="submit"]'); go.scrollIntoView({ block: 'nearest' }); const g = go.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), right: Math.round(r.right), w: innerWidth, h: innerHeight, goVisible: g.bottom <= innerHeight + 1 && g.top >= 0 }`);
+        t.check(`${name}: a dialog fits the screen, with its button reachable`, d.top >= -1 && d.bottom <= d.h + 1 && d.right <= d.w + 1 && d.goVisible, d);
+        await t.shot(b, name.replace(/\W+/g, '-'));
+        await b.eval(`document.getElementById('taskDlg').close(); return 1`);
+      }
+    },
+  },
+  {
+    name: 'menu in a dialog',
+    // A menu opened from inside a dialog (the prompt editor's Add a starter set) shows above it, and works.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`openPromptEditor(); return 1`); await sleep(500);
+      await b.clickOn('[data-pd="sets"]'); await sleep(400);
+      const r = await b.eval(`const m = document.getElementById('menu'); if (m.hidden) return { shown: false }; const q = m.querySelector('button').getBoundingClientRect(); const at = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return { shown: true, open: m.matches(':popover-open'), backOpen: document.getElementById('menuBack').matches(':popover-open'), at: at && (at.id || at.className), onTop: !!at && m.contains(at), items: [...m.querySelectorAll('button')].map(x => x.textContent.trim()) }`);
+      t.check('its menu shows above the dialog, where it can be clicked', r.shown && r.onTop, r);
+      await t.shot(b, 'starter');
+      await b.clickOn('#menu button'); await sleep(500);
+      t.check('and picking from it closes the menu, leaving the dialog open', await b.eval(`return document.getElementById('menu').hidden && !!document.querySelector('dialog[open]')`));
+    },
+  },
+  {
+    name: 'palette finds',
+    // Ctrl+K finds what you'd look for by name, and the chat's own actions while you're in one.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const find = q => b.eval(`openPalette(${JSON.stringify(q)}); await new Promise(r => setTimeout(r, 250)); const t = document.getElementById('palette').textContent; closePalette && closePalette(); return t`);
+      const want = { phone: /Phone access/, 'quiet hours': /Alerts and quiet hours/, 'text size': /Text and interface size/, 'theme studio': /Theme Studio/, 'edit prompts': /Edit prompts/, 'mark done': /Mark done/, btw: /Ask a side question/, stop: /Stop this chat/, rename: /Rename chat/, find: /Find in this chat/ };
+      const missing = [];
+      for (const [q, re] of Object.entries(want)) if (!re.test(await find(q))) missing.push(q);
+      t.check('Ctrl+K finds settings and the chat’s own actions by name', !missing.length, missing);
+      t.check('Rules and tools from inside a chat is about that chat’s project', await b.eval(`return paletteHere() === C.info.cwd`));
+      // Plain words for an action.
+      const say = await find('codex chat in starfall to make the icons');
+      t.check('“codex chat in starfall to make the icons” offers exactly that', /Start a Codex chat in Starfall Tavern: make the icons/.test(say), say.slice(0, 200));
+      t.check('“queue … in … tonight” offers a queued task', /Queue in Starfall Tavern: write the patch notes \(tonight\)/.test(await find('queue write the patch notes in starfall tonight')));
+      t.check('“race … in …” offers a race', /Race in Starfall Tavern: fixing the save bug/.test(await find('race fixing the save bug in starfall')));
+    },
+  },
+  {
+    name: 'feels instant',
+    // The hub draws at once from last time; pointing at a chat fetches it ahead, so it opens at once.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u) => calls.push([p, u]) });
+      await sleep(800);
+      const cached = await b.eval(`const c = JSON.parse(localStorage.getItem('boot-cache') || 'null'); return !!c && !!c.sessions && !!c.state`);
+      t.check('after a load, the hub is kept for next time', cached);
+      const fromCache = await b.eval(`S.projects = []; renderAll(); const ok = await bootFromCache(); return { ok, projects: S.projects.length, marked: document.body.classList.contains('from-cache') }`);
+      t.check('next time it draws from that at once (and says it’s catching up)', fromCache.ok && fromCache.projects > 0 && fromCache.marked, fromCache);
+      await b.eval(`await reload(); return 1`);
+      t.check('then it’s up to date, and the mark goes', !(await b.eval(`return document.body.classList.contains('from-cache')`)));
+      // Point at a chat on the hub: its history is fetched ahead, and opening it doesn't fetch it again.
+      const id = demo.ID['s-brawl'];
+      const row = await b.eval(`const el = document.querySelector('[data-chat="${id}"]'); if (!el) return null; el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' })); return 1`);
+      await sleep(500);
+      const before = calls.filter(([p, u]) => p === '/api/chat/history' && u.includes(id)).length;
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(id)} }); return 1`); await sleep(1500);
+      const after = calls.filter(([p, u]) => p === '/api/chat/history' && u.includes(id)).length;
+      t.check('pointing at a chat fetches it ahead; opening it uses that', row === 1 && before === 1 && after === 1, { row, before, after });
+      // Focus mode: Ctrl+\ leaves just the conversation, and brings the rest back.
+      await b.eval(`document.activeElement && document.activeElement.blur(); return 1`);
+      await b.key('\\', 'Backslash', 220, 2); await sleep(300);
+      const f1 = await b.eval(`return { rail: getComputedStyle(document.getElementById('cRail')).display, ledger: getComputedStyle(document.getElementById('cLedger')).display }`);
+      await b.key('\\', 'Backslash', 220, 2); await sleep(300);
+      const f2 = await b.eval(`return getComputedStyle(document.getElementById('cRail')).display`);
+      t.check('Ctrl+\\ is focus mode: just the conversation, then everything back', f1.rail === 'none' && f1.ledger === 'none' && f2 !== 'none', { f1, f2 });
+    },
+  },
+  {
+    name: 'pick up',
+    // What's new after an update (once), a tip the first time, Good morning with yesterday's chats,
+    // and a project's week at a glance.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`localStorage.removeItem('whats-new-seen'); await loadWhatsNew(); return 1`); await sleep(300);
+      const wn = await b.eval(`const w = document.getElementById('whatsNew'); return w && w.textContent.replace(/\\s+/g, ' ')`);
+      t.check('after an update, the hub says what’s new', !!wn && /Faster, and more out of your way/.test(wn) && /Opens instantly/.test(wn), wn);
+      await t.shot(b, 'whats-new');
+      await b.clickOn('#whatsNew .wn-b [data-wn="done"]'); await sleep(200);
+      await b.eval(`await loadWhatsNew(); renderLive(true); return 1`);
+      t.check('Got it puts it away for good', await b.eval(`return !document.getElementById('whatsNew') && localStorage.getItem('whats-new-seen') === 'wn-1'`));
+      // Good morning: the first visit of a new day offers the chats from the last day you worked.
+      const m = await b.eval(`const y = Date.now() - 864e5; const [s] = allSessions().find(([x]) => x.id === ${JSON.stringify(demo.ID['s-brawl'])}); s.updated = y + 1000;
+        localStorage.setItem('seen-at', String(y)); Welcome.card = null; checkAway(); renderLive(true); await new Promise(r => setTimeout(r, 300));
+        const w = document.querySelector('.welcome'); return w && { sub: w.querySelector('.wb-sub')?.textContent, chips: [...w.querySelectorAll('[data-welcome="continue"]')].map(x => x.textContent) }`);
+      t.check('the first visit of a day offers yesterday’s chats to pick back up', !!m && /yesterday/.test(m.sub || '') && m.chips.length >= 1, m);
+      await t.shot(b, 'morning');
+      // A tip the first time something appears, once.
+      await b.eval(`localStorage.removeItem('tips'); localStorage.removeItem('tips-seen'); Tips.last = 0; Tips.opened = 0; go('folder', S.projects[0].cwd); return 1`); await sleep(700);
+      await b.eval(`document.getElementById('toast').classList.remove('show'); tipsTick(); return 1`);
+      const tip = await b.eval(`return document.getElementById('toast').textContent`);
+      t.check('a project page shows its tip the first time', /Rules and tools, Queue a task/.test(tip), tip);
+      t.check('at most one a day', await b.eval(`localStorage.removeItem('tips-seen'); document.getElementById('toast').classList.remove('show'); document.getElementById('toast').textContent = ''; tipsTick(); return !/Rules and tools/.test(document.getElementById('toast').textContent)`));
+      t.check('and only once', await b.eval(`Tips.last = 0; localStorage.setItem('tips-seen', JSON.stringify({ project: Date.now() })); document.getElementById('toast').classList.remove('show'); document.getElementById('toast').textContent = ''; tipsTick(); return !/Rules and tools/.test(document.getElementById('toast').textContent)`));
+      // The project's week at a glance.
+      await b.eval(`renderFolder(); return 1`); await sleep(500);
+      const br = await b.eval(`return document.querySelector('.wp-brief')?.textContent.replace(/\\s+/g, ' ') || ''`);
+      t.check('a project page sums up its week', /This week/.test(br) && /chat/.test(br) && /3 files changed/.test(br) && /Ask Claude for a summary/.test(br), br);
+    },
+  },
+  {
+    name: 'keeps itself good',
+    // A slip on the page is noted; Setup lists problems with Ask Claude to fix this; last night's
+    // self-check shows on the hub when it found something; speed is timed on this device.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await sleep(600);
+      const card = await b.eval(`return document.getElementById('selfCheckCard')?.textContent.replace(/\\s+/g, ' ') || ''`);
+      t.check('a self-check that found something shows on the hub', /1 check failed overnight/.test(card) && /crimson light/.test(card), card);
+      await t.shot(b, 'card');
+      await b.clickOn('#selfCheckCard [data-sc="seen"]'); await sleep(200);
+      t.check('OK puts it away', await b.eval(`return !document.getElementById('selfCheckCard')`));
+      t.check('the hub’s load time is noted', await b.eval(`return (JSON.parse(localStorage.getItem('speed') || '{}').hub || []).length >= 1`));
+      // A slip in the page is sent to the PC, once.
+      await b.eval(`setTimeout(() => { null.boom; }, 0); setTimeout(() => { null.boom; }, 10); await new Promise(r => setTimeout(r, 300)); return 1`);
+      const slips = calls.filter(([p, body]) => p === '/api/problems' && body && body.message);
+      t.check('a slip on the page is noted, once', slips.length === 1 && /null/.test(slips[0][1].message), slips.map(x => x[1].message));
+      b.logs.length = 0;   // that slip was on purpose
+      await b.eval(`openSetupAt('st-problems'); return 1`); await sleep(1200);
+      const box = await b.eval(`return document.getElementById('problemsBox')?.textContent.replace(/\\s+/g, ' ') || ('no box: ' + document.getElementById('setup').open + ' ' + document.getElementById('setupBody').textContent.slice(0, 200))`);
+      t.check('Setup lists the problems, newest first, with how often', /Cannot read properties of undefined/.test(box) && /3 times/.test(box) && /Ask Claude to fix this/.test(box), box.slice(0, 300));
+      t.check('and the last self-check, and Speed', /The last self-check/.test(box) && /1 check failed/.test(box) && /The hub, from opening the app/.test(box), box.slice(0, 300));
+      await b.eval(`document.getElementById('st-problems').scrollIntoView(); return 1`); await sleep(200);
+      await t.shot(b, 'setup');
+      await b.clickOn('#problemsBox .pb-row:last-child [data-pb="fix"]'); await sleep(1500);
+      const fix = await b.eval(`return { open: ChatUI.isOpen(), cwd: C.info && C.info.cwd, text: document.getElementById('cText').value }`);
+      t.check('Ask Claude to fix this opens a chat in the app’s folder with the error and the log', fix.open && /Cannot read properties of undefined/.test(fix.text) && /switcher\.log/.test(fix.text) && /usage\.js:42/.test(fix.text), fix);
+    },
+  },
+  {
+    name: 'offline',
+    // Written with no connection to the PC (a phone off the Wi-Fi): it waits on the device, shows as
+    // waiting, and sends by itself when the PC can be reached.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ mobile: true, width: 390, height: 844, seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      await b.eval(`window._fetch = window.fetch; window.fetch = (u, o) => String(u).includes('/api/chat/send') ? Promise.reject(new TypeError('Failed to fetch')) : window._fetch(u, o);
+        const box = document.getElementById('cText'); box.value = 'Add the bard’s second verse'; box.dispatchEvent(new Event('input', { bubbles: true })); return 1`);
+      await b.clickOn('#cSend'); await sleep(600);
+      const w = await b.eval(`return { shown: document.querySelector('#cFeed .outbox-msg')?.textContent || '', kept: JSON.parse(localStorage.getItem('outbox') || '[]').length, box: document.getElementById('cText').value }`);
+      t.check('with no connection, the message waits on the device, shown as waiting', /second verse/.test(w.shown) && /Waiting for a connection/.test(w.shown) && w.kept === 1 && w.box === '', w);
+      await t.shot(b, 'waiting');
+      await b.eval(`window.fetch = window._fetch; await outboxFlush(); return 1`); await sleep(400);
+      const sent = calls.filter(([p, body]) => p === '/api/chat/send' && /second verse/.test(body.text || ''));
+      t.check('back in reach, it sends by itself, once', sent.length === 1 && await b.eval(`return !document.querySelector('#cFeed .outbox-msg') && JSON.parse(localStorage.getItem('outbox') || '[]').length === 0`), sent.length);
+    },
+  },
+  {
+    name: 'partner starts',
+    // Bringing Codex in, in a chat whose partner's earlier messages are being paged: it starts and
+    // its models are there (that list once stood in for the start, and nothing happened).
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const r = await b.eval(`C.comp = null; C.compPending = [{ kind: 'user', at: new Date().toISOString() }]; let err = null; try { await ensureCompanion(); } catch (e) { err = e.message; } return { err, comp: !!C.comp, models: !!(C.mi.comp && C.mi.comp.models && C.mi.comp.models.length) }`);
+      t.check('Codex starts even while its earlier messages are being paged', !r.err && r.comp, r);
+      t.check('and its models are listed', r.models, r);
+    },
+  },
+  {
+    name: 'crew extras',
+    // Review big changes by itself (when on), and a heads-up before the account runs out.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const ev = n => JSON.stringify({ kind: 'changes', turn: 90 + n, files: [{ path: 'src/combat.js', status: 'changed', add: n, del: 4 }], more: 0 });
+      await b.eval(`S.prefs.autoReview = false; liveRender = true; renderChanges(${ev(60)}, 'main'); liveRender = false; return 1`); await sleep(1800);
+      t.check('off: big changes aren’t reviewed by themselves', !calls.some(([p]) => p === '/api/chat/review'));
+      await b.eval(`S.prefs.autoReview = true; liveRender = true; renderChanges(${ev(10)}, 'main'); liveRender = false; return 1`); await sleep(1800);
+      t.check('on: small changes aren’t either', !calls.some(([p]) => p === '/api/chat/review'));
+      await b.eval(`liveRender = true; renderChanges(${ev(70)}, 'main'); liveRender = false; return 1`); await sleep(1800);
+      t.check('on: a reply that changed 40 lines or more is reviewed by Codex, once', calls.filter(([p, body]) => p === '/api/chat/review' && body.by === 'codex').length === 1, calls.filter(([p]) => /review/.test(p)));
+      // At this pace, the five-hour window runs out within the hour: said once, with who has room.
+      const msg = await b.eval(`const id = current().id; S.usage[id] = { data: { available: true, fiveHour: { used: 80, resetsAt: new Date(Date.now() + 2 * 3600e3).toISOString() }, week: { used: 30, resetsAt: new Date(Date.now() + 4 * 864e5).toISOString() } } };
+        document.getElementById('toast').textContent = ''; forecastLimit(); const first = document.getElementById('toast').textContent;
+        document.getElementById('toast').textContent = ''; forecastLimit(); return { first, again: document.getElementById('toast').textContent }`);
+      t.check('a heads-up before the account runs out, with who has room', /five-hour window runs out around/.test(msg.first) && /Work as/.test(msg.first), msg.first);
+      t.check('once per window', msg.again === '', msg.again);
+    },
+  },
+  {
+    name: 'autopilot',
+    // Out of room mid-chat, as it happens: it carries on as the account with the most room by itself,
+    // after a moment to say no.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const ev = { kind: 'limit', which: 'five_hour', resetsAt: new Date(Date.now() + 3600e3).toISOString() };
+      await b.eval(`liveRender = true; renderLimit(${JSON.stringify(ev)}, 'main'); liveRender = false; return 1`); await sleep(400);
+      const note = await b.eval(`return document.querySelector('.limit-card .lm-auto')?.textContent.replace(/\\s+/g, ' ').trim() || ''`);
+      t.check('it says it’s about to carry on as the other account', /Carrying on as Personal in a moment/.test(note), note);
+      await b.clickOn('.limit-card [data-c="limitnoauto"]'); await sleep(3000);
+      t.check('“Let me choose” stops it', !calls.some(([p, body]) => p === '/api/chat/open' && body.account === 'personal'));
+      await b.eval(`liveRender = true; renderLimit(${JSON.stringify(ev)}, 'main'); liveRender = false; return 1`); await sleep(3500);
+      t.check('left alone, it carries on as that account, the same conversation', calls.some(([p, body]) => p === '/api/chat/open' && body.account === 'personal' && body.sessionId === demo.ID['s-bard'] && body.mode === 'resume'), calls.filter(([p]) => /open|stop/.test(p)));
     },
   },
   {
@@ -1313,6 +1693,7 @@ module.exports = [
       t.check('a reply’s pictures show under it, each once, with what it did with them', strip && strip.caps.length === 2 && strip.caps[0] === 'Made hero.png' && strip.caps[1] === 'Looked at A screenshot' && /\bn2\b/.test(strip.cls), strip);
       t.check('a path to a picture that isn’t there leaves no empty box', strip && !strip.caps.some(c => /not-there/.test(c)));
       t.check('they’re big enough to see', strip && strip.big >= 150, strip);
+      t.check('the same file by its full path and by a short one is one picture', await b.eval(`const tn = document.createElement('div'); addPic(tn, { path: 'C:/Projects/Game/art/hero.png' }, 'made'); addPic(tn, { path: 'art/hero.png' }, 'mentioned'); addPic(tn, { path: 'art\\\\hero.png' }, 'looked'); return picsOf(tn).list.length === 1 && picsOf(tn).list[0].how === 'made'`));
       // Written as Markdown: the picture itself; one on the web is a link.
       const m = await b.eval(`const h = md('Here: ![The key art](art/harvest-festival.png) and ![web](https://example.com/x.png)'); const d = document.createElement('div'); d.innerHTML = h; return { img: !!d.querySelector('.mdimg img'), cap: d.querySelector('.mdimg-cap')?.textContent, web: !!d.querySelector('a[href="https://example.com/x.png"]'), bang: /!/.test(d.textContent) }`);
       t.check('![alt](path) shows the picture, with its caption', m.img && m.cap === 'The key art', m);

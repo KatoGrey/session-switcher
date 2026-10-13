@@ -37,3 +37,19 @@ test('today: each message and reply is noted once (a reply streamed in parts cou
   await s.refreshIndex();
   assert.equal(s.activity(Date.now() - 60 * 60000)[0].times.length, 3);
 });
+
+test('search: any capitals, special characters as written, and a snippet around the first match', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-search-'));
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-search-data-'));
+  chatFile(root, 'cccc3333-0000-0000-0000-000000000003', [
+    you('Why does RALLY stack with itself?', 10), claude('m1', 'Because rally_bonus (a+b) is added per bard. Rally again.', 9),
+  ]);
+  const s = createSessionStore({ root, dataDir: data });
+  await s.refreshIndex();
+  const r = s.search('rally');
+  assert.equal(r.hits.length, 1);
+  assert.ok(r.hits[0].count >= 3, `counts every match, any capitals (${r.hits[0].count})`);
+  assert.match(r.hits[0].snippet, /RALLY stack/);
+  assert.equal(s.search('(a+b)').hits.length, 1, 'special characters are matched as written');
+  assert.equal(s.search('rally lullaby').hits.length, 0, 'every word has to be there');
+});

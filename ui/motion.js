@@ -28,7 +28,7 @@ function renderLive(force) {
   const heroNow = heroHtml(), heroKey = heroNow.replace(/<span data-clock>[^<]*<\/span>/, '');
   // Only when it changed: redrawing restarts the scene's animations (a forced refresh needn't).
   if ($('heroSlot')._h !== heroKey) { $('heroSlot').innerHTML = heroNow; $('heroSlot')._h = heroKey; }
-  renderWelcome();
+  renderWelcome(); renderWhatsNew(); renderSelfCheckCard();
   loadToday(); renderToday();
   // A chat moving between the boards (it finished, or wants you) glides across; new ones fade in.
   flip([$('awaitList'), $('board'), $('quietList')], () => {
@@ -57,6 +57,28 @@ function renderRecent() {
     ${all.length ? `<ul class="rows sec-gap">${all.slice(0, 60).map(([x, p]) => rowHtml(x, p.name)).join('')}</ul>` : emptyArt('chats', 'Nothing here yet.')}`;
 }
 // A project: its banner, then its chats, documents and pictures.
+// The project briefing: this week at a glance (chats, files changed, reviews, what's queued and what
+// was put off for later), with one click to have Claude sum it up.
+const Brief = {};
+function briefHtml(p) {
+  const week = Date.now() - 7 * 864e5, b = Brief[p.cwd];
+  if (p.exists && (!b || Date.now() - b.at > 60e3)) {
+    Brief[p.cwd] = { at: Date.now(), r: b && b.r };
+    api(`/api/away?since=${week}&cwd=${encodeURIComponent(p.cwd)}`).then(r => { Brief[p.cwd].r = r; if (S.view === 'folder' && S.folder === p.cwd) renderFolder(); }).catch(() => {});
+  }
+  const r = (Brief[p.cwd] && Brief[p.cwd].r) || { files: 0, reviews: [] };
+  const chatsN = p.sessions.filter(x => x.updated >= week).length;
+  const mine = (S.tasks || []).filter(t => t.cwd === p.cwd && t.state === 'queued');
+  const later = mine.filter(t => t.from).length, queued = mine.length - later;
+  const bits = [chatsN && plural(chatsN, 'chat'), r.files && `${plural(r.files, 'file')} changed`, r.reviews.length && plural(r.reviews.length, 'review'), queued && `${queued} queued`, later && `${later} for later`].filter(Boolean);
+  if (!bits.length) return '';
+  const ask = p.exists && canLaunch(current()) ? `<button class="linkish" data-brief="${esc(p.cwd)}">Ask Claude for a summary</button>` : '';
+  return `<p class="wp-brief"><span class="eyebrow">This week</span> ${esc(bits.join(' · '))} ${ask}</p>`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-brief]'); if (!b) return;
+  ChatUI.open({ cwd: b.dataset.brief, mode: 'new', initialText: 'Sum up what happened in this project over the last week: look at the recent git history and changed files, and tell me in a few short paragraphs what was done, what is half-finished, and what you would do next.' });
+});
 function renderFolder() {
   const a = current(), p = S.projects.find(x => x.cwd === S.folder);
   if (!p) { S.view = 'hub'; return renderPage(); }
@@ -81,9 +103,9 @@ function renderFolder() {
     : '';
   const heroH = `<div class="wp-art" style="view-transition-name:world-banner">${worldArt(p, w, '', false)}</div><span class="wp-shade" aria-hidden="true"></span>
     <div class="wp-in"><p class="eyebrow ${prov || ''}">${prov === 'codex' ? 'Codex chats in this project' : prov === 'claude' ? 'Claude Code chats in this project' : prov === 'openclaw' ? 'OpenClaw sessions in this project' : 'Project'}</p><h1>${esc(p.name)}</h1></div>${hint}`;
-  const subH = `<div class="wp-where"><p class="f-path">${esc(p.cwd)}${p.exists ? '' : ' (this folder no longer exists)'}</p>
+  const subH = `${briefHtml(p)}<div class="wp-where"><p class="f-path">${esc(p.cwd)}${p.exists ? '' : ' (this folder no longer exists)'}</p>
       <p class="f-meta">${esc(meta[0].toUpperCase() + meta.slice(1))}.${esc(todayLine)}${other ? ` <button class="linkish" data-view="folder" data-cwd="${esc(p.cwd)}" data-prov="${otherProv}">${other === 1 ? `1 ${otherName} ${otherWord}` : `${other} ${otherName} ${otherWord}s`} here too</button>` : ''}</p></div>
-    <div class="wp-tools"><button class="btn quiet sm" data-project-crest="${esc(p.cwd)}" ${p.exists ? '' : 'disabled'}>Project crest…</button><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin' : 'Pin to top'}</button></div>`;
+    <div class="wp-tools"><button class="btn quiet sm" data-project-crest="${esc(p.cwd)}" ${p.exists ? '' : 'disabled'}>Project crest…</button><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin from the sidebar' : 'Pin to the sidebar'}</button></div>`;
   const off = !canLaunch(a) || !p.exists;
   const cxOff = !codexReady() || !p.exists;
   const cxWhy = S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first';
@@ -165,7 +187,9 @@ function worldMenu(anchor) {
     '-',
     { label: 'Look for new files', hint: 'documents and pictures', disabled: !p.exists, run: async () => { await loadWorld(p.cwd, true); renderFolder(); toast('Up to date.', 1500); } },
     { label: 'Edit prompts…', run: openPromptEditor },
-    ...(p.added && !p.sessions.length ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd: p.cwd }); await loadSessions(); go('hub'); toast(`Removed ${p.name} from the list. Its folder is still there.`, 4000); } }] : []),
+    '-',
+    ...projectItems(p.cwd).filter(it => it !== '-' && /^(Rules and tools|Queue a task|Race Claude|Split the work|Project crest)/.test(it.label)),
+    ...(p.added && !hasChats(p) ? ['-', { label: 'Remove from the list', hint: 'the folder itself stays', danger: true, run: async () => { await api('/api/project/forget', { cwd: p.cwd }); await loadSessions(); go('hub'); toast(`Removed ${p.name} from the list. Its folder is still there.`, 4000); } }] : []),
   ]);
 }
 function renderSearch() {
@@ -259,3 +283,10 @@ function restWake() {
 for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'focus']) window.addEventListener(ev, restWake, { passive: true, capture: true });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) restSeen = Date.now(); restCheck(); });
 setInterval(restCheck, 15000);
+// On battery and below 40% (a phone, a laptop unplugged), the scene stays still: the looping
+// decoration pauses, as at rest, without dimming. Plugged in again, it moves again.
+if (navigator.getBattery) navigator.getBattery().then(bat => {
+  const sync = () => document.documentElement.classList.toggle('low-power', !bat.charging && bat.level < 0.4);
+  for (const ev of ['chargingchange', 'levelchange']) bat.addEventListener(ev, sync);
+  sync();
+}).catch(() => {});

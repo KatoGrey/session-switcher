@@ -243,7 +243,7 @@ function insertMention(f, at) {
 function welcome(cwd) {
   const p = cwd && S.projects.find(x => x.cwd === cwd);
   const w = cwd && S.worlds[cwd];
-  const art = w && w.banner ? `<img src="${esc(imageSrc(w.banner, cwd))}" alt="">` : '';
+  const art = w && w.banner ? `<img src="${esc(imageSrc(w.banner, cwd))}" alt="" onerror="this.closest('.c-welcome')?.classList.remove('has-art'); this.parentElement.remove()">` : '';   // a banner that won't load leaves the plain welcome
   const chips = S.prompts.filter(pr => C.provider === 'codex' || pr.provider !== 'codex').slice(0, 8)
     .map(pr => `<button type="button" class="chip" data-c="chip" data-pid="${esc(pr.id)}">${esc(pr.title)}</button>`).join('');
   $c('cFeed').insertAdjacentHTML('beforeend', `<div class="c-welcome ${art ? 'has-art' : ''}">${art ? `<div class="cw-art">${art}</div>` : ''}
@@ -255,13 +255,28 @@ const draftKey = () => (C.sessionId ? `draft:${C.sessionId}` : C.info && C.info.
 let draftTimer = null;
 function saveDraft() {
   clearTimeout(draftTimer);
-  draftTimer = setTimeout(() => { const k = draftKey(); if (!k) return; try { const v = $c('cText').value; if (v.trim()) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch { /* full or private */ } }, 400);
+  draftTimer = setTimeout(() => {
+    const k = draftKey(); if (!k) return;
+    const v = $c('cText').value, at = Date.now();
+    try { if (v.trim()) { localStorage.setItem(k, v); localStorage.setItem(`${k}:at`, String(at)); } else { localStorage.removeItem(k); localStorage.removeItem(`${k}:at`); } } catch { /* full or private */ }
+    // The PC keeps it too, for your other devices.
+    if (C.sessionId) api('/api/draft', { id: C.sessionId, text: v, at }).catch(() => {});
+  }, 400);
 }
 function restoreDraft() {
   const k = draftKey(); if (!k || $c('cText').value) return;
-  try { const v = localStorage.getItem(k); if (v) { $c('cText').value = v; grow(); } } catch { /* none */ }
+  let mine = 0;
+  try { const v = localStorage.getItem(k); if (v) { $c('cText').value = v; grow(); } mine = Number(localStorage.getItem(`${k}:at`)) || 0; } catch { /* none */ }
+  // Written later on your other device (the phone, the PC): that one, if you haven't started typing here.
+  const id = C.sessionId, gen = C.gen, had = $c('cText').value;
+  if (id) api(`/api/draft?id=${encodeURIComponent(id)}`).then(d => {
+    if (gen !== C.gen || !d || !d.text || d.at <= mine || d.text === $c('cText').value || $c('cText').value !== had) return;
+    $c('cText').value = d.text; grow();
+    try { localStorage.setItem(k, d.text); localStorage.setItem(`${k}:at`, String(d.at)); } catch { /* fine */ }
+    toast('Picked up what you were writing on your other device.', 3500);
+  }).catch(() => {});
 }
-function clearDraft() { clearTimeout(draftTimer); const k = draftKey(); try { if (k) localStorage.removeItem(k); if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
+function clearDraft() { clearTimeout(draftTimer); const k = draftKey(); if (C.sessionId) api('/api/draft', { id: C.sessionId, text: '', at: Date.now() }).catch(() => {}); try { if (k) { localStorage.removeItem(k); localStorage.removeItem(`${k}:at`); } if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
 
 async function sendMessage() {
   // An OpenClaw session: the message becomes a follow-up turn in that session (through
@@ -340,15 +355,64 @@ async function sendMessage() {
   try {
     // The app catches each one up on what it missed (lib/pairs.js); with Both they take turns.
     const refs = chatRefsIn(text);
-    const r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct }), ...(after ? { after: true } : {}) });
+    // "@chat[…]" that isn't linked (a draft from before a reload, say): it would go without that chat.
+    const lost = [...String(text).matchAll(/@chat\[([^\]\n]+)\]/g)].map(m => m[1]).filter(l => !(C.chatRefs && C.chatRefs.get(l)));
+    if (lost.length) { toast(`“${lost[0]}” isn’t linked any more. Type @ and pick it again, so its messages come along.`, 6000); return; }
+    speedMark('reply');
+    let r;
+    try { r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct }), ...(after ? { after: true } : {}) }); } catch (err) {
+      // No connection (the phone left the Wi-Fi): a plain message waits here and goes when it's back.
+      if (!err.offline || images.length || target !== 'main' || !C.key) throw err;
+      outboxAdd({ key: C.key, sessionId: C.sessionId, title: C.info && C.info.title, text });
+      clear();
+      return;
+    }
     clear();
     // Follow the partner's replies here (it may only just have started).
     if (target !== 'main' && !(C.comp && !C.comp.ended && (!r || !r.key || C.comp.key === r.key))) ensureCompanion().catch(() => {});
   } finally { $c('cSend').disabled = false; $c('cText').focus(); }
 }
+// Written while offline: kept on this device and sent, in order, as soon as the PC can be reached.
+const outboxAll = () => { try { return JSON.parse(store('outbox') || '[]') || []; } catch { return []; } };
+function outboxAdd(m) {
+  store('outbox', JSON.stringify([...outboxAll(), { ...m, at: Date.now() }].slice(-30)));
+  toast('No connection to your PC. Your message waits on this device and sends when you’re back.', 6000);
+  renderOutbox(); outboxSoon();
+  $c('cFeed').querySelector('.outbox-msg:last-child')?.scrollIntoView({ block: 'center' });
+}
+function renderOutbox() {
+  const feed = $c('cFeed'); if (!feed) return;
+  for (const el of feed.querySelectorAll('.outbox-msg')) el.remove();
+  for (const m of outboxAll().filter(x => x.key === C.key || (x.sessionId && x.sessionId === C.sessionId))) {
+    feed.insertAdjacentHTML('beforeend', `<div class="outbox-msg"><div class="ob-text">${esc(m.text)}</div><span class="ob-note">Waiting for a connection · sends by itself</span></div>`);
+  }
+}
+let outboxTimer = null, outboxBusy = false;
+function outboxSoon(ms = 15000) { clearTimeout(outboxTimer); if (outboxAll().length) outboxTimer = setTimeout(outboxFlush, ms); }
+async function outboxFlush() {
+  if (outboxBusy) return;
+  outboxBusy = true;
+  try {
+    for (const m of outboxAll()) {
+      try { await api('/api/chat/send', { key: m.key, text: m.text }); } catch (err) {
+        if (err.offline) break;   // still away: try again later
+        // The chat closed meanwhile: the words go back into its message box, not lost.
+        if (m.sessionId) store(`draft:${m.sessionId}`, m.text);
+        toast(`Your waiting message to “${m.title || 'a chat'}” couldn’t go (${err.message}). It’s back in that chat’s message box.`, 8000);
+      }
+      store('outbox', JSON.stringify(outboxAll().filter(x => !(x.at === m.at && x.text === m.text))));
+      if (!outboxAll().length) toast('Your waiting messages were sent.', 3000);
+    }
+  } finally { outboxBusy = false; if (window.ChatUI && ChatUI.isOpen()) renderOutbox(); outboxSoon(); }
+}
+window.addEventListener('online', () => outboxSoon(500));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) outboxSoon(1000); });
+outboxSoon(3000);
 function modeOptions(list) {
   const sel = $c('cMode');
   sel.innerHTML = list.map(m => `<option value="${esc(m.value)}">${esc(m.label)}</option>`).join('');
+  const what = `What ${PROV_NAME[C.provider] || 'it'} may do without asking`;   // Claude, or Codex in a Codex chat
+  sel.title = what; const l = $c('cModeL'); if (l) l.textContent = what;
 }
 function setMode(m) {
   const sel = $c('cMode');
