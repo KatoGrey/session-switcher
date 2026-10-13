@@ -125,7 +125,9 @@ test('lite.json: kind, status, Focus, Waiting with a reminder, buckets, archive 
   assert.equal(s.get().chats.c1.waiting, true, 'Focus and Waiting sit together');
   s.setChats(['c1'], { waiting: false });
   assert.equal(s.get().chats.c1.remindAt, undefined, 'no reminder once it isn’t waiting');
-  assert.throws(() => s.setChats(['c1'], { status: 'later' }), /Unknown status/);
+  assert.throws(() => s.setChats(['c1'], { status: 'someday' }), /Unknown status/);
+  s.setChats(['c1'], { status: 'later' });
+  assert.equal(s.get().chats.c1.status, 'later', 'Later is the backlog');
   assert.throws(() => s.setChats(['c1'], { kind: 'epic' }), /Unknown kind/);
   s.setChats(['c2'], { stage: 'final' });
   assert.equal(s.get().chats.c2.status, 'finishing', 'an old page sending a stage still lands right');

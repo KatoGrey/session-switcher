@@ -35,7 +35,7 @@ function fuelHtml(h) {
 function hackView() {
   const h = hackDates();
   const chats = hackChats(), projs = hackProjects();
-  const cols = STATUSES.filter(s => s.id !== 'done');
+  const cols = STATUSES.filter(s => !parked(s.id));
   const ideas = (S.lite && S.lite.ideas) || [];
   const hasBucket = buckets().some(b => b.id === HACK_BUCKET);
   const until = h ? days(h.start) : null;

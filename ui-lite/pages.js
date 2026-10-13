@@ -37,7 +37,7 @@ const BACK = '<button class="iconbtn back" data-go="side" aria-label="Back">‹<
 
 function stageBar(cs) {
   const lv = live(cs); if (!lv.length) return '<div class="stagebar"></div>';
-  return `<div class="stagebar">${STATUSES.filter(s => s.id !== 'done').map(s => { const n = lv.filter(c => statusOf(c) === s.id).length; return n ? `<i style="width:${100 * n / lv.length}%;background:${s.c}" title="${s.name}: ${n}"></i>` : ''; }).join('')}</div>`;
+  return `<div class="stagebar">${STATUSES.filter(s => !parked(s.id)).map(s => { const n = lv.filter(c => statusOf(c) === s.id).length; return n ? `<i style="width:${100 * n / lv.length}%;background:${s.c}" title="${s.name}: ${n}"></i>` : ''; }).join('')}</div>`;
 }
 function cardHtml(p) {
   const cs = chatsOfProject(p.key), lv = live(cs);
@@ -86,17 +86,17 @@ function project() {
   const p = projBy.get(S.project);
   if (!p) return `<div class="wrap"><p class="empty-note">That project isn’t in the list any more.</p></div>`;
   const cs = chatsOfProject(p.key).sort((x, y) => y.updated - x.updated);
-  const foc = cs.filter(c => c.focus && statusOf(c) !== 'done');
+  const foc = cs.filter(c => c.focus && !parked(statusOf(c)));
   const focusSec = foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span></div><div class="rows">${foc.map(c => rowHtml(c, { showStage: true })).join('')}</div></section>` : '';
   const sections = focusSec + STATUSES.map(s => {
-    const all = cs.filter(c => isTop(c) && statusOf(c) === s.id && !(c.focus && s.id !== 'done'));
+    const all = cs.filter(c => isTop(c) && statusOf(c) === s.id && !(c.focus && !parked(s.id)));
     if (!all.length) return '';
-    const folded = s.id === 'done' ? !S.more['p-done'] : false;
-    const act = s.id === 'done' ? all : all.filter(c => !famQuiet(c)), quiet = s.id === 'done' ? [] : all.filter(famQuiet);
+    const folded = parked(s.id) ? !S.more['p-' + s.id] : false;
+    const act = parked(s.id) ? all : all.filter(c => !famQuiet(c)), quiet = parked(s.id) ? [] : all.filter(famQuiet);
     const showQ = S.more['pq-' + s.id];
     const shown = showQ ? [...act, ...quiet] : act;
     return `<section class="section" data-drop-stage="${s.id}">
-      <div class="sec-h">${s.id === 'done' ? `<button class="fold" data-pfold="1"><h2>${s.name}</h2><span class="n">${all.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${act.length}</span>`}
+      <div class="sec-h">${parked(s.id) ? `<button class="fold" data-pfold="${s.id}"><h2>${s.name}</h2><span class="n">${all.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${act.length}</span>`}
         ${quiet.length ? `<button class="hint" data-pq="${s.id}">${showQ ? 'Hide quiet' : `${quiet.length} quiet`}</button>` : ''}</div>
       ${folded || !shown.length ? '' : `<div class="rows">${famRowsHtml(shown)}</div>`}
     </section>`;

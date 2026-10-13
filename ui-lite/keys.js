@@ -107,7 +107,7 @@ function onKey(e) {
   const ids = idsAt(target).filter(id => chatBy.get(id));
   if ((e.key === 'Enter' || e.key === 'o') && target) { e.preventDefault(); return target.click(); }
   if (e.key === 'x' && target.dataset.chat) { e.preventDefault(); const id = target.dataset.chat; if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); keepCur.id = target.dataset.cur; return render(); }
-  if (/^[1-4]$/.test(e.key) && ids.length) { e.preventDefault(); keepCur.id = target.dataset.cur; return wrap(setChats)(ids, { status: STATUSES[Number(e.key) - 1].id }); }
+  if (/^[1-5]$/.test(e.key) && ids.length) { e.preventDefault(); keepCur.id = target.dataset.cur; return wrap(setChats)(ids, { status: STATUSES.find(s => s.key === e.key).id }); }
   // → opens a family, ← folds it (from a sub-chat, back up to its parent).
   if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && (target.dataset.fam || target.dataset.chat)) {
     const id = target.dataset.fam || target.dataset.chat, c = chatBy.get(id);

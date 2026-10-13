@@ -11,10 +11,15 @@ const DAY = 864e5;
 // Ryan's own Codex folders, plus Feature and Done. Keys 1–7 set them. Names never change between skins.
 // Where a chat is (keys 1–4). What kind of work it is, and the two flags (Focus, Waiting), sit apart
 // from it, so a bug can be explored and a chat can be your focus while it's building.
+// Later is the backlog: not now, but keep it. Like Done it's off the active lists (folded, one click
+// away), and it never goes quiet. Its key is 5 so 1–4 stay where they were.
 const STATUSES = [
-  { id: 'exploring', name: 'Exploring', c: 'var(--st-explore)' }, { id: 'building', name: 'Building', c: 'var(--st-feature)' },
-  { id: 'finishing', name: 'Finishing', c: 'var(--st-final)' }, { id: 'done', name: 'Done', c: 'var(--st-done)' },
-].map((s, i) => ({ ...s, key: String(i + 1) }));
+  { id: 'exploring', name: 'Exploring', c: 'var(--st-explore)', key: '1' }, { id: 'building', name: 'Building', c: 'var(--st-feature)', key: '2' },
+  { id: 'finishing', name: 'Finishing', c: 'var(--st-final)', key: '3' }, { id: 'later', name: 'Later', c: 'var(--st-waiting)', key: '5' },
+  { id: 'done', name: 'Done', c: 'var(--st-done)', key: '4' },
+];
+// Off the active lists: the backlog and what's finished.
+const parked = id => id === 'done' || id === 'later';
 const statusById = id => STATUSES.find(s => s.id === id) || STATUSES[1];
 // Set once. Feature is the plain default and carries no tag.
 const KINDS = [{ id: 'feature', name: 'Feature' }, { id: 'bug', name: 'Bug' }, { id: 'prototype', name: 'Prototype' }, { id: 'idea', name: 'Idea' }];
@@ -34,7 +39,7 @@ const local = {
 const S = {
   view: local.get('view', 'now'), project: null, bucket: local.get('bucket', 'all'), q: '',
   lite: null, projects: [], chats: [], live: [], routines: [], plans: null, now: Date.now(),
-  folded: local.get('folded', { done: true }), more: {}, sel: new Set(), seen: local.get('seen', {}),
+  folded: { later: true, ...local.get('folded', { done: true }) }, more: {}, sel: new Set(), seen: local.get('seen', {}),
   cmd: { key: null, events: [], state: 'idle', error: null, es: null, sentAt: 0 },
   loaded: false, connected: false,
 };
@@ -205,7 +210,7 @@ const isQuiet = c => S.now - c.updated > quietDays() * DAY && !needs(c) && !runn
 const visible = c => !c.archived && !c.desktopArchived && !c.auto && !c.routineRun && !(projOf(c).archived);
 const allChats = () => S.chats.filter(visible);
 const inBucket = c => S.bucket === 'all' || (S.bucket === 'unsorted' ? !projOf(c).bucket : projOf(c).bucket === S.bucket);
-const live = cs => cs.filter(c => statusOf(c) !== 'done' && !isQuiet(c));
+const live = cs => cs.filter(c => !parked(statusOf(c)) && !isQuiet(c));
 /* ---------- families: a chat and the sub-chats started from it ---------- */
 const low = x => String(x || '').toLowerCase();
 S.openFam = new Set(local.get('openFam', []));
@@ -232,7 +237,7 @@ function toggleFam(id, on) { const k = low(id); if (on === undefined ? !S.openFa
 // Every archived or visible descendant, from the whole list (for archive and Bring back).
 function descAll(id, seen = new Set()) { const out = []; for (const c of S.chats) if (c.parent && low(c.parent) === low(id) && !seen.has(c.id)) { seen.add(c.id); out.push(c.id, ...descAll(c.id, seen)); } return out; }
 
-const focusList = () => allChats().filter(c => c.focus && statusOf(c) !== 'done').sort((a, b) => b.updated - a.updated);
+const focusList = () => allChats().filter(c => c.focus && !parked(statusOf(c))).sort((a, b) => b.updated - a.updated);
 // Bug chats live under Bugs (the sidebar's Bugs group and page), not in their projects' lists.
 // A bug: one you marked, or one the guesser marked that came from a sweep or names a tracker issue
 // (VOY-2573). A title alone ("Fix carousel swipe stiffness") isn't enough; those stay in their project.

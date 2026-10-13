@@ -59,9 +59,9 @@ function renderSide() {
     <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
   const focusSt = { id: 'focus', name: 'Focus', c: 'var(--st-priority)' };
   const waitSt = { id: 'waiting', name: 'Waiting on others', c: 'var(--muted)' };
-  const folders = [focusSt, ...STATUSES.filter(x => x.id !== 'done'), waitSt, ...STATUSES.filter(x => x.id === 'done')].map(st => {
-    const all = chats.filter(c => (st.id === 'focus' ? c.focus && statusOf(c) !== 'done' : st.id === 'waiting' ? isTop(c) && c.waiting && !c.focus && statusOf(c) !== 'done' : isTop(c) && statusOf(c) === st.id && !(c.focus && st.id !== 'done') && !(c.waiting && st.id !== 'done')));
-    const act = all.filter(c => !famQuiet(c)), quiet = all.filter(famQuiet);
+  const folders = [focusSt, ...STATUSES.filter(x => !parked(x.id)), waitSt, ...STATUSES.filter(x => parked(x.id))].map(st => {
+    const all = chats.filter(c => (st.id === 'focus' ? c.focus && !parked(statusOf(c)) : st.id === 'waiting' ? isTop(c) && c.waiting && !c.focus && !parked(statusOf(c)) : isTop(c) && statusOf(c) === st.id && !(c.focus && !parked(st.id)) && !(c.waiting && !parked(st.id))));
+    const act = st.id === 'later' ? all : all.filter(c => !famQuiet(c)), quiet = st.id === 'later' ? [] : all.filter(famQuiet);
     const open = all.length && !S.folded[st.id];
     const showQuiet = S.more[st.id];
     const shown = act.slice(0, S.more['all-' + st.id] ? 400 : 12);
@@ -110,13 +110,14 @@ function sideProjects(all) {
   const byProj = new Map();
   for (const c of chats) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
   const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
-  const activeOf = g => g.cs.filter(c => isTop(c) && statusOf(c) !== 'done' && !famQuiet(c));
+  const activeOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && !famQuiet(c));
+  const laterOf = g => g.cs.filter(c => isTop(c) && statusOf(c) === 'later');
   const hot = g => g.cs.some(c => needs(c) || running(c)) ? 1 : 0;
   const ord = g => (typeof g.p.order === 'number' ? g.p.order : 1e9);
   const act = groups.filter(g => activeOf(g).length).sort((a, b) => ord(a) - ord(b) || hot(b) - hot(a) || Math.max(...b.cs.map(c => c.updated)) - Math.max(...a.cs.map(c => c.updated)));
   const quiet = groups.filter(g => !activeOf(g).length);
   const projRow = g => {
-    const lv = activeOf(g), q = g.cs.filter(c => isTop(c) && famQuiet(c) && statusOf(c) !== 'done');
+    const lv = activeOf(g), q = g.cs.filter(c => isTop(c) && famQuiet(c) && !parked(statusOf(c))), lat = laterOf(g);
     // Projects in buckets without stages (Games, Apps…) start folded to one line; Latitude's open.
     const stageless = !bucketStages(g.p.bucket);
     const open = stageless ? S.folded['p:' + g.p.key] === false : !S.folded['p:' + g.p.key];
@@ -128,7 +129,7 @@ function sideProjects(all) {
       let n = foc.length;
       inner = foc.map(c => sideChatDot(c) + sideFam(c)).join('');
       if (bucketStages(g.p.bucket)) {
-        for (const st of STATUSES.filter(x => x.id !== 'done')) {
+        for (const st of STATUSES.filter(x => !parked(x.id))) {
           const list = rest.filter(c => statusOf(c) === st.id); if (!list.length || n >= limit) continue;
           const take = list.slice(0, limit - n); n += take.length;
           inner += `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(c => sideChat(c) + sideFam(c)).join('')}`;
@@ -142,6 +143,12 @@ function sideProjects(all) {
         const qo = !!S.more['pq:' + g.p.key];
         if (qo) inner += `<div class="quiet-chats">${q.map(c => sideChatDot(c) + sideFam(c)).join('')}</div>`;
         inner += `<button class="nav-i chat-i quiet-toggle" data-side-quiet="${esc(g.p.key)}" aria-expanded="${qo}"><span class="lbl">${qo ? 'Hide quiet' : `${q.length} quiet`}</span></button>`;
+      }
+      // The backlog: out of the way at the end, one click to see it.
+      if (lat.length) {
+        const lo = !!S.more['pl:' + g.p.key];
+        if (lo) inner += `<div class="quiet-chats">${lat.map(c => sideChatDot(c) + sideFam(c)).join('')}</div>`;
+        inner += `<button class="nav-i chat-i quiet-toggle" data-side-later="${esc(g.p.key)}" aria-expanded="${lo}"><span class="lbl">${lo ? 'Hide later' : `${lat.length} later`}</span></button>`;
       }
     }
     // The name opens the project; the chevron beside it folds its chats away.
@@ -303,6 +310,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-addimg]'))) return wrap(addImageFromUrl)(b.dataset.addimg);
   if ((b = el('[data-chatpics]'))) return picturesMenu(b);
   if ((b = el('[data-chatlinks]'))) return linksMenu(b);
+  if ((b = el('[data-side-later]'))) { const k = 'pl:' + b.dataset.sideLater; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-steerq]'))) { steerQueued(Number(b.dataset.steerq)); return undefined; }
   if ((b = el('[data-unqueue]'))) { CV.queue.splice(Number(b.dataset.unqueue), 1); paintQueue(); return undefined; }
   if ((b = el('[data-rtnew]'))) return newRoutine(b.dataset.rtnew);
@@ -376,7 +384,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-more-st]'))) { S.more[b.dataset.moreSt] = !S.more[b.dataset.moreSt]; return renderSide(); }
   if ((b = el('[data-automore]'))) { S.more['auto-all'] = true; return render(); }
   if ((b = el('[data-more-all]'))) { S.more['all-' + b.dataset.moreAll] = true; return renderSide(); }
-  if ((b = el('[data-pfold]'))) { S.more['p-done'] = !S.more['p-done']; return render(); }
+  if ((b = el('[data-pfold]'))) { const k = 'p-' + (b.dataset.pfold === 'later' ? 'later' : 'done'); S.more[k] = !S.more[k]; return render(); }
   if ((b = el('[data-bfold]'))) { S.more['b-done'] = !S.more['b-done']; return render(); }
   if ((b = el('[data-pq]'))) { S.more['pq-' + b.dataset.pq] = !S.more['pq-' + b.dataset.pq]; return render(); }
   if ((b = el('[data-pickbucket]'))) return pop(b, `${[['all', 'All buckets'], ...buckets().map(x => [x.id, x.name]), ['unsorted', 'Unsorted']].map(([id, n]) => `<button data-v="${esc(id)}" role="menuitemradio" aria-checked="${S.bucket === id}">${esc(n)}</button>`).join('')}`, v => { S.bucket = v; local.set('bucket', v); render(); });
