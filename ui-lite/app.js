@@ -194,7 +194,7 @@ function render() {
   delete m.dataset.shownChat;
   const keep = m.scrollTop;
   const typed = [...m.querySelectorAll('[data-qr], #cmdInput, #genPrompt')].map(i => [i.dataset.qr || i.id, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
-  m.innerHTML = (VIEW_FN[S.view] || VIEW_FN.now)();
+  keepFocused(m, () => { m.innerHTML = (VIEW_FN[S.view] || VIEW_FN.now)(); });
   for (const [k, v, f] of typed) { const i = m.querySelector(`[data-qr="${CSS.escape(k)}"]`) || $(k); if (i) { i.value = v; if (i.tagName === 'TEXTAREA') autosize(i); if (f) i.focus(); } }
   m.scrollTop = keep;
   keepCur();
@@ -211,7 +211,7 @@ function renderLive() {
     $('nowLead').innerHTML = leadHtml();
     swapHtml($('nowLive'), nowLiveHtml(), (el, html) => {
       const typed = [...el.querySelectorAll('[data-qr]')].map(i => [i.dataset.qr, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
-      el.innerHTML = html;
+      keepFocused(el, () => { el.innerHTML = html; });
       for (const [k, v, f] of typed) { const i = el.querySelector(`[data-qr="${CSS.escape(k)}"]`); if (i) { i.value = v; if (i.tagName === 'TEXTAREA') autosize(i); if (f) i.focus(); } }
       keepCur();
     });
@@ -299,7 +299,6 @@ document.addEventListener('click', e => {
   if ((b = el('[data-addimg]'))) return wrap(addImageFromUrl)(b.dataset.addimg);
   if ((b = el('[data-chatpics]'))) return picturesMenu(b);
   if ((b = el('[data-chatlinks]'))) return linksMenu(b);
-  if ((b = el('[data-barto]'))) return toMenu(b);
   if ((b = el('[data-steerq]'))) { steerQueued(Number(b.dataset.steerq)); return undefined; }
   if ((b = el('[data-unqueue]'))) { CV.queue.splice(Number(b.dataset.unqueue), 1); paintQueue(); return undefined; }
   if ((b = el('[data-rtnew]'))) return newRoutine(b.dataset.rtnew);

@@ -1054,3 +1054,7 @@ blockquote p { margin: 4px 0; }
 .msg-ai .who, .from-partner .who { display: block; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
 .msg-ai.from-partner, #liveText .from-partner { border-left: 2px solid var(--accent); padding-left: 12px; }
 .model.to-on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+
+.who-seg { display: flex; gap: 4px; padding: 2px 6px 6px; }
+.who-seg .who-opt { flex: 1; justify-content: center; text-align: center; border: 1px solid var(--line); border-radius: 7px; }
+.who-seg .who-opt[aria-checked="true"] { border-color: var(--accent); color: var(--accent); }

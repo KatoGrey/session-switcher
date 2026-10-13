@@ -125,6 +125,19 @@ let touchAt = 0;
 for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel']) addEventListener(ev, () => { touchAt = Date.now(); }, { passive: true, capture: true });
 // Live redraws (the sidebar, Now's live rows) wait while a button or finger is down: swapping the
 // element under a press before its release loses the click. Unchanged HTML isn't touched at all.
+// Redrawing under a focused box swaps it for a new one, and a dictation app (Wispr) or paste aimed at
+// the old box goes nowhere. So the focused box itself is carried into the redrawn page, as it was.
+function keepFocused(root, rewrite) {
+  const a = document.activeElement;
+  const keep = a && root && root.contains(a) && /^(INPUT|TEXTAREA)$/.test(a.tagName) && (a.id || (a.dataset && a.dataset.qr)) ? a : null;
+  const sel = keep ? (keep.id ? `#${CSS.escape(keep.id)}` : `[data-qr="${CSS.escape(keep.dataset.qr)}"]`) : null;
+  const start = keep ? keep.selectionStart : null, end = keep ? keep.selectionEnd : null;
+  rewrite();
+  if (!keep) return;
+  const fresh = document.querySelector(sel);
+  if (fresh && fresh !== keep) { keep.disabled = fresh.disabled; keep.placeholder = fresh.placeholder; fresh.replaceWith(keep); }
+  if (keep.isConnected) { keep.focus(); try { keep.setSelectionRange(start, end); } catch { /* not a text box */ } }
+}
 let pressAt = 0;
 const pressing = () => pressAt && Date.now() - pressAt < 5000;
 const heldSwaps = new Map();

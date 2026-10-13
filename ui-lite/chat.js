@@ -555,9 +555,8 @@ function toolsHtml({ fresh }) {
   const md0 = MD(prov);
   const busy = !fresh && CV.busy;
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
-    <button type="button" class="model" data-barmodel="1" aria-haspopup="menu" title="Model">${esc(model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model')}<span>▾</span></button>
+    <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : !fresh && CV.to === 'partner' ? ` → ${esc(partnerName())}` : ''}<span>▾</span></button>
     <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
-    ${!fresh && hasProv('claude') && hasProv('codex') ? `<button type="button" class="model${CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barto="1" aria-haspopup="menu" title="Who your messages go to: this chat, its ${esc(partnerName())} partner, or both taking turns">To: ${esc(toLabel(CV.to || 'chat'))}<span>▾</span></button>` : ''}
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
     ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button><button type="submit" class="send" aria-label="Queue (↵) · tell it now (⌥↵)" title="↵ queues it for when it finishes · ⌥↵ tells it now, while it works">↑</button>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
@@ -795,6 +794,15 @@ function chatMenu(anchor) {
 const PROVS = [['claude', 'Claude'], ['codex', 'ChatGPT'], ['ollama', 'Ollama']];
 const provName = p => (PROVS.find(x => x[0] === p) || [p, p])[1];
 const hasProv = p => (p === 'claude' ? plans().some(x => x.family === 'claude' && !x.broken) : p === 'codex' ? plans().some(x => x.family === 'chatgpt' && !x.broken) : plans().some(x => x.family === 'ollama' && !x.broken));
+// The models offered (Ryan's picks): five Claude models, and the current GPT ones (not GPT-5.6 or
+// the older GPT-6 Sol). Ollama lists whatever is pulled.
+const CLAUDE_PICKS = ['opus', 'fable', 'sonnet', 'haiku', 'claude-opus-4-8'];
+const CLAUDE_NAMES = { opus: 'Opus 5.5', fable: 'Fable 5.1', sonnet: 'Sonnet 5.5', haiku: 'Haiku 5.5', 'claude-opus-4-8': 'Opus 4.8' };
+function offered(p, list) {
+  if (p === 'claude') return CLAUDE_PICKS.map(v => ({ value: v, ...(list.find(m => m.value === v) || {}), label: CLAUDE_NAMES[v] }));
+  if (p === 'codex') return list.filter(m => !/^gpt-5\.6/.test(m.value) && m.value !== 'gpt-6-sol');
+  return list;
+}
 function modelMenu(anchor) {
   const prov = provNow();
   const inChat = S.view === 'chat';
@@ -805,17 +813,21 @@ function modelMenu(anchor) {
   const group = p => {
     const md0 = MD(p); if (!md0 || !hasProv(p)) return '';
     const here = p === prov;
-    const runList = here && running && CV.info.models && CV.info.models.length ? CV.info.models.filter(m => m.value !== 'default' && !/haiku/i.test(m.value)) : null;
-    // Ollama has only a few, so they're all shown; the others fold the rest under More.
-    const all = runList || (p === 'ollama' ? [...md0.models, ...md0.more] : md0.models);
-    const main = all, more = runList || p === 'ollama' ? [] : md0.more.filter(m => !/haiku/i.test(m.value));
+    const runList = here && running && CV.info.models && CV.info.models.length ? CV.info.models.filter(m => m.value !== 'default') : null;
+    const all = offered(p, runList || [...md0.models, ...md0.more]);
+    const main = all, more = [];
     const plan = p === 'ollama' ? null : useNext(p === 'claude' ? 'claude' : 'chatgpt');
     const sub = inChat && !here ? 'starts a new chat there' : p === 'ollama' ? 'no plan limits' : plan ? `${plan.label} · ${plan.left}%` : '';
     return `<div class="ph">${provName(p)}${sub ? ` · ${esc(sub)}` : ''}${here && md0.defaultModel ? ` · default ${esc(md0.defaultModel)}` : ''}</div>${main.map(m => item(p, m)).join('')}${more.length ? `<details class="pop-more"><summary>More ${provName(p)} models</summary>${more.map(m => item(p, m)).join('')}</details>` : ''}`;
   };
   const order = [prov, ...PROVS.map(x => x[0]).filter(p => p !== prov)];
-  pop(anchor, order.map(group).filter(Boolean).join('<hr>'), raw => {
+  // Who answers in this chat: it, its partner (the other assistant, in this same chat), or both in turn.
+  const duoOk = inChat && hasProv('claude') && hasProv('codex') && prov !== 'ollama';
+  const to = CV.to || 'chat';
+  const who = duoOk ? `<div class="ph">Who answers</div><div class="who-seg">${[['chat', selfName()], ['partner', partnerName()], ['both', 'Both']].map(([v, l]) => `<button class="mm who-opt" data-v="to|${v}" role="menuitemradio" aria-checked="${to === v}" title="${v === 'both' ? `${selfName()} answers, then ${partnerName()} picks it up` : v === 'partner' ? `${partnerName()} answers in this chat, caught up on it first` : 'This chat, as usual'}">${esc(l)}</button>`).join('')}</div><hr>` : '';
+  pop(anchor, who + order.map(group).filter(Boolean).join('<hr>'), raw => {
     const [p, v] = raw.split('|');
+    if (p === 'to') { CV.to = v; setTo(CV.id, v); paintBar(); if (v !== 'chat') toast(v === 'both' ? `Both: ${selfName()} answers, then ${partnerName()} picks it up.` : `${partnerName()} answers in this chat.`); return undefined; }
     if (inChat && p !== prov) return continueElsewhere(p, v);
     if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, model: v })); paintBar(); })();
     if (S.view === 'newchat' && p !== prov) {

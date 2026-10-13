@@ -178,7 +178,8 @@ function renderCommander() {
   const f = $('cmdForm'); if (!f) return;
   const typed = $('cmdInput') ? $('cmdInput').value : '';
   const focused = document.activeElement && document.activeElement.id === 'cmdInput';
-  f.outerHTML = commanderHtml();
+  const host = f.parentElement;
+  keepFocused(host, () => { f.outerHTML = commanderHtml(); });
   if ($('cmdInput')) { $('cmdInput').value = typed; if (focused) $('cmdInput').focus(); }
   const t = document.querySelector('.cmd-text'); if (t) t.scrollTop = t.scrollHeight;
 }

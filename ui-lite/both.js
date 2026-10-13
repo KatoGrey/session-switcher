@@ -14,7 +14,6 @@ function toFor(id) { try { return (JSON.parse(localStorage.getItem(TO_KEY) || '{
 function setTo(id, to) {
   try { const m = JSON.parse(localStorage.getItem(TO_KEY) || '{}'); if (to === 'chat') delete m[String(id)]; else m[String(id)] = to; localStorage.setItem(TO_KEY, JSON.stringify(m)); } catch { /* fine */ }
 }
-const toLabel = to => (to === 'both' ? 'Both' : to === 'partner' ? partnerName() : selfName());
 
 function partnerReset() {
   if (PARTNER.es) PARTNER.es.close();
@@ -62,14 +61,6 @@ function partnerSoon() {
   setTimeout(tick, 800);
 }
 
-function toMenu(anchor) {
-  const cur = CV.to || 'chat', p = partnerName(), me = selfName();
-  const item = (v, label, note) => `<button class="mm" data-v="${v}" role="menuitemradio" aria-checked="${cur === v}"><span class="mm-name">${esc(label)}</span><span class="mm-note">${esc(note)}</span></button>`;
-  pop(anchor, `<div class="ph">Send your messages to</div>${item('chat', me, 'this chat, as usual')}${item('partner', p, `${p} works in this chat, caught up on it first`)}${item('both', 'Both', `${me} and ${p} take turns on each message`)}`, v => {
-    CV.to = v; setTo(CV.id, v); paintBar();
-    if (v !== 'chat') toast(v === 'both' ? `Both: ${me} answers, then ${p} picks it up.` : `Your messages go to ${p}, in this chat.`);
-  });
-}
 
 // Opening a chat that has a partner: its replies (not the catch-ups it was sent) join the feed in
 // time order, so a Both chat reads the same after a reload.
