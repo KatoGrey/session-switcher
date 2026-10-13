@@ -576,7 +576,7 @@ document.addEventListener('input', e => {
   saveDrafts();
 });
 function restoreDraft() { const d = CV.id && DRAFTS.get(String(CV.id)); const box = $('msgBox'); if (d && box && !box.value) { box.value = d; autosize(box); } }
-function resetComposer() { for (const i of COMP.images) if (i.url) URL.revokeObjectURL(i.url); Object.assign(COMP, { images: [], files: [], converting: 0, model: null, effort: null, perm: null }); }
+function resetComposer() { for (const i of COMP.images) if (i.url) URL.revokeObjectURL(i.url); Object.assign(COMP, { images: [], files: [], converting: 0, model: null, effort: null, perm: null, fast: null }); }
 function composerHtml({ fresh = false } = {}) {
   return `<form class="box" id="composer" autocomplete="off">
     ${fresh ? '' : '<div class="readonly-note" id="roNote" hidden></div>'}
@@ -610,7 +610,7 @@ function toolsHtml({ fresh }) {
   const md0 = MD(prov);
   const busy = !fresh && CV.busy;
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
-    <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : !fresh && CV.to === 'partner' ? ` → ${esc(partnerName())}` : ''}<span>▾</span></button>
+    <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : !fresh && CV.to === 'partner' ? ` → ${esc(partnerName())}` : ''}${prov === 'codex' && ((info && info.fast) || (!info && COMP.fast)) ? ' ⚡' : ''}<span>▾</span></button>
     <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
@@ -785,7 +785,7 @@ async function sendInChat({ fromQueue = false } = {}) {
   // The message belongs to the chat it was written in. Starting a chat that wasn't running takes a
   // few seconds; if you open another chat meanwhile, it still goes here (Oct 13: it went to the chat
   // you'd moved to), and only this chat's view is touched.
-  const id = CV.id, provider = CV.provider, inRepo = CV.inRepo, perm = COMP.perm || permDefault(CV.provider), model = COMP.model, effort = COMP.effort;
+  const id = CV.id, provider = CV.provider, inRepo = CV.inRepo, perm = COMP.perm || permDefault(CV.provider), model = COMP.model, effort = COMP.effort, fast = COMP.fast;
   const to = CV.to && CV.to !== 'chat' ? CV.to : null;
   const here = () => S.view === 'chat' && CV.id === id;
   let key = CV.key;
@@ -808,7 +808,7 @@ async function sendInChat({ fromQueue = false } = {}) {
       const c = chatBy.get(id);
       const claudeAcct = provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
       // An Ollama chat goes back to the Ollama account (its thread isn't OpenAI's).
-      const info = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(inRepo ? { inRepo: true } : {}), ...(provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: perm, ...(model ? { model } : {}) });
+      const info = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(inRepo ? { inRepo: true } : {}), ...(provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: perm, ...(model ? { model } : {}), ...(fast != null ? { fast: !!fast } : {}) });
       key = info.key;
       if (here()) {
         CV.key = key; CV.info = info;
@@ -908,8 +908,17 @@ function modelMenu(anchor) {
   const duoOk = inChat && hasProv('claude') && hasProv('codex') && prov !== 'ollama';
   const to = CV.to || 'chat';
   const who = duoOk ? `<div class="ph">Who answers</div><div class="who-seg">${[['chat', selfName()], ['partner', partnerName()], ['both', 'Both']].map(([v, l]) => `<button class="mm who-opt" data-v="to|${v}" role="menuitemradio" aria-checked="${to === v}" title="${v === 'both' ? `${selfName()} answers, then ${partnerName()} picks it up` : v === 'partner' ? `${partnerName()} answers in this chat, caught up on it first` : 'This chat, as usual'}">${esc(l)}</button>`).join('')}</div><hr>` : '';
-  pop(anchor, who + order.map(group).filter(Boolean).join('<hr>'), raw => {
+  // Fast (Codex): its priority tier, about twice as quick, using more of the plan.
+  const codexHere = inChat ? prov === 'codex' : (typeof NC !== 'undefined' && NC.who === 'codex');
+  const fastOn = running ? !!CV.info.fast : !!COMP.fast;
+  const fast = codexHere ? `<button class="mm" data-v="fast|${fastOn ? 'off' : 'on'}" role="menuitemcheckbox" aria-checked="${fastOn}"><span class="mm-name">⚡ Fast</span><span class="mm-note">about 2x speed, uses more of the plan</span></button><hr>` : '';
+  pop(anchor, who + fast + order.map(group).filter(Boolean).join('<hr>'), raw => {
     const [p, v] = raw.split('|');
+    if (p === 'fast') {
+      const on = v === 'on';
+      if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, fast: on })); paintBar(); toast(on ? 'Fast is on for this chat.' : 'Fast is off.'); })();
+      COMP.fast = on; paintBar(); if (S.view === 'newchat') paintNewChat(); toast(on ? 'Fast: on for this chat when it starts.' : 'Fast is off.'); return undefined;
+    }
     if (p === 'to') { CV.to = v; setTo(CV.id, v); paintBar(); if (v !== 'chat') toast(v === 'both' ? `Both: ${selfName()} answers, then ${partnerName()} picks it up.` : `${partnerName()} answers in this chat.`); return undefined; }
     if (inChat && p !== prov) return continueElsewhere(p, v);
     if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, model: v })); paintBar(); })();
@@ -1032,7 +1041,7 @@ async function startNewChat() {
   sfx('slide');
   go('chat', { draft: true }, { push: false });
   try {
-    const info = await api('/api/chat/open', { mode: 'new', cwd: p.cwd, provider: prov, ...(account ? { account } : {}), permissionMode: perm, ...(model ? { model } : {}) });
+    const info = await api('/api/chat/open', { mode: 'new', cwd: p.cwd, provider: prov, ...(account ? { account } : {}), permissionMode: perm, ...(model ? { model } : {}), ...(prov === 'codex' && COMP.fast ? { fast: true } : {}) });
     if (mine()) { CV.key = info.key; CV.info = { ...info, cwd: info.cwd || p.cwd }; listen(info.key); }
     const id = await startAndSend(info.key, text, images, async () => {
       if (effort) await api('/api/chat/model', { key: info.key, effort }).catch(() => {});

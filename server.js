@@ -693,7 +693,7 @@ async function openChatInner(c, body) {
     const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
     const last = threadId && mode !== 'new' && !body.model && !pref.model ? codexStartedOn(threadId) : null;
     const model = [body.model, pref.model, last && last.model].find(m => m && modelFits(inst, m)) || null;
-    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort || (last && model === last.model ? last.effort : null), title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
+    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, fast: body.fast === true || pref.fast === 'on', effort: pref.effort || (last && model === last.model ? last.effort : null), title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
     if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
     log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
     return { ...chat.info(), attached: false, remembered: !!pref.mode, companionThread: threadId && mode !== 'new' ? chatPrefs.companionOf(threadId) : null };
@@ -2586,7 +2586,8 @@ async function handleChat(req, res, url, body, c) {
       const chat = chats.get(body.key);
       if (body.model) await chat.setModel(String(body.model));
       if (body.effort) await chat.setEffort(String(body.effort));
-      remember(chat, { ...(body.model ? { model: chat.model } : {}), ...(body.effort ? { effort: chat.effort } : {}) });
+      if (typeof body.fast === 'boolean' && typeof chat.setFast === 'function') chat.setFast(body.fast);
+      remember(chat, { ...(body.model ? { model: chat.model } : {}), ...(body.effort ? { effort: chat.effort } : {}), ...(typeof body.fast === 'boolean' ? { fast: body.fast ? 'on' : null } : {}) });
       return send(res, 200, chat.modelInfo());
     }
     case '/api/chat/companion': {
