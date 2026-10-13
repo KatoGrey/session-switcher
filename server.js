@@ -659,6 +659,14 @@ function openChat(c, body) {
 // Chats here are read in a window that shows pictures (Switcher Lite, the chat window); they're told so,
 // or they assume they can't and send links instead.
 const SHOWS_PICTURES = 'This conversation is shown in Session Switcher, which displays Markdown images inline. To show the user a picture or screenshot, write ![short description](/absolute/path/to/file.png) with the absolute path of a local image file (png, jpg, gif, webp, svg). Use this whenever a picture would help instead of only linking to it.';
+// Passed as a file: spawnClaude only takes plain flags, ids and paths as arguments (no spaces), so a
+// sentence as --append-system-prompt would stop every chat from starting.
+const SHOWS_PICTURES_FILE = (() => {
+  const f = path.join(os.tmpdir(), 'claude-switcher', 'shows-pictures.md');
+  try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, SHOWS_PICTURES); } catch (err) { log(`Couldn’t write the pictures note: ${err.message}`); return null; }
+  return /^[\w.:=\/-]+$/.test(f) ? f : null; // a path with spaces couldn't be passed; chats start without the note
+})();
+const SHOWS_PICTURES_ARGS = SHOWS_PICTURES_FILE ? ['--append-system-prompt-file', SHOWS_PICTURES_FILE] : [];
 async function openChatNow(c, body) {
   // A partner's conversation opens inside the chat it belongs to.
   const lead = (!body.mode || body.mode === 'resume') && body.sessionId ? chatPrefs.parentOf(body.sessionId) : null;
@@ -735,7 +743,7 @@ async function openChatInner(c, body) {
   if (sessionId) { try { title = sessions.find(sessionId).session.title; } catch { /* untitled */ } }
   if (mode === 'fork' && title) title = `${title} (copy)`;
   const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder, extraArgs: ['--append-system-prompt', SHOWS_PICTURES] });
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder, extraArgs: SHOWS_PICTURES_ARGS });
   if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
   log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
   return { ...chat.info(), attached: false, remembered: !!pref.mode && !body.permissionMode, companionThread: sessionId && mode !== 'new' ? chatPrefs.companionOf(sessionId) : null };
