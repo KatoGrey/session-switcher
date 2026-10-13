@@ -727,6 +727,13 @@ async function sendInChat({ fromQueue = false } = {}) {
     return steerIn(text, imgs);
   }
   if (COMP.converting) return toast('One moment: a picture is still being prepared.');
+  // The message belongs to the chat it was written in. Starting a chat that wasn't running takes a
+  // few seconds; if you open another chat meanwhile, it still goes here (Oct 13: it went to the chat
+  // you'd moved to), and only this chat's view is touched.
+  const id = CV.id, provider = CV.provider, inRepo = CV.inRepo, perm = COMP.perm || permDefault(CV.provider), model = COMP.model, effort = COMP.effort;
+  const to = CV.to && CV.to !== 'chat' ? CV.to : null;
+  const here = () => S.view === 'chat' && CV.id === id;
+  let key = CV.key;
   CV.sending = true;
   // On screen at once: your message, and the line under it, while the chat starts up.
   const images = imagesOut();
@@ -735,43 +742,64 @@ async function sendInChat({ fromQueue = false } = {}) {
   COMP.images = []; COMP.files = []; paintAttachments();
   const local = { kind: 'user', text: withFiles(text, files), images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
   CV.items.push(local);
-  box.value = ''; autosize(box); DRAFTS.delete(String(CV.id)); saveDrafts();
-  if (!CV.busy) { CV.busy = true; CV.status = CV.key ? 'Sending' : 'Starting'; CV.startedAt = Date.now(); }
+  box.value = ''; autosize(box); DRAFTS.delete(String(id)); saveDrafts();
+  if (!CV.busy) { CV.busy = true; CV.status = key ? 'Sending' : 'Starting'; CV.startedAt = Date.now(); }
   sfx('slide'); paintFeed(); paintStatus(); $('feed').scrollTop = $('feed').scrollHeight;
   try {
-    if (!CV.key) {
+    if (!key) {
       // First message: picked up here, always in your permission default (or what you chose for it
       // with the gear), and on the model you picked if you did.
       // Claude picks up on the use-next Claude plan (else the account it last ran as); Codex on its own.
-      const c = chatBy.get(CV.id);
-      const claudeAcct = CV.provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
+      const c = chatBy.get(id);
+      const claudeAcct = provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
       // An Ollama chat goes back to the Ollama account (its thread isn't OpenAI's).
-      const info = await api('/api/chat/open', { sessionId: CV.id, mode: 'resume', ...(CV.inRepo ? { inRepo: true } : {}), ...(CV.provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
-      CV.key = info.key; CV.info = info;
-      // Already running (picked up from elsewhere): its stream replays this run, so history stops where it starts.
-      if (info.attached) { const from = Date.parse(info.bufferFrom || info.startedAt || '') - 1000; if (from) { CV.items = CV.items.filter(x => x === local || !x.at || Date.parse(x.at) < from); paintFeed(); } }
-      listen(info.key);
-      await waitReady();
-      if (COMP.effort) await api('/api/chat/model', { key: CV.key, effort: COMP.effort }).then(m => Object.assign(CV.info, m)).catch(() => {});
+      const info = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(inRepo ? { inRepo: true } : {}), ...(provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: perm, ...(model ? { model } : {}) });
+      key = info.key;
+      if (here()) {
+        CV.key = key; CV.info = info;
+        // Already running (picked up from elsewhere): its stream replays this run, so history stops where it starts.
+        if (info.attached) { const from = Date.parse(info.bufferFrom || info.startedAt || '') - 1000; if (from) { CV.items = CV.items.filter(x => x === local || !x.at || Date.parse(x.at) < from); paintFeed(); } }
+        listen(key);
+      }
+      await waitReadyFor(key);
+      if (effort) await api('/api/chat/model', { key, effort }).then(m => { if (here() && CV.info) Object.assign(CV.info, m); }).catch(() => {});
     }
-    await uploadPending(CV.key, files);
+    await uploadPending(key, files);
     const out = withFiles(text, files); local.text = out;
     for (const i of sentImages) if (i.url) URL.revokeObjectURL(i.url);
-    resetComposer(); paintAttachments();
-    const to = CV.to && CV.to !== 'chat' ? CV.to : null;
-    await api('/api/chat/send', { key: CV.key, text: out, ...(images.length ? { images } : {}), ...(to ? { to } : {}) });
-    if (to) partnerSoon();
-    CV.busy = true; if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
+    if (here()) { resetComposer(); paintAttachments(); }
+    await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...(to ? { to } : {}) });
+    if (here()) {
+      if (to) partnerSoon();
+      CV.busy = true; if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
+    }
   } catch (err) {
-    // Didn't go: the message comes back to the box, as you wrote it.
-    CV.items = CV.items.filter(x => x !== local);
-    if (!box.value) { box.value = text; autosize(box); }
-    COMP.images = [...sentImages, ...COMP.images]; COMP.files = [...files, ...COMP.files]; paintAttachments();
-    CV.busy = false; CV.status = ''; paintFeed(); paintStatus();
-    toast(err.message);
-  } finally { CV.sending = false; }
+    // Didn't go: the message comes back to the box, as you wrote it (or as that chat's draft, if you've moved on).
+    if (here()) {
+      CV.items = CV.items.filter(x => x !== local);
+      const b = $('msgBox'); if (b && !b.value) { b.value = text; autosize(b); }
+      COMP.images = [...sentImages, ...COMP.images]; COMP.files = [...files, ...COMP.files]; paintAttachments();
+      CV.busy = false; CV.status = ''; paintFeed(); paintStatus();
+      toast(err.message);
+    } else {
+      if (!DRAFTS.get(String(id))) { DRAFTS.set(String(id), text); saveDrafts(); }
+      const c = chatBy.get(id);
+      toast(`Your message to “${(c && c.title) || 'that chat'}” didn’t go (${err.message}). It’s back in that chat’s box.`);
+    }
+  } finally { if (here()) CV.sending = false; }
 }
-const waitReady = () => new Promise(res => { const t0 = Date.now(); const tick = () => ((CV.info && CV.info.state && CV.info.state !== 'starting') || Date.now() - t0 > 45e3 ? res() : setTimeout(tick, 100)); tick(); });
+// Ready for a message: this chat's own stream says so while you're in it; otherwise asked directly.
+const waitReadyFor = key => new Promise(res => {
+  const t0 = Date.now();
+  const tick = async () => {
+    let st = null;
+    if (CV.key === key && CV.info) st = CV.info.state;
+    else { try { st = (await api('/api/chat/attach', { key })).state; } catch { return res(); } }
+    if ((st && st !== 'starting') || Date.now() - t0 > 45e3) return res();
+    return setTimeout(tick, CV.key === key ? 100 : 400);
+  };
+  tick();
+});
 
 function chatMenu(anchor) {
   const c = chatBy.get(CV.id);
