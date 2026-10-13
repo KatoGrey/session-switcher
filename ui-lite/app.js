@@ -44,10 +44,12 @@ function renderSide() {
   const b = buckets().find(x => x.id === S.bucket);
   const chats = allChats().filter(inBucket).sort((x, y) => y.updated - x.updated);
   const nNeed = S.live.filter(needsLive).length;
+  // How many are working right now, beside Now (its lamp pulses while any are).
+  const nRun = S.live.filter(x => x.working).length;
   const nav = (view, icon, label, extra = '') => `<button class="nav-i" data-go="${view}" aria-current="${S.view === view}"><span class="ic">${icon}</span><span class="lbl">${label}</span>${extra}</button>`;
   const top = `<div class="group">
       ${nav('newchat', IC.pen, L('New chat'), '<kbd class="nav-k">c</kbd>')}
-      ${nav('now', IC.pulse, L('Now'), nNeed ? `<span class="badge">${nNeed}</span>` : '')}
+      ${nav('now', IC.pulse, L('Now'), `${nRun ? `<span class="run-n" title="${nRun} working right now"><span class="live-dot"></span>${nRun}</span>` : ''}${nNeed ? `<span class="badge" title="${nNeed} need you">${nNeed}</span>` : ''}`)}
       ${nav('home', IC.grid, L('Projects'))}
       ${nav('hack', IC.flag, 'Hackathon', `<span class="n">${esc(hackLabel())}</span>`)}
       ${nav('routines', IC.clock, 'Routines', (n => (n ? `<span class="badge">${n}</span>` : ''))(rtEventsOpen().filter(e => e.kind !== 'ran').length))}
@@ -93,7 +95,7 @@ function sideBugs(chats, key = 'all') {
   }
   if (open.length > n) inner += `<button class="nav-i chat-i quiet-toggle" data-more-all="bugs-${esc(key)}"><span class="lbl">${open.length - n} more</span></button>`;
   const nd = open.some(needs), rn = open.some(running);
-  return `<div class="group folder" data-folded="${folded}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-go="bugs"><span class="ic">${IC.bug}</span><span class="lbl">Bugs</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : ''}<span class="n">${open.length}</span></button><button class="proj-chev" data-foldproj="__bugs:${esc(key)}" aria-expanded="${!folded}" aria-label="${folded ? 'Show' : 'Hide'} bugs" title="${folded ? 'Show' : 'Hide'} bugs"></button></div><div class="folder-items">${inner}</div></div>`;
+  return `<div class="group folder" data-folded="${folded}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-go="bugs"><span class="ic">${IC.bug}</span><span class="lbl">Bugs</span>${!folded ? '' : nd ? '<span class="dot needs-dot" title="A bug needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}<span class="n">${open.length}</span></button><button class="proj-chev" data-foldproj="__bugs:${esc(key)}" aria-expanded="${!folded}" aria-label="${folded ? 'Show' : 'Hide'} bugs" title="${folded ? 'Show' : 'Hide'} bugs"></button></div><div class="folder-items">${inner}</div></div>`;
 }
 
 // The sidebar by project (the default): each project with its chats, Focus first. In buckets where
@@ -153,7 +155,7 @@ function sideProjects(all) {
       const many = lv.length > 1;
       return `<div class="group folder flat-proj" data-folded="${!(open && many)}"><div class="proj-row"><button class="nav-i chat-i flat-btn" data-chat="${esc(lead.id)}" aria-current="${cur}" title="${esc(g.p.name)}: ${esc(lead.title)}"><span class="st-dot" style="background:${st.c}"></span><span class="lbl">${esc(g.p.name)}</span><span class="flat-st">${st.name}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : ''}</button>${many ? `<button class="proj-chev flat-n" data-foldproj="${esc(g.p.key)}" data-stageless="1" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} its ${lv.length} chats" title="${lv.length} open chats">${lv.length}</button>` : ''}</div>${many ? `<div class="folder-items">${inner}</div>` : ''}</div>`;
     }
-    return `<div class="group folder" data-folded="${!open}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-project="${esc(g.p.key)}" draggable="true" aria-current="${here}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : ''}<span class="n">${lv.length || ''}</span></button><button class="proj-chev" data-foldproj="${esc(g.p.key)}" ${stageless ? 'data-stageless="1"' : ''} aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} chats" title="${open ? 'Hide' : 'Show'} chats"></button></div><div class="folder-items">${inner}</div></div>`;
+    return `<div class="group folder" data-folded="${!open}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-project="${esc(g.p.key)}" draggable="true" aria-current="${here}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span>${open ? '' : nd ? '<span class="dot needs-dot" title="Something in here needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}<span class="n">${lv.length || ''}</span></button><button class="proj-chev" data-foldproj="${esc(g.p.key)}" ${stageless ? 'data-stageless="1"' : ''} aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} chats" title="${open ? 'Hide' : 'Show'} chats"></button></div><div class="folder-items">${inner}</div></div>`;
   };
   // With every bucket showing, projects sit under their bucket's name.
   let html = '';

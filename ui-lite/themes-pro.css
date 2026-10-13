@@ -80,8 +80,9 @@
 [data-skin="imperial"][data-pro] .btn.prime { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 0 16px var(--glow); }
 [data-skin="imperial"][data-pro] .btn.prime:hover { filter: brightness(1.08); }
 [data-skin="imperial"][data-pro] .model { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .02em; }
-/* Status lamps glow. */
-[data-skin="imperial"][data-pro] .live-dot { background: var(--accent); box-shadow: 0 0 8px var(--glow), 0 0 2px var(--accent); }
+/* Status lamps glow. Working is white (dark) or black (light); red is kept for "needs you". */
+[data-skin="imperial"][data-pro] .live-dot { background: var(--fg); box-shadow: 0 0 7px color-mix(in srgb, var(--fg) 45%, transparent); }
+[data-skin="imperial"][data-pro] .needs-dot { background: var(--accent); box-shadow: 0 0 10px var(--glow); }
 [data-skin="imperial"][data-pro] .badge { background: var(--accent); box-shadow: 0 0 10px var(--glow); font-family: var(--f-mono); }
 [data-skin="imperial"][data-pro] :is(.when, .st-time, .mono) { font-family: var(--f-mono); }
 /* The header over a chat: smoked glass with a red seam in the middle of its lower edge. */
