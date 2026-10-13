@@ -123,6 +123,20 @@ function connect() {
 // and no menu or dialog is open.
 let touchAt = 0;
 for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel']) addEventListener(ev, () => { touchAt = Date.now(); }, { passive: true, capture: true });
+// Live redraws (the sidebar, Now's live rows) wait while a button or finger is down: swapping the
+// element under a press before its release loses the click. Unchanged HTML isn't touched at all.
+let pressAt = 0;
+const pressing = () => pressAt && Date.now() - pressAt < 5000;
+const heldSwaps = new Map();
+function swapHtml(el, html, write = (e, h) => { e.innerHTML = h; }) {
+  if (!el) return;
+  if (pressing()) { heldSwaps.set(el, [html, write]); return; }
+  heldSwaps.delete(el);
+  if (el._h === html) return;
+  write(el, html); el._h = html;
+}
+addEventListener('pointerdown', () => { pressAt = Date.now(); }, { passive: true, capture: true });
+for (const ev of ['pointerup', 'pointercancel', 'blur']) addEventListener(ev, () => { pressAt = 0; setTimeout(() => { if (!pressing()) for (const [el, [h, w]] of [...heldSwaps]) swapHtml(el, h, w); }, 0); }, { passive: true, capture: true });
 function renderWhenIdle() {
   clearTimeout(renderWhenIdle.t);
   const busy = Date.now() - touchAt < 1500 || $('popRoot').innerHTML || $('modalRoot').innerHTML || $('palRoot').innerHTML || drag;

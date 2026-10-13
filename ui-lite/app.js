@@ -71,8 +71,8 @@ function renderSide() {
   const nArch = S.chats.filter(c => c.archived).length + S.projects.filter(p => p.archived).length;
   const mode = S.sideMode || 'projects';
   const modeSeg = `<span class="side-seg" role="group" aria-label="Sidebar shows"><button data-sidemode="projects" aria-pressed="${mode === 'projects'}">Projects</button><button data-sidemode="stages" aria-pressed="${mode === 'stages'}">Status</button></span>`;
-  $('sideScroll').innerHTML = top + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders : sideProjects(chats)}</div>`
-    + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`;
+  swapHtml($('sideScroll'), top + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders : sideProjects(chats)}</div>`
+    + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`);
 }
 
 // Open bugs, together above the projects (their own group, whatever project they're in), under
@@ -208,11 +208,13 @@ function renderLive() {
   renderSide(); updateBadge();
   if (S.view === 'triage') { if (!document.activeElement || document.activeElement.id !== 'trBox') render(); return; }
   if (S.view === 'now' && $('nowLive')) {
-    const el = $('nowLive');
-    const typed = [...el.querySelectorAll('[data-qr]')].map(i => [i.dataset.qr, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
-    el.innerHTML = nowLiveHtml(); $('nowLead').innerHTML = leadHtml();
-    for (const [k, v, f] of typed) { const i = el.querySelector(`[data-qr="${CSS.escape(k)}"]`); if (i) { i.value = v; if (i.tagName === 'TEXTAREA') autosize(i); if (f) i.focus(); } }
-    keepCur();
+    $('nowLead').innerHTML = leadHtml();
+    swapHtml($('nowLive'), nowLiveHtml(), (el, html) => {
+      const typed = [...el.querySelectorAll('[data-qr]')].map(i => [i.dataset.qr, i.value, document.activeElement === i]).filter(x => x[1] || x[2]);
+      el.innerHTML = html;
+      for (const [k, v, f] of typed) { const i = el.querySelector(`[data-qr="${CSS.escape(k)}"]`); if (i) { i.value = v; if (i.tagName === 'TEXTAREA') autosize(i); if (f) i.focus(); } }
+      keepCur();
+    });
     return;
   }
   const sig = S.live.map(x => `${x.sessionId}:${x.working ? 1 : 0}${needsLive(x) ? 1 : 0}`).join('|');
