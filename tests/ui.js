@@ -1603,6 +1603,25 @@ module.exports = [
     },
   },
   {
+    name: 'offline',
+    // Written with no connection to the PC (a phone off the Wi-Fi): it waits on the device, shows as
+    // waiting, and sends by itself when the PC can be reached.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ mobile: true, width: 390, height: 844, seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      await b.eval(`window._fetch = window.fetch; window.fetch = (u, o) => String(u).includes('/api/chat/send') ? Promise.reject(new TypeError('Failed to fetch')) : window._fetch(u, o);
+        const box = document.getElementById('cText'); box.value = 'Add the bard’s second verse'; box.dispatchEvent(new Event('input', { bubbles: true })); return 1`);
+      await b.clickOn('#cSend'); await sleep(600);
+      const w = await b.eval(`return { shown: document.querySelector('#cFeed .outbox-msg')?.textContent || '', kept: JSON.parse(localStorage.getItem('outbox') || '[]').length, box: document.getElementById('cText').value }`);
+      t.check('with no connection, the message waits on the device, shown as waiting', /second verse/.test(w.shown) && /Waiting for a connection/.test(w.shown) && w.kept === 1 && w.box === '', w);
+      await t.shot(b, 'waiting');
+      await b.eval(`window.fetch = window._fetch; await outboxFlush(); return 1`); await sleep(400);
+      const sent = calls.filter(([p, body]) => p === '/api/chat/send' && /second verse/.test(body.text || ''));
+      t.check('back in reach, it sends by itself, once', sent.length === 1 && await b.eval(`return !document.querySelector('#cFeed .outbox-msg') && JSON.parse(localStorage.getItem('outbox') || '[]').length === 0`), sent.length);
+    },
+  },
+  {
     name: 'autopilot',
     // Out of room mid-chat, as it happens: it carries on as the account with the most room by itself,
     // after a moment to say no.

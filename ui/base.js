@@ -82,7 +82,7 @@ async function api(p, body) {
   try {
     r = await fetch(p, { method: body ? 'POST' : 'GET', headers: { 'X-Switcher-Token': TOKEN, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   } catch {
-    throw new Error('Session Switcher isn’t running. Start it again from its shortcut or “Start Claude Switcher.bat”.');
+    throw Object.assign(new Error(window.REMOTE ? 'Can’t reach your PC. Check you’re on your home Wi-Fi and Session Switcher is running there.' : 'Session Switcher isn’t running. Start it again from its shortcut or “Start Claude Switcher.bat”.'), { offline: true });
   }
   const j = await r.json().catch(() => ({ error: 'Unexpected answer from the app.' }));
   if (r.status === 403 && (j.reason === 'stale' || !j.error)) { location.reload(); throw new Error('Reloading…'); }

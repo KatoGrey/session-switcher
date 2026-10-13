@@ -2212,6 +2212,32 @@ function pushMessage(n, now = Date.now()) {
   return { kind: 'reply', reply, who: x.provider === 'codex' ? 'Codex' : 'Claude', id: `${x.key}:${x.finishedAt}`, title: `${title} replied`, body: (pushLine(x.lastText) || 'Finished its turn.').slice(0, 200) + folder, chatTitle: title, tag: `reply-${x.key}`, key: x.key, sessionId: x.sessionId || null, at: now, ttl: 6 * 3600 };
 }
 const toApp = (w, msg) => { try { w.res.write(`data: ${JSON.stringify(msg)}\n\n`); } catch { /* gone; its close handler tidies up */ } };
+// Quiet digests: a phone that gathers replies gets one notification every 15 or 60 minutes listing
+// them, instead of one each. "Needs your OK" is never held back.
+const digests = new Map();   // 'app:<device>' or 'web:<endpoint>' -> { due, items: [msg] }
+function holdForDigest(target, prefs, msg) {
+  if (msg.kind !== 'reply' || !prefs.digest) return false;
+  const d = digests.get(target) || { due: Date.now() + prefs.digest * 60e3, items: [] };
+  d.items = [...d.items.filter(x => x.key !== msg.key), msg].slice(-20);
+  digests.set(target, d);
+  return true;
+}
+function digestMessage(items, now = Date.now()) {
+  if (items.length === 1) return items[0];
+  const last = items[items.length - 1];
+  return { kind: 'reply', reply: null, digest: true, id: `digest:${now}`, title: `${items.length} chats replied`, body: items.map(x => x.chatTitle).join(' · ').slice(0, 220), chatTitle: last.chatTitle, tag: 'reply-digest', key: last.key, sessionId: last.sessionId, at: now, ttl: 6 * 3600 };
+}
+async function flushDigests(all = false) {
+  const now = Date.now();
+  for (const [target, d] of digests) {
+    if (!all && d.due > now) continue;
+    digests.delete(target);
+    const msg = digestMessage(d.items, now);
+    if (target.startsWith('app:')) { for (const w of appWatchers) if (`app:${w.device.id}` === target) toApp(w, msg); }
+    else if (pushes.count()) await pushes.notify(msg, (prefs, s) => `web:${s.endpoint}` === target);
+  }
+}
+setInterval(() => { flushDigests().catch(err => log(`Push digest failed: ${err.message}`)); }, 60e3).unref();
 async function sendPushes() {
   const fresh = pushLib.news(chats.summaries(), pushSeen);
   if (!fresh.length || (!pushes.count() && !appWatchers.size)) return;
@@ -2223,8 +2249,8 @@ async function sendPushes() {
     // Per phone: its alert level for the chat (a partner goes by its chat), and its quiet hours.
     const recent = n.kind === 'reply' ? yourRecentOf(n.chat) : true;
     const want = prefs => msg.kind === 'clear' || pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat), yourRecent: recent });
-    for (const w of appWatchers) if (want(pushes.appPrefs(w.device.id))) toApp(w, msg);
-    if (msg.kind !== 'clear' && pushes.count()) await pushes.notify(msg, want);
+    for (const w of appWatchers) { const p = pushes.appPrefs(w.device.id); if (want(p) && !holdForDigest(`app:${w.device.id}`, p, msg)) toApp(w, msg); }
+    if (msg.kind !== 'clear' && pushes.count()) await pushes.notify(msg, (p, s) => want(p) && !holdForDigest(`web:${s.endpoint}`, p, msg));
   }
 }
 // What's waiting right now, for an app that has just connected (back on your Wi-Fi): approvals, and

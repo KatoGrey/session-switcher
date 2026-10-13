@@ -359,12 +359,55 @@ async function sendMessage() {
     const lost = [...String(text).matchAll(/@chat\[([^\]\n]+)\]/g)].map(m => m[1]).filter(l => !(C.chatRefs && C.chatRefs.get(l)));
     if (lost.length) { toast(`“${lost[0]}” isn’t linked any more. Type @ and pick it again, so its messages come along.`, 6000); return; }
     speedMark('reply');
-    const r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct }), ...(after ? { after: true } : {}) });
+    let r;
+    try { r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct }), ...(after ? { after: true } : {}) }); } catch (err) {
+      // No connection (the phone left the Wi-Fi): a plain message waits here and goes when it's back.
+      if (!err.offline || images.length || target !== 'main' || !C.key) throw err;
+      outboxAdd({ key: C.key, sessionId: C.sessionId, title: C.info && C.info.title, text });
+      clear();
+      return;
+    }
     clear();
     // Follow the partner's replies here (it may only just have started).
     if (target !== 'main' && !(C.comp && !C.comp.ended && (!r || !r.key || C.comp.key === r.key))) ensureCompanion().catch(() => {});
   } finally { $c('cSend').disabled = false; $c('cText').focus(); }
 }
+// Written while offline: kept on this device and sent, in order, as soon as the PC can be reached.
+const outboxAll = () => { try { return JSON.parse(store('outbox') || '[]') || []; } catch { return []; } };
+function outboxAdd(m) {
+  store('outbox', JSON.stringify([...outboxAll(), { ...m, at: Date.now() }].slice(-30)));
+  toast('No connection to your PC. Your message waits on this device and sends when you’re back.', 6000);
+  renderOutbox(); outboxSoon();
+  $c('cFeed').querySelector('.outbox-msg:last-child')?.scrollIntoView({ block: 'center' });
+}
+function renderOutbox() {
+  const feed = $c('cFeed'); if (!feed) return;
+  for (const el of feed.querySelectorAll('.outbox-msg')) el.remove();
+  for (const m of outboxAll().filter(x => x.key === C.key || (x.sessionId && x.sessionId === C.sessionId))) {
+    feed.insertAdjacentHTML('beforeend', `<div class="outbox-msg"><div class="ob-text">${esc(m.text)}</div><span class="ob-note">Waiting for a connection · sends by itself</span></div>`);
+  }
+}
+let outboxTimer = null, outboxBusy = false;
+function outboxSoon(ms = 15000) { clearTimeout(outboxTimer); if (outboxAll().length) outboxTimer = setTimeout(outboxFlush, ms); }
+async function outboxFlush() {
+  if (outboxBusy) return;
+  outboxBusy = true;
+  try {
+    for (const m of outboxAll()) {
+      try { await api('/api/chat/send', { key: m.key, text: m.text }); } catch (err) {
+        if (err.offline) break;   // still away: try again later
+        // The chat closed meanwhile: the words go back into its message box, not lost.
+        if (m.sessionId) store(`draft:${m.sessionId}`, m.text);
+        toast(`Your waiting message to “${m.title || 'a chat'}” couldn’t go (${err.message}). It’s back in that chat’s message box.`, 8000);
+      }
+      store('outbox', JSON.stringify(outboxAll().filter(x => !(x.at === m.at && x.text === m.text))));
+      if (!outboxAll().length) toast('Your waiting messages were sent.', 3000);
+    }
+  } finally { outboxBusy = false; if (window.ChatUI && ChatUI.isOpen()) renderOutbox(); outboxSoon(); }
+}
+window.addEventListener('online', () => outboxSoon(500));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) outboxSoon(1000); });
+outboxSoon(3000);
 function modeOptions(list) {
   const sel = $c('cMode');
   sel.innerHTML = list.map(m => `<option value="${esc(m.value)}">${esc(m.label)}</option>`).join('');

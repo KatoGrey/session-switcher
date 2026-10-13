@@ -3563,3 +3563,7 @@ body.from-cache .pulse::after{content:'';position:absolute;inset:-2px;border-rad
 .sp-down{color:var(--ember)}
 .sp-same{color:var(--ash)}
 .pb-fails{margin:8px 0 0;padding-left:18px;color:var(--parch-2)}
+/* Written while offline: waits, then sends. */
+.outbox-msg{align-self:flex-end;max-width:min(680px,88%);margin:8px 0 8px auto;padding:10px 14px;border:1px dashed var(--seam-2);border-radius:14px;opacity:.8}
+.outbox-msg .ob-text{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--parch)}
+.outbox-msg .ob-note{display:block;margin-top:6px;color:var(--ash);font-size:12px}

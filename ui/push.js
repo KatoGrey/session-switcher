@@ -12,9 +12,11 @@ const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const pushCapable = () => window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 const pushReplies = () => store('push-replies') || 'recent';
-const pushPrefs = () => ({ levels: alertLevels(), quiet: quietHours(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || '', replies: pushReplies() });
+const pushDigest = () => Number(store('push-digest')) || 0;
+const pushPrefs = () => ({ levels: alertLevels(), quiet: quietHours(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || '', replies: pushReplies(), digest: pushDigest() });
 // Which replies notify this phone ("needs your OK" always does).
-const repliesField = () => `<label class="ph-rep">Replies<select data-push="replies">${[['recent', 'From chats I wrote to in the last few hours'], ['all', 'From every chat'], ['none', 'None: only when a chat needs me']].map(([v, l]) => `<option value="${v}"${pushReplies() === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
+const repliesField = () => `<label class="ph-rep">Replies<select data-push="replies">${[['recent', 'From chats I wrote to in the last few hours'], ['all', 'From every chat'], ['none', 'None: only when a chat needs me']].map(([v, l]) => `<option value="${v}"${pushReplies() === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`
+  + (`<label class="ph-rep">When<select data-push="digest">${[[0, 'Right away, one each'], [15, 'Gathered: one every 15 minutes'], [60, 'Gathered: one an hour']].map(([v, l]) => `<option value="${v}"${pushDigest() === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`);
 // The Android app (5.3 and later) shows notifications itself.
 const appNotify = () => !!(window.Android && window.Android.notifyState);
 const appNotifyState = () => { try { return JSON.parse(window.Android.notifyState()); } catch { return { on: false }; } };
@@ -106,6 +108,8 @@ function renderTailscale(phones = Push.phones || 0) {
 }
 
 document.addEventListener('change', wrap(async e => {
+  const dg = e.target.closest('[data-push="digest"]');
+  if (dg) { store('push-digest', dg.value); pushSyncPrefs(); toast(dg.value === '0' ? 'Each reply right away. Needing your OK always is.' : `Replies gathered into one notification ${dg.value === '60' ? 'an hour' : 'every 15 minutes'}. Needing your OK still comes right away.`, 3500); return; }
   const rp = e.target.closest('[data-push="replies"]');
   if (rp) { store('push-replies', rp.value); pushSyncPrefs(); toast(rp.value === 'none' ? 'Only when a chat needs you.' : rp.value === 'all' ? 'Replies from every chat.' : 'Replies from chats you wrote to lately.', 2500); return; }
   const a = e.target.closest('[data-push="app"]');

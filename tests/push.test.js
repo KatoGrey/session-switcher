@@ -94,6 +94,11 @@ test('push: each phone’s alert levels and quiet hours (in its own time zone)',
   // Replies: by default only from chats you wrote to lately; needing you always gets through.
   const d = push.cleanPrefs({});
   assert.equal(d.replies, 'recent');
+  // Replies right away by default, or gathered every 15 or 60 minutes (nothing else).
+  assert.equal(d.digest, 0);
+  assert.equal(push.cleanPrefs({ digest: 15 }).digest, 15);
+  assert.equal(push.cleanPrefs({ digest: '60' }).digest, 60);
+  assert.equal(push.cleanPrefs({ digest: 5 }).digest, 0);
   assert.equal(push.wants(d, { kind: 'reply', sessionId: 'x', yourRecent: false }, noon), false, 'a chat you left working on its own');
   assert.equal(push.wants(d, { kind: 'reply', sessionId: 'x', yourRecent: true }, noon), true);
   assert.equal(push.wants(d, { kind: 'needs', sessionId: 'x', yourRecent: false }, noon), true);
