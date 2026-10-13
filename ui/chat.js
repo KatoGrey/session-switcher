@@ -692,7 +692,8 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'chgview': return viewChanges(c.closest('.chg'));
       case 'chgundo': return undoChanges(c.closest('.chg'));
       case 'review': return startReview(c.dataset.base || null, c.dataset.by || 'codex');
-      case 'limitas': return continueAs(c.dataset.acct);
+      case 'limitas': { const card = c.closest('.limit-card'); if (card && card._auto) { clearTimeout(card._auto); card._auto = 0; } return continueAs(c.dataset.acct); }
+      case 'limitnoauto': { const card = c.closest('.limit-card'); if (card) { clearTimeout(card._auto); card._auto = 0; c.closest('.lm-auto').remove(); } return undefined; }
       case 'limithand': return handOver(c.dataset.to);
       case 'stuckwait': return c.closest('.stuck-card').remove();
       case 'stuckstop': { const card = c.closest('.stuck-card'); C.interruptedAt = Date.now(); card.remove(); return api('/api/chat/interrupt', { key: keyFor(card.dataset.src) }); }

@@ -1487,6 +1487,24 @@ module.exports = [
     },
   },
   {
+    name: 'autopilot',
+    // Out of room mid-chat, as it happens: it carries on as the account with the most room by itself,
+    // after a moment to say no.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const ev = { kind: 'limit', which: 'five_hour', resetsAt: new Date(Date.now() + 3600e3).toISOString() };
+      await b.eval(`liveRender = true; renderLimit(${JSON.stringify(ev)}, 'main'); liveRender = false; return 1`); await sleep(400);
+      const note = await b.eval(`return document.querySelector('.limit-card .lm-auto')?.textContent.replace(/\\s+/g, ' ').trim() || ''`);
+      t.check('it says it’s about to carry on as the other account', /Carrying on as Personal in a moment/.test(note), note);
+      await b.clickOn('.limit-card [data-c="limitnoauto"]'); await sleep(3000);
+      t.check('“Let me choose” stops it', !calls.some(([p, body]) => p === '/api/chat/open' && body.account === 'personal'));
+      await b.eval(`liveRender = true; renderLimit(${JSON.stringify(ev)}, 'main'); liveRender = false; return 1`); await sleep(3500);
+      t.check('left alone, it carries on as that account, the same conversation', calls.some(([p, body]) => p === '/api/chat/open' && body.account === 'personal' && body.sessionId === demo.ID['s-bard'] && body.mode === 'resume'), calls.filter(([p]) => /open|stop/.test(p)));
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {

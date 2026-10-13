@@ -3522,3 +3522,6 @@ body.from-cache .live-pill,body.from-cache #livepill{opacity:.7}
 body.from-cache .pulse{position:relative}
 body.from-cache .pulse::after{content:'';position:absolute;inset:-2px;border-radius:inherit;border:1px solid var(--gilt);opacity:.35;animation:pulseWait 1.4s ease-in-out infinite}
 @keyframes pulseWait{50%{opacity:.08}}
+
+.lm-auto{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0 0;font-size:14px;color:var(--parch-2)}
+.lm-auto b{color:var(--gilt);font-weight:600}

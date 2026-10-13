@@ -41,6 +41,7 @@ function renderSetup(j) {
         </select></div>
       ${t('syncSettings', 'Keep extra accounts’ settings in step', 'Copies your main settings.json, CLAUDE.md and keybindings to extra accounts whenever the main copy is newer.')}
       ${t('syncState', 'Carry over MCP servers and folder trust', 'Before a chat opens with an extra account, adds any MCP servers, approved tools and trusted folders from your main account that it doesn’t have yet.')}
+      <label class="toggle"><input type="checkbox" data-pref="autoSwitch" ${p.autoSwitch !== false ? 'checked' : ''}><span><b>Carry on when an account runs out</b><span>A chat that runs out of room mid-reply carries on as the account with the most room, by itself (you get a moment to say no).</span></span></label>
       ${t('cleanEnv', 'Use only account sign-ins', 'Ignores ANTHROPIC_API_KEY and similar settings on this PC, so the account you pick is always the one used.')}
       ${t('appWindow', 'Open as its own window', `Uses ${S.platform === 'darwin' ? 'Chrome (or Edge or Brave)' : 'Chrome or Edge'} to show Session Switcher without browser tabs or an address bar.`)}
       <div class="field"><label for="prefClaude">Claude Code command</label>

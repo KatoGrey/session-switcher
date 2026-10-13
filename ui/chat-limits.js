@@ -32,6 +32,7 @@ function renderLimit(ev, src = 'main') {
   const acct = me && S.accounts.find(a => a.id === me);
   const others = prov === 'claude' && src === 'main' ? roomyAccounts(me).slice(0, 2) : [];
   const canHand = other === 'codex' ? codexOK() : (duo() || C.provider === 'claude');
+  const auto = liveRender && src === 'main' && prov === 'claude' && others.length && (!S.prefs || S.prefs.autoSwitch !== false) ? others[0] : null;
   const card = document.createElement('div');
   card.className = `limit-card${liveRender ? ' fresh' : ''}`;
   card.dataset.src = src;
@@ -42,8 +43,11 @@ function renderLimit(ev, src = 'main') {
     <div class="lm-b">${others.map(x => `<button type="button" class="btn gilt" data-c="limitas" data-acct="${esc(x.a.id)}" title="The same conversation, carried on as ${esc(x.a.name)}">Continue as ${esc(x.a.name)}${x.left !== null ? ` <small>${x.left}% left</small>` : ''}</button>`).join('')}
       ${canHand ? `<button type="button" class="btn" data-c="limithand" data-to="${other}" title="${PROV_NAME[other]} is caught up on this chat and picks up the work">Hand it to ${PROV_NAME[other]}</button>` : ''}
       ${ev.resetsAt ? '<button type="button" class="btn quiet" data-c="limitwait" title="When it resets, it carries on where it left off by itself">Carry on when it’s back</button>' : ''}</div>
-    <p class="lm-wait" hidden></p>`;
+    <p class="lm-wait" hidden></p>${auto ? `<p class="lm-auto"><span class="gen-spin" aria-hidden="true"></span>Carrying on as <b>${esc(auto.a.name)}</b> in a moment, the same conversation. <button type="button" class="linkish" data-c="limitnoauto">Let me choose</button></p>` : ''}`;
   withStick(() => feed.appendChild(card));
+  // Autopilot (Setup, on unless you turn it off): out of room as it happens, it carries on as the
+  // account with the most room by itself, after a moment to say no.
+  if (auto) card._auto = setTimeout(() => { if (card.isConnected && card._auto) { card._auto = 0; continueAs(auto.a.id).catch(err => toast(err.message)); } }, 2500);
 }
 // The PC has "carry on when it's back" set for one of them (or not any more).
 function renderResumeAt(ev, src) {
