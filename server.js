@@ -1279,15 +1279,18 @@ async function handleApi(req, res, url, remote = false) {
     const running = chats.bySession(id);
     // An OpenClaw agent's session: read from its own store.
     if (q.get('provider') === 'openclaw') return send(res, 200, openclaw.history(id));
+    // Switcher Lite asks with lite=1: what each step printed is left out (Lite never shows it, and it's
+    // most of the size: one chat's page was 4 MB, 3.9 of it tool output).
+    const slim = h => { if (q.get('lite')) for (const it of (h && h.items) || []) for (const b of it.blocks || []) if (b.type === 'tool') delete b.result; return h; };
     // Codex: by its id, or because the page says so (a brand-new thread isn't in Codex's list yet).
-    if (isCodexId(id) || q.get('provider') === 'codex' || (running && running.provider === 'codex')) return send(res, 200, await codex.history(id, q.get('cursor'), q.get('until') || null));
+    if (isCodexId(id) || q.get('provider') === 'codex' || (running && running.provider === 'codex')) return send(res, 200, slim(await codex.history(id, q.get('cursor'), q.get('until') || null)));
     let file;
     try { file = sessions.fileFor(id); } catch (err) {
       // A chat running here that hasn't written any history yet (it's new): nothing earlier to show.
       if (err.status === 404 && running) return send(res, 200, { items: [], start: 0, cursor: null });
       throw err;
     }
-    return send(res, 200, await chatLib.readHistory(file, { until: q.get('until') || null, cursor: q.get('cursor'), limit: 60 }));
+    return send(res, 200, slim(await chatLib.readHistory(file, { until: q.get('until') || null, cursor: q.get('cursor'), limit: 60 })));
   }
   // What a chat showed besides its conversation (changes, undos, reviews), up to where its live replay begins.
   if (route === 'GET /api/selfcheck') return send(res, 200, { last: selfCheck, running: !!selfCheckRun });

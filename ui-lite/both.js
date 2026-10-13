@@ -69,7 +69,7 @@ async function partnerHistory(id) {
     const { thread } = await api(`/api/lite/companion?id=${encodeURIComponent(id)}`);
     if (!thread || CV.id !== id) return;
     const prov = provNow() === 'codex' ? 'claude' : 'codex';
-    const h = await api(`/api/chat/history?${new URLSearchParams({ id: thread, ...(prov === 'codex' ? { provider: 'codex' } : {}) })}`);
+    const h = await api(`/api/chat/history?${new URLSearchParams({ id: thread, lite: '1', ...(prov === 'codex' ? { provider: 'codex' } : {}) })}`);
     const theirs = (h.items || []).filter(it => it.kind === 'assistant').map(it => ({ ...it, partner: NAME_OF[prov] }));
     if (!theirs.length || CV.id !== id) return;
     const t = it => (it.at ? Date.parse(it.at) : NaN);

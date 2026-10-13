@@ -205,6 +205,7 @@ let markSig = '';
 function renderLive() {
   if (typeof sendBackgroundQueues === 'function') sendBackgroundQueues();
   if (!S.loaded) return;
+  if (document.hidden) { updateBadge(); return; }   // nothing to draw in a tab you can't see
   renderSide(); updateBadge();
   if (S.view === 'triage') { if (!document.activeElement || document.activeElement.id !== 'trBox') render(); return; }
   if (S.view === 'now' && $('nowLive')) {
@@ -248,7 +249,8 @@ function go(view, extra = {}, { push = true } = {}) {
   }
   const doIt = () => {
     if (view === 'chat' && extra.draft) { $('main').innerHTML = ''; render(); }
-    else if (view === 'chat') { $('main').innerHTML = ''; CV.id = extra.chat || null; render(); openChatView(extra.chat, { key: extra.chatKey || null, provider: extra.provider || null }); }
+    // The chat is set up first (from memory if you were in it lately), then drawn, so it shows at once.
+    else if (view === 'chat') { $('main').innerHTML = ''; openChatView(extra.chat, { key: extra.chatKey || null, provider: extra.provider || null }); render(); }
     else render();
     $('main').scrollTop = 0;
   };

@@ -113,13 +113,29 @@ const CV = { id: null, key: null, info: null, items: [], cursor: null, es: null,
 
 function chatTitle() { const c = chatBy.get(CV.id); return c ? c.title : (CV.info && CV.info.title) || 'New chat'; }
 
+// Chats you've been in lately stay in memory, so going back to one shows it at once while it
+// catches up. Leaving a chat keeps it; the newest twelve are kept.
+const CHAT_CACHE = new Map();
+function cacheChat() {
+  if (!CV.id || CV.loading || CV.error || !CV.items.length) return;
+  CHAT_CACHE.delete(CV.id);
+  CHAT_CACHE.set(CV.id, { items: CV.items.filter(x => !x.onTheWay), cursor: CV.cursor, at: Date.now() });
+  while (CHAT_CACHE.size > 12) CHAT_CACHE.delete(CHAT_CACHE.keys().next().value);
+}
+// Each open is numbered; an answer that comes back after you've opened another chat is dropped
+// (before, a slow chat's messages could land in the chat you'd moved to).
+let openSeq = 0;
 async function openChatView(id, { key = null, provider = null, keepRead = false } = {}) {
+  const seq = ++openSeq;
+  if (CV.id && String(CV.id) !== String(id)) cacheChat();
   if (CV.es) { CV.es.close(); CV.es = null; }
   // When it catches up on a chat you're reading higher up in, you stay where you were; otherwise it opens at the end.
   const readAt = keepRead ? CV.readAt : null;
   Object.assign(CV, { readAt, id, key, inRepo: false, info: null, items: [], queue: queueFor(id), cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
   CV.to = toFor(id); partnerReset();
   resetComposer();
+  const hit = !keepRead && CHAT_CACHE.get(String(id));
+  if (hit) { CV.items = hit.items.slice(); CV.cursor = hit.cursor; CV.loading = false; }
   const c = chatBy.get(id);
   CV.provider = provider || (c ? c.provider : 'claude');
   markSeen(id);
@@ -130,17 +146,19 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
   if (!CV.key && x && x.source !== 'app' && x.working) CV.readOnly = x.source === 'terminal' ? 'It’s running in a terminal. Answer it there, or wait for it to finish.' : 'It’s running in another app (like the Claude desktop app). Answer it there, or wait for it to finish.';
   try {
     let until = null;
-    if (CV.key) { CV.info = await api('/api/chat/attach', { key: CV.key }); until = CV.info.bufferFrom || CV.info.startedAt || null; CV.provider = CV.info.provider; }
-    const q = new URLSearchParams({ id });
+    if (CV.key) { const info = await api('/api/chat/attach', { key: CV.key }); if (seq !== openSeq) return; CV.info = info; until = info.bufferFrom || info.startedAt || null; CV.provider = info.provider; }
+    const q = new URLSearchParams({ id, lite: '1' });
     if (until) q.set('until', until);
     if (CV.provider === 'codex') q.set('provider', 'codex');
     const h = await api(`/api/chat/history?${q}`);
+    if (seq !== openSeq) return;
     let items = h.items || [];
     // The live stream replays everything since this run started; history stops where that begins.
     if (until) { const bf = Date.parse(until) - 1000; const i = items.findIndex(it => it.at && Date.parse(it.at) >= bf); if (i >= 0) items = items.slice(0, i); }
     CV.items = items; CV.cursor = h.cursor || null;
     await partnerHistory(id);
-  } catch (err) { CV.error = err.message; }
+    if (seq !== openSeq) return;
+  } catch (err) { if (seq !== openSeq) return; CV.error = hit ? null : err.message; }
   CV.loading = false;
   if (S.view !== 'chat' || CV.id !== id) return;
   paintChat(); paintQueue();
@@ -149,10 +167,14 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
   if (CV.queue.length) setTimeout(sendQueued, 1500);
 }
 async function loadEarlier() {
-  if (!CV.cursor) return;
-  const q = new URLSearchParams({ id: CV.id, cursor: CV.cursor });
+  if (!CV.cursor || loadEarlier.busy) return;
+  const id = CV.id, seq = openSeq;
+  const q = new URLSearchParams({ id, cursor: CV.cursor, lite: '1' });
   if (CV.provider === 'codex') q.set('provider', 'codex');
-  const h = await api(`/api/chat/history?${q}`);
+  loadEarlier.busy = true;
+  let h; try { h = await api(`/api/chat/history?${q}`); } finally { loadEarlier.busy = false; }
+  // You've moved to another chat since: these belong to the one you left.
+  if (seq !== openSeq || CV.id !== id) return;
   const sc = $('feed'), before = sc ? sc.scrollHeight - sc.scrollTop : 0;
   CV.items = [...(h.items || []), ...CV.items]; CV.cursor = h.cursor || null;
   paintFeed();
@@ -424,7 +446,14 @@ function paintChat() {
   if (typeof paintViewer === 'function') { if (VW.open && VW.chat !== CV.id) closeViewer(); else paintViewer(); }
   const f = $('feed'); f.scrollTop = CV.readAt != null ? CV.readAt : f.scrollHeight;
   // Where you're reading: null at the end (it follows new messages), else how far down you are.
-  f.addEventListener('scroll', () => { CV.readAt = f.scrollHeight - f.scrollTop - f.clientHeight < 160 ? null : f.scrollTop; }, { passive: true });
+  // Near the top, earlier messages load by themselves (no button to press).
+  if (!f._watching) {
+    f._watching = true;
+    f.addEventListener('scroll', () => {
+      CV.readAt = f.scrollHeight - f.scrollTop - f.clientHeight < 160 ? null : f.scrollTop;
+      if (f.scrollTop < 900 && CV.cursor && !CV.loading && !loadEarlier.busy) loadEarlier().catch(() => {});
+    }, { passive: true });
+  }
   if (!REMOTE && !matchMedia('(max-width: 760px)').matches) $('msgBox')?.focus();
 }
 const nearBottom = () => { const f = $('feed'); return !f || f.scrollHeight - f.scrollTop - f.clientHeight < 160; };
@@ -1060,3 +1089,25 @@ document.addEventListener('keydown', e => {
   if (!quickQ(p)) { t.closest('.ask-card').querySelector('[data-sendanswers]')?.click(); return; }
   const v = t.value.trim(); if (v) answerInChat(p.requestId, 'allow', { [p.questions[0].question]: v });
 });
+
+// Pointing at a chat (sidebar, lists) starts reading it, so it's usually there by the time you click.
+// One at a time, and not again for a minute.
+let prefetching = null;
+document.addEventListener('pointerover', e => {
+  const row = e.target.closest && e.target.closest('[data-chat], [data-open]');
+  const id = row && (row.dataset.chat || row.dataset.open);
+  if (!id || id === CV.id || prefetching) return;
+  const had = CHAT_CACHE.get(id);
+  if (had && Date.now() - had.at < 60e3) return;
+  clearTimeout(document._pf);
+  document._pf = setTimeout(async () => {
+    if (prefetching || !row.matches(':hover')) return;
+    prefetching = id;
+    try {
+      const c = chatBy.get(id);
+      const q = new URLSearchParams({ id, lite: '1', ...(c && c.provider === 'codex' ? { provider: 'codex' } : {}) });
+      const h = await api(`/api/chat/history?${q}`);
+      if (id !== CV.id) { CHAT_CACHE.delete(id); CHAT_CACHE.set(id, { items: h.items || [], cursor: h.cursor || null, at: Date.now() }); while (CHAT_CACHE.size > 12) CHAT_CACHE.delete(CHAT_CACHE.keys().next().value); }
+    } catch { /* it loads when opened */ } finally { prefetching = null; }
+  }, 120);
+}, { passive: true });

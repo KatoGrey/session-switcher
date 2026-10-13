@@ -111,12 +111,19 @@ function loadPlans(fresh = false) {
 // Live updates come over the full app's own event stream.
 const timers = {};
 const later = (name, ms, fn) => { clearTimeout(timers[name]); timers[name] = setTimeout(() => fn().catch(() => {}), ms); };
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !S.loaded) return;
+  if (S.stale) { S.stale = false; later('state', 50, async () => { if (await loadState()) renderWhenIdle(); }); }
+  later('live', 50, async () => { await loadLive(); renderLive(); });
+});
 function connect() {
   const es = new EventSource(`/api/events?token=${TOKEN}`);
   es.onopen = () => { S.connected = true; renderConn(); };
   es.onerror = () => { S.connected = false; renderConn(); };
-  for (const ev of ['live', 'activity', 'running']) es.addEventListener(ev, () => later('live', 350, loadLive));
-  for (const ev of ['sessions', 'lite', 'organize', 'routines']) es.addEventListener(ev, () => later('state', 1200, async () => { if (await loadState()) renderWhenIdle(); }));
+  // A tab you can't see does the least it can: the running list (slower; queued messages still go
+  // and the count stays right), and the rest once you're back.
+  for (const ev of ['live', 'activity', 'running']) es.addEventListener(ev, () => later('live', document.hidden ? 5000 : 350, loadLive));
+  for (const ev of ['sessions', 'lite', 'organize', 'routines']) es.addEventListener(ev, () => { if (document.hidden) { S.stale = true; return; } later('state', 1200, async () => { if (await loadState()) renderWhenIdle(); }); });
   for (const ev of ['lite', 'routines']) es.addEventListener(ev, () => later('routines', 1500, async () => { await loadRoutines(); updateBadge(); if (['now', 'routines'].includes(S.view)) renderWhenIdle(); }));
   for (const ev of ['usage', 'accounts']) es.addEventListener(ev, () => later('plans', 1500, async () => { await loadPlans(false); renderPlansOnly(); }));
   loadRoutines().then(() => updateBadge()).catch(() => {});
@@ -418,6 +425,13 @@ function askRename(id) {
 // f: Focus on, or off when every one of them is already in Focus.
 const toggleFocus = ids => setChats(ids, { focus: !ids.every(id => (chatBy.get(id) || {}).focus) });
 async function setLook(patch) {
+  // The look changes at once; saving it to the app happens behind (a busy app used to hold it up).
+  if (patch.skin || patch.mode) {
+    if (patch.skin) local.set('skin', patch.skin);
+    if (patch.mode) local.set('mode', patch.mode);
+    if (S.lite) Object.assign(S.lite.look, patch.skin ? { skin: patch.skin } : {}, patch.mode ? { mode: patch.mode } : {});
+    applyLook(); render();
+  }
   let j = await api('/api/lite/look', patch);
   // An app that doesn't know the Pro looks yet keeps the base look; this device keeps the Pro one.
   if (patch.skin && /-pro$/.test(patch.skin) && j.look && j.look.skin !== patch.skin) j = await api('/api/lite/look', { skin: baseSkin(patch.skin) });
