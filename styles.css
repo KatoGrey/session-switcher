@@ -3542,3 +3542,24 @@ body.from-cache .pulse::after{content:'';position:absolute;inset:-2px;border-rad
 .whats-new .wn-b{display:flex;gap:8px;justify-content:flex-end;margin:10px 0 0}
 .wp-brief{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin:0 0 6px;color:var(--parch-2);font:500 13.5px/1.4 var(--f-body)}
 .wp-brief .eyebrow{margin:0}
+/* Setup → Problems and speed. */
+.pb-check{margin:0 0 10px;color:var(--parch-2)}
+.pb-check.ok{color:var(--parch-2)}
+.pb-check.bad{color:var(--ember)}
+.pb-act{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.pb-list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:8px}
+.pb-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 12px;border:1px solid var(--seam);border-radius:10px}
+.pb-t{flex:1 1 320px;min-width:0;display:grid;gap:2px}
+.pb-t b{color:var(--parch);font-weight:500;overflow-wrap:anywhere}
+.pb-where,.pb-when{color:var(--ash);font-size:12.5px}
+.pb-b{display:flex;gap:6px}
+.pb-none{color:var(--ash);font-size:13px;margin:6px 0}
+.d-h.sub{margin-top:18px}
+.speed{border-collapse:collapse;width:100%}
+.speed th{text-align:left;font-weight:500;color:var(--parch-2);padding:6px 12px 6px 0}
+.speed td{padding:6px 12px 6px 0;color:var(--parch)}
+.speed .sp-n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.sp-up{color:var(--gilt)}
+.sp-down{color:var(--ember)}
+.sp-same{color:var(--ash)}
+.pb-fails{margin:8px 0 0;padding-left:18px;color:var(--parch-2)}

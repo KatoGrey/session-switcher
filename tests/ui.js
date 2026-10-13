@@ -1,6 +1,8 @@
 // What a person sees and does: menus, dialogs, the chat window, the model picker, themes and the
 // phone layout. Each suite drives a real (headless) browser with real clicks and key presses,
 // against the demo world in demo.js, so the results never depend on anyone's own chats.
+const fs = require('fs');
+const path = require('path');
 const { launch, sleep } = require('./browser');
 const demo = require('./demo');
 
@@ -932,6 +934,47 @@ module.exports = [
     },
   },
   {
+    name: 'look checks',
+    // Every theme, light and dark, the hub and a chat, compared with how it looked the last time
+    // (kept outside the app folder). Run by name, and by the nightly self-check. It only looks: a
+    // theme that changed shows here, it's never changed by this.
+    onlyByName: true,
+    async run(t) {
+      const dir = process.env.LOOKS || path.join(process.env.LOCALAPPDATA || require('os').homedir(), 'SessionSwitcher', 'looks');
+      fs.mkdirSync(dir, { recursive: true });
+      const b = await t.open();
+      // Still pictures: no motion, the same clock.
+      const still = `document.documentElement.classList.add('low-power'); document.body.classList.add('low-power'); for (const el of document.querySelectorAll('[data-clock]')) el.textContent = '9:00 AM'; for (const a of document.getAnimations()) { try { a.finish(); } catch {} } return 1`;
+      const themes = await b.eval(`return Look.THEMES.filter(x => x.family !== 'custom').map(x => x.id)`);
+      const changed = [];
+      let kept = 0;
+      for (const where of ['hub', 'chat']) {
+        if (where === 'chat') { await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2000); }
+        for (const mode of ['dark', 'light']) {
+          for (const theme of themes) {
+            await b.eval(`Look.set({ theme: ${JSON.stringify(theme)}, mode: ${JSON.stringify(mode)} }); return 1`); await sleep(350);
+            await b.eval(still); await sleep(150);
+            const now = await b.shotData();
+            const file = path.join(dir, `${where}-${theme}-${mode}.png`);
+            if (process.env.LOOKS_RESET || !fs.existsSync(file)) { fs.writeFileSync(file, Buffer.from(now, 'base64')); kept++; continue; }
+            const was = fs.readFileSync(file).toString('base64');
+            // Compared in the page: both drawn small, the share of spots that differ clearly.
+            const diff = await b.eval(`const load = s => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/png;base64,' + s; });
+              const [x, y] = await Promise.all([load(${JSON.stringify(was)}), load(${JSON.stringify(now)})]);
+              const w = 360, h = 225, px = img => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(img, 0, 0, w, h); return g.getImageData(0, 0, w, h).data; };
+              const a = px(x), z = px(y); let n = 0;
+              for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - z[i]) + Math.abs(a[i + 1] - z[i + 1]) + Math.abs(a[i + 2] - z[i + 2]) > 60) n++;
+              return n / (w * h)`);
+            if (diff > 0.03) { changed.push(`${where} ${theme} ${mode}: ${(diff * 100).toFixed(1)}% looks different`); fs.writeFileSync(file.replace(/\.png$/, '.now.png'), Buffer.from(now, 'base64')); }
+          }
+        }
+      }
+      if (kept) console.log(`  · kept ${kept} new baseline picture${kept === 1 ? '' : 's'} in ${dir}`);
+      t.check('every theme looks as it did last time', !changed.length, changed.join('; '));
+      await b.eval(`Look.reset(); return 1`);
+    },
+  },
+  {
     name: 'looks',
     async run(t) {
       const b = await t.open();
@@ -1527,6 +1570,36 @@ module.exports = [
       await b.eval(`renderFolder(); return 1`); await sleep(500);
       const br = await b.eval(`return document.querySelector('.wp-brief')?.textContent.replace(/\\s+/g, ' ') || ''`);
       t.check('a project page sums up its week', /This week/.test(br) && /chat/.test(br) && /3 files changed/.test(br) && /Ask Claude for a summary/.test(br), br);
+    },
+  },
+  {
+    name: 'keeps itself good',
+    // A slip on the page is noted; Setup lists problems with Ask Claude to fix this; last night's
+    // self-check shows on the hub when it found something; speed is timed on this device.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]) });
+      await sleep(600);
+      const card = await b.eval(`return document.getElementById('selfCheckCard')?.textContent.replace(/\\s+/g, ' ') || ''`);
+      t.check('a self-check that found something shows on the hub', /1 check failed overnight/.test(card) && /crimson light/.test(card), card);
+      await t.shot(b, 'card');
+      await b.clickOn('#selfCheckCard [data-sc="seen"]'); await sleep(200);
+      t.check('OK puts it away', await b.eval(`return !document.getElementById('selfCheckCard')`));
+      t.check('the hub’s load time is noted', await b.eval(`return (JSON.parse(localStorage.getItem('speed') || '{}').hub || []).length >= 1`));
+      // A slip in the page is sent to the PC, once.
+      await b.eval(`setTimeout(() => { null.boom; }, 0); setTimeout(() => { null.boom; }, 10); await new Promise(r => setTimeout(r, 300)); return 1`);
+      const slips = calls.filter(([p, body]) => p === '/api/problems' && body && body.message);
+      t.check('a slip on the page is noted, once', slips.length === 1 && /null/.test(slips[0][1].message), slips.map(x => x[1].message));
+      b.logs.length = 0;   // that slip was on purpose
+      await b.eval(`openSetupAt('st-problems'); return 1`); await sleep(1200);
+      const box = await b.eval(`return document.getElementById('problemsBox')?.textContent.replace(/\\s+/g, ' ') || ('no box: ' + document.getElementById('setup').open + ' ' + document.getElementById('setupBody').textContent.slice(0, 200))`);
+      t.check('Setup lists the problems, newest first, with how often', /Cannot read properties of undefined/.test(box) && /3 times/.test(box) && /Ask Claude to fix this/.test(box), box.slice(0, 300));
+      t.check('and the last self-check, and Speed', /The last self-check/.test(box) && /1 check failed/.test(box) && /The hub, from opening the app/.test(box), box.slice(0, 300));
+      await b.eval(`document.getElementById('st-problems').scrollIntoView(); return 1`); await sleep(200);
+      await t.shot(b, 'setup');
+      await b.clickOn('#problemsBox .pb-row:last-child [data-pb="fix"]'); await sleep(1500);
+      const fix = await b.eval(`return { open: ChatUI.isOpen(), cwd: C.info && C.info.cwd, text: document.getElementById('cText').value }`);
+      t.check('Ask Claude to fix this opens a chat in the app’s folder with the error and the log', fix.open && /Cannot read properties of undefined/.test(fix.text) && /switcher\.log/.test(fix.text) && /usage\.js:42/.test(fix.text), fix);
     },
   },
   {

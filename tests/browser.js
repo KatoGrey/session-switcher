@@ -90,6 +90,7 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
       if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
       return r.result.result.value;
     },
+    shotData: async () => (await send('Page.captureScreenshot', { format: 'png' })).result.data,
     shot: async file => { const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(file, Buffer.from(r.result.data, 'base64')); },
     // Real input, as a person would give it.
     key: async (key, code = key, vk = 0, modifiers = 0) => {

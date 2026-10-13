@@ -28,7 +28,7 @@ function renderLive(force) {
   const heroNow = heroHtml(), heroKey = heroNow.replace(/<span data-clock>[^<]*<\/span>/, '');
   // Only when it changed: redrawing restarts the scene's animations (a forced refresh needn't).
   if ($('heroSlot')._h !== heroKey) { $('heroSlot').innerHTML = heroNow; $('heroSlot')._h = heroKey; }
-  renderWelcome(); renderWhatsNew();
+  renderWelcome(); renderWhatsNew(); renderSelfCheckCard();
   loadToday(); renderToday();
   // A chat moving between the boards (it finished, or wants you) glides across; new ones fade in.
   flip([$('awaitList'), $('board'), $('quietList')], () => {

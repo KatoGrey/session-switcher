@@ -257,7 +257,7 @@ async function loadHistory(before) {
   const tmp = document.createElement('div');
   for (const r of rows) { curProv = r.prov; try { renderItem(tmp, r.it, false); } finally { curProv = null; } }
   const feed = $c('cFeed');
-  if (before === undefined) { feed.prepend(...tmp.childNodes); feed.prepend($c('cEarlier')); }
+  if (before === undefined) { feed.prepend(...tmp.childNodes); feed.prepend($c('cEarlier')); speedDone('chat'); }
   else {
     const s = scroller(), oldH = s.scrollHeight;
     $c('cEarlier').after(...tmp.childNodes);
@@ -440,6 +440,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
 // (Not "open"/"close": as page-wide names those would replace the browser's window.open and window.close.)
 async function openChatView({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false } = {}) {
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
+  if (sessionId) speedMark('chat');
   const [known] = sessionId ? findSession(sessionId) : [null];
   // An OpenClaw agent's session is read here; it carries on in OpenClaw.
   if (known && known.provider === 'openclaw') return watch({ sessionId: known.id, source: 'openclaw' });

@@ -142,6 +142,19 @@ function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.sto
 // Each conversation's changes, undos and reviews, kept beyond the chat's run (lib/extras.js).
 const chatExtras = extrasLib.createExtras({ dir: path.join(DATA_DIR, 'chat-extras'), log });
 // What you were writing in each chat, so the phone and the PC pick up each other's drafts.
+// Problems: what went wrong (the PC's own slips and the page's), newest first, kept so they can be
+// fixed (Setup → Problems, with Ask Claude to fix this). The same one again just counts up.
+const PROBLEMS_FILE = path.join(DATA_DIR, 'problems.json');
+let problems = (store.loadOwnJson(PROBLEMS_FILE, null, log) || {}).problems || [];
+let problemsTimer = null;
+function noteProblem(where, message, stack) {
+  const text = String(message || 'Unknown error').replace(/\s+/g, ' ').slice(0, 400), key = `${where}|${text}`;
+  const now = new Date().toISOString(), old = problems.find(p => p.key === key);
+  if (old) { old.count++; old.at = now; problems = [old, ...problems.filter(p => p !== old)]; }
+  else problems = [{ id: crypto.randomBytes(5).toString('hex'), key, where, message: text, stack: String(stack || '').slice(0, 3000), at: now, count: 1 }, ...problems].slice(0, 40);
+  clearTimeout(problemsTimer);
+  problemsTimer = setTimeout(() => { try { store.writeJsonAtomic(PROBLEMS_FILE, { problems }); } catch (err) { console.log(`Couldn’t save problems.json: ${err.message}`); } }, 1000);
+}
 const DRAFTS_FILE = path.join(DATA_DIR, 'drafts.json');
 let drafts = (store.loadOwnJson(DRAFTS_FILE, null, log) || {}).drafts || {};
 let draftsTimer = null;
@@ -1047,6 +1060,12 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, await chatLib.readHistory(file, { until: q.get('until') || null, cursor: q.get('cursor'), limit: 60 }));
   }
   // What a chat showed besides its conversation (changes, undos, reviews), up to where its live replay begins.
+  if (route === 'GET /api/selfcheck') return send(res, 200, { last: selfCheck, running: !!selfCheckRun });
+  if (route === 'GET /api/problems') {
+    let tail = '';
+    try { tail = fs.readFileSync(LOG_FILE, 'utf8').split(/\r?\n/).slice(-40).join('\n'); } catch { /* no log yet */ }
+    return send(res, 200, { problems: problems.map(({ key, ...p }) => p), appDir: APP_DIR, log: tail });
+  }
   if (route === 'GET /api/draft') { const d = drafts[String(url.searchParams.get('id') || '').toLowerCase()]; return send(res, 200, d || { text: '', at: 0 }); }
   if (route === 'GET /api/chat/extras') return send(res, 200, { extras: chatExtras.list(url.searchParams.get('id') || '', url.searchParams.get('until') || null) });
   if (route === 'GET /api/chat/diff') {
@@ -1572,6 +1591,17 @@ async function handleApi(req, res, url, remote = false) {
       broadcast('sessions');
       return send(res, 200, { title });
     }
+    // The page's own slips (from this PC or a paired phone), and putting problems away.
+    case '/api/selfcheck': {
+      if (remote) throw fail(403, 'Run it from the PC.');
+      runSelfCheck('asked').catch(err => log(`Self-check failed to run: ${err.message}`));
+      return send(res, 200, { running: true, last: selfCheck });
+    }
+    case '/api/problems': {
+      if (body.clear) { problems = body.clear === 'all' ? [] : problems.filter(p => p.id !== body.clear); clearTimeout(problemsTimer); try { store.writeJsonAtomic(PROBLEMS_FILE, { problems }); } catch { /* read-only */ } return send(res, 200, { ok: true }); }
+      noteProblem(remote ? 'Phone' : 'Page', String(body.message || ''), String(body.stack || ''));
+      return send(res, 200, { ok: true });
+    }
     case '/api/draft': {
       const id = String(body.id || '').toLowerCase();
       if (!/^[\w-]{8,80}$/.test(id)) throw fail(400, 'Which chat?');
@@ -1594,7 +1624,7 @@ async function handleApi(req, res, url, remote = false) {
       // Tidy up: chats with nothing new for this many days count as done (0: never).
       if (body.autoDone !== undefined) { const d = Number(body.autoDone); if (![0, 3, 7, 14, 30].includes(d)) throw fail(400, 'Unknown choice.'); p.autoDone = d; }
       if (body.terminal !== undefined) { if (!acc.TERMINALS.includes(body.terminal)) throw fail(400, 'Unknown terminal choice.'); p.terminal = body.terminal; }
-      for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow', 'autoSwitch', 'autoReview']) if (typeof body[k] === 'boolean') p[k] = body[k];
+      for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow', 'autoSwitch', 'autoReview', 'nightlyCheck']) if (typeof body[k] === 'boolean') p[k] = body[k];
       if (body.openIn !== undefined) { if (!['app', 'terminal'].includes(body.openIn)) throw fail(400, 'Unknown choice.'); p.openIn = body.openIn; }
       if (body.claudeCommand !== undefined) {
         const cmd = String(body.claudeCommand).trim();
@@ -1664,6 +1694,56 @@ async function handleApi(req, res, url, remote = false) {
 // The window reconnects by itself. "When replies finish" waits until no chat in the window is
 // starting, working or waiting for an OK.
 let restartWait = null, restartStarting = false, restartError = null;
+// The nightly self-check: at half past three in the morning, when nothing is working, the app runs its
+// own tests and compares every theme with how it looked last time, at low priority, and keeps the
+// result. Anything that failed shows on the hub and in Setup → Problems. (Setup can turn it off.)
+const SELFCHECK_FILE = path.join(DATA_DIR, 'selfcheck.json');
+let selfCheck = store.loadOwnJson(SELFCHECK_FILE, null, log);
+let selfCheckRun = null;
+function runSelfCheck(why) {
+  if (selfCheckRun) return selfCheckRun;
+  if (!fs.existsSync(path.join(APP_DIR, 'tests', 'run.js'))) return Promise.resolve(null);
+  const { spawn } = require('child_process');
+  const started = Date.now();
+  const pass = args => new Promise(resolve => {
+    let out = '';
+    const child = spawn(process.execPath, ['tests/run.js', ...args], { cwd: APP_DIR, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    try { os.setPriority(child.pid, os.constants.priority.PRIORITY_LOW); } catch { /* not allowed */ }
+    child.stdout.on('data', d => { out += d; if (out.length > 4e6) out = out.slice(-2e6); });
+    child.stderr.on('data', d => { out += d; });
+    const kill = setTimeout(() => { try { child.kill(); } catch { /* gone */ } }, 40 * 60e3);
+    child.on('error', err => { clearTimeout(kill); resolve({ code: 1, out: err.message }); });
+    child.on('exit', code => { clearTimeout(kill); resolve({ code, out }); });
+  });
+  selfCheckRun = (async () => {
+    log(`Self-check started (${why}).`);
+    const a = await pass([]), b = await pass(['look checks']);
+    // What failed, by suite: "— suite" heads the lines under it.
+    const failures = [];
+    for (const r of [a, b]) {
+      let suite = '';
+      for (const line of r.out.split(/\r?\n/)) {
+        const h = line.match(/^— (.+)/); if (h) { suite = h[1]; continue; }
+        const f = line.match(/^\s*✖\s+(.+)/); if (f) failures.push(`${suite ? `${suite}: ` : ''}${f[1]}`.slice(0, 400));
+        if (/^not ok \d+ - /.test(line.trim())) failures.push(line.trim().replace(/^not ok \d+ - /, 'logic: ').slice(0, 400));
+      }
+      if (r.code && !failures.length) failures.push(`The tests stopped early: ${r.out.trim().split(/\r?\n/).slice(-3).join(' ').slice(0, 300)}`);
+    }
+    selfCheck = { at: new Date().toISOString(), ok: !failures.length, ms: Date.now() - started, failures: failures.slice(0, 30), why };
+    try { store.writeJsonAtomic(SELFCHECK_FILE, selfCheck); } catch (err) { log(`Couldn’t save selfcheck.json: ${err.message}`); }
+    for (const f of failures.slice(0, 10)) noteProblem('Self-check', f, '');
+    log(`Self-check finished: ${failures.length ? `${failures.length} failed` : 'all good'}.`);
+    return selfCheck;
+  })().finally(() => { selfCheckRun = null; });
+  return selfCheckRun;
+}
+setInterval(() => {
+  const d = new Date(), c = config();
+  if (c.prefs && c.prefs.nightlyCheck === false) return;
+  if (d.getHours() !== 3 || d.getMinutes() < 30 || busyChats() || selfCheckRun || sys.DRY_RUN) return;
+  if (selfCheck && new Date(selfCheck.at).toDateString() === d.toDateString()) return;
+  runSelfCheck('nightly').catch(err => log(`Self-check failed to run: ${err.message}`));
+}, 5 * 60e3).unref();
 const busyChats = () => Object.values(chats.live()).filter(c => ['starting', 'busy', 'waiting'].includes(c.state)).length;
 function restartState() { return restartWait ? { pending: true, waitingOn: busyChats(), since: restartWait.since } : { pending: false }; }
 async function restartNow(why) {
@@ -2049,7 +2129,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
     }
     res.writeHead(404); res.end('Not found');
   } catch (err) {
-    if (!err.status || err.status >= 500) log(`Error on ${req.method} ${url.pathname}: ${err.stack || err.message}`);
+    if (!err.status || err.status >= 500) { log(`Error on ${req.method} ${url.pathname}: ${err.stack || err.message}`); noteProblem('PC', `${req.method} ${url.pathname}: ${err.message}`, err.stack); }
     // The app's own messages are written for you; a slip inside (a missing file, a code error) isn't, so it
     // says so plainly (the details are in switcher.log).
     const internal = !err.status && (err.code || err instanceof TypeError || err instanceof ReferenceError || err instanceof RangeError || err instanceof SyntaxError);
@@ -2284,10 +2364,10 @@ server.on('error', err => {
     process.exit(1);
   }
 });
-process.on('uncaughtException', err => log(`Unexpected error: ${err.stack || err.message}`));
+process.on('uncaughtException', err => { log(`Unexpected error: ${err.stack || err.message}`); noteProblem('PC', err.message, err.stack); });
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } } setTimeout(() => process.exit(0), 300); });
 process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
-process.on('unhandledRejection', err => log(`Unexpected error: ${err && (err.stack || err.message)}`));
+process.on('unhandledRejection', err => { log(`Unexpected error: ${err && (err.stack || err.message)}`); noteProblem('PC', err && err.message, err && err.stack); });
 
 // Started by Restart: the copy being replaced is still exiting, so wait for it (up to 20 s) first.
 const restartFrom = Number(process.env.SWITCHER_RESTART_FROM) || 0;

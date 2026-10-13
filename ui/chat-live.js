@@ -191,6 +191,7 @@ function handleEvent(ev, src) {
       renderCrew(); break;
     case 'stream_start': withStick(() => part(feed, ev.mid)); break;
     case 'delta':
+      if (liveRender) speedDone('reply');
       if (ev.thinking) { setStatus(src, 'Thinking…'); break; }
       setStatus(src, comp ? 'Writing…' : '');
       part(feed, ev.mid);
