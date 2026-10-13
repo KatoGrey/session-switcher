@@ -1,10 +1,9 @@
-# The desktop app
+# Ready for co-workers
 
-- **A real app.** Install it once (Windows or Mac); it updates itself from GitHub, and your accounts and settings live in their own folder, so updates never touch them.
-- **What's waiting, at a glance.** The tray lists the chats that need you, the taskbar shows their count, and it flashes when a new one needs you while you're elsewhere.
-- **Taskbar shortcuts.** Right-click the taskbar button: New chat, Search every chat, Queue a task.
-- **Ctrl+Shift+Space from anywhere** brings it up, and puts it away again.
-- **Stays awake while chats work.** A long reply isn't cut off by the PC going to sleep.
-- **Updates, in the app.** Setup → Desktop app shows the version and what's coming; a ready update shows on the hub with Restart to update, and open chats come back where they were.
-- **Right-click** for spelling suggestions, copy and paste; F5 reloads, Ctrl +/− zooms.
-- **Fixed:** bringing Codex into a chat could fail ("ensureCompanion") and leave its models unlisted; tips come at most once a day.
+- **Getting started.** Someone new gets a short guide on their first start: install Claude Code (one click runs Anthropic's installer), sign in, and optionally Codex, the phone and a two-minute tour.
+- **Macs update themselves.** A Mac now downloads, checks and installs a new version like Windows does: just **Restart to update**.
+- **Test versions first.** Setup → Desktop app → **Get test versions first** gets new versions before everyone else.
+- **Report it.** A problem in Setup → Problems and speed has **Report it** (a filled-in GitHub issue) and **Copy report**, with nothing personal in them.
+- **Your phone and Windows Firewall.** Setup → Phone access checks that Windows lets your phone in, and **Let my phone in** fixes it if not.
+- **The mini window works in the app.** Ctrl+K → Open the mini window: a small card that stays on top of your other apps, and remembers where you put it.
+- **What's new names its version**, and releases now wait until every test passes.
