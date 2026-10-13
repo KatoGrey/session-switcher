@@ -42,6 +42,7 @@ function renderSetup(j) {
       ${t('syncSettings', 'Keep extra accounts’ settings in step', 'Copies your main settings.json, CLAUDE.md and keybindings to extra accounts whenever the main copy is newer.')}
       ${t('syncState', 'Carry over MCP servers and folder trust', 'Before a chat opens with an extra account, adds any MCP servers, approved tools and trusted folders from your main account that it doesn’t have yet.')}
       <label class="toggle"><input type="checkbox" data-pref="autoSwitch" ${p.autoSwitch !== false ? 'checked' : ''}><span><b>Carry on when an account runs out</b><span>A chat that runs out of room mid-reply carries on as the account with the most room, by itself (you get a moment to say no).</span></span></label>
+      <label class="toggle"><input type="checkbox" data-tips ${store('tips') !== 'off' ? 'checked' : ''}><span><b>Show tips</b><span>A one-line tip the first time something new appears, once each (on this device).</span></span></label>
       ${t('cleanEnv', 'Use only account sign-ins', 'Ignores ANTHROPIC_API_KEY and similar settings on this PC, so the account you pick is always the one used.')}
       ${t('appWindow', 'Open as its own window', `Uses ${S.platform === 'darwin' ? 'Chrome (or Edge or Brave)' : 'Chrome or Edge'} to show Session Switcher without browser tabs or an address bar.`)}
       <div class="field"><label for="prefClaude">Claude Code command</label>
@@ -54,6 +55,7 @@ function renderSetup(j) {
       <div class="field"><label for="prefCodex">Codex command</label>
         <div class="row2"><input id="prefCodex" value="${esc(j.codex ? j.codex.command : 'codex')}" spellcheck="false"><button class="btn" id="saveCodex">Save</button></div>
         <small>Leave as “codex” unless Setup can’t find it; then paste the full path to codex.cmd.</small></div>
+      <label class="toggle"><input type="checkbox" data-pref="autoReview" ${p.autoReview ? 'checked' : ''}><span><b>Review big changes by itself</b><span>After Claude changes forty lines or more in one reply, Codex reviews them and the findings appear in the chat.</span></span></label>
       <div class="field"><label>Rules and tools</label><div class="row2"><span class="rd-hint">Write rules once for both (CLAUDE.md and AGENTS.md), and give each one the other’s MCP tools.</span><button class="btn" data-fix="rules">Rules and tools…</button></div></div>
     </div>
     ${window.REMOTE ? `<p class="d-h" id="st-phone">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p><div id="pushBox"></div>

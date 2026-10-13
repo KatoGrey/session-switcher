@@ -3529,3 +3529,16 @@ body.from-cache .pulse::after{content:'';position:absolute;inset:-2px;border-rad
 /* Focus mode: the conversation alone, centered (Ctrl+\). */
 .chat.focus{grid-template-columns:minmax(0,1fr) !important}
 .chat.focus .rail,.chat.focus .ledger{display:none !important}
+
+/* Resume my day: yesterday's chats under the welcome card. */
+.wb-sub{margin:12px 0 0;color:var(--ash);font:500 12.5px/1.3 var(--f-body)}
+/* What's new after an update. */
+.whats-new{margin:0 0 18px;padding:16px 18px;border:1px solid var(--seam-2);border-radius:14px;background:rgb(var(--c-0a090c) / .35)}
+.whats-new .wn-h{display:flex;align-items:baseline;gap:12px}
+.whats-new .wn-h .eyebrow{margin:0}
+.whats-new .wn-h b{flex:1;color:var(--parch);font:600 16px/1.3 var(--f-body)}
+.whats-new .wn-body{max-height:5.6em;overflow:hidden;margin-top:8px;color:var(--parch-2);-webkit-mask-image:linear-gradient(#000 60%,transparent)}
+.whats-new .wn-body.open{max-height:none;-webkit-mask-image:none}
+.whats-new .wn-b{display:flex;gap:8px;justify-content:flex-end;margin:10px 0 0}
+.wp-brief{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin:0 0 6px;color:var(--parch-2);font:500 13.5px/1.4 var(--f-body)}
+.wp-brief .eyebrow{margin:0}

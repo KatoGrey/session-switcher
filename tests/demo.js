@@ -183,6 +183,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/sessions') return { body: { doneMarks, projects: openclaw ? withOpenClaw(projects) : projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
     if (p === '/api/activity') return { body: { list: activity, at: NOW } };
     // The day at a glance: bursts of messages through the last few hours.
+    if (p === '/api/whats-new') return { body: { id: 'wn-1', title: 'Faster, and more out of your way', md: '- **Opens instantly.** It draws at once.\n- **Ctrl+Z takes it back.**' } };
     if (p === '/api/away') return { body: { files: 3, reviews: [{ by: 'codex', findings: 2 }] } };
     if (p === '/api/today') {
       const burst = (k, from, to, n) => Array.from({ length: n }, (_, i) => min(from + ((to - from) * i) / Math.max(1, n - 1)));

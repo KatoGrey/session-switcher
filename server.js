@@ -1056,11 +1056,20 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
   if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
+  // What's new: the newest notes (docs/whats-new.md), shown once on the hub after an update.
+  if (route === 'GET /api/whats-new') {
+    let mdText = '';
+    try { mdText = fs.readFileSync(path.join(APP_DIR, 'docs', 'whats-new.md'), 'utf8'); } catch { return send(res, 200, {}); }
+    const title = (mdText.match(/^#\s+(.+)$/m) || [])[1] || '';
+    const body = mdText.replace(/^#\s+.+\r?\n/m, '').trim();
+    return send(res, 200, { id: crypto.createHash('sha1').update(mdText).digest('hex').slice(0, 12), title, md: body });
+  }
   // Since you left (for the welcome-back card): files the chats changed and reviews that came back.
   if (route === 'GET /api/away') {
-    const since = new Date(Number(url.searchParams.get('since')) || 0).toISOString();
+    const since = new Date(Number(url.searchParams.get('since')) || 0).toISOString(), only = url.searchParams.get('cwd');
     const files = new Set(), reviews = [];
     for (const c of chats.chats.values()) {
+      if (only && path.resolve(c.cwd || '') !== path.resolve(only)) continue;
       for (const e of c.buffer) {
         if (!e.at || e.at < since) continue;
         if (e.kind === 'changes') for (const f of e.files || []) if (!f.meanwhile) files.add(`${c.cwd}|${f.path}`);

@@ -1499,6 +1499,37 @@ module.exports = [
     },
   },
   {
+    name: 'pick up',
+    // What's new after an update (once), a tip the first time, Good morning with yesterday's chats,
+    // and a project's week at a glance.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`localStorage.removeItem('whats-new-seen'); await loadWhatsNew(); return 1`); await sleep(300);
+      const wn = await b.eval(`const w = document.getElementById('whatsNew'); return w && w.textContent.replace(/\\s+/g, ' ')`);
+      t.check('after an update, the hub says what’s new', !!wn && /Faster, and more out of your way/.test(wn) && /Opens instantly/.test(wn), wn);
+      await t.shot(b, 'whats-new');
+      await b.clickOn('#whatsNew .wn-b [data-wn="done"]'); await sleep(200);
+      await b.eval(`await loadWhatsNew(); renderLive(true); return 1`);
+      t.check('Got it puts it away for good', await b.eval(`return !document.getElementById('whatsNew') && localStorage.getItem('whats-new-seen') === 'wn-1'`));
+      // Good morning: the first visit of a new day offers the chats from the last day you worked.
+      const m = await b.eval(`const y = Date.now() - 864e5; const [s] = allSessions().find(([x]) => x.id === ${JSON.stringify(demo.ID['s-brawl'])}); s.updated = y + 1000;
+        localStorage.setItem('seen-at', String(y)); Welcome.card = null; checkAway(); renderLive(true); await new Promise(r => setTimeout(r, 300));
+        const w = document.querySelector('.welcome'); return w && { sub: w.querySelector('.wb-sub')?.textContent, chips: [...w.querySelectorAll('[data-welcome="continue"]')].map(x => x.textContent) }`);
+      t.check('the first visit of a day offers yesterday’s chats to pick back up', !!m && /yesterday/.test(m.sub || '') && m.chips.length >= 1, m);
+      await t.shot(b, 'morning');
+      // A tip the first time something appears, once.
+      await b.eval(`localStorage.removeItem('tips'); localStorage.removeItem('tips-seen'); Tips.last = 0; go('folder', S.projects[0].cwd); return 1`); await sleep(700);
+      await b.eval(`document.getElementById('toast').classList.remove('show'); tipsTick(); return 1`);
+      const tip = await b.eval(`return document.getElementById('toast').textContent`);
+      t.check('a project page shows its tip the first time', /Rules and tools, Queue a task/.test(tip), tip);
+      t.check('and only once', await b.eval(`Tips.last = 0; document.getElementById('toast').classList.remove('show'); document.getElementById('toast').textContent = ''; tipsTick(); return !/Rules and tools/.test(document.getElementById('toast').textContent)`));
+      // The project's week at a glance.
+      await b.eval(`renderFolder(); return 1`); await sleep(500);
+      const br = await b.eval(`return document.querySelector('.wp-brief')?.textContent.replace(/\\s+/g, ' ') || ''`);
+      t.check('a project page sums up its week', /This week/.test(br) && /chat/.test(br) && /3 files changed/.test(br) && /Ask Claude for a summary/.test(br), br);
+    },
+  },
+  {
     name: 'autopilot',
     // Out of room mid-chat, as it happens: it carries on as the account with the most room by itself,
     // after a moment to say no.
