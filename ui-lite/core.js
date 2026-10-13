@@ -38,7 +38,9 @@ const S = {
   cmd: { key: null, events: [], state: 'idle', error: null, es: null, sentAt: 0 },
   loaded: false, connected: false,
 };
-const L = t => (COPY[skin()] && COPY[skin()][t]) || t;
+// A Pro look is its base look (names, icon, the base styles) with a richer layer on top.
+const baseSkin = s => String(s || 'plain').replace(/-pro$/, '');
+const L = t => (COPY[baseSkin(skin())] && COPY[baseSkin(skin())][t]) || t;
 const skin = () => (S.lite && S.lite.look.skin) || local.get('skin', 'plain');
 
 /* ---------- server ---------- */
@@ -424,8 +426,9 @@ async function setLook(patch) {
 function applyLook() {
   const root = document.documentElement;
   const look = S.lite ? S.lite.look : { skin: local.get('skin', 'plain'), mode: local.get('mode', 'system') };
-  root.dataset.skin = look.skin;
-  if (typeof applyIcon === 'function') applyIcon(look.skin);
+  root.dataset.skin = baseSkin(look.skin);
+  if (/-pro$/.test(look.skin)) root.dataset.pro = ''; else delete root.dataset.pro;
+  if (typeof applyIcon === 'function') applyIcon(baseSkin(look.skin));
   if (look.mode === 'system') delete root.dataset.theme; else root.dataset.theme = look.mode;
 }
 

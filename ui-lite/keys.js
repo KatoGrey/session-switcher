@@ -154,7 +154,7 @@ function palItems(q) {
     { t: 'Check plan usage now', run: () => { go('now'); loadPlans(true).then(renderPlansOnly).catch(err => toast(err.message)); }, alias: 'usage limits refresh' },
     { t: prefs.sound ? 'Turn sounds off' : 'Turn sounds on', run: () => setSound(!prefs.sound), alias: 'audio mute' },
     { t: prefs.notify ? 'Turn desktop notifications off' : 'Turn desktop notifications on', run: () => setNotify(!prefs.notify), alias: 'alerts' },
-    ...['plain', 'imperial', 'rebel'].filter(x => x !== skin()).map(x => ({ t: `Skin: ${x[0].toUpperCase() + x.slice(1)}`, run: () => wrap(setLook)({ skin: x }), alias: 'theme look' })),
+    ...['plain', 'imperial', 'imperial-pro', 'rebel', 'rebel-pro'].filter(x => x !== skin()).map(x => ({ t: `Skin: ${x[0].toUpperCase() + x.slice(1).replace('-pro', ' Pro')}`, run: () => wrap(setLook)({ skin: x }), alias: 'theme look' })),
     ...[['light', 'Light'], ['dark', 'Dark'], ['system', 'Match device']].filter(([m]) => m !== S.lite.look.mode).map(([m, n]) => ({ t: `Appearance: ${n}`, run: () => wrap(setLook)({ mode: m }), alias: 'theme mode' })),
     { t: 'Keyboard shortcuts', s: '?', run: showShortcuts, alias: 'keys help hotkeys' },
     { t: 'Open the full app', run: () => { location.href = '/'; }, alias: 'tyler classic hub' },

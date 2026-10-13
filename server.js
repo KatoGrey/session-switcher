@@ -2673,7 +2673,7 @@ const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 's
 // Lite's side viewer shows links beside a chat (previews, dev servers on this Mac), so its page may
 // frame web pages and local servers. The full app's page keeps the stricter policy.
 // Lite's Home Screen icon for the look you picked (Safari reads it from the page, not from scripts).
-function liteIconPath() { let skin = 'plain'; try { skin = liteStore.get().look.skin; } catch { /* plain */ } return `/ui-lite/icon-${['plain', 'imperial', 'rebel'].includes(skin) ? skin : 'plain'}.png`; }
+function liteIconPath() { let skin = 'plain'; try { skin = String(liteStore.get().look.skin).replace(/-pro$/, ''); } catch { /* plain */ } return `/ui-lite/icon-${['plain', 'imperial', 'rebel'].includes(skin) ? skin : 'plain'}.png`; }
 const LITE_CSP = `${CSP}; frame-src 'self' https: http://localhost:* http://127.0.0.1:* http://*.localhost:*`;
 
 // Serves the app. Phone access (lib/remote.js) checks the phone's pairing first, then calls this
