@@ -295,6 +295,8 @@ Claude and Codex work in the same chat, either way round: bring Codex into a Cla
   - The app works this out on the PC from the two conversations themselves, from the moment each one last caught up, so it's the same in every window and on your phone, and survives a reload or a restart. Nothing is told twice; a long stretch keeps the newest messages and says how many earlier ones it left out.
   - Files you undo from a reply are mentioned to that one with your next message, and to the other one too (it may have built on them).
 - **Both: they take turns.** The **Both** pill (or `@both`) sends your message to the chat's own assistant first. When it has answered, the other one picks the same message up, already knowing that answer, and builds on it (checks it, adds what it missed, does its part) instead of starting over. Your message reads "to Claude, then Codex", the second one's pill says **up next** while it waits, and the feed marks where it **takes it from here**. They never edit files at the same time. Stopping the first one skips the hand-over.
+- **The partner follows the chat's mode:** what you let Claude do without asking carries over to Codex (Auto or Bypass is Codex's Full access, Accept edits is Agent, Plan is Read only), when the partner starts and whenever you change it, so Codex doesn't ask about every step. Ask before acting leaves Codex's own choice alone.
+- **Review big changes by itself:** with Setup → Codex → **Review big changes by itself** on, after Claude changes forty lines or more in one reply, Codex reviews them and the findings come back as a card.
 - **One chat per project:** starting a Codex chat in a project where a Claude chat is open (or the other way round) offers to add it to that chat instead, so the work stays in one place. **Start a separate chat** is still there if you want one.
   - A partner's own conversation lives inside its chat: it isn't listed as a chat of its own, the chat's row says **with Codex**, and opening it (from search, a notification or a card) opens the chat it belongs to.
   - On the hub and in the chat window's list, a chat reads as at work while its partner works, and as needing you when its partner does ("Codex: Needs your OK").
@@ -399,7 +401,11 @@ A chat that needs your OK, or one that replies, can notify your phone even when 
 3. On the phone, open the `https://…ts.net` address it shows (iPhone: Safari → **Add to Home Screen**) and pair it once.
 4. On the phone: Setup → **Notifications on this phone**. On an iPhone, tapping one opens the chat to answer it.
 
-Each phone follows its own alert levels and quiet hours. **Remove** a phone and its notifications stop.
+Each phone follows its own alert levels and quiet hours, and can gather replies into one notification every 15 minutes or every hour (**When**, under Replies); needing your OK always comes right away. **Remove** a phone and its notifications stop.
+
+**Home-screen widget (Android):** add **Session Switcher** from the widgets list to see the chats that need you, and tap one to open it.
+
+**Written offline:** a message you send while the phone can't reach the PC waits on the phone, shown as waiting, and sends by itself when you're back.
 
 **Share to Session Switcher:** in any Android app, Share → Session Switcher sends text, a link or pictures to the app. They wait in the open chat's message box (or the one you pick, or a new chat) for a word from you; nothing is sent until you press Send.
 
@@ -596,6 +602,30 @@ Press `?` anywhere (outside a text box) for the full list of keyboard shortcuts.
 - The app warns before you open a chat that's already running somewhere.
 - Anything hard to undo (signing out, removing an account or a phone, quitting) asks first in the app's own box. Esc or **Cancel** always backs out.
 
+## Out of your way
+
+- **Opens instantly:** the hub draws what it knew last time at once (a faint pulse says it's catching up), then brings itself up to date. Pointing at a chat starts loading it, so it opens as you click. On a phone running on low battery, animations pause.
+- **Ctrl+Z takes it back:** closing a chat, marking it done, unpinning, unfavoriting and removing each offer **Undo** for a few seconds; `Ctrl+Z` (when you're not typing) does the same.
+- **Account autopilot:** when the account a chat runs as runs out mid-reply, the chat carries on as the account with the most room after a moment (**Let me choose** stops it). Setup → Preferences → **Carry on when an account runs out** turns it off.
+- **Limit forecast:** the account cards say when a window will run out at this pace, and when the account you're working as will run out within the hour, a heads-up offers the one with the most room.
+- **Drafts follow you:** what you've started typing in a chat is kept on the PC too, so you can finish it on the phone (or the other way round); the newest one wins.
+- **Focus mode:** `Ctrl+\` (or the chat's ⋯) shows just the conversation; the side list and panel step aside. It's remembered on this device.
+- **Plain words in Ctrl+K:** “codex chat in starfall to make the icons”, “queue the patch notes in starfall tonight” or “race fixing the save bug in starfall” open ready to go; nothing is sent until you say so.
+
+## Picking up where you left off
+
+- **Welcome back:** after a while away, the hub opens with what happened meanwhile (replies, files changed, reviews, chats that need you). The first visit of a new day also offers the chats you were in the day before, and **Resume my day** opens the last one.
+- **A project's week:** the top of a project page sums up its last seven days (chats, files changed, reviews, what's queued and put off for later), with **Ask Claude for a summary**.
+- **What's new:** after an update, a card on the hub says what changed (from `docs/whats-new.md`), once.
+- **Tips:** the first time something appears (a chat, pictures, Claude and Codex together, a project page, Ctrl+K), a one-line tip says what it can do, once each. Setup → Preferences → **Show tips** turns them off.
+
+## Keeping itself good
+
+- **Problems:** anything that goes wrong on the page (on the PC or a phone) or in the PC's server is noted, the same one counted rather than repeated. Setup → **Problems and speed** lists them with **Ask Claude to fix this**, which opens a chat in the app's own folder with the error and the end of `switcher.log`.
+- **Nightly self-check:** at half past three in the morning, when nothing is working, the app runs its own tests and the look checks at low priority. If something failed, a card on the hub says so. **Run the self-check now** is in Setup; **Check itself every night** turns it off.
+- **Look checks:** `node tests/run.js "look checks"` takes a picture of every theme, light and dark, on the hub and in a chat, and compares it with the last time (kept in `%LOCALAPPDATA%\SessionSwitcher\looks`; `LOOKS_RESET=1` keeps new ones). It only looks, it never changes a theme.
+- **Speed:** how long the hub, a chat and a reply's first word take on this device, this week against last, in Setup → Problems and speed.
+
 ## Speed with long chats
 
 Session Switcher is built to stay quick even with very long chats (hundreds of megabytes):
@@ -638,7 +668,7 @@ The gear's dot turns gold or red when something needs attention. Setup checks:
 - each extra account's shared data
 - sign-in overrides set on the PC
 
-Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone and App. Fixes are one click: update Claude Code, sign in, merge and share, or set the `claude` path. The command boxes save as soon as you click away from them. The preferences there cover:
+Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone, Problems and App. Fixes are one click: update Claude Code, sign in, merge and share, or set the `claude` path. The command boxes save as soon as you click away from them. The preferences there cover:
 
 - alerts, petals and animations
 - where chats open
