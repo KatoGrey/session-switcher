@@ -446,6 +446,9 @@ async function closeActivity(x) {
   closeOff(x);
   if (next) openActivity(next); else if (next === null) ChatUI.close();
   if (app) await api('/api/chat/stop', { key: x.key });
+  const sid = x.sessionId;
+  if (app && sid) offerUndo('Closed. It stopped; Undo opens it again where it left off.', () => ChatUI.open({ sessionId: sid }));
+  else if (!app) offerUndo('Closed. It’s off the list until it does something new.', () => { S.closed.delete(closedKey(x)); loadActivity().then(() => { renderLive(); renderNav(); if (ChatUI.renderRail) ChatUI.renderRail(); }).catch(() => {}); });
 }
 function appItems() {
   const light = Look.isLight();

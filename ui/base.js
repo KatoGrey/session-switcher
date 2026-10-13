@@ -38,14 +38,35 @@ function togglePin(cwd) {
   if (on) S.pins.add(cwd); else S.pins.delete(cwd);
   savePins(); renderNav();
   if (S.view === 'hub') renderHubLists(); else if (S.view === 'folder') renderPage();
-  toast(on ? `Pinned ${S.projects.find(p => p.cwd === cwd)?.name || 'it'} to the sidebar.` : 'Unpinned.', 4000, { label: 'Undo', run: () => togglePin(cwd) });
+  offerUndo(on ? `Pinned ${S.projects.find(p => p.cwd === cwd)?.name || 'it'} to the sidebar.` : 'Unpinned.', () => togglePin(cwd));
 }
+/* ---------- undo ---------- */
+// Most things you do can be taken back for ten seconds: the toast's Undo, or Ctrl+Z (when you're not
+// typing). One at a time: the newest.
+const Undo = { run: null, until: 0 };
+function offerUndo(msg, run, ms = 10000) {
+  Undo.run = run; Undo.until = Date.now() + ms;
+  toast(msg, ms, { label: 'Undo', run: () => takeBackLast() });
+}
+async function takeBackLast() {
+  if (!Undo.run || Date.now() > Undo.until) return false;
+  const run = Undo.run; Undo.run = null;
+  $('toast').classList.remove('show');
+  await run();
+  return true;
+}
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+  const el = document.activeElement;
+  if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;   // the text's own undo
+  if (Undo.run && Date.now() <= Undo.until) { e.preventDefault(); wrap(takeBackLast)(); }
+});
 function toggleFav(id) {
   const k = String(id).toLowerCase(), on = !S.favs.has(k);
   if (on) S.favs.add(k); else S.favs.delete(k);
   store('favChats', JSON.stringify([...S.favs]));
   renderNav(); if (window.ChatUI && ChatUI.refreshFav) { ChatUI.refreshFav(); ChatUI.renderRail(); }
-  toast(on ? 'Pinned the chat to the sidebar.' : 'Unpinned the chat.', 4000, { label: 'Undo', run: () => toggleFav(id) });
+  offerUndo(on ? 'Pinned the chat to the sidebar.' : 'Unpinned the chat.', () => toggleFav(id));
 }
 const isFav = id => !!id && S.favs.has(String(id).toLowerCase());
 window.toggleFav = toggleFav; window.isFav = isFav;
@@ -223,12 +244,13 @@ function sortDone() {
     p.done = all.filter(isDoneChat); p.sessions = all.filter(x => !isDoneChat(x));
   }
 }
-async function setChatDone(id, done) {
+async function setChatDone(id, done, quiet = false) {
   const r = await api('/api/chat/done', { id, done });
   S.doneMarks = r.doneMarks || {};
   if (!done) { const m = S.doneMarks[id.toLowerCase()]; if (m) m.undone = Date.now(); }
   sortDone(); renderAll();
-  toast(done ? 'Done. It’s off the lists; find it under Done in its project, and it comes back if it’s used again.' : 'Back on the lists.', 4000);
+  if (quiet) return;
+  offerUndo(done ? 'Done. It’s off the lists; find it under Done in its project, and it comes back if it’s used again.' : 'Back on the lists.', () => setChatDone(id, !done, true));
 }
 function allSessions() { const all = []; for (const p of S.projects) for (const s of p.sessions) all.push([s, p]); return all; }
 function sessionById(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }

@@ -1248,6 +1248,10 @@ module.exports = [
       t.check('a chat is on the lists to begin with', await inNav());
       await b.eval(`setChatDone(${JSON.stringify(id)}, true); return 1`); await sleep(600);
       t.check('marked done, it leaves the lists', !(await inNav()));
+      await b.eval(`document.activeElement && document.activeElement.blur(); return 1`);
+      await b.key('z', 'KeyZ', 90, 2); await sleep(700);
+      t.check('Ctrl+Z takes it back', await inNav());
+      await b.eval(`setChatDone(${JSON.stringify(id)}, true); return 1`); await sleep(600);
       await b.eval(`go('folder', ${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}); return 1`); await sleep(900);
       const dz = await b.eval(`const d = document.querySelector('.done-chats'); return d && { shown: !d.hidden, sum: d.querySelector('summary').textContent, rows: d.textContent }`);
       t.check('its project keeps it under Done', dz && dz.shown && /^Done · 1$/.test(dz.sum) && /Tavern brawl/.test(dz.rows), dz);

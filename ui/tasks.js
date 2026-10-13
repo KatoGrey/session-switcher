@@ -102,6 +102,6 @@ async function taskAction(act, b) {
   const r = await api('/api/tasks', { action: act === 'task-start' ? 'start' : 'remove', id: b.dataset.id });
   S.tasks = r.tasks; renderQueue();
   if (act === 'task-start') toast('Started. It’s under At work.', 3000);
-  else if (t && t.state === 'queued' && !t.repeat) toast('Removed from the queue.', 5000, { label: 'Undo', run: async () => { const u = await api('/api/tasks', { action: 'add', task: { cwd: t.cwd, provider: t.provider, accountId: t.accountId, prompt: t.prompt, when: t.when, at: t.at, from: t.from || null } }); S.tasks = u.tasks; renderQueue(); } });
+  else if (t && t.state === 'queued' && !t.repeat) offerUndo('Removed from the queue.', async () => { const u = await api('/api/tasks', { action: 'add', task: { cwd: t.cwd, provider: t.provider, accountId: t.accountId, prompt: t.prompt, when: t.when, at: t.at, from: t.from || null } }); S.tasks = u.tasks; renderQueue(); });
   return undefined;
 }
