@@ -1062,3 +1062,10 @@ blockquote p { margin: 4px 0; }
 /* Beside Now: how many are working right now. */
 .run-n { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .run-n + .badge { margin-left: 6px; }
+
+/* Long notices: one line, the rest on a click. */
+.notice-long summary { cursor: pointer; list-style: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notice-long summary::-webkit-details-marker { display: none; }
+.notice-long summary::before { content: "▸ "; color: var(--muted); }
+.notice-long[open] summary::before { content: "▾ "; }
+.notice-full { margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--f-mono); font-size: 11.5px; max-height: 260px; overflow-y: auto; }

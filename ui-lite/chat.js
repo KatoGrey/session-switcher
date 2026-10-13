@@ -271,7 +271,15 @@ function itemHtml(it) {
     const steps = tools.length ? `<details class="step"><summary>${esc(stepLine(tools))}</summary><ul>${tools.map(t => { const p = typeof toolPath === 'function' ? toolPath(t) : null; return `<li><b>${esc(t.name)}</b> ${p ? `<button class="linkish vpath-btn" data-viewfile="${esc(p)}" title="Open beside the chat">${esc(t.summary || p)}</button>` : esc(t.summary || '')}</li>`; }).join('')}</ul></details>` : '';
     return `${steps}${text ? `<div class="msg-ai">${mdHtml(text)}</div>` : ''}`;
   }
-  if (it.kind === 'notice') return `<div class="notice ${esc(it.level || 'info')}">${esc(it.text || '')}</div>`;
+  if (it.kind === 'notice') {
+    // A long notice (a background command finishing prints the whole command) shows one short line;
+    // the rest opens on a click.
+    const t = String(it.text || ''), lv = esc(it.level || 'info');
+    if (t.length <= 160) return `<div class="notice ${lv}">${esc(t)}</div>`;
+    const m = /^(Background task \w+):\s*([\s\S]*)$/.exec(t);
+    const head = m ? `${m[1]} · ${m[2].replace(/\s+/g, ' ').slice(0, 90)}…` : `${t.replace(/\s+/g, ' ').slice(0, 140)}…`;
+    return `<details class="notice ${lv} notice-long"><summary>${esc(head)}</summary><div class="notice-full">${esc(m ? m[2] : t)}</div></details>`;
+  }
   return '';
 }
 // Consecutive tool-only replies read as one step line; the text between them stays. Each message
