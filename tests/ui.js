@@ -1460,6 +1460,29 @@ module.exports = [
     },
   },
   {
+    name: 'feels instant',
+    // The hub draws at once from last time; pointing at a chat fetches it ahead, so it opens at once.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ seen: (p, u) => calls.push([p, u]) });
+      await sleep(800);
+      const cached = await b.eval(`const c = JSON.parse(localStorage.getItem('boot-cache') || 'null'); return !!c && !!c.sessions && !!c.state`);
+      t.check('after a load, the hub is kept for next time', cached);
+      const fromCache = await b.eval(`S.projects = []; renderAll(); const ok = await bootFromCache(); return { ok, projects: S.projects.length, marked: document.body.classList.contains('from-cache') }`);
+      t.check('next time it draws from that at once (and says it’s catching up)', fromCache.ok && fromCache.projects > 0 && fromCache.marked, fromCache);
+      await b.eval(`await reload(); return 1`);
+      t.check('then it’s up to date, and the mark goes', !(await b.eval(`return document.body.classList.contains('from-cache')`)));
+      // Point at a chat on the hub: its history is fetched ahead, and opening it doesn't fetch it again.
+      const id = demo.ID['s-brawl'];
+      const row = await b.eval(`const el = document.querySelector('[data-chat="${id}"]'); if (!el) return null; el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' })); return 1`);
+      await sleep(500);
+      const before = calls.filter(([p, u]) => p === '/api/chat/history' && u.includes(id)).length;
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(id)} }); return 1`); await sleep(1500);
+      const after = calls.filter(([p, u]) => p === '/api/chat/history' && u.includes(id)).length;
+      t.check('pointing at a chat fetches it ahead; opening it uses that', row === 1 && before === 1 && after === 1, { row, before, after });
+    },
+  },
+  {
     name: 'pictures',
     // A reply's pictures show under it (not folded in its steps); the viewer steps through them all.
     async run(t) {

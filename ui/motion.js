@@ -259,3 +259,10 @@ function restWake() {
 for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'focus']) window.addEventListener(ev, restWake, { passive: true, capture: true });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) restSeen = Date.now(); restCheck(); });
 setInterval(restCheck, 15000);
+// On battery and below 40% (a phone, a laptop unplugged), the scene stays still: the looping
+// decoration pauses, as at rest, without dimming. Plugged in again, it moves again.
+if (navigator.getBattery) navigator.getBattery().then(bat => {
+  const sync = () => document.documentElement.classList.toggle('low-power', !bat.charging && bat.level < 0.4);
+  for (const ev of ['chargingchange', 'levelchange']) bat.addEventListener(ev, sync);
+  sync();
+}).catch(() => {});

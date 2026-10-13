@@ -203,6 +203,34 @@ function railSettle(d, keep) {
 /* ---------- open / close ---------- */
 function findSession(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
 
+// A chat's latest page, fetched a moment early (you hovered it, or it's next with Alt+↓), so opening
+// it is instant. Kept for twenty seconds; only the plain first page (no paging, no live replay).
+const HistAhead = new Map();
+function prefetchHistory(sessionId, provider) {
+  if (!sessionId) return;
+  const q = new URLSearchParams({ id: sessionId, provider: provider || 'claude' }).toString();
+  const was = HistAhead.get(q);
+  if (was && Date.now() - was.at < 20000) return;
+  const p = api(`/api/chat/history?${q}`); p.catch(() => {});
+  HistAhead.set(q, { at: Date.now(), p });
+  if (HistAhead.size > 12) HistAhead.delete(HistAhead.keys().next().value);
+}
+// Pointing at a chat (a row on the hub or a project page, or a closed pinned chat in the side list)
+// fetches it ahead, after a short pause so passing over a list doesn't fetch them all.
+let aheadTimer = 0;
+document.addEventListener('pointerover', e => {
+  const el = e.target.closest && e.target.closest('[data-chat], [data-navchat]');
+  clearTimeout(aheadTimer);
+  if (!el || e.pointerType === 'touch') return;
+  const id = el.dataset.chat || el.dataset.navchat;
+  aheadTimer = setTimeout(() => { const [s] = sessionById(id); if (s && !liveOf(id)) prefetchHistory(id, s.provider === 'codex' ? 'codex' : 'claude'); }, 180);
+});
+function historyPage(params) {
+  const q = params.toString(), was = HistAhead.get(q);
+  HistAhead.delete(q);
+  if (was && Date.now() - was.at < 20000) return was.p.catch(() => api(`/api/chat/history?${q}`));
+  return api(`/api/chat/history?${q}`);
+}
 async function loadHistory(before) {
   if (!C.sessionId) return null;
   const gen = C.gen;
@@ -213,7 +241,7 @@ async function loadHistory(before) {
   if (before !== undefined && C.historyCursor) params.set('cursor', C.historyCursor);
   // The chat's own history may run out before its partner's does; then only the partner's is paged.
   const ownDone = before !== undefined && C.historyStart <= 0;
-  const h = ownDone ? { items: [], start: 0, cursor: null } : await api(`/api/chat/history?${params}`);
+  const h = ownDone ? { items: [], start: 0, cursor: null } : await historyPage(params);
   if (gen !== C.gen) return null;   // you've moved on to another chat
   C.historyStart = h.start;
   C.historyCursor = h.cursor || null;
