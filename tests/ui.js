@@ -531,7 +531,9 @@ module.exports = [
       const calls = [];
       const resetsAt = new Date(Date.now() + 2 * 3600e3 + 12 * 60e3).toISOString();
       const b = await t.open({ seen: (p, u, body) => calls.push([p, body]), events: [{ kind: 'limit', which: 'five_hour', resetsAt }] });
-      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      // The autopilot is off for these (on a slow machine it would switch accounts before the clicks);
+      // it has its own check below.
+      await b.eval(`S.prefs.autoSwitch = false; ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
       const card = await b.eval(`const c = document.querySelector('.limit-card'); return c && { text: c.textContent.replace(/\\s+/g, ' ').trim(), buttons: [...c.querySelectorAll('button')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
       t.check('out of usage: the chat says so, and when it’s back', card && /Studio is out of its 5-hour limit\. It’s back at .+ \(in 2 h 1[12] min\)/.test(card.text), card && card.text);
       t.check('and offers your other account, with how much it has left', card && card.buttons.some(x => /^Continue as Personal \d+% left$/.test(x)), card && card.buttons);
@@ -542,8 +544,13 @@ module.exports = [
       for (let i = 0; i < 30 && !calls.some(([p]) => p === '/api/chat/resume-at'); i++) await sleep(100);
       const wait = calls.find(([p]) => p === '/api/chat/resume-at');
       t.check('“Carry on when it’s back” asks the PC to send “carry on” at the reset', wait && wait[1].at === resetsAt && wait[1].key === 'k-bard', wait ? wait[1] : { covered });
-      await sleep(3000);
-      t.check('and the autopilot is called off: it doesn’t switch accounts a moment later anyway', !calls.some(([p]) => p === '/api/chat/stop') && !(await b.eval(`return !!document.querySelector('.limit-card .lm-auto')`)), calls.map(([p]) => p).filter(p => /stop|open/.test(p)));
+      // The autopilot (on unless you turn it off) about to switch accounts, and you choose to wait: it's called off.
+      const before = calls.length;
+      const shown = await b.eval(`S.prefs.autoSwitch = true; liveRender = true; handle({ kind: 'limit', which: 'five_hour', resetsAt: ${JSON.stringify(resetsAt)}, seq: 650 }); liveRender = false;
+        const c = document.querySelector('.limit-card'), auto = !!(c && c.querySelector('.lm-auto')); c.querySelector('[data-c="limitwait"]').click(); S.prefs.autoSwitch = false; return auto`);
+      await sleep(3200);
+      const after = calls.slice(before).map(([p]) => p);
+      t.check('with the autopilot about to switch accounts, choosing to wait calls it off', shown && !after.includes('/api/chat/stop') && after.includes('/api/chat/resume-at') && !(await b.eval(`return !!document.querySelector('.limit-card .lm-auto')`)), { shown, after });
       await b.eval(`handle({ kind: 'resumeat', at: ${JSON.stringify(resetsAt)}, seq: 700 }); return 1`); await sleep(100);
       t.check('and the card says when it will', /Claude carries on by itself at/.test(await b.eval(`for (let i = 0; i < 50 && !document.querySelector('.limit-card .lm-wait'); i++) await new Promise(r => setTimeout(r, 100)); return document.querySelector('.limit-card .lm-wait')?.textContent || ''`)));
       await b.eval(`handle({ kind: 'limit', which: null, resetsAt: ${JSON.stringify(resetsAt)}, seq: 1 }, 'comp'); return 1`).catch(() => null);
