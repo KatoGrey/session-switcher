@@ -14,6 +14,27 @@ const fs = require('fs');
 const net = require('net');
 const os = require('os');
 const path = require('path');
+
+// The whole run gets a temp folder of its own: the logic checks, the test copy of the app and the
+// browsers make their throwaway folders in it (TEMP and TMP on Windows, TMPDIR on a Mac, all read by
+// os.tmpdir() each time), and it's deleted at the end, passed or failed or stopped with Ctrl+C. So
+// nothing piles up in the real temp folder, and nothing outside this one is touched.
+const RUN_TMP = path.join(os.tmpdir(), `ss-run-${process.pid}-${Date.now().toString(36)}`);
+fs.mkdirSync(RUN_TMP, { recursive: true });
+const TMP_ENV = { TEMP: RUN_TMP, TMP: RUN_TMP, TMPDIR: RUN_TMP };
+Object.assign(process.env, TMP_ENV);
+// Windows keeps a file locked a moment after the program that had it open has stopped (a browser
+// profile, the app's log), so it tries for about 5 s; what still can't go is left.
+function removeRunTmp() {
+  for (let i = 0; i < 10; i++) {
+    try { fs.rmSync(RUN_TMP, { recursive: true, force: true }); return; } catch { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500); }
+  }
+}
+process.on('exit', removeRunTmp);
+// Stopped partway: the test copy of the app and any browser still open go first, so their files can be deleted.
+const running = new Set();
+process.on('SIGINT', () => { for (const x of running) try { x.close ? x.close() : x.kill(); } catch { /* gone */ } process.exit(130); });
+
 const { launch, sleep } = require('./browser');
 const demo = require('./demo');
 const suites = [...require('./ui'), ...require('./project-art.ui'), ...require('./theme-studio.ui')];
@@ -31,8 +52,8 @@ async function main() {
     const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join(__dirname, f));
     // On GitHub the failures are also written as annotations (from a TAP copy of the results), each
     // with its error and where it happened, readable on the run's page without signing in.
-    const tap = process.env.GITHUB_ACTIONS ? path.join(os.tmpdir(), `ss-tap-${process.pid}.txt`) : null;
-    const runLogic = () => spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP });
+    const tap = process.env.GITHUB_ACTIONS ? path.join(RUN_TMP, `ss-tap-${process.pid}.txt`) : null;
+    const runLogic = () => spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP, env: { ...process.env, ...TMP_ENV } });
     const failures = () => {
       let text = ''; try { text = fs.readFileSync(tap, 'utf8'); } catch { return []; }
       const out = [];
@@ -65,13 +86,14 @@ async function main() {
   }
 
   const port = await freePort();
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-data-'));
+  const dataDir = fs.mkdtempSync(path.join(RUN_TMP, 'ss-data-'));
   const base = `http://127.0.0.1:${port}/`;
   const server = spawn(process.execPath, ['server.js'], {
     cwd: APP,
-    env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^SWITCHER_/.test(k))), ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}), SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^SWITCHER_/.test(k))), ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}), SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1', ...TMP_ENV },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  running.add(server);
   let serverLog = '';
   server.stdout.on('data', d => { serverLog += d; });
   server.stderr.on('data', d => { serverLog += d; });
@@ -100,7 +122,7 @@ async function main() {
         // path: what follows the address, like "?chat=…" for a popped-out chat.
         async open({ width = 1440, height = 900, mobile = false, demo: useDemo = true, path: at = '', ...demoOpts } = {}) {
           const b = await launch({ width, height, mobile });
-          browsers.push(b);
+          browsers.push(b); running.add(b);
           if (useDemo) await demo.install(b, demoOpts);
           await b.nav(base + at, 3000);
           return b;
@@ -111,7 +133,7 @@ async function main() {
       for (const b of browsers) {
         const errors = b.logs.filter(l => /^EXC /.test(l));
         t.check('no script errors on the page', !errors.length, errors.slice(0, 3));
-        b.close();
+        b.close(); running.delete(b);
       }
       if (fails.length && attempt < tries) { console.log(`  ↻ ${fails.length} check${fails.length === 1 ? '' : 's'} missed (${fails[0].slice(0, 160)}); once more`); continue; }
       for (const l of lines) console.log(l);
