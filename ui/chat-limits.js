@@ -49,6 +49,13 @@ function renderLimit(ev, src = 'main') {
   // account with the most room by itself, after a moment to say no.
   if (auto) card._auto = setTimeout(() => { if (card.isConnected && card._auto) { card._auto = 0; continueAs(auto.a.id).catch(err => toast(err.message)); } }, 2500);
 }
+// Choosing anything on the card (wait for the reset, hand it over) calls off the autopilot: it would
+// otherwise switch accounts a moment later anyway.
+function noAutopilot(el) {
+  const card = el && el.closest('.limit-card'); if (!card || !card._auto) return;
+  clearTimeout(card._auto); card._auto = 0;
+  card.querySelector('.lm-auto')?.remove();
+}
 // The PC has "carry on when it's back" set for one of them (or not any more).
 function renderResumeAt(ev, src) {
   const card = $c('cFeed').querySelector(`.limit-card[data-src="${src}"]`); if (!card) return;
