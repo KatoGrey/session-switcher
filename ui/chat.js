@@ -352,7 +352,7 @@ function reset() {
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
-  Object.assign(C, { compPending: [], compStarting: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+  Object.assign(C, { compPending: [], compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
   closePreview();
   Review.loop = null;
@@ -399,6 +399,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   const gen = C.gen;
   C.key = info.key; C.info = info; C.sessionId = info.sessionId || sessionId;
   C.provider = info.provider || 'claude';
+  C.mate = info.mate && info.mate !== C.provider ? info.mate : null;
   if (info.modes) modeOptions(info.modes);
   if (info.permissionMode) setMode(info.permissionMode);
   if (info.models && info.models.length) C.mi.main = info;
@@ -862,6 +863,20 @@ function modelItems(src) {
     ...(src === 'comp' && C.comp && C.comp.modes && C.comp.modes.length && !C.comp.ended ? ['-', ...C.comp.modes.map(m => ({ glyph: C.comp.mode === m.value ? '●' : '○', label: `May: ${m.label}`, checked: C.comp.mode === m.value, run: () => setCompMode(m.value) }))] : []),
   ];
 }
+// Another assistant as this chat's partner: Gemini instead of Codex, say. The one working steps out
+// (its conversation is kept, and comes back if you switch back); the new one is caught up on the chat.
+async function switchPartner(kind, quiet = false) {
+  if (!kindReady(kind) || kind === C.provider) return;
+  const running = C.comp && !C.comp.ended;
+  C.mate = kind;
+  if (running) {
+    if (C.comp.es) C.comp.es.close();
+    C.comp = null;
+    try { attachComp(await api('/api/chat/companion', { key: C.key, account: S.acct, kind })); } catch (err) { toast(err.message, 6000); }
+  }
+  renderCrew(); setTarget(C.target, false);
+  if (!quiet) toast(`${PROV_NAME[kind]} is this chat’s partner now: write to it from its pill, or with @${kind}.`, 4000);
+}
 // ★ in the header pins this chat to the top of the sidebar.
 function syncFav() {
   const b = $c('cFav'); if (!b) return;
@@ -989,12 +1004,13 @@ function chatContextItems(t, at) {
     ];
   }
   const crew = t.closest('[data-crew]');
-  if (crew && crew.dataset.crew === 'both') return [{ glyph: '⇄', label: C.target === 'both' ? 'Write to Claude only' : 'Write to Claude and Codex at once', keys: 'Ctrl .', run: () => setTarget(C.target === 'both' ? 'main' : 'both') }];
+  if (crew && crew.dataset.crew === 'both') return [{ glyph: '⇄', label: C.target === 'both' ? `Write to ${PROV_NAME[C.provider]} only` : `Write to ${PROV_NAME[C.provider]} and ${PROV_NAME[partnerProv()]} at once`, keys: 'Ctrl .', run: () => setTarget(C.target === 'both' ? 'main' : 'both') }];
   if (crew) {
     const src = crew.dataset.crew, name = PROV_NAME[provFor(src)];
     return [
       ...(duo() && C.target !== src ? [{ glyph: '➤', label: `Write to ${name}`, keys: 'Ctrl .', run: () => setTarget(src) }] : []),
       ...modelItems(src),
+      ...(src === 'comp' ? otherMates().map(k => ({ glyph: '⇆', label: `Work with ${PROV_NAME[k]} instead`, hint: `${PROV_NAME[partnerProv()]} steps out; its conversation is kept`, run: () => switchPartner(k) })) : []),
       ...(src === 'comp' && C.comp && !C.comp.ended ? ['-', { label: `Stop ${PROV_NAME[partnerProv()]} in this chat`, hint: `your next message to ${PROV_NAME[partnerProv()]} starts it again`, danger: true, run: () => api('/api/chat/stop', { key: C.comp.key }) }] : []),
     ];
   }

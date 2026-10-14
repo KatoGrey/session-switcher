@@ -75,8 +75,8 @@ async function openLaterDialog(turn) {
     ? `<p class="lt-h">${picked ? 'What you selected' : 'Next steps from this reply'}</p>${steps.map((x, i) => `<label class="lt-step"><input type="checkbox" ${picked || i === 0 ? 'checked' : ''}><textarea rows="1" aria-label="Step ${i + 1}">${esc(x)}</textarea></label>`).join('')}`
     : '<p class="lt-none">This reply doesn’t list next steps. Write what to do below (or select part of the reply first).</p>';
   $('ltOwn').value = '';
-  $('ltWho').innerHTML = `<option value="claude">Claude</option>${S.codex && S.codex.enabled ? `<option value="codex"${codexReady() ? '' : ' disabled'}>Codex</option>` : ''}`;
-  $('ltWho').value = turn.dataset.prov === 'codex' && codexReady() ? 'codex' : 'claude';
+  $('ltWho').innerHTML = `<option value="claude">Claude</option>${S.codex && S.codex.enabled ? `<option value="codex"${codexReady() ? '' : ' disabled'}>Codex</option>` : ''}${S.gemini && S.gemini.enabled ? `<option value="gemini"${geminiReady() ? '' : ' disabled'}>Gemini</option>` : ''}`;
+  $('ltWho').value = turn.dataset.prov === 'codex' && codexReady() ? 'codex' : turn.dataset.prov === 'gemini' && geminiReady() ? 'gemini' : 'claude';
   d.querySelector('[name="ltWhen"][value="now"]').checked = true; $('ltAt').hidden = true;
   const soon = new Date(Date.now() + 3600e3); soon.setMinutes(0, 0, 0);
   $('ltAt').value = new Date(soon - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);

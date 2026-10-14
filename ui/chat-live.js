@@ -125,6 +125,7 @@ function syncSend() {
   $c('cSend').title = busy ? `${name} ${ts.length > 1 ? 'are' : 'is'} working; this will be sent when ready` : `Send to ${name}`;
   $c('chat').classList.toggle('to-codex', C.target === 'comp' && duo() && partnerProv() === 'codex');
   $c('chat').classList.toggle('to-claude', C.target === 'comp' && duo() && partnerProv() === 'claude');
+  $c('chat').classList.toggle('to-gemini', C.target === 'comp' && duo() && partnerProv() === 'gemini');
   $c('chat').classList.toggle('to-both', C.target === 'both' && duo());
   // While either of them is writing, a band of light runs along the top of the message box (Codex's
   // color when only Codex is).
@@ -565,7 +566,7 @@ function ensureCompanion() {
   if (C.comp && !C.comp.ended) return Promise.resolve(C.comp);
   if (C.compStarting) return C.compStarting;
   const gen = C.gen;
-  C.compStarting = api('/api/chat/companion', { key: C.key, account: S.acct })
+  C.compStarting = api('/api/chat/companion', { key: C.key, account: S.acct, kind: partnerProv() })
     .then(info => { if (gen !== C.gen) throw new Error('You switched chats.'); attachComp(info); return C.comp; })
     .finally(() => { C.compStarting = null; });
   return C.compStarting;
@@ -593,7 +594,7 @@ function mergeFlush() {
 }
 function attachComp(info) {
   if (C.comp && C.comp.es) C.comp.es.close();
-  C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
+  C.comp = { provider: info.provider || null, key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
   if (info.models && info.models.length) C.mi.comp = info;
   if (info.context) C.ctx.comp = info.context;
   const key = info.key;

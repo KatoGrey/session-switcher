@@ -335,8 +335,13 @@ async function sendMessage() {
   // "/plan …": plan first (one drafts, the other checks, you pick who builds).
   const pl = duo() && text.match(/^\s*\/plan\s+/i);
   if (pl) { target = 'plan'; text = text.slice(pl[0].length); }
-  const at = duo() && text.match(/^\s*@(codex|claude|both)\b[:,]?\s*/i);
-  if (at) { const w = at[1].toLowerCase(); target = w === 'both' ? 'both' : w === C.provider ? 'main' : 'comp'; text = text.slice(at[0].length); }
+  const at = duo() && text.match(/^\s*@(codex|claude|gemini|both)\b[:,]?\s*/i);
+  if (at) {
+    const w = at[1].toLowerCase();
+    // @ another assistant than the partner: it becomes the partner (if it's set up).
+    if (w !== 'both' && w !== C.provider && w !== partnerProv() && kindReady(w)) await switchPartner(w, true);
+    target = w === 'both' ? 'both' : w === C.provider ? 'main' : 'comp'; text = text.slice(at[0].length);
+  }
   if (target !== 'comp' && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
   // Writing to one while the other is mid-reply: both would work at once, maybe on the same files.
   let after = false;
@@ -360,7 +365,7 @@ async function sendMessage() {
     if (lost.length) { toast(`“${lost[0]}” isn’t linked any more. Type @ and pick it again, so its messages come along.`, 6000); return; }
     speedMark('reply');
     let r;
-    try { r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct }), ...(after ? { after: true } : {}) }); } catch (err) {
+    try { r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct, kind: partnerProv() }), ...(after ? { after: true } : {}) }); } catch (err) {
       // No connection (the phone left the Wi-Fi): a plain message waits here and goes when it's back.
       if (!err.offline || images.length || target !== 'main' || !C.key) throw err;
       outboxAdd({ key: C.key, sessionId: C.sessionId, title: C.info && C.info.title, text });

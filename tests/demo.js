@@ -242,6 +242,10 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
       const evs = [['hello', { ...info, key: 'k-aside' }], ['chat', { kind: 'assistant', mid: 'as1', at: iso(NOW), blocks: [{ type: 'text', text: 'It sets the **co-op** bonus cap; 0.15 means +15%.' }], seq: 1 }, 1], ['chat', { kind: 'result', ok: true, seq: 2 }, 2], ['replayed', {}]];
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
     }
+    // Gemini brought in as a Claude chat's partner (instead of Codex).
+    const gemComp = { key: 'k-gem-cx', provider: 'gemini', sessionId: null, accountId: 'gemini', accountName: 'Gemini', state: 'ready', startedAt: iso(NOW), cwd: P('Starfall Tavern'), permissionMode: 'accept-edits', modes: [{ value: 'plan', label: 'Plan only' }, { value: 'accept-edits', label: 'Edit files' }, { value: 'full', label: 'Full access' }], model: 'gemini-4-argon-medium', resolvedModel: 'gemini-4-argon-medium', models: GEM_MODELS, effort: null, efforts: [], parentKey: 'k-bard', companionKey: null, title: 'Gemini · Balance pass' };
+    if (p === '/api/chat/companion') return { body: gemini && body.kind === 'gemini' ? gemComp : compInfo };
+    if (p === '/api/chat/events' && q.get('key') === 'k-gem-cx') return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse([['hello', gemComp], ['chat', { kind: 'state', state: 'ready', seq: 1 }, 1], ['replayed', {}]]) };
     if (p === '/api/chat/events' && q.get('key') === 'k-gem') return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse([['hello', { key: 'k-gem', provider: 'gemini', state: 'ready' }], ['chat', { kind: 'state', state: 'ready', seq: 1 }, 1], ['replayed', {}]]) };
     if (p === '/api/chat/events') {
       const comp = (q.get('key') || '').includes('cx');

@@ -61,14 +61,47 @@ test('gemini: modes decide what it may do: edits in Edit files, commands only wi
   assert.equal(res[0].result.isError, false);
   assert.equal(res[1].result.isError, true, 'the command was refused');
   assert.ok(!/circumvent/.test(res[1].result.text), 'without agy’s note to the model');
-  assert.ok(chat.buffer.some(e => e.kind === 'notice' && /Switch to Full access/.test(e.text)), 'and the chat says why, in plain words');
-  // Full access: from the next message (agy starts again, on the same conversation).
-  await chat.setMode('full');
-  chat.send('run it now');
+  // Refused, it becomes a card after the reply: the same Allow / Always / Deny as Claude's.
+  const card = chat.buffer.find(e => e.kind === 'permission');
+  assert.ok(card && card.view.summary === 'node --version' && card.canAlways, JSON.stringify(card));
+  assert.equal(chat.state, 'waiting', 'it waits for you (the hub and the phone say it needs your OK)');
+  assert.equal(chat.summary().pending.length, 1);
+  // Allow: it runs that in its next reply, with full access for that reply only.
+  chat.answer(card.requestId, { decision: 'allow' });
   await until(chat, () => results(chat).length === 2);
-  const last = started[started.length - 1];
+  let last = started[started.length - 1];
   assert.ok(last.includes('--dangerously-skip-permissions') && last.includes('--conversation') && last.includes('conv-1234-5678'), JSON.stringify(last));
-  assert.equal(chat.buffer.filter(e => e.kind === 'tool_result').pop().result.text.trim(), 'v24.0.0');
+  assert.equal(chat.buffer.filter(e => e.kind === 'tool_result').pop().result.text.trim(), 'v24.0.0', 'it ran');
+  assert.ok(chat.buffer.some(e => e.kind === 'user' && e.approval && /Allowed: you may run `node --version`/.test(e.text)));
+  assert.equal(chat.permissionMode, 'accept-edits', 'the chat’s own mode stays as it was');
+  chat.send('hello again');
+  await until(chat, () => results(chat).length === 3);
+  last = started[started.length - 1];
+  assert.ok(!last.includes('--dangerously-skip-permissions') && last.includes('accept-edits'), 'and the next reply is back to Edit files');
+  // Always: the chat gets full access from then on.
+  chat.send('run another');
+  await until(chat, () => chat.buffer.filter(e => e.kind === 'permission').length === 2);
+  const card2 = chat.buffer.filter(e => e.kind === 'permission').pop();
+  chat.answer(card2.requestId, { decision: 'always' });
+  await until(chat, () => results(chat).length === 5);
+  assert.equal(chat.permissionMode, 'full');
+  await chat.stop();
+});
+
+test('gemini: a picture you attach goes as a file it opens with its own viewer', async () => {
+  const { dir, gemini, started } = setup();
+  const chat = gemini.open({ cfg: {}, cwd: dir, title: 'Gemini' });
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  chat.send('what is in this picture?', [{ mediaType: 'image/png', data: png }]);
+  await until(chat, e => e.kind === 'result');
+  const echo = chat.buffer.find(e => e.kind === 'assistant' && e.blocks.some(b => b.type === 'text')).blocks[0].text;
+  const m = echo.match(/Open it with your file viewing tool before answering: (\S+\.png)/);
+  assert.ok(m, echo);
+  assert.ok(fs.existsSync(m[1]) && fs.readFileSync(m[1]).toString('base64') === png, 'the picture, as a file');
+  assert.ok(started[0].includes('--add-dir'), 'in a folder it may read');
+  const you = chat.buffer.find(e => e.kind === 'user');
+  assert.equal(you.text, 'what is in this picture?', 'your message shows as you wrote it');
+  assert.equal(you.images.length, 1, 'with the picture');
   await chat.stop();
 });
 
@@ -89,7 +122,7 @@ test('gemini: Stop ends the reply, and the next message carries on with the conv
   await chat.stop();
 });
 
-test('gemini: pictures stay in the chat but aren’t sent; a partner follows Claude’s mode', () => {
+test('gemini: Antigravity’s wording is read right; a partner follows Claude’s mode', () => {
   assert.equal(ownWords('<USER_REQUEST>\nHi there\n</USER_REQUEST>\n<ADDITIONAL_METADATA>x</ADDITIONAL_METADATA>'), 'Hi there');
   assert.equal(toolBlock('t', 'run_command', { CommandLine: '"node --version"' }).summary, 'node --version', 'arguments arrive as JSON in strings');
   for (const v of Object.values(FROM_CLAUDE)) assert.ok(MODES.some(m => m.value === v), v);

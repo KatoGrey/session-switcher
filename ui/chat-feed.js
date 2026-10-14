@@ -13,10 +13,15 @@ const C = {
 };
 const PROV_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', openclaw: 'OpenClaw' };
 const codexOK = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
-// The other assistant in this chat: Codex in a Claude chat, Claude in a Codex chat.
-const partnerProv = () => (C.provider === 'codex' ? 'claude' : 'codex');
-const partnerOK = () => (partnerProv() === 'codex' ? codexOK() : !!(typeof current === 'function' && current() && canLaunch(current())));
-const duo = () => !C.watch && (C.provider === 'claude' || C.provider === 'codex') && (partnerOK() || !!C.comp);
+// The other assistant in this chat: the one working with it, else the one you picked, else the usual
+// one (Codex for Claude; Claude for Codex and for Gemini).
+const partnerProv = () => (C.comp && C.comp.provider) || (C.mate && C.mate !== C.provider ? C.mate : null) || (C.provider === 'claude' ? 'codex' : 'claude');
+// Whether an assistant can be brought in now.
+const kindReady = k => (k === 'codex' ? codexOK() : k === 'gemini' ? (typeof geminiReady === 'function' && geminiReady()) : !!(typeof current === 'function' && current() && canLaunch(current())));
+const partnerOK = () => kindReady(partnerProv());
+const duo = () => !C.watch && ['claude', 'codex', 'gemini'].includes(C.provider) && (partnerOK() || !!C.comp);
+// The others that could be the partner instead.
+const otherMates = () => ['claude', 'codex', 'gemini'].filter(k => k !== C.provider && k !== partnerProv() && kindReady(k));
 const provFor = src => (src === 'comp' ? partnerProv() : C.provider);
 const keyFor = src => (src === 'comp' ? C.comp && C.comp.key : C.key);
 const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Skip all checks', dontAsk: 'Never ask', 'accept-edits': 'Edit files', full: 'Full access' };

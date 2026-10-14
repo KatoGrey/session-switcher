@@ -676,11 +676,11 @@ module.exports = [
       await b.clickOn('[data-act="race-discard"]'); await sleep(300); await b.clickOn('#cfYes'); await sleep(400);
       t.check('Discard both ends it', /Discarded/.test((await card()).text));
       const items = await b.eval(`return projectItems(${JSON.stringify(demo.projects[0].cwd)}).filter(x => x !== '-').map(x => x.label)`);
-      t.check('a project’s menu can start a race', items.includes('Race Claude and Codex…'), items);
+      t.check('a project’s menu can start a race', items.includes('Race…'), items);
       // Split the work: each its own part, then keep both.
       t.check('…or split the work', items.includes('Split the work…'), items);
       await b.eval(`openRaceDialog(${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}, 'split'); return 1`); await sleep(300);
-      t.check('Split shows a part for each, and the task is optional', await b.eval(`return rcTitle.textContent === 'Split the work' && !document.querySelector('.rc-parts').hidden && /Optional/.test(rcText.placeholder) && document.querySelector('#rcForm [type="submit"]').textContent === 'Start both parts'`));
+      t.check('Split shows a part for each, and the task is optional', await b.eval(`return rcTitle.textContent === 'Split the work: Claude and Codex' && !document.querySelector('.rc-parts').hidden && /Optional/.test(rcText.placeholder) && document.querySelector('#rcForm [type="submit"]').textContent === 'Start both parts'`));
       await b.eval(`rcClaude.value = 'Fix the rally math.'; rcCodex.value = 'A test for rally stacking.'; return 1`);
       await b.clickOn('#rcForm [type="submit"]'); await sleep(600);
       t.check('Start both parts sends each its part', calls.some(([p, body]) => p === '/api/race' && body.action === 'start' && body.split && body.split.claude === 'Fix the rally math.' && body.split.codex === 'A test for rally stacking.'));
@@ -1691,6 +1691,20 @@ module.exports = [
       await b.eval(`ChatUI.close(); go('folder', S.projects.find(p => p.name === 'Starfall Tavern').cwd); return 1`); await sleep(900);
       await b.clickOn('[data-act="newgemini"]'); await sleep(1200);
       t.check('New Gemini chat opens a Gemini chat in that project', calls.some(([p, body]) => p === '/api/chat/open' && body.provider === 'gemini' && body.mode === 'new' && /Starfall Tavern/.test(body.cwd || '')));
+      // Gemini as a Claude chat's partner, instead of Codex: from the partner's pill, or with @gemini.
+      await b.eval(`ChatUI.close(); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const before = await b.eval(`return { mate: partnerProv() }`);
+      await b.click(...(await b.eval(`const r = document.querySelector('[data-crew="comp"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]`)), 'right'); await sleep(400);
+      const menu = await b.eval(`return [...document.querySelectorAll('#menu button')].map(x => x.textContent.replace(/\\s+/g, ' ').trim())`);
+      t.check('the partner’s pill offers Gemini instead (Codex is the partner now)', before.mate === 'codex' && menu.some(x => /Work with Gemini instead/.test(x)), { before, menu });
+      await b.eval(`[...document.querySelectorAll('#menu button')].find(x => /Work with Gemini instead/.test(x.textContent)).click(); return 1`); await sleep(1200);
+      const after = await b.eval(`return { mate: partnerProv(), pill: document.querySelector('[data-crew="comp"]')?.textContent.replace(/\\s+/g, ' ').trim(), hint: document.getElementById('cHint').textContent }`);
+      t.check('switched: Gemini is the partner, in its pill and the @ hint', after.mate === 'gemini' && /Gemini/.test(after.pill || '') && /@gemini/.test(after.hint), after);
+      t.check('and it was started as Gemini', calls.some(([p, body]) => p === '/api/chat/companion' && body.kind === 'gemini'));
+      await t.shot(b, 'partner');
+      await b.eval(`const box = document.getElementById('cText'); box.value = '@gemini read the bard’s lines aloud in your head'; box.dispatchEvent(new Event('input', { bubbles: true })); return 1`);
+      await b.clickOn('#cSend'); await sleep(800);
+      t.check('“@gemini …” goes to Gemini as the partner', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'partner' && body.kind === 'gemini' && /read the bard/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, b2]) => b2));
       // Plain words in Ctrl+K.
       const say = await b.eval(`ChatUI.close(); openPalette('gemini chat in starfall to write the lore book'); await new Promise(r => setTimeout(r, 250)); const t = document.getElementById('palette').textContent; closePalette(); return t`);
       t.check('Ctrl+K: “gemini chat in starfall to …” offers exactly that', /Start a Gemini chat in Starfall Tavern: write the lore book/.test(say), say.slice(0, 200));

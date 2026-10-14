@@ -3620,3 +3620,12 @@ body.from-cache .pulse::after{content:'';position:absolute;inset:-2px;border-rad
 .crew.gemini .crew-dot{background:var(--gemini)}
 .crew.gemini .crew-n{color:var(--gemini-ink)}
 .c-pick.gemini .mp-h{color:var(--gemini-ink)}
+/* Writing to Gemini as the partner. */
+.chat.to-gemini .c-box{border-color:rgb(195 138 224 / .38)}
+.chat.to-gemini .c-box:focus-within{border-color:rgb(195 138 224 / .65);box-shadow:0 0 0 3px rgb(195 138 224 / .12)}
+.chat.to-gemini #cSend{background:linear-gradient(180deg,rgb(168 110 200),rgb(128 80 160));border-color:rgb(205 160 230)}
+.umsg.to-gemini .ububble{background:linear-gradient(180deg,rgb(195 138 224 / .17),rgb(128 80 160 / .11));border-color:rgb(195 138 224 / .45)}
+.cr-side.gemini:not(.waiting):not(.next) .cr-dot{background:var(--gemini)}
+.cr-side.next.gemini .cr-dot{box-shadow:inset 0 0 0 2px var(--gemini)}
+.c-relay:has(.cr-side.gemini:last-child) .cr-link:is(.flow,.lit){background:linear-gradient(90deg,var(--crimson),var(--gemini))}
+.c-relay:has(.cr-side.gemini:first-child) .cr-link:is(.flow,.lit){background:linear-gradient(90deg,var(--gemini),var(--crimson))}

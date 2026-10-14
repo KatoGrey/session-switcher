@@ -53,7 +53,7 @@ function joinBoth(root, toPartner, own, at) {
     if (!prev.classList.contains('umsg') || prev.classList.contains('to-both')) continue;
     if (prev.classList.contains('to-partner') === toPartner) continue;
     if ((RAW.get(prev) || '').trim() !== own.trim() || Math.abs((prev._at || 0) - at) > 120000) continue;
-    prev.classList.remove('to-partner', 'to-codex', 'to-claude'); prev.classList.add('to-both');
+    prev.classList.remove('to-partner', 'to-codex', 'to-claude', 'to-gemini'); prev.classList.add('to-both');
     const label = `to ${PROV_NAME[C.provider]} & ${PROV_NAME[partnerProv()]}`, tag = prev.querySelector('.to-tag');
     if (tag) tag.textContent = label;
     else prev.insertAdjacentHTML('afterbegin', `<span class="to-tag">${label}</span>`);
