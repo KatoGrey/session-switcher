@@ -12,7 +12,8 @@ const { createGemini, toolBlock, ownWords, FROM_CLAUDE, MODES } = require('../li
 
 const FAKE = path.join(__dirname, 'fake-agy.js');
 function setup() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-gemini-'));
+  // Its real name: on a Mac the temp folder is /var/… to us but /private/var/… to the CLI it starts.
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-gemini-')));
   const chats = createChatManager();
   const gemini = createGemini({ chats, getConfig: () => ({ gemini: { enabled: true } }), dataDir: dir });
   const started = [];
