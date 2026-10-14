@@ -266,6 +266,7 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
 - **Controls:**
   - The selector in the header sets what Claude may do without asking.
   - **Stop**, or **Esc twice**, interrupts Claude. The first Esc only shows "Esc again stops Claude" under the message box, so a stray key never cuts a reply short. You can type while it works to queue your next message.
+  - **Idle chats:** a chat nobody has open, whose reply finished half an hour ago, is stopped to free its process (its conversation is kept, and it starts again with your next message). Not while Claude has work running in the background (a build, tests, a helper): the header says **Working in the background**, the hub keeps it under **At work**, and Claude carries on with the result when it's done. A restart or update waits for that work too, or says it would end it.
   - **Open in a new window** (in **⋯** and the chat's right-click menu) puts a chat in a window of its own, so two chats can sit side by side.
   - **Save as a web page** makes one `.html` file of the conversation, formatted and readable anywhere, with nothing else needed.
   - **⋯** holds everything the chat's right-click menu has, plus **Move to a terminal** (continues the chat in a terminal as the same account) and **Stop this chat**, which asks first only if Claude is in the middle of a reply.

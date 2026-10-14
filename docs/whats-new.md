@@ -2,7 +2,7 @@
 
 Mostly from Ryan.
 
-- **Switcher Lite:** a second, calmer way into the same app at `/lite` (on your phone too): what needs you, plans with a use-next order, buckets for your projects, lighter chats with a side chat, and pages for bugs, routines, images and clean-up. It knows Gemini.
+- **Switcher Lite:** a second, calmer way into the same app at `/lite` (on your phone too): what needs you, plans with a use-next order, buckets for your projects, lighter chats with a side chat, and pages for bugs, routines, images and clean-up.
 - **Groups:** gather chats you're juggling in the sidebar and on the hub. Right-click a chat → **Move to group…**, or drag it there.
 - **Sub-sessions:** start a linked chat from any chat, with a brief.
 - **The Commander:** one chat that can see and nudge the others (and, if you let it, answer their requests).
@@ -10,4 +10,12 @@ Mostly from Ryan.
 - **New chats start in Auto (Claude) and Full access (Codex),** unless a chat or project remembers another mode. Change it in Setup.
 - **A tidier message box:** icon Send and Stop buttons, and a simpler model picker.
 - **Codex:** chats pick up on the model they started on, and a **Fast** setting per chat.
-- **Fixes:** a chat open in the Claude desktop app isn't opened twice; a restart brings chats back with their mode and model.
+
+## Also in this version
+
+- **Long tasks keep going.** When Claude leaves a build, tests or a helper running in the background, its chat is no longer stopped for being idle (that ended the work, and the reply Claude gives when it's done). The chat and the hub say **Working in the background**, and a restart or update waits for it, or says it would end it.
+- **Gemini everywhere:** the Commander reads and nudges Gemini chats, routines can run on Gemini, and side chats, sub-sessions and renaming work for Gemini chats. In Lite, **Who answers** offers each assistant you have, or All.
+- **Every partner in view:** reopening a chat with Codex and Gemini both in it shows each one's earlier messages, in order.
+- **Lighter on your PC:** the check for chats open in terminals asks one PowerShell that stays running instead of starting a new one every 10 seconds (about 90 times less CPU). Lite's background checks wait until you open Lite, and never hold up the app.
+- **Lite on Windows:** Clean up shows real sizes and finds every folder it should; Lite's sign-in and model list work without Unix tools. The Bugs page works for any GitHub repo.
+- **Out of usage:** choosing **Carry on when it's back** (or handing it over) now calls off the automatic switch to your other account.
