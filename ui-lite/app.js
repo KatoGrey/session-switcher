@@ -135,13 +135,14 @@ function sideProjects(all) {
       let n = foc.length;
       inner = foc.map(c => sideChatDot(c) + sideFam(c)).join('');
       if (bucketStages(g.p.bucket)) {
-        // Only one stage among them (and nothing waiting): its label says nothing, so it's left out.
-        const one = new Set(rest.map(statusOf)).size === 1 && !waits.length;
+        const shown = [];
         for (const st of STATUSES.filter(x => !parked(x.id))) {
           const list = rest.filter(c => statusOf(c) === st.id); if (!list.length || n >= limit) continue;
-          const take = list.slice(0, limit - n); n += take.length;
-          inner += `${one ? '' : `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>`}${take.map(c => sideChat(c) + sideFam(c)).join('')}`;
+          const take = list.slice(0, limit - n); n += take.length; shown.push([st, take]);
         }
+        // Only one stage on show (and nothing waiting): its label says nothing, so it's left out.
+        const one = shown.length === 1 && !waits.length;
+        for (const [st, take] of shown) inner += `${one ? '' : `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>`}${take.map(c => sideChat(c) + sideFam(c)).join('')}`;
       } else { const take = rest.slice(0, Math.max(0, limit - n)); n += take.length; inner += take.map(c => sideChatDot(c) + sideFam(c)).join(''); }
       // Waiting on someone else: out of the way at the end, whatever its status.
       if (waits.length) inner += `<div class="side-stage"><span class="label-dot" style="background:${WAIT_LABEL.c}"></span>${WAIT_LABEL.name}</div>${waits.map(c => sideChatDot(c) + sideFam(c)).join('')}`;
