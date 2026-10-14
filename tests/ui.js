@@ -1169,10 +1169,10 @@ module.exports = [
         const turn = h => [{ kind: 'user', text: 'q' + h, at: at(h) }, { kind: 'assistant', blocks: [{ type: 'text', text: 'a' + h }] }];
         const pages = { '': { items: [...turn(8), ...turn(9)], cursor: 'p2', start: 1 }, p2: { items: [...turn(4), ...turn(6)], cursor: 'p3', start: 1 }, p3: { items: [...turn(1)], cursor: null, start: 0 } };
         window.api = async url => { const c = new URLSearchParams(url.split('?')[1]).get('cursor') || ''; calls.push(c || 'first'); return pages[c]; };
-        C.compThread = 'T';
-        const first = (await partnerBack(Date.parse(at(5)), C.gen, true)).filter(i => i.kind === 'user').map(i => i.text);
-        const back = (await partnerBack(-Infinity, C.gen, false)).filter(i => i.kind === 'user').map(i => i.text);
-        window.api = real; C.compThread = null;
+        C.compHist = { codex: { thread: 'T', pending: [], cursor: null, more: false } };
+        const first = (await partnerBack('codex', Date.parse(at(5)), C.gen, true)).filter(i => i.kind === 'user').map(i => i.text);
+        const back = (await partnerBack('codex', -Infinity, C.gen, false)).filter(i => i.kind === 'user').map(i => i.text);
+        window.api = real; C.compHist = {};
         return { first, back, calls }`);
       t.check('the partner pages back as far as the chat’s own page, and keeps older turns for later', paging.first.join() === 'q6,q8,q9' && paging.back.join() === 'q1,q4', paging);
       const bars = await b.eval(`const at = s => new Date(Date.parse('2026-10-11T10:00:00Z') + s * 1000).toISOString();
