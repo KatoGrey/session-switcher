@@ -94,10 +94,11 @@ function sideBugs(chats, key = 'all') {
   // Up to five per stage, so every stage shows; "N more" opens them all.
   const per = S.more['all-bugs-' + key] ? 400 : 5;
   let n = 0, inner = '';
-  for (const st of [...BUG_STAGES.filter(x => x.id !== 'done'), WAIT_LABEL]) {
-    const list = open.filter(c => (st === WAIT_LABEL ? c.waiting : !c.waiting && bugStage(c) === st.id)); if (!list.length) continue;
+  const groups = [...BUG_STAGES.filter(x => x.id !== 'done'), WAIT_LABEL].map(st => [st, open.filter(c => (st === WAIT_LABEL ? c.waiting : !c.waiting && bugStage(c) === st.id))]).filter(([, l]) => l.length);
+  for (const [st, list] of groups) {
     const take = list.slice(0, per); n += take.length;
-    inner += `<div class="side-stage"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(c => sideChat(c)).join('')}`;
+    // One stage only: no label over it.
+    inner += `${groups.length === 1 ? '' : `<div class="side-stage"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>`}${take.map(c => sideChat(c)).join('')}`;
   }
   if (open.length > n) inner += `<button class="nav-i chat-i quiet-toggle" data-more-all="bugs-${esc(key)}"><span class="lbl">${open.length - n} more</span></button>`;
   const nd = open.some(needs), rn = open.some(running);
@@ -117,13 +118,12 @@ function sideProjects(all) {
   for (const c of chats) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
   const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
   const activeOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && !famQuiet(c));
-  const laterOf = g => g.cs.filter(c => isTop(c) && statusOf(c) === 'later');
   const hot = g => g.cs.some(c => needs(c) || running(c)) ? 1 : 0;
   const ord = g => (typeof g.p.order === 'number' ? g.p.order : 1e9);
   const act = groups.filter(g => activeOf(g).length).sort((a, b) => ord(a) - ord(b) || hot(b) - hot(a) || Math.max(...b.cs.map(c => c.updated)) - Math.max(...a.cs.map(c => c.updated)));
   const quiet = groups.filter(g => !activeOf(g).length);
   const projRow = g => {
-    const lv = activeOf(g), q = g.cs.filter(c => isTop(c) && famQuiet(c) && !parked(statusOf(c))), lat = laterOf(g);
+    const lv = activeOf(g), q = g.cs.filter(c => isTop(c) && famQuiet(c) && !parked(statusOf(c)));
     // Projects in buckets without stages (Games, Apps…) start folded to one line; Latitude's open.
     const stageless = !bucketStages(g.p.bucket);
     const open = stageless ? S.folded['p:' + g.p.key] === false : !S.folded['p:' + g.p.key];
@@ -135,10 +135,12 @@ function sideProjects(all) {
       let n = foc.length;
       inner = foc.map(c => sideChatDot(c) + sideFam(c)).join('');
       if (bucketStages(g.p.bucket)) {
+        // Only one stage among them (and nothing waiting): its label says nothing, so it's left out.
+        const one = new Set(rest.map(statusOf)).size === 1 && !waits.length;
         for (const st of STATUSES.filter(x => !parked(x.id))) {
           const list = rest.filter(c => statusOf(c) === st.id); if (!list.length || n >= limit) continue;
           const take = list.slice(0, limit - n); n += take.length;
-          inner += `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>${take.map(c => sideChat(c) + sideFam(c)).join('')}`;
+          inner += `${one ? '' : `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>`}${take.map(c => sideChat(c) + sideFam(c)).join('')}`;
         }
       } else { const take = rest.slice(0, Math.max(0, limit - n)); n += take.length; inner += take.map(c => sideChatDot(c) + sideFam(c)).join(''); }
       // Waiting on someone else: out of the way at the end, whatever its status.
@@ -149,12 +151,6 @@ function sideProjects(all) {
         const qo = !!S.more['pq:' + g.p.key];
         if (qo) inner += `<div class="quiet-chats">${q.map(c => sideChatDot(c) + sideFam(c)).join('')}</div>`;
         inner += `<button class="nav-i chat-i quiet-toggle" data-side-quiet="${esc(g.p.key)}" aria-expanded="${qo}"><span class="lbl">${qo ? 'Hide quiet' : `${q.length} quiet`}</span></button>`;
-      }
-      // The backlog: out of the way at the end, one click to see it.
-      if (lat.length) {
-        const lo = !!S.more['pl:' + g.p.key];
-        if (lo) inner += `<div class="quiet-chats">${lat.map(c => sideChatDot(c) + sideFam(c)).join('')}</div>`;
-        inner += `<button class="nav-i chat-i quiet-toggle" data-side-later="${esc(g.p.key)}" aria-expanded="${lo}"><span class="lbl">${lo ? 'Hide later' : `${lat.length} later`}</span></button>`;
       }
     }
     // The name opens the project; the chevron beside it folds its chats away.
@@ -179,6 +175,13 @@ function sideProjects(all) {
       if (gs.length || bugs) html += `<div class="side-bucket">${esc(b.name)}</div>${bugs}${gs.map(projRow).join('')}`;
     }
   } else html = sideBugs(all.filter(isBug), S.bucket) + act.map(projRow).join('');
+  // Later (the backlog) is a bucket of its own, after the others: folded, one click to open.
+  const later = all.filter(c => isTop(c) && statusOf(c) === 'later').sort((x, y) => y.updated - x.updated);
+  if (later.length) {
+    const lo = !!S.more['side-later'];
+    html += `<button class="side-bucket side-bucket-btn" data-side-later="*" aria-expanded="${lo}">Later <span class="n">${later.length}</span><span class="chev">${lo ? '▾' : '▸'}</span></button>`;
+    if (lo) html += `<div class="later-chats">${later.map(c => sideChat(c).replace('<span class="lbl">', `<span class="lbl" title="${esc(projOf(c).name || '')}">`) + sideFam(c)).join('')}</div>`;
+  }
   if (quiet.length) html += S.more.quietProj ? `<div class="side-bucket">Quiet</div>${quiet.map(g => `<button class="nav-i chat-i" data-project="${esc(g.p.key)}"><span class="lbl">${esc(g.p.name)}</span></button>`).join('')}<button class="nav-i chat-i quiet-toggle" data-quietproj="1"><span class="lbl">Hide quiet</span></button>` : `<button class="nav-i quiet-toggle" data-quietproj="1"><span class="lbl">${quiet.length} quiet project${quiet.length === 1 ? '' : 's'}</span></button>`;
   return html || '<p class="side-empty">No chats here yet.</p>';
 }
