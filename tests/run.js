@@ -42,6 +42,8 @@ const suites = [...require('./ui'), ...require('./project-art.ui'), ...require('
 const APP = path.join(__dirname, '..');
 const only = process.argv.slice(2);
 const SHOTS = process.env.SHOTS ? path.resolve(process.env.SHOTS) : null;
+// How long one browser suite may take (the slowest take about a minute on GitHub's Macs).
+const SUITE_MS = Number(process.env.SUITE_MS) || 6 * 60000;
 
 const freePort = () => new Promise((res, rej) => { const s = net.createServer(); s.unref(); s.on('error', rej); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => res(port)); }); });
 
@@ -53,7 +55,7 @@ async function main() {
     // On GitHub the failures are also written as annotations (from a TAP copy of the results), each
     // with its error and where it happened, readable on the run's page without signing in.
     const tap = process.env.GITHUB_ACTIONS ? path.join(RUN_TMP, `ss-tap-${process.pid}.txt`) : null;
-    const runLogic = () => spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP, env: { ...process.env, ...TMP_ENV } });
+    const runLogic = () => spawnSync(process.execPath, ['--test', '--test-timeout=180000', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP, env: { ...process.env, ...TMP_ENV }, timeout: 15 * 60000 });   // a stuck run ends (and fails) rather than holding everything
     const failures = () => {
       let text = ''; try { text = fs.readFileSync(tap, 'utf8'); } catch { return []; }
       const out = [];
@@ -129,7 +131,15 @@ async function main() {
         },
         async shot(b, name) { if (SHOTS) await b.shot(path.join(SHOTS, `${suite.name.replace(/\W+/g, '-')}-${name}.png`)); },
       };
-      try { await suite.run(t); } catch (err) { t.check('finished without an error', false, err.message); }
+      // A suite that hangs (a browser that stops answering) fails after a few minutes, by name, instead
+      // of holding the whole run until GitHub cancels it with nothing to say.
+      const began = Date.now();
+      let limit;
+      const hung = new Promise(r => { limit = setTimeout(() => r('hung'), SUITE_MS); });
+      try {
+        if (await Promise.race([suite.run(t).then(() => 'done'), hung]) === 'hung') t.check(`finished within ${SUITE_MS / 60000} minutes`, false, 'it stopped answering');
+      } catch (err) { t.check('finished without an error', false, err.message); } finally { clearTimeout(limit); }
+      if (Date.now() - began > 60000) lines.push(`  (took ${Math.round((Date.now() - began) / 1000)} s)`);
       for (const b of browsers) {
         const errors = b.logs.filter(l => /^EXC /.test(l));
         t.check('no script errors on the page', !errors.length, errors.slice(0, 3));
