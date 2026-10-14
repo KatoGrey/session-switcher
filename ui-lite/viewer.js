@@ -134,9 +134,9 @@ function paintViewer() {
 // click still opens a tab), file paths in steps and in `code`, and the viewer's own buttons.
 document.addEventListener('click', e => {
   const t = e.target;
-  const b = t.closest('[data-vw], [data-viewfile], [data-viewfiles], .msg-ai a[href], .msg-ai code.vpath');
+  const b = t.closest('[data-vw], [data-viewfile], [data-viewfiles], .msg-ai a[href], .msg-you a[href], .msg-ai code.vpath');
   if (!b || t.closest('#palRoot')) return;
-  if (b.matches('.msg-ai a[href]')) {
+  if (b.matches('.msg-ai a[href], .msg-you a[href]')) {
     // On a phone a link just opens (the panel would cover the chat, and sites won't sign in inside it).
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0 || S.view !== 'chat' || matchMedia('(max-width: 760px)').matches) return;
     const href = b.getAttribute('href');

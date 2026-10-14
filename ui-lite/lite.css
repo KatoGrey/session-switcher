@@ -1085,3 +1085,5 @@ blockquote p { margin: 4px 0; }
 .name-ideas .name-idea { font-size: 12.5px; }
 .ch-name { position: relative; }
 .name-ideas-pop { position: absolute; left: 0; top: 100%; z-index: 30; margin-top: 4px; padding: 8px; background: var(--pane); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: 0 12px 30px -14px rgba(0,0,0,.45); max-width: min(520px, 80vw); }
+
+.msg-you a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }

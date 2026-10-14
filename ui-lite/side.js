@@ -22,13 +22,13 @@ function openSideChat() {
 const sideAsked = t => String(t || '').split('Help with this:\n\n').pop();
 function sideFeedHtml() {
   // Your first question shows at once, while the side chat starts (it takes a few seconds).
-  if (SD.pending && !SD.items.length) return `<div class="msg-you">${esc(SD.pending).replace(/\n/g, '<br>')}</div><p class="sd-note"><span class="live-dot"></span> Starting the side chat…</p>`;
+  if (SD.pending && !SD.items.length) return `<div class="msg-you">${linkText(SD.pending)}</div><p class="sd-note"><span class="live-dot"></span> Starting the side chat…</p>`;
   if (!SD.key && !SD.sessionId) {
     return `<p class="empty-note">Ask or try something beside this chat. The side chat starts knowing this chat’s latest messages and stays under it in the sidebar; this chat isn’t touched.</p>${SD.error ? `<p class="sd-err">${esc(SD.error)}</p>` : ''}`;
   }
   const out = [];
   for (const it of SD.items) {
-    if (it.kind === 'user') out.push(`<div class="msg-you">${esc(sideAsked(it.text)).replace(/\n/g, '<br>')}</div>`);
+    if (it.kind === 'user') out.push(`<div class="msg-you">${linkText(sideAsked(it.text))}</div>`);
     else if (it.kind === 'assistant') {
       const blocks = it.blocks || [];
       const steps = blocks.filter(b => b.type === 'tool').length;

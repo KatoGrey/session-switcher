@@ -431,6 +431,14 @@ function nameIdeas(host, id, pick) {
   host.addEventListener('pointerdown', e => { if (e.target.closest('.name-idea')) e.preventDefault(); });
   host.addEventListener('click', e => { const b = e.target.closest('.name-idea'); if (b) pick(b.dataset.name); });
 }
+// Your own words, as written, with web links clickable (the text is escaped first; only http(s)
+// addresses become links, and a trailing full stop or bracket stays outside the link).
+function linkText(t) {
+  return esc(String(t || '')).replace(/https?:\/\/[^\s<>"']+/g, u => {
+    const m = /^(.*?)([.,;:!?)\]]*)$/.exec(u); const href = m[1].replace(/&amp;/g, '&');
+    return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${m[1]}</a>${m[2]}`;
+  }).replace(/\n/g, '<br>');
+}
 function askRename(id) {
   const c = chatBy.get(id); if (!c) return;
   const root = $('modalRoot');
