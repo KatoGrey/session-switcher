@@ -1771,7 +1771,7 @@ module.exports = [
       const b = await t.open({ fresh: true, seen: (p, u, body) => calls.push([p, body]) });
       await b.eval(`localStorage.removeItem('getting-started'); S.firstRun = true; await openSetup(); return 1`); await sleep(800);
       const gs = await b.eval(`const g = document.querySelector('.gs'); return g && { text: g.textContent.replace(/\\s+/g, ' '), steps: g.querySelectorAll('.gs-step').length, done: g.querySelectorAll('.gs-step.ok').length }`);
-      t.check('a first start opens Setup on Getting started', !!gs && gs.steps === 5 && /Two things and you’re ready/.test(gs.text) && /Install Claude Code/.test(gs.text) && /Sign in/.test(gs.text), gs);
+      t.check('a first start opens Setup on Getting started', !!gs && gs.steps === 6 && /Two things and you’re ready/.test(gs.text) && /Install Claude Code/.test(gs.text) && /Sign in/.test(gs.text), gs);
       await t.shot(b, 'getting-started');
       await b.clickOn('.gs [data-fix="install-claude"]'); await sleep(500);
       t.check('Install Claude Code runs Anthropic’s installer', calls.some(([p]) => p === '/api/claude/install'));

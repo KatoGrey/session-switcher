@@ -195,7 +195,7 @@ Routines are chats that start on their own. Open **Routines** in the sidebar, th
   - **A command's output:** runs a command in the routine's folder every few minutes, and each new line starts a run. It covers a Discord bot, a CLI or a database query you already have. A line can be JSON, like `{"id": "123", "text": "…", "link": "https://…"}`; otherwise the line is the text, and its first web address is the link.
   - An optional filter keeps only items that mention a word, or match a `/pattern/`.
   - The first look only notes what's already there, so turning a watcher on doesn't start a chat for every old post. Items are remembered by id, so nothing runs twice. A watcher starts at most six chats an hour; the rest wait their turn.
-- Each routine has a folder, an account (any Claude or Codex account, including Ollama), a prompt (or a saved prompt; `{project}` and `{date}` work), a permission mode, and whether each run starts a new chat or continues one chat.
+- Each routine has a folder, an account (any Claude or Codex account, including Ollama, or Gemini), a prompt (or a saved prompt; `{project}` and `{date}` work), a permission mode, and whether each run starts a new chat or continues one chat.
 - Runs happen in the app's own chat window, so they show under **At work** and **Awaiting you** like any chat. A watcher's run gets the new item's text and link in its first message.
 - Each routine keeps a history: when it ran, how it went, the last thing the chat said, and **Open chat**.
 - A run that was due while the Mac slept or the app was closed runs once when it's back, not once for every time it missed.
@@ -328,7 +328,7 @@ What's different from Claude and Codex, because of what the Antigravity CLI allo
 - **Modes:** **Plan only** changes nothing; **Edit files** lets it change files, and a command it wants to run becomes an approval card once its reply ends (Gemini can't pause mid-reply to ask): **Allow** runs it (Gemini is told it may, and carries on), **Always** switches the chat to Full access; **Full access** runs commands without asking.
 - **Pictures:** one you attach or paste is saved to a temp folder and Gemini reads it from there (it's told where), so it can describe, compare or work from it.
 - **Stop** ends the reply; your next message carries on with the same conversation.
-- **In the crew:** Gemini can join a Claude or Codex chat (or have them join its own), race or split the work with either, and take queued tasks. See [Claude, Codex and Gemini in one chat](#claude-codex-and-gemini-in-one-chat).
+- **In the crew:** Gemini can join a Claude or Codex chat (or have them join its own), race or split the work with either, take queued tasks, and run routines. The Commander reads and nudges Gemini chats, and side chats, sub-sessions and renaming work for them too. See [Claude, Codex and Gemini in one chat](#claude-codex-and-gemini-in-one-chat).
 - **Its usage isn't shown here:** Antigravity's `/usage` shows your plan's limits.
 
 ## OpenClaw agents
@@ -371,7 +371,7 @@ Claude, Codex and Gemini work in the same chat, any way round: bring Codex into 
 - **Hand-offs:**
   - **Ask Codex** on a reply quotes it to the partner (as Markdown), for example Claude's description of a cover image. **Send to Claude** on the partner's reply quotes it back.
   - **Give to Claude** on a picture Codex made attaches it to your next message to Claude, with where it's saved.
-- **It's remembered:** the partner is tied to the chat. Reopen the chat later and the partner's earlier messages appear in place, and your next message to it continues the same conversation.
+- **It's remembered:** the partners are tied to the chat. Reopen the chat later and each partner's earlier messages appear in place (all of them, with Codex and Gemini both in it), and your next message to it continues the same conversation.
 - **Approvals:** each one's approval cards are in its own color and say who's asking ("Codex wants to…"). Esc stops whichever one you're writing to.
 - Each partner uses its own sign-in and usage (Codex: your Codex account; Gemini: your Google account; Claude: the account you're working as) and shows in the ledger as **With Codex** or **With Gemini**. **Close** or **Stop this chat** stops all of them.
 
@@ -667,7 +667,7 @@ The Commander is one chat that keeps an eye on the others. It's at the top of th
 
 It can:
 
-- list your chats with what each is doing (working, needs your OK, has a question, finished its turn, not running), plus their groups and sub-sessions
+- list your chats (Claude, Codex and Gemini) with what each is doing (working, needs your OK, has a question, finished its turn, not running), plus their groups and sub-sessions
 - read a chat's latest messages
 - **nudge** a chat: send it a message. A chat that isn't running is opened in the chat window first. It can't type into a chat running in a terminal.
 - start a sub-session from a chat, with a task

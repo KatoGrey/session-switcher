@@ -131,8 +131,9 @@ function startHtml(j) {
       ${step(1, done(cl), 'Claude Code', done(cl) ? esc(cl.detail) : 'Session Switcher works with Anthropic’s Claude Code. Install it here; a terminal window shows it working.', fixBtn(cl))}
       ${step(2, done(acct), 'Your Claude account', done(acct) ? esc(acct.detail) : 'Sign in with the Claude account (Pro or Max) you use. More accounts can be added later, under Accounts on the hub.', fixBtn(acct))}
       ${step(3, !!(S.codex && S.codex.enabled), 'Codex too (optional)', 'Use OpenAI’s Codex next to Claude, even in the same chat.', '<a class="btn quiet sm" href="#st-codex">Codex settings</a>')}
-      ${step(4, false, 'Your phone (optional)', 'Answer chats and approve steps from your phone, over your Wi-Fi.', '<a class="btn quiet sm" href="#st-phone">Phone access</a>')}
-      ${step(5, !!store('toured'), 'A two-minute tour', 'Where everything is: the hub, projects, chats, Ctrl+K.', '<button class="btn quiet sm" data-fix="tour">Take the tour</button>')}
+      ${step(4, !!(S.gemini && S.gemini.enabled && S.gemini.signedIn), 'Gemini too (optional)', 'Use Google’s Gemini (Gemini 4 Argon on a Google AI plan) beside Claude and Codex, even in the same chat.', '<a class="btn quiet sm" href="#st-gemini">Gemini settings</a>')}
+      ${step(5, false, 'Your phone (optional)', 'Answer chats and approve steps from your phone, over your Wi-Fi.', '<a class="btn quiet sm" href="#st-phone">Phone access</a>')}
+      ${step(6, !!store('toured'), 'A two-minute tour', 'Where everything is: the hub, projects, chats, Ctrl+K.', '<button class="btn quiet sm" data-fix="tour">Take the tour</button>')}
     </ol>
     <p class="gs-b"><button class="btn quiet sm" data-gs="check">Check again</button>${essentials ? '<button class="btn sm" data-gs="done">Done</button>' : ''}</p></section>`;
 }

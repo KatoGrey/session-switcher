@@ -1,4 +1,4 @@
-// Claude and Codex in one chat, for real: run by hand, not by run.js (it uses your Claude and Codex
+// Claude, Codex and Gemini in one chat, for real: run by hand, not by run.js (it uses your Claude, Codex and Gemini
 // sign-ins and a little of their usage: a handful of one-line replies, Claude on Haiku).
 //
 //   node tests/real-duo.js                     every step
@@ -221,6 +221,57 @@ async function startServer(dataDir) {
     const li = await s.call('/api/chat/attach', { key: info.key }); out.codex.push(li.sessionId); save();
   }
 
+  // 6. All three: Gemini joins a Claude chat and reads it; then All goes round Claude, Codex and
+  // Gemini in turn, each knowing what the ones before said; the window shows a pill for each.
+  if (run('crew')) {
+    await s.call('/api/gemini/settings', { enabled: true });
+    let gst = null;
+    for (let i = 0; i < 40; i++) { gst = (await s.call('/api/state')).gemini; if (gst && gst.checked) break; await sleep(1000); }
+    if (!gst || !gst.signedIn) check('Gemini is set up and signed in (for this step)', false, JSON.stringify(gst));
+    else {
+      const made = await s.call('/api/project/create', { parent: os.tmpdir(), name: `ss-crew-${Date.now().toString(36)}` });
+      out.folders.push(made.cwd); save();
+      const lead = await s.call('/api/chat/open', { account: acct.id, cwd: made.cwd, mode: 'new', model: 'haiku' });
+      await s.call('/api/chat/send', { key: lead.key, text: 'Reply with exactly this and nothing else: FOXTROT-2' });
+      await s.waitTurn(lead.key, 1, 'Claude’s first reply');
+      const g = await s.call('/api/chat/send', { key: lead.key, to: 'partner', kind: 'gemini', text: 'What exact code did Claude just reply with? Answer with that code followed by " GOLF-8", nothing else.' });
+      const gi = await s.call('/api/chat/attach', { key: g.key });
+      check('a message to Gemini starts Gemini in this Claude chat', gi.provider === 'gemini' && gi.parentKey === lead.key, JSON.stringify({ provider: gi.provider, parentKey: gi.parentKey }));
+      await s.waitTurn(g.key, 1, 'Gemini’s first reply');
+      check('Gemini read what Claude said', /FOXTROT-2/.test(s.texts(g.key)) && /GOLF-8/.test(s.texts(g.key)), s.texts(g.key));
+      out.gemini = [...(out.gemini || []), (await s.call('/api/chat/attach', { key: g.key })).sessionId].filter(Boolean); save();
+      // All: Claude, then Codex (joining now), then Gemini.
+      await s.call('/api/chat/send', { key: lead.key, to: 'all', kinds: ['codex', 'gemini'], text: 'Name one color, in one word. (If others answered before you, name a different color than each of them, also one word.)' });
+      await s.waitTurn(lead.key, 2, 'Claude’s All reply');
+      const open = await s.call('/api/chat/open', { account: acct.id, sessionId: (await s.call('/api/chat/attach', { key: lead.key })).sessionId, mode: 'resume' });
+      const cxKey = open.crew && open.crew.running && open.crew.running.codex;
+      check('Codex joined the chat too, beside Gemini', !!cxKey && open.crew.running.gemini === g.key, JSON.stringify(open.crew));
+      if (cxKey) {
+        await s.waitFor(cxKey, e => e.kind === 'user' && e.relay, 180000, 'the hand-over to Codex');
+        await s.waitTurn(cxKey, 1, 'Codex’s All reply');
+        out.codex.push((await s.call('/api/chat/attach', { key: cxKey })).sessionId); save();
+        await s.waitFor(g.key, e => e.kind === 'user' && e.relay, 180000, 'the hand-over to Gemini');
+        await s.waitTurn(g.key, 2, 'Gemini’s All reply');
+        const last = key => s.texts(key).split('\n').filter(Boolean).pop().trim().toLowerCase().replace(/\W/g, '');
+        const colors = [last(lead.key), last(cxKey), last(g.key)];
+        const relay = s.watch(g.key).events.filter(e => e.kind === 'user' && e.relay).pop();
+        check('All went round: Claude, then Codex, then Gemini, each with a different color', new Set(colors).size === 3, colors.join(' / '));
+        check('Gemini’s turn knew both answers before it', relay && relay.text.toLowerCase().includes(colors[0]) && relay.text.toLowerCase().includes(colors[1]), relay && relay.text.slice(0, 600));
+        const ho = s.watch(lead.key).events.filter(e => e.kind === 'handoff').map(e => `${e.to}:${e.state}`).join();
+        check('the chat showed each hand-over in order', ho === 'codex:waiting,codex:sent,gemini:waiting,gemini:sent', ho);
+        // The window: a pill for each, All, and Gemini's replies in the feed.
+        const { launch } = require(path.join(repo, 'tests', 'browser.js'));
+        const b = await launch({ width: 1440, height: 900 });
+        await b.nav(s.base + '/', 3000);
+        await b.eval(`await ChatUI.open({ sessionId: ${JSON.stringify(open.sessionId)} }); return 1`); await sleep(5000);
+        const v = await b.eval(`return { pills: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), all: document.querySelector('[data-crew="both"] .crew-n')?.textContent, gem: document.querySelectorAll('#cFeed .turn[data-prov="gemini"]').length, cx: document.querySelectorAll('#cFeed .turn[data-prov="codex"]').length }`);
+        check('the window: a pill for Codex and Gemini, All, and both partners in the feed', v.pills.includes('codex') && v.pills.includes('gemini') && v.all === 'All' && v.gem >= 2 && v.cx >= 1, JSON.stringify(v));
+        await b.shot(path.join(os.tmpdir(), 'real-crew-window.png'));
+        b.close();
+      }
+    }
+  }
+
   await s.stop();
 })().catch(err => { failed++; console.error(err.stack || err); })
   .then(cleanup)
@@ -257,6 +308,20 @@ async function cleanup() {
       for (const id of ids) { try { await retry(() => srv.request('thread/archive', { threadId: id }, 30000), 3); } catch (err) { left.push(`Codex conversation ${id} (${err.message})`); } }
     } catch (err) { left.push(`${ids.length} Codex conversations (Codex didn't start: ${err.message})`); } finally { srv.stop(); }
   }
+  // Gemini (Antigravity) keeps each conversation as brain/<id>, conversations/<id>.db and a title; only
+  // the test's own go, and its "last conversation" entries for the scratch folders.
+  const agy = path.join(home, '.gemini', 'antigravity-cli');
+  for (const id of out.gemini || []) {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) continue;
+    const parts = [path.join(agy, 'brain', id), path.join(agy, 'annotations', `${id}.pbtxt`), ...['', '-shm', '-wal'].map(x => path.join(agy, 'conversations', `${id}.db${x}`))];
+    for (const p of parts) { try { await retry(() => fs.rmSync(p, { recursive: true, force: true })); } catch (err) { left.push(`${p} (${err.code || err.message})`); } }
+  }
+  try {
+    const f = path.join(agy, 'cache', 'last_conversations.json'), j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    const norm = p => String(p).replace(/[\\/]+$/, '').toLowerCase();
+    for (const k of Object.keys(j)) if (out.folders.some(x => norm(x) === norm(k))) delete j[k];
+    fs.writeFileSync(f, JSON.stringify(j));
+  } catch { /* none kept */ }
   for (const f of [...out.folders, out.dataDir].filter(Boolean)) { try { await retry(() => fs.rmSync(f, { recursive: true, force: true })); } catch (err) { left.push(`${f} (${err.code || err.message})`); } }
   console.log(`Cleaned up ${out.folders.length} scratch project${out.folders.length === 1 ? '' : 's'} and ${ids.length - left.filter(x => x.startsWith('Codex')).length} Codex conversation${ids.length === 1 ? '' : 's'}.`);
   if (left.length) console.log(`Couldn’t clean up (remove these by hand):\n  ${left.join('\n  ')}`);
