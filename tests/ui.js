@@ -1661,7 +1661,7 @@ module.exports = [
     async run(t) {
       const b = await t.open();
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
-      const r = await b.eval(`C.comps = {}; C.comp = null; C.compPending = [{ kind: 'user', at: new Date().toISOString() }]; let err = null; try { await ensureCompanion(); } catch (e) { err = e.message; } return { err, comp: !!C.comp, models: !!(C.mi.comp && C.mi.comp.models && C.mi.comp.models.length) }`);
+      const r = await b.eval(`C.comps = {}; C.comp = null; C.compHist = { codex: { thread: 'paging', pending: [{ kind: 'user', at: new Date().toISOString() }], cursor: null, more: true } }; let err = null; try { await ensureCompanion(); } catch (e) { err = e.message; } return { err, comp: !!C.comp, models: !!(C.mi.comp && C.mi.comp.models && C.mi.comp.models.length) }`);
       t.check('Codex starts even while its earlier messages are being paged', !r.err && r.comp, r);
       t.check('and its models are listed', r.models, r);
     },
@@ -2299,7 +2299,32 @@ module.exports = [
       t.check('Switcher Lite opens on the same app', /Switcher Lite$/.test(r.title) && !!r.brand && r.side, r);
       t.check('once opened, Lite counts as used here (its checks start)', r.used, r);
       t.check('the week-starter is off unless you turn it on', !r.weeks, r);
+      // Who answers, in a Claude chat with Gemini set up (and no ChatGPT plan here): Gemini, or both in turn.
+      const to = await b.eval(`const realPlans = S.plans; S.plans = { plans: [{ id: 'cl', family: 'claude' }] }; S.gemini = true; S.view = 'chat'; CV.provider = 'claude'; PARTNER.prov = 'gemini';
+        const out = { kinds: crewKindsLite(), one: toBody('partner:gemini'), both: toBody('both'), old: toBody('partner'), chat: toBody('chat'), name: toName('partner:gemini') };
+        S.plans = { plans: [{ id: 'cl', family: 'claude' }, { id: 'cx', family: 'chatgpt' }] }; out.all = toBody('both'); S.plans = realPlans; return out`);
+      t.check('Lite: Gemini can answer in a Claude chat', JSON.stringify(to.kinds) === '["gemini"]' && to.one.to === 'partner' && to.one.kind === 'gemini' && to.name === 'Gemini', to);
+      t.check('Lite: Both goes to the chat, then Gemini; “partner” from before means the chat’s last partner', to.both.to === 'both' && to.both.kind === 'gemini' && to.old.kind === 'gemini' && !to.chat.to, to);
+      t.check('Lite: with Codex and Gemini both there, All goes round them in turn', to.all.to === 'all' && JSON.stringify(to.all.kinds) === '["codex","gemini"]', to);
       await t.shot(b, 'now');
+    },
+  },
+  {
+    name: 'crew history',
+    // A chat with two partners opens with both one's and the other's earlier messages, in time order,
+    // each under its own name; the one not running still has its pill.
+    async run(t) {
+      const b = await t.open({ gemini: true, crew: true });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const r = await b.eval(`const turns = [...document.querySelectorAll('#cFeed .turn')].map(x => ({ who: x.querySelector('.who-n')?.textContent, text: (x.querySelector('.md')?.textContent || '').slice(0, 60) }));
+        return { turns, pills: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), hist: Object.keys(C.compHist) }`);
+      const gem = r.turns.findIndex(x => x.who === 'Gemini' && /harvest moon/.test(x.text));
+      t.check('both partners’ conversations are read', JSON.stringify(r.hist.sort()) === '["codex","gemini"]', r.hist);
+      t.check('Gemini’s earlier reply shows, under its name', gem >= 0, r.turns.map(x => x.who));
+      t.check('Codex’s earlier replies show too', r.turns.some(x => x.who === 'Codex'), r.turns.map(x => x.who));
+      t.check('in time order: after Claude’s replies from before it', gem > r.turns.findIndex(x => x.who === 'Claude'), r.turns.map(x => x.who));
+      t.check('a pill for each of them', JSON.stringify(r.pills) === '["codex","gemini"]', r.pills);
+      await t.shot(b, 'feed');
     },
   },
 ];

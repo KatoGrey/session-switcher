@@ -67,6 +67,13 @@ const gemHistory = [
   { kind: 'user', text: 'Write the opening of the tavern’s lore book: one short paragraph, warm and a little mysterious.', images: [], at: iso(NOW - 31 * 60e3) },
   { kind: 'assistant', mid: 'g1', at: iso(NOW - 30 * 60e3), blocks: [{ type: 'tool', id: 'gt1', name: 'Write', summary: 'C:\\Projects\\Starfall Tavern\\lore\\opening.md', detail: '', detailKind: 'text', meta: { path: 'lore/opening.md', paths: ['lore/opening.md'] }, result: { text: '', isError: false, images: [] } }, { type: 'text', text: 'Before the roads had names, there was a lantern in the window of the Starfall, and it has not gone out since. Travellers say the hearth remembers every song sung beside it; the bard says it only remembers the good ones.' }] },
 ];
+// A crew (with the crew option): the bard chat has Codex and Gemini in it; Gemini isn't running now,
+// but its earlier reply is in its own conversation.
+const CREW = { kinds: ['codex', 'gemini'], running: { codex: 'k-bard-cx' }, threads: { codex: 't-bard-codex', gemini: 't-bard-gemini' } };
+const gemPartnerHistory = [
+  { kind: 'user', text: 'Give the Rally song one new verse, for the festival.', images: [], at: iso(NOW - 12 * 60e3) },
+  { kind: 'assistant', mid: 'gp1', at: iso(NOW - 11.5 * 60e3), blocks: [{ type: 'text', text: 'Lift your mugs to the harvest moon, the lanterns low and the fiddles in tune.' }] },
+];
 const withOpenClaw = list => {
   const out = list.map(p => ({ ...p, sessions: [...p.sessions, ...ocSessions.filter(x => x.cwd === p.cwd)].sort((a, b) => b.updated - a.updated) }));
   out.push({ cwd: ocSessions[1].cwd, name: 'clawd', exists: true, notes: 0, updated: ocSessions[1].updated, sessions: [ocSessions[1]] });
@@ -154,10 +161,10 @@ const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}
 // Options: state (the chat's state), seen(path, url, body) for every API call, context (how
 // full the chat is), events (more chat events sent after it connects), extras (kept changes and reviews), openclaw (OpenClaw sessions in the list), noHistory (the history
 // isn't there yet, as for a brand-new chat).
-async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false, gemini = false } = {}) {
+async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false, gemini = false, crew = false } = {}) {
   // Windows Firewall, as a fresh PC has it: nothing let in, the Wi-Fi set as public.
   let firewall = { known: true, program: 'C:\\Program Files\\nodejs\\node.exe', port: 4788, firewallOn: true, allowed: false, blocked: true, network: 'Public' };
-  const info = { ...chatInfo, ...(context ? { context } : {}) };
+  const info = { ...chatInfo, ...(context ? { context } : {}), ...(crew ? { crew: CREW, mate: 'codex' } : {}) };
   let reviews = 0;
   // Rules and tools: the project's CLAUDE.md and AGENTS.md differ; one tool on each side, and Codex's own.
   const rules = {
@@ -229,6 +236,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     // extras: what the PC kept from the chat's earlier runs (changes, undos, reviews).
     if (p === '/api/chat/extras') return { body: { extras: extras && q.get('id') === ID['s-bard'] ? extras : [] } };
     if (p === '/api/chat/history' && noHistory) return { status: 404, body: { error: 'That chat wasn’t found. It may have been deleted; refresh the list.' } };
+    if (p === '/api/chat/history' && crew && q.get('id') === 't-bard-gemini') return { body: { items: gemPartnerHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history' && (q.get('provider') === 'gemini' || q.get('id') === GEM_ID)) return { body: { items: gemHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history' && q.get('provider') === 'openclaw') return { body: { items: ocHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history') return { body: { items: q.get('provider') === 'codex' || q.get('id') === 't-bard-codex' ? codexHistory : claudeHistory, start: 0, cursor: null } };

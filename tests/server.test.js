@@ -134,12 +134,18 @@ test('tasks: queued for a project, waiting while no account can start them, and 
     assert.equal(start.status, 409);
     assert.match(start.json.error, /sign in first/);
     assert.ok(JSON.parse(fs.readFileSync(path.join(dataDir, 'tasks.json'), 'utf8')).tasks.length === 1, 'kept on disk');
-    // Repeating: a Gemini task stays a task (routines start Claude and Codex chats).
+    // Repeating, with Gemini: it becomes a routine that runs on Gemini, at that time (Gemini off: it says so).
     const at = new Date(Date.now() + 3600e3).toISOString();
-    const g = await s.call('/api/tasks', { action: 'add', task: { cwd: proj, provider: 'gemini', prompt: 'Draft the lore.', when: 'at', at, repeat: 'daily' } });
-    assert.equal(g.status, 200);
-    assert.ok(g.json.task && !g.json.routine && g.json.task.repeat === 'daily', JSON.stringify(g.json));
-    assert.equal((await s.call('/api/tasks', { action: 'remove', id: g.json.task.id })).status, 200);
+    const gTask = { cwd: proj, provider: 'gemini', prompt: 'Draft the lore.', when: 'at', at, repeat: 'daily' };
+    const off = await s.call('/api/tasks', { action: 'add', task: gTask });
+    assert.equal(off.status, 400, 'Gemini is off in this throwaway copy');
+    assert.equal((await s.call('/api/gemini/settings', { enabled: true })).status, 200);
+    const g = await s.call('/api/tasks', { action: 'add', task: gTask });
+    assert.equal(g.status, 200, JSON.stringify(g.json));
+    assert.ok(g.json.routine && g.json.routine.account === 'gemini' && g.json.routine.trigger.schedule.kind === 'daily', JSON.stringify(g.json));
+    assert.ok(['accept-edits', 'plan', 'full'].includes(g.json.routine.permissionMode), 'with one of Gemini’s own modes');
+    assert.equal((await s.call('/api/routines/remove', { id: g.json.routine.id })).status, 200);
+    assert.equal((await s.call('/api/gemini/settings', { enabled: false })).status, 200);
     assert.equal((await s.call('/api/tasks', { action: 'remove', id })).status, 200);
     list = (await s.call('/api/tasks')).json.tasks;
     assert.equal(list.length, 0);

@@ -7,6 +7,9 @@ const Routines = (() => {
   const R = { list: [], templates: [], secrets: {}, loaded: false, hist: new Set(), editing: null };
   const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto' };
   const CODEX_MODES = [['agent', 'Agent'], ['ask', 'Ask before acting'], ['read-only', 'Read only'], ['full', 'Full access']];
+  const GEMINI_MODES = [['accept-edits', 'Edit files'], ['plan', 'Plan only'], ['full', 'Full access']];
+  // Which assistant an account runs: Claude, Codex, or Gemini (one account, "gemini").
+  const kindOfAcct = id => (id === 'gemini' ? 'gemini' : isCodexId(id) ? 'codex' : 'claude');
   const STATUS = { starting: 'Starting', working: 'Working', done: 'Done', 'needs-you': 'Needs you', skipped: 'Waited', failed: 'Didn’t finish', stopped: 'Stopped' };
   const isCodexId = id => !!codexAcct(id);
   const folderOf = cwd => String(cwd || '').split(/[\\/]/).filter(Boolean).pop() || cwd;
@@ -240,11 +243,13 @@ const Routines = (() => {
   function fillAccounts(sel) {
     const claude = S.accounts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}${a.signedIn ? '' : ' (not signed in)'}</option>`).join('');
     const cx = S.codex && S.codex.enabled ? codexAccts().map(c => `<option value="${esc(c.id)}">${esc(c.name || 'Codex')}${c.kind === 'ollama' ? ' (Ollama)' : ''}${c.signedIn ? '' : ' (not signed in)'}</option>`).join('') : '';
-    $('rtAcct').innerHTML = `<optgroup label="Claude">${claude}</optgroup>${cx ? `<optgroup label="Codex">${cx}</optgroup>` : ''}`;
+    const gm = S.gemini && S.gemini.enabled ? `<option value="gemini">Gemini (your Google AI plan)${S.gemini.signedIn ? '' : ' (not signed in)'}</option>` : '';
+    $('rtAcct').innerHTML = `<optgroup label="Claude">${claude}</optgroup>${cx ? `<optgroup label="Codex">${cx}</optgroup>` : ''}${gm ? `<optgroup label="Gemini">${gm}</optgroup>` : ''}`;
     $('rtAcct').value = sel && [...$('rtAcct').options].some(o => o.value === sel) ? sel : current().id;
   }
   function fillModes(sel) {
-    const opts = isCodexId($('rtAcct').value) ? CODEX_MODES : Object.entries(MODE_LABELS);
+    const kind = kindOfAcct($('rtAcct').value);
+    const opts = kind === 'gemini' ? GEMINI_MODES : kind === 'codex' ? CODEX_MODES : Object.entries(MODE_LABELS).filter(([v]) => !['dontAsk', 'accept-edits', 'full', 'agent', 'ask', 'read-only'].includes(v));
     const keep = sel || $('rtMode').value;
     $('rtMode').innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('');
     $('rtMode').value = opts.some(o => o[0] === keep) ? keep : opts[0][0];
@@ -252,9 +257,9 @@ const Routines = (() => {
   // A new chat each run, one chat kept going, or one of the folder's chats to continue.
   function fillChats(sel) {
     const cwd = $('rtCwd').value.trim();
-    const codexAcc = isCodexId($('rtAcct').value);
+    const kind = kindOfAcct($('rtAcct').value);
     const p = S.projects.find(x => x.cwd === cwd);
-    const chats = p ? p.sessions.filter(x => isCodex(x) === codexAcc).slice(0, 30) : [];
+    const chats = p ? p.sessions.filter(x => (isCodex(x) ? 'codex' : isGemini(x) ? 'gemini' : 'claude') === kind).slice(0, 30) : [];
     const keep = sel !== undefined ? sel : $('rtChat').value;
     $('rtChat').innerHTML = `<option value="new">Starts a new chat</option><option value="continue">Continues one chat (made on the first run)</option>${chats.length ? `<optgroup label="Or continue a chat in this folder">${chats.map(c => `<option value="s:${esc(c.id)}">${esc(c.title.slice(0, 70))}</option>`).join('')}</optgroup>` : ''}`;
     $('rtChat').value = [...$('rtChat').options].some(o => o.value === keep) ? keep : (keep && keep.startsWith('s:') ? 'continue' : 'new');

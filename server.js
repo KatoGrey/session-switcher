@@ -292,6 +292,21 @@ const geminiSessions = () => {
   return geminiRows.list;
 };
 const isGeminiId = id => !!id && config().gemini.enabled && gemini.known(String(id));
+// A Gemini chat in the list, by id (its folder and title), or null.
+const geminiRow = id => (id ? gemini.list().find(r => r.id.toLowerCase() === String(id).toLowerCase()) || null : null);
+// A Gemini chat started or picked up by something other than the window (the Commander, a routine, a
+// side chat): with the folder's (or chat's) remembered mode and model unless it's told otherwise.
+async function openGeminiFor(c, { sessionId = null, cwd, mode = null, model = null, title = null }) {
+  if (!gemini.publicState().checked) await gemini.refreshAccount().catch(() => null);
+  requireGeminiReady();
+  if (sessionId) { const live = chats.bySession(sessionId); if (live) return live; }
+  if (!cwd || !fs.existsSync(cwd)) throw fail(400, `The folder ${cwd || '(none)'} no longer exists, so this Gemini chat can’t run there.`);
+  const pref = chatPrefs.get({ sessionId, cwd, provider: 'gemini' });
+  const chat = gemini.open({ cfg: c, cwd, sessionId, mode: geminiLib.MODES.some(m => m.value === mode) ? mode : pref.mode, model: model || pref.model || null, title: title || 'New Gemini chat', folder: cwd.split(/[\\/]/).filter(Boolean).pop() || cwd });
+  if (sessionId) sessions.recordLaunch(sessionId, geminiLib.ACCOUNT, 'app');
+  return chat;
+}
+const assistantName = provider => (provider === 'codex' ? 'Codex' : provider === 'gemini' ? 'Gemini' : 'Claude');
 function requireGeminiReady() {
   const st = gemini.publicState();
   if (!st.enabled) throw fail(409, 'Gemini is turned off in Setup.');
@@ -483,25 +498,32 @@ async function otherChatBlock(ref) {
 // The model and effort a Codex chat started on, read from its own log, so picking it up again
 // doesn't drop it to Codex's default. A chat a routine started never had its choice saved, and
 // once one turn has run on the wrong model, its latest turn would only repeat the mistake.
-function codexStartedOn(threadId) {
+// Read without holding up the app (a long Codex history is many folders), and remembered: a chat's
+// first model never changes.
+const startedOnSeen = new Map();
+async function codexStartedOn(threadId) {
+  if (startedOnSeen.has(threadId)) return startedOnSeen.get(threadId);
+  const fsp = fs.promises;
+  let out = null;
   try {
     const root = path.join(codexHomes.MAIN_HOME(), 'sessions');
-    const kids = d => fs.readdirSync(d).filter(n => /^\d+$/.test(n)).sort().reverse();
-    for (const y of kids(root)) for (const m of kids(path.join(root, y))) for (const d of kids(path.join(root, y, m))) {
+    const kids = async d => (await fsp.readdir(d).catch(() => [])).filter(n => /^\d+$/.test(n)).sort().reverse();
+    search: for (const y of await kids(root)) for (const m of await kids(path.join(root, y))) for (const d of await kids(path.join(root, y, m))) {
       const dir = path.join(root, y, m, d);
-      const f = fs.readdirSync(dir).find(n => n.endsWith(`${threadId}.jsonl`));
+      const f = (await fsp.readdir(dir).catch(() => [])).find(n => n.endsWith(`${threadId}.jsonl`));
       if (!f) continue;
-      const file = path.join(dir, f), len = Math.min(fs.statSync(file).size, 2 * 1024 * 1024);
-      const fd = fs.openSync(file, 'r'), buf = Buffer.alloc(len);
-      try { fs.readSync(fd, buf, 0, len, 0); } finally { fs.closeSync(fd); }
-      for (const l of buf.toString('utf8').split('\n')) {
+      const fh = await fsp.open(path.join(dir, f), 'r');
+      let text = '';
+      try { const len = Math.min((await fh.stat()).size, 2 * 1024 * 1024), buf = Buffer.alloc(len); await fh.read(buf, 0, len, 0); text = buf.toString('utf8'); } finally { await fh.close(); }
+      for (const l of text.split('\n')) {
         if (!l.includes('"turn_context"')) continue;
-        try { const p = JSON.parse(l).payload || {}; if (p.model) return { model: p.model, effort: p.effort || null }; } catch { /* a cut line */ }
+        try { const p = JSON.parse(l).payload || {}; if (p.model) { out = { model: p.model, effort: p.effort || null }; break; } } catch { /* a cut line */ }
       }
-      return null;
+      break search;
     }
   } catch { /* no log */ }
-  return null;
+  if (out || startedOnSeen.size < 2000) startedOnSeen.set(threadId, out);
+  return out;
 }
 function codexFind(id) {
   const t = id && codex.known(String(id));
@@ -793,7 +815,7 @@ async function openChatInner(c, body) {
     const art = themeStudio.project(cwd);
     const folder = art ? `Theme Studio · ${art.name}` : cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
     const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
-    const last = threadId && mode !== 'new' && !body.model && !pref.model ? codexStartedOn(threadId) : null;
+    const last = threadId && mode !== 'new' && !body.model && !pref.model ? await codexStartedOn(threadId) : null;
     const model = [body.model, pref.model, last && last.model].find(m => m && modelFits(inst, m)) || null;
     const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, fast: body.fast === true || pref.fast === 'on', effort: pref.effort || (last && model === last.model ? last.effort : null), title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
     if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
@@ -1217,6 +1239,7 @@ function stateFor() {
 // Chats that start on their own (lib/routines.js). They open the same way the chat window opens one.
 async function routineChat({ account, cwd, sessionId, permissionMode, model, effort, title }) {
   const c = config();
+  if (account === 'gemini') return openGeminiFor(c, { sessionId, cwd, mode: permissionMode, model, title });
   const folder = path.basename(cwd.replace(/[\\/]+$/, '')) || cwd;
   const live = sessionId && chats.bySession(sessionId);
   if (live) return live;
@@ -1241,6 +1264,7 @@ const routines = routinesLib.createRoutines({
   // With Switcher Lite's "follow the use-next order" on, a routine runs on that plan instead.
   startChat: opts => routineChat({ ...opts, account: liteRoutes.routineAccount(opts.account) }),
   accountInfo: id => {
+    if (id === 'gemini') return config().gemini.enabled ? { id, provider: 'gemini', name: 'Gemini', modes: geminiLib.MODES.map(m => m.value) } : null;
     if (isCodexAccount(id)) { const x = codexById(id); return x && { id, provider: 'codex', name: x.ACCOUNT.name, modes: codexLib.MODES.map(m => m.value) }; }
     const a = config().accounts.find(x => x.id === id);
     return a && { id, provider: 'claude', name: a.name, modes: chatLib.MODES };
@@ -1248,6 +1272,7 @@ const routines = routinesLib.createRoutines({
   // Usage right before a run, so a routine doesn't use up a nearly full window.
   usageFor: async raw => {
     const id = liteRoutes.routineAccount(raw);
+    if (id === 'gemini') return null;   // its plan's room isn't reported to other apps; it just runs
     if (isCodexAccount(id)) { const x = codexById(id); if (!x) return null; await x.refreshUsage().catch(() => null); return { name: x.ACCOUNT.name, ...(usage.get(x.ACCOUNT.id) || {}) }; }
     const a = config().accounts.find(x => x.id === id);
     if (!a) return null;
@@ -1256,6 +1281,7 @@ const routines = routinesLib.createRoutines({
   },
   // A chat a routine started is named after it, so it's easy to spot in the lists.
   nameChat: async (chat, title) => {
+    if (chat.provider === 'gemini') { gemini.rename(chat.sessionId, title); geminiRows.at = 0; broadcast('sessions'); return; }
     if (chat.provider === 'codex') { await (codexById(chat.account.id) || codex).rename(chat.sessionId, title); codexSessions(0); return; }
     for (let i = 0; i < 5; i++) {
       try { sessions.rename(chat.sessionId, title); broadcast('sessions'); return; } catch { await new Promise(r => setTimeout(r, 2000)); }
@@ -1274,8 +1300,7 @@ function routineFromTask(t) {
   });
 }
 (() => {
-  // (Gemini's stay tasks: routines start Claude and Codex chats.)
-  const old = taskList.filter(t => t.state === 'queued' && t.repeat && t.at && t.provider !== 'gemini');
+  const old = taskList.filter(t => t.state === 'queued' && t.repeat && t.at);
   if (!old.length) return;
   for (const t of old) { try { routineFromTask(t); } catch (err) { log(`Couldn’t move a repeating task to Routines: ${err.message}`); continue; } taskList = taskList.filter(x => x !== t); }
   saveTasks();
@@ -1296,13 +1321,15 @@ const liteRoutes = createLiteRoutes({
   activityList: () => activityList(),
   companionOf: id => chatPrefs.companionOf(id),
   threadKind: id => (isCodexId(id) ? 'codex' : isGeminiId(id) ? 'gemini' : 'claude'),
+  crewOf: id => chatPrefs.crewOf(id),
+  geminiReady: () => { const st = gemini.publicState(); return !!st.enabled && st.signedIn !== false && st.installed !== false; },
   routinesList: () => routines.list(),
   parentOf: id => organize.parentOf(id),
   // Routines in Lite: a run's last reply (Ollama's Codex threads aren't in Codex's list, so the
   // provider is said), starting a bug chat from a routine's findings, and the routines API.
   // A chat's recent replies, newest last, joined (for finding things a chat reported earlier, like its PR).
   recentReplies: async (id, provider, turns = 40) => {
-    const items = provider === 'codex' || isCodexId(id) ? ((await codex.history(id, null, null)).items || []) : (await chatLib.readHistory(sessions.fileFor(id), { limit: 400 })).items;
+    const items = provider === 'gemini' || isGeminiId(id) ? gemini.history(id).items : provider === 'codex' || isCodexId(id) ? ((await codex.history(id, null, null)).items || []) : (await chatLib.readHistory(sessions.fileFor(id), { limit: 400 })).items;
     // Its words and the commands it ran (git push, gh pr …), which name its branch and PR.
     const texts = items.filter(it => it.kind === 'assistant').map(it => (it.blocks || []).map(b => (b.type === 'text' ? b.text : b.type === 'tool' && b.detailKind === 'command' && typeof b.detail === 'string' ? b.detail : '')).filter(Boolean).join('\n')).filter(Boolean);
     return texts.slice(-turns).join('\n\n').slice(-120000);
@@ -1345,6 +1372,7 @@ const liteRoutes = createLiteRoutes({
   },
   // A bug chat Lite started gets its name once it has an id (as routines name theirs).
   nameChat: async (chat, title) => {
+    if (chat.provider === 'gemini') { gemini.rename(chat.sessionId, title); geminiRows.at = 0; broadcast('sessions'); return; }
     if (chat.provider === 'codex') { await (codexById(chat.account.id) || codex).rename(chat.sessionId, title); codexSessions(0); return; }
     for (let i = 0; i < 5; i++) { try { sessions.rename(chat.sessionId, title); broadcast('sessions'); return; } catch { await new Promise(r => setTimeout(r, 2000)); } }
   },
@@ -1605,7 +1633,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/tasks': {
       if (body.action === 'add') {
         const t = tasksLib.validTask(body.task || {}, { projectAt, accounts: config().accounts });
-        if (t.repeat && t.provider !== 'gemini') { const routine = routineFromTask(t); return send(res, 200, { routine, tasks: tasksView() }); }
+        if (t.repeat) { const routine = routineFromTask(t); return send(res, 200, { routine, tasks: tasksView() }); }
         taskList.push(t); saveTasks();
         runQueue(t.id).catch(() => {});
         return send(res, 200, { task: t, tasks: tasksView() });
@@ -1981,6 +2009,12 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, await sys.revealInExplorer(p.cwd, false));
     }
     case '/api/chat/rename': {
+      if (isGeminiId(body.sessionId)) {
+        const title = gemini.rename(body.sessionId, body.name);
+        const live = chats.bySession(body.sessionId); if (live) live.title = title;
+        geminiRows.at = 0; broadcast('sessions');
+        return send(res, 200, { title });
+      }
       if (isCodexId(body.sessionId)) {
         await codex.rename(body.sessionId, body.name);
         codexSessions(0);
@@ -2147,7 +2181,7 @@ function commanderLive() {
 }
 const COMMANDER_NOTES = `# Commander
 
-You are the Commander in the user's Session Switcher. The user runs many Claude Code and Codex chats at
+You are the Commander in the user's Session Switcher. The user runs many Claude Code, Codex and Gemini chats at
 once; you watch them and help keep them moving. You don't work on code yourself here.
 
 Your tools (from the \`switcher\` MCP server):
@@ -2237,7 +2271,7 @@ function commanderSessions(filter = 'active', groupName = '') {
     if (!x.sessionId || x.parentKey || isCommanderId(x.sessionId)) continue;
     const k = x.sessionId.toLowerCase(), f = known.get(k);
     rows.set(k, {
-      id: x.sessionId, title: (f && f.s.title) || x.title || 'New chat', folder: (f && f.p.name) || x.folder || null, cwd: (f && f.p.cwd) || x.cwd || null, assistant: x.provider === 'codex' ? 'Codex' : 'Claude',
+      id: x.sessionId, title: (f && f.s.title) || x.title || 'New chat', folder: (f && f.p.name) || x.folder || null, cwd: (f && f.p.cwd) || x.cwd || null, assistant: assistantName(x.provider),
       state: stateWord(x), where: x.source === 'app' ? 'Session Switcher' : x.source === 'terminal' ? 'a terminal' : 'another app', account: x.accountName || null,
       lastLine: chatLib.one(x.lastText || '', 400), lastPrompt: chatLib.one(x.lastPrompt || '', 200),
       pending: (x.pending || []).map(p => ({ requestId: p.requestId, tool: p.toolName, summary: p.summary || null, question: !!p.question })),
@@ -2247,7 +2281,7 @@ function commanderSessions(filter = 'active', groupName = '') {
   const addKnown = id => {
     const k = String(id).toLowerCase(), f = known.get(k);
     if (rows.has(k) || !f || isCommanderId(id)) return;
-    rows.set(k, { id: f.s.id, title: f.s.title, folder: f.p.name, cwd: f.p.cwd, assistant: f.s.provider === 'codex' ? 'Codex' : 'Claude', state: 'not running', where: null, account: f.s.lastOpened ? f.s.lastOpened.accountName : null, lastLine: '', lastPrompt: f.s.lastPrompt || f.s.firstPrompt || '', pending: [], updated: iso(f.s.updated) });
+    rows.set(k, { id: f.s.id, title: f.s.title, folder: f.p.name, cwd: f.p.cwd, assistant: assistantName(f.s.provider), state: 'not running', where: null, account: f.s.lastOpened ? f.s.lastOpened.accountName : null, lastLine: '', lastPrompt: f.s.lastPrompt || f.s.firstPrompt || '', pending: [], updated: iso(f.s.updated) });
   };
   for (const g of view.groups) g.chats.forEach(addKnown);
   for (const [child, parent] of Object.entries(view.parents)) { addKnown(child); addKnown(parent); }
@@ -2269,8 +2303,9 @@ async function commanderRead(id, count) {
   if (isCommanderId(id)) throw fail(400, 'That’s the Commander itself.');
   let p;
   if (isCodexId(id)) { const cx = codexFind(id); p = { session: { id: cx.thread.id, title: cx.session ? cx.session.title : 'Codex chat', folder: cx.folder }, messages: await codex.preview(cx.thread.id).catch(() => []) }; }
+  else if (isGeminiId(id)) { const r = geminiRow(id); if (!r) throw fail(404, 'That Gemini chat isn’t in the list any more.'); p = { session: { id: r.id, title: r.title, folder: r.cwd ? path.basename(r.cwd) : null }, messages: gemini.preview(r.id) }; }
   else p = await sessions.preview(id);
-  const assistant = isCodexId(id) ? 'Codex' : 'Claude';
+  const assistant = isCodexId(id) ? 'Codex' : isGeminiId(id) ? 'Gemini' : 'Claude';
   const x = activityList().find(y => y.sessionId && y.sessionId.toLowerCase() === p.session.id.toLowerCase());
   return {
     id: p.session.id, title: p.session.title, folder: p.session.folder, assistant, state: x ? stateWord(x) : 'not running',
@@ -2293,6 +2328,11 @@ async function chatForCommander(c, id) {
     const chat = inst.open({ cfg: c, cwd: cx.cwd, threadId: cx.thread.id, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, title: (cx.session && cx.session.title) || 'Codex chat', folder: cx.folder });
     sessions.recordLaunch(cx.thread.id, inst.ACCOUNT, 'app');
     return { chat, opened: true };
+  }
+  if (isGeminiId(id)) {
+    const r = geminiRow(id);
+    if (!r) throw fail(404, 'That Gemini chat isn’t in the list any more.');
+    return { chat: await openGeminiFor(c, { sessionId: r.id, cwd: r.cwd, title: r.title }), opened: true };
   }
   const { project, session } = sessions.find(id);
   if (!project.exists) throw fail(400, `Its folder ${project.cwd} no longer exists.`);
@@ -2360,6 +2400,11 @@ async function openSubChat(c, pid) {
     const inst = codexForThread(pid); requireCodexSignedIn(inst);
     const pref = chatPrefs.get({ cwd, provider: 'codex' });
     chat = inst.open({ cfg: c, cwd, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, title: 'New Codex chat', folder });
+  } else if (isGeminiId(pid)) {
+    const r = geminiRow(pid);
+    if (!r) throw fail(404, 'That Gemini chat isn’t in the list any more.');
+    cwd = r.cwd; folder = r.cwd ? path.basename(r.cwd) : ''; title = r.title || 'a Gemini chat';
+    chat = await openGeminiFor(c, { cwd, title: 'New Gemini chat' });
   } else {
     const { project, session } = sessions.find(pid); cwd = project.cwd; folder = project.name; title = session.title;
     if (!project.exists) throw fail(400, `Its folder ${cwd} no longer exists.`);
@@ -2377,8 +2422,9 @@ async function openSubChat(c, pid) {
 async function nameIdeas(id) {
   let title = '', folder = '';
   try {
-    const cx = codexFind(id);
+    const cx = codexFind(id), gm = !cx && isGeminiId(id) ? geminiRow(id) : null;
     if (cx) { title = (cx.session && cx.session.title) || ''; folder = cx.folder || ''; }
+    else if (gm) { title = gm.title || ''; folder = gm.cwd ? path.basename(gm.cwd) : ''; }
     else { const f = sessions.find(id); title = f.session.title || ''; folder = f.project.name || ''; }
   } catch { throw fail(404, 'That chat can’t be read.'); }
   const context = await otherChatBlock({ id }).catch(() => '');
@@ -2401,7 +2447,7 @@ async function startSideChat(c, parentId, text) {
   const nameIt = async (tries = 0) => {
     try {
       if (!chat.sessionId) throw new Error('no id yet');
-      if (chat.provider === 'codex') { await codex.rename(chat.sessionId, name); codexSessions(0); } else { sessions.rename(chat.sessionId, name); broadcast('sessions'); }
+      if (chat.provider === 'codex') { await codex.rename(chat.sessionId, name); codexSessions(0); } else if (chat.provider === 'gemini') { gemini.rename(chat.sessionId, name); geminiRows.at = 0; broadcast('sessions'); } else { sessions.rename(chat.sessionId, name); broadcast('sessions'); }
     } catch { if (tries < 12) setTimeout(() => nameIt(tries + 1), 1500); }
   };
   nameIt();
@@ -2820,12 +2866,14 @@ async function handleChat(req, res, url, body, c) {
 // The chat a new sub-session is started from: any chat in the list, by id.
 function parentFor(id) {
   if (isCodexId(id)) return codexFind(id).thread.id;
+  if (isGeminiId(id)) { const r = geminiRow(id); if (!r) throw fail(404, 'That Gemini chat isn’t in the list any more.'); return r.id; }
   return sessions.find(id).session.id;
 }
 // What a chat last said, in full (up to a few thousand characters), for a sub-session's brief.
 async function lastReply(id, max = 6000) {
   let items = [];
   if (isCodexId(id)) items = (await codex.history(id, null, null)).items || [];
+  else if (isGeminiId(id)) items = gemini.history(id).items;
   else items = (await chatLib.readHistory(sessions.fileFor(id), { limit: 30 })).items;
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i];

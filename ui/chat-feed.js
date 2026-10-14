@@ -3,7 +3,7 @@
 
 const $c = id => (id[0] === '[' ? document.querySelector(id) : document.getElementById(id));
 const C = {
-  comps: {}, crewKinds: [], focus: null,
+  comps: {}, crewKinds: [], focus: null, compHist: {},
   key: null, info: null, sessionId: null, es: null, lastSeq: 0, state: null, watch: null, watchSig: '',
   attachments: [], historyStart: 0, historyCursor: null, liveText: {}, liveTimer: null, interruptedAt: 0, title: '', folder: '', model: '', provider: 'claude',
   // The Codex helper working inside a Claude chat, which one your next message goes to, and each one's model.

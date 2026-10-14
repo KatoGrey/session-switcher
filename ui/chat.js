@@ -246,13 +246,13 @@ async function loadHistory(before) {
   C.historyStart = h.start;
   C.historyCursor = h.cursor || null;
   let rows = h.items.map(it => ({ it, prov: C.provider }));
-  // The partner's earlier messages (Codex in a Claude chat, or Claude in a Codex chat) slot in by time,
-  // paged back as far as this page of the chat's own reaches.
-  if (C.compThread) {
-    const first = rows.find(r => r.it.at);
-    const mine = await partnerBack(h.start > 0 && first ? Date.parse(first.it.at) : -Infinity, gen, before === undefined);
-    if (mine === null) return null;
-    rows = mergeHelper(rows, mine);
+  // Each partner's earlier messages (Codex or Gemini in a Claude chat, Claude in a Codex chat…) slot in
+  // by time, paged back as far as this page of the chat's own reaches.
+  const first = rows.find(r => r.it.at), since = h.start > 0 && first ? Date.parse(first.it.at) : -Infinity;
+  for (const kind of Object.keys(C.compHist)) {
+    const theirs = await partnerBack(kind, since, gen, before === undefined);
+    if (theirs === null) return null;
+    rows = mergeHelper(rows, theirs, kind);
   }
   const tmp = document.createElement('div');
   for (const r of rows) { curProv = r.prov; try { renderItem(tmp, r.it, false); } finally { curProv = null; } }
@@ -263,33 +263,34 @@ async function loadHistory(before) {
     $c('cEarlier').after(...tmp.childNodes);
     s.scrollTop += s.scrollHeight - oldH;
   }
-  $c('cEarlier').hidden = h.start <= 0 && !(C.compThread && (C.compPending.length || C.compMore));
+  $c('cEarlier').hidden = h.start <= 0 && !Object.values(C.compHist).some(x => x.pending.length || x.more);
   $c('cEarlier').textContent = 'Show earlier messages';
   // The changes, undos and reviews that go with it (kept by the PC).
   if (before === undefined) loadExtras(gen, until).catch(() => {}); else applyExtras();
   laterMarks();
   return h;
 }
-// The partner's history, page by page, back to `since` (a time; -Infinity for all of it). Its turns
-// older than that wait for the next "Show earlier messages", so the two always read in order.
-const partnerReached = since => { const o = C.compPending.find(it => it.at); return !!o && Date.parse(o.at) <= since; };
-async function partnerBack(since, gen, fresh) {
-  if (fresh) { C.compPending = []; C.compCursor = null; C.compMore = true; }
+// A partner's history, page by page, back to `since` (a time; -Infinity for all of it). Its turns
+// older than that wait for the next "Show earlier messages", so they always read in order.
+const partnerReached = (x, since) => { const o = x.pending.find(it => it.at); return !!o && Date.parse(o.at) <= since; };
+async function partnerBack(kind, since, gen, fresh) {
+  const x = C.compHist[kind];
+  if (fresh) Object.assign(x, { pending: [], cursor: null, more: true });
   try {
-    for (let pages = 0; C.compMore && pages < 8 && !partnerReached(since); pages++) {
-      const q = new URLSearchParams({ id: C.compThread, provider: partnerProv() });
-      if (C.compCursor) q.set('cursor', C.compCursor);
+    for (let pages = 0; x.more && pages < 8 && !partnerReached(x, since); pages++) {
+      const q = new URLSearchParams({ id: x.thread, provider: kind });
+      if (x.cursor) q.set('cursor', x.cursor);
       const h = await api(`/api/chat/history?${q}`);
       if (gen !== C.gen) return null;
-      C.compPending = h.items.concat(C.compPending);
-      C.compCursor = h.cursor || null;
-      C.compMore = !!h.cursor && h.start > 0;
+      x.pending = h.items.concat(x.pending);
+      x.cursor = h.cursor || null;
+      x.more = !!h.cursor && h.start > 0;
     }
-  } catch { C.compMore = false; /* shown without the rest */ }
-  let k = since === -Infinity ? 0 : C.compPending.length;
-  if (k) for (let j = 0; j < C.compPending.length; j++) { const it = C.compPending[j]; if (it.kind === 'user' && it.at && Date.parse(it.at) >= since) { k = j; break; } }
-  const out = C.compPending.slice(k);
-  C.compPending = C.compPending.slice(0, k);
+  } catch { x.more = false; /* shown without the rest */ }
+  let k = since === -Infinity ? 0 : x.pending.length;
+  if (k) for (let j = 0; j < x.pending.length; j++) { const it = x.pending[j]; if (it.kind === 'user' && it.at && Date.parse(it.at) >= since) { k = j; break; } }
+  const out = x.pending.slice(k);
+  x.pending = x.pending.slice(0, k);
   return out;
 }
 // Waits (briefly) for the last pictures to size themselves, so "the bottom" is really the bottom.
@@ -298,12 +299,13 @@ async function settle() {
   if (imgs.length) await Promise.race([Promise.all(imgs.map(i => (i.decode ? i.decode().catch(() => {}) : null))), new Promise(r => setTimeout(r, 1500))]);
 }
 
-function mergeHelper(rows, items) {
-  // The partner's turns, each starting at your message; ones from a partner still running come live.
+function mergeHelper(rows, items, kind = partnerProv()) {
+  // A partner's turns, each starting at your message; ones from a partner still running come live.
   // Codex keeps a turn's time to the second, so its turn counts from the end of that second (a turn
   // handed over within a second of the other's reply still comes after it).
-  const cutoff = C.comp && C.comp.startedAt ? Date.parse(C.comp.startedAt) : Infinity;
-  const late = partnerProv() === 'codex' ? 999 : 0;
+  const live = C.comps[kind];
+  const cutoff = live && live.startedAt ? Date.parse(live.startedAt) : Infinity;
+  const late = kind === 'codex' ? 999 : 0;
   const groups = [];
   for (const it of items) {
     if (it.kind === 'user' || !groups.length) groups.push({ t: it.at ? Date.parse(it.at) + late : -Infinity, items: [] });
@@ -314,10 +316,10 @@ function mergeHelper(rows, items) {
   let gi = 0, last = -Infinity;
   for (const r of rows) {
     const t = r.it.at ? Date.parse(r.it.at) : last; last = t;
-    while (gi < keep.length && keep[gi].t <= t) out.push(...keep[gi++].items.map(it => ({ it, prov: partnerProv() })));
+    while (gi < keep.length && keep[gi].t <= t) out.push(...keep[gi++].items.map(it => ({ it, prov: kind })));
     out.push(r);
   }
-  while (gi < keep.length) out.push(...keep[gi++].items.map(it => ({ it, prov: partnerProv() })));
+  while (gi < keep.length) out.push(...keep[gi++].items.map(it => ({ it, prov: kind })));
   return out;
 }
 
@@ -333,7 +335,7 @@ function connect() {
 
 function reset() {
   mergeStart(false);
-  C.compPending = []; C.compCursor = null; C.compMore = false; C.extras = []; C.chatRefs = new Map();
+  C.compHist = {}; C.extras = []; C.chatRefs = new Map();
   // Nothing from the chat you were in carries over: its side question ends, its run panel and the
   // picture viewer close.
   closeAside(); closeLightbox(); resetRun();
@@ -352,7 +354,7 @@ function reset() {
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
-  Object.assign(C, { comps: {}, crewKinds: [], focus: null, compPending: [], compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+  Object.assign(C, { comps: {}, crewKinds: [], focus: null, compHist: {}, compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
   closePreview();
   Review.loop = null;
@@ -407,6 +409,10 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
   C.crewKinds = (crew.kinds || []).filter(k => k !== C.provider);
   C.focus = C.mate;
   C.compThread = (C.mate && crew.threads && crew.threads[C.mate]) || info.companionThread || null;
+  const threads = { ...(crew.threads || {}) };
+  if (!Object.keys(threads).length && info.companionThread) threads[C.mate || partnerProv()] = info.companionThread;
+  delete threads[C.provider];
+  C.compHist = Object.fromEntries(Object.entries(threads).filter(([, id]) => id).map(([k, id]) => [k, { thread: id, pending: [], cursor: null, more: false }]));
   // The running ones: each by its kind (an older server says just the one companion).
   const running = Object.entries(crew.running || {}).filter(([k]) => k !== C.provider);
   if (!running.length && info.companionKey) running.push([null, info.companionKey]);

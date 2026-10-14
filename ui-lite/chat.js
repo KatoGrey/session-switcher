@@ -254,7 +254,7 @@ function onEvent(ev) {
     }
     case 'delta': if (!ev.thinking) { CV.live += ev.text || ''; CV.status = 'Writing'; CV.thinking = ''; } else { CV.status = 'Thinking'; if (ev.text) CV.thinking = ((CV.thinking || '') + ev.text).slice(-600); } paintLive(); paintStatus(); break;
     case 'assistant': { CV.live = ''; const last = CV.items[CV.items.length - 1]; if (last && last.kind === 'assistant' && last.mid === ev.mid) last.blocks = mergeBlocks(last.blocks, ev.blocks); else CV.items.push({ ...ev, blocks: [...(ev.blocks || [])] }); paintFeed(); const tool = (ev.blocks || []).filter(b => b.type === 'tool').pop(); if (tool) CV.status = `${tool.name}${tool.summary ? ` · ${tool.summary}` : ''}`; paintStatus(); break; }
-    case 'handoff': if (ev.state === 'sent') { const n = { kind: 'notice', level: 'info', text: `${partnerName()} picks it up now.` }; CV.items.push(n); appendItem(n); } break;
+    case 'handoff': if (ev.state === 'sent') { const n = { kind: 'notice', level: 'info', text: `${NAME_OF[ev.to] || partnerName()} picks it up now.` }; CV.items.push(n); appendItem(n); } break;
     case 'tool_start': CV.status = `Using ${ev.name}`; CV.thinking = ''; paintStatus(); break;
     case 'notice': CV.items.push(ev); appendItem(ev); break;
     case 'permission': CV.pending.set(ev.requestId, ev); paintPending(); break;
@@ -828,7 +828,7 @@ async function sendInChat({ fromQueue = false } = {}) {
     const out = withFiles(text, files); local.text = out;
     for (const i of sentImages) if (i.url) URL.revokeObjectURL(i.url);
     if (here()) { resetComposer(); paintAttachments(); }
-    try { await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...(to ? { to } : {}) }); }
+    try { await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...toBody(to) }); }
     catch (err) {
       // It stopped since Lite last looked (idle for a while, or the app restarted): started again, then sent.
       if (!(err.status === 409 || err.status === 404) || !/stopped|isn.t running|not running/i.test(err.message)) throw err;
@@ -838,10 +838,10 @@ async function sendInChat({ fromQueue = false } = {}) {
       key = info.key;
       if (here()) { CV.key = key; CV.info = info; listen(key); }
       await waitReadyFor(key);
-      await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...(to ? { to } : {}) });
+      await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...toBody(to) });
     }
     if (here()) {
-      if (to) partnerSoon();
+      if (to) { const b = toBody(to); partnerSoon(b.kinds || (b.kind ? [b.kind] : [])); }
       CV.busy = true; if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
     }
   } catch (err) {
@@ -922,9 +922,11 @@ function modelMenu(anchor) {
   };
   const order = [prov, ...PROVS.map(x => x[0]).filter(p => p !== prov)];
   // Who answers in this chat: it, its partner (the other assistant, in this same chat), or both in turn.
-  const duoOk = inChat && hasProv('claude') && hasProv('codex') && prov !== 'ollama';
-  const to = CV.to || 'chat';
-  const who = duoOk ? `<div class="ph">Who answers</div><div class="who-seg">${[['chat', selfName()], ['partner', partnerName()], ['both', 'Both']].map(([v, l]) => `<button class="mm who-opt" data-v="to|${v}" role="menuitemradio" aria-checked="${to === v}" title="${v === 'both' ? `${selfName()} answers, then ${partnerName()} picks it up` : v === 'partner' ? `${partnerName()} answers in this chat, caught up on it first` : 'This chat, as usual'}">${esc(l)}</button>`).join('')}</div><hr>` : '';
+  const crew = crewKindsLite();
+  const duoOk = inChat && prov !== 'ollama' && crew.length > 0;
+  const to = CV.to === 'partner' ? `partner:${partnerProv()}` : CV.to || 'chat';
+  const allName = crew.length > 1 ? 'All' : 'Both';
+  const who = duoOk ? `<div class="ph">Who answers</div><div class="who-seg">${[['chat', selfName()], ...crew.map(k => [`partner:${k}`, NAME_OF[k]]), ['both', allName]].map(([v, l]) => `<button class="mm who-opt" data-v="to|${v}" role="menuitemradio" aria-checked="${to === v}" title="${v === 'both' ? `${selfName()} answers, then ${crew.map(k => NAME_OF[k]).join(', then ')} picks it up` : v !== 'chat' ? `${l} answers in this chat, caught up on it first` : 'This chat, as usual'}">${esc(l)}</button>`).join('')}</div><hr>` : '';
   // Fast (Codex): its priority tier, about twice as quick, using more of the plan.
   const codexHere = inChat ? prov === 'codex' : (typeof NC !== 'undefined' && NC.who === 'codex');
   const fastOn = running ? !!CV.info.fast : !!COMP.fast;
@@ -936,7 +938,7 @@ function modelMenu(anchor) {
       if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, fast: on })); paintBar(); toast(on ? 'Fast is on for this chat.' : 'Fast is off.'); })();
       COMP.fast = on; paintBar(); if (S.view === 'newchat') paintNewChat(); toast(on ? 'Fast: on for this chat when it starts.' : 'Fast is off.'); return undefined;
     }
-    if (p === 'to') { CV.to = v; setTo(CV.id, v); paintBar(); if (v !== 'chat') toast(v === 'both' ? `Both: ${selfName()} answers, then ${partnerName()} picks it up.` : `${partnerName()} answers in this chat.`); return undefined; }
+    if (p === 'to') { CV.to = v; setTo(CV.id, v); paintBar(); if (v !== 'chat') toast(v === 'both' ? `${toName('both')}: ${selfName()} answers, then ${crewKindsLite().map(k => NAME_OF[k]).join(', then ')}, each building on the last.` : `${toName(v)} answers in this chat.`); return undefined; }
     if (inChat && p !== prov) return continueElsewhere(p, v);
     if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, model: v })); paintBar(); })();
     if (S.view === 'newchat' && p !== prov) {

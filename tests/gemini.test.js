@@ -159,5 +159,12 @@ test('gemini: a conversation’s history reads back from Antigravity’s own rec
     assert.equal(row.title, 'Creating Note Text File');
     assert.equal(row.cwd, 'C:\\p');
     assert.ok(gemini.known('c1') && !gemini.known('nope'));
+    // A short look (for the Commander): your words and Gemini's.
+    assert.deepEqual(gemini.preview('c1').map(m => [m.role, m.text]), [['you', 'Write the note'], ['gemini', 'done']]);
+    // Renamed here: that name wins over Antigravity's, and the chat's own title doesn't write over it.
+    assert.equal(gemini.rename('c1', 'Lore notes'), 'Lore notes');
+    gemini.noteChat('c1', { cwd: 'C:\\p', title: 'New Gemini chat' });
+    assert.equal(gemini.list().find(r => r.id === 'c1').title, 'Lore notes');
+    assert.throws(() => gemini.rename('c1', '   '), /name/);
   } finally { os.homedir = real; }
 });
