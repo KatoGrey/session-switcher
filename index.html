@@ -14,6 +14,7 @@
 <link rel="preload" href="/fonts/playfair-2.woff2" as="font" type="font/woff2" crossorigin>
 <meta name="theme-color" content="#0a090c">
 <link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/ui/compose.css">
 <script src="/theme.js"></script>
 <script>window.TOKEN = '__TOKEN__'; window.REMOTE = __REMOTE__;</script>
 </head>
@@ -49,8 +50,9 @@
 </header>
 
 <div class="shell">
-  <nav class="nav" id="nav" aria-label="Views and folders"></nav>
+  <!-- Inside .shell on purpose: .shell is its own layer (z-index:1), so a backdrop outside it would cover the sidebar too. -->
   <div id="navBack" class="nav-back" aria-hidden="true"></div>
+  <nav class="nav" id="nav" aria-label="Views and folders"></nav>
   <main class="page" id="page"></main>
 </div>
 
@@ -72,7 +74,7 @@
   <div class="c-main">
     <header class="c-head">
       <button type="button" class="icon c-backm" data-c="rail" aria-label="Show open chats"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-      <div class="c-titles"><span class="c-crest" id="cCrest"></span><div class="c-tt"><p class="eyebrow c-folder" id="cFolder"></p><h1 class="c-title" id="cTitle"></h1></div></div>
+      <div class="c-titles"><span class="c-crest" id="cCrest"></span><div class="c-tt"><p class="eyebrow c-folder"><span id="cFolder"></span><span class="c-crumb" id="cCrumb" hidden></span></p><h1 class="c-title" id="cTitle"></h1></div></div>
       <div class="c-meta">
         <span class="c-acct" id="cAcct"></span>
         <span class="c-state" id="cState" aria-live="polite"></span>
@@ -110,8 +112,8 @@
             <span class="c-status" id="cStatus" aria-live="polite"></span>
             <span class="spacer"></span>
             <span class="c-model" id="cModel" hidden></span>
-            <button type="button" class="btn sm" id="cStop" data-c="stop" hidden title="Stop Claude (Esc)">Stop</button>
-            <button type="submit" class="btn prime sm" id="cSend">Send</button>
+            <button type="button" class="btn sm" id="cStop" data-c="stop" hidden title="Stop Claude (Esc)" aria-label="Stop"><svg class="ci" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" rx="1.6" fill="currentColor"/></svg><span class="ct">Stop</span></button>
+            <button type="submit" class="btn prime sm" id="cSend" aria-label="Send" title="Send (Enter)"><svg class="ci" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="ct">Send</span></button>
           </div>
         </div>
         <p class="c-hint" id="cHint">Enter sends · Shift+Enter new line · / prompts · <b>/model</b> · Esc twice stops</p>
@@ -173,6 +175,7 @@
 <script src="/ui/race.js"></script>
 <script src="/ui/tour.js"></script>
 <script src="/ui/palette.js"></script>
+<script src="/ui/organize.js"></script>
 <script src="/ui/mini.js"></script>
 <script src="/ui/push.js"></script>
 <script src="/ui/share.js"></script>
@@ -193,6 +196,7 @@
 <script src="/ui/chat-run.js"></script>
 <script src="/ui/chat-later.js"></script>
 <script src="/ui/chat.js"></script>
+<script src="/ui/routines.js"></script>
 <script>
   // A page that didn't load fully (a script lost on a patchy connection) would just be broken: it
   // reloads once by itself, and if that doesn't help, says so with a Reload button.

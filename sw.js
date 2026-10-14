@@ -11,7 +11,7 @@ self.addEventListener('push', e => {
   try { m = e.data ? e.data.json() : {}; } catch { m = { title: 'Session Switcher', body: e.data ? e.data.text() : '' }; }
   e.waitUntil(self.registration.showNotification(m.title || 'Session Switcher', {
     body: m.body || '', tag: m.tag || undefined, renotify: m.kind === 'needs', requireInteraction: m.kind === 'needs',
-    icon: '/apple-touch-icon.png', badge: '/apple-touch-icon.png', timestamp: m.at || Date.now(), data: m,
+    icon: m.icon || '/apple-touch-icon.png', badge: m.icon || '/apple-touch-icon.png', timestamp: m.at || Date.now(), data: m,
     actions: m.act ? [{ action: 'allow', title: 'Allow' }, { action: 'deny', title: 'Deny' }] : m.choices && m.choices.length <= 2 ? m.choices.map((c, i) => ({ action: `choice${i}`, title: c.label })) : [],
   }));
 });
@@ -40,6 +40,8 @@ async function openChat(m) {
   const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   const w = wins[0];
   if (w) { await w.focus(); w.postMessage({ open: { key: m.key || null, sessionId: m.sessionId || null } }); return; }
+  // Switcher Lite (m.home) opens on the chat by its id, or on the page the alert names (m.url).
+  if (m.home) { await self.clients.openWindow(m.url || (m.sessionId ? `${m.home}?chat=${encodeURIComponent(m.sessionId)}` : m.home)); return; }
   const q = m.key ? `?key=${encodeURIComponent(m.key)}` : m.sessionId ? `?chat=${encodeURIComponent(m.sessionId)}` : '';
   await self.clients.openWindow(`/${q}`);
 }

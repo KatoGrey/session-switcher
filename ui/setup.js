@@ -34,6 +34,14 @@ function renderSetup(j) {
           <option value="app" ${p.openIn !== 'terminal' ? 'selected' : ''}>Open it in Session Switcher’s chat window</option>
           <option value="terminal" ${p.openIn === 'terminal' ? 'selected' : ''}>Resume it in a terminal</option>
         </select></div>
+      <div class="field"><label for="prefClaudeMode">New Claude chats start in</label>
+        <select id="prefClaudeMode" data-pref="claudeMode">
+          ${[['auto', 'Auto: asks only before risky or destructive steps'], ['bypassPermissions', 'Skip all checks: never asks'], ['acceptEdits', 'Accept edits: asks before commands'], ['default', 'Ask before acting'], ['plan', 'Plan only']].map(([v, l]) => `<option value="${v}" ${(p.claudeMode || 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select><small>A chat or project you set a mode for keeps its own.</small></div>
+      <div class="field"><label for="prefCodexMode">New Codex chats start in</label>
+        <select id="prefCodexMode" data-pref="codexMode">
+          ${[['full', 'Full access: never asks'], ['agent', 'Agent: asks before going outside the project'], ['ask', 'Ask before acting'], ['read-only', 'Read only']].map(([v, l]) => `<option value="${v}" ${(p.codexMode || 'full') === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select></div>
       <div class="field"><label for="prefAutoDone">Tidy up: chats with nothing new count as done after</label>
         <select id="prefAutoDone" data-pref="autoDone">${[[0, 'Never (only the ones I mark done)'], [3, '3 days'], [7, 'A week'], [14, 'Two weeks'], [30, 'A month']].map(([v, l]) => `<option value="${v}" ${(p.autoDone || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="field"><label for="prefTerminal">Terminal chats open in</label>

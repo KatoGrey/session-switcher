@@ -19,6 +19,7 @@ const filesLib = require('./lib/files');
 const codexLib = require('./lib/codex');
 const openclawLib = require('./lib/openclaw');
 const codexHomes = require('./lib/codexhomes');
+const desktop = require('./lib/desktop');
 const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
@@ -34,6 +35,10 @@ const tasksLib = require('./lib/tasks');
 const raceLib = require('./lib/race');
 const pairsLib = require('./lib/pairs');
 const handover = require('./lib/handover');
+const routinesLib = require('./lib/routines');
+const organizeLib = require('./lib/organize');
+const liteLib = require('./lib/lite');
+const { createLiteRoutes } = require('./lib/lite-routes');
 const restartLib = require('./lib/restart');
 const themeStudioLib = require('./lib/theme-studio');
 const pushLib = require('./lib/push');
@@ -105,6 +110,7 @@ const themeStudio = themeStudioLib.createStudio(DATA_DIR);
 const chatPrefs = prefsLib.createChatPrefs({ dataDir: DATA_DIR, log });
 const openclaw = openclawLib.createOpenClaw({ log, run: sys.runCapture, found: async () => (await sys.whereIs('openclaw')).length > 0, dataDir: DATA_DIR });
 openclaw.onSessionsChanged(() => { forgetMerged(); broadcast('sessions'); });
+const organize = organizeLib.createOrganize({ dataDir: DATA_DIR, log });
 
 // ---------- live updates ----------
 
@@ -125,6 +131,8 @@ function writeOpenChats() {
   const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId && !(chats.chats.get(c.key) || {}).aside).map(c => ({
     sessionId: c.sessionId, provider: c.provider || 'claude', accountId: c.accountId, accountName: c.accountName,
     cwd: c.cwd, title: c.title || null, folder: c.folder || null,
+    // What it was running with, so it comes back the same (a reopen used to fall back to the app's default mode).
+    ...(ch => (ch ? { permissionMode: ch.permissionMode || null, model: ch.model || null, fast: !!ch.fast } : {}))(chats.chats.get(c.key)),
   }));
   try { store.writeJsonAtomic(OPEN_FILE, { at: Date.now(), chats: list }); return true; } catch (err) { log(`Couldn’t note the open chats: ${err.message}`); return false; }
 }
@@ -197,11 +205,15 @@ const chats = chatLib.createChatManager({
     if (chat.choices && Object.keys(chat.choices).length) chatPrefs.set({ sessionId: chat.sessionId }, chat.choices);
     if (chat.heardUntil) chatPrefs.setHeard(chat.sessionId, chat.heardUntil);
     pairs.link(chat);
+    if (chat.isCommander) { organize.setCommander({ sessionId: chat.sessionId }); broadcast('organize', orgView()); nameCommander(chat.sessionId); }
+    // A sub-session remembers the chat it was started from (and joins its group).
+    if (chat.parentSession) { try { organize.link(chat.sessionId, chat.parentSession); broadcast('organize', orgView()); } catch (err) { log(`Sub-session link: ${err.message}`); } }
     broadcast('live', chats.live());
     setTimeout(sessionsChanged, 1500);
   },
   onActivity: chat => {
     scheduleActivity(); schedulePush();
+    routines.onActivity(chat);
     // A finished turn changes the account's usage; check it shortly after.
     const f = chat.activity.finishedAt;
     if (f && finishedSeen.get(chat.key) !== f) {
@@ -293,9 +305,9 @@ function codexAll() {
   for (const x of want) {
     const home = codexHomes.homeFor(x.id);
     const cur = codexExtra.get(x.id);
-    if (cur && cur.ACCOUNT.name === x.name && cur.ACCOUNT.kind === (x.kind || 'chatgpt')) continue;
+    if (cur && cur.ACCOUNT.name === x.name && cur.ACCOUNT.kind === (x.kind || 'chatgpt') && cur.ACCOUNT.authFile === (x.authFile || null)) continue;
     if (cur) cur.stop();
-    codexExtra.set(x.id, makeCodex({ id: x.id, name: x.name, home, kind: x.kind || 'chatgpt', provider: 'codex' }));
+    codexExtra.set(x.id, makeCodex({ id: x.id, name: x.name, home, kind: x.kind || 'chatgpt', provider: 'codex', authFile: x.authFile || null }));
   }
   return [codex, ...codexExtra.values()];
 }
@@ -364,8 +376,7 @@ function mergeSessions() {
   const oc = openclawSessions();
   const gm = geminiSessions();
   const extra = projectInfo.added();
-  if (!cx.length && !oc.length && !gm.length && !extra.length) return base;
-  const projects = base.projects.map(p => ({ ...p, sessions: p.sessions.slice() }));
+  let projects = base.projects.map(p => ({ ...p, sessions: p.sessions.slice() }));
   const byCwd = new Map(projects.map(p => [normCwd(p.cwd), p]));
   for (const t of [...cx, ...oc, ...gm]) {
     if (!t.cwd) continue;
@@ -382,11 +393,66 @@ function mergeSessions() {
     const np = { cwd: x.cwd, name: path.basename(x.cwd.replace(/[\\/]+$/, '')) || x.cwd, exists: x.exists, notes: 0, sessions: [], updated: x.created || 0, added: true };
     byCwd.set(normCwd(x.cwd), np); projects.push(np);
   }
+  projects = applyDesktop(projects, byCwd);
   for (const p of projects) { p.sessions.sort((a, b) => b.updated - a.updated); p.updated = p.sessions.length ? p.sessions[0].updated : (p.updated || 0); }
   projects.sort((a, b) => b.updated - a.updated);
   return { ...base, projects };
 }
+// Chats from the Claude desktop app keep the title you see there (unless you renamed them here),
+// and chats that ran in a worktree (<project>/.claude/worktrees/<name>) are listed under their
+// project, the way the desktop app lists them. Resuming still runs them in their own folder:
+// /api/open and /api/chat/open find a chat through sessions.find, which keeps its real folder.
+function applyDesktop(projects, byCwd) {
+  const projectFor = cwd => {
+    let p = byCwd.get(normCwd(cwd));
+    if (!p) {
+      p = { cwd, name: path.basename(String(cwd).replace(/[\\/]+$/, '')) || cwd, exists: fs.existsSync(cwd), notes: 0, sessions: [], updated: 0 };
+      byCwd.set(normCwd(cwd), p); projects.push(p);
+    }
+    return p;
+  };
+  // A deleted Codex worktree only has its folder's name left: it goes to the one project of that name.
+  const named = new Map();
+  for (const p of projects) if (!desktop.isWorktree(p.cwd)) { const k = path.basename(String(p.cwd).replace(/[\\/]+$/, '')); named.set(k, named.has(k) ? false : p.cwd); }
+  const projectNamed = n => named.get(n) || null;
+  const emptied = new Set();
+  for (const p of projects.slice()) {
+    const owner = desktop.worktreeOwner(p.cwd, projectNamed);
+    const keep = [];
+    for (const s of p.sessions) {
+      const d = s.provider === 'codex' ? null : desktop.get(s.id);
+      if (d) {
+        if (d.title && !s.renamed) s.title = d.title;
+        s.desktop = { archived: d.archived, parent: d.parentCli || null };
+      }
+      const home = (d && d.originCwd && normCwd(d.originCwd) !== normCwd(p.cwd) && !/scratch-workspaces/.test(d.originCwd) ? d.originCwd : null) || owner;
+      if (home && normCwd(home) !== normCwd(p.cwd)) projectFor(home).sessions.push({ ...s, ranIn: p.cwd, folderExists: p.exists });
+      else keep.push(s);
+    }
+    if (p.sessions.length && !keep.length) emptied.add(p);
+    p.sessions = keep;
+  }
+  // Drop folders left empty by the moves above (their chats now show under their real project), and
+  // the desktop app's own scratch workspaces once they hold no chats. Folders you added stay.
+  const kept = projects.filter(p => p.sessions.length || p.added || (!emptied.has(p) && !/scratch-workspaces/.test(p.cwd) && !desktop.worktreeOwner(p.cwd, projectNamed)));
+  // The desktop app's chats without a project run in scratch workspaces named like
+  // scratch-2026-10-06-00591c: show them as "No folder · Oct 6" (numbered when a day has several).
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const seenDay = new Map();
+  for (const p of kept.filter(x => /scratch-workspaces/.test(x.cwd)).sort((a, b) => (a.updated || 0) - (b.updated || 0))) {
+    const m = /scratch-(\d{4})-(\d{2})-(\d{2})/.exec(path.basename(String(p.cwd)));
+    const day = m ? `${MON[Number(m[2]) - 1]} ${Number(m[3])}` : '';
+    const n = (seenDay.get(day) || 0) + 1; seenDay.set(day, n);
+    p.name = `No folder${day ? ` · ${day}` : ''}${n > 1 ? ` (${n})` : ''}`;
+  }
+  return kept;
+}
 // A folder in the list (Claude Code, Codex, or created here), by its path.
+// The repo a deleted worktree came from: a listed folder with the same name that still exists and isn't a worktree.
+function repoForGone(dir) {
+  const name = String(dir || '').split(/[\\/]/).filter(Boolean).pop();
+  return sessionsWithCodex().projects.find(p => p.exists && p.cwd.split(/[\\/]/).filter(Boolean).pop() === name && !/[\\/]worktrees[\\/]/.test(p.cwd)) || null;
+}
 function projectAt(cwd) {
   if (!cwd) return null;
   const list = sessionsWithCodex().projects;
@@ -413,6 +479,29 @@ async function otherChatBlock(ref) {
   for (let i = lines.length - 1; i >= 0 && keep.length < 12; i--) { if (keep.length && total + lines[i].length > 9000) break; total += lines[i].length; keep.unshift(lines[i]); }
   const attr = v => String(v).replace(/["<>\n]/g, ' ').slice(0, 120);
   return `<other-chat title="${attr(title)}" folder="${attr(folder)}" items="${keep.length}">\nFrom the user’s other chat “${title}”${folder ? ` (in ${folder})` : ''}, its latest messages, for context (that chat carries on separately):\n\n${(keep.join('\n\n') || '(Nothing in it yet.)').replace(/<\/other-chat>/gi, '</other‑chat>')}\n</other-chat>\n\n`;
+}
+// The model and effort a Codex chat started on, read from its own log, so picking it up again
+// doesn't drop it to Codex's default. A chat a routine started never had its choice saved, and
+// once one turn has run on the wrong model, its latest turn would only repeat the mistake.
+function codexStartedOn(threadId) {
+  try {
+    const root = path.join(codexHomes.MAIN_HOME(), 'sessions');
+    const kids = d => fs.readdirSync(d).filter(n => /^\d+$/.test(n)).sort().reverse();
+    for (const y of kids(root)) for (const m of kids(path.join(root, y))) for (const d of kids(path.join(root, y, m))) {
+      const dir = path.join(root, y, m, d);
+      const f = fs.readdirSync(dir).find(n => n.endsWith(`${threadId}.jsonl`));
+      if (!f) continue;
+      const file = path.join(dir, f), len = Math.min(fs.statSync(file).size, 2 * 1024 * 1024);
+      const fd = fs.openSync(file, 'r'), buf = Buffer.alloc(len);
+      try { fs.readSync(fd, buf, 0, len, 0); } finally { fs.closeSync(fd); }
+      for (const l of buf.toString('utf8').split('\n')) {
+        if (!l.includes('"turn_context"')) continue;
+        try { const p = JSON.parse(l).payload || {}; if (p.model) return { model: p.model, effort: p.effort || null }; } catch { /* a cut line */ }
+      }
+      return null;
+    }
+  } catch { /* no log */ }
+  return null;
 }
 function codexFind(id) {
   const t = id && codex.known(String(id));
@@ -630,6 +719,18 @@ function openChat(c, body) {
   p.then(() => opening.delete(id), () => opening.delete(id));
   return p;
 }
+// Chats here are read in a window that shows pictures (Switcher Lite, the chat window); they're told so,
+// or they assume they can't and send links instead.
+const SHOWS_PICTURES = 'This conversation is shown in Session Switcher, which displays Markdown images inline. To show the user a picture or screenshot, write ![short description](/absolute/path/to/file.png) with the absolute path of a local image file (png, jpg, gif, webp, svg). Use this whenever a picture would help instead of only linking to it.';
+// Passed as a file: spawnClaude only takes plain flags, ids and paths as arguments (no spaces), so a
+// sentence as --append-system-prompt would stop every chat from starting.
+const SHOWS_PICTURES_FILE = (() => {
+  const f = path.join(os.tmpdir(), 'claude-switcher', 'shows-pictures.md');
+  try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, SHOWS_PICTURES); } catch (err) { log(`Couldn’t write the pictures note: ${err.message}`); return null; }
+  const arg = f.replace(/\\/g, '/');   // Claude Code takes forward slashes on Windows too
+  return /^[\w.:=\/-]+$/.test(arg) ? arg : null; // a path with spaces couldn't be passed; chats start without the note
+})();
+const SHOWS_PICTURES_ARGS = SHOWS_PICTURES_FILE ? ['--append-system-prompt-file', SHOWS_PICTURES_FILE] : [];
 async function openChatNow(c, body) {
   // A partner's conversation opens inside the chat it belongs to.
   const lead = (!body.mode || body.mode === 'resume') && body.sessionId ? chatPrefs.parentOf(body.sessionId) : null;
@@ -663,7 +764,8 @@ async function openChatInner(c, body) {
     }
     const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
     const pref = chatPrefs.get({ sessionId, cwd, provider: 'gemini' });
-    const chat = gemini.open({ cfg: c, cwd, sessionId, mode: body.permissionMode || pref.mode, model: body.model || pref.model || null, title: title || 'New Gemini chat', folder });
+    const asked = geminiLib.MODES.some(m => m.value === body.permissionMode) ? body.permissionMode : null;
+    const chat = gemini.open({ cfg: c, cwd, sessionId, mode: asked || pref.mode, model: body.model || pref.model || null, title: title || 'New Gemini chat', folder });
     if (sessionId) sessions.recordLaunch(sessionId, geminiLib.ACCOUNT, 'app');
     log(`Gemini chat window: ${mode} ${sessionId || '(new)'}`);
     return { ...chat.info(), attached: false, remembered: !!pref.mode };
@@ -676,8 +778,10 @@ async function openChatInner(c, body) {
     if (mode !== 'new') {
       const cx = codexFind(body.sessionId);
       if (!cx) throw fail(404, 'That Codex chat isn’t in the list any more.');
-      if (!cx.exists) throw fail(400, `The folder ${cx.cwd} no longer exists, so this chat can’t run there.`);
-      cwd = cx.cwd; threadId = cx.thread.id; title = cx.session ? cx.session.title : null;
+      // A worktree that's gone: asked to, it carries on in the repo it came from (Codex takes a new folder on resume).
+      const home = !cx.exists && body.inRepo ? repoForGone(cx.cwd) : null;
+      if (!cx.exists && !home) throw fail(400, `The folder ${cx.cwd} no longer exists, so this chat can’t run there.`);
+      cwd = home ? home.cwd : cx.cwd; threadId = cx.thread.id; title = cx.session ? cx.session.title : null;
       if (mode === 'resume') { const live = chats.bySession(threadId); if (live) return attachedInfo(live); }
       if (mode === 'fork' && title) title = `${title} (copy)`;
     } else {
@@ -689,8 +793,9 @@ async function openChatInner(c, body) {
     const art = themeStudio.project(cwd);
     const folder = art ? `Theme Studio · ${art.name}` : cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
     const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
-    const model = [body.model, pref.model].find(m => m && modelFits(inst, m)) || null;
-    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, effort: pref.effort, title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
+    const last = threadId && mode !== 'new' && !body.model && !pref.model ? codexStartedOn(threadId) : null;
+    const model = [body.model, pref.model, last && last.model].find(m => m && modelFits(inst, m)) || null;
+    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, fast: body.fast === true || pref.fast === 'on', effort: pref.effort || (last && model === last.model ? last.effort : null), title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
     if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
     log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
     return { ...chat.info(), attached: false, remembered: !!pref.mode, companionThread: threadId && mode !== 'new' ? chatPrefs.companionOf(threadId) : null };
@@ -709,7 +814,7 @@ async function openChatInner(c, body) {
         const now = await sys.runningSessions().catch(() => ({}));
         running = now;
         const pids = now[session.id.toLowerCase()];
-        if (pids) throw fail(409, `This chat is already open in a terminal (process ${pids.join(', ')}). Opening it twice can mix up its history.`, 'running');
+        if (pids) throw fail(409, `This chat is already open in the Claude app or a terminal (process ${pids.join(', ')}). Close it there first: two copies of one chat mix up its history.`, 'running');
       }
     }
   } else {
@@ -727,7 +832,7 @@ async function openChatInner(c, body) {
   if (sessionId) { try { title = sessions.find(sessionId).session.title; } catch { /* untitled */ } }
   if (mode === 'fork' && title) title = `${title} (copy)`;
   const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder });
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder, extraArgs: SHOWS_PICTURES_ARGS });
   if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
   log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
   return { ...chat.info(), attached: false, remembered: !!pref.mode && !body.permissionMode, companionThread: sessionId && mode !== 'new' ? chatPrefs.companionOf(sessionId) : null };
@@ -1107,16 +1212,157 @@ function stateFor() {
   };
 }
 
+// ---------- routines ----------
+
+// Chats that start on their own (lib/routines.js). They open the same way the chat window opens one.
+async function routineChat({ account, cwd, sessionId, permissionMode, model, effort, title }) {
+  const c = config();
+  const folder = path.basename(cwd.replace(/[\\/]+$/, '')) || cwd;
+  const live = sessionId && chats.bySession(sessionId);
+  if (live) return live;
+  if (isCodexAccount(account)) {
+    const inst = codexById(account);
+    requireCodexSignedIn(inst);
+    const chat = inst.open({ cfg: c, cwd, threadId: sessionId || null, mode: permissionMode, model: modelFits(inst, model) ? model : null, effort: effort || undefined, title, folder });
+    if (sessionId) sessions.recordLaunch(sessionId, inst.ACCOUNT, 'app');
+    return chat;
+  }
+  const a = acc.findAccount(c, account);
+  if (sessionId && running[sessionId.toLowerCase()]) throw fail(409, 'That chat is open in a terminal, so the routine left it alone.');
+  await guarded(a);
+  acc.prepareForLaunch(c, a);
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId: sessionId || null, permissionMode, model, effort: effort || undefined, title, folder });
+  if (sessionId) sessions.recordLaunch(sessionId, a, 'app');
+  return chat;
+}
+const routines = routinesLib.createRoutines({
+  dataDir: DATA_DIR, log, broadcast,
+  prompts: () => projectInfo.prompts(),
+  // With Switcher Lite's "follow the use-next order" on, a routine runs on that plan instead.
+  startChat: opts => routineChat({ ...opts, account: liteRoutes.routineAccount(opts.account) }),
+  accountInfo: id => {
+    if (isCodexAccount(id)) { const x = codexById(id); return x && { id, provider: 'codex', name: x.ACCOUNT.name, modes: codexLib.MODES.map(m => m.value) }; }
+    const a = config().accounts.find(x => x.id === id);
+    return a && { id, provider: 'claude', name: a.name, modes: chatLib.MODES };
+  },
+  // Usage right before a run, so a routine doesn't use up a nearly full window.
+  usageFor: async raw => {
+    const id = liteRoutes.routineAccount(raw);
+    if (isCodexAccount(id)) { const x = codexById(id); if (!x) return null; await x.refreshUsage().catch(() => null); return { name: x.ACCOUNT.name, ...(usage.get(x.ACCOUNT.id) || {}) }; }
+    const a = config().accounts.find(x => x.id === id);
+    if (!a) return null;
+    const v = await usage.refresh(config(), a, { maxAgeMs: 10 * 60 * 1000 });
+    return { name: a.name, ...v };
+  },
+  // A chat a routine started is named after it, so it's easy to spot in the lists.
+  nameChat: async (chat, title) => {
+    if (chat.provider === 'codex') { await (codexById(chat.account.id) || codex).rename(chat.sessionId, title); codexSessions(0); return; }
+    for (let i = 0; i < 5; i++) {
+      try { sessions.rename(chat.sessionId, title); broadcast('sessions'); return; } catch { await new Promise(r => setTimeout(r, 2000)); }
+    }
+  },
+});
+// One kind of routine: a task set to repeat becomes a routine (lib/routines.js), on the same project,
+// account and time, starting a new chat each time. Repeating tasks from before are moved over once.
+function routineFromTask(t) {
+  const at = new Date(t.at), pad2 = n => String(n).padStart(2, '0');
+  const account = t.provider === 'codex' ? (config().codexActive || 'codex') : t.accountId && t.accountId !== 'auto' ? t.accountId : (mainAccount() || config().accounts[0] || {}).id;
+  const first = (String(t.prompt).split('\n').find(l => l.trim()) || 'Routine').trim();
+  return routines.create({
+    name: first.length > 60 ? `${first.slice(0, 59)}…` : first, cwd: t.cwd, account, prompt: t.prompt, chat: { mode: 'new' },
+    trigger: { type: 'schedule', schedule: { kind: t.repeat, time: `${pad2(at.getHours())}:${pad2(at.getMinutes())}`, ...(t.repeat === 'weekly' ? { day: at.getDay() } : {}) } },
+  });
+}
+(() => {
+  // (Gemini's stay tasks: routines start Claude and Codex chats.)
+  const old = taskList.filter(t => t.state === 'queued' && t.repeat && t.at && t.provider !== 'gemini');
+  if (!old.length) return;
+  for (const t of old) { try { routineFromTask(t); } catch (err) { log(`Couldn’t move a repeating task to Routines: ${err.message}`); continue; } taskList = taskList.filter(x => x !== t); }
+  saveTasks();
+  log(`Moved ${old.length} repeating task${old.length === 1 ? '' : 's'} to Routines.`);
+})();
+
+// ---------- Switcher Lite (ui-lite/, at /lite): buckets, stages, plans; see lib/lite.js ----------
+const liteStore = liteLib.createLite({ dataDir: DATA_DIR, log });
+const liteRoutes = createLiteRoutes({
+  store: liteStore, config, acc, usage, log, broadcast, dataDir: DATA_DIR,
+  // Signing in from Lite: afterwards, the same refresh the full app's sign-in does.
+  overrideVars: sys.OVERRIDE_VARS,
+  afterSignIn: a => { acc.forgetStatus(a.id); usage.forget(a.id); watchSignIn(a); for (const s of [5, 30, 90]) scheduleUsage(a.id, s * 1000); broadcast('accounts'); },
+  codexMainHome: () => (config().codex && config().codex.home) || codexHomes.MAIN_HOME(),
+  codexHomeFor: id => { const x = codexById(id); return x && x.ACCOUNT.home ? x.ACCOUNT.home : null; },
+  codexAll: () => codexAll(),
+  sessionsWithCodex: () => sessionsWithCodex(),
+  activityList: () => activityList(),
+  companionOf: id => chatPrefs.companionOf(id),
+  threadKind: id => (isCodexId(id) ? 'codex' : isGeminiId(id) ? 'gemini' : 'claude'),
+  routinesList: () => routines.list(),
+  parentOf: id => organize.parentOf(id),
+  // Routines in Lite: a run's last reply (Ollama's Codex threads aren't in Codex's list, so the
+  // provider is said), starting a bug chat from a routine's findings, and the routines API.
+  // A chat's recent replies, newest last, joined (for finding things a chat reported earlier, like its PR).
+  recentReplies: async (id, provider, turns = 40) => {
+    const items = provider === 'codex' || isCodexId(id) ? ((await codex.history(id, null, null)).items || []) : (await chatLib.readHistory(sessions.fileFor(id), { limit: 400 })).items;
+    // Its words and the commands it ran (git push, gh pr …), which name its branch and PR.
+    const texts = items.filter(it => it.kind === 'assistant').map(it => (it.blocks || []).map(b => (b.type === 'text' ? b.text : b.type === 'tool' && b.detailKind === 'command' && typeof b.detail === 'string' ? b.detail : '')).filter(Boolean).join('\n')).filter(Boolean);
+    return texts.slice(-turns).join('\n\n').slice(-120000);
+  },
+  lastReply: async (id, provider) => {
+    // The whole reply: a sweep can list many findings, and anything past a cut would be lost.
+    if (provider !== 'codex') return lastReply(id, 60000);
+    const items = (await codex.history(id, null, null)).items || [];
+    for (let i = items.length - 1; i >= 0; i--) { const t = items[i].kind === 'assistant' ? (items[i].blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim() : ''; if (t) return t.slice(0, 60000); }
+    return '';
+  },
+  startEscalation: async ({ account, cwd, permissionMode, title, prompt, model, effort }) => {
+    const chat = await routineChat({ account, cwd, permissionMode, model, effort, title });
+    for (const t0 = Date.now(); chat.state === 'starting' && Date.now() - t0 < 30000;) await new Promise(r => setTimeout(r, 250));
+    if (chat.state === 'ended') throw new Error('The chat stopped as it started.');
+    if (!chat.title || chat.title === 'New chat') chat.title = title;
+    // Kept for this chat (not as the project's default), so it resumes on the same model and effort.
+    const choice = { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+    if (Object.keys(choice).length) { if (chat.sessionId) chatPrefs.set({ sessionId: chat.sessionId, provider: chat.provider || 'claude' }, choice); else chat.choices = { ...(chat.choices || {}), ...choice }; }
+    chat.send(prompt);
+    return chat;
+  },
+  routinesApi: (route, body) => routines.api('POST', route, body),
+  // Starts a plan's week with one tiny message (Lite does this for plans whose week isn't running).
+  startWeek: async ({ account, family, cwd }) => {
+    const chat = await routineChat({ account, cwd, permissionMode: family === 'claude' ? 'default' : 'read-only', model: family === 'claude' ? 'sonnet' : null, title: 'Start the week' });
+    for (const t0 = Date.now(); chat.state === 'starting' && Date.now() - t0 < 30000;) await new Promise(r => setTimeout(r, 250));
+    if (chat.state === 'ended') throw new Error('The chat stopped as it started.');
+    chat.send('Reply with just: ok');
+    return { key: chat.key };
+  },
+  // A message while a chat works: Codex adds it to the running turn (turn/steer); Claude Code
+  // already folds a message sent mid-turn into the turn, so it's an ordinary send there.
+  steerChat: (key, text, images = []) => {
+    const chat = chats.get(key);
+    if (!chat) throw fail(404, 'That chat isn’t running any more.');
+    const imgs = validImages(images);
+    if (chat.provider === 'codex' && typeof chat.steer === 'function' && !imgs.length) chat.steer(text); else chat.send(text, imgs);
+    return { ok: true };
+  },
+  // A bug chat Lite started gets its name once it has an id (as routines name theirs).
+  nameChat: async (chat, title) => {
+    if (chat.provider === 'codex') { await (codexById(chat.account.id) || codex).rename(chat.sessionId, title); codexSessions(0); return; }
+    for (let i = 0; i < 5; i++) { try { sessions.rename(chat.sessionId, title); broadcast('sessions'); return; } catch { await new Promise(r => setTimeout(r, 2000)); } }
+  },
+  linkParent: (child, parent) => { organize.link(child, parent); broadcast('organize', orgView()); },
+  unlinkParent: child => { organize.unlink(child); broadcast('organize', orgView()); },
+  isCommanderId: id => isCommanderId(id),
+});
+
 // ---------- routes ----------
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/gemini/install', '/api/gemini/login', '/api/gemini/settings', '/api/claude/install', '/api/phone/firewall', '/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send']);
+const LOCAL_ONLY = new Set(['/api/gemini/install', '/api/gemini/login', '/api/gemini/settings', '/api/claude/install', '/api/phone/firewall', '/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send', '/api/routines/secret']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
   const route = `${req.method} ${url.pathname}`;
-  if (remote && (LOCAL_ONLY.has(url.pathname) || url.pathname.startsWith('/api/phone'))) throw fail(403, 'That can only be done on the PC itself.');
+  if (remote && (LOCAL_ONLY.has(url.pathname) || url.pathname.startsWith('/api/phone') || url.pathname.startsWith('/api/commander/tool/'))) throw fail(403, 'That can only be done on the PC itself.');
   // Windows Firewall: whether the phone can get in (the program serving it, on the phone port).
   if (route === 'GET /api/phone/firewall') {
     if (remote) throw fail(403, 'From the PC only.');
@@ -1145,16 +1391,19 @@ async function handleApi(req, res, url, remote = false) {
     const running = chats.bySession(id);
     // An OpenClaw agent's session: read from its own store.
     if (q.get('provider') === 'openclaw') return send(res, 200, openclaw.history(id));
-    if (q.get('provider') === 'gemini' || (running && running.provider === 'gemini') || isGeminiId(id)) return send(res, 200, gemini.history(id, q.get('until') || null));
+    // Switcher Lite asks with lite=1: what each step printed is left out (Lite never shows it, and it's
+    // most of the size: one chat's page was 4 MB, 3.9 of it tool output).
+    const slim = h => { if (q.get('lite')) for (const it of (h && h.items) || []) for (const b of it.blocks || []) if (b.type === 'tool') delete b.result; return h; };
+    if (q.get('provider') === 'gemini' || (running && running.provider === 'gemini') || isGeminiId(id)) return send(res, 200, slim(gemini.history(id, q.get('until') || null)));
     // Codex: by its id, or because the page says so (a brand-new thread isn't in Codex's list yet).
-    if (isCodexId(id) || q.get('provider') === 'codex' || (running && running.provider === 'codex')) return send(res, 200, await codex.history(id, q.get('cursor'), q.get('until') || null));
+    if (isCodexId(id) || q.get('provider') === 'codex' || (running && running.provider === 'codex')) return send(res, 200, slim(await codex.history(id, q.get('cursor'), q.get('until') || null)));
     let file;
     try { file = sessions.fileFor(id); } catch (err) {
       // A chat running here that hasn't written any history yet (it's new): nothing earlier to show.
       if (err.status === 404 && running) return send(res, 200, { items: [], start: 0, cursor: null });
       throw err;
     }
-    return send(res, 200, await chatLib.readHistory(file, { until: q.get('until') || null, cursor: q.get('cursor'), limit: 60 }));
+    return send(res, 200, slim(await chatLib.readHistory(file, { until: q.get('until') || null, cursor: q.get('cursor'), limit: 60 })));
   }
   // What a chat showed besides its conversation (changes, undos, reviews), up to where its live replay begins.
   if (route === 'GET /api/selfcheck') return send(res, 200, { last: selfCheck, running: !!selfCheckRun });
@@ -1172,6 +1421,11 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
   if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
+  if (route === 'GET /api/organize') return send(res, 200, orgView());
+  if (route === 'GET /api/commander') { const l = commanderLive(); return send(res, 200, { ...orgView().commander, live: l ? l.info() : null }); }
+  if (route === 'GET /api/commander/tool/sessions') return send(res, 200, commanderSessions(url.searchParams.get('filter') || 'active', url.searchParams.get('group') || ''));
+  if (route === 'GET /api/commander/tool/read') return send(res, 200, await commanderRead(url.searchParams.get('id'), url.searchParams.get('count')));
+  if (route === 'GET /api/chat/last-reply') return send(res, 200, { text: await lastReply(url.searchParams.get('id'), Math.min(200000, Number(url.searchParams.get('max')) || 6000)) });
   // What's new: the newest notes (docs/whats-new.md), shown once on the hub after an update.
   if (route === 'GET /api/whats-new') {
     let mdText = '';
@@ -1210,6 +1464,15 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/file') {
     const q = Object.fromEntries(url.searchParams);
     return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
+  }
+  // Lite's side viewer: the same, plus the chat's own scratchpad (where Claude Code keeps its
+  // screenshots and notes: <temp>/claude-<uid>/<project>/<this session's id>/…).
+  if (route === 'GET /api/lite/file') {
+    const q = Object.fromEntries(url.searchParams);
+    const abs = path.resolve(String(q.path || ''));
+    const id = String(q.session || '').toLowerCase();
+    const scratch = /^[0-9a-f-]{36}$/.test(id) ? abs.match(new RegExp(`^(/private/tmp|/tmp)/claude-\\d+/[^/]+/${id}/`, 'i')) : null;
+    return send(res, 200, filesLib.readEntry(scratch ? scratch[0] : fileBase(q), q.path));
   }
   // A chat's (or project's) files, for @ mentions in the message box.
   if (route === 'GET /api/files/list') {
@@ -1285,6 +1548,16 @@ async function handleApi(req, res, url, remote = false) {
   }
 
   if (route === 'POST /api/chat/upload') return uploadFile(req, res, url);
+  if (url.pathname.startsWith('/api/lite/')) {
+    const out = await liteRoutes.handle(req.method, url.pathname, url, () => readBody(req, url.pathname === '/api/lite/steer' ? 40 * 1024 * 1024 : 65536), req, remote);
+    if (out === undefined) throw fail(404, 'Not found.');
+    return send(res, 200, out);
+  }
+  if (url.pathname.startsWith('/api/routines')) {
+    const out = await routines.api(req.method, url.pathname, req.method === 'POST' ? await readBody(req) : null);
+    if (out === undefined) throw fail(404, 'Not found.');
+    return send(res, 200, out);
+  }
   if (req.method !== 'POST') throw fail(404, 'Not found.');
   const body = await readBody(req, url.pathname === '/api/chat/send' ? 40 * 1024 * 1024 : url.pathname === '/api/themes/save' ? 6 * 1024 * 1024 : 65536);
 
@@ -1332,6 +1605,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/tasks': {
       if (body.action === 'add') {
         const t = tasksLib.validTask(body.task || {}, { projectAt, accounts: config().accounts });
+        if (t.repeat && t.provider !== 'gemini') { const routine = routineFromTask(t); return send(res, 200, { routine, tasks: tasksView() }); }
         taskList.push(t); saveTasks();
         runQueue(t.id).catch(() => {});
         return send(res, 200, { task: t, tasks: tasksView() });
@@ -1648,7 +1922,7 @@ async function handleApi(req, res, url, remote = false) {
         const now = await sys.runningSessions().catch(() => ({}));
         running = now;
         const pids = now[session.id.toLowerCase()];
-        if (pids) throw fail(409, `This chat is already open in a terminal (process ${pids.join(', ')}). Opening it twice can mix up its history.`, 'running');
+        if (pids) throw fail(409, `This chat is already open in the Claude app or a terminal (process ${pids.join(', ')}). Close it there first: two copies of one chat mix up its history.`, 'running');
       }
       const prepared = acc.prepareForLaunch(c, a);
       const args = mode === 'fork' ? `--resume ${session.id} --fork-session` : `--resume ${session.id}`;
@@ -1716,6 +1990,36 @@ async function handleApi(req, res, url, remote = false) {
       broadcast('sessions');
       return send(res, 200, { title });
     }
+    case '/api/commander/open': return send(res, 200, await openCommander(c, body));
+    case '/api/commander/settings': {
+      const ch = {};
+      if (body.accountId !== undefined) ch.accountId = acc.findAccount(c, body.accountId).id;
+      if (typeof body.allowApprove === 'boolean') ch.allowApprove = body.allowApprove;
+      organize.setCommander(ch);
+      log(`Commander settings: ${JSON.stringify(ch)}`);
+      broadcast('organize', orgView());
+      return send(res, 200, orgView().commander);
+    }
+    case '/api/commander/tool/send': return send(res, 200, await commanderSend(c, String(body.id || ''), body.text));
+    case '/api/commander/tool/answer': return send(res, 200, commanderAnswer(String(body.id || ''), { decision: body.decision, requestId: body.requestId ? String(body.requestId) : null, reason: typeof body.reason === 'string' ? body.reason.slice(0, 2000) : '' }));
+    case '/api/name-ideas': return send(res, 200, await nameIdeas(String(body.id || '')));
+    case '/api/side-chat': return send(res, 200, await startSideChat(c, String(body.id || ''), body.text));
+    case '/api/commander/tool/sub': return send(res, 200, await commanderSub(c, String(body.parent || ''), body.task, body.includeContext !== false));
+    case '/api/organize': {
+      // Groups you made: create, rename, reorder, collapse, remove, and moving chats between them.
+      const a = String(body.action || '');
+      let made = null;
+      if (a === 'create') { made = organize.create(body.name); if (body.chat) organize.move(body.chat, made.id); }
+      else if (a === 'rename') organize.rename(body.id, body.name);
+      else if (a === 'remove') organize.remove(body.id);
+      else if (a === 'collapse') organize.collapse(body.id, body.collapsed);
+      else if (a === 'reorder') organize.reorder(body.id, { step: body.step || 0, to: body.to });
+      else if (a === 'move') organize.move(body.chat, body.id || null);
+      else if (a === 'unlink') organize.unlink(body.chat);
+      else throw fail(400, 'Unknown change.');
+      broadcast('organize', orgView());
+      return send(res, 200, { ...orgView(), made });
+    }
     // The page's own slips (from this PC or a paired phone), and putting problems away.
     case '/api/selfcheck': {
       if (remote) throw fail(403, 'Run it from the PC.');
@@ -1751,6 +2055,8 @@ async function handleApi(req, res, url, remote = false) {
       if (body.terminal !== undefined) { if (!acc.TERMINALS.includes(body.terminal)) throw fail(400, 'Unknown terminal choice.'); p.terminal = body.terminal; }
       for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow', 'autoSwitch', 'autoReview', 'nightlyCheck']) if (typeof body[k] === 'boolean') p[k] = body[k];
       if (body.openIn !== undefined) { if (!['app', 'terminal'].includes(body.openIn)) throw fail(400, 'Unknown choice.'); p.openIn = body.openIn; }
+      if (body.claudeMode !== undefined) { if (!chatLib.MODES.includes(body.claudeMode)) throw fail(400, 'Unknown mode.'); p.claudeMode = body.claudeMode; }
+      if (body.codexMode !== undefined) { if (!codexLib.MODES.some(m => m.value === body.codexMode)) throw fail(400, 'Unknown mode.'); p.codexMode = body.codexMode; }
       if (body.claudeCommand !== undefined) {
         const cmd = String(body.claudeCommand).trim();
         if (!cmd || /["\r\n%&|<>^]/.test(cmd)) throw fail(400, `Enter the full path to ${sys.IS_WIN ? 'claude.exe' : 'claude'} (or just “claude”).`);
@@ -1811,8 +2117,9 @@ async function handleApi(req, res, url, remote = false) {
       // For an update, the open chats come back when the new version starts, as after a restart.
       if (body.forUpdate) { try { writeOpenChats(); store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid }); } catch (err) { log(`Couldn’t keep the open chats for the update: ${err.message}`); } }
       else toShell({ type: 'quit' });
-      chatPrefs.flush();
+      chatPrefs.flush(); organize.flush();
       phone.stop();
+      routines.stop();
       stopForQuit();
       for (const x of codexAll()) x.stop(true);
       setTimeout(() => process.exit(0), 300);
@@ -1822,6 +2129,299 @@ async function handleApi(req, res, url, remote = false) {
   throw fail(404, 'Not found.');
 }
 
+// ---------- the Commander ----------
+// One chat that can see and steer the others, through a small MCP server (lib/commander-mcp.js)
+// that calls the /api/commander/tool/* routes below with this launch's token. It runs in its own
+// folder (commander/, which holds its CLAUDE.md) as the Claude account you pick.
+const COMMANDER_DIR = path.join(DATA_DIR, 'commander');
+const MCP_SCRIPT = path.join(APP_DIR, 'lib', 'commander-mcp.js');
+const SAFE_ARG = /^[\w.:=\/-]+$/;
+const READ_TOOLS = ['mcp__switcher__list_sessions', 'mcp__switcher__read_session'];
+// Sub-sessions you made here, plus the ones the Claude desktop app knows about (its own win).
+const orgView = () => { const v = organize.view(); v.parents = { ...desktop.parents(), ...v.parents }; v.commander.cwd = COMMANDER_DIR; return v; };
+const isCommanderId = id => !!id && String(organize.commander().sessionId || '').toLowerCase() === String(id).toLowerCase();
+function commanderLive() {
+  for (const ch of chats.chats.values()) if (ch.isCommander && ch.state !== 'ended') return ch;
+  const id = organize.commander().sessionId;
+  return id ? chats.bySession(id) : null;
+}
+const COMMANDER_NOTES = `# Commander
+
+You are the Commander in the user's Session Switcher. The user runs many Claude Code and Codex chats at
+once; you watch them and help keep them moving. You don't work on code yourself here.
+
+Your tools (from the \`switcher\` MCP server):
+
+- \`list_sessions\`: every chat that's running or recently used, with its state (working, needs
+  approval, has a question, idle, waiting in its terminal, not running), group, parent chat and
+  last line. Start here.
+- \`read_session\`: a chat's latest messages. Read before you nudge.
+- \`send_message\`: nudge a chat. It arrives marked "From Commander", and the chat shows a note, so
+  the user can always see what you sent. Keep nudges short and specific ("Carry on with the plan you
+  proposed; run the tests when done."). It can't type into a chat running in a terminal.
+- \`answer_permission\`: allow or deny a waiting request. Only works when the user has turned it on;
+  otherwise tell him what's waiting.
+- \`start_sub_session\`: start a new chat linked to a parent chat, with a task.
+- \`archive_chats\`: archive chats (never deleted; the user can bring them back from Archived). Use it
+  when the user asks you to tidy up: finished helper and script runs, old routine runs, tests and
+  probes. Leave bug chats, chats that are working or waiting on the user, and chats with unmerged
+  work alone unless he says otherwise. Say which chats you archived, by title.
+- \`create_routine\` appears only if Session Switcher has routines (scheduled prompts).
+
+How to work:
+
+- Say plainly what you did and what you found, chat by chat. Use the chats' titles, not ids.
+- Don't nudge a chat that is working; wait for it to finish its turn.
+- Ask the user before anything that would delete, publish, push, spend money or send messages to
+  people. When unsure, ask him instead of nudging.
+- Never approve a request the user hasn't allowed you to, and never claim a chat did something you
+  haven't read in it.
+`;
+// Writes the Commander's folder and its MCP config (with this launch's token; readable only by you).
+function writeCommanderFiles() {
+  fs.mkdirSync(COMMANDER_DIR, { recursive: true });
+  fs.writeFileSync(path.join(COMMANDER_DIR, 'CLAUDE.md'), COMMANDER_NOTES);
+  const dir = path.join(os.tmpdir(), 'claude-switcher');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `commander-mcp-${PORT}.json`);
+  const arg = file.replace(/\\/g, '/'); // Claude Code takes forward slashes on Windows too
+  if (!SAFE_ARG.test(arg)) throw fail(500, `The Commander’s settings file would be at ${file}, and that path has characters Session Switcher can’t pass to Claude Code.`);
+  const config = { mcpServers: { switcher: { type: 'stdio', command: process.execPath, args: [MCP_SCRIPT], env: { SWITCHER_URL: `http://127.0.0.1:${PORT}`, SWITCHER_TOKEN: TOKEN } } } };
+  fs.writeFileSync(file, JSON.stringify(config, null, 2), { mode: 0o600 });
+  try { fs.chmodSync(file, 0o600); } catch { /* best effort */ }
+  return arg;
+}
+// The Commander's chat is always called "Commander" (its transcript appears a moment after it starts).
+function nameCommander(id, tries = 8) {
+  setTimeout(() => {
+    try { if (sessions.find(id).session.title !== 'Commander') { sessions.rename(id, 'Commander'); broadcast('sessions'); } }
+    catch { if (tries > 1) nameCommander(id, tries - 1); }
+  }, 2500);
+}
+async function openCommander(c, body = {}) {
+  const live = commanderLive(); if (live) return attachedInfo(live);
+  const set = organize.commander();
+  const a = acc.findAccount(c, body.account || set.accountId || (mainAccount() && mainAccount().id));
+  await guarded(a);
+  acc.prepareForLaunch(c, a);
+  if (set.accountId !== a.id) organize.setCommander({ accountId: a.id });
+  const mcp = writeCommanderFiles();
+  let sessionId = body.fresh ? null : set.sessionId;
+  if (sessionId) { try { sessions.find(sessionId); } catch { sessionId = null; } }
+  const pref = chatPrefs.get({ sessionId, cwd: COMMANDER_DIR, provider: 'claude' });
+  const chat = chats.open({ cfg: c, account: a, cwd: COMMANDER_DIR, sessionId, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: 'Commander', folder: 'Commander', extraArgs: ['--mcp-config', mcp, '--allowedTools', ...READ_TOOLS] });
+  chat.isCommander = true;
+  if (sessionId) { sessions.recordLaunch(sessionId, a, 'app'); nameCommander(sessionId); }
+  log(`Commander: ${sessionId ? `resume ${sessionId}` : 'new'} as ${a.name}`);
+  broadcast('organize', orgView());
+  return { ...chat.info(), attached: false, commander: true };
+}
+
+// What a chat is doing, in words the Commander can act on.
+function stateWord(x) {
+  if (x.phase === 'waiting') return (x.pending || []).some(p => p.question) ? 'has a question' : 'needs approval';
+  if (x.phase === 'waiting-terminal') return 'waiting in its terminal';
+  if (['thinking', 'writing', 'tool', 'starting'].includes(x.phase)) return 'working';
+  if (x.phase === 'ended') return 'stopped';
+  return 'idle';
+}
+const iso = t => (t ? new Date(t).toISOString() : null);
+function commanderSessions(filter = 'active', groupName = '') {
+  const projects = sessionsWithCodex().projects;
+  const known = new Map();
+  for (const p of projects) for (const s of p.sessions) known.set(s.id.toLowerCase(), { s, p });
+  const view = orgView();
+  const groupName_ = id => { const g = organize.groupOf(id); return g ? g.name : null; };
+  const rows = new Map();
+  for (const x of activityList()) {
+    if (!x.sessionId || x.parentKey || isCommanderId(x.sessionId)) continue;
+    const k = x.sessionId.toLowerCase(), f = known.get(k);
+    rows.set(k, {
+      id: x.sessionId, title: (f && f.s.title) || x.title || 'New chat', folder: (f && f.p.name) || x.folder || null, cwd: (f && f.p.cwd) || x.cwd || null, assistant: x.provider === 'codex' ? 'Codex' : 'Claude',
+      state: stateWord(x), where: x.source === 'app' ? 'Session Switcher' : x.source === 'terminal' ? 'a terminal' : 'another app', account: x.accountName || null,
+      lastLine: chatLib.one(x.lastText || '', 400), lastPrompt: chatLib.one(x.lastPrompt || '', 200),
+      pending: (x.pending || []).map(p => ({ requestId: p.requestId, tool: p.toolName, summary: p.summary || null, question: !!p.question })),
+      updated: iso(x.lastEventAt), finishedTurnAt: iso(x.finishedAt),
+    });
+  }
+  const addKnown = id => {
+    const k = String(id).toLowerCase(), f = known.get(k);
+    if (rows.has(k) || !f || isCommanderId(id)) return;
+    rows.set(k, { id: f.s.id, title: f.s.title, folder: f.p.name, cwd: f.p.cwd, assistant: f.s.provider === 'codex' ? 'Codex' : 'Claude', state: 'not running', where: null, account: f.s.lastOpened ? f.s.lastOpened.accountName : null, lastLine: '', lastPrompt: f.s.lastPrompt || f.s.firstPrompt || '', pending: [], updated: iso(f.s.updated) });
+  };
+  for (const g of view.groups) g.chats.forEach(addKnown);
+  for (const [child, parent] of Object.entries(view.parents)) { addKnown(child); addKnown(parent); }
+  if (filter === 'all' || filter === 'archived') [...known.values()].sort((a, b) => b.s.updated - a.s.updated).slice(0, 40).forEach(f => addKnown(f.s.id));
+  // Chats archived in Switcher Lite are out of every list, the Commander's included (unless it asks for 'archived').
+  let archivedLite = {}; try { archivedLite = (liteStore.get().archived || {}).chats || {}; } catch { /* none */ }
+  let out = [...rows.values()].filter(r => (filter === 'archived') === !!archivedLite[r.id]).map(r => ({ ...r, group: groupName_(r.id), parent: organize.parentOf(r.id), subSessions: organize.childrenOf(r.id) }));
+  const WAIT = ['needs approval', 'has a question', 'waiting in its terminal', 'idle'];
+  if (filter === 'working') out = out.filter(r => r.state === 'working');
+  else if (filter === 'waiting') out = out.filter(r => WAIT.includes(r.state) && r.state !== 'not running');
+  else if (filter === 'idle') out = out.filter(r => r.state === 'idle' || r.state === 'not running');
+  if (groupName) out = out.filter(r => r.group && r.group.toLowerCase() === String(groupName).toLowerCase());
+  const rank = r => (['needs approval', 'has a question', 'waiting in its terminal'].includes(r.state) ? 0 : r.state === 'idle' ? 1 : r.state === 'working' ? 2 : 3);
+  out.sort((a, b) => rank(a) - rank(b) || String(b.updated || '').localeCompare(String(a.updated || '')));
+  return { sessions: out, groups: view.groups.map(g => g.name), approvalsAllowed: !!organize.commander().allowApprove, at: new Date().toISOString() };
+}
+async function commanderRead(id, count) {
+  const n = Math.max(1, Math.min(14, Number(count) || 6));
+  if (isCommanderId(id)) throw fail(400, 'That’s the Commander itself.');
+  let p;
+  if (isCodexId(id)) { const cx = codexFind(id); p = { session: { id: cx.thread.id, title: cx.session ? cx.session.title : 'Codex chat', folder: cx.folder }, messages: await codex.preview(cx.thread.id).catch(() => []) }; }
+  else p = await sessions.preview(id);
+  const assistant = isCodexId(id) ? 'Codex' : 'Claude';
+  const x = activityList().find(y => y.sessionId && y.sessionId.toLowerCase() === p.session.id.toLowerCase());
+  return {
+    id: p.session.id, title: p.session.title, folder: p.session.folder, assistant, state: x ? stateWord(x) : 'not running',
+    group: (organize.groupOf(p.session.id) || {}).name || null, parent: organize.parentOf(p.session.id),
+    pending: x ? (x.pending || []).map(q => ({ requestId: q.requestId, tool: q.toolName, summary: q.summary || null, detail: q.detail || null, question: !!q.question })) : [],
+    messages: p.messages.slice(-n).map(m => (m.role === 'you' && /^From Commander:/.test(m.text) ? { from: 'Commander', at: m.at, text: m.text.replace(/^From Commander:\s*/, '') } : { from: m.role === 'you' ? 'the user' : assistant, at: m.at, text: m.text })),
+  };
+}
+// A chat the Commander can write to: running in the window, or opened there now.
+async function chatForCommander(c, id) {
+  if (isCommanderId(id)) throw fail(400, 'That’s the Commander itself.');
+  const live = chats.bySession(id);
+  if (live) return { chat: live, opened: false };
+  if (isCodexId(id)) {
+    const cx = codexFind(id);
+    if (!cx.exists) throw fail(400, `Its folder ${cx.cwd} no longer exists.`);
+    const inst = codexForThread(cx.thread.id);
+    requireCodexSignedIn(inst);
+    const pref = chatPrefs.get({ sessionId: cx.thread.id, cwd: cx.cwd, provider: 'codex' });
+    const chat = inst.open({ cfg: c, cwd: cx.cwd, threadId: cx.thread.id, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, title: (cx.session && cx.session.title) || 'Codex chat', folder: cx.folder });
+    sessions.recordLaunch(cx.thread.id, inst.ACCOUNT, 'app');
+    return { chat, opened: true };
+  }
+  const { project, session } = sessions.find(id);
+  if (!project.exists) throw fail(400, `Its folder ${project.cwd} no longer exists.`);
+  const now = await sys.runningSessions().catch(() => ({}));
+  running = now;
+  if (now[session.id.toLowerCase()]) throw fail(409, `“${session.title}” is running in a terminal, so the Commander can’t type into it. Tell the user instead.`);
+  const elsewhere = activityList().find(x => x.source === 'elsewhere' && x.sessionId && x.sessionId.toLowerCase() === session.id.toLowerCase());
+  if (elsewhere && stateWord(elsewhere) === 'working') throw fail(409, `“${session.title}” is working in another app (like the desktop app), so the Commander can’t open it here. Tell the user instead.`);
+  const a = await accountForCommander(c, session.id);
+  acc.prepareForLaunch(c, a);
+  const pref = chatPrefs.get({ sessionId: session.id, cwd: project.cwd, provider: 'claude' });
+  const chat = chats.open({ cfg: c, account: a, cwd: project.cwd, sessionId: session.id, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: session.title, folder: project.name });
+  sessions.recordLaunch(session.id, a, 'app');
+  return { chat, opened: true };
+}
+// The account a chat opens as for the Commander: the one it last ran as, else the Commander's own.
+async function accountForCommander(c, sessionId) {
+  const live = sessionId && chats.bySession(sessionId);
+  const last = sessionId && sessions.lastOpened(sessionId);
+  const ids = [live && live.account && live.account.id, last && last.account, organize.commander().accountId, mainAccount() && mainAccount().id];
+  let why = '';
+  for (const id of [...new Set(ids.filter(Boolean))]) {
+    const a = c.accounts.find(x => x.id === id); if (!a) continue;
+    try { await guarded(a); return a; } catch (err) { why = err.message; }
+  }
+  throw fail(409, `None of the user’s Claude accounts can open it right now. ${why}`);
+}
+const cmdNote = (chat, text) => chat.emit(chatLib.notice('commander', text));
+async function commanderSend(c, id, text) {
+  text = String(text || '').trim().slice(0, 20000);
+  if (!text) throw fail(400, 'Write the message to send.');
+  const { chat, opened } = await chatForCommander(c, id);
+  if (chat.pending && chat.pending.size) throw fail(409, `“${chat.title}” is waiting on a permission request. Answer it with answer_permission if the user allowed that, or tell the user.`);
+  const wasBusy = chat.state === 'busy';
+  cmdNote(chat, `The Commander ${opened ? 'opened this chat and ' : ''}sent the message below.`);
+  chat.send(`From Commander: ${text}`);
+  log(`Commander nudged ${chat.sessionId || id}: ${chatLib.one(text, 120)}`);
+  scheduleActivity();
+  return { ok: true, title: chat.title, opened, note: opened ? 'It wasn’t running, so it was opened in Session Switcher and the message was sent.' : wasBusy ? 'Sent. It was working, so it reads this after its current step.' : 'Sent.' };
+}
+function commanderAnswer(id, { decision, requestId, reason }) {
+  if (!organize.commander().allowApprove) throw fail(403, 'The user hasn’t allowed the Commander to answer permission requests. Tell them what’s waiting instead.');
+  if (!['allow', 'deny'].includes(decision)) throw fail(400, 'Choose allow or deny.');
+  const chat = chats.bySession(id);
+  if (!chat || !chat.pending.size) throw fail(404, 'Nothing is waiting for permission in that chat (only chats running in Session Switcher’s window can be answered).');
+  const rid = requestId || (chat.pending.size === 1 ? [...chat.pending.keys()][0] : null);
+  if (!rid) throw fail(400, 'More than one request is waiting; say which with request_id.');
+  const p = chat.pending.get(rid);
+  if (!p) throw fail(404, 'That request isn’t waiting any more.');
+  if (p.event.questions) throw fail(400, 'That’s a multiple-choice question for the user; the Commander can’t answer it. Tell the user.');
+  let what = (p.event.view && p.event.view.summary) || p.event.toolName;
+  if (/^(Write|Edit|MultiEdit|NotebookEdit|Read)$/.test(p.event.toolName) && what) what = path.basename(what);
+  cmdNote(chat, `The Commander ${decision === 'allow' ? 'allowed' : 'denied'}: ${p.event.toolName}${what && what !== p.event.toolName ? ` (${what})` : ''}${reason ? `. Why: ${reason}` : ''}.`);
+  chat.answer(rid, { decision, message: decision === 'deny' ? `From Commander: ${reason || 'Not now.'}` : '' });
+  log(`Commander ${decision === 'allow' ? 'allowed' : 'denied'} ${p.event.toolName} in ${chat.sessionId}`);
+  return { ok: true, title: chat.title, decision };
+}
+// A new chat in the same folder as another one (Claude or Codex, as that one is), with the folder's
+// usual choices, for the chat to run under it as a sub-chat.
+async function openSubChat(c, pid) {
+  let cwd, folder, title, chat;
+  if (isCodexId(pid)) {
+    const cx = codexFind(pid); cwd = cx.cwd; folder = cx.folder; title = cx.session ? cx.session.title : 'a Codex chat';
+    if (!cx.exists) throw fail(400, `Its folder ${cwd} no longer exists.`);
+    const inst = codexForThread(pid); requireCodexSignedIn(inst);
+    const pref = chatPrefs.get({ cwd, provider: 'codex' });
+    chat = inst.open({ cfg: c, cwd, mode: pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, title: 'New Codex chat', folder });
+  } else {
+    const { project, session } = sessions.find(pid); cwd = project.cwd; folder = project.name; title = session.title;
+    if (!project.exists) throw fail(400, `Its folder ${cwd} no longer exists.`);
+    const a = await accountForCommander(c, pid);
+    acc.prepareForLaunch(c, a);
+    const pref = chatPrefs.get({ cwd, provider: 'claude' });
+    chat = chats.open({ cfg: c, account: a, cwd, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: 'New chat', folder });
+  }
+  chat.parentSession = pid;
+  return { chat, cwd, folder, title };
+}
+// A side chat (Switcher Lite): a sub-chat beside this one that starts knowing its latest messages,
+// for a quick question or a try at something without derailing it. It stays under its parent.
+// Name ideas for renaming a chat: what it's about now, to a small fast model (lib/lite-guess.js).
+async function nameIdeas(id) {
+  let title = '', folder = '';
+  try {
+    const cx = codexFind(id);
+    if (cx) { title = (cx.session && cx.session.title) || ''; folder = cx.folder || ''; }
+    else { const f = sessions.find(id); title = f.session.title || ''; folder = f.project.name || ''; }
+  } catch { throw fail(404, 'That chat can’t be read.'); }
+  const context = await otherChatBlock({ id }).catch(() => '');
+  let model = null; try { model = liteStore.get().guessModel || null; } catch { /* the fastest there is */ }
+  return { names: await require('./lib/lite-guess').suggestNames({ model, title, folder, context }) };
+}
+async function startSideChat(c, parentId, text) {
+  text = String(text || '').trim().slice(0, 20000);
+  if (!text) throw fail(400, 'Type your question.');
+  const pid = parentFor(parentId);
+  const { chat, title } = await openSubChat(c, pid);
+  chat.title = `Side: ${text.split('\n')[0].slice(0, 60)}`;
+  await waitReady(chat, 45000);
+  if (chat.state === 'ended') throw fail(500, 'The side chat stopped as it started.');
+  const ctx = await otherChatBlock({ id: pid }).catch(() => '');
+  chat.send(`${ctx}You're a side chat opened beside “${title}”, another chat in this folder; that chat carries on separately. Help with this:\n\n${text}`);
+  for (let i = 0; i < 40 && !chat.sessionId && chat.state !== 'ended'; i++) await new Promise(r => setTimeout(r, 250));
+  // Named for your question, not for the context it was sent with (once its conversation is on disk).
+  const name = `Side: ${text.split('\n')[0].slice(0, 60)}`;
+  const nameIt = async (tries = 0) => {
+    try {
+      if (!chat.sessionId) throw new Error('no id yet');
+      if (chat.provider === 'codex') { await codex.rename(chat.sessionId, name); codexSessions(0); } else { sessions.rename(chat.sessionId, name); broadcast('sessions'); }
+    } catch { if (tries < 12) setTimeout(() => nameIt(tries + 1), 1500); }
+  };
+  nameIt();
+  log(`Side chat from ${pid}: ${chatLib.one(text, 120)}`);
+  return { key: chat.key, sessionId: chat.sessionId || null, provider: chat.provider || 'claude' };
+}
+async function commanderSub(c, parentId, task, includeContext = true) {
+  task = String(task || '').trim().slice(0, 20000);
+  if (!task) throw fail(400, 'Say what the sub-session should do.');
+  const pid = parentFor(parentId);
+  const { chat, folder, title } = await openSubChat(c, pid);
+  const last = includeContext ? await lastReply(pid).catch(() => '') : '';
+  cmdNote(chat, 'The Commander started this sub-session and sent it the task below.');
+  chat.send(`From Commander: ${task}\n\nContext: you’re a sub-session of “${title}”, another chat in this folder.${last ? ` Its latest reply:\n\n${last.split('\n').map(l => `> ${l}`).join('\n')}` : ''}`);
+  const parentLive = chats.bySession(pid);
+  if (parentLive) cmdNote(parentLive, `The Commander started a sub-session from this chat: ${chatLib.one(task, 160)}`);
+  log(`Commander started a sub-session of ${pid}: ${chatLib.one(task, 120)}`);
+  for (let i = 0; i < 40 && !chat.sessionId && chat.state !== 'ended'; i++) await new Promise(r => setTimeout(r, 500));
+  return { ok: true, session: chat.sessionId || null, folder, note: chat.sessionId ? 'Started, and the task was sent.' : 'Started; it shows in list_sessions once it has an id.' };
+}
 // ---------- restart ----------
 // A fresh copy of the app takes over from this one. This one notes the open chats and stops them (as
 // Quit does) and exits; the new copy waits for it to be gone, takes the port, and reopens those chats.
@@ -1951,7 +2551,14 @@ async function reopenChats(list, what) {
   for (const c of list) {
     try {
       if (chats.bySession(c.sessionId)) { reopened.push(c.sessionId); continue; }
-      await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true });
+      // Not over a copy the Claude app or a terminal has open (this app's own copies are gone by now;
+      // a moment's grace in case one is still closing).
+      if (c.provider !== 'codex') {
+        let open = (await sys.runningSessions().catch(() => ({})))[String(c.sessionId).toLowerCase()];
+        if (open) { await new Promise(r => setTimeout(r, 3000)); sys.forget('running'); open = (await sys.runningSessions().catch(() => ({})))[String(c.sessionId).toLowerCase()]; }
+        if (open) { failed.push({ sessionId: c.sessionId, title: c.title, error: 'open in the Claude app or a terminal' }); continue; }
+      }
+      await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true, ...(c.permissionMode ? { permissionMode: c.permissionMode } : {}), ...(c.model ? { model: c.model } : {}), ...(c.fast ? { fast: true } : {}) });
       reopened.push(c.sessionId);
     } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
   }
@@ -2042,8 +2649,17 @@ function validImages(images) {
 
 async function handleChat(req, res, url, body, c) {
   switch (url.pathname) {
-    // With who its partner is (or would be), so the window shows the right one before it's started.
-    case '/api/chat/open': { const info = await openChat(c, body); let mate = null, crew = {}; try { const lead = pairs.leadOf(chats.get(info.key)); mate = pairs.kindFor(lead); crew = crewInfo(lead); } catch { /* gone */ } return send(res, 200, { ...info, mate, ...crew }); }
+    // With who its partner is (or would be), and its crew, so the window shows the right ones before they've started.
+    case '/api/chat/open': {
+      // The Commander's own chat reopens through its own route (it needs its tools).
+      if ((body.mode || 'resume') === 'resume' && isCommanderId(body.sessionId)) return send(res, 200, await openCommander(c, {}));
+      const info = await openChat(c, body);
+      // A sub-session remembers the chat it was started from once it has an id (see onSession).
+      if (body.mode === 'new' && body.parent && info && info.key) { try { chats.get(info.key).parentSession = parentFor(body.parent); } catch { /* it ended already */ } }
+      let mate = null, crew = {};
+      try { const lead = pairs.leadOf(chats.get(info.key)); mate = pairs.kindFor(lead); crew = crewInfo(lead); } catch { /* gone */ }
+      return send(res, 200, { ...info, mate, ...crew });
+    }
     case '/api/chat/attach': { const ch = chats.get(body.key); let mate = null; try { mate = pairs.kindFor(pairs.leadOf(ch)); } catch { /* gone */ } return send(res, 200, { ...attachedInfo(ch), mate }); }
     case '/api/chat/send': {
       // to: 'partner' (the other assistant in this chat, started if need be), 'both' (they take
@@ -2158,7 +2774,8 @@ async function handleChat(req, res, url, body, c) {
       const chat = chats.get(body.key);
       if (body.model) await chat.setModel(String(body.model));
       if (body.effort) await chat.setEffort(String(body.effort));
-      remember(chat, { ...(body.model ? { model: chat.model } : {}), ...(body.effort ? { effort: chat.effort } : {}) });
+      if (typeof body.fast === 'boolean' && typeof chat.setFast === 'function') chat.setFast(body.fast);
+      remember(chat, { ...(body.model ? { model: chat.model } : {}), ...(body.effort ? { effort: chat.effort } : {}), ...(typeof body.fast === 'boolean' ? { fast: body.fast ? 'on' : null } : {}) });
       return send(res, 200, chat.modelInfo());
     }
     case '/api/chat/companion': {
@@ -2200,6 +2817,24 @@ async function handleChat(req, res, url, body, c) {
   throw fail(404, 'Not found.');
 }
 
+// The chat a new sub-session is started from: any chat in the list, by id.
+function parentFor(id) {
+  if (isCodexId(id)) return codexFind(id).thread.id;
+  return sessions.find(id).session.id;
+}
+// What a chat last said, in full (up to a few thousand characters), for a sub-session's brief.
+async function lastReply(id, max = 6000) {
+  let items = [];
+  if (isCodexId(id)) items = (await codex.history(id, null, null)).items || [];
+  else items = (await chatLib.readHistory(sessions.fileFor(id), { limit: 30 })).items;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.kind !== 'assistant') continue;
+    const text = (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim();
+    if (text) return text.length > max ? `${text.slice(0, max)}…` : text;
+  }
+  return '';
+}
 // A running chat's details for the window, with its paired Codex helper's id if it has one.
 function attachedInfo(chat) {
   return { ...chat.info(), attached: true, companionThread: chat.sessionId && !chat.parentKey ? chatPrefs.companionOf(chat.sessionId) : null, ...crewInfo(chat) };
@@ -2226,7 +2861,12 @@ function chatEvents(req, res, url) {
 
 // ---------- http ----------
 
-const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
+const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
+// Lite's side viewer shows links beside a chat (previews, dev servers on this Mac), so its page may
+// frame web pages and local servers. The full app's page keeps the stricter policy.
+// Lite's Home Screen icon for the look you picked (Safari reads it from the page, not from scripts).
+function liteIconPath() { let skin = 'plain'; try { skin = String(liteStore.get().look.skin).replace(/-pro$/, ''); } catch { /* plain */ } return `/ui-lite/icon-${['plain', 'imperial', 'rebel'].includes(skin) ? skin : 'plain'}.png`; }
+const LITE_CSP = `${CSP}; frame-src 'self' https: http://localhost:* http://127.0.0.1:* http://*.localhost:*`;
 
 // Serves the app. Phone access (lib/remote.js) checks the phone's pairing first, then calls this
 // with remote = true; the PC's own window only ever comes through 127.0.0.1.
@@ -2243,6 +2883,32 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       return res.end(html);
     }
+    // Switcher Lite: its own page and files, the same token and rules as the full app.
+    if (req.method === 'GET' && (url.pathname === '/lite' || url.pathname === '/lite/')) {
+      // Opened here: from now on (and after restarts) its background checks run.
+      try { if (liteStore.markUsed()) log('Switcher Lite opened here for the first time; its background checks start.'); liteRoutes.startSampling(); } catch (err) { log(`Lite: ${err.message}`); }
+      const html = fs.readFileSync(path.join(APP_DIR, 'ui-lite', 'index.html'), 'utf8').replace('/apple-touch-icon.png', liteIconPath()).replace('__TOKEN__', TOKEN).replace('__REMOTE__', remote ? 'true' : 'false');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': LITE_CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
+      return res.end(html);
+    }
+    // Its Home Screen manifest (notifications use the app's own service worker, /sw.js).
+    if (req.method === 'GET' && url.pathname === '/lite.webmanifest') {
+      res.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(fs.readFileSync(path.join(APP_DIR, 'ui-lite', 'manifest.json'), 'utf8').replace(/\/apple-touch-icon\.png", "sizes": "180x180"/, `${liteIconPath()}", "sizes": "512x512"`));
+    }
+    // Lite's own Home Screen icons, one per look.
+    if (req.method === 'GET' && /^\/ui-lite\/icon-(plain|imperial|rebel)\.png$/.test(url.pathname)) {
+      let buf;
+      try { buf = fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1))); } catch { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(buf);
+    }
+    if (req.method === 'GET' && /^\/ui-lite\/[a-z0-9-]+\.(js|css)$/.test(url.pathname)) {
+      let text;
+      try { text = fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1)), 'utf8'); } catch { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'Content-Type': `${url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript'}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(text);
+    }
     // Fonts and their licence, sound cues and the themes' paintings (art/, WebP only; their originals in art/src/ stay unserved).
     if (req.method === 'GET' && /^\/(fonts\/(?:[a-z0-9-]+\.woff2|OFL\.txt)|sounds\/[a-z0-9-]+\.mp3|art\/[a-z0-9-]+\.webp)$/.test(url.pathname)) {
       let data;
@@ -2252,7 +2918,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
       return res.end(data);
     }
     const STATIC = { '/theme.js': 'text/javascript', '/styles.css': 'text/css', ...(remote ? { '/sw.js': 'text/javascript' } : {}) };
-    const type = STATIC[url.pathname] || (/^\/ui\/[a-z0-9-]+\.js$/.test(url.pathname) ? 'text/javascript' : null);
+    const type = STATIC[url.pathname] || (/^\/ui\/[a-z0-9-]+\.js$/.test(url.pathname) ? 'text/javascript' : /^\/ui\/[a-z0-9-]+\.css$/.test(url.pathname) ? 'text/css' : null);
     if (req.method === 'GET' && type) {
       res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       return res.end(fs.readFileSync(path.join(APP_DIR, url.pathname.slice(1)), 'utf8'));
@@ -2276,6 +2942,13 @@ async function handleRequest(req, res, { remote = false } = {}) {
     if (url.pathname.startsWith('/api/')) {
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
       const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media' || url.pathname === '/api/themes/art') && url.searchParams.get('token') === TOKEN;
+      // Switcher Lite's gallery: a picture Codex generated (or its thumbnail), by thread and file name.
+      if (req.method === 'GET' && url.pathname === '/api/lite/gimg' && url.searchParams.get('token') === TOKEN) {
+        const q = url.searchParams, f = q.get('thumb') ? liteRoutes.images.thumbFor(q.get('thread'), q.get('file')) : liteRoutes.images.fileFor(q.get('thread'), q.get('file'));
+        if (!f) { res.writeHead(404); return res.end(); }
+        res.writeHead(200, { 'Content-Type': /\.jpe?g$/i.test(f) ? 'image/jpeg' : /\.webp$/i.test(f) ? 'image/webp' : 'image/png', 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+        return fs.createReadStream(f).pipe(res);
+      }
       if (imageGet && url.pathname === '/api/media') return sendMedia(req, res, url);
       // The notification's buttons and the Android app's connection have no page token: the phone's
       // pairing (and, for Allow/Deny, a one-time token) is what lets them in.
@@ -2300,6 +2973,12 @@ const phone = remoteLib.createRemote({ dataDir: DATA_DIR, appDir: APP_DIR, versi
 
 // ---------- notifications on phones (lib/push.js; the phone's side: the Android app, sw.js, ui/push.js) ----------
 const pushes = pushLib.createPush({ dataDir: DATA_DIR, log });
+// Switcher Lite's own alerts (a plan at its floor, a reset lapsing, routines) go out the same way.
+liteRoutes.usePush(async msg => {
+  if (!pushes.count()) return 0;
+  const out = await pushes.notify({ ...msg, liteIcon: liteIconPath() }, prefs => pushLib.wants(prefs, { kind: msg.kind, sessionId: msg.sessionId || null }));
+  return out.filter(o => o.status >= 200 && o.status < 300).length;
+});
 pushes.keepDevices(phone.status().devices.map(d => d.id));
 const pushSeen = { map: new Map(), primed: false };
 // Allow/Deny on a notification: one-time tokens, each for one request, for an hour.
@@ -2418,7 +3097,7 @@ async function sendPushes() {
     const recent = n.kind === 'reply' ? yourRecentOf(n.chat) : true;
     const want = prefs => msg.kind === 'clear' || pushLib.wants(prefs, { kind: n.kind, sessionId: sidOf(n.chat), yourRecent: recent });
     for (const w of appWatchers) { const p = pushes.appPrefs(w.device.id); if (want(p) && !holdForDigest(`app:${w.device.id}`, p, msg)) toApp(w, msg); }
-    if (msg.kind !== 'clear' && pushes.count()) await pushes.notify(msg, (p, s) => want(p) && !holdForDigest(`web:${s.endpoint}`, p, msg));
+    if (msg.kind !== 'clear' && pushes.count()) await pushes.notify({ ...msg, liteIcon: liteIconPath() }, (p, s) => want(p) && !holdForDigest(`web:${s.endpoint}`, p, msg));
   }
 }
 // What's waiting right now, for an app that has just connected (back on your Wi-Fi): approvals, and
@@ -2449,7 +3128,7 @@ async function pushApi(req, res, route, remote) {
     return undefined;
   }
   const body = req.method === 'POST' ? await readBody(req) : {};
-  if (route === 'GET /api/push') return send(res, 200, { key: pushes.publicKey(), phone: !!dev, subscribed: dev ? pushes.count(dev.id) > 0 : false, phones: pushes.count() });
+  if (route === 'GET /api/push') return send(res, 200, { key: pushes.publicKey(), phone: !!dev, subscribed: dev ? pushes.count(dev.id) > 0 : false, phones: pushes.count(), prefs: dev ? pushes.prefsOf(dev.id) : null });
   if (route === 'POST /api/push/act') {
     const a = pushActs.get(String(body.token || ''));
     if (!a || !dev || a.exp < Date.now()) throw fail(410, 'That one was already answered, or has expired.');
@@ -2537,7 +3216,9 @@ async function tailscaleServe() {
 }
 
 const appUrl = `http://127.0.0.1:${PORT}/`;
-const openRunning = () => { console.log(`Already running at ${appUrl}. Opening it.`); sys.openAppWindow(appUrl, config().prefs).finally(() => setTimeout(() => process.exit(0), 800)); };
+// The page the app window opens on: Switcher Lite, if lite.json says so (Look → "Open Lite on start").
+const startUrl = () => { try { return liteStore.get().openLite ? `${appUrl}lite` : appUrl; } catch { return appUrl; } };
+const openRunning = () => { console.log(`Already running at ${appUrl}. Opening it.`); sys.openAppWindow(startUrl(), config().prefs).finally(() => setTimeout(() => process.exit(0), 800)); };
 let handedOver = false;
 server.on('error', err => {
   if (err.code === 'EADDRINUSE' && !handedOver) {
@@ -2560,7 +3241,7 @@ server.on('error', err => {
 });
 process.on('uncaughtException', err => { log(`Unexpected error: ${err.stack || err.message}`); noteProblem('PC', err.message, err.stack); });
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } } setTimeout(() => process.exit(0), 300); });
-process.on('exit', () => { stopForQuit(); try { chatPrefs.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
+process.on('exit', () => { try { routines.stop(); } catch { /* not started */ } stopForQuit(); try { chatPrefs.flush(); organize.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
 // In the desktop app: if the app itself goes (it crashed, or was ended in Task Manager), this server
 // goes too, keeping what it can, rather than staying behind on the port with no window.
 if (SHELL) process.on('disconnect', () => {
@@ -2612,7 +3293,10 @@ if (restartFrom && process.send) process.send({ type: restartLib.READY, pid: pro
     for (const x of codexAll()) x.refreshAccount().then(st => { if (st.signedIn) x.refreshUsage(); }).catch(() => {});
   }, 2500);
   startWatching();
+  routines.start();
+  // Lite's hourly plan checks and its helpers (chat guesses, PR checks): only where Lite is used.
+  if (liteStore.get().used) liteRoutes.startSampling();
   phone.sync().catch(err => log(`Phone access: ${err.message}`));
   // After a restart the window that was open reconnects by itself.
-  if (!restartFrom) sys.openAppWindow(appUrl, config().prefs);
+  if (!restartFrom) sys.openAppWindow(startUrl(), config().prefs);
 })).catch(err => { log(`Couldn’t take over after restart: ${err.message}`); process.exit(1); });

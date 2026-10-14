@@ -121,7 +121,7 @@ function syncSend() {
   $c('cStop').title = `Stop ${ts.filter(x => x.state === 'busy' || x.state === 'waiting').map(x => x.name).join(' and ') || name} (Esc twice)`;
   $c('cTyping').hidden = !ts.some(x => x.state === 'busy');
   $c('cTyping').classList.toggle('codex', (C.target === 'comp' && duo()) || C.provider === 'codex');
-  $c('cSend').textContent = busy ? 'Queue' : 'Send';
+  $c('cSend').classList.toggle('queue', busy); $c('cSend').setAttribute('aria-label', busy ? 'Queue' : 'Send');
   $c('cSend').title = busy ? `${name} ${ts.length > 1 ? 'are' : 'is'} working; this will be sent when ready` : `Send to ${name}`;
   $c('chat').classList.toggle('to-codex', C.target === 'comp' && duo() && partnerProv() === 'codex');
   $c('chat').classList.toggle('to-claude', C.target === 'comp' && duo() && partnerProv() === 'claude');
@@ -256,7 +256,7 @@ function verbFor(p) {
     case 'Write': return 'create or overwrite a file';
     case 'WebFetch': return 'open a web page';
     case 'WebSearch': return 'search the web';
-    default: return `use ${p.toolName}`;
+    default: return (window.CMDR_TOOLS && window.CMDR_TOOLS[p.toolName]) || `use ${p.toolName}`;
   }
 }
 function addPermission(p, src = 'main') {
@@ -383,7 +383,8 @@ function crewPill(src) {
   const st = src === 'comp' ? (C.comp && !C.comp.ended ? C.comp.state : 'off') : C.state;
   const busy = st === 'busy' || st === 'starting' || st === 'waiting';
   const status = src === 'comp' ? C.comp && C.comp.status : '';
-  const label = mi ? `${modelLabel(mi)}${mi.effort ? ` · ${mi.effort}` : ''}` : src === 'comp' && st === 'off' ? 'ready when you are' : '…';
+  const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : '');
+  const label = mi ? `${modelLabel(mi)}${mi.effort ? ` ${cap(mi.effort)}` : ''}` : src === 'comp' && st === 'off' ? '' : '…';
   const on = duo() ? (src === 'comp' ? (C.target === 'comp' && C.focus === prov) || C.target === 'both' : C.target === src || C.target === 'both') : true;
   const sub = st === 'waiting' ? 'needs your OK' : src === 'comp' && C.handoff === prov ? 'up next…' : busy && status ? status : label;
   const mode = src === 'comp' ? compModeLabel() : '';
@@ -419,7 +420,7 @@ function renderCrew() {
   const both = C.target === 'both';
   const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
   const many = crewKinds().length > 1;
-  box.innerHTML = crewPill('main') + (two ? crewKinds().map(k => withComp(k, () => crewPill('comp'))).join('') + `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : many ? `All: ${lead} answers, then ${crewKinds().map(k => PROV_NAME[k]).join(', then ')}, each building on what came before. Uses room on every account.` : `Both: ${lead} answers, then ${mate} picks it up and builds on that. Uses room on both accounts, about twice a single reply.`}"><span class="crew-n">${many ? 'All' : 'Both'}</span></button><button type="button" class="crew both plan${C.target === 'plan' ? ' on' : ''}" data-crew="plan" aria-pressed="${C.target === 'plan'}" title="Plan first: ${lead} drafts a plan, ${mate} checks it, then you pick who builds it"><span class="crew-n">Plan</span></button>` : '');
+  box.innerHTML = crewPill('main') + (two ? crewKinds().map(k => withComp(k, () => crewPill('comp'))).join('') + (C.target !== 'main' || Object.values(C.comps).some(c => c && !c.ended) ? `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : many ? `All: ${lead} answers, then ${crewKinds().map(k => PROV_NAME[k]).join(', then ')}, each building on what came before. Uses room on every account.` : `Both: ${lead} answers, then ${mate} picks it up and builds on that. Uses room on both accounts, about twice a single reply.`}"><span class="crew-n">${many ? 'All' : 'Both'}</span></button>` : '') + `<button type="button" class="crew both plan${C.target === 'plan' ? ' on' : ''}" data-crew="plan" aria-pressed="${C.target === 'plan'}" title="Plan first: ${lead} drafts a plan, ${mate} checks it, then you pick who builds it"><span class="crew-n">Plan</span></button>` : '');
   box.classList.toggle('duo', two);
   renderRelay();
   $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · ${crewKinds().map(k => `<b>@${k}</b>`).join(', ')} or <b>@${many ? 'all' : 'both'}</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;
@@ -512,28 +513,23 @@ function renderPick() {
       <div class="mp-ctxbar ${ctxClass(cf)}" role="meter" aria-label="How full the context is" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(cf * 100)}"><i style="width:${Math.round(cf * 100)}%"></i></div>
       <div class="mp-ctxrow">${cx.parts && cx.parts.length ? `<p class="mp-ctxparts">${cx.parts.map(p => `${esc(p.name)} ${kTok(p.tokens)}`).join(' · ')}</p>` : '<p class="mp-ctxparts">Summarizing keeps the gist and frees room.</p>'}
       <button type="button" class="btn sm" data-c="compact" data-src="${src}" ${busyNow ? 'disabled title="Wait for the reply to finish"' : ''}>Summarize now</button></div></div>` : '';
-  if (!mi || !mi.models || !mi.models.length) box.innerHTML = `${top}${ctxRow}<p class="mp-load"><span class="gen-spin" aria-hidden="true"></span>Asking ${name} which models it has…</p>`;
+  if (!mi || !mi.models || !mi.models.length) box.innerHTML = `${top}<p class="mp-load"><span class="gen-spin" aria-hidden="true"></span>Asking ${name} which models it has…</p>${ctxRow}`;
   else {
+    // Codex-style: one list of models with a check on the one in use, one row of effort, the
+    // context at the bottom. Claude Code's dated and older models fold away.
     const cur = mi.models.find(m => m.value === mi.model);
     const efforts = (cur && cur.efforts && cur.efforts.length ? cur.efforts : mi.efforts) || [];
-    // Claude Code lists its current lineup by alias ("sonnet"); dated and older models fold away.
     const older = m => provFor(src) === 'claude' && /^claude-/.test(m.value);
-    const row = m => `<button type="button" role="radio" aria-checked="${m.value === mi.model}" data-model="${esc(m.value)}"><b>${esc(m.label)}</b>${m.description ? `<small>${esc(m.description)}</small>` : ''}</button>`;
+    const check = '<svg class="mp-check" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 7.4 5.8 10 11 4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const row = m => `<button type="button" role="radio" aria-checked="${m.value === mi.model}" data-model="${esc(m.value)}"${m.description ? ` title="${esc(m.description)}"` : ''}><b>${esc(m.label)}</b>${m.description ? `<small>${esc(m.description)}</small>` : ''}${check}</button>`;
     const late = mi.models.filter(older);
-    const presets = presetsFor(src);
-    const onPreset = presets.find(p => p.model === mi.model && p.effort === mi.effort);
-    const picks = presets.length ? `<p class="mp-h"><span class="mp-t">Quick picks</span><span>a model and effort in one tap</span></p>
-        <div class="mp-presets" role="radiogroup" aria-label="Quick picks">${presets.map(p => `<button type="button" role="radio" class="mp-preset" aria-checked="${p === onPreset}" data-preset="${p.id}">
-          <span class="mpp-g" aria-hidden="true">${p.glyph}</span><b>${esc(p.name)}</b><small>${esc(p.label)}${p.effort ? ` · ${esc(p.effort)}` : ''}</small><em>${esc(p.note)}</em></button>`).join('')}</div>` : '';
-    // On a phone the full list folds away under the quick picks, unless the model in use is only there.
-    const listOpen = !isPhone() || !onPreset;
-    box.innerHTML = `${top}${ctxRow}${picks}
-        <details class="mp-all" ${listOpen ? 'open' : ''}><summary class="mp-h"><span class="mp-t"><b>${name}</b> · every model</span><span>takes effect from your next message</span></summary>
+    const cap = e => e[0].toUpperCase() + e.slice(1);
+    box.innerHTML = `${top}
         <div class="mp-list" role="radiogroup" aria-label="${name} model">${mi.models.filter(m => !older(m)).map(row).join('')}
-        ${late.length ? `<details class="mp-more" ${late.some(m => m.value === mi.model) ? 'open' : ''}><summary>Earlier models (${late.length})</summary>${late.map(row).join('')}</details>` : ''}</div></details>
-        ${efforts.length ? `<p class="mp-h"><span class="mp-t">Effort</span><span>how hard it thinks</span></p><div class="mp-eff" role="radiogroup" aria-label="Effort">${efforts.map(e => `<button type="button" role="radio" aria-checked="${e === mi.effort}" data-effort="${esc(e)}">${esc(e)}</button>`).join('')}</div>` : ''}
-        ${mi.replyModel && mi.resolvedModel && mi.replyModel !== mi.resolvedModel && provFor(src) === 'claude' ? `<p class="mp-note">The last reply came from <b>${esc(modelName(mi.replyModel))}</b>.${$c('cMode').value === 'plan' ? ' In Plan only mode, Claude Code plans with a stronger model than Haiku.' : ''}</p>` : ''}
-        <p class="mp-f">Remembered for this chat, and for new ${name} chats in ${esc(C.folder || 'this project')}. Shortcut: <kbd class="kbd">/model ${provFor(src) === 'codex' ? 'luna' : 'sonnet'}</kbd></p>`;
+        ${late.length ? `<details class="mp-more" ${late.some(m => m.value === mi.model) ? 'open' : ''}><summary>Earlier models</summary>${late.map(row).join('')}</details>` : ''}</div>
+        ${efforts.length ? `<p class="mp-h"><span class="mp-t">${provFor(src) === 'codex' ? 'Reasoning' : 'Effort'}</span></p><div class="mp-eff" role="radiogroup" aria-label="Effort">${efforts.map(e => `<button type="button" role="radio" aria-checked="${e === mi.effort}" data-effort="${esc(e)}">${esc(cap(e))}</button>`).join('')}</div>` : ''}
+        ${mi.replyModel && mi.resolvedModel && mi.replyModel !== mi.resolvedModel && provFor(src) === 'claude' ? `<p class="mp-note">The last reply came from <b>${esc(modelName(mi.replyModel))}</b>.</p>` : ''}
+        ${ctxRow}`;
   }
   box.classList.toggle('codex', provFor(src) === 'codex');
   const wasHidden = box.hidden;

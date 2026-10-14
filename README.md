@@ -185,6 +185,23 @@ To change them, choose **Edit prompts…** from any of those menus. You can rena
 
 A new chat opens on its project: its banner, its name, and your prompts one click away.
 
+## Routines
+
+Routines are chats that start on their own. Open **Routines** in the sidebar, then **New routine** or **From a template**.
+
+- **On a schedule:** every day at a time, weekdays, every few hours or minutes, or a cron line (`0 9 * * 1-5` is 9:00 AM on weekdays).
+- **When something new turns up:**
+  - **A Slack channel:** each new top-level post starts a run (replies in threads don't). Give it the channel's ID (`C0123ABCD`, at the bottom of the channel's About) and a Slack app's bot token with `channels:history` (plus `groups:history` for a private channel, and `channels:read` if you want the channel's name shown). Invite the app to the channel. The token goes into the macOS Keychain (item “Session Switcher”, account `slack`), never into a file. To add it from a terminal instead: `security add-generic-password -U -s "Session Switcher" -a slack -w` (it asks for the token).
+  - **A command's output:** runs a command in the routine's folder every few minutes, and each new line starts a run. It covers a Discord bot, a CLI or a database query you already have. A line can be JSON, like `{"id": "123", "text": "…", "link": "https://…"}`; otherwise the line is the text, and its first web address is the link.
+  - An optional filter keeps only items that mention a word, or match a `/pattern/`.
+  - The first look only notes what's already there, so turning a watcher on doesn't start a chat for every old post. Items are remembered by id, so nothing runs twice. A watcher starts at most six chats an hour; the rest wait their turn.
+- Each routine has a folder, an account (any Claude or Codex account, including Ollama), a prompt (or a saved prompt; `{project}` and `{date}` work), a permission mode, and whether each run starts a new chat or continues one chat.
+- Runs happen in the app's own chat window, so they show under **At work** and **Awaiting you** like any chat. A watcher's run gets the new item's text and link in its first message.
+- Each routine keeps a history: when it ran, how it went, the last thing the chat said, and **Open chat**.
+- A run that was due while the Mac slept or the app was closed runs once when it's back, not once for every time it missed.
+- Before each run it checks the account's usage. If the five-hour window is more used than the routine allows (90% unless you change it), or the week is used up, it waits until the window resets and says so in the history.
+- Routines never post anywhere. Slack is only read, and every run is told to write any reply as a draft for you to send. Keep routines on **Ask before acting** if a chat has tools that could send messages.
+- Routines are kept in `routines.json`. Other code can make one through `POST /api/routines`.
 **Project crests:** choose **Project crest…** on a project page or in its right-click menu. Pick an existing picture, or edit the art direction under **Make a crest with Codex** and choose **Review prompt in Codex**. The prompt waits in the chat for you to send it. When Codex saves that image, it becomes the project's crest across the sidebar, project cards and chat header; existing artwork and the wide banner stay intact. Choosing **Use automatic crest** restores automatic selection. Named crests, emblems and logos in the project are recognised, including small icons. Generation needs image tools in your Codex session.
 
 ## Handing it to someone else
@@ -341,6 +358,7 @@ Claude, Codex and Gemini work in the same chat, any way round: bring Codex into 
   - Files you undo from a reply are mentioned to that one with your next message, and to the other one too (it may have built on them).
 - **All three: in turn.** With more than one partner the pill reads **All** (or `@all`): the chat's own assistant answers first, then each of the others in turn, each knowing what the ones before it said. The relay under the title shows each one and who's up next.
 - **Both: they take turns.** The **Both** pill (or `@both`) sends your message to the chat's own assistant first. When it has answered, the other one picks the same message up, already knowing that answer, and builds on it (checks it, adds what it missed, does its part) instead of starting over. Your message reads "to Claude, then Codex", the second one's pill says **up next** while it waits, and the feed marks where it **takes it from here**. They never edit files at the same time. Stopping the first one skips the hand-over.
+- **New chats start in Auto (Claude) and Full access (Codex)** unless a chat or project remembers another mode; change it in Setup → **New Claude chats start in** / **New Codex chats start in**.
 - **The partner follows the chat's mode:** what you let Claude do without asking carries over to Codex (Auto or Bypass is Codex's Full access, Accept edits is Agent, Plan is Read only), when the partner starts and whenever you change it, so Codex doesn't ask about every step. Ask before acting leaves Codex's own choice alone.
 - **Review big changes by itself:** with Setup → Codex → **Review big changes by itself** on, after Claude changes forty lines or more in one reply, Codex reviews them and the findings come back as a card.
 - **One chat per project:** starting a Codex chat in a project where a Claude chat is open (or the other way round) offers to add it to that chat instead, so the work stays in one place. **Start a separate chat** is still there if you want one.
@@ -620,6 +638,59 @@ Menus get out of the way: a click anywhere else closes the menu (without also pr
 
 On a phone, a long press does the same on cards, pictures and controls.
 
+## Groups, sub-sessions and the Commander
+
+### Groups
+
+Groups are for chats you're juggling together, Claude and Codex alike.
+
+- **Make one:** click **+** next to **Groups** in the sidebar, or **New group** on the hub.
+- **Fill it:** right-click any chat and choose **Move to group…**, or drag a chat (from the sidebar, a list or the hub) onto a group.
+- **Tidy it:** right-click a group (or its **⋯** on the hub) to rename it, move it up or down, collapse it, or remove it. Removing a group never touches its chats. Drag one group onto another to put it in that place.
+- **See how it's doing:** each group shows how many of its chats are awaiting you (gold) and at work. The hub's **Your groups** lists every group with its chats.
+
+### Sub-sessions
+
+A sub-session is a new chat in the same folder, linked to the chat it came from.
+
+- Right-click a chat (or open its **⋯** menu) and choose **Start a sub-session**. It runs as the same assistant and, for Claude, the same account.
+- **Start a sub-session with a brief** fills the new chat's message box with a blank for its task, plus the first chat's latest reply as context. Type over the blank and send.
+- Sub-sessions sit under their parent in the sidebar (inside its group, or under **Sub-sessions**) and join the parent's group.
+- In a sub-session, the line above the title shows its group and the chat it came from; click that to go back. A chat with sub-sessions shows how many, and clicking that lists them.
+
+### The Commander
+
+The Commander is one chat that keeps an eye on the others. It's at the top of the sidebar.
+
+1. Click **Commander**, pick which Claude account it runs as, and click **Start the Commander**.
+2. Ask it things like "What needs me?" or "Nudge anything that's waiting for a simple carry on."
+
+It can:
+
+- list your chats with what each is doing (working, needs your OK, has a question, finished its turn, not running), plus their groups and sub-sessions
+- read a chat's latest messages
+- **nudge** a chat: send it a message. A chat that isn't running is opened in the chat window first. It can't type into a chat running in a terminal.
+- start a sub-session from a chat, with a task
+- answer a waiting permission request, but only if you turn on **Let it answer permission requests** in its settings (off to start with)
+
+Everything it does shows in the chat it touched: a gold **Commander** note, and its messages are marked **from Commander**. It asks you before each nudge unless you choose **Always allow** on that request. Its settings are in its right-click menu or the chat's **⋯** menu.
+
+It runs in the `commander/` folder inside Session Switcher's folder, with a `CLAUDE.md` that explains its job. Its tools come from `lib/commander-mcp.js`, a small MCP server that only talks to this Session Switcher, on this computer, with the per-launch token. Phones can't use those tools directly.
+
+## Switcher Lite
+
+A second, calmer way into the same app, at `http://127.0.0.1:4777/lite` (on a paired phone too, at the phone address plus `/lite`). Same chats, accounts and sign-in; **Full app** in its sidebar goes back.
+
+- **Now:** what needs you and what's running, with Allow / Deny and quick replies, Triage (one chat at a time), upcoming routines, your plans and the Commander's box.
+- **Sidebar:** your projects in buckets you name (Exploring, Building, Finishing, Later, Done), a Status view and Focus.
+- **A chat:** the conversation without each step's output (much lighter), a side chat, a panel for files and links, name ideas when renaming, and messages that steer a reply while it works. **Who answers** sends to the chat, its partner (Codex, Claude or Gemini), or Both.
+- **Plans:** a use-next order: per family, the plan that resets soonest is used first, down to a floor you pick (10, 15 or 20%). New chats and routines can follow it.
+- **Also:** Bugs (bug chats by stage: Working, PR, Preview, Merged; needs GitHub's `gh`), Routines, Automation (runs started by routines and scripts), Images (Codex's pictures), Clean up (disk space in worktrees), Alerts (phone notifications) and a Hackathon board.
+- **Background checks only where Lite is used:** from the first time Lite is opened on this computer, it reads each plan's usage once an hour, and every ten minutes asks a local Ollama model (if there is one) to sort chats and checks pull requests of chats you marked Waiting. Before that, none of it runs.
+- **Start idle weeks for me** (in Lite's look menu, off unless you turn it on): a plan whose week hasn't started gets one tiny message ("Reply with just: ok") to start it, at most once every six hours.
+- **On Windows:** Clean up's sizes read 0 (it uses `du`), Lite's own sign-in and model list need `sh` on the PATH (Git for Windows has it), and a Slack routine's token comes from the `SWITCHER_SLACK_TOKEN` variable instead of the Keychain.
+- Its settings are kept in `lite.json` (and `lite-usage.json`) in the app's data folder.
+
 ## Pinned and favorites
 
 - Pin projects and chats to the top of the sidebar: right-click them and choose **Pin to the sidebar**, or click the ☆ in a chat's header. Pinned chats also stay at the top of the chat window's list, running or not.
@@ -741,6 +812,7 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `sharecopy.js`: **Make a copy to share**.
   - `chatprefs.js`: remembered modes, models and effort, and each Claude chat's Codex helper.
   - `remote.js`: phone access (pairing, paired phones).
+  - `routines.js`: routines: schedules, watchers (Slack, commands) and their runs.
   - `files.js`: the file viewer (text, pictures, videos, sound, PDFs).
   - `system.js`: terminals and processes.
   - `health.js`: the Setup checks.
@@ -748,6 +820,7 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
 - `index.html`, `styles.css`: the page and its look.
 - `ui/`: what runs in the page, loaded in the order `index.html` lists (they share one scope):
   - `base.js`: shared helpers, plan usage, live activity, the data the hub shows.
+  - `organize.js`: groups, sub-sessions and the Commander.
   - `hub.js`: the top bar, the sidebar, the hub and each project's page.
   - `create.js`: the prompt book, new projects, **Make a copy to share**.
   - `motion.js`: the animations and clocks.
@@ -771,6 +844,7 @@ Links at the top jump to each section: Health, Alerts, Preferences, Codex, Phone
   - `prompts.json`: your prompts, once you edit them.
   - `chat-prefs.json`: the modes, models and effort you chose, and which Codex helper goes with which chat.
   - `devices.json`: phones you paired (hashed keys only).
+  - `routines.json`: your routines and their history (tokens stay in the Keychain).
   - `switcher.log`: the app's log.
 
 Session Switcher never edits your chat files.

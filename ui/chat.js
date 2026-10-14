@@ -394,7 +394,7 @@ function show() {
   if (opening) { growFrom(chat); if (typeof noteStep === 'function') noteStep(); }
 }
 
-async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {}) {
+async function begin(info, { mode = 'resume', sessionId = null, cwd = null, parent = null } = {}) {
   reset();
   const gen = C.gen;
   C.key = info.key; C.info = info; C.sessionId = info.sessionId || sessionId;
@@ -427,6 +427,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   $c('cCrest').innerHTML = crestHtml(p || (C.folder ? { name: C.folder, cwd: info.cwd || cwd } : null), 40);
   $c('cTitle').textContent = C.title;
   $c('cFolder').textContent = C.folder;
+  C.parent = parent; refreshCrumb();
   headerAccount(info.accountId, info.accountName);
   setState(info.state || 'starting');
   show();
@@ -440,7 +441,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
     if (gen !== C.gen) return;
     $c('cFeed').querySelector('.c-skel')?.remove();
   }
-  if (mode === 'new') welcome(info.cwd || cwd);
+  if (mode === 'new' && !(S.org && S.org.commander && (info.cwd || cwd) === S.org.commander.cwd)) welcome(info.cwd || cwd);
   restoreDraft();
   toBottom();
   connect();
@@ -451,7 +452,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
 }
 
 // (Not "open"/"close": as page-wide names those would replace the browser's window.open and window.close.)
-async function openChatView({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false } = {}) {
+async function openChatView({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false, parent = null } = {}) {
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
   if (sessionId) speedMark('chat');
   const [known] = sessionId ? findSession(sessionId) : [null];
@@ -481,11 +482,11 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
   }
   let info;
   try {
-    info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov });
+    info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov, parent: mode === 'new' ? parent : null });
   } catch (err) {
     if (['codex-signin', 'codex-missing', 'gemini-signin', 'gemini-missing'].includes(err.reason)) { toast(err.message, 9000); return undefined; }
     if (err.reason === 'running') {
-      if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return openChatView({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText });
+      if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return openChatView({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText, parent });
       return watch({ sessionId, source: 'terminal' });
     }
     throw err;
@@ -495,15 +496,16 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
     const label = ((info.modes || []).find(m => m.value === info.permissionMode) || {}).label || MODE_LABELS[info.permissionMode] || info.permissionMode;
     toast(`Opened in “${label}”, as you left it${mode === 'new' ? ' in this project' : ''}.`, 3500);
   }
-  await begin(info, { mode, sessionId, cwd });
+  await begin(info, { mode, sessionId, cwd, parent: mode === 'new' ? parent : null });
   // Started from a prompt: it waits in the message box so you can adjust it before sending.
   if (initialText) placeText(initialText, true);
   return undefined;
 }
 
-async function openKey(key) {
+async function openKey(key, { initialText = '' } = {}) {
   const info = await api('/api/chat/attach', { key });
-  return begin(info, { mode: 'resume', sessionId: info.sessionId });
+  await begin(info, { mode: info.sessionId ? 'resume' : 'new', sessionId: info.sessionId, cwd: info.cwd });
+  if (initialText && !$c('cText').value.trim()) placeText(initialText, true);
 }
 
 // Read-only, live view of a chat running somewhere else (a terminal, the desktop app).
@@ -517,7 +519,7 @@ async function watch({ sessionId, source = 'terminal' }) {
   $c('chat').classList.toggle('openclaw', oc);
   C.title = s ? s.title : 'Chat'; C.folder = p ? p.name : '';
   C.info = { cwd: p ? p.cwd : null, accountId: s && s.lastOpened ? s.lastOpened.account : null, accountName: s && s.lastOpened ? s.lastOpened.accountName : '' };
-  $c('cTitle').textContent = C.title; $c('cFolder').textContent = C.folder;
+  $c('cTitle').textContent = C.title; $c('cFolder').textContent = C.folder; C.parent = null; refreshCrumb();
   $c('cCrest').innerHTML = crestHtml(p, 40);
   headerAccount(C.info.accountId, C.info.accountId ? C.info.accountName : (oc ? `OpenClaw · ${PROV_NAME.openclaw}` : source === 'terminal' ? 'In a terminal' : 'In another app'));
   setState(source === 'terminal' || source === 'openclaw' ? 'watching' : 'readonly');
@@ -887,6 +889,13 @@ async function switchPartner(kind, quiet = false) {
   if (!quiet) toast(`Writing to ${PROV_NAME[kind]}: it joins this chat with your next message, caught up on it.`, 4000);
 }
 // ★ in the header pins this chat to the top of the sidebar.
+// Group › the chat it came from › …, and how many sub-sessions it has.
+function refreshCrumb() {
+  const el = $c('cCrumb'); if (!el || !window.crumbHtml) return;
+  const h = window.crumbHtml(C.sessionId || (C.watch && C.watch.sessionId), C.parent);
+  if (el._h !== h) { el.innerHTML = h; el._h = h; }
+  el.hidden = !h;
+}
 function syncFav() {
   const b = $c('cFav'); if (!b) return;
   const id = C.sessionId || (C.watch && C.watch.sessionId);
@@ -920,6 +929,7 @@ function chatHeadItems() {
     ...(C.ctx.main && !C.watch && C.state !== 'ended' ? [{ glyph: '⇲', label: 'Summarize the conversation now', hint: ctxLine('main'), disabled: C.state !== 'ready', why: 'Wait for the reply to finish', run: () => compactNow('main') }] : []),
     ...(id && !C.watch ? [{ label: 'Rename chat', run: async () => { await renameChat(id); const [s] = findSession(id); if (s) { C.title = s.title; $c('cTitle').textContent = s.title; } } }] : []),
     ...(id ? [{ label: 'Copy chat ID', run: () => copyOut(id) }] : []),
+    ...(id && window.orgItems ? ['-', ...window.orgItems(id)] : []),
     { label: 'Browse this chat’s folder', run: () => openFile('.') },
     ...(C.info && C.info.cwd ? [{ glyph: '§', label: 'Rules and tools…', hint: 'for Claude and Codex', run: () => openRules(C.info.cwd) }] : []),
     ...(!C.watch && C.state !== 'ended' ? ['-', stopItem()] : []),
@@ -1031,7 +1041,8 @@ window.ChatUI = {
   open: openChatView, openKey, watch, close: closeChatView, md, renderRail, refreshUsage: refreshChatUsage, isViewing, neighbor: railNeighbor,
   accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
   showLedger: () => { const chat = $c('chat'); if (ledgerDrawer()) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
-  sessionsChanged: () => { if (C.watch) refreshWatch(); },
+  sessionsChanged: () => { if (C.watch) refreshWatch(); if (!$c('chat').hidden) refreshCrumb(); },
+  refreshCrumb: () => { if (!$c('chat').hidden) refreshCrumb(); },
   refreshCrew: () => { if (!$c('chat').hidden) renderCrew(); },
   refreshFav: () => syncFav(),
   sessionId: () => C.sessionId || (C.watch && C.watch.sessionId) || null,

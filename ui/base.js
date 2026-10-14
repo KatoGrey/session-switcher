@@ -401,7 +401,7 @@ function wantsTo(p) {
     case 'Write': return 'Wants to write a file';
     case 'WebFetch': return 'Wants to open a web page';
     case 'WebSearch': return 'Wants to search the web';
-    default: return `Wants to use ${p.toolName}`;
+    default: return window.CMDR_TOOLS && CMDR_TOOLS[p.toolName] ? `Wants to ${CMDR_TOOLS[p.toolName]}` : `Wants to use ${p.toolName}`;
   }
 }
 function whereOf(x) {
@@ -528,7 +528,7 @@ async function bootFromCache() {
 }
 async function reload() {
   await loadState();
-  await Promise.all([loadSessions(), loadActivity().catch(() => {}), loadUsage().catch(() => {})]);
+  await Promise.all([loadSessions(), loadActivity().catch(() => {}), loadUsage().catch(() => {}), loadOrganize()]);
   renderAll();
   document.body.classList.remove('from-cache');
   saveBootCache();
@@ -606,3 +606,4 @@ function flip(lists, mutate) {
     g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 200, easing: 'ease-in' }).finished.then(() => g.remove(), () => g.remove());
   }
 }
+

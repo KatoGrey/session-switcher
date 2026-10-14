@@ -7,6 +7,9 @@ $('nav').addEventListener('click', wrap(async e => {
   const f = e.target.closest('[data-fold]');
   if (f) { const id = f.dataset.fold; if (S.navFold.has(id)) S.navFold.delete(id); else S.navFold.add(id); store('navFold', JSON.stringify([...S.navFold])); return renderNav(); }
   const nc = e.target.closest('[data-navchat]'); if (nc) { document.body.classList.remove('nav-open'); return openChatFromNav(nc.dataset.navchat); }
+  if (e.target.closest('[data-cmdr]')) return openCommander();
+  if (e.target.closest('[data-gact="new"]')) return newGroup();
+  const ng = e.target.closest('[data-group]'); if (ng) { const g = S.org.groups.find(x => x.id === ng.dataset.group); if (g) return orgDo({ action: 'collapse', id: g.id, collapsed: !g.collapsed }); return undefined; }
   const b = e.target.closest('[data-view]'); if (!b) return;
   if (b.dataset.view === 'palette') { document.body.classList.remove('nav-open'); return openPalette(); }
   if (b.dataset.view === 'newproject') { document.body.classList.remove('nav-open'); return openNewProject(); }
@@ -104,6 +107,10 @@ const pageClicks = wrap(async e => {
       default: return;
     }
   }
+  if (t.closest('[data-cmdr]')) return openCommander();
+  const gch = t.closest('[data-gchat]'); if (gch) return openChatFromNav(gch.dataset.gchat);
+  const gm = t.closest('[data-gmore]'); if (gm) return gm.getAttribute('aria-expanded') === 'true' ? closeMenu() : showMenu(gm, groupItems(gm.dataset.gmore));
+  if (t.closest('[data-gact="new"]')) return newGroup();
   const wd = t.closest('.w-art[data-world]'); if (wd) return openWorld(wd.dataset.world, wd);
   const ct = t.closest('[data-continue]'); if (ct) { const [cs] = sessionById(ct.dataset.continue); if (cs && isRunning(cs.id) && !liveOf(cs.id)) return ChatUI.watch({ sessionId: cs.id, source: 'terminal' }); return ChatUI.open({ sessionId: ct.dataset.continue }); }
   const dc = t.closest('[data-doc]'); if (dc) return Viewer.open({ path: dc.dataset.doc, cwd: S.folder });
@@ -235,6 +242,8 @@ function connectLive() {
   es.addEventListener('project-art', e => { try { const { cwd } = JSON.parse(e.data); if (window.ProjectArt) ProjectArt.refresh(cwd).catch(() => {}); } catch { /* invalid event */ } });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
   es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLive(); renderNav(); });
+  es.addEventListener('routines', () => { if (window.Routines) Routines.changed(); });
+  es.addEventListener('organize', e => { try { S.org = orgShape(JSON.parse(e.data)); } catch { return; } renderNav(); renderLive(); if (window.ChatUI && ChatUI.refreshCrumb) ChatUI.refreshCrumb(); });
   es.addEventListener('restart', e => { try { S.restart = JSON.parse(e.data) || {}; } catch { return; } if (S.restart.restarting) restarting(S.pid); else { renderRestartBar(); if (S.restart.error) toast(S.restart.error, 9000); } });
   es.addEventListener('update', e => { try { S.update = !!JSON.parse(e.data).ready; } catch { return; } renderBar(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
@@ -431,7 +440,7 @@ function activityItems(x) {
     ...(st === 'reply' ? [{ glyph: '✓', label: 'Mark as read', run: () => { markSeen(x); renderLive(true); renderNav(); } }] : []),
     ...(x.sessionId && x.source === 'app' && sessionById(x.sessionId)[0] ? [doneItem(x.sessionId)] : []),
     { glyph: '✕', label: 'Close', hint: x.source === 'terminal' ? 'it keeps running in its terminal' : x.source === 'elsewhere' ? 'it stays in the other app' : x.phase === 'ended' ? '' : 'open it again any time', run: () => closeActivity(x) },
-    ...(x.sessionId && !x.parentKey ? ['-', favItem(x.sessionId), ...chatItems(x.sessionId).filter(i => i === '-' || !/^(Return|Open in the chat window)/.test(i.label))] : []),
+    ...(x.sessionId && !x.parentKey ? ['-', favItem(x.sessionId), ...orgItems(x.sessionId), ...chatItems(x.sessionId).filter(i => i === '-' || !/^(Return|Open in the chat window)/.test(i.label))] : []),
     ...(x.sessionId ? ['-', { label: 'Copy chat ID', run: () => copyText(x.sessionId) }] : []),
   ];
 }
@@ -458,6 +467,7 @@ function appItems() {
     { glyph: '+', label: 'New project', run: () => openNewProject() },
     { glyph: '◉', label: 'The hub', run: () => go('hub') },
     { glyph: '✧', label: 'Recent chats', run: () => go('recent') },
+    { glyph: '⟳', label: 'Routines', run: () => go('routines') },
     '-',
     { glyph: light ? '☾' : '☀', label: light ? 'Dark mode' : 'Light mode', run: () => Look.set({ mode: light ? 'dark' : 'light' }) },
     { glyph: '◐', label: 'Appearance…', run: () => openSetup('look') },
@@ -479,7 +489,10 @@ const Ctx = { at: null };
 function contextItems(t) {
   // The chat window knows its own pieces (replies, code, pictures, files, the crew).
   if (window.ChatUI && ChatUI.isOpen() && t.closest('#chat')) { const it = ChatUI.contextItems(t, Ctx.at); if (it) return it; }
-  const withFav = id => [favItem(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
+  const withFav = id => [favItem(id), ...orgItems(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
+  const gh = t.closest('[data-group], [data-gcard]'); if (gh && !t.closest('[data-gchat]')) return groupItems(gh.dataset.group || gh.dataset.gcard);
+  const gc = t.closest('[data-gchat]'); if (gc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(gc.dataset.gchat) }, ...withFav(gc.dataset.gchat)];
+  if (t.closest('[data-cmdr]')) return [{ glyph: '✪', label: 'Open the Commander', run: () => openCommander() }, { label: 'Commander settings…', run: commanderSetup }, ...(cmdrSet().sessionId ? [{ label: 'Start a fresh Commander chat', run: () => openCommander({ fresh: true }) }] : [])];
   const nc = t.closest('[data-navchat]'); if (nc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(nc.dataset.navchat) }, ...withFav(nc.dataset.navchat)];
   const row = t.closest('[data-row]'); if (row) return withFav(row.dataset.row);
   const pv = t.closest('[data-preview], [data-continue]'); if (pv) return withFav(pv.dataset.preview || pv.dataset.continue);
@@ -500,7 +513,7 @@ document.addEventListener('contextmenu', e => {
   if (!(t instanceof Element) || t.closest('input, textarea, select, [contenteditable="true"]')) return;
   const coarse = matchMedia('(pointer: coarse)').matches;
   // On a phone, a long press on text is for selecting it; only cards, pictures and controls get a menu.
-  if (coarse && !t.closest('[data-row], [data-k], [data-world], .world, .gen, .thumb, .crew, .ri, .af-file, .umsg, .turn .who, .tool > summary, .nav-i')) return;
+  if (coarse && !t.closest('[data-row], [data-k], [data-world], [data-gchat], [data-gcard], [data-group], .world, .gen, .thumb, .crew, .ri, .af-file, .umsg, .turn .who, .tool > summary, .nav-i')) return;
   if (e.button !== 2 && !e.clientX && !e.clientY) { const r = t.getBoundingClientRect(); Ctx.at = { x: r.left + Math.min(24, r.width / 2), y: r.top + Math.min(r.height, 28) }; }
   else Ctx.at = { x: e.clientX, y: e.clientY };
   const items = contextItems(t);

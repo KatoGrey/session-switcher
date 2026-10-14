@@ -34,7 +34,7 @@ function renderBar() {
     <span class="ac-who"><small>${inChat ? 'This chat runs as' : 'New chats open as'}</small><b>${esc(a.name)}</b></span>
     ${d ? `<span class="ac-sep" aria-hidden="true"></span>${cell('5-hour window', d.fiveHour)}${cell('This week', d.week)}`
       : a.gemini ? '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Plan</small><b>Google AI</b><i>limits shown in Antigravity</i></span>'
-      : a.signedIn ? `<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Usage</small><b>${u && u.error ? 'Unavailable' : 'Checking…'}</b></span>` : '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Account</small><b>Not signed in</b></span>'}`;
+      : a.signedIn ? `<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Usage</small><b>${u && (u.error || (u.data && !u.checking)) ? 'Unavailable' : 'Checking…'}</b></span>` : '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Account</small><b>Not signed in</b></span>'}`;
   chip.insertAdjacentHTML('beforeend', '<span class="ac-caret" aria-hidden="true">▾</span>');
   chip.title = `${inChat ? 'This chat runs as' : 'New chats open as'} ${a.name}${a.email ? ` (${a.email})` : ''}. ${usageLine(a.id) || ''} Click to see all your accounts.`;
 }
@@ -51,7 +51,7 @@ function renderNav() {
   const total = S.projects.reduce((n, p) => n + p.sessions.length, 0);
   // Folders, split by which assistant the chats belong to. Pinned folders come first in each.
   // In the order they first appeared this session (most recent first, then), not reshuffled as chats work.
-  const group = prov => keepOrder(`nav-${prov}`, S.projects.map(p => ({ p, list: p.sessions.filter(x => provOf(x) === prov) })).filter(x => x.list.length), x => [x.p.cwd.toLowerCase()]);
+  const group = prov => keepOrder(`nav-${prov}`, S.projects.filter(p => p.cwd !== cmdrSet().cwd).map(p => ({ p, list: p.sessions.filter(x => provOf(x) === prov) })).filter(x => x.list.length), x => [x.p.cwd.toLowerCase()]);
   const item = (x, prov) => {
     const live = x.list.some(c => isRunning(c.id) || liveOf(c.id));
     const here = S.projects.find(q => q.cwd === x.p.cwd)?.sessions || [];
@@ -73,7 +73,7 @@ function renderNav() {
   const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0), nOc = ocF.reduce((n, x) => n + x.list.length, 0), nGem = gemF.reduce((n, x) => n + x.list.length, 0);
   const showGemini = S.gemini && S.gemini.enabled;
   const showCodex = S.codex && S.codex.enabled;
-  const fresh = S.projects.filter(p => !hasChats(p));
+  const fresh = S.projects.filter(p => !hasChats(p) && p.cwd !== cmdrSet().cwd);
   const blocked = a && (a.pinnedOrg || a.expectEmail) && !a.lock.ok;
   const html = `
     <button class="seal ${blocked ? 'blocked' : ''}" id="seal" aria-haspopup="menu" aria-expanded="false" title="Choose which account new chats open as">
@@ -83,11 +83,15 @@ function renderNav() {
     </button>
     <div class="nav-h">${esc(voice('Begin'))}</div>
     <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">${esc(voice('The hub'))}</span>${A ? `<span class="tag gilt">${A}</span>` : W ? `<span class="tag">${W}</span>` : ''}</button>
+    ${navCommanderHtml()}
     <button class="nav-i" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">${esc(voice('Recent chats'))}</span><span class="count">${total}</span></button>
     <button class="nav-i" data-view="palette" aria-current="${S.view === 'search'}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t">${esc(voice('Search every chat'))}</span><span class="count">Ctrl K</span></button>
+    ${routinesNav()}
     <button class="nav-i nav-new" data-view="newproject"><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New project</span></button>
     ${fresh.length ? `<div class="nav-h prov fresh"><span class="pmark" aria-hidden="true"></span>No chats yet<span class="count">${fresh.length}</span></div>${fresh.map(p => `<button class="nav-i" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${esc(p.name)}</span><span class="tag ghost">New</span></button>`).join('')}` : ''}
     ${pinnedHtml}
+    ${navGroupsHtml()}
+    ${navFamiliesHtml()}
     ${fold('claude', 'Claude Code', nClaude, 'claude')}
     ${S.navFold.has('claude') ? '' : claude.length ? claude.map(x => item(x, 'claude')).join('') : '<p class="nav-empty">No Claude Code chats yet.</p>'}
     ${showCodex ? `${fold('codex', 'Codex', nCodex, 'codex')}
@@ -101,9 +105,16 @@ function renderNav() {
   if ($('nav')._h === html) return;
   $('nav')._h = html;
   const focused = document.activeElement && $('nav').contains(document.activeElement) ? document.activeElement : null;
-  const keep = focused && (focused.dataset.cwd ? `[data-cwd="${CSS.escape(focused.dataset.cwd)}"][data-view="${focused.dataset.view || ''}"]` : focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : focused.dataset.navchat ? `[data-navchat="${CSS.escape(focused.dataset.navchat)}"]` : focused.dataset.fold ? `[data-fold="${focused.dataset.fold}"]` : focused.id ? `#${focused.id}` : null);
+  const keep = focused && (focused.dataset.cwd ? `[data-cwd="${CSS.escape(focused.dataset.cwd)}"][data-view="${focused.dataset.view || ''}"]` : focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : focused.dataset.navchat ? `[data-navchat="${CSS.escape(focused.dataset.navchat)}"]` : focused.dataset.fold ? `[data-fold="${focused.dataset.fold}"]` : focused.dataset.group ? `[data-group="${CSS.escape(focused.dataset.group)}"]` : focused.dataset.cmdr ? '[data-cmdr]' : focused.id ? `#${focused.id}` : null);
   $('nav').innerHTML = html;
   if (keep) $('nav').querySelector(keep)?.focus({ preventScroll: true });
+}
+
+// Routines (ui/routines.js): chats that start on their own.
+function routinesNav() {
+  const r = window.Routines ? Routines.navInfo() : null;
+  const badge = r && r.needs ? '<span class="tag gilt">!</span>' : r && r.any ? `<span class="count">${r.on}</span>` : '';
+  return `<button class="nav-i" data-view="routines" aria-current="${S.view === 'routines'}"><span class="glyph" aria-hidden="true">⟳</span><span class="ni-t">${esc(voice('Routines'))}</span>${badge}</button>`;
 }
 
 /* ---------- the hub ---------- */
@@ -138,7 +149,7 @@ function heroHtml() {
         const run = [pf && pf.runsOut ? ['five-hour window', pf.runsOut] : null, pw && pw.runsOut ? ['week', pw.runsOut] : null].filter(Boolean).sort((x, y) => x[1] - y[1])[0];
         if (run) say += ` At this pace the ${run[0]} runs out around <b>${esc(when(new Date(run[1]).toISOString()))}</b>.`;
       }
-    } else if (a.signedIn && u && u.error) say += 'Its usage isn’t available right now.';
+    } else if (a.signedIn && u && (u.error || (u.data && !u.checking))) say += 'Its usage isn’t available right now.';
     else if (a.signedIn) say += 'Checking its usage…';
   }
   const first = A[0];
@@ -147,6 +158,7 @@ function heroHtml() {
   const acts = [];
   if (first) acts.push(`<button class="btn gilt" data-hero="first">${NEEDS.has(ownStatus(first)) ? 'Answer the first one' : 'Read the latest reply'}</button>`);
   if (better) acts.push(`<button class="btn" data-hero="switch" data-acct="${esc(better.a.id)}">Work as ${esc(better.a.name)}</button>`);
+  if (cmdrReady() && (A.length || W)) acts.push('<button class="btn" data-cmdr="open" title="Ask the Commander to look over your chats">Ask the Commander</button>');
   if (!first && latest && canLaunch(a)) acts.push(`<button class="btn" data-hero="latest" data-sid="${esc(latest[0].id)}" title="${esc(latest[0].title)}">Continue “${esc(latest[0].title.length > 34 ? `${latest[0].title.slice(0, 33)}…` : latest[0].title)}”</button>`);
   const today = new Date();
   return `<section class="hero" aria-label="Right now">
@@ -721,7 +733,7 @@ function rowHtml(s, folderName, hit) {
   const live = liveOf(s.id);
   const run = !live && isRunning(s.id);
   const ocLive = oc && s.status === 'running' && !live;
-  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '')
+  const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (s.desktop && s.desktop.archived ? '<span class="tag ghost" title="Archived in the Claude desktop app">Archived</span>' : '') + (parentOfChat(s.id) ? '<span class="tag ghost" title="Started from another chat">Sub-session</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '')
     + (s.partner ? `<span class="tag line pair" title="${PROV_NAME[s.partner.provider]} works in this chat too">with ${PROV_NAME[s.partner.provider]}</span>` : '')
     + (oc ? `<span class="tag openclaw" title="An OpenClaw agent’s session, readable and writable here">OpenClaw · ${esc(s.agentName || 'Agent')}</span>` : '')
     + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
@@ -733,7 +745,7 @@ function rowHtml(s, folderName, hit) {
     : inApp() ? `<button class="btn sm" data-chat="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Open</button>`
     : `<button class="btn sm" data-open="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Resume</button>`;
   const opened = s.lastOpened ? `<span class="r-as" style="--ring:${ringById(s.lastOpened.account)}" title="Last opened from here as ${esc(s.lastOpened.accountName)}, ${esc(agoL(s.lastOpened.at))}"><i></i>as ${esc(s.lastOpened.accountName)}</span>` : '';
-  return `<li class="row ${S.drawerId === s.id ? 'current' : ''}" data-row="${esc(s.id)}">
+  return `<li class="row ${S.drawerId === s.id ? 'current' : ''}" data-row="${esc(s.id)}" draggable="true">
     <div class="r-when"><span class="r-ago">${esc(ago(s.updated))}</span><span class="r-date">${esc(stamp(s.updated))}</span>${opened}</div>
     <div class="r-what">
       <button class="r-title" data-preview="${esc(s.id)}" title="Details and latest messages">${hit ? highlight(s.title, S.q) : esc(s.title)}</button>${flags ? `<span class="r-flags">${flags}</span>` : ''}
@@ -802,6 +814,10 @@ function renderHub() {
       ${secHead('Coming up', 'Queued')}
       <ul class="queue" id="queueList"></ul>
     </section>
+    <section class="sec" id="secGroups" ${S.org.groups.length ? '' : 'hidden'}>
+      ${secHead('Together', 'Your groups', '<button class="btn quiet sm" data-gact="new">New group</button>')}
+      <div class="gcards" id="gcards"></div>
+    </section>
     <section class="sec" id="secWorlds">${secHead('By folder', 'Your projects', '<button class="btn sm" data-act="project-new">New project</button>')}<div class="atlas ${S.atlasEntered ? '' : 'enter'}" id="atlas"></div></section>
     <section class="sec">
       ${secHead('Pick up where you left off', 'Recent chats', `<button class="btn quiet sm" data-view="recent">All recent chats</button>`)}
@@ -866,7 +882,7 @@ function ensureWorlds() {
     for (let i = 0; i < want.length; i += 3) await Promise.all(want.slice(i, i + 3).map(c => loadWorld(c).catch(() => null)));
   })().finally(() => { worldsLoading = null; if (S.view === 'hub' && $('atlas')) patch($('atlas'), atlasItems(), x => (x.add ? '+new' : x.p.cwd), x => (x.add ? newProjectTile(x.i) : worldCard(x.p, x.i))); });
 }
-const atlasItems = () => [...S.projects.map((p, i) => ({ p, i })), { add: true, i: S.projects.length }];
+const atlasItems = () => { const list = S.projects.filter(p => p.cwd !== cmdrSet().cwd); return [...list.map((p, i) => ({ p, i })), { add: true, i: list.length }]; };
 function newProjectTile(i) {
   return `<button class="world world-new" data-act="project-new" style="--i:${Math.min(i, 12)}"><span class="wn-plus" aria-hidden="true"></span><b>New project</b><span>Make a folder and start a chat in it, as any of your accounts.</span></button>`;
 }

@@ -1,0 +1,16 @@
+Switcher Lite sound effects by Kenney (kenney.nl), CC0 1.0. Converted to mono mp3, leading silence trimmed, short fade out.
+lite-knock-1.mp3       impact-sounds/Audio/impactPlank_medium_000.ogg
+lite-knock-2.mp3       impact-sounds/Audio/impactPlank_medium_003.ogg
+lite-card-1.mp3        casino-audio/Audio/card-place-1.ogg
+lite-card-2.mp3        casino-audio/Audio/card-place-2.ogg
+lite-slide-1.mp3       casino-audio/Audio/card-slide-1.ogg
+lite-slide-2.mp3       casino-audio/Audio/card-slide-2.ogg
+lite-slide-3.mp3       casino-audio/Audio/card-slide-3.ogg
+lite-shove.mp3         casino-audio/Audio/card-shove-1.ogg
+lite-fan.mp3           casino-audio/Audio/card-fan-1.ogg
+lite-close.mp3         casino-audio/Audio/card-shove-2.ogg
+lite-chip-1.mp3        casino-audio/Audio/chip-lay-1.ogg
+lite-chip-2.mp3        casino-audio/Audio/chip-lay-2.ogg
+lite-undo.mp3          casino-audio/Audio/card-slide-5.ogg
+lite-done-1.mp3        casino-audio/Audio/chips-stack-1.ogg
+lite-done-2.mp3        casino-audio/Audio/chips-stack-4.ogg

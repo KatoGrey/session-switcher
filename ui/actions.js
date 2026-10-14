@@ -174,7 +174,7 @@ function codexChatItems(s) {
     doneItem(s.id),
   ];
 }
-function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id)]); }
+function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id), doneItem(s.id), ...orgItems(s.id)]); }
 function chatItems(id) {
   const [s] = sessionById(id); if (!s) return [];
   if (isCodex(s)) return codexChatItems(s);
@@ -210,7 +210,7 @@ function chatItems(id) {
     doneItem(id),
   ];
 }
-function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id)]); }
+function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id), doneItem(id), ...orgItems(id)]); }
 const doneItem = id => { const [s] = sessionById(id); const d = s && isDoneChat(s); return { glyph: d ? '↺' : '✓', label: d ? 'Not done' : 'Mark done', hint: d ? 'back on the lists' : 'off the lists until it’s used again', run: () => setChatDone(id, !d) }; };
 const favItem = id => ({ glyph: isFav(id) ? '☆' : '★', label: isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => toggleFav(id) });
 
@@ -224,6 +224,16 @@ function sealMenu(anchor) {
         run: () => useAccount(a.id),
       };
     }),
+    // Codex accounts (and Ollama): pick which one new Codex chats open as.
+    ...(S.codex && S.codex.enabled ? ['-', ...codexAccts().map(x => {
+      const b = x.kind === 'ollama' ? null : binding(usageOf(x.id));
+      const sub = x.signedIn ? `${x.email || 'Signed in'}${x.plan ? `, ${x.plan}` : ''}` : x.kind === 'ollama' ? 'Ollama app not running' : 'Not signed in. Tap to sign in';
+      return {
+        checked: codexAccts().length > 1 ? x.id === S.codex.id : undefined,
+        html: `${miniDial(x.id, 28)}<span class="m-t"><b>${esc(x.name || 'Codex')}</b><small>${esc(sub)}</small></span><span class="m-u">${b ? `${b.left}%` : ''}</span>`,
+        run: async () => { await setCodexActive(x.id); if (!S.codex.signedIn) return S.codex.kind === 'ollama' ? hubTo('secAccounts') : codexSignIn(); toast(`New Codex chats open as ${S.codex.name}.`, 2500); },
+      };
+    })] : []),
     '-',
     { label: 'Add an account', run: addAccount },
     { label: `Open claude.ai as ${current().name}`, hint: 'regular Claude chats, in its own window', run: () => openWeb(current().id) },

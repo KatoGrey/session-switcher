@@ -47,7 +47,7 @@ function taskDialog() {
         <label id="tkAcctWrap">Account<select id="tkAcct"></select></label>
         <label>When<select id="tkWhen"><option value="now">As soon as there’s room</option><option value="at">Not before…</option></select></label>
         <label id="tkAtWrap" hidden>Time<input type="datetime-local" id="tkAt"></label>
-        <label id="tkRepWrap" hidden>Repeat<select id="tkRepeat"><option value="">Just once</option><option value="daily">Every day</option><option value="weekdays">Every weekday</option><option value="weekly">Every week</option></select></label>
+        <label id="tkRepWrap" hidden title="A repeating task becomes a routine (on the Routines page)">Repeat<select id="tkRepeat"><option value="">Just once</option><option value="daily">Every day</option><option value="weekdays">Every weekday</option><option value="weekly">Every week</option></select></label>
       </div>
       <label class="tk-prompt">What should it do?<select id="tkFrom"><option value="">Start from a saved prompt…</option></select><textarea id="tkText" rows="7" placeholder="Write the README for this project: how to install it, run it and test it."></textarea></label>
       <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-tk="close">Cancel</button><button type="submit" class="btn prime" id="tkGo">Queue it</button></div>
@@ -71,6 +71,7 @@ function taskDialog() {
     const r = await api('/api/tasks', { action: 'add', task });
     S.tasks = r.tasks; renderQueue();
     d.close();
+    if (r.routine) { toast(`Made a routine: ${r.routine.name}, ${(r.routine.triggerText || 'on its schedule').toLowerCase()}. It’s on the Routines page.`, 6000); return; }
     toast(r.task.when === 'at' ? `Queued. It starts ${whenText(r.task.at)}, once an account has room.` : 'Queued. It starts as soon as an account has room.', 5000);
   }));
   return d;

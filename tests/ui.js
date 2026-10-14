@@ -2288,4 +2288,18 @@ module.exports = [
       t.check('Ctrl+K finds actions', await b.eval(`return /Setup/.test(document.getElementById('palette').textContent)`));
     },
   },
+  {
+    name: 'lite',
+    // Switcher Lite on the real (test) server: it opens without script errors, and from then on it
+    // counts as used here (its background checks start); the week-starter stays off.
+    async run(t) {
+      const b = await t.open({ demo: false, path: 'lite' });
+      await sleep(3000);
+      const r = await b.eval(`const st = await api('/api/lite/state'); return { title: document.title, brand: document.getElementById('brand')?.textContent, side: !!document.getElementById('sideScroll'), used: !!(st.lite && st.lite.used), weeks: st.lite && st.lite.autoStartWeeks === true }`);
+      t.check('Switcher Lite opens on the same app', /Switcher Lite$/.test(r.title) && !!r.brand && r.side, r);
+      t.check('once opened, Lite counts as used here (its checks start)', r.used, r);
+      t.check('the week-starter is off unless you turn it on', !r.weeks, r);
+      await t.shot(b, 'now');
+    },
+  },
 ];

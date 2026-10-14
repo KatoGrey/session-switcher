@@ -35,6 +35,7 @@ function renderLive(force) {
     patch($('awaitList'), A, keyOf, awaitCard, emptyArt('await', 'Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.'));
     patch($('board'), W, keyOf, workCard, emptyArt('work', A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.'));
     patch($('quietList'), Q, keyOf, quietChip, '');
+  if ($('secGroups')) { $('secGroups').hidden = !S.org.groups.length; patch($('gcards'), S.org.groups, g => g.id, groupCard, ''); }
   });
   $('quietList').classList.toggle('has', Q.length > 0);
   const dials = S.accounts.map(a => ({ a }));
@@ -207,6 +208,7 @@ function renderPage() {
   else if (S.view === 'recent') renderRecent();
   else if (S.view === 'folder') renderFolder();
   else if (S.view === 'search') renderSearch();
+  else if (S.view === 'routines') Routines.render();
 }
 function renderAll() { renderNav(); renderPage(); renderBar(); updateTitle(); }
 // Names the chat window uses.

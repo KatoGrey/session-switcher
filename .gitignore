@@ -7,10 +7,17 @@ projects.json
 banners.json
 worlds.json
 prompts.json
+routines.json
 chat-prefs.json
+organize.json
+commander/
 openclaw-titles.json
 openclaw-messages/
 pairs.json
+lite.json
+lite-usage.json
+push.json
+lite-thumbs/
 devices.json
 push.json
 chat-extras/
@@ -47,6 +54,8 @@ mobile/ios/**/xcuserdata/
 # The themes' paintings: full-size originals stay local; the app uses the WebP copies in art/
 art/src/
 theme-studio/
+lite-alerts.json
+lite-waits.json
 
 # The desktop app: its build output. The phone app it ships with is kept (desktop/phone).
 desktop/dist*/
