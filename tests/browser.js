@@ -58,6 +58,10 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
   await send('Runtime.enable'); await send('Page.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { if (!sessionStorage.getItem('tour-test')) localStorage.setItem('toured', '1'); if (!sessionStorage.getItem('tips-test')) { localStorage.setItem('tips', 'off'); localStorage.setItem('whats-new-seen', 'test'); } } catch (e) {}" });
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale || (mobile ? 2.6 : 1), mobile });
+  // The same on every machine: some (GitHub's, Windows Server) have the system's "reduce motion" on,
+  // which the app rightly follows, and then its animations couldn't be checked. A test that wants
+  // reduced motion asks for it itself.
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   if (mobile) await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
 
   const fetchHandlers = [];
@@ -105,7 +109,10 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
     // Clicks the middle of the first element matching sel. If it's off-screen or something covers it
     // (a docked message box, say), it's scrolled into view first.
     clickOn: async sel => {
-      const r = await b.eval(`const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null;
+      // Like a person: if it isn't there yet (a slow machine), wait a moment for it, up to 5 s.
+      const r = await b.eval(`let el = document.querySelector(${JSON.stringify(sel)});
+        for (let i = 0; i < 50 && !el; i++) { await new Promise(r => setTimeout(r, 100)); el = document.querySelector(${JSON.stringify(sel)}); }
+        if (!el) return null;
         const mid = () => { const q = el.getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]; };
         const reachable = ([x, y]) => { const at = document.elementFromPoint(x, y); return !!at && (at === el || el.contains(at)); };
         let p = mid();

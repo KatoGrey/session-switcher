@@ -28,7 +28,7 @@ function renderLive(force) {
   const heroNow = heroHtml(), heroKey = heroNow.replace(/<span data-clock>[^<]*<\/span>/, '');
   // Only when it changed: redrawing restarts the scene's animations (a forced refresh needn't).
   if ($('heroSlot')._h !== heroKey) { $('heroSlot').innerHTML = heroNow; $('heroSlot')._h = heroKey; }
-  renderWelcome(); renderWhatsNew(); renderSelfCheckCard();
+  renderWelcome(); renderWhatsNew(); renderSelfCheckCard(); renderDeskUpdateCard();
   loadToday(); renderToday();
   // A chat moving between the boards (it finished, or wants you) glides across; new ones fade in.
   flip([$('awaitList'), $('board'), $('quietList')], () => {
@@ -269,13 +269,21 @@ setInterval(tick, 1000);
 // The world rests when you do: after a while with no one using the window (unfocused for 90 seconds,
 // or untouched for 5 minutes), every looping animation pauses and the scene dims a little; the first
 // touch, key or look back wakes it. Nothing redraws while you're away, however fast the screen.
-const REST_AWAY_MS = 90 * 1000, REST_IDLE_MS = 5 * 60 * 1000;
-let restSeen = Date.now();
+const REST_AWAY_MS = 90 * 1000, REST_IDLE_MS = 2 * 60 * 1000, STILL_AWAY_MS = 15 * 1000;
+let restSeen = Date.now(), awaySince = document.hasFocus() ? 0 : Date.now();
+// Still: working in another app with this one beside it, the looping decoration (petals, the seal,
+// the pulsing dots) holds still after a few seconds, without dimming: the dots keep their colors, and
+// the window stops redrawing itself many times a second. Back in it, it moves again.
 function restCheck() {
-  const idle = Date.now() - restSeen;
-  const rest = document.hidden || (!document.hasFocus() && idle > REST_AWAY_MS) || idle > REST_IDLE_MS;
+  const now = Date.now(), idle = now - restSeen;
+  const focused = document.hasFocus();
+  if (focused) awaySince = 0; else if (!awaySince) awaySince = now;
+  const rest = document.hidden || (!focused && idle > REST_AWAY_MS) || idle > REST_IDLE_MS;
   document.documentElement.classList.toggle('at-rest', rest);
+  document.documentElement.classList.toggle('still', !rest && !focused && now - awaySince > STILL_AWAY_MS);
 }
+window.addEventListener('blur', () => { awaySince = Date.now(); setTimeout(restCheck, STILL_AWAY_MS + 200); });
+window.addEventListener('focus', () => { awaySince = 0; restCheck(); });
 function restWake() {
   restSeen = Date.now();
   if (document.documentElement.classList.contains('at-rest')) restCheck();
@@ -286,7 +294,9 @@ setInterval(restCheck, 15000);
 // On battery and below 40% (a phone, a laptop unplugged), the scene stays still: the looping
 // decoration pauses, as at rest, without dimming. Plugged in again, it moves again.
 if (navigator.getBattery) navigator.getBattery().then(bat => {
-  const sync = () => document.documentElement.classList.toggle('low-power', !bat.charging && bat.level < 0.4);
+  // A machine with no battery (a desktop, a virtual machine) can report "not charging, 0%": that's
+  // no battery at all, not an empty one (nothing runs at 0%).
+  const sync = () => document.documentElement.classList.toggle('low-power', !bat.charging && bat.level > 0 && bat.level < 0.4);
   for (const ev of ['chargingchange', 'levelchange']) bat.addEventListener(ev, sync);
   sync();
 }).catch(() => {});

@@ -28,7 +28,7 @@ const check = (name, ok, detail) => { if (!ok) failed++; console.log(`${ok ? 'PA
 
 async function startServer(dataDir) {
   const port = await freePort();
-  const proc = spawn(process.execPath, ['server.js'], { cwd: repo, env: { ...process.env, SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(process.execPath, ['server.js'], { cwd: repo, env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^SWITCHER_/.test(k))), SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let logText = ''; proc.stdout.on('data', d => { logText += d; }); proc.stderr.on('data', d => { logText += d; });
   const base = `http://127.0.0.1:${port}`;
   let html = null;

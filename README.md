@@ -9,7 +9,34 @@ Session Switcher lists every Claude Code chat on this computer (Windows or Mac),
 - Claude Code, signed in at least once. Setup can install or update it for you.
 - Optional: Codex (OpenAI's coding agent) and a ChatGPT plan. Setup can install it too.
 
-## Install or update
+## Install the app (recommended)
+
+Download the newest installer from the [Releases page](https://github.com/KatoGrey/session-switcher/releases/latest):
+
+- **Windows:** `SessionSwitcher-<version>-win-x64.exe`. It installs for you alone (no admin), adds Start menu and desktop shortcuts, and opens. It isn't signed, so the first time Windows says "Windows protected your PC": click **More info → Run anyway**. It updates itself: when a new version is ready it asks to restart, and open chats come back where they were (or it updates the next time you quit).
+- **Mac:** `SessionSwitcher-<version>-mac-arm64.dmg` (Apple silicon) or `-mac-x64.dmg` (Intel). Open it and drag Session Switcher into Applications. It isn't signed, so the first time macOS refuses to open it: open **System Settings → Privacy & Security** and click **Open Anyway**. After that it updates itself like on Windows (it downloads the new version, checks it, and swaps it in when you restart it). Run from the disk image, or without write access to Applications, it offers the download instead. Someone with a Mac checks each new kind of change with [the Mac checkup](docs/mac-checkup.md).
+
+Your accounts, settings and the rest live in `%APPDATA%\Session Switcher` (Mac: `~/Library/Application Support/Session Switcher`), so updates and reinstalls keep them. The first time, if it finds a folder copy of Session Switcher, it offers to bring in its accounts and settings (it copies them; the folder copy keeps working).
+
+Closing the window keeps it running in the tray (Mac: the menu bar), so chats keep going and notifications come; **Quit** is in the tray menu and in Setup. What the installed app adds:
+
+- **What's waiting, at a glance:** the tray icon's tooltip and menu list the chats that need you (click one to open it), the taskbar button shows their count (Mac: the Dock badge), and it flashes (bounces) when a new one needs you while you're elsewhere.
+- **Taskbar shortcuts:** right-click the taskbar button for **New chat**, **Search every chat** and **Queue a task**. The tray menu has New chat and Search too.
+- **From anywhere:** `Ctrl+Shift+Space` (Mac: `⌘⇧Space`) brings Session Switcher up over whatever you're doing, and puts it away again.
+- **Awake while chats work:** the PC doesn't go to sleep in the middle of a reply (the screen still turns off as usual).
+- **Updates in the app:** Setup → **Desktop app** shows the version, whether an update is downloading or ready, and **Check for updates**; a ready update shows as a card on the hub with **Restart to update**.
+- **A browser's comforts:** right-click for spelling suggestions, cut, copy and paste, copying links and pictures; `F5` reloads, `Ctrl` `+`/`-`/`0` zooms.
+- **The mini window:** Ctrl+K → **Open the mini window** is a small card that stays on top of your other apps: what needs you (approve right there), what's at work, and the account's room. It remembers where you put it.
+- **Test versions first:** Setup → Desktop app → **Get test versions first** gets new versions before everyone else (they're published as pre-releases). Turn it off and the next stable version brings you back.
+- Setup → **Desktop app** turns each of these on or off, with **Start with Windows** (Mac: **Open at login**), which starts it quietly in the tray.
+
+**For someone new:** the first start opens Setup on **Getting started**: install Claude Code (a terminal runs Anthropic's installer), sign in, and optionally Codex, the phone and a two-minute tour. It goes once it's done or put away.
+
+**When something goes wrong:** Setup → **Problems and speed** lists it, with **Ask Claude to fix this**, **Report it** (a GitHub issue for the app, filled in) and **Copy report**. Reports leave out email addresses, your name in file paths, and keys and tokens.
+
+**Making a release:** write the notes in `docs/whats-new.md` (they become the release page and the app's What's new), then `node desktop/release.js 6.3.0 --push` sets the version, brings in the newest phone app, commits, tags and pushes. GitHub Actions (`.github/workflows/desktop.yml`) runs every test on Windows and a Mac first, and only if they all pass builds the Windows installer and the Mac apps and publishes the release; installed copies update to it. A test version (`6.3.0-beta.1`) is published as a pre-release, for copies set to get test versions. To build one here: `cd desktop && npm install && npm run dist:win`.
+
+## Install or update a folder copy
 
 1. Unzip this folder somewhere permanent, for example `C:\Users\<you>\Apps\Session Switcher`.
    - Updating? Unzip over the old copy. Your `accounts.json`, `history.json`, `chat-names.json`, `projects.json`, `banners.json` and `prompts.json` are kept.
@@ -418,6 +445,8 @@ A chat that needs your OK, or one that replies, can notify your phone even when 
 3. On the phone, open the `https://…ts.net` address it shows (iPhone: Safari → **Add to Home Screen**) and pair it once.
 4. On the phone: Setup → **Notifications on this phone**. On an iPhone, tapping one opens the chat to answer it.
 
+**Windows Firewall:** Setup → Phone access checks that Windows lets the phone in. If it doesn't (the "allow" question was answered Cancel, or your Wi-Fi is set as a public network), **Let my phone in** fixes it with one rule for the phone port, on private networks only (Windows asks for an administrator's OK).
+
 Each phone follows its own alert levels and quiet hours, and can gather replies into one notification every 15 minutes or every hour (**When**, under Replies); needing your OK always comes right away. **Remove** a phone and its notifications stop.
 
 **Home-screen widget (Android):** add **Session Switcher** from the widgets list to see the chats that need you, and tap one to open it.
@@ -543,6 +572,8 @@ A few things move, to show what changed:
 - Pictures Codex makes come into focus as they finish.
 
 Turn **Animations** off in Setup to keep everything still. It's also off automatically if Windows is set to reduce motion.
+
+It stays light on the PC: working in another app with Session Switcher beside it, the looping parts (petals, the seal, the pulsing dots) hold still after 15 seconds, without dimming, and move again when you come back. Left alone in front of you, it rests after two minutes; hidden in the tray, it draws nothing. On a laptop running on battery below 40%, they stay still too.
 
 ## Shortcuts
 

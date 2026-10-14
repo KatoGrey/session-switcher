@@ -467,7 +467,7 @@ const Boot = { raw: {} };
 async function loadState(pre) {
   const j = pre || await api('/api/state');
   Boot.raw.state = j;
-  S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.codex = j.codex || null; S.reopen = j.reopen || []; S.restart = j.restart || { pending: false }; S.update = !!j.update; S.pid = j.pid || null;
+  S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.shell = j.shell || null; S.firstRun = !!j.firstRun; S.codex = j.codex || null; S.reopen = j.reopen || []; S.restart = j.restart || { pending: false }; S.update = !!j.update; S.pid = j.pid || null;
   const saved = store('acct');
   if (!S.accounts.some(a => a.id === S.acct)) S.acct = S.accounts.some(a => a.id === saved) ? saved : S.accounts[0].id;
 }

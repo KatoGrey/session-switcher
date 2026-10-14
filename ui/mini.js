@@ -5,12 +5,15 @@
    on it. Ctrl+K: "Open the mini window". */
 
 const Mini = { win: null, timer: 0, h: '' };
-const miniOK = () => 'documentPictureInPicture' in window;
+// In the installed app it's a small window of the app's own that stays on top; in Chrome or Edge, the
+// browser's picture-in-picture for pages.
+const miniOK = () => !!window.desktop || 'documentPictureInPicture' in window;
 
 async function openMini() {
   if (!miniOK()) { toast('This browser can’t float a window over other apps. Chrome and Edge can.', 5000); return; }
   if (Mini.win) { Mini.win.focus(); return; }
-  const w = await documentPictureInPicture.requestWindow({ width: 340, height: 300 });
+  const w = window.desktop ? window.open('', 'ss-mini', 'popup,width=340,height=320') : await documentPictureInPicture.requestWindow({ width: 340, height: 300 });
+  if (!w) { toast('The mini window couldn’t open.', 4000); return; }
   Mini.win = w; Mini.h = '';
   const d = w.document;
   // The page's own look: its stylesheet, its fonts and the theme's colors.
@@ -21,8 +24,10 @@ async function openMini() {
   d.body.className = 'mini';
   d.body.innerHTML = '<main class="mini-in" aria-live="polite"></main>';
   d.addEventListener('click', e => miniClick(e).catch(err => toast(err.message)));
-  w.addEventListener('pagehide', () => { Mini.win = null; clearInterval(Mini.timer); });
-  Mini.timer = setInterval(renderMini, 1500);
+  const gone = () => { Mini.win = null; clearInterval(Mini.timer); };
+  w.addEventListener('pagehide', gone);
+  w.addEventListener('beforeunload', gone);
+  Mini.timer = setInterval(() => { if (w.closed) gone(); else renderMini(); }, 1500);
   renderMini();
 }
 // The theme as it is in the main window (colors are variables on the root, the rest data attributes).
@@ -65,5 +70,5 @@ async function miniClick(e) {
     return;
   }
   const o = t.closest('[data-mini]');
-  if (o) { const x = findActivity(o.dataset.mini); window.focus(); if (x) openActivity(x); }
+  if (o) { const x = findActivity(o.dataset.mini); if (window.desktop) window.desktop.show(); else window.focus(); if (x) openActivity(x); }
 }

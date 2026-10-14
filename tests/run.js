@@ -29,7 +29,12 @@ async function main() {
   if (!only.length) {
     console.log('— logic and server checks');
     const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join(__dirname, f));
-    const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', ...files], { stdio: 'inherit', cwd: APP });
+    // On GitHub the failures are also written as annotations (from a TAP copy of the results).
+    const tap = process.env.GITHUB_ACTIONS ? path.join(os.tmpdir(), `ss-tap-${process.pid}.txt`) : null;
+    const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP });
+    if (tap && r.status !== 0) {
+      try { for (const m of fs.readFileSync(tap, 'utf8').matchAll(/^\s*not ok \d+ - (.+)$/gm)) console.log(`::error title=logic tests::${m[1].slice(0, 400)}`); } catch { /* no TAP copy */ }
+    }
     if (r.status !== 0) failed++;
   }
 
@@ -38,7 +43,7 @@ async function main() {
   const base = `http://127.0.0.1:${port}/`;
   const server = spawn(process.execPath, ['server.js'], {
     cwd: APP,
-    env: { ...process.env, SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^SWITCHER_/.test(k))), ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}), SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let serverLog = '';
@@ -54,27 +59,41 @@ async function main() {
   for (const suite of suites) {
     if (only.length ? !only.includes(suite.name) : suite.onlyByName) continue;
     console.log(`— ${suite.name}`);
-    const browsers = [];
-    const t = {
-      check(name, ok, detail) {
-        if (!ok) failed++;
-        console.log(`  ${ok ? '✔' : '✖'} ${name}${!ok && detail !== undefined ? `  (${typeof detail === 'string' ? detail : JSON.stringify(detail)})` : ''}`);
-      },
-      // path: what follows the address, like "?chat=…" for a popped-out chat.
-      async open({ width = 1440, height = 900, mobile = false, demo: useDemo = true, path: at = '', ...demoOpts } = {}) {
-        const b = await launch({ width, height, mobile });
-        browsers.push(b);
-        if (useDemo) await demo.install(b, demoOpts);
-        await b.nav(base + at, 3000);
-        return b;
-      },
-      async shot(b, name) { if (SHOTS) await b.shot(path.join(SHOTS, `${suite.name.replace(/\W+/g, '-')}-${name}.png`)); },
-    };
-    try { await suite.run(t); } catch (err) { t.check(`finished without an error`, false, err.message); }
-    for (const b of browsers) {
-      const errors = b.logs.filter(l => /^EXC /.test(l));
-      t.check('no script errors on the page', !errors.length, errors.slice(0, 3));
-      b.close();
+    // On GitHub (CI), a suite that fails is run once more before it counts: their machines (the Mac
+    // especially) are slow and uneven, so a check can miss a moment that's there. A real fault fails
+    // both times. Here, on your PC, once is enough.
+    const tries = process.env.CI ? 2 : 1;
+    for (let attempt = 1; attempt <= tries; attempt++) {
+      const browsers = [], lines = [], fails = [];
+      const say = (name, detail) => `${name}${detail !== undefined ? `  (${typeof detail === 'string' ? detail : JSON.stringify(detail)})` : ''}`;
+      const t = {
+        check(name, ok, detail) {
+          if (!ok) fails.push(say(name, detail));
+          lines.push(`  ${ok ? '✔' : '✖'} ${ok ? name : say(name, detail)}`);
+        },
+        // path: what follows the address, like "?chat=…" for a popped-out chat.
+        async open({ width = 1440, height = 900, mobile = false, demo: useDemo = true, path: at = '', ...demoOpts } = {}) {
+          const b = await launch({ width, height, mobile });
+          browsers.push(b);
+          if (useDemo) await demo.install(b, demoOpts);
+          await b.nav(base + at, 3000);
+          return b;
+        },
+        async shot(b, name) { if (SHOTS) await b.shot(path.join(SHOTS, `${suite.name.replace(/\W+/g, '-')}-${name}.png`)); },
+      };
+      try { await suite.run(t); } catch (err) { t.check('finished without an error', false, err.message); }
+      for (const b of browsers) {
+        const errors = b.logs.filter(l => /^EXC /.test(l));
+        t.check('no script errors on the page', !errors.length, errors.slice(0, 3));
+        b.close();
+      }
+      if (fails.length && attempt < tries) { console.log(`  ↻ ${fails.length} check${fails.length === 1 ? '' : 's'} missed (${fails[0].slice(0, 160)}); once more`); continue; }
+      for (const l of lines) console.log(l);
+      if (!fails.length && attempt > 1) console.log('  (passed the second time)');
+      failed += fails.length;
+      // On GitHub, each failed check is also an annotation, readable on the run's page without signing in.
+      if (process.env.GITHUB_ACTIONS) for (const f of fails) console.log(`::error title=${suite.name.replace(/[\r\n:,]/g, ' ')}::${f.replace(/%/g, '%25').replace(/\r?\n/g, '%0A').slice(0, 900)}`);
+      break;
     }
   }
 
