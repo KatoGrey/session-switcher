@@ -102,7 +102,12 @@ document.addEventListener('click', wrap(async e => {
   const b = e.target.closest('[data-desk]'); if (!b || !deskOn()) return;
   const what = b.dataset.desk;
   if (what === 'check') { b.disabled = true; Desk.update = await window.desktop.checkUpdates(); renderDeskBox(); return; }
-  if (what === 'install') { await window.desktop.installUpdate(); return; }
+  if (what === 'install') {
+    // Restarting to update ends what's running: replies mid-way, and work chats left running in the background.
+    const n = Desk.update && Desk.update.status === 'ready' ? workingNow() : 0;
+    if (n && !(await appConfirm(`Update now?\n\n${n === 1 ? 'A chat is' : `${nword(n)} chats are`} still working${behindNow() ? ', some in the background' : ''}. Updating restarts Session Switcher, which stops ${n === 1 ? 'it' : 'them'} (the conversations are kept; work running in the background ends). You can update later from Setup.`, { ok: 'Update now', cancel: 'Not yet' }))) return;
+    await window.desktop.installUpdate(); return;
+  }
   if (what === 'later') { if (Desk.update) store('desk-update-seen', Desk.update.next); renderDeskUpdateCard(); return; }
   if (what === 'files') await window.desktop.set({ openData: true });
 }));

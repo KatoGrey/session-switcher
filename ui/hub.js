@@ -490,9 +490,11 @@ function workCard(x) {
   // At work because its partner is: the card tells what the partner is doing.
   const w = x.partner && ownStatus(x) !== 'working' && ownStatus(x.partner) === 'working' ? x.partner : x;
   const who = w !== x ? `${PROV_NAME[w.provider || 'claude']}: ` : '';
-  const label = who + (w.phase === 'starting' ? 'Starting' : w.phase === 'thinking' ? 'Thinking' : w.phase === 'writing' ? 'Writing' : w.source === 'terminal' ? 'Working in a terminal' : 'Working');
-  const since = w.turnStartedAt || w.lastEventAt;
-  const step = w.phase === 'tool' && (w.tool || w.detail) ? `<div class="o-step"><span class="v">${esc(VERB_NOW[w.tool] || 'Using')}</span><code>${esc(w.detail || w.tool || '')}</code></div>` : '';
+  const behind = !WORKING.has(w.phase) && w.background && w.background.length ? w.background : null;
+  const label = who + (behind ? 'Working in the background' : w.phase === 'starting' ? 'Starting' : w.phase === 'thinking' ? 'Thinking' : w.phase === 'writing' ? 'Writing' : w.source === 'terminal' ? 'Working in a terminal' : 'Working');
+  const since = behind ? w.backgroundSince || w.finishedAt : w.turnStartedAt || w.lastEventAt;
+  const step = behind ? `<div class="o-step"><span class="v">Running</span><code>${esc(behind.join(' · '))}</code></div>`
+    : w.phase === 'tool' && (w.tool || w.detail) ? `<div class="o-step"><span class="v">${esc(VERB_NOW[w.tool] || 'Using')}</span><code>${esc(w.detail || w.tool || '')}</code></div>` : '';
   const said = plainMd(lastLine(w.lastText));
   const line = said ? `<p class="o-line">${esc(said)}</p>` : w.lastPrompt ? `<p class="o-line dim">You asked: ${esc(w.lastPrompt)}</p>` : '';
   return `<article class="omen ${st === 'working' ? 'working' : st}"><div class="omen-in">

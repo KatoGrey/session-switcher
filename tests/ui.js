@@ -2114,8 +2114,8 @@ module.exports = [
       // With a chat working: three answers.
       await b.eval(`S.live = { x: { state: 'busy' } }; restartApp(); return 1`); await sleep(300);
       const ch = await b.eval(`const d = document.querySelector('.choice-dlg[open]'); return d ? [...d.querySelectorAll('.btn')].map(x => x.textContent) : null`);
-      t.check('with a chat working it can wait for replies, restart now, or not', JSON.stringify(ch) === JSON.stringify(['Cancel', 'Restart now', 'When replies finish']), ch);
-      t.check('Enter waits for replies (the main answer)', await b.eval(`return document.activeElement.textContent === 'When replies finish'`));
+      t.check('with a chat working it can wait for replies, restart now, or not', JSON.stringify(ch) === JSON.stringify(['Cancel', 'Restart now', 'When they finish']), ch);
+      t.check('Enter waits for replies (the main answer)', await b.eval(`return document.activeElement.textContent === 'When they finish'`));
       await b.eval(`document.activeElement.click(); return 1`); await sleep(300);
       const bar = await b.eval(`const el = document.getElementById('restartBar'); return el ? el.textContent : null`);
       t.check('while it waits, a bar says so, with Restart now and Cancel', bar && /Restarting when replies finish/.test(bar) && /Restart now/.test(bar) && /Cancel/.test(bar), bar);
@@ -2325,6 +2325,21 @@ module.exports = [
       t.check('in time order: after Claude’s replies from before it', gem > r.turns.findIndex(x => x.who === 'Claude'), r.turns.map(x => x.who));
       t.check('a pill for each of them', JSON.stringify(r.pills) === '["codex","gemini"]', r.pills);
       await t.shot(b, 'feed');
+    },
+  },
+  {
+    name: 'background work',
+    // Claude's reply is done but work it started runs on (a build, tests): the chat says so, and the
+    // hub keeps it under At work, not as finished.
+    async run(t) {
+      const b = await t.open({ events: [{ kind: 'background', tasks: [{ id: 'b1', type: 'local_bash', description: 'Run the full test suite' }] }] });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const r = await b.eval(`const s = document.getElementById('cState'); return { text: s.textContent, title: s.title, cls: s.className, pill: document.querySelector('[data-crew="main"] .crew-m')?.textContent }`);
+      t.check('the chat says it’s working in the background, and on what', r.text === 'Working in the background' && /Run the full test suite/.test(r.title) && /\bbg\b/.test(r.cls), r);
+      t.check('its pill too', r.pill === 'working in the background', r);
+      const hub = await b.eval(`return { bg: ownStatus({ phase: 'idle', source: 'app', finishedAt: Date.now(), background: ['Run the full test suite'] }), done: ownStatus({ phase: 'idle', source: 'app', finishedAt: Date.now(), lastText: 'x', background: [] }), asks: ownStatus({ phase: 'waiting', pending: [{}], background: ['x'] }) }`);
+      t.check('the hub: at work while it runs; a finished reply once it’s done; a question still comes first', hub.bg === 'working' && hub.done === 'reply' && hub.asks === 'approve', hub);
+      await t.shot(b, 'chat');
     },
   },
 ];

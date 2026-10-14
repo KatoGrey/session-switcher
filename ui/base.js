@@ -367,6 +367,8 @@ function ownStatus(x) {
   if (x.phase === 'waiting') return (x.pending || []).some(p => p.question) ? 'question' : 'approve';
   if (x.phase === 'waiting-terminal') return 'terminal-wait';
   if (WORKING.has(x.phase)) return 'working';
+  // Its reply is done, but work it started runs on in the background: at work until that's back.
+  if (x.background && x.background.length && x.phase !== 'ended') return 'working';
   if (x.phase === 'ended') return 'ended';
   if (x.finishedAt && (x.source === 'app' || x.lastText) && !isSeen(x)) return 'reply';
   return 'quiet';

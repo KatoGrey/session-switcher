@@ -78,7 +78,8 @@ function relaySide(src) {
   const upNext = src === 'comp' && C.handoff && C.handoff === partnerProv() && st !== 'busy';
   const status = (src === 'comp' ? C.comp && C.comp.status : C.status) || '';
   const done = st === 'ready' && C.justDone && C.justDone.src === src && Date.now() < C.justDone.until;
-  const word = upNext ? 'Up next' : st === 'busy' && status ? status : done ? 'Done' : RELAY_WORD[st] || 'Ready';
+  const bgNow = st === 'ready' && ((src === 'comp' ? C.comp && C.comp.background : C.background) || []).length;
+  const word = upNext ? 'Up next' : st === 'busy' && status ? status : done ? 'Done' : bgNow ? 'In the background' : RELAY_WORD[st] || 'Ready';
   const on = C.target === 'both' || (src === 'comp' ? C.target === 'comp' && C.focus === prov : C.target === src);
   return `<button type="button" class="cr-side ${prov}${st === 'busy' || st === 'starting' ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}${upNext ? ' next' : ''}${done ? ' done' : ''}${on ? ' on' : ''}" data-relay="${src}"${src === 'comp' ? ` data-kind="${prov}"` : ''} aria-pressed="${on}" title="Write to ${PROV_NAME[prov]}"><span class="cr-dot" aria-hidden="true"></span><b>${PROV_NAME[prov]}</b><span class="cr-w">${esc(word)}</span></button>`;
 }
@@ -108,8 +109,11 @@ function setState(s) {
   C.state = s;
   renderRelay();
   const pill = $c('cState');
-  pill.textContent = STATE_LABELS[s] || s;
-  pill.className = `c-state ${s}`;
+  // Its reply is done but work it started is still running (a build, tests, a helper): it carries on.
+  const bg = s === 'ready' && (C.background || []).length;
+  pill.textContent = bg ? 'Working in the background' : STATE_LABELS[s] || s;
+  pill.className = `c-state ${s}${bg ? ' bg' : ''}`;
+  pill.title = bg ? `Still running: ${C.background.map(t => t.description).join('; ')}. It carries on with the result when that's done; the chat stays open for it.` : '';
   syncSend();
 }
 // Stop, the typing dots and Send/Queue follow whichever one your next message goes to.
@@ -244,6 +248,7 @@ function handleEvent(ev, src) {
       toBottom();
       break;
     }
+    case 'background': { const box = src === 'comp' ? C.comp : C; if (box) box.background = ev.tasks || []; if (src !== 'comp') setState(C.state); renderCrew(); break; }
     default: break;
   }
 }
@@ -386,12 +391,14 @@ function crewPill(src) {
   const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : '');
   const label = mi ? `${modelLabel(mi)}${mi.effort ? ` ${cap(mi.effort)}` : ''}` : src === 'comp' && st === 'off' ? '' : '…';
   const on = duo() ? (src === 'comp' ? (C.target === 'comp' && C.focus === prov) || C.target === 'both' : C.target === src || C.target === 'both') : true;
-  const sub = st === 'waiting' ? 'needs your OK' : src === 'comp' && C.handoff === prov ? 'up next…' : busy && status ? status : label;
+  const bgList = (src === 'comp' ? C.comp && C.comp.background : C.background) || [];
+  const sub = st === 'waiting' ? 'needs your OK' : src === 'comp' && C.handoff === prov ? 'up next…' : busy && status ? status : st === 'ready' && bgList.length ? 'working in the background' : label;
   const mode = src === 'comp' ? compModeLabel() : '';
   // The partner's own account: how much room it has (the lead's is in the header).
   const acct = src === 'comp' && C.comp ? C.comp.accountId : null, room = acct ? usageLine(acct, { short: true }) : '';
   const left = acct ? roomLeft(acct) : null;
   const tip = (on ? `${PROV_NAME[prov]}: choose its model, effort${src === 'comp' && C.comp && C.comp.modes ? ' and what it may do' : ''}` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`)
+    + (st === 'ready' && bgList.length ? `\nIn the background: ${bgList.map(t => t.description).join('; ')}` : '')
     + (mode ? `\nMay: ${mode}` : '')
     + (room ? `\nRoom: ${room}` : '')
     + (C.ctx[src] ? `\nContext: ${ctxLine(src)}` : '');
@@ -643,7 +650,7 @@ function attachComp(info) {
   const kind = info.provider || partnerProv();
   const old = C.comps[kind];
   if (old && old.es) old.es.close();
-  const slot = { provider: kind, mi: info.models && info.models.length ? info : null, ctx: info.context || null, key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
+  const slot = { background: info.background || [], provider: kind, mi: info.models && info.models.length ? info : null, ctx: info.context || null, key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
   C.comps[kind] = slot;
   // In view if it's the one you're working with (or the only one).
   if (!C.comp || C.comp.provider === kind || C.mate === kind || C.comp.ended) focusMate(kind);

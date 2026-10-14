@@ -354,7 +354,7 @@ function reset() {
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
-  Object.assign(C, { comps: {}, crewKinds: [], focus: null, compHist: {}, compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+  Object.assign(C, { background: [], comps: {}, crewKinds: [], focus: null, compHist: {}, compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
   closePreview();
   Review.loop = null;
@@ -400,6 +400,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
   reset();
   const gen = C.gen;
   C.key = info.key; C.info = info; C.sessionId = info.sessionId || sessionId;
+  C.background = info.background || [];
   C.provider = info.provider || 'claude';
   C.mate = info.mate && info.mate !== C.provider ? info.mate : null;
   if (info.modes) modeOptions(info.modes);

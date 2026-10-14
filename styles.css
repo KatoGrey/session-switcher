@@ -565,6 +565,7 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .c-state.busy{color:var(--ember)}.c-state.busy::before{background:var(--crimson);animation:glint 1.6s ease-in-out infinite}
 .c-state.waiting{color:var(--gilt)}.c-state.waiting::before{background:var(--gilt);animation:glint 1.6s ease-in-out infinite}
 .c-state.ready{color:var(--parch-2)}.c-state.ready::before{background:rgb(var(--c-7fb79a))}
+.c-state.ready.bg{color:var(--ember)}.c-state.ready.bg::before{background:rgb(var(--c-7fb79a));animation:glint 2.4s ease-in-out infinite}
 .c-state.ended{color:var(--ash-2)}
 .c-state.watching{color:var(--violet)}.c-state.watching::before{background:var(--violet)}
 .c-mode{background:var(--vellum);border:1px solid var(--seam);border-radius:6px;padding:7px 9px;font:14px var(--f-body);color:var(--parch-2);max-width:170px}
