@@ -232,7 +232,7 @@ test('Lite page: data-open and data-chat mean "open this chat" and nothing else'
   }
 });
 
-test('Claude Desktop renames wait until the app is closed, and change only the title fields', () => {
+test('Claude Desktop renames wait until the app is closed, and change only the title fields', async () => {
   const { createDesktopNames, renamed } = require('../lib/lite-desktop-names');
   const r = renamed({ title: 'Old', completedTurns: 3, previousTitles: ['Older'], other: { a: 1 } }, 'New');
   assert.deepEqual(r, { title: 'New', completedTurns: 3, previousTitles: ['Older', 'Old'], titleTurn: 3, other: { a: 1 } });
@@ -245,15 +245,21 @@ test('Claude Desktop renames wait until the app is closed, and change only the t
   let running = true;
   const desktop = { get: id => (id === 'c1' ? { desktopId: 'local_abc', cli: 'c1' } : null), ROOT: root };
   const names = createDesktopNames({ store, desktop, isRunning: () => running, root });
-  assert.deepEqual(names.queue('C1', 'Voyage Lab pages'), { queued: true, desktopOpen: true });
+  assert.deepEqual(await names.queue('C1', 'Voyage Lab pages'), { queued: true, desktopOpen: true });
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).title, 'Old', 'nothing written while the app runs');
   assert.ok(store.get().desktopRenames.c1);
   running = false;
-  assert.deepEqual(names.apply().done, ['c1']);
+  assert.deepEqual((await names.apply()).done, ['c1']);
   const j = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.deepEqual([j.title, j.previousTitles, j.titleTurn, j.keep], ['Voyage Lab pages', ['Old'], 2, 'me']);
   assert.equal(store.get().desktopRenames.c1, undefined, 'done, so no longer waiting');
   assert.throws(() => names.queue('nope', 'x'), /didn’t come from the Claude desktop app/);
+  // ps runs alongside the server now: the check is a promise, and an unsure answer still counts as running.
+  const { desktopRunning } = require('../lib/lite-desktop-names');
+  const r2 = desktopRunning();
+  assert.ok(r2 instanceof Promise);
+  if (process.platform !== 'darwin') assert.equal(await r2, true, 'off macOS it always counts as running, so nothing is written');
+  else assert.equal(typeof await r2, 'boolean');
 });
 
 test('families: sub-chats join their parent’s project and status unless you set your own', () => {
@@ -328,10 +334,14 @@ test('routines: one sweep can escalate several things, each with its own details
 test('pipeline: a PR’s column comes from its labels; checks fold to one word', () => {
   const { stageOf, ciOf } = require('../lib/lite-pipeline');
   const L = (...n) => n.map(name => ({ name }));
+  const LAT = 'latitudegames/latitude';
   assert.equal(stageOf(null), 'working');
-  assert.equal(stageOf({ state: 'OPEN', labels: L('voyage-bug') }), 'pr');
-  assert.equal(stageOf({ state: 'OPEN', labels: L('voyage-bug', 'preview') }), 'preview');
-  assert.equal(stageOf({ state: 'OPEN', labels: L('preview', 'community-qa') }), 'testers');
+  assert.equal(stageOf({ state: 'OPEN', labels: L('voyage-bug') }, NOW, LAT), 'pr');
+  assert.equal(stageOf({ state: 'OPEN', labels: L('voyage-bug', 'preview') }, NOW, LAT), 'preview');
+  assert.equal(stageOf({ state: 'OPEN', labels: L('preview', 'community-qa') }, NOW, LAT), 'testers');
+  // Latitude's labels are its own: in any other repo a labelled PR is just a PR.
+  assert.equal(stageOf({ state: 'OPEN', labels: L('preview', 'community-qa') }, NOW, 'someone/else'), 'pr');
+  assert.equal(stageOf({ state: 'OPEN', labels: L('preview') }), 'pr', 'no repo: the plain board');
   assert.equal(stageOf({ state: 'MERGED', mergedAt: at(NOW - 2 * D) }, NOW), 'merged');
   assert.equal(stageOf({ state: 'MERGED', mergedAt: at(NOW - 9 * D) }, NOW), null, 'old merges drop off');
   assert.equal(stageOf({ state: 'CLOSED', labels: [] }), null);
@@ -409,4 +419,72 @@ test('Lite counts as used once it has been opened here; idle weeks are left alon
   const old = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-lite-old-'));
   fs.writeFileSync(path.join(old, 'lite.json'), JSON.stringify({ buckets: [] }));
   assert.equal(lite.createLite({ dataDir: old }).get().used, true);
+});
+
+test('pipeline: a folder’s GitHub repo comes from its remotes, the one gh would use', () => {
+  const { githubRepoOf, pickRemote } = require('../lib/lite-pipeline');
+  for (const u of ['https://github.com/latitudegames/latitude.git', 'https://github.com/latitudegames/latitude', 'https://github.com/latitudegames/latitude/',
+    'git@github.com:latitudegames/latitude.git', 'git@github.com:latitudegames/latitude', 'ssh://git@github.com/latitudegames/latitude.git',
+    'ssh://git@github.com:22/latitudegames/latitude.git', 'https://ryan:tok@github.com/latitudegames/latitude.git', '  https://www.github.com/latitudegames/latitude.git\n']) {
+    assert.equal(githubRepoOf(u), 'latitudegames/latitude', u);
+  }
+  assert.equal(githubRepoOf('git@github.com:me/my.site.git'), 'me/my.site', 'dots in the name stay; only .git comes off');
+  assert.equal(githubRepoOf('git@github.com-work:me/tool.git'), 'me/tool', 'an ssh host alias for GitHub');
+  for (const u of ['https://gitlab.com/me/tool.git', 'git@gitlab.com:me/tool.git', 'https://bitbucket.org/me/tool', 'https://github.example.com/me/tool.git', '/srv/git/tool.git', '', null, 'https://github.com/me']) {
+    assert.equal(githubRepoOf(u), null, String(u));
+  }
+  // `git config --get-regexp ^remote\.` lines: upstream beats origin (as gh picks), a default set with gh wins.
+  const cfg = 'remote.origin.url git@github.com:ryan/latitude.git\nremote.origin.fetch +refs/heads/*:refs/remotes/origin/*\nremote.upstream.url https://github.com/latitudegames/latitude.git\n';
+  assert.equal(pickRemote(cfg), 'latitudegames/latitude');
+  assert.equal(pickRemote(`${cfg}remote.origin.gh-resolved base\n`), 'ryan/latitude', 'gh repo set-default');
+  assert.equal(pickRemote('remote.origin.url https://gitlab.com/me/tool.git\nremote.mirror.url git@github.com:me/tool.git\n'), 'me/tool', 'the first remote that is on GitHub');
+  assert.equal(pickRemote('remote.origin.url https://gitlab.com/me/tool.git\n'), null, 'not on GitHub: no pull requests');
+  assert.equal(pickRemote(''), null);
+  // A Host in ~/.ssh/config that is GitHub under another name counts, as it does for gh.
+  const { sshAliases } = require('../lib/lite-pipeline');
+  const sshCfg = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-ssh-')), 'config');
+  fs.writeFileSync(sshCfg, 'Host work-gh\n  HostName github.com\n  User git\nHost *.corp\n  HostName github.com\nHost lab\n  HostName gitlab.com\n');
+  const aliases = sshAliases(sshCfg);
+  assert.deepEqual(aliases, ['work-gh']);
+  assert.equal(githubRepoOf('git@work-gh:latitudegames/latitude.git', aliases), 'latitudegames/latitude');
+  assert.equal(githubRepoOf('git@work-gh:latitudegames/latitude.git'), null, 'not without the ssh config');
+  assert.equal(githubRepoOf('https://work-gh/latitudegames/latitude', aliases), null, 'ssh names are for ssh only');
+  assert.equal(pickRemote('remote.origin.url git@work-gh:me/tool.git\n', aliases), 'me/tool');
+  assert.deepEqual(sshAliases(path.join(os.tmpdir(), 'no-such-ssh-config')), []);
+});
+
+test('pipeline: Latitude keeps its preview links and labels; other repos get the plain board', () => {
+  const { repoProfile, REPOS } = require('../lib/lite-pipeline');
+  const lat = repoProfile('latitudegames/latitude');
+  assert.equal(lat, REPOS['latitudegames/latitude']);
+  assert.equal(lat.preview(17012), 'https://pr-17012.preview.voyage.io/', 'the same link the Bugs page always used');
+  assert.equal(repoProfile('LatitudeGames/Latitude'), lat, 'GitHub names ignore case');
+  assert.deepEqual(Object.entries(lat.labels), [['community-qa', 'testers'], ['preview', 'preview']], 'testers win over preview');
+  assert.deepEqual(lat.hide, ['agent-generated', 'community-qa-notified']);
+  for (const other of ['me/tool', 'ryan/latitude', null]) {
+    const p = repoProfile(other);
+    assert.equal(p.preview, null, `${other}: no preview column without a known pattern`);
+    assert.deepEqual([p.labels, p.hide], [{}, []]);
+  }
+  // The UI takes the server's link rather than guessing one from the URL.
+  const pages = fs.readFileSync(path.join(__dirname, '..', 'ui-lite', 'pages.js'), 'utf8');
+  assert.match(pages, /const previewUrl = pr => \(pr && pr\.preview\) \|\| null;/);
+});
+
+test('pipeline: chats in a repo that isn’t on GitHub show without a pull request, and nothing asks gh', async () => {
+  const cp = require('child_process');
+  const { createPipeline, pickRemote } = require('../lib/lite-pipeline');
+  const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-pipe-')));
+  const git = (...a) => cp.execFileSync('git', ['-C', repo, ...a], { stdio: 'pipe' }).toString();
+  git('init', '-q', '-b', 'fix/thing');
+  git('remote', 'add', 'origin', 'https://gitlab.com/me/tool.git');
+  git('remote', 'add', 'upstream', 'git@github.com:me/tool.git');
+  assert.equal(pickRemote(git('config', '--get-regexp', '^remote\\.')), 'me/tool', 'real git config output reads the same');
+  git('remote', 'remove', 'upstream');
+  const logs = [];
+  const p = createPipeline({ log: m => logs.push(m) });
+  const chat = { id: 'c1', title: 'Fix the thing (from Daily sweep)', branch: 'fix/thing', runDir: repo, cwd: repo, runIsWorktree: false, fromRoutine: 'r1', kind: 'bug', updated: Date.now() };
+  const v = await p.view([chat], []);
+  assert.deepEqual(v.items.map(i => [i.chat, i.stage, i.repo, i.pr]), [['c1', 'working', null, null]]);
+  assert.deepEqual([v.errors, logs], [[], []], 'no gh call, so no gh errors');
 });

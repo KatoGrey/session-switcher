@@ -361,10 +361,14 @@ function paintHead() {
 
 // Every link the chat mentioned (its PRs, previews, local servers, threads), newest first, named
 // for what it is, so they're a click away at the top instead of somewhere up the scroll.
-function linkLabel(u) {
+// own: the chat's repo and its PR's preview, from the Bugs pipeline, when it has a PR there.
+function linkLabel(u, own = null) {
   let m;
-  if ((m = /github\.com\/[^/]+\/([^/]+)\/pull\/(\d+)/.exec(u))) return { kind: 'pr', label: `PR #${m[2]}${m[1] === 'latitude' ? '' : ` · ${m[1]}`}` };
+  // A PR in the chat's own repo (or Latitude's) is just "PR #n"; one elsewhere says which repo.
+  if ((m = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(u))) return { kind: 'pr', label: `PR #${m[3]}${m[2] === 'latitude' || (own && own.repo && `${m[1]}/${m[2]}`.toLowerCase() === own.repo.toLowerCase()) ? '' : ` · ${m[2]}`}` };
+  // Latitude's preview sites by name; any other repo's preview link (see REPOS in lib/lite-pipeline.js) as its PR's.
   if ((m = /\/\/pr-(\d+)\.preview\.(voyage\.io|aidungeon\.com)/.exec(u))) return { kind: 'preview', label: `Preview #${m[1]} · ${m[2] === 'voyage.io' ? 'Voyage' : 'AI Dungeon'}` };
+  if (own && own.preview && u.replace(/\/+$/, '') === own.preview.replace(/\/+$/, '')) return { kind: 'preview', label: `Preview #${own.n}` };
   if ((m = /\/\/(localhost|127\.0\.0\.1)(:\d+)?/.exec(u))) return { kind: 'local', label: `localhost${m[2] || ''}` };
   if ((m = /linear\.app\/[^/]+\/issue\/([A-Z]+-\d+)/.exec(u))) return { kind: 'other', label: m[1] };
   if ((m = /github\.com\/[^/]+\/([^/?#]+)/.exec(u))) return { kind: 'other', label: `GitHub · ${m[1]}` };
@@ -373,7 +377,10 @@ function linkLabel(u) {
   try { const x = new URL(u); return { kind: 'other', label: (x.host.replace(/^www\./, '') + (x.pathname.length > 1 ? x.pathname : '')).slice(0, 48) }; } catch { return { kind: 'other', label: u.slice(0, 48) }; }
 }
 function chatLinks() {
-  const key = `${CV.id}:${CV.items.length}`;
+  const c = chatBy.get(CV.id), it = c && typeof pipeItem === 'function' ? pipeItem(c) : null;
+  const prev = it && it.pr && typeof previewUrl === 'function' ? previewUrl(it.pr) : null;
+  const own = it && it.pr ? { repo: it.repo || null, preview: prev, n: it.pr.number } : null;
+  const key = `${CV.id}:${CV.items.length}:${own ? own.n : ''}`;
   if (chatLinks.memo && chatLinks.memo.key === key) return chatLinks.memo.list;
   const seen = new Set(), list = [];
   const add = u => {
@@ -381,7 +388,7 @@ function chatLinks() {
     if (/\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(u)) return;
     try { const h = new URL(u).hostname; if (!h.includes('.') && h !== 'localhost') return; } catch { return; }
     const k = u.replace(/\/+$/, '');
-    if (seen.has(k)) return; seen.add(k); list.push({ url: u, ...linkLabel(u) });
+    if (seen.has(k)) return; seen.add(k); list.push({ url: u, ...linkLabel(u, own) });
   };
   for (const it of [...CV.items].reverse()) {
     const text = it.kind === 'assistant' ? (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n') : it.kind === 'user' ? it.text || '' : '';
@@ -389,8 +396,7 @@ function chatLinks() {
     for (const u of found.reverse()) add(u);
   }
   // A bug chat's PR is known even when the chat never wrote its link.
-  const c = chatBy.get(CV.id), it = c && typeof pipeItem === 'function' ? pipeItem(c) : null;
-  if (it && it.pr && it.pr.url) { add(it.pr.url); const prev = typeof previewUrl === 'function' ? previewUrl(it.pr) : null; if (prev) add(prev); }
+  if (it && it.pr && it.pr.url) { add(it.pr.url); if (prev) add(prev); }
   chatLinks.memo = { key, list: list.slice(0, 20) };
   return chatLinks.memo.list;
 }
