@@ -3595,3 +3595,28 @@ body.from-cache .pulse::after{content:'';position:absolute;inset:-2px;border-rad
 #fwBox .fw-also{display:flex;grid-template-columns:none;justify-content:flex-start;align-items:center;gap:8px;width:auto;text-align:left}
 #fwBox .fw-also input{flex:none;margin:0;width:auto}
 #fwBox .fw-also span{flex:1 1 auto;text-align:left}
+/* Setup → Gemini. */
+.gm-st{margin:4px 0 8px;color:var(--parch-2)}
+.gm-st.ok{color:var(--parch-2)}
+.gm-st.bad{color:var(--ember)}
+/* ---------- Gemini (violet, beside Claude's crimson and Codex's blue) ---------- */
+:root{--gemini:rgb(195 138 224);--gemini-ink:rgb(220 186 240);--gemini-soft:rgb(195 138 224 / .16)}
+.nav-h.gemini .pmark{background:var(--gemini);box-shadow:0 0 8px rgb(195 138 224 / .55)}
+.nav-i.gemini .glyph{color:var(--gemini)}
+.nav-i.gemini:hover{background:linear-gradient(90deg,rgb(195 138 224 / .08),transparent 80%)}
+.nav-i.gemini[aria-current="true"]{border-left-color:var(--gemini);background:linear-gradient(90deg,rgb(195 138 224 / .2),rgb(195 138 224 / .03) 85%)}
+.nav-i.gemini .live-dot{background:var(--gemini);box-shadow:0 0 8px rgb(195 138 224 / .7)}
+.eyebrow.gemini,.wp-in .eyebrow.gemini{color:var(--gemini-ink)}
+.tag.gemini{background:none;color:var(--gemini-ink);box-shadow:inset 0 0 0 1px rgb(195 138 224 / .5)}
+.btn.geminibtn{border-color:rgb(195 138 224 / .45)}
+.btn.geminibtn:hover:not(:disabled){border-color:rgb(195 138 224 / .8)}
+.turn[data-prov="gemini"] .who,.chat.gemini .turn .who{color:var(--gemini-ink)}
+.turn[data-prov="gemini"] .who::before,.chat.gemini .turn .who::before{content:"✷";color:var(--gemini)}
+.turn[data-prov="gemini"]::before{background:linear-gradient(180deg,rgb(195 138 224 / .45),transparent)}
+.chat.gemini .c-box{border-color:rgb(195 138 224 / .38)}
+.chat.gemini .c-box:focus-within{border-color:rgb(195 138 224 / .65);box-shadow:0 0 0 3px rgb(195 138 224 / .12)}
+.chat.gemini #cSend{background:linear-gradient(180deg,rgb(168 110 200),rgb(128 80 160));border-color:rgb(205 160 230)}
+.chat.gemini #cSend:hover:not(:disabled){background:linear-gradient(180deg,rgb(178 120 210),rgb(138 90 170))}
+.crew.gemini .crew-dot{background:var(--gemini)}
+.crew.gemini .crew-n{color:var(--gemini-ink)}
+.c-pick.gemini .mp-h{color:var(--gemini-ink)}

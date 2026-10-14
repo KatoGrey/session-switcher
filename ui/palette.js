@@ -25,9 +25,10 @@ function projectNamed(words) {
 function sayItems(q) {
   const t = String(q || '').trim(), out = [];
   let m;
-  if ((m = t.match(/^(?:start\s+|new\s+|open\s+)?(?:an?\s+)?(claude|codex)?\s*chat\s+(?:in|for|on)\s+(.+?)(?:\s*(?::|\bto\b|\babout\b|\bthat\b|\bwhich\b)\s+(.+))?$/i))) {
+  if ((m = t.match(/^(?:start\s+|new\s+|open\s+)?(?:an?\s+)?(claude|codex|gemini)?\s*chat\s+(?:in|for|on)\s+(.+?)(?:\s*(?::|\bto\b|\babout\b|\bthat\b|\bwhich\b)\s+(.+))?$/i))) {
     const p = projectNamed(m[2]), prov = (m[1] || 'claude').toLowerCase();
-    if (p && (prov === 'claude' ? canLaunch(current()) : codexReady())) out.push({ glyph: prov === 'codex' ? '◆' : '✦', t: `Start a ${prov === 'codex' ? 'Codex' : 'Claude'} chat in ${p.name}${m[3] ? `: ${m[3]}` : ''}`, s: m[3] ? 'it waits in the message box for you to send' : '', run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: prov === 'codex' ? 'codex' : undefined, initialText: m[3] || '' }) });
+    const ready = prov === 'claude' ? canLaunch(current()) : prov === 'gemini' ? geminiReady() : codexReady();
+    if (p && ready) out.push({ glyph: prov === 'codex' ? '◆' : prov === 'gemini' ? '✷' : '✦', t: `Start a ${PROV_NAME[prov]} chat in ${p.name}${m[3] ? `: ${m[3]}` : ''}`, s: m[3] ? 'it waits in the message box for you to send' : '', run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: prov === 'claude' ? undefined : prov, initialText: m[3] || '' }) });
   }
   if ((m = t.match(/^(?:queue|later|do later)\s+(.+?)\s+(?:in|for)\s+(.+?)(?:\s+(tonight|tomorrow(?:\s+morning)?|now|when there'?s room))?$/i))) {
     const p = projectNamed(m[2]);

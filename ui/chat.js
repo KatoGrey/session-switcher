@@ -223,7 +223,7 @@ document.addEventListener('pointerover', e => {
   clearTimeout(aheadTimer);
   if (!el || e.pointerType === 'touch') return;
   const id = el.dataset.chat || el.dataset.navchat;
-  aheadTimer = setTimeout(() => { const [s] = sessionById(id); if (s && !liveOf(id)) prefetchHistory(id, s.provider === 'codex' ? 'codex' : 'claude'); }, 180);
+  aheadTimer = setTimeout(() => { const [s] = sessionById(id); if (s && !liveOf(id)) prefetchHistory(id, ['codex', 'gemini'].includes(s.provider) ? s.provider : 'claude'); }, 180);
 });
 function historyPage(params) {
   const q = params.toString(), was = HistAhead.get(q);
@@ -400,6 +400,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   C.key = info.key; C.info = info; C.sessionId = info.sessionId || sessionId;
   C.provider = info.provider || 'claude';
   if (info.modes) modeOptions(info.modes);
+  if (info.permissionMode) setMode(info.permissionMode);
   if (info.models && info.models.length) C.mi.main = info;
   C.compThread = info.companionThread || null;
   mergeStart(!!info.companionKey);
@@ -407,6 +408,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   if (gen !== C.gen) return;
   setTarget('main', false);
   $c('chat').classList.toggle('codex', C.provider === 'codex');
+  $c('chat').classList.toggle('gemini', C.provider === 'gemini');
   const [s, p] = findSession(C.sessionId);
   noteLastChat(C.sessionId, (s && s.title) || info.title, p && p.name);
   C.title = info.title && info.title !== 'New chat' ? info.title : mode === 'new' ? 'New chat' : mode === 'fork' ? `${s ? s.title : 'Chat'} (copy)` : (s ? s.title : info.title || 'Chat');
@@ -447,9 +449,9 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
   const prov = provider || (known && known.provider) || 'claude';
   // One chat per project: a new Codex chat where a Claude chat is open (or the other way round) adds
   // that one to the open chat instead, unless you'd rather have a separate chat. Esc does neither.
-  if (mode === 'new' && cwd && !separate) {
+  if (mode === 'new' && cwd && !separate && prov !== 'gemini') {
     const same = d => String(d || '').replace(/[\\/]+$/, '').toLowerCase();
-    const here = S.activity.find(x => x.source === 'app' && !x.parentKey && x.phase !== 'ended' && same(x.cwd) === same(cwd) && (x.provider || 'claude') !== prov);
+    const here = S.activity.find(x => x.source === 'app' && !x.parentKey && x.phase !== 'ended' && same(x.cwd) === same(cwd) && (x.provider || 'claude') !== prov && x.provider !== 'gemini');
     if (here) {
       const name = PROV_NAME[prov];
       const join = await window.appConfirm(`Add ${name} to “${here.title || 'the open chat'}”?\n\nThat chat is already open in this project. ${name} joins it and reads everything in it, so the work stays in one place.`, { ok: `Add ${name} to it`, cancel: `Start a separate ${name} chat`, escape: null });
@@ -470,7 +472,7 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
   try {
     info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov });
   } catch (err) {
-    if (err.reason === 'codex-signin' || err.reason === 'codex-missing') { toast(err.message, 9000); return undefined; }
+    if (['codex-signin', 'codex-missing', 'gemini-signin', 'gemini-missing'].includes(err.reason)) { toast(err.message, 9000); return undefined; }
     if (err.reason === 'running') {
       if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return openChatView({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText });
       return watch({ sessionId, source: 'terminal' });
@@ -498,7 +500,7 @@ async function watch({ sessionId, source = 'terminal' }) {
   reset();
   C.watch = { sessionId, source }; C.sessionId = sessionId;
   const [s, p] = findSession(sessionId);
-  C.provider = s && (s.provider === 'codex' || s.provider === 'openclaw') ? s.provider : 'claude';
+  C.provider = s && ['codex', 'gemini', 'openclaw'].includes(s.provider) ? s.provider : 'claude';
   const oc = C.provider === 'openclaw';
   if (oc) PROV_NAME.openclaw = s.agentName || 'OpenClaw';
   $c('chat').classList.toggle('openclaw', oc);
@@ -732,7 +734,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!text) { toast('This reply has no text to copy yet.', 2500); return undefined; }
         return copyText(text, null).then(ok => { if (ok) copiedButton(c); });
       }
-      case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return openChatView({ sessionId: id, mode: 'resume', accountId: provider === 'codex' ? null : accountId, provider }); }
+      case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return openChatView({ sessionId: id, mode: 'resume', accountId: provider === 'claude' ? accountId : null, provider }); }
       case 'fork': { const id = C.watch && C.watch.sessionId; return openChatView({ sessionId: id, mode: 'fork' }); }
       case 'takeover': { const id = C.watch && C.watch.sessionId; return openChatView({ sessionId: id, mode: 'resume' }); }
       case 'more': return showMenu(c, C.watch && C.provider === 'openclaw' ? chatHeadItems() : C.watch ? [

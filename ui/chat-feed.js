@@ -11,7 +11,7 @@ const C = {
   ctx: { main: null, comp: null }, ctxWarned: {},
   // Files put back with Undo, for each one's next catch-up.
 };
-const PROV_NAME = { claude: 'Claude', codex: 'Codex', openclaw: 'OpenClaw' };
+const PROV_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', openclaw: 'OpenClaw' };
 const codexOK = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
 // The other assistant in this chat: Codex in a Claude chat, Claude in a Codex chat.
 const partnerProv = () => (C.provider === 'codex' ? 'claude' : 'codex');
@@ -19,7 +19,7 @@ const partnerOK = () => (partnerProv() === 'codex' ? codexOK() : !!(typeof curre
 const duo = () => !C.watch && (C.provider === 'claude' || C.provider === 'codex') && (partnerOK() || !!C.comp);
 const provFor = src => (src === 'comp' ? partnerProv() : C.provider);
 const keyFor = src => (src === 'comp' ? C.comp && C.comp.key : C.key);
-const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Skip all checks', dontAsk: 'Never ask' };
+const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Skip all checks', dontAsk: 'Never ask', 'accept-edits': 'Edit files', full: 'Full access' };
 const STATE_LABELS = { starting: 'Starting', ready: 'Ready', busy: 'Working', waiting: 'Needs your OK', ended: 'Stopped', watching: 'Watching live', readonly: 'Read-only' };
 const ARTIFACT_RE = /https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+/g;
 const FILE_EXT = 'md|markdown|mdx|txt|json|jsonl|csv|tsv|log|html?|css|js|mjs|cjs|ts|tsx|jsx|py|ya?ml|toml|xml|sh|ps1|bat|cmd|lua|luau|cs|java|go|rs|sql|ini|png|jpe?g|gif|webp|svg|mp4|m4v|webm|mov|mkv|mp3|wav|ogg|m4a|flac|pdf';

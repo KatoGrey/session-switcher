@@ -1,7 +1,7 @@
-# Lighter, and sturdier
+# Gemini joins
 
-- **Easier on your PC.** With Session Switcher open beside another app, its moving decoration (petals, the seal, the pulsing dots) holds still after 15 seconds, and it rests after two minutes left alone. Held still, the window uses about 2% of a CPU core instead of up to a third of one.
-- **Never left behind.** If the app is ended abruptly (a crash, or Task Manager), its background part goes too, and your open chats come back next time.
-- **Sturdier windows.** Links in a popped-out chat open in your browser; opening the app again while it's starting no longer makes two windows; the mini window closes cleanly if the page reloads.
-- **Its settings stay its own.** The chats, terminals and tools it starts no longer inherit its data folder and port, so a test or a second copy run from a chat can't reach into the app you're using.
-- **Mac updates** only use a download whose checksum matches, and clean up after themselves.
+- **Gemini chats, with Gemini 4 Argon.** On your Google AI plan, through Google's Antigravity CLI. Turn it on in Setup → Gemini: it installs the CLI and signs you in with your Google account in a click each.
+- **Its own place.** A violet Gemini group in the side list, **New Gemini chat** on every project, and Ctrl+K understands "gemini chat in my project to …".
+- **Like the others:** replies stream in, its file edits show (with the changes and Undo), its chats keep their history and come back after a restart.
+- **A set mode:** Plan only, Edit files, or Full access. Gemini can't stop and ask you first from here, so pick how much it may do.
+- Gemini takes words, not pictures, for now, and isn't part of the crew (Both) yet.

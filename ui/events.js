@@ -144,6 +144,7 @@ const pageClicks = wrap(async e => {
   if (act === 'new') return reportLaunch(await api('/api/new', { account: a.id, cwd: S.folder }), `Starting a new chat as ${a.name}`);
   if (act === 'newchat') return ChatUI.open({ cwd: S.folder, mode: 'new' });
   if (act === 'newcodex') return ChatUI.open({ cwd: S.folder, mode: 'new', provider: 'codex' });
+  if (act === 'newgemini') return ChatUI.open({ cwd: S.folder, mode: 'new', provider: 'gemini' });
   if (act === 'newcodex-term') return reportLaunch(await api('/api/new', { provider: 'codex', cwd: S.folder }), 'Starting a new Codex chat');
   if (b.dataset.acct && act.startsWith('codex-')) await setCodexActive(b.dataset.acct);
   if (act === 'codex-signin') return codexSignIn();

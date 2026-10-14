@@ -33,6 +33,7 @@ function renderBar() {
   chip.innerHTML = `<span class="ac-ring">${miniDial(a.id, 30)}</span>
     <span class="ac-who"><small>${inChat ? 'This chat runs as' : 'New chats open as'}</small><b>${esc(a.name)}</b></span>
     ${d ? `<span class="ac-sep" aria-hidden="true"></span>${cell('5-hour window', d.fiveHour)}${cell('This week', d.week)}`
+      : a.gemini ? '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Plan</small><b>Google AI</b><i>limits shown in Antigravity</i></span>'
       : a.signedIn ? `<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Usage</small><b>${u && u.error ? 'Unavailable' : 'Checking…'}</b></span>` : '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Account</small><b>Not signed in</b></span>'}`;
   chip.insertAdjacentHTML('beforeend', '<span class="ac-caret" aria-hidden="true">▾</span>');
   chip.title = `${inChat ? 'This chat runs as' : 'New chats open as'} ${a.name}${a.email ? ` (${a.email})` : ''}. ${usageLine(a.id) || ''} Click to see all your accounts.`;
@@ -54,13 +55,13 @@ function renderNav() {
   const item = (x, prov) => {
     const live = x.list.some(c => isRunning(c.id) || liveOf(c.id));
     const here = S.projects.find(q => q.cwd === x.p.cwd)?.sessions || [];
-    const firstProv = ['claude', 'codex', 'openclaw'].find(v => here.some(c => provOf(c) === v)) || 'claude';
+    const firstProv = ['claude', 'codex', 'gemini', 'openclaw'].find(v => here.some(c => provOf(c) === v)) || 'claude';
     const cur = S.view === 'folder' && S.folder === x.p.cwd && (S.prov ? S.prov === prov : !S.pins.has(x.p.cwd) && prov === firstProv);
     return `<button class="nav-i ${prov}" data-view="folder" data-cwd="${esc(x.p.cwd)}" data-prov="${prov}" aria-current="${cur}">
       ${crestHtml(x.p, 20, 'ni-crest')}<span class="ni-t">${esc(x.p.name)}</span>
       ${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}<span class="count">${x.list.length}</span></button>`;
   };
-  const claude = group('claude'), codexF = group('codex'), ocF = group('openclaw');
+  const claude = group('claude'), codexF = group('codex'), gemF = group('gemini'), ocF = group('openclaw');
   // Pinned: projects and favorite chats, at the top.
   const pinnedP = [...S.pins].map(cwd => S.projects.find(p => p.cwd === cwd)).filter(Boolean);
   const pinnedC = [...S.favs].map(id => sessionById(id)).filter(([s2]) => s2);
@@ -69,7 +70,8 @@ function renderNav() {
   const pinnedHtml = pinnedP.length || pinnedC.length ? `${fold('pinned', 'Pinned', pinnedP.length + pinnedC.length, 'pinned')}
     ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd && !S.prov}"><span class="glyph" aria-hidden="true">★</span><span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
       + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${provOf(c) === 'claude' ? '' : provOf(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : isOpenClaw(c) ? ' · OpenClaw' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
-  const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0), nOc = ocF.reduce((n, x) => n + x.list.length, 0);
+  const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0), nOc = ocF.reduce((n, x) => n + x.list.length, 0), nGem = gemF.reduce((n, x) => n + x.list.length, 0);
+  const showGemini = S.gemini && S.gemini.enabled;
   const showCodex = S.codex && S.codex.enabled;
   const fresh = S.projects.filter(p => !hasChats(p));
   const blocked = a && (a.pinnedOrg || a.expectEmail) && !a.lock.ok;
@@ -90,6 +92,8 @@ function renderNav() {
     ${S.navFold.has('claude') ? '' : claude.length ? claude.map(x => item(x, 'claude')).join('') : '<p class="nav-empty">No Claude Code chats yet.</p>'}
     ${showCodex ? `${fold('codex', 'Codex', nCodex, 'codex')}
     ${S.navFold.has('codex') ? '' : codexF.length ? codexF.map(x => item(x, 'codex')).join('') : `<p class="nav-empty">${codexReady() ? 'No Codex chats yet. Start one with “New Codex chat” on the Codex card.' : 'Sign in on the Codex card to use Codex here.'}</p>`}` : ''}
+    ${showGemini ? `${fold('gemini', 'Gemini', nGem, 'gemini')}
+    ${S.navFold.has('gemini') ? '' : gemF.length ? gemF.map(x => item(x, 'gemini')).join('') : `<p class="nav-empty">${geminiReady() ? 'No Gemini chats yet. Start one with “New Gemini chat” on a project.' : 'Finish setting up Gemini in Setup → Gemini.'}</p>`}` : ''}
     ${ocF.length ? `${fold('openclaw', 'OpenClaw', nOc, 'openclaw')}
     ${S.navFold.has('openclaw') ? '' : ocF.map(x => item(x, 'openclaw')).join('')}` : ''}
     <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p>`;

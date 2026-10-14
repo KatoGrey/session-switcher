@@ -24,6 +24,7 @@ const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
 const firewallLib = require('./lib/firewall');
+const geminiLib = require('./lib/gemini');
 const { reviewTarget, fixText, reviewAsk, parseFindings, mergeFindings } = require('./lib/review');
 const { createReviewLoop } = require('./lib/reviewloop');
 const rulesLib = require('./lib/rules');
@@ -189,6 +190,7 @@ const chats = chatLib.createChatManager({
   onSession: chat => {
     // A side question is set aside as done as soon as it has an id: it never sits in the lists.
     if (chat.aside && chat.sessionId) chatPrefs.setDone(chat.sessionId, true);
+    if (chat.provider === 'gemini') { gemini.noteChat(chat.sessionId, { cwd: chat.cwd, title: chat.title }); geminiRows.at = 0; }
     if (chat.provider !== 'codex') sessions.recordLaunch(chat.sessionId, chat.account, chat.fork ? 'fork' : 'app');
     // Choices made before the chat had an id, a partner paired before then, and when it last caught
     // up on that partner, are kept now.
@@ -256,6 +258,21 @@ let codexTimer = null;
 const codexOnChange = () => { if (codexTimer) return; codexTimer = setTimeout(() => { codexTimer = null; broadcast('accounts'); }, 300); };
 const makeCodex = account => codexLib.createCodex({ getConfig: () => config(), log, usage, chats, onChange: codexOnChange, account });
 const codex = makeCodex(codexLib.ACCOUNT);
+// Gemini, through Google's Antigravity CLI (lib/gemini.js).
+const gemini = geminiLib.createGemini({ chats, getConfig: () => config(), dataDir: DATA_DIR, log });
+let geminiRows = { at: 0, list: [] };
+const geminiSessions = () => {
+  if (!config().gemini.enabled) return [];
+  if (Date.now() - geminiRows.at > 5000) geminiRows = { at: Date.now(), list: gemini.list().filter(r => r.cwd).map(r => ({ ...r, autoTitle: r.title, lastPrompt: null, branch: null, active: false, lastOpened: sessions.lastOpened(r.id) })) };
+  return geminiRows.list;
+};
+const isGeminiId = id => !!id && config().gemini.enabled && gemini.known(String(id));
+function requireGeminiReady() {
+  const st = gemini.publicState();
+  if (!st.enabled) throw fail(409, 'Gemini is turned off in Setup.');
+  if (st.installed === false) throw fail(409, 'The Antigravity CLI isn’t installed yet. Open Setup → Gemini to install it.', 'gemini-missing');
+  if (st.checked && !st.signedIn) throw fail(409, 'Sign in to Gemini first: Setup → Gemini → Sign in.', 'gemini-signin');
+}
 const codexExtra = new Map(); // id -> instance, for config().codexAccounts
 function codexAll() {
   const want = (config().codexAccounts || []).filter(x => x && /^codex-[a-z0-9-]{1,30}$/.test(x.id));
@@ -332,11 +349,12 @@ function mergeSessions() {
   const base = sessions.scan();
   const cx = codexSessions();
   const oc = openclawSessions();
+  const gm = geminiSessions();
   const extra = projectInfo.added();
-  if (!cx.length && !oc.length && !extra.length) return base;
+  if (!cx.length && !oc.length && !gm.length && !extra.length) return base;
   const projects = base.projects.map(p => ({ ...p, sessions: p.sessions.slice() }));
   const byCwd = new Map(projects.map(p => [normCwd(p.cwd), p]));
-  for (const t of [...cx, ...oc]) {
+  for (const t of [...cx, ...oc, ...gm]) {
     if (!t.cwd) continue;
     let p = byCwd.get(normCwd(t.cwd));
     if (!p) {
@@ -598,6 +616,30 @@ async function openChatNow(c, body) {
   return info;
 }
 async function openChatInner(c, body) {
+  if (body.provider === 'gemini' || (body.mode !== 'new' && isGeminiId(body.sessionId))) {
+    if (!gemini.publicState().checked) await gemini.refreshAccount().catch(() => null);
+    requireGeminiReady();
+    const mode = ['resume', 'new'].includes(body.mode) ? body.mode : 'resume';
+    let cwd, sessionId = null, title = null;
+    if (mode === 'resume') {
+      const row = gemini.list().find(r => r.id === body.sessionId);
+      if (!row || !row.cwd) throw fail(404, 'That Gemini chat isn’t in the list any more.');
+      if (!fs.existsSync(row.cwd)) throw fail(400, `The folder ${row.cwd} no longer exists, so this chat can’t run there.`);
+      cwd = row.cwd; sessionId = row.id; title = row.title;
+      const live = chats.bySession(sessionId); if (live) return attachedInfo(live);
+    } else {
+      const p = projectAt(body.cwd) || raceCopyAt(body.cwd);
+      if (!p) throw fail(404, 'That folder isn’t in the list.');
+      if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
+      cwd = p.cwd;
+    }
+    const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
+    const pref = chatPrefs.get({ sessionId, cwd, provider: 'gemini' });
+    const chat = gemini.open({ cfg: c, cwd, sessionId, mode: body.permissionMode || pref.mode, model: body.model || pref.model || null, title: title || 'New Gemini chat', folder });
+    if (sessionId) sessions.recordLaunch(sessionId, geminiLib.ACCOUNT, 'app');
+    log(`Gemini chat window: ${mode} ${sessionId || '(new)'}`);
+    return { ...chat.info(), attached: false, remembered: !!pref.mode };
+  }
   if (body.provider === 'codex' || (body.mode !== 'new' && isCodexId(body.sessionId))) {
     const inst = await codexChecked(body.mode === 'new' ? (codexById(body.account) || codexActive()) : codexForThread(body.sessionId, body.account));
     requireCodexSignedIn(inst);
@@ -1031,6 +1073,7 @@ function stateFor() {
     dryRun: sys.DRY_RUN, appVersion: APP_VERSION, shell: SHELL, firstRun: FIRST_RUN, platform: process.platform,
     index: sessions.progress,
     codex: codexPublic(),
+    gemini: gemini.publicState(),
     reopen: restarted ? [] : toReopen(),
     restart: restartState(), update: newBuildReady(), pid: process.pid,
   };
@@ -1040,7 +1083,7 @@ function stateFor() {
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/claude/install', '/api/phone/firewall', '/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send']);
+const LOCAL_ONLY = new Set(['/api/gemini/install', '/api/gemini/login', '/api/gemini/settings', '/api/claude/install', '/api/phone/firewall', '/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
@@ -1074,6 +1117,7 @@ async function handleApi(req, res, url, remote = false) {
     const running = chats.bySession(id);
     // An OpenClaw agent's session: read from its own store.
     if (q.get('provider') === 'openclaw') return send(res, 200, openclaw.history(id));
+    if (q.get('provider') === 'gemini' || (running && running.provider === 'gemini') || isGeminiId(id)) return send(res, 200, gemini.history(id, q.get('until') || null));
     // Codex: by its id, or because the page says so (a brand-new thread isn't in Codex's list yet).
     if (isCodexId(id) || q.get('provider') === 'codex' || (running && running.provider === 'codex')) return send(res, 200, await codex.history(id, q.get('cursor'), q.get('until') || null));
     let file;
@@ -1494,6 +1538,27 @@ async function handleApi(req, res, url, remote = false) {
       await refreshAllCodexUsage();
       codexSessions(0);
       return send(res, 200, { codex: codexPublic(), usage: usage.snapshot() });
+    }
+    case '/api/gemini/settings': {
+      if (typeof body.enabled === 'boolean') c.gemini.enabled = body.enabled;
+      if (body.command !== undefined) {
+        const cmd = String(body.command).trim();
+        if (!cmd || /["\r\n%&|<>^]/.test(cmd)) throw fail(400, 'Enter the full path to agy.exe (or just “agy”).');
+        c.gemini.command = cmd;
+      }
+      save();
+      geminiRows.at = 0;
+      const st = c.gemini.enabled ? await gemini.refreshAccount() : gemini.publicState();
+      broadcast('accounts'); broadcast('sessions');
+      return send(res, 200, { gemini: st });
+    }
+    case '/api/gemini/check': return send(res, 200, { gemini: await gemini.refreshAccount() });
+    case '/api/gemini/login': return send(res, 200, await gemini.login(c));
+    case '/api/gemini/install': {
+      const r = await sys.runInTerminal(c, os.homedir(), 'Install the Antigravity CLI', sys.IS_WIN
+        ? '@echo off\r\ntitle Install the Antigravity CLI\r\necho Installing Google\'s Antigravity CLI (agy)...\r\npowershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://antigravity.google/cli/install.ps1 | iex"\r\necho.\r\necho Done. Close this window and click Check again in Session Switcher.\r\npause\r\n'
+        : '#!/bin/sh\necho "Installing Google\'s Antigravity CLI (agy)..."\ncurl -fsSL https://antigravity.google/cli/install.sh | bash\necho\necho "Done. Close this window and click Check again in Session Switcher."\n');
+      return send(res, 200, r);
     }
     case '/api/codex/settings': {
       if (typeof body.enabled === 'boolean') c.codex.enabled = body.enabled;
@@ -2502,6 +2567,7 @@ if (restartFrom && process.send) process.send({ type: restartLib.READY, pid: pro
   const accountsIn = pollAccounts(0);
   accountsIn.then(() => setTimeout(() => refreshAllUsage(0), 1500));
   if (restarted && restarted.chats.length) accountsIn.then(() => reopenChats(restarted.chats, 'after the restart')).catch(err => log(`Couldn’t reopen chats after the restart: ${err.message}`));
+  if (config().gemini.enabled) setTimeout(() => { gemini.refreshAccount().then(() => broadcast('accounts')).catch(() => {}); }, 3000);
   if (config().codex.enabled) setTimeout(() => {
     codex.refreshAccount().then(() => codexSessions(0)).catch(() => {});
     for (const x of codexAll()) x.refreshAccount().then(st => { if (st.signedIn) x.refreshUsage(); }).catch(() => {});

@@ -296,6 +296,24 @@ Codex works with more than one ChatGPT account, and with Ollama:
 - Each account has its own usage dial, in a Codex shade of its own.
 - The Ollama account's settings are a copy of `~/.codex/ollama-launch.config.toml` (what `ollama launch codex` writes), in `~/.codex-ollama/config.toml`. Edit that copy to change its default model, or delete it and Session Switcher makes a fresh copy the next time it starts Codex for Ollama.
 
+## Gemini (Google)
+
+Gemini chats, including **Gemini 4 Argon**, sit next to Claude and Codex, on your Google AI plan (Pro or Ultra; Argon in Antigravity needs Ultra for now). They run through Google's **Antigravity CLI** (`agy`), signed in with your Google account; Session Switcher never sees your password.
+
+1. Setup → **Gemini** → **Use Gemini too**.
+2. Not installed yet? **Install the Antigravity CLI** (a terminal runs Google's installer). Then **Sign in** (a terminal opens Antigravity; sign in in the browser, then type `/quit`). **Check again** shows it's signed in, and whether Gemini 4 Argon is offered on your plan.
+3. On a project, **New Gemini chat** (or Ctrl+K: "gemini chat in starfall to write the lore book").
+
+Gemini's chats have their own group in the side list, in violet, and open with their history (Antigravity keeps each conversation in `~/.gemini/antigravity-cli`). Pick the model with the model pill: Argon Low, Medium or High, Flash, and the rest your plan offers.
+
+What's different from Claude and Codex, because of what the Antigravity CLI allows another app to do:
+
+- **A set mode instead of asking:** it can't stop mid-reply and ask you. **Plan only** changes nothing; **Edit files** lets it change files but not run commands (a refused command is said in the chat); **Full access** lets it run commands too.
+- **Words, not pictures:** a picture you attach stays in the chat, but isn't sent to Gemini.
+- **Stop** ends the reply; your next message carries on with the same conversation.
+- **Not in the crew yet:** a Gemini chat is its own chat; it doesn't join a Claude or Codex chat with Both.
+- **Its usage isn't shown here:** Antigravity's `/usage` shows your plan's limits.
+
 ## OpenClaw agents
 
 If [OpenClaw](https://openclaw.ai) is installed, its agents' sessions (Discord channels, cron runs, subagents, voice rooms and direct chats) are listed with your other chats:

@@ -45,7 +45,7 @@ function renderLive(force) {
 
 function renderRecent() {
   const every = allSessions().sort((x, y) => y[0].updated - x[0].updated);
-  const n = { claude: 0, codex: 0, openclaw: 0 }; for (const [x] of every) n[provOf(x)]++;
+  const n = { claude: 0, codex: 0, gemini: 0, openclaw: 0 }; for (const [x] of every) n[provOf(x)]++;
   const kinds = Object.keys(n).filter(k => n[k]);
   const f = kinds.length > 1 && kinds.includes(S.recentProv) ? S.recentProv : 'all';
   const all = f === 'all' ? every : every.filter(([x]) => provOf(x) === f);
@@ -87,7 +87,7 @@ function renderFolder() {
   const prov = S.prov;
   const list = prov ? p.sessions.filter(x => provOf(x) === prov) : p.sessions;
   // Looking at one kind of chat: a link to the others here (Claude Code's first).
-  const otherProv = prov ? ['claude', 'codex', 'openclaw'].find(v => v !== prov && p.sessions.some(x => provOf(x) === v)) : null;
+  const otherProv = prov ? ['claude', 'codex', 'gemini', 'openclaw'].find(v => v !== prov && p.sessions.some(x => provOf(x) === v)) : null;
   const other = otherProv ? p.sessions.filter(x => provOf(x) === otherProv).length : 0;
   const otherName = otherProv ? PROV_TITLE[otherProv] : '', otherWord = otherProv === 'openclaw' ? 'session' : 'chat';
   const today = midnight();
@@ -101,7 +101,7 @@ function renderFolder() {
       : art && codexReady() ? `<button class="wp-hint" data-prompt="${esc(art.id)}">Make a cover image with Codex</button>` : '')
     : '';
   const heroH = `<div class="wp-art" style="view-transition-name:world-banner">${worldArt(p, w, '', false)}</div><span class="wp-shade" aria-hidden="true"></span>
-    <div class="wp-in"><p class="eyebrow ${prov || ''}">${prov === 'codex' ? 'Codex chats in this project' : prov === 'claude' ? 'Claude Code chats in this project' : prov === 'openclaw' ? 'OpenClaw sessions in this project' : 'Project'}</p><h1>${esc(p.name)}</h1></div>${hint}`;
+    <div class="wp-in"><p class="eyebrow ${prov || ''}">${prov === 'codex' ? 'Codex chats in this project' : prov === 'gemini' ? 'Gemini chats in this project' : prov === 'claude' ? 'Claude Code chats in this project' : prov === 'openclaw' ? 'OpenClaw sessions in this project' : 'Project'}</p><h1>${esc(p.name)}</h1></div>${hint}`;
   const subH = `${briefHtml(p)}<div class="wp-where"><p class="f-path">${esc(p.cwd)}${p.exists ? '' : ' (this folder no longer exists)'}</p>
       <p class="f-meta">${esc(meta[0].toUpperCase() + meta.slice(1))}.${esc(todayLine)}${other ? ` <button class="linkish" data-view="folder" data-cwd="${esc(p.cwd)}" data-prov="${otherProv}">${other === 1 ? `1 ${otherName} ${otherWord}` : `${other} ${otherName} ${otherWord}s`} here too</button>` : ''}</p></div>
     <div class="wp-tools"><button class="btn quiet sm" data-project-crest="${esc(p.cwd)}" ${p.exists ? '' : 'disabled'}>Project crest…</button><button class="btn quiet sm" data-act="browse" ${p.exists ? '' : 'disabled'}>Browse files</button><button class="btn quiet sm" data-act="reveal" ${p.exists ? '' : 'disabled'}>Open folder</button><button class="btn quiet sm" data-act="pin">${pinned ? 'Unpin from the sidebar' : 'Pin to the sidebar'}</button></div>`;
@@ -110,9 +110,11 @@ function renderFolder() {
   const cxWhy = S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first';
   const claudeBtn = `<button class="btn ${prov === 'codex' ? '' : 'prime'}" data-act="${inApp() ? 'newchat' : 'new'}" ${off ? `disabled title="${esc(a.lockMessage || `Sign in to ${a.name} first`)}"` : `title="As ${esc(a.name)}"`}>New Claude chat</button>`;
   const codexBtn = S.codex && S.codex.enabled ? `<button class="btn ${prov === 'codex' ? 'prime' : 'codexbtn'}" data-act="${inApp() ? 'newcodex' : 'newcodex-term'}" ${cxOff ? `disabled title="${cxWhy}"` : ''}>New Codex chat</button>` : '';
+  const gemOff = !geminiReady() || !p.exists;
+  const geminiBtn = S.gemini && S.gemini.enabled ? `<button class="btn ${prov === 'gemini' ? 'prime' : 'geminibtn'}" data-act="newgemini" ${gemOff ? `disabled title="${S.gemini.installed === false ? 'Install the Antigravity CLI first (Setup → Gemini)' : 'Sign in to Gemini first (Setup → Gemini)'}"` : ''}>New Gemini chat</button>` : '';
   const tab = (id, label, n) => `<button role="tab" class="wt" id="wt-${id}" data-wtab="${id}" aria-controls="wpBody" aria-selected="${S.worldTab === id}" tabindex="${S.worldTab === id ? 0 : -1}">${label}<span class="count">${n}</span></button>`;
   const barH = `<div class="wtabs" role="tablist" aria-label="${esc(p.name)}">${tab('chats', 'Chats', list.length)}${tab('docs', 'Documents', w ? `${w.docs.length}${w.docs.length >= 200 ? '+' : ''}` : '·')}${tab('gallery', 'Gallery', w ? `${w.images.length}${w.images.length >= 300 ? '+' : ''}` : '·')}</div>
-    <div class="wp-act"><button class="btn quiet" data-act="world-prompt" aria-haspopup="menu" aria-expanded="false" ${p.exists ? '' : 'disabled'}><span class="glyph" aria-hidden="true">❡</span>Start with a prompt</button>${prov === 'codex' ? codexBtn + claudeBtn : claudeBtn + codexBtn}<button class="icon" data-act="world-more" aria-haspopup="menu" aria-expanded="false" aria-label="More for this world">${ICON.more}</button></div>`;
+    <div class="wp-act"><button class="btn quiet" data-act="world-prompt" aria-haspopup="menu" aria-expanded="false" ${p.exists ? '' : 'disabled'}><span class="glyph" aria-hidden="true">❡</span>Start with a prompt</button>${prov === 'codex' ? codexBtn + claudeBtn + geminiBtn : prov === 'gemini' ? geminiBtn + claudeBtn + codexBtn : claudeBtn + codexBtn + geminiBtn}<button class="icon" data-act="world-more" aria-haspopup="menu" aria-expanded="false" aria-label="More for this world">${ICON.more}</button></div>`;
   const page = $('page');
   if (page.dataset.worldPage !== p.cwd || !$('wpHero')) {
     page.dataset.worldPage = p.cwd;
@@ -138,7 +140,7 @@ function renderWorldBody() {
   const set = h => { if (fresh || box._h !== h) { box.innerHTML = h; box._h = h; } };
   if (S.worldTab === 'chats') {
     const prov = S.prov;
-    const n = { claude: 0, codex: 0, openclaw: 0 }; for (const x of p.sessions) n[provOf(x)]++;
+    const n = { claude: 0, codex: 0, gemini: 0, openclaw: 0 }; for (const x of p.sessions) n[provOf(x)]++;
     const kinds = Object.keys(n).filter(k => n[k]);
     const list = prov ? p.sessions.filter(x => provOf(x) === prov) : p.sessions;
     const seg = kinds.length > 1 ? `<div class="seg provseg" role="group" aria-label="Show">${[['all', 'All', p.sessions.length], ...kinds.map(k => [k, PROV_TITLE[k], n[k]])].map(([v, l, n]) => `<button class="${(prov || 'all') === v ? 'on' : ''}" data-wprov="${v}" aria-pressed="${(prov || 'all') === v}">${l} <span class="count">${n}</span></button>`).join('')}</div>` : '';
@@ -221,7 +223,7 @@ function go(view, folder, prov) {
   if (view === 'folder' && folder !== undefined && folder !== S.folder) S.worldTab = 'chats';
   // The state changes now; the page redraws inside the transition.
   S.view = view; if (folder !== undefined) S.folder = folder;
-  if (view === 'folder') S.prov = prov === 'claude' || prov === 'codex' ? prov : null;
+  if (view === 'folder') S.prov = ['claude', 'codex', 'gemini', 'openclaw'].includes(prov) ? prov : null;
   const run = () => {
     document.body.classList.remove('nav-open');
     if (window.ChatUI && ChatUI.isOpen()) ChatUI.close(true);

@@ -1667,6 +1667,42 @@ module.exports = [
     },
   },
   {
+    name: 'gemini',
+    // Gemini as a third assistant: its own group in the side list, its own button on a project, its
+    // chats open with their history, its modes and models; Setup says how it's set up.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ gemini: true, seen: (p, u, body) => calls.push([p, body]) });
+      await sleep(600);
+      const nav = await b.eval(`const h = document.querySelector('.nav-h.gemini'); return h && { text: h.textContent.replace(/\\s+/g, ' ').trim(), items: [...document.querySelectorAll('.nav-i.gemini')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
+      t.check('Gemini has its own group in the side list, with its project', !!nav && /Gemini/.test(nav.text) && nav.items.some(x => /Starfall Tavern/.test(x)), nav);
+      await b.clickOn('.nav-i.gemini'); await sleep(900);
+      const page = await b.eval(`return { eyebrow: document.querySelector('.wp-in .eyebrow')?.textContent, btn: !!document.querySelector('[data-act="newgemini"]'), rows: [...document.querySelectorAll('#wbList .rows > li')].length }`);
+      t.check('its project page lists the Gemini chats, with a New Gemini chat button', /Gemini chats in this project/.test(page.eyebrow || '') && page.btn && page.rows === 1, page);
+      await t.shot(b, 'project');
+      // The chat: its history, its name and color, its modes and models.
+      await b.eval(`ChatUI.open({ sessionId: 'b158a376-5571-4317-a62a-61b783c0218a' }); return 1`); await sleep(2000);
+      const chat = await b.eval(`return { gem: document.getElementById('chat').classList.contains('gemini'), who: document.querySelector('#cFeed .turn .who-n')?.textContent, text: document.querySelector('#cFeed .turn .md')?.textContent.slice(0, 60), tool: document.querySelector('#cFeed .turn .tool, #cFeed .turn .step')?.textContent.replace(/\\s+/g, ' ').slice(0, 80), modes: [...document.getElementById('cMode').options].map(o => o.textContent), mode: document.getElementById('cMode').value }`);
+      t.check('a Gemini chat opens with its history, under Gemini’s name and color', chat.gem && chat.who === 'Gemini' && /Before the roads had names/.test(chat.text || ''), chat);
+      t.check('with Gemini’s own modes: Plan only, Edit files, Full access', JSON.stringify(chat.modes) === JSON.stringify(['Plan only', 'Edit files', 'Full access']) && chat.mode === 'accept-edits', chat);
+      t.check('it asked for the history as Gemini’s', calls.some(([p]) => p === '/api/chat/history'));
+      await t.shot(b, 'chat');
+      // A new Gemini chat from the project page.
+      await b.eval(`ChatUI.close(); go('folder', S.projects.find(p => p.name === 'Starfall Tavern').cwd); return 1`); await sleep(900);
+      await b.clickOn('[data-act="newgemini"]'); await sleep(1200);
+      t.check('New Gemini chat opens a Gemini chat in that project', calls.some(([p, body]) => p === '/api/chat/open' && body.provider === 'gemini' && body.mode === 'new' && /Starfall Tavern/.test(body.cwd || '')));
+      // Plain words in Ctrl+K.
+      const say = await b.eval(`ChatUI.close(); openPalette('gemini chat in starfall to write the lore book'); await new Promise(r => setTimeout(r, 250)); const t = document.getElementById('palette').textContent; closePalette(); return t`);
+      t.check('Ctrl+K: “gemini chat in starfall to …” offers exactly that', /Start a Gemini chat in Starfall Tavern: write the lore book/.test(say), say.slice(0, 200));
+      // Setup → Gemini.
+      await b.eval(`ChatUI.close(); openSetupAt('st-gemini'); return 1`); await sleep(1200);
+      const setup = await b.eval(`return document.getElementById('st-gemini')?.nextElementSibling?.textContent.replace(/\\s+/g, ' ') || ''`);
+      t.check('Setup → Gemini says it’s signed in, with Gemini 4 Argon, and what the modes mean', /Use Gemini too/.test(setup) && /Signed in/.test(setup) && /Gemini 4 Argon/.test(setup) && /Edit files/.test(setup), setup.slice(0, 300));
+      await b.eval(`document.getElementById('st-gemini').scrollIntoView(); return 1`); await sleep(200);
+      await t.shot(b, 'setup');
+    },
+  },
+  {
     name: 'stays light',
     // Beside another app (visible, not in use), the looping decoration holds still after a few
     // seconds, without dimming; back in it, it moves again.
