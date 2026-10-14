@@ -1661,7 +1661,7 @@ module.exports = [
     async run(t) {
       const b = await t.open();
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
-      const r = await b.eval(`C.comp = null; C.compPending = [{ kind: 'user', at: new Date().toISOString() }]; let err = null; try { await ensureCompanion(); } catch (e) { err = e.message; } return { err, comp: !!C.comp, models: !!(C.mi.comp && C.mi.comp.models && C.mi.comp.models.length) }`);
+      const r = await b.eval(`C.comps = {}; C.comp = null; C.compPending = [{ kind: 'user', at: new Date().toISOString() }]; let err = null; try { await ensureCompanion(); } catch (e) { err = e.message; } return { err, comp: !!C.comp, models: !!(C.mi.comp && C.mi.comp.models && C.mi.comp.models.length) }`);
       t.check('Codex starts even while its earlier messages are being paged', !r.err && r.comp, r);
       t.check('and its models are listed', r.models, r);
     },
@@ -1691,20 +1691,24 @@ module.exports = [
       await b.eval(`ChatUI.close(); go('folder', S.projects.find(p => p.name === 'Starfall Tavern').cwd); return 1`); await sleep(900);
       await b.clickOn('[data-act="newgemini"]'); await sleep(1200);
       t.check('New Gemini chat opens a Gemini chat in that project', calls.some(([p, body]) => p === '/api/chat/open' && body.provider === 'gemini' && body.mode === 'new' && /Starfall Tavern/.test(body.cwd || '')));
-      // Gemini as a Claude chat's partner, instead of Codex: from the partner's pill, or with @gemini.
+      // All three in one chat: a Claude chat shows a pill for Codex and one for Gemini, and All.
       await b.eval(`ChatUI.close(); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
-      const before = await b.eval(`return { mate: partnerProv() }`);
-      await b.click(...(await b.eval(`const r = document.querySelector('[data-crew="comp"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]`)), 'right'); await sleep(400);
-      const menu = await b.eval(`return [...document.querySelectorAll('#menu button')].map(x => x.textContent.replace(/\\s+/g, ' ').trim())`);
-      t.check('the partner’s pill offers Gemini instead (Codex is the partner now)', before.mate === 'codex' && menu.some(x => /Work with Gemini instead/.test(x)), { before, menu });
-      await b.eval(`[...document.querySelectorAll('#menu button')].find(x => /Work with Gemini instead/.test(x.textContent)).click(); return 1`); await sleep(1200);
-      const after = await b.eval(`return { mate: partnerProv(), pill: document.querySelector('[data-crew="comp"]')?.textContent.replace(/\\s+/g, ' ').trim(), hint: document.getElementById('cHint').textContent }`);
-      t.check('switched: Gemini is the partner, in its pill and the @ hint', after.mate === 'gemini' && /Gemini/.test(after.pill || '') && /@gemini/.test(after.hint), after);
-      t.check('and it was started as Gemini', calls.some(([p, body]) => p === '/api/chat/companion' && body.kind === 'gemini'));
-      await t.shot(b, 'partner');
-      await b.eval(`const box = document.getElementById('cText'); box.value = '@gemini read the bard’s lines aloud in your head'; box.dispatchEvent(new Event('input', { bubbles: true })); return 1`);
-      await b.clickOn('#cSend'); await sleep(800);
-      t.check('“@gemini …” goes to Gemini as the partner', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'partner' && body.kind === 'gemini' && /read the bard/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, b2]) => b2));
+      const pills = await b.eval(`return { kinds: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), all: document.querySelector('[data-crew="both"] .crew-n')?.textContent, hint: document.getElementById('cHint').textContent }`);
+      t.check('a Claude chat has a pill for Codex and one for Gemini, and All', JSON.stringify(pills.kinds) === '["codex","gemini"]' && pills.all === 'All' && /@codex/.test(pills.hint) && /@gemini/.test(pills.hint) && /@all/.test(pills.hint), pills);
+      await b.clickOn('[data-crew="comp"][data-kind="gemini"]'); await sleep(400);
+      const picked = await b.eval(`return { target: C.target, mate: partnerProv(), on: [...document.querySelectorAll('[data-crew="comp"].on')].map(x => x.dataset.kind), ph: document.getElementById('cText').placeholder }`);
+      t.check('clicking Gemini’s pill writes to Gemini (only its pill lit)', picked.target === 'comp' && picked.mate === 'gemini' && JSON.stringify(picked.on) === '["gemini"]' && /Gemini/.test(picked.ph), picked);
+      await t.shot(b, 'crew');
+      const sendText = async text => { await b.eval(`const box = document.getElementById('cText'); box.value = ${JSON.stringify(text)}; box.dispatchEvent(new Event('input', { bubbles: true })); return 1`); await b.clickOn('#cSend'); await sleep(900); };
+      await sendText('read the bard’s lines aloud in your head');
+      t.check('a message from Gemini’s pill goes to Gemini', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'partner' && body.kind === 'gemini' && /read the bard/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      t.check('and Gemini joined as Gemini', calls.some(([p, body]) => p === '/api/chat/companion' && body.kind === 'gemini'));
+      await sendText('@codex check the rhyme scheme');
+      t.check('“@codex …” goes to Codex, from the same chat', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'partner' && body.kind === 'codex' && /rhyme scheme/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      await sendText('@all one verse each');
+      t.check('“@all …” goes round: Claude, then Codex and Gemini', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'all' && JSON.stringify(body.kinds) === '["codex","gemini"]' && /one verse each/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      const kept = await b.eval(`return Object.keys(C.comps).filter(k => C.comps[k] && !C.comps[k].ended)`);
+      t.check('both partners stay in the chat (neither pushed the other out)', kept.includes('gemini') && kept.includes('codex'), kept);
       // Plain words in Ctrl+K.
       const say = await b.eval(`ChatUI.close(); openPalette('gemini chat in starfall to write the lore book'); await new Promise(r => setTimeout(r, 250)); const t = document.getElementById('palette').textContent; closePalette(); return t`);
       t.check('Ctrl+K: “gemini chat in starfall to …” offers exactly that', /Start a Gemini chat in Starfall Tavern: write the lore book/.test(say), say.slice(0, 200));

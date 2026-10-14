@@ -327,7 +327,7 @@ async function sendMessage() {
   // /model and /effort switch without sending.
   const sw = text.trim().match(/^\/(model|effort)\s+(.{1,60})$/i);
   if (sw && !C.attachments.length) { clear(); await quickSwitch(sw[1].toLowerCase(), sw[2].trim()); return; }
-  // "@codex …", "@claude …" or "@both …" sends just this message to that one (or both).
+  // "@codex …", "@gemini …", "@claude …" sends just this message to that one; "@both" or "@all" to all of them.
   let target = duo() && (C.target === 'comp' || C.target === 'both' || C.target === 'plan') ? C.target : 'main';
   // "/btw …": a side question, beside the chat (ui/chat-aside.js).
   const btw = text.match(/^\s*\/btw\s+/i);
@@ -335,12 +335,12 @@ async function sendMessage() {
   // "/plan …": plan first (one drafts, the other checks, you pick who builds).
   const pl = duo() && text.match(/^\s*\/plan\s+/i);
   if (pl) { target = 'plan'; text = text.slice(pl[0].length); }
-  const at = duo() && text.match(/^\s*@(codex|claude|gemini|both)\b[:,]?\s*/i);
+  const at = duo() && text.match(/^\s*@(codex|claude|gemini|both|all)\b[:,]?\s*/i);
   if (at) {
-    const w = at[1].toLowerCase();
-    // @ another assistant than the partner: it becomes the partner (if it's set up).
-    if (w !== 'both' && w !== C.provider && w !== partnerProv() && kindReady(w)) await switchPartner(w, true);
-    target = w === 'both' ? 'both' : w === C.provider ? 'main' : 'comp'; text = text.slice(at[0].length);
+    const w = at[1].toLowerCase(), all = w === 'both' || w === 'all';
+    // @ another of the assistants: it's the one you write to (it joins, if it isn't in yet).
+    if (!all && w !== C.provider && kindReady(w)) focusMate(w);
+    target = all ? 'both' : w === C.provider ? 'main' : 'comp'; text = text.slice(at[0].length);
   }
   if (target !== 'comp' && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
   // Writing to one while the other is mid-reply: both would work at once, maybe on the same files.
@@ -365,7 +365,7 @@ async function sendMessage() {
     if (lost.length) { toast(`“${lost[0]}” isn’t linked any more. Type @ and pick it again, so its messages come along.`, 6000); return; }
     speedMark('reply');
     let r;
-    try { r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' || target === 'plan' ? target : 'partner', account: S.acct, kind: partnerProv() }), ...(after ? { after: true } : {}) }); } catch (err) {
+    try { r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' && crewKinds().length > 1 ? 'all' : target === 'both' || target === 'plan' ? target : 'partner', account: S.acct, kind: partnerProv(), ...(target === 'both' ? { kinds: crewKinds() } : {}) }), ...(after ? { after: true } : {}) }); } catch (err) {
       // No connection (the phone left the Wi-Fi): a plain message waits here and goes when it's back.
       if (!err.offline || images.length || target !== 'main' || !C.key) throw err;
       outboxAdd({ key: C.key, sessionId: C.sessionId, title: C.info && C.info.title, text });
@@ -374,7 +374,8 @@ async function sendMessage() {
     }
     clear();
     // Follow the partner's replies here (it may only just have started).
-    if (target !== 'main' && !(C.comp && !C.comp.ended && (!r || !r.key || C.comp.key === r.key))) ensureCompanion().catch(() => {});
+    if (target === 'both') for (const k of crewKinds()) ensureCompanion(k).catch(() => {});
+    else if (target !== 'main' && !(C.comp && !C.comp.ended && (!r || !r.key || C.comp.key === r.key))) ensureCompanion().catch(() => {});
   } finally { $c('cSend').disabled = false; $c('cText').focus(); }
 }
 // Written while offline: kept on this device and sent, in order, as soon as the PC can be reached.

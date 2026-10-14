@@ -308,10 +308,10 @@ Gemini's chats have their own group in the side list, in violet, and open with t
 
 What's different from Claude and Codex, because of what the Antigravity CLI allows another app to do:
 
-- **A set mode instead of asking:** it can't stop mid-reply and ask you. **Plan only** changes nothing; **Edit files** lets it change files but not run commands (a refused command is said in the chat); **Full access** lets it run commands too.
-- **Words, not pictures:** a picture you attach stays in the chat, but isn't sent to Gemini.
+- **Modes:** **Plan only** changes nothing; **Edit files** lets it change files, and a command it wants to run becomes an approval card once its reply ends (Gemini can't pause mid-reply to ask): **Allow** runs it (Gemini is told it may, and carries on), **Always** switches the chat to Full access; **Full access** runs commands without asking.
+- **Pictures:** one you attach or paste is saved to a temp folder and Gemini reads it from there (it's told where), so it can describe, compare or work from it.
 - **Stop** ends the reply; your next message carries on with the same conversation.
-- **Not in the crew yet:** a Gemini chat is its own chat; it doesn't join a Claude or Codex chat with Both.
+- **In the crew:** Gemini can join a Claude or Codex chat (or have them join its own), race or split the work with either, and take queued tasks. See [Claude, Codex and Gemini in one chat](#claude-codex-and-gemini-in-one-chat).
 - **Its usage isn't shown here:** Antigravity's `/usage` shows your plan's limits.
 
 ## OpenClaw agents
@@ -327,25 +327,26 @@ If [OpenClaw](https://openclaw.ai) is installed, its agents' sessions (Discord c
 - **Archive:** the ⋯ menu on an OpenClaw row can **Archive in OpenClaw**, which runs `openclaw sessions archive` for that session after a confirming dialog. What's archived keeps its transcript; nothing is deleted here or there.
 - **Without OpenClaw** nothing changes: the list is empty, and the app checks for it again every ten minutes.
 
-## Claude and Codex in one chat
+## Claude, Codex and Gemini in one chat
 
-Claude and Codex work in the same chat, either way round: bring Codex into a Claude chat (to make images for a project while Claude does the main work, say), or Claude into a Codex chat. One window, one conversation, both reading each other.
+Claude, Codex and Gemini work in the same chat, any way round: bring Codex into a Claude chat (to make images for a project while Claude does the main work, say), Gemini too (for a draft or a second opinion), or Claude into a Codex chat. One window, one conversation, all of them reading each other.
 
-- **The crew, under the message box:** two pills, the chat's own assistant and its partner. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex).
-  - Click the other pill, or press `Ctrl+.`, to choose who your next message goes to. The box takes that one's color.
-  - Or start a message with `@codex` or `@claude` to send just that one message.
+- **The crew, under the message box:** a pill for the chat's own assistant and one for each other assistant you've set up. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex, violet for Gemini).
+  - Click a pill, or press `Ctrl+.` (it steps through them, then All), to choose who your next message goes to. The box takes that one's color. One that isn't in the chat yet joins with your first message to it, caught up on everything so far.
+  - Or start a message with `@codex`, `@gemini` or `@claude` to send just that one message.
   - The partner's pill shows what it may do (Codex's **Agent**, **Read only**…), changed from its menu, and how much room its account has left once that's low. **Both** says it uses room on both accounts.
 - **One feed:** the partner's replies appear in the same conversation, under its own name and color. Messages you sent it are tagged **to Codex** (or **to Claude**). Pictures Codex makes appear as it makes them.
 - **They read each other:** before each message one of them gets, the app catches it up on what it hasn't seen: what the other one said and did (which files it changed, how many commands it ran), and what you said to the other. In the feed that's a small fold-out ("Codex was caught up on 3 messages"), not text you wrote. So you can ask Claude for a plan, switch to Codex and say "do the second part", and Codex knows what that is.
   - The app works this out on the PC from the two conversations themselves, from the moment each one last caught up, so it's the same in every window and on your phone, and survives a reload or a restart. Nothing is told twice; a long stretch keeps the newest messages and says how many earlier ones it left out.
   - Files you undo from a reply are mentioned to that one with your next message, and to the other one too (it may have built on them).
+- **All three: in turn.** With more than one partner the pill reads **All** (or `@all`): the chat's own assistant answers first, then each of the others in turn, each knowing what the ones before it said. The relay under the title shows each one and who's up next.
 - **Both: they take turns.** The **Both** pill (or `@both`) sends your message to the chat's own assistant first. When it has answered, the other one picks the same message up, already knowing that answer, and builds on it (checks it, adds what it missed, does its part) instead of starting over. Your message reads "to Claude, then Codex", the second one's pill says **up next** while it waits, and the feed marks where it **takes it from here**. They never edit files at the same time. Stopping the first one skips the hand-over.
 - **The partner follows the chat's mode:** what you let Claude do without asking carries over to Codex (Auto or Bypass is Codex's Full access, Accept edits is Agent, Plan is Read only), when the partner starts and whenever you change it, so Codex doesn't ask about every step. Ask before acting leaves Codex's own choice alone.
 - **Review big changes by itself:** with Setup → Codex → **Review big changes by itself** on, after Claude changes forty lines or more in one reply, Codex reviews them and the findings come back as a card.
 - **One chat per project:** starting a Codex chat in a project where a Claude chat is open (or the other way round) offers to add it to that chat instead, so the work stays in one place. **Start a separate chat** is still there if you want one.
   - A partner's own conversation lives inside its chat: it isn't listed as a chat of its own, the chat's row says **with Codex**, and opening it (from search, a notification or a card) opens the chat it belongs to.
   - On the hub and in the chat window's list, a chat reads as at work while its partner works, and as needing you when its partner does ("Codex: Needs your OK").
-- **Always there:** one partner per chat, never two processes on one conversation (a partner left running is picked up again, not started twice). It resumes its earlier conversation even before Codex's own list has caught up; if that conversation can't be picked up, it starts a new one, caught up on the chat, and says so. A partner never outlives its chat.
+- **Always there:** one partner of each kind per chat, never two processes on one conversation (a partner left running is picked up again, not started twice). It resumes its earlier conversation even before Codex's own list has caught up; if that conversation can't be picked up, it starts a new one, caught up on the chat, and says so. A partner never outlives its chat.
 - **Codex reviews Claude's work:** **Review with Codex** on a Claude reply (or **⋯** → **Have Codex review the changes**) has Codex look over the changes, read-only.
   - The findings appear as a card, each with its priority, file and lines. **All clear** when there are none.
   - **Ask Claude to fix this** on one finding, or **Fix and recheck until clean**: Claude fixes them all, then Codex reviews again, up to three rounds. **Stop after this** ends it early.
@@ -354,7 +355,7 @@ Claude and Codex work in the same chat, either way round: bring Codex into a Cla
   - **Give to Claude** on a picture Codex made attaches it to your next message to Claude, with where it's saved.
 - **It's remembered:** the partner is tied to the chat. Reopen the chat later and the partner's earlier messages appear in place, and your next message to it continues the same conversation.
 - **Approvals:** each one's approval cards are in its own color and say who's asking ("Codex wants to…"). Esc stops whichever one you're writing to.
-- The partner uses its own sign-in and usage (Codex: your Codex account; Claude: the account you're working as) and shows in the ledger as **With Codex**. **Close** or **Stop this chat** stops both.
+- Each partner uses its own sign-in and usage (Codex: your Codex account; Gemini: your Google account; Claude: the account you're working as) and shows in the ledger as **With Codex** or **With Gemini**. **Close** or **Stop this chat** stops all of them.
 
 ## Rules and tools
 

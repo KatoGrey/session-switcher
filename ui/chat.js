@@ -16,7 +16,7 @@ function headerAccount(id, fallbackName) {
 function refreshChatUsage() { if (!$c('chat').hidden) { headerAccount(C.info ? C.info.accountId : null, C.info ? C.info.accountName : ''); renderLedgerSoon(); } }
 function isViewing(x) {
   if (!x || $c('chat').hidden) return false;
-  if (C.key && x.key) return x.key === C.key || !!(C.comp && x.key === C.comp.key);
+  if (C.key && x.key) return x.key === C.key || Object.values(C.comps).some(c => c && c.key === x.key);
   const sid = C.watch ? C.watch.sessionId : C.sessionId;
   return !!(sid && x.sessionId && x.sessionId.toLowerCase() === String(sid).toLowerCase());
 }
@@ -343,7 +343,7 @@ function reset() {
   Preview.comments = [];
   if (C.es) { C.es.close(); C.es = null; }
   clearTimeout(C.liveTimer);
-  if (C.comp && C.comp.es) C.comp.es.close();
+  for (const c of Object.values(C.comps)) if (c && c.es) c.es.close();
   // Each chat has its own message box: what you typed stays with the chat it was for (as a draft).
   clearTimeout(draftTimer);
   clearInterval(C.watchTimer);
@@ -352,7 +352,7 @@ function reset() {
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
-  Object.assign(C, { compPending: [], compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+  Object.assign(C, { comps: {}, crewKinds: [], focus: null, compPending: [], compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
   closePreview();
   Review.loop = null;
@@ -403,9 +403,19 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null } = {
   if (info.modes) modeOptions(info.modes);
   if (info.permissionMode) setMode(info.permissionMode);
   if (info.models && info.models.length) C.mi.main = info;
-  C.compThread = info.companionThread || null;
-  mergeStart(!!info.companionKey);
-  if (info.companionKey) { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { replayed('comp'); /* the helper has stopped */ } }
+  const crew = info.crew || {};
+  C.crewKinds = (crew.kinds || []).filter(k => k !== C.provider);
+  C.focus = C.mate;
+  C.compThread = (C.mate && crew.threads && crew.threads[C.mate]) || info.companionThread || null;
+  // The running ones: each by its kind (an older server says just the one companion).
+  const running = Object.entries(crew.running || {}).filter(([k]) => k !== C.provider);
+  if (!running.length && info.companionKey) running.push([null, info.companionKey]);
+  const order = running.sort(([a]) => (a === C.mate ? 1 : -1));   // the one in view attaches last
+  mergeStart(running.length ? (running.every(([k]) => k) ? running.map(([k]) => k) : true) : false);
+  await Promise.all(order.map(async ([k, key]) => {
+    try { const ci = await api('/api/chat/attach', { key }); if (gen !== C.gen) return; attachComp(ci); } catch { replayed(k || 'comp'); /* it has stopped */ }
+  }));
+  if (C.mate) focusMate(C.mate); else C.focus = partnerProv();
   if (gen !== C.gen) return;
   setTarget('main', false);
   $c('chat').classList.toggle('codex', C.provider === 'codex');
@@ -560,7 +570,7 @@ async function refreshWatch() {
 
 function closeChatView(silent) {
   if (C.es) { C.es.close(); C.es = null; }
-  if (C.comp && C.comp.es) { C.comp.es.close(); C.comp.es = null; }
+  for (const c of Object.values(C.comps)) if (c && c.es) { c.es.close(); c.es = null; }
   closePick();
   closeAside(); closeLightbox(); resetRun();
   clearInterval(C.watchTimer);
@@ -674,11 +684,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
     if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
     const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
-    const rl = t.closest('[data-relay]'); if (rl) return setTarget(rl.dataset.relay);
+    const rl = t.closest('[data-relay]'); if (rl) { if (rl.dataset.kind) focusMate(rl.dataset.kind); return setTarget(rl.dataset.relay); }
     const bp = t.closest('[data-build]');
     if (bp) return buildPlan(bp).catch(err => toast(err.message));
     const crew = t.closest('[data-crew]');
-    if (crew) { const src = crew.dataset.crew; if (src === 'both' || src === 'plan') return setTarget(C.target === src ? 'main' : src); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
+    if (crew) { const src = crew.dataset.crew; if (src === 'comp' && crew.dataset.kind && crew.dataset.kind !== C.mate) { focusMate(crew.dataset.kind); if (Pick.src === 'comp') closePick(); return setTarget('comp'); } if (src === 'both' || src === 'plan') return setTarget(C.target === src ? 'main' : src); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
     const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });
     const pp = t.closest('#cPick [data-preset]');
     if (pp) { const p = presetsFor(Pick.src).find(x => x.id === pp.dataset.preset); if (p) return pickModel(Pick.src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }); return undefined; }
@@ -777,7 +787,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Enter') closeSlash();
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); wrap(sendMessage)(); }
-    if (e.key === '.' && e.ctrlKey && duo()) { e.preventDefault(); setTarget(C.target === 'main' ? 'comp' : C.target === 'comp' ? 'both' : 'main'); return; }
+    if (e.key === '.' && e.ctrlKey && duo()) {
+      e.preventDefault();
+      const ks = crewKinds(), i = C.target === 'comp' ? ks.indexOf(C.mate) : -1;
+      if (C.target === 'main') { focusMate(ks[0]); setTarget('comp'); } else if (C.target === 'comp' && i >= 0 && i < ks.length - 1) { focusMate(ks[i + 1]); setTarget('comp'); } else setTarget(C.target === 'comp' ? 'both' : 'main');
+      return;
+    }
     if (e.key === 'Escape' && !$c('cPick').hidden) { e.preventDefault(); closePick(); return; }
     // Esc twice stops whoever your next message goes to (both, when it goes to both).
     const working = targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting'));
@@ -863,19 +878,13 @@ function modelItems(src) {
     ...(src === 'comp' && C.comp && C.comp.modes && C.comp.modes.length && !C.comp.ended ? ['-', ...C.comp.modes.map(m => ({ glyph: C.comp.mode === m.value ? '●' : '○', label: `May: ${m.label}`, checked: C.comp.mode === m.value, run: () => setCompMode(m.value) }))] : []),
   ];
 }
-// Another assistant as this chat's partner: Gemini instead of Codex, say. The one working steps out
-// (its conversation is kept, and comes back if you switch back); the new one is caught up on the chat.
+// Writing to another of the assistants (@gemini, say): it comes into view, and joins the chat (caught
+// up on it) with your next message to it. The others stay.
 async function switchPartner(kind, quiet = false) {
   if (!kindReady(kind) || kind === C.provider) return;
-  const running = C.comp && !C.comp.ended;
-  C.mate = kind;
-  if (running) {
-    if (C.comp.es) C.comp.es.close();
-    C.comp = null;
-    try { attachComp(await api('/api/chat/companion', { key: C.key, account: S.acct, kind })); } catch (err) { toast(err.message, 6000); }
-  }
-  renderCrew(); setTarget(C.target, false);
-  if (!quiet) toast(`${PROV_NAME[kind]} is this chat’s partner now: write to it from its pill, or with @${kind}.`, 4000);
+  focusMate(kind);
+  renderCrew(); setTarget(C.target === 'main' ? 'comp' : C.target, false);
+  if (!quiet) toast(`Writing to ${PROV_NAME[kind]}: it joins this chat with your next message, caught up on it.`, 4000);
 }
 // ★ in the header pins this chat to the top of the sidebar.
 function syncFav() {
@@ -1004,13 +1013,13 @@ function chatContextItems(t, at) {
     ];
   }
   const crew = t.closest('[data-crew]');
-  if (crew && crew.dataset.crew === 'both') return [{ glyph: '⇄', label: C.target === 'both' ? `Write to ${PROV_NAME[C.provider]} only` : `Write to ${PROV_NAME[C.provider]} and ${PROV_NAME[partnerProv()]} at once`, keys: 'Ctrl .', run: () => setTarget(C.target === 'both' ? 'main' : 'both') }];
+  if (crew && crew.dataset.crew === 'both') { const ks = crewKinds(); return [{ glyph: '⇄', label: C.target === 'both' ? `Write to ${PROV_NAME[C.provider]} only` : ks.length > 1 ? `Write to all of them, in turn` : `Write to ${PROV_NAME[C.provider]} and ${PROV_NAME[partnerProv()]} at once`, keys: 'Ctrl .', run: () => setTarget(C.target === 'both' ? 'main' : 'both') }]; }
+  if (crew && crew.dataset.kind) focusMate(crew.dataset.kind);
   if (crew) {
     const src = crew.dataset.crew, name = PROV_NAME[provFor(src)];
     return [
       ...(duo() && C.target !== src ? [{ glyph: '➤', label: `Write to ${name}`, keys: 'Ctrl .', run: () => setTarget(src) }] : []),
       ...modelItems(src),
-      ...(src === 'comp' ? otherMates().map(k => ({ glyph: '⇆', label: `Work with ${PROV_NAME[k]} instead`, hint: `${PROV_NAME[partnerProv()]} steps out; its conversation is kept`, run: () => switchPartner(k) })) : []),
       ...(src === 'comp' && C.comp && !C.comp.ended ? ['-', { label: `Stop ${PROV_NAME[partnerProv()]} in this chat`, hint: `your next message to ${PROV_NAME[partnerProv()]} starts it again`, danger: true, run: () => api('/api/chat/stop', { key: C.comp.key }) }] : []),
     ];
   }

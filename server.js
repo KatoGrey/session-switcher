@@ -184,7 +184,7 @@ const chats = chatLib.createChatManager({
   extras: chatExtras,
   onChange: chat => {
     // A partner doesn't outlive its chat: it would be left running with no window to show it.
-    if (chat && chat.state === 'ended' && chat.companionKey) { const p = pairs.partnerOf(chat); if (p && p.state !== 'ended') p.stop(); }
+    if (chat && chat.state === 'ended' && !chat.parentKey && (chat.companionKey || chat.crew)) for (const p of pairs.crewOf(chat)) if (p.state !== 'ended') p.stop();
     broadcast('live', chats.live()); scheduleActivity(); schedulePush(); saveOpenChats();
   },
   onSession: chat => {
@@ -237,7 +237,7 @@ const pairs = pairsLib.createPairs({
       if (!gemini.publicState().checked) await gemini.refreshAccount().catch(() => null);
       requireGeminiReady();
       const pref = chatPrefs.get({ sessionId: remembered, cwd: lead.cwd, provider: 'gemini' });
-      const follow = leadKind === 'codex' ? { 'read-only': 'plan', agent: 'accept-edits', ask: 'accept-edits', full: 'full' }[lead.permissionMode] : geminiLib.FROM_CLAUDE[lead.permissionMode];
+      const follow = followMode(leadKind, lead.permissionMode, 'gemini');
       return gemini.open({ cfg: c, cwd: lead.cwd, sessionId: remembered || null, mode: follow || pref.mode, model: pref.model || null, title: `Gemini · ${lead.title || 'New chat'}`, folder: lead.folder, companion: true });
     }
     if (kind === 'claude') {
@@ -248,14 +248,14 @@ const pairs = pairsLib.createPairs({
       await guarded(a);
       acc.prepareForLaunch(c, a);
       const pref = chatPrefs.get({ sessionId, cwd: lead.cwd, provider: 'claude' });
-      const follow = leadKind === 'gemini' ? { plan: 'plan', 'accept-edits': 'acceptEdits', full: 'auto' }[lead.permissionMode] : codexLib.TO_CLAUDE[lead.permissionMode];
+      const follow = followMode(leadKind, lead.permissionMode, 'claude');
       return chats.open({ cfg: c, account: a, cwd: lead.cwd, sessionId, permissionMode: chatLib.MODES.includes(follow) ? follow : chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: `Claude · ${lead.title || 'New chat'}`, folder: lead.folder });
     }
     let inst = await codexChecked(codexForThread(remembered));
     if (!inst.publicState().signedIn) inst = await codexChecked(codexActive());
     requireCodexSignedIn(inst);
     const pref = chatPrefs.get({ sessionId: remembered, cwd: lead.cwd, provider: 'codex' });
-    return inst.open({ cfg: c, cwd: lead.cwd, threadId: remembered || null, mode: (leadKind === 'gemini' ? { plan: 'read-only', 'accept-edits': 'agent', full: 'full' }[lead.permissionMode] : codexLib.FROM_CLAUDE[lead.permissionMode]) || pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, companion: true, title: `Codex · ${lead.title || 'New chat'}`, folder: lead.folder });
+    return inst.open({ cfg: c, cwd: lead.cwd, threadId: remembered || null, mode: followMode(leadKind, lead.permissionMode, 'codex') || pref.mode, model: modelFits(inst, pref.model) ? pref.model : null, effort: pref.effort, companion: true, title: `Codex · ${lead.title || 'New chat'}`, folder: lead.folder });
   },
 });
 
@@ -517,6 +517,14 @@ async function racesView() {
 const splitText = (task, mine, theirs, other) => `${task ? `The task: ${task}\n\n` : ''}You and ${other} are splitting this, each in your own copy of the project; both sets of changes are put together afterwards.\n\nYour part: ${mine}\n\n${other}'s part (leave it to them, and don't edit the files it needs): ${theirs}`;
 // Who races: any two of Claude, Codex and Gemini (Claude and Codex, unless said otherwise).
 const RACE_NAMES = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' };
+// What a partner may do follows the chat it works in: one chat's mode in another's terms. (Asking
+// first, in Claude, leaves the partner's own choice alone.)
+const MODE_FOLLOW = {
+  claude: { codex: codexLib.FROM_CLAUDE, gemini: geminiLib.FROM_CLAUDE },
+  codex: { claude: codexLib.TO_CLAUDE, gemini: { 'read-only': 'plan', agent: 'accept-edits', ask: 'accept-edits', full: 'full' } },
+  gemini: { claude: { plan: 'plan', 'accept-edits': 'acceptEdits', full: 'auto' }, codex: { plan: 'read-only', 'accept-edits': 'agent', full: 'full' } },
+};
+const followMode = (fromKind, mode, toKind) => ((MODE_FOLLOW[fromKind] || {})[toKind] || {})[mode] || null;
 const racePair = who => (Array.isArray(who) && who.length === 2 && who[0] !== who[1] && who.every(w => RACE_NAMES[w]) ? who.slice() : ['claude', 'codex']);
 async function startRace({ cwd, prompt, accountId, split, who }) {
   const p = projectAt(cwd);
@@ -938,8 +946,8 @@ function activityList() {
     if (f) { s.title = f.s.title; s.folder = f.p.name; }
     return s;
   });
-  // A Codex helper is named after the Claude chat it works with.
-  for (const s of out) if (s.parentKey) { const p = out.find(x => x.key === s.parentKey); s.title = `Codex · ${p ? p.title || 'New chat' : s.title || 'helper'}`; }
+  // A partner is named after the chat it works in ("Gemini · Balance pass").
+  for (const s of out) if (s.parentKey) { const p = out.find(x => x.key === s.parentKey); s.title = `${RACE_NAMES[s.provider] || 'Codex'} · ${p ? p.title || 'New chat' : s.title || 'helper'}`; }
   const seen = new Set(out.filter(x => x.sessionId).map(x => x.sessionId.toLowerCase()));
   // Chats this app ran and has since stopped aren't "elsewhere"; they were here.
   const ranHere = new Set([...chats.chats.values()].filter(c => c.sessionId).map(c => c.sessionId.toLowerCase()));
@@ -2035,7 +2043,7 @@ function validImages(images) {
 async function handleChat(req, res, url, body, c) {
   switch (url.pathname) {
     // With who its partner is (or would be), so the window shows the right one before it's started.
-    case '/api/chat/open': { const info = await openChat(c, body); let mate = null; try { mate = pairs.kindFor(pairs.leadOf(chats.get(info.key))); } catch { /* gone */ } return send(res, 200, { ...info, mate }); }
+    case '/api/chat/open': { const info = await openChat(c, body); let mate = null, crew = {}; try { const lead = pairs.leadOf(chats.get(info.key)); mate = pairs.kindFor(lead); crew = crewInfo(lead); } catch { /* gone */ } return send(res, 200, { ...info, mate, ...crew }); }
     case '/api/chat/attach': { const ch = chats.get(body.key); let mate = null; try { mate = pairs.kindFor(pairs.leadOf(ch)); } catch { /* gone */ } return send(res, 200, { ...attachedInfo(ch), mate }); }
     case '/api/chat/send': {
       // to: 'partner' (the other assistant in this chat, started if need be), 'both' (they take
@@ -2046,7 +2054,7 @@ async function handleChat(req, res, url, body, c) {
       const chat = chats.get(body.key), lead = pairs.leadOf(chat);
       // "@chat[…]": other chats you brought in; their latest messages go along, before your words.
       if (Array.isArray(body.refs) && body.refs.length) text = (await Promise.all(body.refs.slice(0, 3).map(otherChatBlock))).join('') + text;
-      if (body.to === 'both') { await pairs.sendBoth(lead, text, images, { accountId: body.account, kind: body.kind }); return send(res, 200, { ok: true }); }
+      if (body.to === 'both' || body.to === 'all') { await pairs.sendBoth(lead, text, images, { accountId: body.account, kind: body.kind, kinds: Array.isArray(body.kinds) ? body.kinds.map(String).slice(0, 3) : null }); return send(res, 200, { ok: true }); }
       if (body.to === 'plan') { await pairs.planFirst(lead, text, images, { accountId: body.account, kind: body.kind }); return send(res, 200, { ok: true }); }
       const target = body.to === 'partner' ? await pairs.ensure(lead, { accountId: body.account, kind: body.kind }) : chat;
       // after: wait for the other one to finish first (you chose "Send when it's done").
@@ -2118,9 +2126,8 @@ async function handleChat(req, res, url, body, c) {
       const chat = chats.get(body.key), r = await chat.undoTurn(body.turn, !!body.force);
       if (r && r.restored && r.restored.length) {
         (chat.undoneFiles || (chat.undoneFiles = [])).push(r.restored);
-        // Its partner hears too: it may have built on what's gone.
-        const mate = pairs.partnerOf(chat);
-        if (mate) (mate.partnerUndone || (mate.partnerUndone = [])).push(r.restored);
+        // The others in the chat hear too: they may have built on what's gone.
+        for (const m of pairs.matesOf(chat)) if (m.live) (m.live.partnerUndone || (m.live.partnerUndone = [])).push(r.restored);
       }
       return send(res, 200, r);
     }
@@ -2140,9 +2147,8 @@ async function handleChat(req, res, url, body, c) {
       await chat.setMode(body.mode);
       remember(chat, { mode: chat.permissionMode });
       // Its partner follows (Codex in a Claude chat, or Claude in a Codex chat), from its next turn.
-      const mate = !chat.parentKey && pairs.partnerOf(chat);
-      if (mate) {
-        const m = mate.provider === 'codex' ? codexLib.FROM_CLAUDE[chat.permissionMode] : codexLib.TO_CLAUDE[chat.permissionMode];
+      for (const mate of chat.parentKey ? [] : pairs.crewOf(chat).filter(p => p.state !== 'ended')) {
+        const m = followMode(chat.provider || 'claude', chat.permissionMode, mate.provider || 'claude');
         if (m) { try { await mate.setMode(m); } catch (err) { log(`The partner couldn’t follow the mode: ${err.message}`); } }
       }
       return send(res, 200, { ok: true });
@@ -2162,7 +2168,7 @@ async function handleChat(req, res, url, body, c) {
     }
     case '/api/chat/stop': {
       const chat = chats.get(body.key);
-      if (chat.companionKey) { try { chats.get(chat.companionKey).stop(); } catch { /* already gone */ } }
+      if (!chat.parentKey) for (const p of pairs.crewOf(chat)) { try { await p.stop(); } catch { /* already gone */ } }
       await chat.stop();
       return send(res, 200, { ok: true });
     }
@@ -2196,7 +2202,7 @@ async function handleChat(req, res, url, body, c) {
 
 // A running chat's details for the window, with its paired Codex helper's id if it has one.
 function attachedInfo(chat) {
-  return { ...chat.info(), attached: true, companionThread: chat.sessionId && !chat.parentKey ? chatPrefs.companionOf(chat.sessionId) : null };
+  return { ...chat.info(), attached: true, companionThread: chat.sessionId && !chat.parentKey ? chatPrefs.companionOf(chat.sessionId) : null, ...crewInfo(chat) };
 }
 // Remembers what you chose for a chat, and as its project's default for new chats.
 function remember(chat, changes) {
@@ -2314,8 +2320,20 @@ function schedulePush() {
   if (pushTimer) return;
   pushTimer = setTimeout(() => { pushTimer = null; sendPushes().catch(err => log(`Push: ${err.message}`)); }, 900);
 }
+// A chat's crew, for its window: who's in it (running, or from before), each running one's key, and
+// each one's conversation (for its earlier messages).
+function crewInfo(chat) {
+  if (!chat || chat.parentKey) return {};
+  let kinds = [], running = {}, threads = {};
+  try {
+    kinds = pairs.kindsIn(chat);
+    for (const p of pairs.crewOf(chat)) if (p.state !== 'ended') running[p.provider || 'claude'] = p.key;
+    if (chat.sessionId) { const c = chatPrefs.crewOf(chat.sessionId); for (const k of Object.keys(c)) threads[k] = c[k]; }
+  } catch { /* not paired */ }
+  return { crew: { kinds, running, threads } };
+}
 const chatTitleOf = x => {
-  if (x.parentKey) { try { const p = chats.get(x.parentKey); return `Codex · ${chatTitleOf(p.summary())}`; } catch { /* gone */ } }
+  if (x.parentKey) { try { const p = chats.get(x.parentKey); return `${RACE_NAMES[x.provider] || 'Codex'} · ${chatTitleOf(p.summary())}`; } catch { /* gone */ } }
   if (x.sessionId && x.provider !== 'codex') { try { const t = sessions.find(x.sessionId).session.title; if (t) return t; } catch { /* not saved yet */ } }
   return x.title || 'A chat';
 };
