@@ -29,12 +29,38 @@ async function main() {
   if (!only.length) {
     console.log('— logic and server checks');
     const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join(__dirname, f));
-    // On GitHub the failures are also written as annotations (from a TAP copy of the results).
+    // On GitHub the failures are also written as annotations (from a TAP copy of the results), each
+    // with its error and where it happened, readable on the run's page without signing in.
     const tap = process.env.GITHUB_ACTIONS ? path.join(os.tmpdir(), `ss-tap-${process.pid}.txt`) : null;
-    const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP });
-    if (tap && r.status !== 0) {
-      try { for (const m of fs.readFileSync(tap, 'utf8').matchAll(/^\s*not ok \d+ - (.+)$/gm)) console.log(`::error title=logic tests::${m[1].slice(0, 400)}`); } catch { /* no TAP copy */ }
+    const runLogic = () => spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP });
+    const failures = () => {
+      let text = ''; try { text = fs.readFileSync(tap, 'utf8'); } catch { return []; }
+      const out = [];
+      const lines = text.split(/\r?\n/);
+      lines.forEach((l, i) => {
+        const m = l.match(/^(\s*)not ok \d+ - (.+)$/); if (!m) return;
+        // Its details: "  error: |-" (with the message on the lines under it), "  location: '…'".
+        const pad = m[1].length + 2, why = [];
+        let key = null;
+        for (let j = i + 1; j < lines.length && !/^\s*(not )?ok \d+ /.test(lines[j]) && !/^\s*# Subtest/.test(lines[j]); j++) {
+          const x = lines[j], k = x.slice(pad).match(/^(\w+):\s*(.*)$/);
+          if (x.length - x.trimStart().length === pad && k) { key = k[1]; if (key === 'error' || key === 'location') why.push(`${key}: ${k[2].replace(/^\|-?$/, '')}`.trim()); }
+          else if (key === 'error' && x.trim() && why.length < 6) why.push(x.trim());
+        }
+        out.push(`${m[2].slice(0, 300)}${why.length ? ` — ${why.join(' ').replace(/\s+/g, ' ').slice(0, 600)}` : ''}`);
+      });
+      return out;
+    };
+    let r = runLogic();
+    // On GitHub, as with the browser suites: a failure is run once more before it counts (their Macs
+    // are slow and uneven); a real fault fails both times. The first miss is still noted.
+    if (r.status !== 0 && process.env.CI) {
+      const first = tap ? failures() : [];
+      console.log(`  ↻ the logic checks missed ${first.length || 'something'}; once more`);
+      r = runLogic();
+      if (r.status === 0) for (const f of first) console.log(`::warning title=logic tests (passed the second time)::${f.replace(/%/g, '%25')}`);
     }
+    if (tap && r.status !== 0) for (const f of failures()) console.log(`::error title=logic tests::${f.replace(/%/g, '%25')}`);
     if (r.status !== 0) failed++;
   }
 

@@ -31,7 +31,9 @@ function makeRepo() {
   write(path.join(wt, '.next/cache.bin'), 'cache');
   const outside = path.join(base, 'outside');
   write(path.join(outside, 'precious.txt'), 'never delete');
-  fs.symlinkSync(outside, path.join(wt, 'dist'));
+  // A junction on Windows: plain links need Developer Mode there (GitHub's machines don't have it). Node
+  // reads both as links, so it's the same check: nothing is followed through one.
+  fs.symlinkSync(outside, path.join(wt, 'dist'), process.platform === 'win32' ? 'junction' : 'dir');
   return { base, repo, wt, outside };
 }
 

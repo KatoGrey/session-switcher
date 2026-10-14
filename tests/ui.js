@@ -538,10 +538,10 @@ module.exports = [
       t.check('or Codex, or carrying on by itself when it’s back', card && card.buttons.includes('Hand it to Codex') && card.buttons.includes('Carry on when it’s back'), card && card.buttons);
       await t.shot(b, 'card');
 
-      await b.clickOn('[data-c="limitwait"]');
+      const covered = await b.clickOn('[data-c="limitwait"]');
       for (let i = 0; i < 30 && !calls.some(([p]) => p === '/api/chat/resume-at'); i++) await sleep(100);
       const wait = calls.find(([p]) => p === '/api/chat/resume-at');
-      t.check('“Carry on when it’s back” asks the PC to send “carry on” at the reset', wait && wait[1].at === resetsAt && wait[1].key === 'k-bard', wait && wait[1]);
+      t.check('“Carry on when it’s back” asks the PC to send “carry on” at the reset', wait && wait[1].at === resetsAt && wait[1].key === 'k-bard', wait ? wait[1] : { covered });
       await b.eval(`handle({ kind: 'resumeat', at: ${JSON.stringify(resetsAt)}, seq: 700 }); return 1`); await sleep(100);
       t.check('and the card says when it will', /Claude carries on by itself at/.test(await b.eval(`for (let i = 0; i < 50 && !document.querySelector('.limit-card .lm-wait'); i++) await new Promise(r => setTimeout(r, 100)); return document.querySelector('.limit-card .lm-wait')?.textContent || ''`)));
       await b.eval(`handle({ kind: 'limit', which: null, resetsAt: ${JSON.stringify(resetsAt)}, seq: 1 }, 'comp'); return 1`).catch(() => null);
