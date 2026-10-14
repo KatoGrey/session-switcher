@@ -56,3 +56,8 @@ art/src/
 theme-studio/
 lite-alerts.json
 lite-waits.json
+
+# The desktop app: its build output. The phone app it ships with is kept (desktop/phone).
+desktop/dist*/
+!desktop/phone/SessionSwitcher.apk
+!desktop/phone/SessionSwitcher.apk.json

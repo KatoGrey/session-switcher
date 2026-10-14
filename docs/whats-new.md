@@ -1,13 +1,7 @@
-# Faster, and more out of your way
+# Lighter, and sturdier
 
-- **Opens instantly.** The hub shows what it knew last time while it catches up, and a chat starts loading when you point at it.
-- **Ctrl+Z takes it back.** Closing a chat, marking it done, unpinning and removing can all be undone for a few seconds.
-- **Account autopilot.** When an account runs out mid-chat, the chat carries on as one with room (you can say no, or turn it off in Setup).
-- **Drafts follow you.** Start a message on the PC and finish it on the phone, or the other way round.
-- **Focus mode.** Ctrl+\ shows just the conversation.
-- **Plain words in Ctrl+K.** Try “codex chat in my project to make the icons” or “queue the patch notes in my project tonight”.
-- **Good morning.** The first visit of the day offers yesterday’s chats to pick back up.
-- **Problems, caught.** Setup → Problems lists anything that went wrong, with Ask Claude to fix this.
-- **Phone.** A home-screen widget, replies gathered into a digest if you’d like, and messages written offline send when you’re back.
-- **Both: Codex follows your mode.** What you let Claude do without asking carries over to Codex, so it stops asking about every step.
-- **Crew.** An optional automatic Codex review after a big change, and a forecast of when an account will run out.
+- **Easier on your PC.** With Session Switcher open beside another app, its moving decoration (petals, the seal, the pulsing dots) holds still after 15 seconds, and it rests after two minutes left alone. Held still, the window uses about 2% of a CPU core instead of up to a third of one.
+- **Never left behind.** If the app is ended abruptly (a crash, or Task Manager), its background part goes too, and your open chats come back next time.
+- **Sturdier windows.** Links in a popped-out chat open in your browser; opening the app again while it's starting no longer makes two windows; the mini window closes cleanly if the page reloads.
+- **Its settings stay its own.** The chats, terminals and tools it starts no longer inherit its data folder and port, so a test or a second copy run from a chat can't reach into the app you're using.
+- **Mac updates** only use a download whose checksum matches, and clean up after themselves.

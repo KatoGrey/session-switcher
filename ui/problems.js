@@ -35,7 +35,7 @@ async function loadProblems() {
     : last ? `<p class="pb-check ${last.ok ? 'ok' : 'bad'}">${last.ok ? '✓' : '✖'} The last self-check, ${esc(agoL(Date.parse(last.at)))}: ${last.ok ? 'everything passed' : `${plural(last.failures.length, 'check')} failed`} (${esc(dur(last.ms))}).</p>`
       : '<p class="pb-check">No self-check yet: the first runs tonight at half past three, if nothing is working.</p>';
   const rows = p.problems.map(x => `<li class="pb-row"><div class="pb-t"><span class="pb-where">${esc(x.where)}</span><b>${esc(x.message)}</b><span class="pb-when">${esc(agoL(Date.parse(x.at)))}${x.count > 1 ? ` · ${x.count} times` : ''}</span></div>
-    <div class="pb-b"><button class="btn sm" data-pb="fix" data-id="${esc(x.id)}">Ask Claude to fix this</button><button class="btn quiet sm" data-pb="clear" data-id="${esc(x.id)}">Put away</button></div></li>`).join('');
+    <div class="pb-b"><button class="btn sm" data-pb="fix" data-id="${esc(x.id)}">Ask Claude to fix this</button><button class="btn quiet sm" data-pb="report" data-id="${esc(x.id)}" title="Opens a GitHub issue for KatoGrey, filled in (nothing personal)">Report it</button><button class="btn quiet sm" data-pb="copy" data-id="${esc(x.id)}">Copy report</button><button class="btn quiet sm" data-pb="clear" data-id="${esc(x.id)}">Put away</button></div></li>`).join('');
   box.innerHTML = `${check}
     <label class="toggle"><input type="checkbox" data-pref="nightlyCheck" ${S.prefs.nightlyCheck !== false ? 'checked' : ''}><span><b>Check itself every night</b><span>At half past three, when nothing is working, it runs its own tests and compares every theme with how it looked before, at low priority.</span></span></label>
     <p class="pb-act"><button class="btn sm" data-pb="run" ${sc.running ? 'disabled' : ''}>Run the self-check now</button>${p.problems.length > 1 ? '<button class="btn quiet sm" data-pb="clear" data-id="all">Put them all away</button>' : ''}</p>
@@ -48,6 +48,14 @@ document.addEventListener('click', wrap(async e => {
   const what = b.dataset.pb;
   if (what === 'run') { await api('/api/selfcheck', {}); toast('The self-check is running; its result shows here in a few minutes.', 4000); return loadProblems(); }
   if (what === 'clear') { await api('/api/problems', { clear: b.dataset.id }); return loadProblems(); }
+  if (what === 'report' || what === 'copy') {
+    const d = Problems.data, x = d && d.problems.find(y => y.id === b.dataset.id); if (!x) return undefined;
+    const body = problemReport(x, d.log);
+    if (what === 'copy') { await navigator.clipboard.writeText(body); toast('Copied, with nothing personal in it. Paste it to whoever looks after Session Switcher.', 4000); return undefined; }
+    const url = `https://github.com/${REPORT_REPO}/issues/new?title=${encodeURIComponent(`Problem: ${x.message.slice(0, 90)}`)}&body=${encodeURIComponent(body.slice(0, 6000))}`;
+    window.open(url, '_blank', 'noopener');
+    return undefined;
+  }
   if (what === 'fix') {
     const d = Problems.data, x = d && d.problems.find(y => y.id === b.dataset.id); if (!x) return undefined;
     if ($('setup').open) $('setup').close();
@@ -55,6 +63,30 @@ document.addEventListener('click', wrap(async e => {
   }
   return undefined;
 }));
+
+/* ---------- reporting a problem ---------- */
+// Where reports go: the app's own repository.
+const REPORT_REPO = 'KatoGrey/session-switcher';
+// Nothing personal leaves: email addresses, your name in paths, keys and tokens are taken out.
+function scrub(text) {
+  return String(text || '')
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '<email>')
+    .replace(/([A-Za-z]:\\+Users\\+|\/Users\/|\/home\/)[^\\/\s'"]+/gi, '$1<you>')
+    .replace(/\b(sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|[A-Fa-f0-9]{32,}|[A-Za-z0-9+/_-]{40,}={0,2})/g, '<redacted>')
+    .replace(/(token|key|secret|password|authorization)(["'\s:=]+)(?:Bearer\s+|Basic\s+)?[^\s"',}]+/gi, '$1$2<redacted>');
+}
+function problemReport(x, log) {
+  const where = [`Session Switcher ${S.appVersion}`, S.shell ? 'installed app' : 'folder copy', S.platform === 'win32' ? 'Windows' : S.platform === 'darwin' ? 'macOS' : S.platform].join(', ');
+  return scrub([
+    `**What happened:** ${x.message}`,
+    `**Where:** ${x.where}${x.count > 1 ? ` (${x.count} times, last ${new Date(x.at).toISOString()})` : ` (${new Date(x.at).toISOString()})`}`,
+    `**Version:** ${where}`,
+    '',
+    '**What I was doing:** (add a line here if you remember)',
+    ...(x.stack ? ['', '<details><summary>Stack</summary>', '', '```', x.stack.slice(0, 2500), '```', '</details>'] : []),
+    ...(log ? ['', '<details><summary>The end of switcher.log</summary>', '', '```', String(log).split('\n').slice(-25).join('\n').slice(0, 2500), '```', '</details>'] : []),
+  ].join('\n'));
+}
 
 /* ---------- the self-check card on the hub ---------- */
 async function loadSelfCheckCard() {

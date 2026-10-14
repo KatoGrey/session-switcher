@@ -24,6 +24,7 @@ const projectsLib = require('./lib/projects');
 const shareLib = require('./lib/sharecopy');
 const prefsLib = require('./lib/chatprefs');
 const remoteLib = require('./lib/remote');
+const firewallLib = require('./lib/firewall');
 const { reviewTarget, fixText, reviewAsk, parseFindings, mergeFindings } = require('./lib/review');
 const { createReviewLoop } = require('./lib/reviewloop');
 const rulesLib = require('./lib/rules');
@@ -45,14 +46,29 @@ const { branchSession } = require('./lib/branch');
 const runnerLib = require('./lib/runner');
 const { ownText } = require('./lib/shared');
 
-const APP_VERSION = '6.0.0';
+const APP_VERSION = '6.3.3';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
+// Installed as a desktop app (desktop/main.js): the app starts and stops this server, and does restarts.
+const SHELL = process.env.SWITCHER_SHELL === 'electron' && typeof process.send === 'function' ? 'electron' : null;
+// The desktop app runs this server on its own Electron, as Node. Programs it starts (an editor that is
+// itself an Electron app, say) mustn't inherit that; only its own tests, run the same way, need it.
+const RUN_AS_NODE = process.env.ELECTRON_RUN_AS_NODE ? { ELECTRON_RUN_AS_NODE: '1' } : {};
+delete process.env.ELECTRON_RUN_AS_NODE;
+const toShell = msg => { if (SHELL) { try { process.send(msg); } catch { /* the app has gone */ } } };
 const APP_DIR = __dirname;
 // Your accounts, history and settings live next to the app, unless SWITCHER_DATA_DIR points
 // elsewhere (the tests use a throwaway folder, so they never touch your real data).
 const DATA_DIR = process.env.SWITCHER_DATA_DIR ? path.resolve(process.env.SWITCHER_DATA_DIR) : APP_DIR;
+// This copy's own settings (its data folder, port, the desktop app's flag) stay with it: the chats,
+// terminals and tools it starts don't inherit them. Otherwise a test, or `node server.js`, run from
+// one of its chats would use this copy's data and port, and could take it over. A restart passes them
+// on to the new copy itself.
+const OWN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => /^SWITCHER_/.test(k) && k !== 'SWITCHER_RESTART_FROM'));
+for (const k of Object.keys(OWN_ENV)) delete process.env[k];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const CONFIG_FILE = path.join(DATA_DIR, 'accounts.json');
+// Nobody has used Session Switcher here before (a co-worker's first start): Setup opens with Getting started.
+const FIRST_RUN = !fs.existsSync(CONFIG_FILE);
 const LOG_FILE = path.join(DATA_DIR, 'switcher.log');
 const TOKEN = crypto.randomBytes(24).toString('hex');
 // Which code this server is running, so a copy started later can tell if it's out of date.
@@ -163,6 +179,7 @@ function noteProblem(where, message, stack) {
   clearTimeout(problemsTimer);
   problemsTimer = setTimeout(() => { try { store.writeJsonAtomic(PROBLEMS_FILE, { problems }); } catch (err) { console.log(`Couldn’t save problems.json: ${err.message}`); } }, 1000);
 }
+let fwCache = null;   // the firewall check, for half a minute
 const DRAFTS_FILE = path.join(DATA_DIR, 'drafts.json');
 let drafts = (store.loadOwnJson(DRAFTS_FILE, null, log) || {}).drafts || {};
 let draftsTimer = null;
@@ -1114,7 +1131,7 @@ function stateFor() {
   return {
     accounts: c.accounts.map(a => acc.publicAccount(c, a)),
     prefs: c.prefs, claudeCommand: c.claudeCommand,
-    dryRun: sys.DRY_RUN, appVersion: APP_VERSION, platform: process.platform,
+    dryRun: sys.DRY_RUN, appVersion: APP_VERSION, shell: SHELL, firstRun: FIRST_RUN, platform: process.platform,
     index: sessions.progress,
     codex: codexPublic(),
     reopen: restarted ? [] : toReopen(),
@@ -1265,12 +1282,19 @@ const liteRoutes = createLiteRoutes({
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send', '/api/routines/secret']);
+const LOCAL_ONLY = new Set(['/api/claude/install', '/api/phone/firewall', '/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send', '/api/routines/secret']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
   const route = `${req.method} ${url.pathname}`;
   if (remote && (LOCAL_ONLY.has(url.pathname) || url.pathname.startsWith('/api/phone') || url.pathname.startsWith('/api/commander/tool/'))) throw fail(403, 'That can only be done on the PC itself.');
+  // Windows Firewall: whether the phone can get in (the program serving it, on the phone port).
+  if (route === 'GET /api/phone/firewall') {
+    if (remote) throw fail(403, 'From the PC only.');
+    const now = Date.now();
+    if (!fwCache || now - fwCache.at > 30000 || url.searchParams.get('fresh')) fwCache = { at: now, st: await firewallLib.status(sys, { program: process.execPath, port: phone.status().port }) };
+    return send(res, 200, fwCache.st);
+  }
   if (route === 'GET /api/phone') return send(res, 200, { ...phone.status(), pushPhones: pushes.count(), appsListening: [...new Set([...appWatchers].map(w => w.device.id))] });
   if (route === 'GET /api/run') { const p = projectAt(url.searchParams.get('cwd')); if (!p) throw fail(404, 'Pick one of your projects.'); return send(res, 200, runner.status(p.cwd)); }
   if (route === 'GET /api/phone/tailscale') return send(res, 200, await tailscaleStatus());
@@ -1332,7 +1356,7 @@ async function handleApi(req, res, url, remote = false) {
     try { mdText = fs.readFileSync(path.join(APP_DIR, 'docs', 'whats-new.md'), 'utf8'); } catch { return send(res, 200, {}); }
     const title = (mdText.match(/^#\s+(.+)$/m) || [])[1] || '';
     const body = mdText.replace(/^#\s+.+\r?\n/m, '').trim();
-    return send(res, 200, { id: crypto.createHash('sha1').update(mdText).digest('hex').slice(0, 12), title, md: body });
+    return send(res, 200, { id: crypto.createHash('sha1').update(mdText).digest('hex').slice(0, 12), title, md: body, version: APP_VERSION });
   }
   // Since you left (for the welcome-back card): files the chats changed and reviews that came back.
   if (route === 'GET /api/away') {
@@ -1753,6 +1777,13 @@ async function handleApi(req, res, url, remote = false) {
       setTimeout(() => { if (config().codex.enabled) for (const x of codexAll()) x.refreshAccount().then(st => { if (st.signedIn) x.refreshUsage(); }).catch(() => {}); broadcast('accounts'); broadcast('sessions'); }, 200);
       return send(res, 200, { codex: c.codex });
     }
+    // Claude Code, with Anthropic's own installer, in a terminal window you can watch.
+    case '/api/claude/install': {
+      const r = await sys.runInTerminal(c, os.homedir(), 'Install Claude Code', sys.IS_WIN
+        ? '@echo off\r\ntitle Install Claude Code\r\necho Installing Claude Code (Anthropic)...\r\npowershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://claude.ai/install.ps1 | iex"\r\necho.\r\necho Done. Close this window and click Check again in Session Switcher.\r\npause\r\n'
+        : '#!/bin/sh\necho "Installing Claude Code (Anthropic)..."\ncurl -fsSL https://claude.ai/install.sh | bash\necho\necho "Done. Close this window and click Check again in Session Switcher."\n');
+      return send(res, 200, r);
+    }
     case '/api/codex/install': {
       const r = await sys.runInTerminal(c, os.homedir(), 'Install Codex', sys.IS_WIN
         ? '@echo off\r\ntitle Install Codex\r\necho Installing Codex (OpenAI)...\r\ncall npm install -g @openai/codex\r\necho.\r\necho Done. Close this window and click Check again in Session Switcher.\r\n'
@@ -1975,11 +2006,20 @@ async function handleApi(req, res, url, remote = false) {
       if (!st.listening) throw fail(409, 'Turn phone access on first.');
       return send(res, 200, { ...phone.startPairing(), status: phone.status() });
     }
+    case '/api/phone/firewall': {
+      const r = await firewallLib.fix(sys, { program: process.execPath, port: phone.status().port, alsoPrivate: !!body.alsoPrivate, log });
+      fwCache = null;
+      if (r.declined) throw fail(400, 'Nothing was changed (the administrator prompt was answered No).');
+      return send(res, 200, { ...r, status: await firewallLib.status(sys, { program: process.execPath, port: phone.status().port }) });
+    }
     case '/api/phone/pair-cancel': phone.cancelPairing(); return send(res, 200, phone.status());
     case '/api/phone/forget': phone.forget(String(body.id || '')); pushes.forgetDevice(String(body.id || '')); for (const w of appWatchers) if (w.device.id === String(body.id || '')) { appWatchers.delete(w); try { w.res.end(); } catch { /* gone */ } } return send(res, 200, { ...phone.status(), pushPhones: pushes.count() });
     case '/api/quit': {
       send(res, 200, { ok: true });
       log('Quit from the app.');
+      // For an update, the open chats come back when the new version starts, as after a restart.
+      if (body.forUpdate) { try { writeOpenChats(); store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid }); } catch (err) { log(`Couldn’t keep the open chats for the update: ${err.message}`); } }
+      else toShell({ type: 'quit' });
       chatPrefs.flush(); organize.flush();
       phone.stop();
       routines.stop();
@@ -2304,7 +2344,7 @@ function runSelfCheck(why) {
   const started = Date.now();
   const pass = args => new Promise(resolve => {
     let out = '';
-    const child = spawn(process.execPath, ['tests/run.js', ...args], { cwd: APP_DIR, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['tests/run.js', ...args], { cwd: APP_DIR, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...RUN_AS_NODE } });
     try { os.setPriority(child.pid, os.constants.priority.PRIORITY_LOW); } catch { /* not allowed */ }
     child.stdout.on('data', d => { out += d; if (out.length > 4e6) out = out.slice(-2e6); });
     child.stderr.on('data', d => { out += d; });
@@ -2352,7 +2392,9 @@ async function restartNow(why) {
     chatPrefs.flush();
     if (!writeOpenChats()) throw new Error('Could not save the open chats.');
     store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid });
-    await restartLib.startReplacement({ executable: process.execPath, args: process.argv.slice(1), cwd: process.cwd(), env: { ...process.env, SWITCHER_RESTART_FROM: String(process.pid) } });
+    // In the desktop app, the app starts the new copy once this one has gone.
+    if (SHELL) toShell({ type: 'restart' });
+    else await restartLib.startReplacement({ executable: process.execPath, args: process.argv.slice(1), cwd: process.cwd(), env: { ...process.env, ...OWN_ENV, ...(SHELL ? {} : { SWITCHER_SHELL: '' }), SWITCHER_RESTART_FROM: String(process.pid) } });   // part of the desktop app only if this copy was
   } catch (err) {
     restartStarting = false;
     restartError = `Couldn’t start the new copy: ${err.message}`;
@@ -2401,6 +2443,14 @@ setInterval(() => { const was = diskBuild.id !== BUILD; if (newBuildReady() !== 
 // Reopens chats (each started again, resuming its conversation, as the account it ran as).
 async function reopenChats(list, what) {
   const reopened = [], failed = [];
+  // Codex chats are found in Codex's own list, which loads a moment after a start: wait for it (and
+  // for Codex's sign-in to be checked), or they'd look like chats that no longer exist.
+  if (list.some(c => c.provider === 'codex') && config().codex.enabled) {
+    try {
+      await codexChecked(codexActive());
+      await codex.list({ maxAgeMs: 0, lastOpened: sessions.lastOpened });
+    } catch (err) { log(`Codex wasn’t ready to reopen its chats: ${err.message}`); }
+  }
   for (const c of list) {
     try {
       if (chats.bySession(c.sessionId)) { reopened.push(c.sessionId); continue; }
@@ -2415,7 +2465,14 @@ async function reopenChats(list, what) {
       reopened.push(c.sessionId);
     } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
   }
-  log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} ${what}${failed.length ? `; ${failed.length} couldn’t: ${failed.map(f => `“${String(f.title || f.sessionId).slice(0, 50)}” (${f.error})`).join('; ')}` : ''}.`);
+  log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} ${what}${failed.length ? `; ${failed.length} couldn’t (${failed.map(f => `“${f.title || f.sessionId}”: ${f.error}`).join('; ')})` : ''}.`);
+  // Just after a start, Codex (and an account's sign-in) may not be ready yet: those get one more try.
+  if (failed.length && !/again/.test(what)) {
+    setTimeout(() => {
+      const again = list.filter(c => failed.some(f => f.sessionId === c.sessionId));
+      reopenChats(again, `${what}, trying again`).catch(err => log(`Couldn’t reopen chats: ${err.message}`));
+    }, 15000).unref();
+  }
   return { reopened, failed };
 }
 
@@ -3073,6 +3130,16 @@ server.on('error', err => {
 process.on('uncaughtException', err => { log(`Unexpected error: ${err.stack || err.message}`); noteProblem('PC', err.message, err.stack); });
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } } setTimeout(() => process.exit(0), 300); });
 process.on('exit', () => { try { routines.stop(); } catch { /* not started */ } stopForQuit(); try { chatPrefs.flush(); organize.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
+// In the desktop app: if the app itself goes (it crashed, or was ended in Task Manager), this server
+// goes too, keeping what it can, rather than staying behind on the port with no window.
+if (SHELL) process.on('disconnect', () => {
+  if (shuttingDown) return;
+  log('The desktop app has gone; stopping too.');
+  try { writeOpenChats(); store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid }); } catch { /* best effort */ }
+  stopForQuit();
+  for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } }
+  setTimeout(() => process.exit(0), 300);
+});
 process.on('unhandledRejection', err => { log(`Unexpected error: ${err && (err.stack || err.message)}`); noteProblem('PC', err && err.message, err && err.stack); });
 
 // Started by Restart: the copy being replaced is still exiting, so wait for it (up to 20 s) first.
