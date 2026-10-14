@@ -2402,7 +2402,7 @@ async function reopenChats(list, what) {
       reopened.push(c.sessionId);
     } catch (err) { failed.push({ sessionId: c.sessionId, title: c.title, error: err.message }); }
   }
-  log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} ${what}${failed.length ? `; ${failed.length} couldn’t` : ''}.`);
+  log(`Reopened ${reopened.length} chat${reopened.length === 1 ? '' : 's'} ${what}${failed.length ? `; ${failed.length} couldn’t: ${failed.map(f => `“${String(f.title || f.sessionId).slice(0, 50)}” (${f.error})`).join('; ')}` : ''}.`);
   return { reopened, failed };
 }
 
