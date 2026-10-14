@@ -442,14 +442,19 @@ function editTitleInline() {
   const inp = document.createElement('input');
   inp.className = 'ttl ttl-edit'; inp.autocomplete = 'off'; inp.setAttribute('autocorrect', 'on'); inp.setAttribute('autocapitalize', 'sentences'); inp.enterKeyHint = 'done'; inp.value = c.title; inp.setAttribute('aria-label', 'Chat name'); inp.maxLength = 120;
   el.replaceWith(inp); inp.focus(); inp.select();
+  // Name ideas under the box; picking one renames at once.
+  const ideas = document.createElement('div'); ideas.className = 'name-ideas name-ideas-pop';
+  inp.after(ideas);
   let done = false;
   const finish = save => {
     if (done) return; done = true;
+    ideas.remove();
     const v = inp.value, h = $('chatHead'); if (h) h._h = null; paintHead();
     if (save) wrap(renameChat)(c.id, v);
   };
   inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } });
   inp.addEventListener('blur', () => finish(true));
+  nameIdeas(ideas, c.id, n => { inp.value = n; finish(true); });
 }
 function chatView() {
   return `<div class="chat" id="chatView">${chatHead()}

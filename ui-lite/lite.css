@@ -1077,3 +1077,11 @@ blockquote p { margin: 4px 0; }
 .later-sec { gap: 6px; }
 .later-line { align-self: flex-start; }
 .quiet-rows { opacity: .78; }
+
+/* Name ideas while renaming. */
+.name-ideas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 0; }
+.name-ideas:empty { display: none; }
+.name-ideas .ni-wait { font-size: 12px; color: var(--muted); }
+.name-ideas .name-idea { font-size: 12.5px; }
+.ch-name { position: relative; }
+.name-ideas-pop { position: absolute; left: 0; top: 100%; z-index: 30; margin-top: 4px; padding: 8px; background: var(--pane); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: 0 12px 30px -14px rgba(0,0,0,.45); max-width: min(520px, 80vw); }

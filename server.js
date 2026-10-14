@@ -1874,6 +1874,7 @@ async function handleApi(req, res, url, remote = false) {
     }
     case '/api/commander/tool/send': return send(res, 200, await commanderSend(c, String(body.id || ''), body.text));
     case '/api/commander/tool/answer': return send(res, 200, commanderAnswer(String(body.id || ''), { decision: body.decision, requestId: body.requestId ? String(body.requestId) : null, reason: typeof body.reason === 'string' ? body.reason.slice(0, 2000) : '' }));
+    case '/api/name-ideas': return send(res, 200, await nameIdeas(String(body.id || '')));
     case '/api/side-chat': return send(res, 200, await startSideChat(c, String(body.id || ''), body.text));
     case '/api/commander/tool/sub': return send(res, 200, await commanderSub(c, String(body.parent || ''), body.task, body.includeContext !== false));
     case '/api/organize': {
@@ -2235,6 +2236,18 @@ async function openSubChat(c, pid) {
 }
 // A side chat (Switcher Lite): a sub-chat beside this one that starts knowing its latest messages,
 // for a quick question or a try at something without derailing it. It stays under its parent.
+// Name ideas for renaming a chat: what it's about now, to a small fast model (lib/lite-guess.js).
+async function nameIdeas(id) {
+  let title = '', folder = '';
+  try {
+    const cx = codexFind(id);
+    if (cx) { title = (cx.session && cx.session.title) || ''; folder = cx.folder || ''; }
+    else { const f = sessions.find(id); title = f.session.title || ''; folder = f.project.name || ''; }
+  } catch { throw fail(404, 'That chat can’t be read.'); }
+  const context = await otherChatBlock({ id }).catch(() => '');
+  let model = null; try { model = liteStore.get().guessModel || null; } catch { /* the fastest there is */ }
+  return { names: await require('./lib/lite-guess').suggestNames({ model, title, folder, context }) };
+}
 async function startSideChat(c, parentId, text) {
   text = String(text || '').trim().slice(0, 20000);
   if (!text) throw fail(400, 'Type your question.');

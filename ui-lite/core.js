@@ -417,6 +417,20 @@ async function renameChat(id, name) {
     if (c) { c.title = shown; c.fullTitle = before; } sfx('undo'); render(); if (typeof paintHead === 'function') paintHead();
   });
 }
+// Name ideas while you rename: a small fast model reads the chat and offers four (about half a second).
+// pick(name) is what a click does: fill the box, or rename straight away.
+function nameIdeas(host, id, pick) {
+  if (!host) return;
+  host.innerHTML = '<span class="ni-wait">Thinking of names…</span>';
+  api('/api/name-ideas', { id }).then(r => {
+    if (!host.isConnected) return;
+    const names = (r && r.names) || [];
+    host.innerHTML = names.length ? names.map(n => `<button type="button" class="chip name-idea" data-name="${esc(n)}">${esc(n)}</button>`).join('') : '';
+  }).catch(() => { if (host.isConnected) host.innerHTML = ''; });
+  // Pressing a chip mustn't blur the box first (the title box saves on blur).
+  host.addEventListener('pointerdown', e => { if (e.target.closest('.name-idea')) e.preventDefault(); });
+  host.addEventListener('click', e => { const b = e.target.closest('.name-idea'); if (b) pick(b.dataset.name); });
+}
 function askRename(id) {
   const c = chatBy.get(id); if (!c) return;
   const root = $('modalRoot');
@@ -425,6 +439,8 @@ function askRename(id) {
   root.querySelector('[data-m="no"]').onclick = close;
   f.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });
   f.onsubmit = wrap(async e => { e.preventDefault(); const v = f.n.value; close(); await renameChat(id, v); });
+  f.n.insertAdjacentHTML('afterend', '<div class="name-ideas" id="rcIdeas"></div>');
+  nameIdeas($('rcIdeas'), id, n => { f.n.value = n; f.n.focus(); });
   f.n.focus(); f.n.select();
 }
 // f: Focus on, or off when every one of them is already in Focus.
