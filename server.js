@@ -2992,7 +2992,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
       const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media' || url.pathname === '/api/themes/art') && url.searchParams.get('token') === TOKEN;
       // Switcher Lite's gallery: a picture Codex generated (or its thumbnail), by thread and file name.
       if (req.method === 'GET' && url.pathname === '/api/lite/gimg' && url.searchParams.get('token') === TOKEN) {
-        const q = url.searchParams, f = q.get('thumb') ? liteRoutes.images.thumbFor(q.get('thread'), q.get('file')) : liteRoutes.images.fileFor(q.get('thread'), q.get('file'));
+        const q = url.searchParams, f = q.get('thumb') ? await liteRoutes.images.thumbReady(q.get('thread'), q.get('file')) : liteRoutes.images.fileFor(q.get('thread'), q.get('file'));
         if (!f) { res.writeHead(404); return res.end(); }
         res.writeHead(200, { 'Content-Type': /\.jpe?g$/i.test(f) ? 'image/jpeg' : /\.webp$/i.test(f) ? 'image/webp' : 'image/png', 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
         return fs.createReadStream(f).pipe(res);

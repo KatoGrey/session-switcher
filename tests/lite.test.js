@@ -339,9 +339,9 @@ test('pipeline: a PR’s column comes from its labels; checks fold to one word',
   assert.equal(stageOf({ state: 'OPEN', labels: L('voyage-bug') }, NOW, LAT), 'pr');
   assert.equal(stageOf({ state: 'OPEN', labels: L('voyage-bug', 'preview') }, NOW, LAT), 'preview');
   assert.equal(stageOf({ state: 'OPEN', labels: L('preview', 'community-qa') }, NOW, LAT), 'testers');
-  // Latitude's labels are its own: in any other repo a labelled PR is just a PR.
-  assert.equal(stageOf({ state: 'OPEN', labels: L('preview', 'community-qa') }, NOW, 'someone/else'), 'pr');
-  assert.equal(stageOf({ state: 'OPEN', labels: L('preview') }), 'pr', 'no repo: the plain board');
+  // The labels work the same in any repo (as they always have); only the preview link is Latitude's.
+  assert.equal(stageOf({ state: 'OPEN', labels: L('preview', 'community-qa') }, NOW, 'someone/else'), 'testers');
+  assert.equal(stageOf({ state: 'OPEN', labels: L('preview') }), 'preview', 'no repo: the same labels');
   assert.equal(stageOf({ state: 'MERGED', mergedAt: at(NOW - 2 * D) }, NOW), 'merged');
   assert.equal(stageOf({ state: 'MERGED', mergedAt: at(NOW - 9 * D) }, NOW), null, 'old merges drop off');
   assert.equal(stageOf({ state: 'CLOSED', labels: [] }), null);
@@ -453,18 +453,18 @@ test('pipeline: a folder’s GitHub repo comes from its remotes, the one gh woul
   assert.deepEqual(sshAliases(path.join(os.tmpdir(), 'no-such-ssh-config')), []);
 });
 
-test('pipeline: Latitude keeps its preview links and labels; other repos get the plain board', () => {
+test('pipeline: Latitude keeps its preview links; every repo keeps the labels', () => {
   const { repoProfile, REPOS } = require('../lib/lite-pipeline');
   const lat = repoProfile('latitudegames/latitude');
-  assert.equal(lat, REPOS['latitudegames/latitude']);
+  assert.equal(lat.preview, REPOS['latitudegames/latitude'].preview);
   assert.equal(lat.preview(17012), 'https://pr-17012.preview.voyage.io/', 'the same link the Bugs page always used');
-  assert.equal(repoProfile('LatitudeGames/Latitude'), lat, 'GitHub names ignore case');
+  assert.equal(repoProfile('LatitudeGames/Latitude').preview, lat.preview, 'GitHub names ignore case');
   assert.deepEqual(Object.entries(lat.labels), [['community-qa', 'testers'], ['preview', 'preview']], 'testers win over preview');
   assert.deepEqual(lat.hide, ['agent-generated', 'community-qa-notified']);
   for (const other of ['me/tool', 'ryan/latitude', null]) {
     const p = repoProfile(other);
-    assert.equal(p.preview, null, `${other}: no preview column without a known pattern`);
-    assert.deepEqual([p.labels, p.hide], [{}, []]);
+    assert.equal(p.preview, null, `${other}: no preview link without a known pattern`);
+    assert.deepEqual([p.labels, p.hide], [lat.labels, lat.hide], `${other}: the same labels`);
   }
   // The UI takes the server's link rather than guessing one from the URL.
   const pages = fs.readFileSync(path.join(__dirname, '..', 'ui-lite', 'pages.js'), 'utf8');
