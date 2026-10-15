@@ -619,10 +619,14 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
       const f = $('feed'), pinned = f && f.scrollHeight - f.scrollTop - f.clientHeight < 80;
       const r = document.documentElement.style;
       const k = Math.round(innerHeight - visualViewport.height);
-      if (k > 150) { kbH = k; try { localStorage.setItem('lite.kb', String(k)); } catch { /* fine */ } }
-      document.documentElement.classList.toggle('kb-up', k > 150);
+      const up = k > 150;
+      if (up) { kbH = k; try { localStorage.setItem('lite.kb', String(k)); } catch { /* fine */ } }
+      document.documentElement.classList.toggle('kb-up', up);
+      // With the keyboard away, iOS can leave the page scrolled by the keyboard's push (40-60px, the
+      // bottom of the app cut off until a restart). Scrolled back here, and the pane sits at the top.
+      if (!up && (visualViewport.offsetTop > 0 || scrollY > 0 || pageYOffset > 0)) { try { scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch { /* fine */ } }
       r.setProperty('--app-h', `${Math.round(visualViewport.height)}px`);
-      r.setProperty('--vv-top', `${Math.round(visualViewport.offsetTop)}px`);
+      r.setProperty('--vv-top', `${up ? Math.round(visualViewport.offsetTop) : 0}px`);
       if (pinned) f.scrollTop = f.scrollHeight;
     });
   };
@@ -654,6 +658,12 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
     drag = null;
   }, { passive: true });
   visualViewport.addEventListener('resize', fit); visualViewport.addEventListener('scroll', fit); fit();
+  // Back to the app (from the Home Screen, another app, or a lock): the keyboard is gone whatever the
+  // page last saw, so the layout is measured again rather than kept from before.
+  const back = () => { if (document.hidden) return; const a = document.activeElement; if (!(a && a.matches && a.matches(TYPE))) document.documentElement.classList.remove('kb-up', 'kb-glide'); fit(); setTimeout(fit, 350); };
+  document.addEventListener('visibilitychange', back);
+  addEventListener('pageshow', back);
+  addEventListener('orientationchange', () => setTimeout(fit, 300));
 }
 
 // Quick-reply boxes grow as you type.
