@@ -2077,7 +2077,9 @@ module.exports = [
       await sleep(2500);
       const w = await b.eval(`const el = document.querySelector('.welcome'); return el ? { text: el.textContent.replace(/\\s+/g, ' '), chips: el.querySelectorAll('.wb-chip').length, back: !!el.querySelector('[data-welcome="continue"]') } : null`);
       t.check('after two hours away, the hub says what happened meanwhile', w && /away 2h/.test(w.text) && /While you were away, .*needs your OK/.test(w.text), w);
-      t.check('with the chats that came in, and a way back to the last one', w && w.chips >= 2 && w.back && /Back to “Tavern brawl encounter design”/.test(w.text), w);
+      // Away since yesterday (two hours back crosses midnight between 0:00 and 2:00): it's the day's first look.
+      const newDay = await b.eval(`return new Date(Date.now() - 2 * 3600e3).toDateString() !== new Date().toDateString()`);
+      t.check('with the chats that came in, and a way back to the last one', w && w.chips >= 2 && w.back && (newDay ? /Resume my day: “Tavern brawl encounter design”/ : /Back to “Tavern brawl encounter design”/).test(w.text), w);
       t.check('and what the chats did meanwhile: files changed and reviews back', w && /3 files were changed/.test(w.text) && /a review came back with 2 findings/.test(w.text), w);
       await t.shot(b, 'hub');
       const partnerWelcome = await b.eval(`const previous = S.activity; try { S.activity = [{ key: 'welcome-owner', title: 'Owner', phase: 'idle' }, { key: 'welcome-partner', parentKey: 'welcome-owner', provider: 'codex', source: 'app', title: 'Partner reply', phase: 'idle', finishedAt: Date.now() }]; const el = document.createElement('div'); el.innerHTML = welcomeHtml(); return { text: el.textContent, chip: !!el.querySelector('[data-k="welcome-partner"]') }; } finally { S.activity = previous; }`);
