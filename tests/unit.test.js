@@ -95,6 +95,17 @@ test('file viewer: folders anywhere on the computer open, but not other peopleâ€
   assert.equal(files.allowed(path.join(home, 'Documents', 'notes.md'), home), true);
 });
 
+test('file viewer: a network path never opens, and isnâ€™t even looked up (that would hand the server your sign-in)', () => {
+  const project = path.join(os.homedir(), 'Projects', 'Demo');
+  const t0 = Date.now();
+  for (const p of ['\\\\attacker.example\\share\\pic.png', '//attacker.example/share/pic.png', '\\\\?\\C:\\Windows\\win.ini', '\\\\.\\PhysicalDrive0', '\\\\attacker.example\\share']) {
+    assert.equal(files.allowed(p, project), false, p);
+  }
+  assert.ok(Date.now() - t0 < 500, 'answered at once, without reaching for the network');
+  assert.throws(() => files.readEntry(project, '\\\\attacker.example\\share\\pic.png'), e => e.status === 403);
+  assert.throws(() => files.locate(project, 'file://attacker.example/share/pic.png'), e => e.status === 403 || e.status === 404, 'a file:// link to a server either');
+});
+
 /* ---------- phone pairing ---------- */
 const { createRemote } = require('../lib/remote');
 const remote = () => createRemote({ dataDir: tmp(), appDir: tmp(), version: 'test', getPrefs: () => ({}), handle: () => {} });

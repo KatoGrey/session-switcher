@@ -701,7 +701,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (bp) return buildPlan(bp).catch(err => toast(err.message));
     const crew = t.closest('[data-crew]');
     if (t.closest('#cTogether')) { togetherClick(t); return; }
-    if (crew) { const src = crew.dataset.crew; if (src === 'together') return $c('cTogether').hidden ? openTogether() : closeTogether(); closeTogether(); if (src === 'comp' && crew.dataset.kind && crew.dataset.kind !== C.mate) { focusMate(crew.dataset.kind); if (Pick.src === 'comp') closePick(); return setTarget('comp'); } if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
+    if (crew) { const src = crew.dataset.crew; if (src === 'together') return closeTogether() || openTogether(); closeTogether(); if (src === 'comp' && crew.dataset.kind && crew.dataset.kind !== C.mate) { focusMate(crew.dataset.kind); if (Pick.src === 'comp') closePick(); return setTarget('comp'); } if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
     const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });
     const pp = t.closest('#cPick [data-preset]');
     if (pp) { const p = presetsFor(Pick.src).find(x => x.id === pp.dataset.preset); if (p) return pickModel(Pick.src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }); return undefined; }
@@ -851,13 +851,15 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
   }, true);
   document.addEventListener('mousedown', e => { if (!$c('cPick').hidden && !(e.target.closest && e.target.closest('#cPick, [data-crew]'))) closePick(); });
-  document.addEventListener('mousedown', e => { if (!$c('cTogether').hidden && !(e.target.closest && e.target.closest('#cTogether, [data-crew="together"]'))) closeTogether(); });
+  document.addEventListener('mousedown', e => { const tp = $c('cTogether'); if (tp && !tp.hidden && !(e.target.closest && e.target.closest('#cTogether, [data-crew="together"]'))) closeTogether(); });
   $c('pickBack').addEventListener('pointerdown', e => e.preventDefault());
   $c('pickBack').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closePick(); });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && Rail.drag && Rail.drag.on && !Rail.drag.settling) { e.preventDefault(); e.stopPropagation(); Rail.dropped = Date.now(); railSettle(Rail.drag, false); return; }
     if (e.key === 'Escape' && closeLightbox()) { e.stopPropagation(); return; }
     if (e.key === 'Escape' && closeTogether(true)) { e.stopPropagation(); return; }
+    // Together's ↑ (answer earlier) by keyboard: it sits inside its row, so Enter would tick the row.
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('#cTogether [data-tgup]')) { e.preventDefault(); e.stopPropagation(); togetherClick(e.target); return; }
     if ($c('chat').hidden) return;
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); (e.shiftKey ? moveInRail : switchRail)(e.key === 'ArrowDown' ? 1 : -1); }
   }, true);

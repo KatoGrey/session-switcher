@@ -1796,6 +1796,13 @@ module.exports = [
       await b.clickOn('[data-crew="together"]'); await sleep(300);
       await b.clickOn('#cTogether [data-tgact="off"]'); await sleep(300);
       t.check('Back to Claude only ends it', await b.eval(`return C.target === 'main' && document.getElementById('cTogether').hidden`));
+      // By keyboard: Enter on ↑ moves that one earlier (it doesn't tick its row off); Escape closes.
+      await b.eval(`C.group = { kinds: ['claude', 'codex', 'gemini'], how: 'turns' }; openTogether(); document.querySelector('#cTogether [data-tgup="gemini"]').focus(); return 1`); await sleep(150);
+      await b.key('Enter', 'Enter', 13); await sleep(150);
+      const kb = await b.eval(`return [...document.querySelectorAll('#cTogether [data-tg]')].map(x => x.dataset.tg + (x.dataset.n || '-')).join()`);
+      t.check('Enter on ↑ moves it earlier, by keyboard', kb === 'claude1,codex3,gemini2', kb);
+      await b.esc(); await sleep(150);
+      t.check('and Escape closes the list', await b.eval(`return document.getElementById('cTogether').hidden`));
       const kept = await b.eval(`return Object.keys(C.comps).filter(k => C.comps[k] && !C.comps[k].ended)`);
       t.check('both partners stay in the chat (neither pushed the other out)', kept.includes('gemini') && kept.includes('codex'), kept);
       // Plain words in Ctrl+K.

@@ -429,7 +429,7 @@ function renderCrew() {
   const tg = C.target === 'both' || C.target === 'plan', ks = groupKinds(), plan = C.target === 'plan', at = tg && !plan && groupHow() === 'parallel';
   const who = plan ? ks.slice(0, 2) : ks;
   const word = plan ? 'Plan first' : at ? 'At once' : 'Together';
-  const together = `<button type="button" class="crew both together${tg ? ' on' : ''}" data-crew="together" aria-haspopup="dialog" aria-expanded="${!$c('cTogether').hidden}" title="${tg ? `${at ? 'At the same time' : word}: ${who.map(k => PROV_NAME[k]).join(at ? ' and ' : ', then ')}. Click to change who, or to write to one again.` : 'Work together: pick which of them take your next message, and whether they take turns, work at the same time or plan first'}"><span class="crew-n">${word}</span>${tg ? `<span class="crew-m">${esc(who.map(k => PROV_NAME[k]).join(at ? ' + ' : ' → '))}</span>` : ''}<span class="crew-caret" aria-hidden="true">▾</span></button>`;
+  const together = `<button type="button" class="crew both together${tg ? ' on' : ''}" data-crew="together" aria-haspopup="dialog" aria-expanded="${!!$c('cTogether') && !$c('cTogether').hidden}" title="${tg ? `${at ? 'At the same time' : word}: ${who.map(k => PROV_NAME[k]).join(at ? ' and ' : ', then ')}. Click to change who, or to write to one again.` : 'Work together: pick which of them take your next message, and whether they take turns, work at the same time or plan first'}"><span class="crew-n">${word}</span>${tg ? `<span class="crew-m">${esc(who.map(k => PROV_NAME[k]).join(at ? ' + ' : ' → '))}</span>` : ''}<span class="crew-caret" aria-hidden="true">▾</span></button>`;
   box.innerHTML = crewPill('main') + (two ? crewKinds().map(k => withComp(k, () => crewPill('comp'))).join('') + together : '');
   box.classList.toggle('duo', two);
   renderRelay();
@@ -470,6 +470,7 @@ const HOWS = ['turns', 'parallel', 'plan'];
 const groupHow = () => { const h = (C.group || savedGroup() || {}).how; return HOWS.includes(h) ? h : 'turns'; };
 const Tg = { draft: null };
 function openTogether() {
+  if (!$c('cTogether')) return;
   closePick();
   Tg.draft = { kinds: groupKinds().slice(), how: C.target === 'plan' ? 'plan' : groupHow() };
   renderTogether();
