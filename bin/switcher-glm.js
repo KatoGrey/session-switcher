@@ -69,10 +69,15 @@ async function fileUnder(id) {
   env.ANTHROPIC_AUTH_TOKEN = 'ollama';
   const id = resume || crypto.randomUUID();
   process.stderr.write(`[switcher-glm] ${model} on Ollama, in ${cwd}, tools ${tools}\n[switcher-glm] session ${id} (ask a follow-up with --resume ${id})\n`);
-  const p = cp.spawn('claude', ['-p', '--model', model, '--output-format', 'json', ...(resume ? ['--resume', resume] : ['--session-id', id]),
+  const claudeArgs = ['-p', '--model', model, '--output-format', 'json', ...(resume ? ['--resume', resume] : ['--session-id', id]),
     // Read-only toward Slack, Discord, Linear and GitHub too: a hook refuses Latitude tools that write.
     '--settings', guard.settingsFor(),
-    '--allowedTools', tools, '--disallowedTools', 'Bash,Edit,Write,NotebookEdit,WebFetch'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    '--allowedTools', tools, '--disallowedTools', 'Bash,Edit,Write,NotebookEdit,WebFetch'];
+  // Windows: claude.exe starts directly; an npm install (claude.cmd) through its Node script (lib/lite-spawn.js).
+  const win = process.platform === 'win32';
+  const p = win ? require('../lib/lite-spawn').spawnWin('claude', claudeArgs, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+    : cp.spawn('claude', claudeArgs, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
+  if (win) { p.on('error', err => { process.stderr.write(`[switcher-glm] couldn’t start claude (${err.message})\n`); process.exit(127); }); p.stdin.on('error', () => {}); }
   p.stdin.end(task); // on stdin: the tool lists above take every argument after them
   let out = '';
   p.stdout.on('data', d => { out += d; });

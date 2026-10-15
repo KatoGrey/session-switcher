@@ -281,3 +281,76 @@ test('pairs: plan first drafts, has the other check it, then asks who builds', a
   await tick(); await tick();
   assert.ok(lead.buffer.some(e => e.kind === 'planfirst' && e.state === 'ready' && e.checked));
 });
+
+// A crew of three: Codex and Gemini in a Claude chat.
+function crewSetup() {
+  const all = new Map();
+  const chats = {
+    get: k => { const c = all.get(k); if (!c) throw new Error('gone'); return c; },
+    bySession: id => [...all.values()].find(c => c.state !== 'ended' && c.sessionId && c.sessionId === id) || null,
+  };
+  const add = c => { all.set(c.key, c); return c; };
+  const prefs = createChatPrefs({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'ss-crew-')) });
+  const started = [];
+  const kinds = new Map();
+  const pairs = createPairs({
+    chats, prefs,
+    transcript: async () => [],
+    kindOf: id => kinds.get(id) || null,
+    startPartner: async (lead, { remembered, kind }) => { started.push({ remembered, kind }); const id = remembered || `${kind}-${n + 1}`; kinds.set(id, kind); return add(new FakeChat({ provider: kind, sessionId: id })); },
+  });
+  return { pairs, prefs, add, started, kinds };
+}
+
+test('crew: Codex and Gemini both join a Claude chat; each is its own partner', async () => {
+  const { pairs, add, started, prefs } = crewSetup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  const cx = await pairs.ensure(lead, { kind: 'codex' });
+  const gm = await pairs.ensure(lead, { kind: 'gemini' });
+  assert.equal(cx.provider, 'codex'); assert.equal(gm.provider, 'gemini');
+  assert.deepEqual(started.map(s => s.kind), ['codex', 'gemini']);
+  assert.equal(pairs.crewOf(lead).length, 2, 'both stay in the chat (Gemini doesn’t push Codex out)');
+  assert.equal(await pairs.ensure(lead, { kind: 'codex' }), cx, 'asking for Codex again: the same one');
+  assert.deepEqual(pairs.kindsIn(lead).sort(), ['codex', 'gemini']);
+  assert.deepEqual(prefs.crewOf('L'), { codex: cx.sessionId, gemini: gm.sessionId }, 'remembered, one of each');
+  assert.equal(prefs.parentOf(cx.sessionId), 'L'); assert.equal(prefs.parentOf(gm.sessionId), 'L');
+});
+
+test('crew: “All” goes round in turn, each seeing the answers before theirs', async () => {
+  const { pairs, add } = crewSetup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  const { handedOver } = await pairs.sendBoth(lead, 'Name the tavern.', [], { kinds: ['codex', 'gemini'] });
+  assert.match(lead.sent[0].text, /The user sent the message below to all of you\. You answer first; Codex and Gemini pick it up after you/);
+  lead.reply('The Starfall.');
+  await tick(); await tick();
+  const [cx, gm] = pairs.crewOf(lead);
+  assert.equal(cx.provider, 'codex');
+  assert.match(cx.sent[0].text, /Claude:\nThe Starfall\./);
+  assert.match(cx.sent[0].text, /the others before you answered it/);
+  assert.equal(gm.sent.length, 0, 'Gemini waits for Codex');
+  cx.reply('The Lantern Rest.');
+  await tick(); await tick();
+  assert.match(gm.sent[0].text, /Claude:\nThe Starfall\./);
+  assert.match(gm.sent[0].text, /Codex:\nThe Lantern Rest\./, 'Gemini hears both');
+  assert.match(gm.sent[0].text, /You, Claude and Codex share this chat/);
+  gm.reply('The Hearth and Harp.');
+  assert.equal(await handedOver, gm);
+  // Next time Claude speaks, it hears Codex and Gemini both.
+  await pairs.send(lead, 'Pick one.');
+  assert.match(lead.sent[1].text, /Codex:\nThe Lantern Rest\./);
+  assert.match(lead.sent[1].text, /Gemini:\nThe Hearth and Harp\./);
+});
+
+test('crew: after a restart, the crew comes back, each by its own conversation', async () => {
+  const one = crewSetup();
+  const lead = one.add(new FakeChat({ sessionId: 'L' }));
+  const cx = await one.pairs.ensure(lead, { kind: 'codex' });
+  const gm = await one.pairs.ensure(lead, { kind: 'gemini' });
+  // A new run: the same prefs, nothing running.
+  const lead2 = one.add(new FakeChat({ sessionId: 'L' }));
+  cx.state = 'ended'; gm.state = 'ended'; lead.state = 'ended';
+  const g2 = await one.pairs.ensure(lead2, { kind: 'gemini' });
+  assert.equal(g2.sessionId, gm.sessionId, 'Gemini resumes its own conversation');
+  const c2 = await one.pairs.ensure(lead2, { kind: 'codex' });
+  assert.equal(c2.sessionId, cx.sessionId, 'and Codex its own');
+});

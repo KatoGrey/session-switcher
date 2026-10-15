@@ -15,7 +15,7 @@ function renderSetup(j) {
   const p = j.prefs;
   const t = (k, label, text, local) => `<label class="toggle"><input type="checkbox" ${local ? `data-local="${k}"` : `data-pref="${k}"`} ${(local ? Local[k] : p[k]) ? 'checked' : ''}><span><b>${label}</b><span>${text}</span></span></label>`;
   $('setupBody').innerHTML = `
-    <nav class="setup-toc" aria-label="Sections"><a href="#st-health">Health</a><a href="#st-alerts">Alerts</a><a href="#st-prefs">Preferences</a><a href="#st-codex">Codex</a><a href="#st-phone">Phone</a>${window.desktop ? '<a href="#st-desktop">Desktop app</a>' : ''}<a href="#st-problems">Problems</a><a href="#st-app">App</a></nav>
+    <nav class="setup-toc" aria-label="Sections"><a href="#st-health">Health</a><a href="#st-alerts">Alerts</a><a href="#st-prefs">Preferences</a><a href="#st-codex">Codex</a><a href="#st-gemini">Gemini</a><a href="#st-phone">Phone</a>${window.desktop ? '<a href="#st-desktop">Desktop app</a>' : ''}<a href="#st-problems">Problems</a><a href="#st-app">App</a></nav>
     ${startHtml(j)}
     <ul class="checks" id="st-health">${j.checks.map(c => `<li class="check ${c.state}"><span class="st" aria-label="${c.state}"></span><span><b>${esc(c.label)}</b><span class="dt">${esc(c.detail)}</span></span>
       ${c.fix ? `<button class="btn sm" data-fix="${esc(c.fix.action)}" data-account="${esc(c.fix.account || '')}">${esc(c.fix.label)}</button>` : '<span></span>'}</li>`).join('')}</ul>
@@ -67,6 +67,7 @@ function renderSetup(j) {
       <label class="toggle"><input type="checkbox" data-pref="autoReview" ${p.autoReview ? 'checked' : ''}><span><b>Review big changes by itself</b><span>After Claude changes forty lines or more in one reply, Codex reviews them and the findings appear in the chat.</span></span></label>
       <div class="field"><label>Rules and tools</label><div class="row2"><span class="rd-hint">Write rules once for both (CLAUDE.md and AGENTS.md), and give each one the other’s MCP tools.</span><button class="btn" data-fix="rules">Rules and tools…</button></div></div>
     </div>
+    ${geminiHtml()}
     ${window.REMOTE ? `<p class="d-h" id="st-phone">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p><div id="pushBox"></div>
       ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h" id="st-phone">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
     ${window.desktop ? '<p class="d-h" id="st-desktop">Desktop app</p><div class="prefs" id="deskBox"><p class="loading">Checking…</p></div>' : ''}
@@ -81,6 +82,38 @@ function renderSetup(j) {
     </div>
     <p class="ver">Session Switcher ${esc(j.appVersion)}. Your chats are read from your own .claude folder and never leave this PC.</p>`;
 }
+/* ---------- Gemini (Google's Antigravity CLI) ---------- */
+function geminiHtml() {
+  if (window.REMOTE) return '';
+  const g = S.gemini || { enabled: false };
+  const status = !g.enabled ? '' : g.installed === false ? '<p class="gm-st bad">The Antigravity CLI (<code>agy</code>) isn’t installed on this PC yet.</p>'
+    : !g.checked ? '<p class="gm-st">Checking…</p>'
+    : g.signedIn ? `<p class="gm-st ok">✓ Signed in. Antigravity CLI ${esc(g.version || '')}, ${g.models} models${g.hasArgon ? ', including <b>Gemini 4 Argon</b>' : ' (Gemini 4 Argon isn’t offered on this account’s plan yet)'}.</p>`
+    : `<p class="gm-st bad">Not signed in${g.error && g.error !== 'Not signed in.' ? `: ${esc(g.error)}` : '.'}</p>`;
+  const btns = !g.enabled ? '' : `<p class="pb-act">${g.installed === false ? '<button class="btn prime sm" data-gm="install">Install the Antigravity CLI</button>' : ''}${g.installed !== false && g.checked && !g.signedIn ? '<button class="btn prime sm" data-gm="login">Sign in</button>' : ''}<button class="btn quiet sm" data-gm="check">Check again</button></p>`;
+  return `<p class="d-h" id="st-gemini">Gemini</p>
+    <div class="prefs">
+      <label class="toggle"><input type="checkbox" data-gemini="enabled" ${g.enabled ? 'checked' : ''}><span><b>Use Gemini too</b><span>Gemini chats (Google’s Gemini 4 Argon and the rest your Google AI plan offers) next to Claude and Codex, through Google’s Antigravity CLI, signed in with your Google account.</span></span></label>
+      ${status}${btns}
+      ${g.enabled ? '<p class="pb-none">A Gemini chat runs in a set mode: <b>Plan only</b>, <b>Edit files</b> (it can change files, not run commands), or <b>Full access</b>. It can’t stop and ask you first from here, the way Claude and Codex do. It takes words, not pictures.</p>' : ''}
+    </div>`;
+}
+document.addEventListener('change', wrap(async e => {
+  const t = e.target.closest('[data-gemini]'); if (!t) return;
+  toast(t.checked ? 'Turning Gemini on, and checking it…' : 'Gemini is off.', 2500);
+  const r = await api('/api/gemini/settings', { enabled: t.checked });
+  S.gemini = r.gemini; await reload(); await loadHealth(true);
+}));
+document.addEventListener('click', wrap(async e => {
+  const b = e.target.closest('[data-gm]'); if (!b) return;
+  const what = b.dataset.gm;
+  if (what === 'install') { const r = await api('/api/gemini/install', {}); return r.dryRun ? reportLaunch(r) : toast(`Installing the Antigravity CLI in a ${r.how}. When it says Done, click Check again.`, 9000); }
+  if (what === 'login') { const r = await api('/api/gemini/login', {}); return r.dryRun ? reportLaunch(r) : toast('A terminal opened: sign in with your Google account in the browser, then type /quit there and click Check again.', 10000); }
+  b.disabled = true; b.textContent = 'Checking…';
+  const r = await api('/api/gemini/check', {});
+  S.gemini = r.gemini; await reload(); return loadHealth(true);
+}));
+
 /* ---------- Getting started (the first time, until it's done or put away) ---------- */
 // Shown from a first start until it's put away (across restarts), never to someone already set up.
 const startShown = () => { if (S.firstRun && !store('getting-started')) store('getting-started', 'on'); return store('getting-started') === 'on'; };
@@ -98,8 +131,9 @@ function startHtml(j) {
       ${step(1, done(cl), 'Claude Code', done(cl) ? esc(cl.detail) : 'Session Switcher works with Anthropic’s Claude Code. Install it here; a terminal window shows it working.', fixBtn(cl))}
       ${step(2, done(acct), 'Your Claude account', done(acct) ? esc(acct.detail) : 'Sign in with the Claude account (Pro or Max) you use. More accounts can be added later, under Accounts on the hub.', fixBtn(acct))}
       ${step(3, !!(S.codex && S.codex.enabled), 'Codex too (optional)', 'Use OpenAI’s Codex next to Claude, even in the same chat.', '<a class="btn quiet sm" href="#st-codex">Codex settings</a>')}
-      ${step(4, false, 'Your phone (optional)', 'Answer chats and approve steps from your phone, over your Wi-Fi.', '<a class="btn quiet sm" href="#st-phone">Phone access</a>')}
-      ${step(5, !!store('toured'), 'A two-minute tour', 'Where everything is: the hub, projects, chats, Ctrl+K.', '<button class="btn quiet sm" data-fix="tour">Take the tour</button>')}
+      ${step(4, !!(S.gemini && S.gemini.enabled && S.gemini.signedIn), 'Gemini too (optional)', 'Use Google’s Gemini (Gemini 4 Argon on a Google AI plan) beside Claude and Codex, even in the same chat.', '<a class="btn quiet sm" href="#st-gemini">Gemini settings</a>')}
+      ${step(5, false, 'Your phone (optional)', 'Answer chats and approve steps from your phone, over your Wi-Fi.', '<a class="btn quiet sm" href="#st-phone">Phone access</a>')}
+      ${step(6, !!store('toured'), 'A two-minute tour', 'Where everything is: the hub, projects, chats, Ctrl+K.', '<button class="btn quiet sm" data-fix="tour">Take the tour</button>')}
     </ol>
     <p class="gs-b"><button class="btn quiet sm" data-gs="check">Check again</button>${essentials ? '<button class="btn sm" data-gs="done">Done</button>' : ''}</p></section>`;
 }

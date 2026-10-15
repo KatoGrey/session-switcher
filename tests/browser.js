@@ -107,7 +107,9 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
       await sleep(250);
     },
     // Clicks the middle of the first element matching sel. If it's off-screen or something covers it
-    // (a docked message box, say), it's scrolled into view first.
+    // (a docked message box, say), it's scrolled into view first; if something still covers it (a
+    // notice that fades, on a slow machine), it waits for that to go, up to 3 s. Returns what covered
+    // it if it never cleared (the click still happens), for a failing check to say.
     clickOn: async sel => {
       // Like a person: if it isn't there yet (a slow machine), wait a moment for it, up to 5 s.
       const r = await b.eval(`let el = document.querySelector(${JSON.stringify(sel)});
@@ -117,9 +119,13 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
         const reachable = ([x, y]) => { const at = document.elementFromPoint(x, y); return !!at && (at === el || el.contains(at)); };
         let p = mid();
         if (!reachable(p)) { el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }); await new Promise(r => setTimeout(r, 150)); p = mid(); }
-        return p`);
+        for (let i = 0; i < 30 && !reachable(p); i++) { await new Promise(r => setTimeout(r, 100)); p = mid(); }
+        const at = reachable(p) ? null : document.elementFromPoint(p[0], p[1]);
+        const covered = at ? \`\${at.tagName.toLowerCase()}\${at.id ? '#' + at.id : ''}\${typeof at.className === 'string' && at.className ? '.' + at.className.trim().split(/\\s+/).join('.') : ''}\` : null;
+        return { p, covered }`);
       if (!r) throw new Error(`Nothing to click: ${sel}`);
-      await b.click(r[0], r[1]);
+      await b.click(r.p[0], r.p[1]);
+      return r.covered;
     },
     close: () => { try { ws.close(); } catch { /* gone */ } proc.kill(); setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* still locked */ } }, 1500); },
   };

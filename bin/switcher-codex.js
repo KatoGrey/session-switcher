@@ -53,7 +53,17 @@ function useNextHome() {
   if (plan) env.CODEX_HOME = plan.home;
   const out = path.join(os.tmpdir(), `switcher-codex-${process.pid}.txt`);
   process.stderr.write(`[switcher-codex] ${model} (${effort}) on ${plan ? `${plan.label} ChatGPT` : 'Codex’s default plan'}, in ${cwd}, ${sandbox}\n`);
-  const p = cp.spawn('codex', ['exec', '--skip-git-repo-check', '-m', model, '-c', `model_reasoning_effort="${effort}"`, '-s', sandbox, '-C', cwd, '-o', out, task], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const codexArgs = ['exec', '--skip-git-repo-check', '-m', model, '-c', `model_reasoning_effort="${effort}"`, '-s', sandbox, '-C', cwd, '-o', out];
+  // Windows: codex is usually npm's codex.cmd, which can't start without a shell (lib/lite-spawn.js
+  // starts its Node script instead), and the task goes on stdin ("-"), clear of cmd.exe and the
+  // command line's length limit.
+  const win = process.platform === 'win32';
+  const p = win ? require('../lib/lite-spawn').spawnWin('codex', [...codexArgs, '-'], { env, stdio: ['pipe', 'pipe', 'pipe'] })
+    : cp.spawn('codex', [...codexArgs, task], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  if (win) {
+    p.on('error', err => { process.stderr.write(`[switcher-codex] couldn’t start codex (${err.message})\n`); process.exit(127); });
+    p.stdin.on('error', () => {}); p.stdin.end(task);
+  }
   p.stdout.on('data', d => process.stderr.write(d));
   p.stderr.on('data', d => process.stderr.write(d));
   p.on('close', code => {

@@ -531,17 +531,26 @@ module.exports = [
       const calls = [];
       const resetsAt = new Date(Date.now() + 2 * 3600e3 + 12 * 60e3).toISOString();
       const b = await t.open({ seen: (p, u, body) => calls.push([p, body]), events: [{ kind: 'limit', which: 'five_hour', resetsAt }] });
-      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      // The autopilot is off for these (on a slow machine it would switch accounts before the clicks);
+      // it has its own check below.
+      await b.eval(`S.prefs.autoSwitch = false; ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
       const card = await b.eval(`const c = document.querySelector('.limit-card'); return c && { text: c.textContent.replace(/\\s+/g, ' ').trim(), buttons: [...c.querySelectorAll('button')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
       t.check('out of usage: the chat says so, and when it’s back', card && /Studio is out of its 5-hour limit\. It’s back at .+ \(in 2 h 1[12] min\)/.test(card.text), card && card.text);
       t.check('and offers your other account, with how much it has left', card && card.buttons.some(x => /^Continue as Personal \d+% left$/.test(x)), card && card.buttons);
       t.check('or Codex, or carrying on by itself when it’s back', card && card.buttons.includes('Hand it to Codex') && card.buttons.includes('Carry on when it’s back'), card && card.buttons);
       await t.shot(b, 'card');
 
-      await b.clickOn('[data-c="limitwait"]');
+      const covered = await b.clickOn('[data-c="limitwait"]');
       for (let i = 0; i < 30 && !calls.some(([p]) => p === '/api/chat/resume-at'); i++) await sleep(100);
       const wait = calls.find(([p]) => p === '/api/chat/resume-at');
-      t.check('“Carry on when it’s back” asks the PC to send “carry on” at the reset', wait && wait[1].at === resetsAt && wait[1].key === 'k-bard', wait && wait[1]);
+      t.check('“Carry on when it’s back” asks the PC to send “carry on” at the reset', wait && wait[1].at === resetsAt && wait[1].key === 'k-bard', wait ? wait[1] : { covered });
+      // The autopilot (on unless you turn it off) about to switch accounts, and you choose to wait: it's called off.
+      const before = calls.length;
+      const shown = await b.eval(`S.prefs.autoSwitch = true; liveRender = true; handle({ kind: 'limit', which: 'five_hour', resetsAt: ${JSON.stringify(resetsAt)}, seq: 650 }); liveRender = false;
+        const c = document.querySelector('.limit-card'), auto = !!(c && c.querySelector('.lm-auto')); c.querySelector('[data-c="limitwait"]').click(); S.prefs.autoSwitch = false; return auto`);
+      await sleep(3200);
+      const after = calls.slice(before).map(([p]) => p);
+      t.check('with the autopilot about to switch accounts, choosing to wait calls it off', shown && !after.includes('/api/chat/stop') && after.includes('/api/chat/resume-at') && !(await b.eval(`return !!document.querySelector('.limit-card .lm-auto')`)), { shown, after });
       await b.eval(`handle({ kind: 'resumeat', at: ${JSON.stringify(resetsAt)}, seq: 700 }); return 1`); await sleep(100);
       t.check('and the card says when it will', /Claude carries on by itself at/.test(await b.eval(`for (let i = 0; i < 50 && !document.querySelector('.limit-card .lm-wait'); i++) await new Promise(r => setTimeout(r, 100)); return document.querySelector('.limit-card .lm-wait')?.textContent || ''`)));
       await b.eval(`handle({ kind: 'limit', which: null, resetsAt: ${JSON.stringify(resetsAt)}, seq: 1 }, 'comp'); return 1`).catch(() => null);
@@ -676,11 +685,11 @@ module.exports = [
       await b.clickOn('[data-act="race-discard"]'); await sleep(300); await b.clickOn('#cfYes'); await sleep(400);
       t.check('Discard both ends it', /Discarded/.test((await card()).text));
       const items = await b.eval(`return projectItems(${JSON.stringify(demo.projects[0].cwd)}).filter(x => x !== '-').map(x => x.label)`);
-      t.check('a project’s menu can start a race', items.includes('Race Claude and Codex…'), items);
+      t.check('a project’s menu can start a race', items.includes('Race…'), items);
       // Split the work: each its own part, then keep both.
       t.check('…or split the work', items.includes('Split the work…'), items);
       await b.eval(`openRaceDialog(${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}, 'split'); return 1`); await sleep(300);
-      t.check('Split shows a part for each, and the task is optional', await b.eval(`return rcTitle.textContent === 'Split the work' && !document.querySelector('.rc-parts').hidden && /Optional/.test(rcText.placeholder) && document.querySelector('#rcForm [type="submit"]').textContent === 'Start both parts'`));
+      t.check('Split shows a part for each, and the task is optional', await b.eval(`return rcTitle.textContent === 'Split the work: Claude and Codex' && !document.querySelector('.rc-parts').hidden && /Optional/.test(rcText.placeholder) && document.querySelector('#rcForm [type="submit"]').textContent === 'Start both parts'`));
       await b.eval(`rcClaude.value = 'Fix the rally math.'; rcCodex.value = 'A test for rally stacking.'; return 1`);
       await b.clickOn('#rcForm [type="submit"]'); await sleep(600);
       t.check('Start both parts sends each its part', calls.some(([p, body]) => p === '/api/race' && body.action === 'start' && body.split && body.split.claude === 'Fix the rally math.' && body.split.codex === 'A test for rally stacking.'));
@@ -1169,10 +1178,10 @@ module.exports = [
         const turn = h => [{ kind: 'user', text: 'q' + h, at: at(h) }, { kind: 'assistant', blocks: [{ type: 'text', text: 'a' + h }] }];
         const pages = { '': { items: [...turn(8), ...turn(9)], cursor: 'p2', start: 1 }, p2: { items: [...turn(4), ...turn(6)], cursor: 'p3', start: 1 }, p3: { items: [...turn(1)], cursor: null, start: 0 } };
         window.api = async url => { const c = new URLSearchParams(url.split('?')[1]).get('cursor') || ''; calls.push(c || 'first'); return pages[c]; };
-        C.compThread = 'T';
-        const first = (await partnerBack(Date.parse(at(5)), C.gen, true)).filter(i => i.kind === 'user').map(i => i.text);
-        const back = (await partnerBack(-Infinity, C.gen, false)).filter(i => i.kind === 'user').map(i => i.text);
-        window.api = real; C.compThread = null;
+        C.compHist = { codex: { thread: 'T', pending: [], cursor: null, more: false } };
+        const first = (await partnerBack('codex', Date.parse(at(5)), C.gen, true)).filter(i => i.kind === 'user').map(i => i.text);
+        const back = (await partnerBack('codex', -Infinity, C.gen, false)).filter(i => i.kind === 'user').map(i => i.text);
+        window.api = real; C.compHist = {};
         return { first, back, calls }`);
       t.check('the partner pages back as far as the chat’s own page, and keeps older turns for later', paging.first.join() === 'q6,q8,q9' && paging.back.join() === 'q1,q4', paging);
       const bars = await b.eval(`const at = s => new Date(Date.parse('2026-10-11T10:00:00Z') + s * 1000).toISOString();
@@ -1661,9 +1670,63 @@ module.exports = [
     async run(t) {
       const b = await t.open();
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
-      const r = await b.eval(`C.comp = null; C.compPending = [{ kind: 'user', at: new Date().toISOString() }]; let err = null; try { await ensureCompanion(); } catch (e) { err = e.message; } return { err, comp: !!C.comp, models: !!(C.mi.comp && C.mi.comp.models && C.mi.comp.models.length) }`);
+      const r = await b.eval(`C.comps = {}; C.comp = null; C.compHist = { codex: { thread: 'paging', pending: [{ kind: 'user', at: new Date().toISOString() }], cursor: null, more: true } }; let err = null; try { await ensureCompanion(); } catch (e) { err = e.message; } return { err, comp: !!C.comp, models: !!(C.mi.comp && C.mi.comp.models && C.mi.comp.models.length) }`);
       t.check('Codex starts even while its earlier messages are being paged', !r.err && r.comp, r);
       t.check('and its models are listed', r.models, r);
+    },
+  },
+  {
+    name: 'gemini',
+    // Gemini as a third assistant: its own group in the side list, its own button on a project, its
+    // chats open with their history, its modes and models; Setup says how it's set up.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ gemini: true, seen: (p, u, body) => calls.push([p, body]) });
+      await sleep(600);
+      const nav = await b.eval(`const h = document.querySelector('.nav-h.gemini'); return h && { text: h.textContent.replace(/\\s+/g, ' ').trim(), items: [...document.querySelectorAll('.nav-i.gemini')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
+      t.check('Gemini has its own group in the side list, with its project', !!nav && /Gemini/.test(nav.text) && nav.items.some(x => /Starfall Tavern/.test(x)), nav);
+      await b.clickOn('.nav-i.gemini'); await sleep(900);
+      const page = await b.eval(`return { eyebrow: document.querySelector('.wp-in .eyebrow')?.textContent, btn: !!document.querySelector('[data-act="newgemini"]'), rows: [...document.querySelectorAll('#wbList .rows > li')].length }`);
+      t.check('its project page lists the Gemini chats, with a New Gemini chat button', /Gemini chats in this project/.test(page.eyebrow || '') && page.btn && page.rows === 1, page);
+      await t.shot(b, 'project');
+      // The chat: its history, its name and color, its modes and models.
+      await b.eval(`ChatUI.open({ sessionId: 'b158a376-5571-4317-a62a-61b783c0218a' }); return 1`); await sleep(2000);
+      const chat = await b.eval(`return { gem: document.getElementById('chat').classList.contains('gemini'), who: document.querySelector('#cFeed .turn .who-n')?.textContent, text: document.querySelector('#cFeed .turn .md')?.textContent.slice(0, 60), tool: document.querySelector('#cFeed .turn .tool, #cFeed .turn .step')?.textContent.replace(/\\s+/g, ' ').slice(0, 80), modes: [...document.getElementById('cMode').options].map(o => o.textContent), mode: document.getElementById('cMode').value }`);
+      t.check('a Gemini chat opens with its history, under Gemini’s name and color', chat.gem && chat.who === 'Gemini' && /Before the roads had names/.test(chat.text || ''), chat);
+      t.check('with Gemini’s own modes: Plan only, Edit files, Full access', JSON.stringify(chat.modes) === JSON.stringify(['Plan only', 'Edit files', 'Full access']) && chat.mode === 'accept-edits', chat);
+      t.check('it asked for the history as Gemini’s', calls.some(([p]) => p === '/api/chat/history'));
+      await t.shot(b, 'chat');
+      // A new Gemini chat from the project page.
+      await b.eval(`ChatUI.close(); go('folder', S.projects.find(p => p.name === 'Starfall Tavern').cwd); return 1`); await sleep(900);
+      await b.clickOn('[data-act="newgemini"]'); await sleep(1200);
+      t.check('New Gemini chat opens a Gemini chat in that project', calls.some(([p, body]) => p === '/api/chat/open' && body.provider === 'gemini' && body.mode === 'new' && /Starfall Tavern/.test(body.cwd || '')));
+      // All three in one chat: a Claude chat shows a pill for Codex and one for Gemini, and All.
+      await b.eval(`ChatUI.close(); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const pills = await b.eval(`return { kinds: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), all: document.querySelector('[data-crew="both"] .crew-n')?.textContent, hint: document.getElementById('cHint').textContent }`);
+      t.check('a Claude chat has a pill for Codex and one for Gemini, and All', JSON.stringify(pills.kinds) === '["codex","gemini"]' && pills.all === 'All' && /@codex/.test(pills.hint) && /@gemini/.test(pills.hint) && /@all/.test(pills.hint), pills);
+      await b.clickOn('[data-crew="comp"][data-kind="gemini"]'); await sleep(400);
+      const picked = await b.eval(`return { target: C.target, mate: partnerProv(), on: [...document.querySelectorAll('[data-crew="comp"].on')].map(x => x.dataset.kind), ph: document.getElementById('cText').placeholder }`);
+      t.check('clicking Gemini’s pill writes to Gemini (only its pill lit)', picked.target === 'comp' && picked.mate === 'gemini' && JSON.stringify(picked.on) === '["gemini"]' && /Gemini/.test(picked.ph), picked);
+      await t.shot(b, 'crew');
+      const sendText = async text => { await b.eval(`const box = document.getElementById('cText'); box.value = ${JSON.stringify(text)}; box.dispatchEvent(new Event('input', { bubbles: true })); return 1`); await b.clickOn('#cSend'); await sleep(900); };
+      await sendText('read the bard’s lines aloud in your head');
+      t.check('a message from Gemini’s pill goes to Gemini', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'partner' && body.kind === 'gemini' && /read the bard/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      t.check('and Gemini joined as Gemini', calls.some(([p, body]) => p === '/api/chat/companion' && body.kind === 'gemini'));
+      await sendText('@codex check the rhyme scheme');
+      t.check('“@codex …” goes to Codex, from the same chat', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'partner' && body.kind === 'codex' && /rhyme scheme/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      await sendText('@all one verse each');
+      t.check('“@all …” goes round: Claude, then Codex and Gemini', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'all' && JSON.stringify(body.kinds) === '["codex","gemini"]' && /one verse each/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      const kept = await b.eval(`return Object.keys(C.comps).filter(k => C.comps[k] && !C.comps[k].ended)`);
+      t.check('both partners stay in the chat (neither pushed the other out)', kept.includes('gemini') && kept.includes('codex'), kept);
+      // Plain words in Ctrl+K.
+      const say = await b.eval(`ChatUI.close(); openPalette('gemini chat in starfall to write the lore book'); await new Promise(r => setTimeout(r, 250)); const t = document.getElementById('palette').textContent; closePalette(); return t`);
+      t.check('Ctrl+K: “gemini chat in starfall to …” offers exactly that', /Start a Gemini chat in Starfall Tavern: write the lore book/.test(say), say.slice(0, 200));
+      // Setup → Gemini.
+      await b.eval(`ChatUI.close(); openSetupAt('st-gemini'); return 1`); await sleep(1200);
+      const setup = await b.eval(`return document.getElementById('st-gemini')?.nextElementSibling?.textContent.replace(/\\s+/g, ' ') || ''`);
+      t.check('Setup → Gemini says it’s signed in, with Gemini 4 Argon, and what the modes mean', /Use Gemini too/.test(setup) && /Signed in/.test(setup) && /Gemini 4 Argon/.test(setup) && /Edit files/.test(setup), setup.slice(0, 300));
+      await b.eval(`document.getElementById('st-gemini').scrollIntoView(); return 1`); await sleep(200);
+      await t.shot(b, 'setup');
     },
   },
   {
@@ -1717,7 +1780,7 @@ module.exports = [
       const b = await t.open({ fresh: true, seen: (p, u, body) => calls.push([p, body]) });
       await b.eval(`localStorage.removeItem('getting-started'); S.firstRun = true; await openSetup(); return 1`); await sleep(800);
       const gs = await b.eval(`const g = document.querySelector('.gs'); return g && { text: g.textContent.replace(/\\s+/g, ' '), steps: g.querySelectorAll('.gs-step').length, done: g.querySelectorAll('.gs-step.ok').length }`);
-      t.check('a first start opens Setup on Getting started', !!gs && gs.steps === 5 && /Two things and you’re ready/.test(gs.text) && /Install Claude Code/.test(gs.text) && /Sign in/.test(gs.text), gs);
+      t.check('a first start opens Setup on Getting started', !!gs && gs.steps === 6 && /Two things and you’re ready/.test(gs.text) && /Install Claude Code/.test(gs.text) && /Sign in/.test(gs.text), gs);
       await t.shot(b, 'getting-started');
       await b.clickOn('.gs [data-fix="install-claude"]'); await sleep(500);
       t.check('Install Claude Code runs Anthropic’s installer', calls.some(([p]) => p === '/api/claude/install'));
@@ -2014,7 +2077,9 @@ module.exports = [
       await sleep(2500);
       const w = await b.eval(`const el = document.querySelector('.welcome'); return el ? { text: el.textContent.replace(/\\s+/g, ' '), chips: el.querySelectorAll('.wb-chip').length, back: !!el.querySelector('[data-welcome="continue"]') } : null`);
       t.check('after two hours away, the hub says what happened meanwhile', w && /away 2h/.test(w.text) && /While you were away, .*needs your OK/.test(w.text), w);
-      t.check('with the chats that came in, and a way back to the last one', w && w.chips >= 2 && w.back && /Back to “Tavern brawl encounter design”/.test(w.text), w);
+      // Away since yesterday (two hours back crosses midnight between 0:00 and 2:00): it's the day's first look.
+      const newDay = await b.eval(`return new Date(Date.now() - 2 * 3600e3).toDateString() !== new Date().toDateString()`);
+      t.check('with the chats that came in, and a way back to the last one', w && w.chips >= 2 && w.back && (newDay ? /Resume my day: “Tavern brawl encounter design”/ : /Back to “Tavern brawl encounter design”/).test(w.text), w);
       t.check('and what the chats did meanwhile: files changed and reviews back', w && /3 files were changed/.test(w.text) && /a review came back with 2 findings/.test(w.text), w);
       await t.shot(b, 'hub');
       const partnerWelcome = await b.eval(`const previous = S.activity; try { S.activity = [{ key: 'welcome-owner', title: 'Owner', phase: 'idle' }, { key: 'welcome-partner', parentKey: 'welcome-owner', provider: 'codex', source: 'app', title: 'Partner reply', phase: 'idle', finishedAt: Date.now() }]; const el = document.createElement('div'); el.innerHTML = welcomeHtml(); return { text: el.textContent, chip: !!el.querySelector('[data-k="welcome-partner"]') }; } finally { S.activity = previous; }`);
@@ -2060,8 +2125,8 @@ module.exports = [
       // With a chat working: three answers.
       await b.eval(`S.live = { x: { state: 'busy' } }; restartApp(); return 1`); await sleep(300);
       const ch = await b.eval(`const d = document.querySelector('.choice-dlg[open]'); return d ? [...d.querySelectorAll('.btn')].map(x => x.textContent) : null`);
-      t.check('with a chat working it can wait for replies, restart now, or not', JSON.stringify(ch) === JSON.stringify(['Cancel', 'Restart now', 'When replies finish']), ch);
-      t.check('Enter waits for replies (the main answer)', await b.eval(`return document.activeElement.textContent === 'When replies finish'`));
+      t.check('with a chat working it can wait for replies, restart now, or not', JSON.stringify(ch) === JSON.stringify(['Cancel', 'Restart now', 'When they finish']), ch);
+      t.check('Enter waits for replies (the main answer)', await b.eval(`return document.activeElement.textContent === 'When they finish'`));
       await b.eval(`document.activeElement.click(); return 1`); await sleep(300);
       const bar = await b.eval(`const el = document.getElementById('restartBar'); return el ? el.textContent : null`);
       t.check('while it waits, a bar says so, with Restart now and Cancel', bar && /Restarting when replies finish/.test(bar) && /Restart now/.test(bar) && /Cancel/.test(bar), bar);
@@ -2232,6 +2297,60 @@ module.exports = [
       await t.shot(b, 'setup');
       await b.eval(`document.getElementById('setup').close(); openPalette('setup'); return 1`); await sleep(500);
       t.check('Ctrl+K finds actions', await b.eval(`return /Setup/.test(document.getElementById('palette').textContent)`));
+    },
+  },
+  {
+    name: 'lite',
+    // Switcher Lite on the real (test) server: it opens without script errors, and from then on it
+    // counts as used here (its background checks start); the week-starter stays off.
+    async run(t) {
+      const b = await t.open({ demo: false, path: 'lite' });
+      await sleep(3000);
+      const r = await b.eval(`const st = await api('/api/lite/state'); return { title: document.title, brand: document.getElementById('brand')?.textContent, side: !!document.getElementById('sideScroll'), used: !!(st.lite && st.lite.used), weeks: st.lite && st.lite.autoStartWeeks === true }`);
+      t.check('Switcher Lite opens on the same app', /Switcher Lite$/.test(r.title) && !!r.brand && r.side, r);
+      t.check('once opened, Lite counts as used here (its checks start)', r.used, r);
+      t.check('the week-starter is off unless you turn it on', !r.weeks, r);
+      // Who answers, in a Claude chat with Gemini set up (and no ChatGPT plan here): Gemini, or both in turn.
+      const to = await b.eval(`const realPlans = S.plans; S.plans = { plans: [{ id: 'cl', family: 'claude' }] }; S.gemini = true; S.view = 'chat'; CV.provider = 'claude'; PARTNER.prov = 'gemini';
+        const out = { kinds: crewKindsLite(), one: toBody('partner:gemini'), both: toBody('both'), old: toBody('partner'), chat: toBody('chat'), name: toName('partner:gemini') };
+        S.plans = { plans: [{ id: 'cl', family: 'claude' }, { id: 'cx', family: 'chatgpt' }] }; out.all = toBody('both'); S.plans = realPlans; return out`);
+      t.check('Lite: Gemini can answer in a Claude chat', JSON.stringify(to.kinds) === '["gemini"]' && to.one.to === 'partner' && to.one.kind === 'gemini' && to.name === 'Gemini', to);
+      t.check('Lite: Both goes to the chat, then Gemini; “partner” from before means the chat’s last partner', to.both.to === 'both' && to.both.kind === 'gemini' && to.old.kind === 'gemini' && !to.chat.to, to);
+      t.check('Lite: with Codex and Gemini both there, All goes round them in turn', to.all.to === 'all' && JSON.stringify(to.all.kinds) === '["codex","gemini"]', to);
+      await t.shot(b, 'now');
+    },
+  },
+  {
+    name: 'crew history',
+    // A chat with two partners opens with both one's and the other's earlier messages, in time order,
+    // each under its own name; the one not running still has its pill.
+    async run(t) {
+      const b = await t.open({ gemini: true, crew: true });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const r = await b.eval(`const turns = [...document.querySelectorAll('#cFeed .turn')].map(x => ({ who: x.querySelector('.who-n')?.textContent, text: (x.querySelector('.md')?.textContent || '').slice(0, 60) }));
+        return { turns, pills: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), hist: Object.keys(C.compHist) }`);
+      const gem = r.turns.findIndex(x => x.who === 'Gemini' && /harvest moon/.test(x.text));
+      t.check('both partners’ conversations are read', JSON.stringify(r.hist.sort()) === '["codex","gemini"]', r.hist);
+      t.check('Gemini’s earlier reply shows, under its name', gem >= 0, r.turns.map(x => x.who));
+      t.check('Codex’s earlier replies show too', r.turns.some(x => x.who === 'Codex'), r.turns.map(x => x.who));
+      t.check('in time order: after Claude’s replies from before it', gem > r.turns.findIndex(x => x.who === 'Claude'), r.turns.map(x => x.who));
+      t.check('a pill for each of them', JSON.stringify(r.pills) === '["codex","gemini"]', r.pills);
+      await t.shot(b, 'feed');
+    },
+  },
+  {
+    name: 'background work',
+    // Claude's reply is done but work it started runs on (a build, tests): the chat says so, and the
+    // hub keeps it under At work, not as finished.
+    async run(t) {
+      const b = await t.open({ events: [{ kind: 'background', tasks: [{ id: 'b1', type: 'local_bash', description: 'Run the full test suite' }] }] });
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const r = await b.eval(`const s = document.getElementById('cState'); return { text: s.textContent, title: s.title, cls: s.className, pill: document.querySelector('[data-crew="main"] .crew-m')?.textContent }`);
+      t.check('the chat says it’s working in the background, and on what', r.text === 'Working in the background' && /Run the full test suite/.test(r.title) && /\bbg\b/.test(r.cls), r);
+      t.check('its pill too', r.pill === 'working in the background', r);
+      const hub = await b.eval(`return { bg: ownStatus({ phase: 'idle', source: 'app', finishedAt: Date.now(), background: ['Run the full test suite'] }), done: ownStatus({ phase: 'idle', source: 'app', finishedAt: Date.now(), lastText: 'x', background: [] }), asks: ownStatus({ phase: 'waiting', pending: [{}], background: ['x'] }) }`);
+      t.check('the hub: at work while it runs; a finished reply once it’s done; a question still comes first', hub.bg === 'working' && hub.done === 'reply' && hub.asks === 'approve', hub);
+      await t.shot(b, 'chat');
     },
   },
 ];

@@ -3,6 +3,7 @@
 
 const $c = id => (id[0] === '[' ? document.querySelector(id) : document.getElementById(id));
 const C = {
+  comps: {}, crewKinds: [], focus: null, compHist: {},
   key: null, info: null, sessionId: null, es: null, lastSeq: 0, state: null, watch: null, watchSig: '',
   attachments: [], historyStart: 0, historyCursor: null, liveText: {}, liveTimer: null, interruptedAt: 0, title: '', folder: '', model: '', provider: 'claude',
   // The Codex helper working inside a Claude chat, which one your next message goes to, and each one's model.
@@ -11,15 +12,20 @@ const C = {
   ctx: { main: null, comp: null }, ctxWarned: {},
   // Files put back with Undo, for each one's next catch-up.
 };
-const PROV_NAME = { claude: 'Claude', codex: 'Codex', openclaw: 'OpenClaw' };
+const PROV_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', openclaw: 'OpenClaw' };
 const codexOK = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
-// The other assistant in this chat: Codex in a Claude chat, Claude in a Codex chat.
-const partnerProv = () => (C.provider === 'codex' ? 'claude' : 'codex');
-const partnerOK = () => (partnerProv() === 'codex' ? codexOK() : !!(typeof current === 'function' && current() && canLaunch(current())));
-const duo = () => !C.watch && (C.provider === 'claude' || C.provider === 'codex') && (partnerOK() || !!C.comp);
+// The other assistant in this chat: the one working with it, else the one you picked, else the usual
+// one (Codex for Claude; Claude for Codex and for Gemini).
+const partnerProv = () => (C.comp && C.comp.provider) || (C.mate && C.mate !== C.provider ? C.mate : null) || (C.provider === 'claude' ? 'codex' : 'claude');
+// Whether an assistant can be brought in now.
+const kindReady = k => (k === 'codex' ? codexOK() : k === 'gemini' ? (typeof geminiReady === 'function' && geminiReady()) : !!(typeof current === 'function' && current() && canLaunch(current())));
+const partnerOK = () => kindReady(partnerProv());
+const duo = () => !C.watch && ['claude', 'codex', 'gemini'].includes(C.provider) && (partnerOK() || !!C.comp);
+// The others that could be the partner instead.
+const otherMates = () => ['claude', 'codex', 'gemini'].filter(k => k !== C.provider && k !== partnerProv() && kindReady(k));
 const provFor = src => (src === 'comp' ? partnerProv() : C.provider);
 const keyFor = src => (src === 'comp' ? C.comp && C.comp.key : C.key);
-const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Skip all checks', dontAsk: 'Never ask' };
+const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Skip all checks', dontAsk: 'Never ask', 'accept-edits': 'Edit files', full: 'Full access' };
 const STATE_LABELS = { starting: 'Starting', ready: 'Ready', busy: 'Working', waiting: 'Needs your OK', ended: 'Stopped', watching: 'Watching live', readonly: 'Read-only' };
 const ARTIFACT_RE = /https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+/g;
 const FILE_EXT = 'md|markdown|mdx|txt|json|jsonl|csv|tsv|log|html?|css|js|mjs|cjs|ts|tsx|jsx|py|ya?ml|toml|xml|sh|ps1|bat|cmd|lua|luau|cs|java|go|rs|sql|ini|png|jpe?g|gif|webp|svg|mp4|m4v|webm|mov|mkv|mp3|wav|ogg|m4a|flac|pdf';
@@ -235,7 +241,7 @@ function renderLedger() {
         ${C.watch ? `<dt>Running</dt><dd>${C.watch.source === 'terminal' ? 'In a terminal' : C.watch.source === 'openclaw' ? 'In OpenClaw' : 'In another app'}</dd>` : ''}
         ${C.model ? `<dt>Model</dt><dd>${esc(C.model)}${C.mi.main && C.mi.main.effort ? ` · ${esc(C.mi.main.effort)} effort` : ''}</dd>` : ''}
         ${C.ctx.main ? `<dt>Context</dt><dd>${esc(ctxLine('main'))}</dd>` : ''}
-        ${C.comp && C.mi.comp ? `<dt>With ${PROV_NAME[partnerProv()]}</dt><dd>${esc(modelLabel(C.mi.comp))}${C.mi.comp.effort ? ` · ${esc(C.mi.comp.effort)}` : ''}</dd>` : ''}
+        ${crewKinds({ inChat: true }).map(k => withComp(k, () => (C.comp && C.mi.comp ? `<dt>With ${PROV_NAME[k]}</dt><dd>${esc(modelLabel(C.mi.comp))}${C.mi.comp.effort ? ` · ${esc(C.mi.comp.effort)}` : ''}</dd>` : ''))).join('')}
         ${C.info && C.info.permissionMode ? `<dt>Mode</dt><dd>${esc(($c('cMode').selectedOptions[0] || {}).textContent || $c('cMode').value)}</dd>` : ''}
         ${C.info && C.info.cwd ? `<dt>Folder</dt><dd><button class="linkish" data-file="." title="${esc(C.info.cwd)}">${esc(C.info.cwd)}</button></dd>` : ''}
         ${C.sessionId ? `<dt>Chat ID</dt><dd><button class="linkish" data-copy="${esc(C.sessionId)}" title="Copy the chat ID">${esc(C.sessionId.slice(0, 8))}…</button></dd>` : ''}

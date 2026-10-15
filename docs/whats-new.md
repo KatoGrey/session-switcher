@@ -1,7 +1,21 @@
-# Lighter, and sturdier
+# Switcher Lite, groups, the Commander and routines
 
-- **Easier on your PC.** With Session Switcher open beside another app, its moving decoration (petals, the seal, the pulsing dots) holds still after 15 seconds, and it rests after two minutes left alone. Held still, the window uses about 2% of a CPU core instead of up to a third of one.
-- **Never left behind.** If the app is ended abruptly (a crash, or Task Manager), its background part goes too, and your open chats come back next time.
-- **Sturdier windows.** Links in a popped-out chat open in your browser; opening the app again while it's starting no longer makes two windows; the mini window closes cleanly if the page reloads.
-- **Its settings stay its own.** The chats, terminals and tools it starts no longer inherit its data folder and port, so a test or a second copy run from a chat can't reach into the app you're using.
-- **Mac updates** only use a download whose checksum matches, and clean up after themselves.
+Mostly from Ryan.
+
+- **Switcher Lite:** a second, calmer way into the same app at `/lite` (on your phone too): what needs you, plans with a use-next order, buckets for your projects, lighter chats with a side chat, and pages for bugs, routines, images and clean-up.
+- **Groups:** gather chats you're juggling in the sidebar and on the hub. Right-click a chat → **Move to group…**, or drag it there.
+- **Sub-sessions:** start a linked chat from any chat, with a brief.
+- **The Commander:** one chat that can see and nudge the others (and, if you let it, answer their requests).
+- **Routines:** chats that start on a schedule, or when a Slack channel or a command has something new. Repeating tasks are routines now.
+- **New chats start in Auto (Claude) and Full access (Codex),** unless a chat or project remembers another mode. Change it in Setup.
+- **A tidier message box:** icon Send and Stop buttons, and a simpler model picker.
+- **Codex:** chats pick up on the model they started on, and a **Fast** setting per chat.
+
+## Also in this version
+
+- **Long tasks keep going.** When Claude leaves a build, tests or a helper running in the background, its chat is no longer stopped for being idle (that ended the work, and the reply Claude gives when it's done). The chat and the hub say **Working in the background**, and a restart or update waits for it, or says it would end it.
+- **Gemini everywhere:** the Commander reads and nudges Gemini chats, routines can run on Gemini, and side chats, sub-sessions and renaming work for Gemini chats. In Lite, **Who answers** offers each assistant you have, or All.
+- **Every partner in view:** reopening a chat with Codex and Gemini both in it shows each one's earlier messages, in order.
+- **Lighter on your PC:** the check for chats open in terminals asks one PowerShell that stays running instead of starting a new one every 10 seconds (about 90 times less CPU). Lite's background checks wait until you open Lite, and never hold up the app.
+- **Lite on Windows:** Clean up shows real sizes and finds every folder it should; Lite's sign-in and model list work without Unix tools. The Bugs page works for any GitHub repo.
+- **Out of usage:** choosing **Carry on when it's back** (or handing it over) now calls off the automatic switch to your other account.
