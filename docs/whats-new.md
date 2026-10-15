@@ -5,6 +5,7 @@
 - **Gemini in the top bar:** click the account chip and Gemini has its own row, with your Google AI plan. When a model runs out of quota, it says when it's back (Antigravity can't say how much is left, so there's no percentage).
 - **Together: pick who works on your message.** One **Together ▾** button under the message box (in place of All and Plan, which hid each other): tick who takes your next message and in what order (Claude and Codex, Gemini then Codex, all three…), and whether they **take turns**, work **at the same time** (Claude on the code while Codex makes the images: say who does what, and each keeps to its part) or **plan first**. The chat's own assistant can sit out.
 - **Links to any folder on your computer open,** not just ones in your user folder: a site in `C:\Sites`, a game on `D:\`. **Work here** starts a Claude, Codex or Gemini chat in that folder, **Open in Explorer** opens it, and a web page has **Open in browser**. Sign-in files, key folders like `.ssh`, AppData and other people's user folders stay closed.
+- **Lite, from Ryan:** **Later** is a bucket of its own at the end of the sidebar (folded, one click to open) instead of a line under each project; a project with only one stage shows no stage label; and on a phone the page no longer stays pushed down after the keyboard closes.
 
 ## Earlier in 6.5: Switcher Lite, groups, the Commander and routines
 
