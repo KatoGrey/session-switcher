@@ -743,7 +743,7 @@ function openChat(c, body) {
 }
 // Chats here are read in a window that shows pictures (Switcher Lite, the chat window); they're told so,
 // or they assume they can't and send links instead.
-const SHOWS_PICTURES = 'This conversation is shown in Session Switcher, which displays Markdown images inline. To show the user a picture or screenshot, write ![short description](/absolute/path/to/file.png) with the absolute path of a local image file (png, jpg, gif, webp, svg). Use this whenever a picture would help instead of only linking to it. Videos work the same way: ![short description](/absolute/path/to/clip.mp4) (mp4, mov, webm or m4v, or an https address ending in one) plays in the chat with a Download button.';
+const SHOWS_PICTURES = 'This conversation is shown in Session Switcher, which displays Markdown images inline. To show the user a picture or screenshot, write ![short description](/absolute/path/to/file.png) with the absolute path of a local image file (png, jpg, gif, webp, svg). Use this whenever a picture would help instead of only linking to it. Videos work the same way: ![short description](/absolute/path/to/clip.mp4) (mp4, mov, webm or m4v, or an https address ending in one) plays in the chat with a Download button. Sound works too (mp3, wav, m4a, ogg, flac, aac, opus), and a link to Spotify, YouTube, Apple Music or SoundCloud shows that service’s player, so you can share music to listen to.';
 // Passed as a file: spawnClaude only takes plain flags, ids and paths as arguments (no spaces), so a
 // sentence as --append-system-prompt would stop every chat from starting.
 const SHOWS_PICTURES_FILE = (() => {

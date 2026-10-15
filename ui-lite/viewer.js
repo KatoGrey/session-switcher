@@ -33,7 +33,7 @@ function chatFiles() {
 const toolPath = b => (/^(Read|Edit|MultiEdit|Write|NotebookEdit)$/.test(b.name) ? (b.meta && b.meta.path) || b.viewPath || (b.summary && !/,\s/.test(b.summary) ? b.summary : null) : null);
 const baseName = p => String(p).split(/[\\/]/).filter(Boolean).pop() || p;
 // Inline code that's clearly a file path: has a folder or a known extension, no spaces.
-const looksLikePath = s => /^(~|\.{0,2}\/|[A-Za-z]:\\)?[\w@.+-]+([\\/][\w@.+ -]+)*\.(md|mdx|markdown|txt|json|jsonl|js|mjs|cjs|ts|tsx|jsx|py|html|css|csv|ya?ml|toml|sh|sql|go|rs|swift|kt|java|rb|lua|log|png|jpe?g|gif|webp|svg|pdf|mp4|mov|mp3|wav)$/i.test(s) && !/\s/.test(s);
+const looksLikePath = s => /^(~|\.{0,2}\/|[A-Za-z]:\\)?[\w@.+-]+([\\/][\w@.+ -]+)*\.(md|mdx|markdown|txt|json|jsonl|js|mjs|cjs|ts|tsx|jsx|py|html|css|csv|ya?ml|toml|sh|sql|go|rs|swift|kt|java|rb|lua|log|png|jpe?g|gif|webp|svg|pdf|mp4|m4v|webm|mov|mp3|wav|m4a|ogg|oga|flac|aac|opus)$/i.test(s) && !/\s/.test(s);
 
 async function viewFile(p, { from } = {}) {
   if (VW.open && VW.target && from !== 'back') VW.back.push({ kind: VW.kind, target: VW.target });

@@ -40,13 +40,45 @@ function videoHtml(ref, session) {
   return `<span class="md-video"><video src="${esc(src.includes('#') ? src : `${src}#t=0.1`)}" controls playsinline preload="metadata" onerror="this.closest('.md-video').remove()"></video>`
     + `<span class="md-video-bar"><span class="md-video-name" title="${esc(ref)}">${esc(name)}</span><a class="btn sm" href="${esc(remote ? src : vidSrc(ref, session, true))}" download="${esc(name)}"${remote ? ' target="_blank" rel="noopener noreferrer"' : ''}>Download</a></span></span>`;
 }
+// Sound files (.mp3/.wav/.m4a/.ogg/.flac/.aac/.opus) play the same way, with a Download button.
+const AUD_EXT = /\.(mp3|wav|m4a|ogg|oga|flac|aac|opus)(\?[^\s]*)?$/i;
+function audioHtml(ref, session) {
+  const src = vidSrc(ref, session); if (!src) return '';
+  const name = decodeURIComponent(ref.split(/[\\/]/).pop().split('?')[0]);
+  const remote = /^https?:/i.test(ref);
+  return `<span class="md-audio"><span class="md-video-bar"><span class="md-video-name" title="${esc(ref)}">♪ ${esc(name)}</span><a class="btn sm" href="${esc(remote ? src : vidSrc(ref, session, true))}" download="${esc(name)}"${remote ? ' target="_blank" rel="noopener noreferrer"' : ''}>Download</a></span>`
+    + `<audio src="${esc(src)}" controls preload="metadata" onerror="this.closest('.md-audio').remove()"></audio></span>`;
+}
+// A link to music on Spotify, YouTube (and YouTube Music), Apple Music or SoundCloud plays in the
+// chat in that service's own player. Returns the player's address and its height, or null.
+function musicEmbed(url) {
+  let u; try { u = new URL(String(url).replace(/&amp;/g, '&')); } catch { return null; }
+  const h = u.hostname.replace(/^www\./, ''), parts = u.pathname.split('/').filter(Boolean);
+  if (h === 'open.spotify.com') {
+    const i = parts.findIndex(x => /^(track|album|playlist|episode|show|artist)$/.test(x));
+    if (i < 0 || !parts[i + 1]) return null;
+    return { src: `https://open.spotify.com/embed/${parts[i]}/${encodeURIComponent(parts[i + 1])}`, h: parts[i] === 'track' || parts[i] === 'episode' ? 152 : 352, kind: 'spotify' };
+  }
+  const yt = h === 'youtu.be' ? parts[0] : /(^|\.)youtube\.com$/.test(h) ? (u.searchParams.get('v') || (parts[0] === 'shorts' || parts[0] === 'live' || parts[0] === 'embed' ? parts[1] : null)) : null;
+  if (yt && /^[\w-]{6,20}$/.test(yt)) return { src: `https://www.youtube-nocookie.com/embed/${yt}`, ratio: true, kind: 'youtube' };
+  if (/(^|\.)youtube\.com$/.test(h) && parts[0] === 'playlist' && u.searchParams.get('list')) return { src: `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(u.searchParams.get('list'))}`, ratio: true, kind: 'youtube' };
+  if (h === 'music.apple.com' && parts.length >= 3) return { src: `https://embed.music.apple.com${u.pathname}${u.search}`, h: u.searchParams.get('i') ? 175 : 450, kind: 'apple' };
+  if (h === 'soundcloud.com' && parts.length >= 2) return { src: `https://w.soundcloud.com/player/?url=${encodeURIComponent(`https://soundcloud.com${u.pathname}`)}&visual=false&show_comments=false`, h: parts.includes('sets') ? 352 : 166, kind: 'soundcloud' };
+  return null;
+}
+function embedHtml(url) {
+  const m = musicEmbed(url); if (!m) return '';
+  return `<span class="md-embed k-${m.kind}${m.ratio ? ' ratio' : ''}"${m.h ? ` style="height:${m.h}px"` : ''}><iframe src="${esc(m.src)}" loading="lazy" title="Music player" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></span>`;
+}
+const isMedia = ref => VID_EXT.test(ref) || AUD_EXT.test(ref);
+const mediaHtml = (ref, session) => (/^https?:/i.test(ref) && musicEmbed(ref) ? embedHtml(ref) : AUD_EXT.test(ref) ? audioHtml(ref, session) : videoHtml(ref, session));
 function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' ? CV.id : null } = {}) {
   const blocks = [];
   let pics = [], vids = [];
-  const pic = ref => { if (VID_EXT.test(ref)) return vid(ref); const u = picSrc(ref, session); if (u && !pics.includes(u) && pics.length < 8) pics.push(u); };
+  const pic = ref => { if (isMedia(ref) || (/^https?:/i.test(ref) && musicEmbed(ref))) return vid(ref); const u = picSrc(ref, session); if (u && !pics.includes(u) && pics.length < 8) pics.push(u); };
   const vid = ref => { if (!vids.includes(ref) && vids.length < 4) vids.push(ref); };
   const thumbs = () => {
-    const v = vids.map(r => videoHtml(r, session)).join(''); vids = [];
+    const v = vids.map(r => mediaHtml(r, session)).join(''); vids = [];
     if (!pics.length) return v;
     const h = `<div class="md-thumbs">${pics.map(u => `<img src="${esc(u)}" alt="" loading="lazy" data-zoom="1" onerror="this.remove()">`).join('')}</div>`; pics = []; return h + v;
   };
@@ -60,15 +92,15 @@ function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' 
   const inline = x => {
     const held = [], hold = h => `\u0001${held.push(h) - 1}\u0001`;
     // A Markdown image shows where it's written.
-    x = String(x).replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (m, alt, ref) => { if (VID_EXT.test(ref)) { const v = videoHtml(ref, session); return v ? `\u0002${held.push(v) - 1}\u0002` : alt; } const u = picSrc(ref, session); return u ? `\u0002${held.push(`<img class="md-img" src="${esc(u)}" alt="${esc(alt)}" data-zoom="1" onerror="this.remove()">`) - 1}\u0002` : alt; });
+    x = String(x).replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (m, alt, ref) => { if (isMedia(ref)) { const v = mediaHtml(ref, session); return v ? `\u0002${held.push(v) - 1}\u0002` : alt; } const u = picSrc(ref, session); return u ? `\u0002${held.push(`<img class="md-img" src="${esc(u)}" alt="${esc(alt)}" data-zoom="1" onerror="this.remove()">`) - 1}\u0002` : alt; });
     return esc(x)
       .replace(/\u0002(\d+)\u0002/g, (m, i) => hold(held[Number(i)]))
-      .replace(/`([^`\n]+)`/g, (m, c) => ((IMG_EXT.test(c.trim()) || VID_EXT.test(c.trim())) && typeof looksLikePath === 'function' && looksLikePath(c.trim()) ? pic(c.trim()) : null, hold(`<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`)))
-      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => ((IMG_EXT.test(href) || VID_EXT.test(href)) && pic(href), hold(`<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`)))
+      .replace(/`([^`\n]+)`/g, (m, c) => ((IMG_EXT.test(c.trim()) || isMedia(c.trim())) && typeof looksLikePath === 'function' && looksLikePath(c.trim()) ? pic(c.trim()) : null, hold(`<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`)))
+      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => ((IMG_EXT.test(href) || isMedia(href) || musicEmbed(href)) && pic(href.replace(/&amp;/g, '&')), hold(`<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`)))
       // A link to a file (a relative path, ~/…, /Users/…) opens it beside the chat.
-      .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : ((IMG_EXT.test(href) || VID_EXT.test(href)) && pic(href), hold(`<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`))))
+      .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : ((IMG_EXT.test(href) || isMedia(href)) && pic(href), hold(`<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`))))
       // A bare address is a link too (without the full stop or bracket that ends its sentence).
-      .replace(/\bhttps?:\/\/[^\s<>"')\]]+/g, u => { const t = u.replace(/(&quot;|&#39;|[.,;:!?*_])+$/, ''); if (IMG_EXT.test(t) || VID_EXT.test(t)) pic(t.replace(/&amp;/g, '&')); return hold(`<a href="${t}" target="_blank" rel="noopener noreferrer">${t}</a>`) + u.slice(t.length); })
+      .replace(/\bhttps?:\/\/[^\s<>"')\]]+/g, u => { const t = u.replace(/(&quot;|&#39;|[.,;:!?*_])+$/, ''); if (IMG_EXT.test(t) || isMedia(t) || musicEmbed(t)) pic(t.replace(/&amp;/g, '&')); return hold(`<a href="${t}" target="_blank" rel="noopener noreferrer">${t}</a>`) + u.slice(t.length); })
       .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
       .replace(/(^|[^*\w])\*([^*\n]+)\*(?=[^*\w]|$)/g, '$1<i>$2</i>')
       .replace(/\u0001(\d+)\u0001/g, (m, i) => held[Number(i)]);
@@ -305,7 +337,7 @@ function itemHtml(it) {
     const shown = text.replace(/^From Commander:\s*/, '').split('\n').filter(l => !/^Attached file: `[^`]+`/.test(l.trim()));
     const attached = text.split('\n').map(l => /^Attached file: `([^`]+)`/.exec(l.trim())).filter(Boolean).map(m => m[1]);
     const files = attached.map(f => f.split('/').pop());
-    const clips = attached.filter(f => VID_EXT.test(f)).map(f => videoHtml(f, CV.id)).join('');
+    const clips = attached.filter(isMedia).map(f => mediaHtml(f, CV.id)).join('');
     return `<div class="msg-you${cmdr ? ' from-cmdr' : ''}">${pics.length ? `<div class="msg-pics">${pics.map(src => `<img src="${src}" alt="" data-zoom="1">`).join('')}</div>` : ''}${cmdr ? '<span class="tag">from Commander</span> ' : ''}${linkText(shown.join('\n').trim())}${files.length ? `<div class="msg-files">${files.map(f => `<span class="tag">${esc(f)}</span>`).join('')}</div>` : ''}${clips}</div>`;
   }
   if (it.kind === 'assistant') {
