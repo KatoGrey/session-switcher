@@ -2525,7 +2525,10 @@ setInterval(() => {
   runSelfCheck('nightly').catch(err => log(`Self-check failed to run: ${err.message}`));
 }, 5 * 60e3).unref();
 // Working: mid-reply, or with work it started still running in the background (a restart would end it).
-const busyChats = () => Object.values(chats.live()).filter(c => ['starting', 'busy', 'waiting'].includes(c.state) || (c.state === 'ready' && c.background && c.background.length)).length;
+// A watch on an artifact the chat published (Claude Code arms one on every publish) runs as long as
+// the chat does; it isn't work, so it doesn't hold a restart back.
+const realWorkInBackground = c => (c.background || []).some(t => !/^live updates for artifact\b/i.test(String(t.description || '')));
+const busyChats = () => Object.values(chats.live()).filter(c => ['starting', 'busy', 'waiting'].includes(c.state) || (c.state === 'ready' && realWorkInBackground(c))).length;
 function restartState() { return restartWait ? { pending: true, waitingOn: busyChats(), since: restartWait.since } : { pending: false }; }
 async function restartNow(why) {
   if (shuttingDown || restartStarting) return false;
