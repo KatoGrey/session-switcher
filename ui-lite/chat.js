@@ -22,11 +22,34 @@ function picSrc(ref, session) {
   if (!session) return null;
   return `/api/image?${new URLSearchParams({ token: TOKEN, path: ref.replace(/^file:\/\//, ''), session })}`;
 }
+// Videos a reply names (a Markdown image, a link, a file path in code, or an address ending in
+// .mp4/.mov/.webm/.m4v) play in the chat, with a Download button. Files on this Mac stream from
+// /api/media (it seeks, which Safari needs); ones that can't load hide.
+const VID_EXT = /\.(mp4|m4v|webm|mov)(\?[^\s]*)?$/i;
+function vidSrc(ref, session, download = false) {
+  if (/^https?:\/\//i.test(ref)) return ref;
+  if (!session) return null;
+  return `/api/media?${new URLSearchParams({ token: TOKEN, path: ref.replace(/^file:\/\//, ''), session, ...(download ? { download: '1' } : {}) })}`;
+}
+function videoHtml(ref, session) {
+  const src = vidSrc(ref, session); if (!src) return '';
+  const name = decodeURIComponent(ref.split(/[\\/]/).pop().split('?')[0]);
+  const remote = /^https?:/i.test(ref);
+  // Spans (shown as blocks), so a player written inside a paragraph doesn't break it.
+  // #t=0.1: Safari then shows the opening frame instead of a black box until you press play.
+  return `<span class="md-video"><video src="${esc(src.includes('#') ? src : `${src}#t=0.1`)}" controls playsinline preload="metadata" onerror="this.closest('.md-video').remove()"></video>`
+    + `<span class="md-video-bar"><span class="md-video-name" title="${esc(ref)}">${esc(name)}</span><a class="btn sm" href="${esc(remote ? src : vidSrc(ref, session, true))}" download="${esc(name)}"${remote ? ' target="_blank" rel="noopener noreferrer"' : ''}>Download</a></span></span>`;
+}
 function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' ? CV.id : null } = {}) {
   const blocks = [];
-  let pics = [];
-  const pic = ref => { const u = picSrc(ref, session); if (u && !pics.includes(u) && pics.length < 8) pics.push(u); };
-  const thumbs = () => { if (!pics.length) return ''; const h = `<div class="md-thumbs">${pics.map(u => `<img src="${esc(u)}" alt="" loading="lazy" data-zoom="1" onerror="this.remove()">`).join('')}</div>`; pics = []; return h; };
+  let pics = [], vids = [];
+  const pic = ref => { if (VID_EXT.test(ref)) return vid(ref); const u = picSrc(ref, session); if (u && !pics.includes(u) && pics.length < 8) pics.push(u); };
+  const vid = ref => { if (!vids.includes(ref) && vids.length < 4) vids.push(ref); };
+  const thumbs = () => {
+    const v = vids.map(r => videoHtml(r, session)).join(''); vids = [];
+    if (!pics.length) return v;
+    const h = `<div class="md-thumbs">${pics.map(u => `<img src="${esc(u)}" alt="" loading="lazy" data-zoom="1" onerror="this.remove()">`).join('')}</div>`; pics = []; return h + v;
+  };
   let t = String(src || '').replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (m, lang, code) => {
     code = code.replace(/\n$/, '');
     // HTML can be seen drawn, in a frame that runs no scripts and reaches nothing.
@@ -37,15 +60,15 @@ function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' 
   const inline = x => {
     const held = [], hold = h => `\u0001${held.push(h) - 1}\u0001`;
     // A Markdown image shows where it's written.
-    x = String(x).replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (m, alt, ref) => { const u = picSrc(ref, session); return u ? `\u0002${held.push(`<img class="md-img" src="${esc(u)}" alt="${esc(alt)}" data-zoom="1" onerror="this.remove()">`) - 1}\u0002` : alt; });
+    x = String(x).replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (m, alt, ref) => { if (VID_EXT.test(ref)) { const v = videoHtml(ref, session); return v ? `\u0002${held.push(v) - 1}\u0002` : alt; } const u = picSrc(ref, session); return u ? `\u0002${held.push(`<img class="md-img" src="${esc(u)}" alt="${esc(alt)}" data-zoom="1" onerror="this.remove()">`) - 1}\u0002` : alt; });
     return esc(x)
       .replace(/\u0002(\d+)\u0002/g, (m, i) => hold(held[Number(i)]))
-      .replace(/`([^`\n]+)`/g, (m, c) => (IMG_EXT.test(c.trim()) && typeof looksLikePath === 'function' && looksLikePath(c.trim()) ? pic(c.trim()) : null, hold(`<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`)))
-      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => (IMG_EXT.test(href) && pic(href), hold(`<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`)))
+      .replace(/`([^`\n]+)`/g, (m, c) => ((IMG_EXT.test(c.trim()) || VID_EXT.test(c.trim())) && typeof looksLikePath === 'function' && looksLikePath(c.trim()) ? pic(c.trim()) : null, hold(`<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`)))
+      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => ((IMG_EXT.test(href) || VID_EXT.test(href)) && pic(href), hold(`<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`)))
       // A link to a file (a relative path, ~/…, /Users/…) opens it beside the chat.
-      .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : (IMG_EXT.test(href) && pic(href), hold(`<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`))))
+      .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : ((IMG_EXT.test(href) || VID_EXT.test(href)) && pic(href), hold(`<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`))))
       // A bare address is a link too (without the full stop or bracket that ends its sentence).
-      .replace(/\bhttps?:\/\/[^\s<>"')\]]+/g, u => { const t = u.replace(/(&quot;|&#39;|[.,;:!?*_])+$/, ''); if (IMG_EXT.test(t)) pic(t.replace(/&amp;/g, '&')); return hold(`<a href="${t}" target="_blank" rel="noopener noreferrer">${t}</a>`) + u.slice(t.length); })
+      .replace(/\bhttps?:\/\/[^\s<>"')\]]+/g, u => { const t = u.replace(/(&quot;|&#39;|[.,;:!?*_])+$/, ''); if (IMG_EXT.test(t) || VID_EXT.test(t)) pic(t.replace(/&amp;/g, '&')); return hold(`<a href="${t}" target="_blank" rel="noopener noreferrer">${t}</a>`) + u.slice(t.length); })
       .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
       .replace(/(^|[^*\w])\*([^*\n]+)\*(?=[^*\w]|$)/g, '$1<i>$2</i>')
       .replace(/\u0001(\d+)\u0001/g, (m, i) => held[Number(i)]);
@@ -280,8 +303,10 @@ function itemHtml(it) {
     const cmdr = /^From Commander:\s*/.test(text);
     const pics = (it.images || []).map(i => i.src).concat((Array.isArray(it.imgRaw) ? it.imgRaw : []).filter(b => b && b.type === 'image' && b.source && b.source.data).map(b => `data:${b.source.media_type};base64,${b.source.data}`)).filter(src => /^data:image\/(png|jpeg|gif|webp);base64,/.test(src));
     const shown = text.replace(/^From Commander:\s*/, '').split('\n').filter(l => !/^Attached file: `[^`]+`/.test(l.trim()));
-    const files = text.split('\n').map(l => /^Attached file: `([^`]+)`/.exec(l.trim())).filter(Boolean).map(m => m[1].split('/').pop());
-    return `<div class="msg-you${cmdr ? ' from-cmdr' : ''}">${pics.length ? `<div class="msg-pics">${pics.map(src => `<img src="${src}" alt="" data-zoom="1">`).join('')}</div>` : ''}${cmdr ? '<span class="tag">from Commander</span> ' : ''}${linkText(shown.join('\n').trim())}${files.length ? `<div class="msg-files">${files.map(f => `<span class="tag">${esc(f)}</span>`).join('')}</div>` : ''}</div>`;
+    const attached = text.split('\n').map(l => /^Attached file: `([^`]+)`/.exec(l.trim())).filter(Boolean).map(m => m[1]);
+    const files = attached.map(f => f.split('/').pop());
+    const clips = attached.filter(f => VID_EXT.test(f)).map(f => videoHtml(f, CV.id)).join('');
+    return `<div class="msg-you${cmdr ? ' from-cmdr' : ''}">${pics.length ? `<div class="msg-pics">${pics.map(src => `<img src="${src}" alt="" data-zoom="1">`).join('')}</div>` : ''}${cmdr ? '<span class="tag">from Commander</span> ' : ''}${linkText(shown.join('\n').trim())}${files.length ? `<div class="msg-files">${files.map(f => `<span class="tag">${esc(f)}</span>`).join('')}</div>` : ''}${clips}</div>`;
   }
   if (it.kind === 'assistant') {
     const blocks = it.blocks || [];

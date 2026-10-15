@@ -743,7 +743,7 @@ function openChat(c, body) {
 }
 // Chats here are read in a window that shows pictures (Switcher Lite, the chat window); they're told so,
 // or they assume they can't and send links instead.
-const SHOWS_PICTURES = 'This conversation is shown in Session Switcher, which displays Markdown images inline. To show the user a picture or screenshot, write ![short description](/absolute/path/to/file.png) with the absolute path of a local image file (png, jpg, gif, webp, svg). Use this whenever a picture would help instead of only linking to it.';
+const SHOWS_PICTURES = 'This conversation is shown in Session Switcher, which displays Markdown images inline. To show the user a picture or screenshot, write ![short description](/absolute/path/to/file.png) with the absolute path of a local image file (png, jpg, gif, webp, svg). Use this whenever a picture would help instead of only linking to it. Videos work the same way: ![short description](/absolute/path/to/clip.mp4) (mp4, mov, webm or m4v, or an https address ending in one) plays in the chat with a Download button.';
 // Passed as a file: spawnClaude only takes plain flags, ids and paths as arguments (no spaces), so a
 // sentence as --append-system-prompt would stop every chat from starting.
 const SHOWS_PICTURES_FILE = (() => {
@@ -2672,6 +2672,8 @@ function sendMedia(req, res, url) {
   if (!f.isFile || !mime) throw fail(400, 'That file can’t be played here.');
   const size = fs.statSync(f.path).size;
   const head = { 'Content-Type': mime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' };
+  // Lite's Download button: the same file, saved under its own name.
+  if (q.download) head['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(f.path))}`;
   const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
   if (m && (m[1] || m[2])) {
     let start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
