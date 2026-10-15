@@ -341,7 +341,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-attach]'))) { $('attIn')?.click(); return undefined; }
   if ((b = el('[data-rmimg]'))) { const [im] = COMP.images.splice(Number(b.dataset.rmimg), 1); if (im && im.url) URL.revokeObjectURL(im.url); return paintAttachments(); }
   if ((b = el('[data-rmfile]'))) { COMP.files.splice(Number(b.dataset.rmfile), 1); return paintAttachments(); }
-  if ((b = el('[data-zoom]'))) return showPicture(b.src);
+  if ((b = el('[data-zoom]'))) return showPicture(b.src, picsNear(b));
   if ((b = el('[data-stopchat]'))) { sfx('close'); return wrap(() => api('/api/chat/interrupt', { key: CV.key }))(); }
   if ((b = el('[data-ncproject]'))) return pickProject(b, k => { NC.project = k; paintNewChat(); $('msgBox').focus(); });
   if ((b = el('[data-ncwho]'))) return accountMenu(b);
@@ -465,10 +465,40 @@ const hasFiles = e => e.dataTransfer && [...e.dataTransfer.types].includes('File
 document.addEventListener('dragover', e => { if ((S.view === 'chat' || S.view === 'newchat') && hasFiles(e)) { e.preventDefault(); document.body.classList.add('dropping'); } });
 document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
 document.addEventListener('drop', e => { document.body.classList.remove('dropping'); if ((S.view === 'chat' || S.view === 'newchat') && hasFiles(e)) { e.preventDefault(); addFiles([...e.dataTransfer.files]); } });
-function showPicture(src) {
+// The pictures beside the one you clicked (the whole conversation in a chat, else the panel or
+// page it's in), in order, so the big view can step through them.
+function picsNear(img) {
+  const scope = img.closest('#feed, #viewer, .modal, #main') || document;
+  return [...new Set([...scope.querySelectorAll('img[data-zoom]')].map(x => x.src).filter(Boolean))];
+}
+// A picture, big. With others beside it: ‹ › (or ← →, or a swipe on the phone) step through them.
+function showPicture(src, list = []) {
+  const pics = list.length ? list : [src];
+  let i = Math.max(0, pics.indexOf(src));
   const root = $('modalRoot');
-  root.innerHTML = `<div class="modal-back lightbox"><figure><img src="${src}" alt=""></figure></div>`;
-  root.querySelector('.modal-back').addEventListener('click', () => { root.innerHTML = ''; });
+  const paint = () => {
+    const many = pics.length > 1;
+    root.innerHTML = `<div class="modal-back lightbox" data-piclight="1">${many ? `<button class="lb-nav prev" data-pic="-1" aria-label="Previous picture (←)" ${i > 0 ? '' : 'disabled'}>‹</button>` : ''}`
+      + `<figure><img src="${esc(pics[i])}" alt="">${many ? `<figcaption>${i + 1} of ${pics.length}</figcaption>` : ''}</figure>`
+      + `${many ? `<button class="lb-nav next" data-pic="1" aria-label="Next picture (→)" ${i < pics.length - 1 ? '' : 'disabled'}>›</button>` : ''}</div>`;
+    const back = root.querySelector('.modal-back');
+    back.addEventListener('click', e => { const nav = e.target.closest('[data-pic]'); if (nav) { e.stopPropagation(); step(Number(nav.dataset.pic)); } else close(); });
+    let x0 = null;
+    back.addEventListener('touchstart', e => { x0 = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+    back.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 50) { e.preventDefault(); step(dx < 0 ? 1 : -1); } });
+  };
+  const step = d => { const j = i + d; if (j < 0 || j >= pics.length) return; i = j; paint(); };
+  const onKey = e => {
+    if (!root.querySelector('[data-piclight]')) return removeEventListener('keydown', onKey, true);
+    if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); step(1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); step(-1); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+  };
+  const close = () => { root.innerHTML = ''; removeEventListener('keydown', onKey, true); };
+  if (showPicture.off) showPicture.off();
+  showPicture.off = () => removeEventListener('keydown', onKey, true);
+  addEventListener('keydown', onKey, true);
+  paint();
 }
 $('q').addEventListener('input', e => { S.q = e.target.value.trim(); if (S.q) { if (S.view !== 'search') go('search', {}, { push: false }); else render(); } else if (S.view === 'search') go('now', {}, { push: false }); });
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter') { const r = document.querySelector('#main [data-cur]'); if (r) { e.preventDefault(); r.click(); } } if (e.key === 'ArrowDown') { e.preventDefault(); e.target.blur(); setCur(0); } });
