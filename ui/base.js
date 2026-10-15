@@ -219,6 +219,17 @@ const isCodex = s => !!(s && s.provider === 'codex');
 // Gemini (Google's Antigravity CLI): its own chats, in their projects with the rest.
 const isGemini = s => !!(s && s.provider === 'gemini');
 const geminiReady = () => !!(S.gemini && S.gemini.enabled && S.gemini.signedIn);
+// Gemini's account line: set up or not, and which models ran out of quota and when they come back.
+// (Antigravity can't say how much is left, only that a model ran out, so that's what shows.)
+const geminiStatus = () => { const g = S.gemini || {}; return !g.enabled ? 'Turned off in Setup' : g.installed === false ? 'Antigravity CLI not installed' : g.checked && !g.signedIn ? 'Not signed in' : !g.checked ? 'Checking…' : `Google AI plan${g.models ? ` · ${g.models} models` : ''}`; };
+const geminiLimits = () => (S.gemini && S.gemini.limits) || [];
+const geminiOut = l => `${l.label} ran out${l.resetsAt ? `, back ${when(l.resetsAt)}` : ''}`;
+function geminiQuotaCell() {
+  const L = geminiLimits();
+  if (!geminiReady()) return `<span class="ac-win"><small>Account</small><b>${esc(geminiStatus())}</b></span>`;
+  if (!L.length) return '<span class="ac-win"><small>Quota</small><b>Not run out</b><i>Google AI plan</i></span>';
+  return `<span class="ac-win hot"><small>Out of quota</small><b>${esc(L[0].label)}${L.length > 1 ? ` +${L.length - 1}` : ''}</b>${L[0].resetsAt ? `<i>resets ${esc(when(L[0].resetsAt))}</i>` : '<i>reset time not given</i>'}</span>`;
+}
 // An OpenClaw agent's session (a Discord channel, a cron run…): listed with the rest, read-only here.
 const isOpenClaw = s => !!(s && s.provider === 'openclaw');
 const provOf = s => (isCodex(s) ? 'codex' : isGemini(s) ? 'gemini' : isOpenClaw(s) ? 'openclaw' : 'claude');

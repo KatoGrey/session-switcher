@@ -18,6 +18,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   const text = typeof msg.message.content === 'string' ? msg.message.content : msg.message.content.map(c => c.text).join('');
   su({ step_index: step++, state: 'DONE', step_type: 'user_input' });
   if (/slow/.test(text)) { su({ step_index: step++, state: 'ACTIVE', step_type: 'agent_response', text_delta: 'Working on it' }); return; }   // never finishes (for Stop)
+  if (/quota/.test(text)) { out({ event: 'result', result: { conversation_id: conv, status: 'ERROR', error: 'RESOURCE_EXHAUSTED: You have exhausted your capacity on this model. Your quota will reset after 2h30m0s.', num_turns: 1 } }); return; }
   if (/write/.test(text)) {
     const i = step++;
     const target = path.join(process.cwd(), 'note.txt');

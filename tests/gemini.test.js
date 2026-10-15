@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { createChatManager } = require('../lib/chat');
-const { createGemini, toolBlock, ownWords, FROM_CLAUDE, MODES } = require('../lib/gemini');
+const { createGemini, toolBlock, ownWords, resetFrom, FROM_CLAUDE, MODES } = require('../lib/gemini');
 
 const FAKE = path.join(__dirname, 'fake-agy.js');
 function setup() {
@@ -121,6 +121,36 @@ test('gemini: Stop ends the reply, and the next message carries on with the conv
   await until(chat, () => results(chat).length === 3);
   assert.ok(started.length >= 2 && started[started.length - 1].includes('conv-1234-5678'), 'started again on the same conversation');
   await chat.stop();
+});
+
+test('gemini: out of quota shows on its account with the reset time, until a reply on that model works', async () => {
+  const { dir, gemini } = setup();
+  const chat = gemini.open({ cfg: {}, cwd: dir, title: 'Gemini', model: 'gemini-4-argon-medium' });
+  assert.deepEqual(gemini.publicState().limits, [], 'nothing ran out yet');
+  const t0 = Date.now();
+  chat.send('use up the quota');
+  const card = await until(chat, e => e.kind === 'limit');
+  const back = Date.parse(card.resetsAt) - t0;
+  assert.ok(back > 2.4 * 3600e3 && back < 2.6 * 3600e3, `the card says when it resets (${card.resetsAt})`);
+  assert.ok(!chat.buffer.some(e => e.kind === 'notice' && /exhausted/.test(e.text || '')), 'one out-of-quota card, not a warning as well');
+  const [l] = gemini.publicState().limits;
+  assert.equal(l.model, 'gemini-4-argon-medium');
+  assert.equal(l.resetsAt, card.resetsAt, 'the account shows the same reset time');
+  chat.send('hello again');
+  await until(chat, () => results(chat).length === 2);
+  assert.deepEqual(gemini.publicState().limits, [], 'a reply that works clears it');
+  await chat.stop();
+});
+
+test('gemini: reset times are read from the ways quota messages say them', () => {
+  const now = Date.parse('2026-10-14T12:00:00Z');
+  const at = s => resetFrom(s, now);
+  assert.equal(at('Your quota will reset after 2h31m5s.'), '2026-10-14T14:31:05.000Z');
+  assert.equal(at('Quota exceeded. Resets in 45m.'), '2026-10-14T12:45:00.000Z');
+  assert.equal(at('Usage limit reached, resets in 3 hours and 10 minutes'), '2026-10-14T15:10:00.000Z');
+  assert.equal(at('Rate limit. Resets at 2026-10-14T18:00:00Z.'), '2026-10-14T18:00:00.000Z');
+  assert.equal(at('RESOURCE_EXHAUSTED'), null, 'no time given: none made up');
+  assert.equal(at('Resets at 2026-10-13T18:00:00Z'), null, 'a time already past is no reset time');
 });
 
 test('gemini: Antigravity’s wording is read right; a partner follows Claude’s mode', () => {

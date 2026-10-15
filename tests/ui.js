@@ -913,6 +913,39 @@ module.exports = [
     },
   },
   {
+    name: 'file links',
+    // A link to a folder anywhere on the computer (a site you built, on another drive) opens, and you
+    // can start working there: a chat in it, Explorer, or its page in your browser.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`window._calls = []; const orig = api;
+        api = async (u, body) => {
+          if (/^\\/api\\/file\\?/.test(u)) {
+            const p = new URLSearchParams(u.split('?')[1]).get('path');
+            if (/index\\.html$/.test(p)) return { kind: 'text', lang: 'html', markdown: false, text: '<h1>My site</h1>', path: p, name: 'index.html', dir: 'D:\\\\Sites\\\\my-site', size: 16, mtime: Date.now() };
+            return { kind: 'dir', path: p, name: 'my-site', dir: 'D:\\\\Sites', entries: [{ name: 'index.html', dir: false, size: 16, mtime: Date.now() }], mtime: Date.now() };
+          }
+          if (u === '/api/project/create' || u === '/api/file/browser') { _calls.push([u, body]); return u === '/api/project/create' ? { cwd: body.existing, name: 'my-site', created: false } : { ok: true }; }
+          return orig(u, body);
+        };
+        ChatUI.open = o => { _calls.push(['open', o]); };
+        Viewer.open({ path: 'D:\\\\Sites\\\\my-site' }); return 1`); await sleep(700);
+      const head = await b.eval(`return [...document.querySelectorAll('#vHead .v-act button')].map(x => x.textContent.trim())`);
+      t.check('a folder on another drive opens, with Work here and Open in Explorer', head.includes('Work here ▾') && head.includes('Open in Explorer'), head);
+      await b.clickOn('#vHead [data-v="work"]'); await sleep(300);
+      const items = await b.eval(`return [...document.querySelectorAll('#menu [role="menuitem"]')].map(x => x.querySelector('.m-l')?.firstChild?.textContent.trim())`);
+      t.check('Work here offers a new chat there, or opening it as a project', items.includes('New Claude chat here') && items.includes('Open it as a project'), items);
+      await t.shot(b, 'work-here');
+      await b.eval(`[...document.querySelectorAll('#menu [role="menuitem"]')].find(x => /New Claude chat here/.test(x.textContent)).click(); return 1`); await sleep(600);
+      let calls = await b.eval(`return _calls`);
+      t.check('a new chat there adds the folder as a project, then starts in it', calls.some(([u, body]) => u === '/api/project/create' && body.existing === 'D:\\Sites\\my-site') && calls.some(([u, o]) => u === 'open' && o.cwd === 'D:\\Sites\\my-site' && o.mode === 'new'), calls);
+      await b.eval(`Viewer.open({ path: 'D:\\\\Sites\\\\my-site\\\\index.html' }); return 1`); await sleep(700);
+      await b.clickOn('#vHead [data-v="browser"]'); await sleep(300);
+      calls = await b.eval(`return _calls`);
+      t.check('a web page opens in the browser', calls.some(([u, body]) => u === '/api/file/browser' && body.path === 'D:\\Sites\\my-site\\index.html'), calls);
+    },
+  },
+  {
     name: 'openclaw',
     // OpenClaw agents' sessions: listed with the rest, read here, never started or written to.
     async run(t) {
@@ -1685,6 +1718,15 @@ module.exports = [
       await sleep(600);
       const nav = await b.eval(`const h = document.querySelector('.nav-h.gemini'); return h && { text: h.textContent.replace(/\\s+/g, ' ').trim(), items: [...document.querySelectorAll('.nav-i.gemini')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
       t.check('Gemini has its own group in the side list, with its project', !!nav && /Gemini/.test(nav.text) && nav.items.some(x => /Starfall Tavern/.test(x)), nav);
+      // The top bar's accounts list has Gemini too: signed in, and any model out of quota with its reset.
+      await b.clickOn('#usechip'); await sleep(300);
+      const pop = await b.eval(`const r = document.querySelector('#acctPop .ap-row.gemini'); return r && r.textContent.replace(/\\s+/g, ' ').trim()`);
+      t.check('the accounts list in the top bar shows the Gemini account', !!pop && /Gemini/.test(pop) && /Google AI plan · 4 models/.test(pop) && /No model out of quota/.test(pop), pop);
+      await b.eval(`S.gemini = { ...S.gemini, limits: [{ model: 'gemini-4-argon-medium', label: 'Gemini 4 Argon (Medium)', at: Date.now(), resetsAt: new Date(Date.now() + 2 * 3600e3).toISOString(), text: 'quota' }] }; closeAcctPop(); openAcctPop(); return 1`); await sleep(200);
+      const out = await b.eval(`return document.querySelector('#acctPop .ap-row.gemini .ap-bars').textContent`);
+      t.check('a model out of quota shows there, with when it comes back', /Gemini 4 Argon \(Medium\) ran out, back /.test(out), out);
+      await t.shot(b, 'accounts');
+      await b.esc(); await sleep(200);
       await b.clickOn('.nav-i.gemini'); await sleep(900);
       const page = await b.eval(`return { eyebrow: document.querySelector('.wp-in .eyebrow')?.textContent, btn: !!document.querySelector('[data-act="newgemini"]'), rows: [...document.querySelectorAll('#wbList .rows > li')].length }`);
       t.check('its project page lists the Gemini chats, with a New Gemini chat button', /Gemini chats in this project/.test(page.eyebrow || '') && page.btn && page.rows === 1, page);
@@ -1695,6 +1737,8 @@ module.exports = [
       t.check('a Gemini chat opens with its history, under Gemini’s name and color', chat.gem && chat.who === 'Gemini' && /Before the roads had names/.test(chat.text || ''), chat);
       t.check('with Gemini’s own modes: Plan only, Edit files, Full access', JSON.stringify(chat.modes) === JSON.stringify(['Plan only', 'Edit files', 'Full access']) && chat.mode === 'accept-edits', chat);
       t.check('it asked for the history as Gemini’s', calls.some(([p]) => p === '/api/chat/history'));
+      const chip = await b.eval(`renderBar(); return document.getElementById('usechip').textContent.replace(/\\s+/g, ' ').trim()`);
+      t.check('the top bar says the chat runs as Gemini, with its quota', /This chat runs as ?Gemini/.test(chip) && /Quota|Out of quota/.test(chip), chip);
       await t.shot(b, 'chat');
       // A new Gemini chat from the project page.
       await b.eval(`ChatUI.close(); go('folder', S.projects.find(p => p.name === 'Starfall Tavern').cwd); return 1`); await sleep(900);
@@ -1855,6 +1899,32 @@ module.exports = [
       await b.key('ArrowRight', 'ArrowRight', 39); await sleep(200);
       x = await v();
       t.check('the arrow keys step to the next picture', x.n !== first && x.cap === 'A screenshot', x);
+      // A tall screenshot and a very wide one fit the screen whole, not cropped or bigger than it.
+      const fits = await b.eval(`const pic = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.fillStyle = '#556b2f'; g.fillRect(0, 0, w, h); return c.toDataURL('image/png'); };
+        const out = [];
+        for (const [w, h] of [[900, 3200], [5200, 1100]]) {
+          openGallery(pic(w, h)); const l = document.getElementById('cLight'), img = l.querySelector('.lb-stage img');
+          await new Promise(r => { if (img.complete && img.naturalWidth) r(); else img.onload = r; }); await new Promise(r => setTimeout(r, 120));
+          const s = l.querySelector('.lb-stage').getBoundingClientRect(), r = img.getBoundingClientRect();
+          out.push({ w, h, inside: r.top >= s.top - 1 && r.bottom <= s.bottom + 1 && r.left >= s.left - 1 && r.right <= s.right + 1, ratio: Math.abs(r.width / r.height - w / h) < 0.02, img: [Math.round(r.width), Math.round(r.height)], stage: [Math.round(s.width), Math.round(s.height)] });
+        }
+        return out`);
+      t.check('a tall picture and a wide one open fitted to the screen, whole and in proportion', fits.every(f => f.inside && f.ratio), fits);
+      // Zoom: the wheel zooms in about the pointer, the readout says how far, 0 fits it again.
+      const z = await b.eval(`const l = document.getElementById('cLight'), st = l.querySelector('.lb-stage'), z = () => l.querySelector('.lb-z').textContent;
+        const before = z(), r = st.getBoundingClientRect();
+        for (let i = 0; i < 4; i++) st.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true }));
+        const zoomed = { cls: l.classList.contains('zoomed'), z: z(), w: l.querySelector('.lb-stage img').getBoundingClientRect().width };
+        l.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }));
+        return { before, zoomed, after: z(), fitAgain: !l.classList.contains('zoomed'), copy: !!l.querySelector('[data-lb="copy"]'), save: !!l.querySelector('[data-lb="save"]') }`);
+      t.check('the wheel zooms in past the fitted size, and says by how much', /^Fit · \d+%$/.test(z.before) && z.zoomed.cls && /^\d+%$/.test(z.zoomed.z) && parseInt(z.zoomed.z, 10) > parseInt(z.before.replace(/\D+/g, ''), 10), z);
+      t.check('0 fits it to the screen again', z.fitAgain && /^Fit/.test(z.after), z);
+      t.check('it can be copied (to paste anywhere) and saved', z.copy && z.save, z);
+      const saved = await b.eval(`let got = null; const orig = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () { got = { name: this.download, data: this.href.slice(0, 14) }; };
+        try { document.querySelector('#cLight [data-lb="save"]').click(); await new Promise(r => setTimeout(r, 50)); } finally { HTMLAnchorElement.prototype.click = orig; }
+        return got`);
+      t.check('Save offers it as a picture file', saved && /\.png$/.test(saved.name) && saved.data === 'data:image/png', saved);
+      await t.shot(b, 'viewer-tall');
       await b.esc(); await sleep(200);
       t.check('Escape closes it', !(await v()).open);
       t.check('nothing spills sideways', await b.eval(`return document.scrollingElement.scrollWidth <= innerWidth + 1`));

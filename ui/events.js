@@ -43,8 +43,13 @@ function openAcctPop() {
       <span class="ap-dial">${miniDial(x.id, 34)}</span>
       <span class="ap-t"><b>${esc(x.name || 'Codex')}${chatAcct === x.id ? ' <span class="tag codex">this chat</span>' : ''}${many && x.id === S.codex.id ? ' <span class="tag gold">new Codex chats</span>' : ''}</b><small>${esc(x.signedIn ? `${x.email || 'Signed in'}${x.plan ? ` · ${x.plan}` : ''}` : x.kind === 'ollama' ? 'Ollama app not running' : 'Not signed in')}</small><span class="ap-bars">${x.signedIn && x.kind !== 'ollama' ? acctBars(x.id) : ''}</span></span></button>`;
   const cx = S.codex && S.codex.enabled ? `<p class="ap-h">${many ? 'Codex: new Codex chats open as' : 'Codex'}</p>${codexAccts().map(cxRow).join('')}` : '';
+  // Gemini: one Google account (Antigravity's sign-in), and any model that ran out of quota.
+  const gL = geminiLimits();
+  const gm = S.gemini && S.gemini.enabled ? `<p class="ap-h">Gemini</p><button type="button" class="ap-row gemini" data-ap="gemini" style="--ring:${GEMINI_RING}" title="${geminiReady() ? 'Check the Gemini sign-in again' : 'Finish setting up Gemini'}">
+      <span class="ap-dial">${miniDial('gemini', 34)}</span>
+      <span class="ap-t"><b>Gemini${chatAcct === 'gemini' ? ' <span class="tag">this chat</span>' : ''}</b><small>${esc(geminiStatus())}</small><span class="ap-bars">${!geminiReady() ? '' : gL.length ? gL.map(l => `<span class="ap-none hot">${esc(geminiOut(l))}</span>`).join('') : '<span class="ap-none">No model out of quota</span>'}</span></span></button>` : '';
   pop.innerHTML = `<p class="ap-h">${inChat && chatAcct ? 'Pick the account new chats open as. This chat keeps its own.' : 'New chats open as'}</p>
-    <div class="ap-list">${S.accounts.map(row).join('')}</div>${cx}
+    <div class="ap-list">${S.accounts.map(row).join('')}</div>${cx}${gm}
     <div class="ap-act">
       <button type="button" class="btn sm" data-apx="add">Add an account</button>
       <button type="button" class="btn quiet sm" data-apx="usage">Check usage</button>
@@ -62,6 +67,11 @@ $('acctPop').addEventListener('click', wrap(async e => {
   if (r) {
     const id = r.dataset.ap;
     closeAcctPop();
+    if (id === 'gemini') {
+      if (!geminiReady()) return openSetupAt('st-gemini');
+      const g = await api('/api/gemini/check', {}); S.gemini = g.gemini; renderBar();
+      return toast(S.gemini.signedIn ? 'Gemini is signed in.' : 'Gemini isn’t signed in any more: Setup → Gemini → Sign in.', 3500);
+    }
     if (codexAcct(id)) {
       const many = codexAccts().length > 1;
       await setCodexActive(id);
@@ -233,7 +243,7 @@ function connectLive() {
       if (S.drawerId) openDrawer(S.drawerId, true);
     }), 300);
   });
-  es.addEventListener('accounts', wrap(async () => { await loadState(); renderNav(); if (S.view === 'hub') renderLive(); else renderPage(); codexLoginProgress(); if (window.ChatUI && ChatUI.refreshCrew) ChatUI.refreshCrew(); }));
+  es.addEventListener('accounts', wrap(async () => { await loadState(); renderNav(); renderBar(); if (S.view === 'hub') renderLive(); else renderPage(); codexLoginProgress(); if (window.ChatUI && ChatUI.refreshCrew) ChatUI.refreshCrew(); }));
   es.addEventListener('running', e => { try { S.running = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); renderNav(); });
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
   es.addEventListener('races', () => { loadRaces().catch(() => {}); });

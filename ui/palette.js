@@ -215,16 +215,19 @@ const Viewer = (() => {
       <div class="v-act">
         ${f.kind === 'text' && f.markdown ? `<div class="seg" role="group" aria-label="View"><button class="${V.raw ? '' : 'on'}" data-v="rendered" aria-pressed="${!V.raw}">Formatted</button><button class="${V.raw ? 'on' : ''}" data-v="raw" aria-pressed="${V.raw}">Markdown</button></div>` : ''}
         ${f.kind === 'text' ? `<button class="btn prime sm" data-v="copy">Copy ${f.markdown ? 'markdown' : 'text'}</button>` : ''}
+        ${f.kind === 'image' ? '<button class="btn prime sm" data-v="copyimg" title="Copy the picture, to paste anywhere">Copy picture</button><button class="btn quiet sm" data-v="big" title="Full screen, to zoom in">View larger</button>' : ''}
         ${inGallery() ? `<span class="v-step"><button class="icon" data-v="prev" aria-label="Previous picture" ${V.idx > 0 ? '' : 'disabled'}>‹</button><span class="count">${V.idx + 1} of ${V.list.length}</span><button class="icon" data-v="next" aria-label="Next picture" ${V.idx < V.list.length - 1 ? '' : 'disabled'}>›</button></span>
           ${isBanner() ? '<span class="tag gilt">Banner</span>' : '<button class="btn sm" data-v="banner">Use as banner</button>'}` : ''}
+        ${/\.html?$/i.test(f.name) && f.kind !== 'dir' && !window.REMOTE ? '<button class="btn prime sm" data-v="browser" title="Open this page in your web browser">Open in browser</button>' : ''}
+        <button class="btn sm" data-v="work" aria-haspopup="menu" title="Start a chat in ${esc(f.kind === 'dir' ? f.path : f.dir)}">Work here ▾</button>
         <button class="btn sm" data-v="copypath">Copy path</button>
-        <button class="btn quiet sm" data-v="reveal">Show in folder</button>
+        <button class="btn quiet sm" data-v="reveal">${f.kind === 'dir' ? `Open in ${S.platform === 'darwin' ? 'Finder' : 'Explorer'}` : 'Show in folder'}</button>
         <button class="icon" data-v="close" aria-label="Close">✕</button>
       </div>`;
     let body = '';
     if (f.kind === 'dir') {
       body = f.entries.length ? `<ul class="v-dir">${f.entries.map(e => `<li><button data-v="open" data-name="${esc(e.name)}"><span class="glyph" aria-hidden="true">${e.dir ? '❖' : '✧'}</span><span class="vd-n">${esc(e.name)}${e.dir ? '/' : ''}</span><span class="vd-s">${e.dir ? '' : esc(sizeOf(e.size))}</span><span class="vd-m">${e.mtime ? esc(agoL(e.mtime)) : ''}</span></button></li>`).join('')}</ul>${f.more ? '<p class="v-note">Showing the first 1,000 items.</p>' : ''}` : '<p class="v-note">This folder is empty.</p>';
-    } else if (f.kind === 'image') body = `<div class="v-img"><img src="${esc(f.src)}" alt="${esc(f.name)}"></div>`;
+    } else if (f.kind === 'image') body = `<div class="v-img"><img src="${esc(f.src)}" alt="${esc(f.name)}" data-v="big" title="Click to view it full screen and zoom in"></div>`;
     else if (f.kind === 'video') body = `<div class="v-media"><video controls autoplay preload="metadata" src="${esc(mediaSrc(f.path))}"></video></div>`;
     else if (f.kind === 'audio') body = `<div class="v-media audio"><audio controls preload="metadata" src="${esc(mediaSrc(f.path))}"></audio></div>`;
     else if (f.kind === 'pdf') body = `<iframe class="v-pdf" title="${esc(f.name)}" src="${esc(mediaSrc(f.path))}"></iframe>`;
@@ -234,11 +237,12 @@ const Viewer = (() => {
     $('vBody').innerHTML = body;
     $('vBody').scrollTop = 0;
   }
-  function mediaSrc(p) {
+  function fileUrl(route, p, ctx) {
     const q = new URLSearchParams({ token: TOKEN, path: p });
-    for (const k of ['key', 'session', 'cwd']) if (V.ctx[k]) q.set(k, V.ctx[k]);
-    return `/api/media?${q}`;
+    for (const k of ['key', 'session', 'cwd']) if (ctx[k]) q.set(k, ctx[k]);
+    return `/api/${route}?${q}`;
   }
+  const mediaSrc = p => fileUrl('media', p, V.ctx);
   async function load(pathArg, { push = true } = {}) {
     const params = new URLSearchParams({ path: pathArg });
     for (const k of ['key', 'session', 'cwd']) if (V.ctx[k]) params.set(k, V.ctx[k]);
@@ -248,6 +252,14 @@ const Viewer = (() => {
   }
   const inGallery = () => !!(V.list && V.cur && V.cur.kind === 'image' && V.idx >= 0 && !V.stack.length);
   const isBanner = () => { const w = V.ctx.cwd && S.worlds[V.ctx.cwd]; return !!(w && w.banner === V.list[V.idx]); };
+  // provider: claude, codex or gemini for a new chat there; null for the project's page.
+  const workIn = wrap(async (dir, provider) => {
+    const r = await api('/api/project/create', { existing: dir });
+    if (dlg().open) dlg().close();
+    await loadSessions(); renderNav();
+    if (!provider) return go('folder', r.cwd);
+    return ChatUI.open({ cwd: r.cwd, mode: 'new', ...(provider === 'claude' ? {} : { provider }) });
+  });
   async function step(d) {
     const j = V.idx + d; if (!V.list || j < 0 || j >= V.list.length) return;
     V.idx = j; await load(V.list[j], { push: false });
@@ -285,6 +297,21 @@ const Viewer = (() => {
       case 'raw': V.raw = true; return render();
       case 'copy': return copyText(f.text, null).then(ok => { if (ok) { b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = `Copy ${f.markdown ? 'markdown' : 'text'}`; }, 1600); } });
       case 'copypath': return copyText(f.path, 'Copied the path.');
+      case 'copyimg': return copyImage(f.src);
+      case 'browser': { const r = await api('/api/file/browser', { path: f.path, ...V.ctx }); if (r.dryRun) toast(`Would run: ${r.script}`); return undefined; }
+      // Work in this folder (or this file's): it joins your projects, and a chat starts there.
+      case 'work': {
+        const dir = f.kind === 'dir' ? f.path : f.dir, a = current();
+        return showMenu(b, [
+          { label: 'New Claude chat here', hint: a ? `as ${a.name}` : '', disabled: !a || !canLaunch(a), why: (a && a.lockMessage) || 'Sign in first', run: () => workIn(dir, 'claude') },
+          ...(S.codex && S.codex.enabled ? [{ label: 'New Codex chat here', disabled: !codexReady(), why: 'Sign in to Codex first', run: () => workIn(dir, 'codex') }] : []),
+          ...(S.gemini && S.gemini.enabled ? [{ label: 'New Gemini chat here', disabled: !geminiReady(), why: 'Finish setting up Gemini first', run: () => workIn(dir, 'gemini') }] : []),
+          '-',
+          { label: 'Open it as a project', hint: dir.split(/[\\/]/).filter(Boolean).pop() || dir, run: () => workIn(dir, null) },
+        ]);
+      }
+      // Full screen, in the picture viewer (over everything, so this closes first).
+      case 'big': { const pics = inGallery() ? V.list : [f.path], at = inGallery() ? V.idx : 0, ctx = { ...V.ctx }; dlg().close(); return openGallery(f.src, null, pics.map((p, i) => ({ src: i === at ? f.src : fileUrl('image', p, ctx), path: p, cap: String(p).split(/[\\/]/).pop(), noAttach: true }))); }
       case 'reveal': { const r = await api('/api/reveal', { path: f.path, ...V.ctx }); if (r.dryRun) toast(`Would run: ${r.script}`); return undefined; }
       default: return undefined;
     }

@@ -690,6 +690,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (cc) return copyText(cc.closest('.code').querySelector('code').textContent, null).then(ok => { if (ok) copiedButton(cc); });
     const more = t.closest('.tg-more'); if (more) { const g = more.closest('.tools'); g.classList.toggle('open'); updateGroup(g); return; }
     const rm = t.closest('[data-rm]'); if (rm) { const [a] = C.attachments.splice(+rm.dataset.rm, 1); if (a && a.url) URL.revokeObjectURL(a.url); renderAttachments(); return; }
+    // A picture you're about to send: full size, to check it (and copy or save it).
+    const att = t.closest('.att:not(.file):not(.pending) img');
+    if (att) { const list = [...$c('cAtt').querySelectorAll('.att:not(.file):not(.pending) img')].map((im, i) => ({ src: im.src, path: null, cap: `Picture ${i + 1} you’re sending`, noAttach: true })); return openGallery(att.src, null, list); }
     const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
     if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
     const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);

@@ -77,8 +77,22 @@ test('file viewer: the project, the user folder and Claude/Codex folders open', 
   for (const p of [path.join(home, '.ssh', 'config'), path.join(home, '.aws', 'credentials'), path.join(home, 'Documents', '.hidden', 'x.txt')]) {
     assert.equal(files.allowed(p, project), false, `${p} is a private folder`);
   }
-  const outside = process.platform === 'win32' ? 'C:\\Windows\\win.ini' : '/etc/hosts';
-  assert.equal(files.allowed(outside, project), false, 'outside the user folder');
+});
+
+test('file viewer: folders anywhere on the computer open, but not other people’s or key folders', () => {
+  const home = os.homedir(), users = path.dirname(home);
+  const project = path.join(home, 'Projects', 'Demo');
+  const win = process.platform === 'win32';
+  for (const p of [win ? 'C:\\Sites\\my-site\\index.html' : '/opt/sites/my-site/index.html', win ? 'D:\\Games\\Tavern' : '/srv/games/tavern', win ? 'C:\\Windows\\win.ini' : '/etc/hosts', path.join(users, win ? 'Public' : 'Shared', 'notes.txt')]) {
+    assert.equal(files.allowed(p, project), true, `${p} is elsewhere on the computer`);
+  }
+  for (const p of [path.join(users, 'someone-else', 'Documents', 'diary.md'), path.join(users, 'someone-else'), win ? 'D:\\Backup\\.ssh\\config' : '/srv/backup/.ssh/config', path.join(project, '.aws', 'config'), win ? 'D:\\Backup\\auth.json' : '/srv/backup/auth.json']) {
+    assert.equal(files.allowed(p, project), false, `${p} is private`);
+  }
+  // A chat in the user folder itself doesn't open its private places.
+  assert.equal(files.allowed(path.join(home, 'AppData', 'Roaming', 'x', 'Cookies'), home), false, 'AppData, from a chat in the user folder');
+  assert.equal(files.allowed(path.join(home, '.config', 'gh', 'hosts.yml'), home), false, 'a hidden folder, from a chat in the user folder');
+  assert.equal(files.allowed(path.join(home, 'Documents', 'notes.md'), home), true);
 });
 
 /* ---------- phone pairing ---------- */

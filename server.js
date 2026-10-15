@@ -284,7 +284,7 @@ const codexOnChange = () => { if (codexTimer) return; codexTimer = setTimeout(()
 const makeCodex = account => codexLib.createCodex({ getConfig: () => config(), log, usage, chats, onChange: codexOnChange, account });
 const codex = makeCodex(codexLib.ACCOUNT);
 // Gemini, through Google's Antigravity CLI (lib/gemini.js).
-const gemini = geminiLib.createGemini({ chats, getConfig: () => config(), dataDir: DATA_DIR, log });
+const gemini = geminiLib.createGemini({ chats, getConfig: () => config(), dataDir: DATA_DIR, log, onChange: () => broadcast('accounts') });
 let geminiRows = { at: 0, list: [] };
 const geminiSessions = () => {
   if (!config().gemini.enabled) return [];
@@ -1385,7 +1385,7 @@ const liteRoutes = createLiteRoutes({
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/gemini/install', '/api/gemini/login', '/api/gemini/settings', '/api/claude/install', '/api/phone/firewall', '/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send', '/api/routines/secret']);
+const LOCAL_ONLY = new Set(['/api/file/browser', '/api/gemini/install', '/api/gemini/login', '/api/gemini/settings', '/api/claude/install', '/api/phone/firewall', '/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send', '/api/routines/secret']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
@@ -2007,6 +2007,12 @@ async function handleApi(req, res, url, remote = false) {
       const p = projectAt(body.cwd);
       if (!p || !p.exists) throw fail(404, 'That folder isn’t available.');
       return send(res, 200, await sys.revealInExplorer(p.cwd, false));
+    }
+    // A web page on this computer (a site you built), in your own browser. Only pages: nothing runs.
+    case '/api/file/browser': {
+      const f = filesLib.locate(fileBase(body), body.path);
+      if (!f.isFile || !/\.html?$/i.test(f.path)) throw fail(400, 'Only a web page (.html) opens in the browser.');
+      return send(res, 200, await sys.revealInExplorer(f.path, false));
     }
     case '/api/chat/rename': {
       if (isGeminiId(body.sessionId)) {

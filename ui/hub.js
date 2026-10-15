@@ -33,7 +33,7 @@ function renderBar() {
   chip.innerHTML = `<span class="ac-ring">${miniDial(a.id, 30)}</span>
     <span class="ac-who"><small>${inChat ? 'This chat runs as' : 'New chats open as'}</small><b>${esc(a.name)}</b></span>
     ${d ? `<span class="ac-sep" aria-hidden="true"></span>${cell('5-hour window', d.fiveHour)}${cell('This week', d.week)}`
-      : a.gemini ? '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Plan</small><b>Google AI</b><i>limits shown in Antigravity</i></span>'
+      : a.gemini ? `<span class="ac-sep" aria-hidden="true"></span>${geminiQuotaCell()}`
       : a.signedIn ? `<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Usage</small><b>${u && (u.error || (u.data && !u.checking)) ? 'Unavailable' : 'Checking…'}</b></span>` : '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Account</small><b>Not signed in</b></span>'}`;
   chip.insertAdjacentHTML('beforeend', '<span class="ac-caret" aria-hidden="true">▾</span>');
   chip.title = `${inChat ? 'This chat runs as' : 'New chats open as'} ${a.name}${a.email ? ` (${a.email})` : ''}. ${usageLine(a.id) || ''} Click to see all your accounts.`;

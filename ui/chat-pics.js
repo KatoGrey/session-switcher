@@ -104,9 +104,11 @@ function galleryList() {
   }
   return out;
 }
-function openGallery(src, from) {
+// list: the pictures to step through, when not the chat's (a file opened in the viewer, a picture
+// you're about to send).
+function openGallery(src, from, list = null) {
   Gallery.back = document.activeElement;   // focus goes back there when it closes
-  Gallery.list = galleryList();
+  Gallery.list = list || galleryList();
   let i = Gallery.list.findIndex(x => x.src === src);
   if (i < 0) { Gallery.list.unshift({ src, path: (from && from.dataset.path) || null, cap: (from && from.dataset.cap) || '' }); i = 0; }
   Gallery.i = i;
@@ -119,33 +121,76 @@ function galleryShow() {
   const lb = $c('cLight'), x = Gallery.list[Gallery.i]; if (!x) return;
   Gallery.zoom = false;
   lb.classList.remove('zoomed');
-  lb.querySelector('[data-lb="zoom"]').textContent = 'Actual size';
   const img = lb.querySelector('.lb-stage img');
+  img.style.width = img.style.height = '';
+  img.onload = galleryReadout;
   img.src = x.src; img.alt = x.cap || 'A picture from this chat';
+  galleryReadout();
   const n = Gallery.list.length;
   lb.querySelector('.lb-cap').textContent = x.cap || (x.path ? base(x.path) : 'A picture from this chat');
   lb.querySelector('.lb-n').textContent = n > 1 ? `${Gallery.i + 1} of ${n}` : '';
   for (const b of lb.querySelectorAll('.lb-nav')) b.hidden = n < 2;
   for (const b of lb.querySelectorAll('[data-lb="open"], [data-lb="reveal"]')) b.hidden = !x.path || !!window.REMOTE && b.dataset.lb === 'reveal';
-  lb.querySelector('[data-lb="attach"]').hidden = !!C.watch || !C.key;
+  lb.querySelector('[data-lb="attach"]').hidden = !!C.watch || !C.key || !!x.noAttach;
 }
 function galleryStep(d) {
   if (Gallery.list.length < 2) return;
   Gallery.i = (Gallery.i + d + Gallery.list.length) % Gallery.list.length;
   galleryShow();
 }
+// How big it shows: fitted to the screen (never past its actual size), or zoomed to a scale of its
+// own pixels (1 = actual size), to scroll or drag around. The wheel, a pinch, + and - zoom about
+// the point under the pointer; 0 fits it again, 1 shows it at actual size.
+const ZOOM_MAX = 8;
+function galleryFit() {
+  const stage = $c('cLight').querySelector('.lb-stage'), img = stage.querySelector('img');
+  if (!img.naturalWidth) return 1;
+  // Fitted, the stage keeps a margin around the picture (none while zoomed, so allow for it).
+  if (!Gallery.zoom) { const cs = getComputedStyle(stage); Gallery.pad = { x: parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight), y: parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) }; }
+  const pad = Gallery.pad || { x: 128, y: 28 };
+  return Math.min(1, (stage.clientWidth - pad.x) / img.naturalWidth, (stage.clientHeight - pad.y) / img.naturalHeight);
+}
+const galleryScale = () => (Gallery.zoom ? Gallery.scale : galleryFit());
+function galleryScaleTo(s, at = null) {
+  const lb = $c('cLight'), stage = lb.querySelector('.lb-stage'), img = stage.querySelector('img');
+  if (!img.naturalWidth) return;
+  const fit = galleryFit();
+  s = Math.min(ZOOM_MAX, Math.max(fit, s));
+  const sr = stage.getBoundingClientRect(), r = img.getBoundingClientRect();
+  const p = at || { x: sr.left + sr.width / 2, y: sr.top + sr.height / 2 };
+  const fx = r.width ? Math.min(1, Math.max(0, (p.x - r.left) / r.width)) : 0.5, fy = r.height ? Math.min(1, Math.max(0, (p.y - r.top) / r.height)) : 0.5;
+  if (s <= fit + 0.001) {
+    Gallery.zoom = false; Gallery.scale = fit;
+    lb.classList.remove('zoomed'); img.style.width = img.style.height = '';
+  } else {
+    Gallery.zoom = true; Gallery.scale = s;
+    lb.classList.add('zoomed');
+    img.style.width = `${Math.round(img.naturalWidth * s)}px`; img.style.height = `${Math.round(img.naturalHeight * s)}px`;
+    // The point under the pointer stays where it was.
+    const nr = img.getBoundingClientRect();
+    stage.scrollLeft += nr.left + fx * nr.width - p.x;
+    stage.scrollTop += nr.top + fy * nr.height - p.y;
+  }
+  galleryReadout();
+}
+function galleryReadout() {
+  const lb = $c('cLight'), img = lb.querySelector('.lb-stage img'), z = lb.querySelector('.lb-z');
+  z.textContent = img.naturalWidth ? `${Gallery.zoom ? '' : 'Fit · '}${Math.round(galleryScale() * 100)}%` : '';
+  z.title = img.naturalWidth ? `${img.naturalWidth} × ${img.naturalHeight} pixels` : '';
+  lb.querySelector('[data-lb="zoom"]').textContent = Gallery.zoom ? 'Fit to screen' : 'Actual size';
+}
 // Actual size (scroll or drag around it) or fitted to the screen.
 function galleryZoom(on = !Gallery.zoom, at = null) {
-  const lb = $c('cLight'), stage = lb.querySelector('.lb-stage'), img = stage.querySelector('img');
-  if (on && img.naturalWidth <= stage.clientWidth && img.naturalHeight <= stage.clientHeight) { toast('That’s its actual size.', 1500); return; }
-  Gallery.zoom = on;
-  lb.classList.toggle('zoomed', on);
-  lb.querySelector('[data-lb="zoom"]').textContent = on ? 'Fit to screen' : 'Actual size';
-  if (on && at) {
-    const r = img.getBoundingClientRect();
-    const fx = (at.x - r.left) / r.width, fy = (at.y - r.top) / r.height;
-    requestAnimationFrame(() => { stage.scrollLeft = fx * img.naturalWidth - stage.clientWidth / 2; stage.scrollTop = fy * img.naturalHeight - stage.clientHeight / 2; });
-  }
+  if (on && galleryFit() >= 1) { toast('That’s its actual size. Scroll or press + to zoom in further.', 2200); return; }
+  galleryScaleTo(on ? 1 : 0, at);
+}
+// Saved as a file, through the Save dialog.
+function gallerySave(x) {
+  const a = document.createElement('a');
+  const ext = (String(x.src).match(/^data:image\/(\w+)/) || [])[1];
+  a.href = x.src;
+  a.download = x.path ? base(x.path) : `${(x.cap || 'picture').replace(/[\\/:*?"<>|.]+/g, ' ').trim().slice(0, 60) || 'picture'}.${ext === 'jpeg' ? 'jpg' : ext || 'png'}`;
+  document.body.appendChild(a); a.click(); a.remove();
 }
 function galleryClose() { $c('cLight').hidden = true; Gallery.list = []; const back = Gallery.back; Gallery.back = null; if (back && back.isConnected) back.focus({ preventScroll: true }); }
 function closeLightbox() { if ($c('cLight').hidden) return false; galleryClose(); return true; }
@@ -154,6 +199,8 @@ async function galleryAct(what) {
   if (what === 'open' && x.path) { galleryClose(); return openFile(x.path); }
   if (what === 'reveal' && x.path) { const r = await api('/api/reveal', { path: x.path, key: C.key, session: C.sessionId }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
   if (what === 'copy') return copyImage(x.src);
+  if (what === 'save') return gallerySave(x);
+  if (what === 'in' || what === 'out') return galleryScaleTo(galleryScale() * (what === 'in' ? 1.25 : 0.8));
   if (what === 'attach') {
     const blob = await (await fetch(x.src)).blob();
     if (!/^image\/(png|jpeg|gif|webp)$/.test(blob.type)) { toast('That picture’s format can’t be attached.'); return; }
@@ -182,8 +229,28 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   lb.addEventListener('keydown', e => {
     if (e.key === 'ArrowLeft') { galleryStep(-1); e.preventDefault(); } else if (e.key === 'ArrowRight') { galleryStep(1); e.preventDefault(); }
-    else if (e.key === '+' || e.key === '=') galleryZoom(true); else if (e.key === '-' || e.key === '0') galleryZoom(false);
+    else if (e.key === '+' || e.key === '=') galleryScaleTo(galleryScale() * 1.25); else if (e.key === '-') galleryScaleTo(galleryScale() * 0.8);
+    else if (e.key === '0') galleryScaleTo(0); else if (e.key === '1') galleryZoom(true);
+    else if ((e.ctrlKey || e.metaKey) && /^[cs]$/i.test(e.key) && !String(getSelection())) { e.preventDefault(); wrap(galleryAct)(e.key.toLowerCase() === 'c' ? 'copy' : 'save'); }
   });
+  // The wheel (or a touchpad's pinch) zooms about the pointer.
+  stage.addEventListener('wheel', e => {
+    if (!Gallery.list.length) return;
+    e.preventDefault();
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    galleryScaleTo(galleryScale() * Math.exp(-Math.max(-300, Math.min(300, dy)) * (e.ctrlKey ? 0.01 : 0.0018)), { x: e.clientX, y: e.clientY });
+  }, { passive: false });
+  window.addEventListener('resize', () => { if (!lb.hidden) { if (Gallery.zoom && Gallery.scale <= galleryFit()) galleryScaleTo(0); galleryReadout(); } });
+  // Two fingers on a phone: pinch to zoom about the middle of them.
+  const mid = ts => ({ x: (ts[0].clientX + ts[1].clientX) / 2, y: (ts[0].clientY + ts[1].clientY) / 2 });
+  const gap = ts => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+  stage.addEventListener('touchstart', e => { if (e.touches.length === 2) { Gallery.pinch = { d: gap(e.touches), s: galleryScale() }; Gallery.touch = null; } }, { passive: true });
+  stage.addEventListener('touchmove', e => {
+    const p = Gallery.pinch; if (!p || e.touches.length !== 2) return;
+    e.preventDefault();
+    galleryScaleTo(p.s * gap(e.touches) / p.d, mid(e.touches));
+  }, { passive: false });
+  stage.addEventListener('touchend', e => { if (e.touches.length < 2 && Gallery.pinch) { Gallery.pinch = null; Gallery.dragged = true; setTimeout(() => { Gallery.dragged = false; }, 350); } }, { passive: true });
   // Zoomed in: drag to look around.
   stage.addEventListener('pointerdown', e => { if (!Gallery.zoom || e.pointerType === 'touch') return; Gallery.drag = { x: e.clientX, y: e.clientY, l: stage.scrollLeft, t: stage.scrollTop, moved: 0 }; stage.setPointerCapture(e.pointerId); });
   stage.addEventListener('pointermove', e => { const d = Gallery.drag; if (!d) return; d.moved = Math.max(d.moved, Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y)); stage.scrollLeft = d.l - (e.clientX - d.x); stage.scrollTop = d.t - (e.clientY - d.y); });
