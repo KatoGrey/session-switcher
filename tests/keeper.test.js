@@ -63,3 +63,42 @@ test('keeper: a chat process outlives Switcher, and the next copy gets what it m
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+test('keeper: a Switcher on another protocol version retires it, and its chats end', { skip: process.platform === 'win32' }, async () => {
+  const net = require('net');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kt-'));
+  const a = createKeeperClient({ dataDir, appDir: APP });
+  const hello = await a.ready();
+  try {
+    const pr = a.spawnKept({ file: process.execPath, args: ['-e', FAKE], env: process.env, cwd: dataDir });
+    pr.onLine(() => {});
+    await wait(300);
+    const childPid = pr.pid;
+    a.pause();
+    // A "future" Switcher says hello on version 99: refused, saying why.
+    const token = fs.readFileSync(path.join(dataDir, 'keeper-token'), 'utf8').trim();
+    const reply = await new Promise(resolve => {
+      const c = net.createConnection(a.paths.sock);
+      let buf = '';
+      c.setEncoding('utf8');
+      c.on('connect', () => c.write(`${JSON.stringify({ op: 'hello', token, v: 99 })}\n`));
+      c.on('data', d => { buf += d; });
+      c.on('close', () => resolve(buf.trim() ? JSON.parse(buf.trim().split('\n')[0]) : null));
+    });
+    assert.strictEqual(reply.ev, 'refused');
+    assert.strictEqual(reply.reason, 'version');
+    await new Promise(resolve => {
+      const c = net.createConnection(a.paths.sock);
+      c.on('connect', () => c.write(`${JSON.stringify({ op: 'retire', token, v: 99 })}\n`));
+      c.resume();
+      c.on('close', resolve); c.on('error', resolve);
+    });
+    await wait(2500);
+    const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    assert.ok(!alive(childPid), 'its chat process ended');
+    assert.ok(!alive(hello.pid), 'and the keeper itself went');
+  } finally {
+    try { process.kill(hello.pid, 'SIGKILL'); } catch { /* gone */ }
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
