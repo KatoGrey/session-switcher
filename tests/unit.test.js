@@ -333,6 +333,23 @@ test('snapshots: see what changed between two moments, without touching git’s 
   assert.equal(await snaps.topOf(tmp()), null, 'not a git project');
 });
 
+test('snapshots: an edit that keeps a file’s size, in the same second git last wrote its index, is still seen', async () => {
+  // Git can only tell such an edit by reading the file, and it knows to read it by comparing the file's
+  // time with the index's. A race copy's files are written right after the copy's index, so this is
+  // how a quick same-size change ("0.15" to "0.10") could go missing (seen on a Mac).
+  const dir = repo();
+  const f = put(dir, 'rally.lua', 'bonus = 0.15\n');
+  const T = new Date(Math.floor(Date.now() / 1000) * 1000 - 5000);
+  fs.utimesSync(f, T, T);
+  gitIn(dir, 'add', '-A'); gitIn(dir, 'commit', '-qm', 'start');
+  fs.utimesSync(path.join(dir, '.git', 'index'), T, T);     // the index written in that same second
+  const before = await snaps.snapshot(dir);
+  fs.writeFileSync(f, 'bonus = 0.10\n'); fs.utimesSync(f, T, T);   // same size, same time
+  await new Promise(r => setTimeout(r, 1100));             // and the snapshot a second or more later
+  const after = await snaps.snapshot(dir);
+  assert.deepEqual((await snaps.changes(dir, before, after)).map(c => c.path), ['rally.lua']);
+});
+
 // (Compared without line endings: a restored file comes back the way git checks files out on this
 // machine, which with core.autocrlf on Windows means CRLF.)
 const readLF = p => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
