@@ -810,6 +810,8 @@ async function sendInChat({ fromQueue = false } = {}) {
   CV.items.push(local);
   box.value = ''; autosize(box); DRAFTS.delete(String(id)); saveDrafts();
   if (!CV.busy) { CV.busy = true; CV.status = key ? 'Sending' : 'Starting'; CV.startedAt = Date.now(); }
+  // Your message is progress: the "may be stuck" line counts from now, not from the last old event.
+  CV.progressAt = Date.now(); CV.lastStep = 'user';
   sfx('slide'); paintFeed(); paintStatus(); $('feed').scrollTop = $('feed').scrollHeight;
   try {
     if (!key) {
