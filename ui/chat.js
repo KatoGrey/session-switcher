@@ -338,7 +338,7 @@ function reset() {
   C.compHist = {}; C.extras = []; C.chatRefs = new Map();
   // Nothing from the chat you were in carries over: its side question ends, its run panel and the
   // picture viewer close.
-  closeAside(); closeLightbox(); resetRun();
+  closeAside(); closeLightbox(); closeTogether(); resetRun();
   Recent.main = []; Recent.comp = [];
   PARTS.clear();
   C.planCard = null;
@@ -354,7 +354,7 @@ function reset() {
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
-  Object.assign(C, { background: [], comps: {}, crewKinds: [], focus: null, compHist: {}, compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+  Object.assign(C, { group: null, sentGroup: null, background: [], comps: {}, crewKinds: [], focus: null, compHist: {}, compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
   closePreview();
   Review.loop = null;
@@ -581,7 +581,7 @@ function closeChatView(silent) {
   if (C.es) { C.es.close(); C.es = null; }
   for (const c of Object.values(C.comps)) if (c && c.es) { c.es.close(); c.es = null; }
   closePick();
-  closeAside(); closeLightbox(); resetRun();
+  closeAside(); closeLightbox(); closeTogether(); resetRun();
   clearInterval(C.watchTimer);
   $c('chat').hidden = true;
   document.body.classList.remove('chat-open');
@@ -700,7 +700,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const bp = t.closest('[data-build]');
     if (bp) return buildPlan(bp).catch(err => toast(err.message));
     const crew = t.closest('[data-crew]');
-    if (crew) { const src = crew.dataset.crew; if (src === 'comp' && crew.dataset.kind && crew.dataset.kind !== C.mate) { focusMate(crew.dataset.kind); if (Pick.src === 'comp') closePick(); return setTarget('comp'); } if (src === 'both' || src === 'plan') return setTarget(C.target === src ? 'main' : src); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
+    if (t.closest('#cTogether')) { togetherClick(t); return; }
+    if (crew) { const src = crew.dataset.crew; if (src === 'together') return $c('cTogether').hidden ? openTogether() : closeTogether(); closeTogether(); if (src === 'comp' && crew.dataset.kind && crew.dataset.kind !== C.mate) { focusMate(crew.dataset.kind); if (Pick.src === 'comp') closePick(); return setTarget('comp'); } if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
     const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });
     const pp = t.closest('#cPick [data-preset]');
     if (pp) { const p = presetsFor(Pick.src).find(x => x.id === pp.dataset.preset); if (p) return pickModel(Pick.src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }); return undefined; }
@@ -850,11 +851,13 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
   }, true);
   document.addEventListener('mousedown', e => { if (!$c('cPick').hidden && !(e.target.closest && e.target.closest('#cPick, [data-crew]'))) closePick(); });
+  document.addEventListener('mousedown', e => { if (!$c('cTogether').hidden && !(e.target.closest && e.target.closest('#cTogether, [data-crew="together"]'))) closeTogether(); });
   $c('pickBack').addEventListener('pointerdown', e => e.preventDefault());
   $c('pickBack').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closePick(); });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && Rail.drag && Rail.drag.on && !Rail.drag.settling) { e.preventDefault(); e.stopPropagation(); Rail.dropped = Date.now(); railSettle(Rail.drag, false); return; }
     if (e.key === 'Escape' && closeLightbox()) { e.stopPropagation(); return; }
+    if (e.key === 'Escape' && closeTogether(true)) { e.stopPropagation(); return; }
     if ($c('chat').hidden) return;
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); (e.shiftKey ? moveInRail : switchRail)(e.key === 'ArrowDown' ? 1 : -1); }
   }, true);
@@ -1033,7 +1036,7 @@ function chatContextItems(t, at) {
     ];
   }
   const crew = t.closest('[data-crew]');
-  if (crew && crew.dataset.crew === 'both') { const ks = crewKinds(); return [{ glyph: '⇄', label: C.target === 'both' ? `Write to ${PROV_NAME[C.provider]} only` : ks.length > 1 ? `Write to all of them, in turn` : `Write to ${PROV_NAME[C.provider]} and ${PROV_NAME[partnerProv()]} at once`, keys: 'Ctrl .', run: () => setTarget(C.target === 'both' ? 'main' : 'both') }]; }
+  if (crew && crew.dataset.crew === 'together') return [{ glyph: '⇄', label: 'Choose who works together…', run: openTogether }, ...(C.target === 'both' || C.target === 'plan' ? [{ glyph: '✕', label: `Write to ${PROV_NAME[C.provider]} only`, keys: 'Ctrl .', run: () => setTarget('main') }] : [{ glyph: '✦', label: `Write to all of them, in turn`, run: () => { C.group = { kinds: togetherAll(), how: 'turns' }; setTarget('both'); } }])];
   if (crew && crew.dataset.kind) focusMate(crew.dataset.kind);
   if (crew) {
     const src = crew.dataset.crew, name = PROV_NAME[provFor(src)];
@@ -1075,6 +1078,6 @@ window.ChatUI = {
     return out;
   },
   // For the phone's Back button: closes the picker, then the chat. True if it did something.
-  back: () => { if (closeLightbox()) return true; if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { closeChatView(); return true; } return false; },
+  back: () => { if (closeLightbox()) return true; if (closeTogether()) return true; if (!$c('cPick').hidden) { closePick(); return true; } if ($c('chat').classList.contains('show-rail') || $c('chat').classList.contains('show-ledger')) { $c('chat').classList.remove('show-rail', 'show-ledger'); return true; } if (!$c('chat').hidden) { closeChatView(); return true; } return false; },
   isOpen: () => !$c('chat').hidden, key: () => C.key,
 };

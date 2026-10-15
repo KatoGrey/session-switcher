@@ -300,14 +300,17 @@ module.exports = [
       s = sends().at(-1);
       t.check('@claude sends just that one to Claude', s && s.key === 'k-bard' && !s.to && s.text === 'what do you think?', s);
 
-      // Both: they take turns. One message; Claude answers, then Codex picks it up and builds on it.
-      await b.clickOn('[data-crew="both"]'); await sleep(300);
-      const tgt = await b.eval(`return { target: C.target, ph: document.getElementById('cText').placeholder, on: [...document.querySelectorAll('.crew.on')].map(x => x.dataset.crew).join() }`);
-      t.check('“Both”: Claude answers, then Codex builds on it', tgt.target === 'both' && /Claude answers, then Codex builds on it/.test(tgt.ph) && tgt.on === 'main,comp,both', tgt);
+      // Together: they take turns. One message; Claude answers, then Codex picks it up and builds on it.
+      await b.clickOn('[data-crew="together"]'); await sleep(300);
+      const pick = await b.eval(`const p = document.getElementById('cTogether'); return { open: !p.hidden, rows: [...p.querySelectorAll('[data-tg]')].map(x => x.dataset.tg + (x.getAttribute('aria-checked') === 'true' ? x.dataset.n : '-')).join() }`);
+      t.check('Together opens a picker with each of them ticked, in order', pick.open && pick.rows === 'claude1,codex2', pick);
+      await b.clickOn('#cTogether [data-tgact="use"]'); await sleep(300);
+      const tgt = await b.eval(`return { target: C.target, ph: document.getElementById('cText').placeholder, on: [...document.querySelectorAll('.crew.on')].map(x => x.dataset.crew).join(), closed: document.getElementById('cTogether').hidden }`);
+      t.check('Together: Claude answers, then Codex builds on it', tgt.target === 'both' && /Claude answers, then Codex, each building on the last/.test(tgt.ph) && tgt.on === 'main,comp,together' && tgt.closed, tgt);
       const n0 = sends().length;
       await type('Plan the 1.4 release together.');
       const both = sends().slice(n0);
-      t.check('one message, sent once for them to take turns', both.length === 1 && both[0].to === 'both' && both[0].key === 'k-bard' && both[0].text === 'Plan the 1.4 release together.', both);
+      t.check('one message, sent once for them to take turns', both.length === 1 && both[0].to === 'group' && JSON.stringify(both[0].kinds) === '["claude","codex"]' && both[0].key === 'k-bard' && both[0].text === 'Plan the 1.4 release together.', both);
       await b.eval(`handle({ kind: 'user', text: 'Plan the 1.4 release together.', at: new Date().toISOString(), seq: 301 }); handle({ kind: 'handoff', to: 'codex', state: 'waiting', seq: 302 }); return 1`); await sleep(300);
       const wait = await b.eval(`const u = [...document.querySelectorAll('.umsg')].pop(); return { tag: u.querySelector('.to-tag')?.textContent, next: document.querySelector('[data-crew="comp"] .crew-m')?.textContent }`);
       t.check('it says Claude first, then Codex, and Codex is up next', wait.tag === 'to Claude, then Codex' && /up next/.test(wait.next || ''), wait);
@@ -1240,7 +1243,7 @@ module.exports = [
       await b.eval(`handle({ kind: 'state', state: 'ready', seq: 900 }); return 1`);
       const pf = await b.eval(`const real = window.api, calls = []; window.api = async (p, body) => { calls.push([p, body]); return { ok: true }; };
         setTarget('plan', false);
-        const placeholder = document.getElementById('cText').placeholder, pill = !!document.querySelector('[data-crew="plan"][aria-pressed="true"]');
+        const placeholder = document.getElementById('cText').placeholder, pill = document.querySelector('[data-crew="together"].on .crew-n')?.textContent === 'Plan first';
         document.getElementById('cText').value = 'Add a save system.'; await sendMessage();
         const sent = calls.find(c => c[0] === '/api/chat/send');
         handle({ kind: 'planfirst', state: 'drafting', who: 'claude', to: 'codex', ask: 'Add a save system.', seq: 901 });
@@ -1248,14 +1251,14 @@ module.exports = [
         handle({ kind: 'planfirst', state: 'checking', who: 'claude', to: 'codex', seq: 902 });
         handle({ kind: 'planfirst', state: 'ready', checked: true, seq: 903 });
         const ready = document.querySelector('.planfirst').textContent, last = document.getElementById('cFeed').lastElementChild.classList.contains('planfirst');
-        await buildPlan(document.querySelector('[data-build="comp"]'));
+        await buildPlan(document.querySelector('[data-build="codex"]'));
         const build = calls.filter(c => c[0] === '/api/chat/send').pop();
         const after = document.querySelector('.planfirst').textContent;
         window.api = real; setTarget('main', false);
         return { placeholder, pill, sent: sent && sent[1], drafting, ready, last, build: build && build[1], after }`);
-      t.check('Plan first is a choice under the message box', pf.pill && /Plan first/.test(pf.placeholder) && pf.sent && pf.sent.to === 'plan' && pf.sent.text === 'Add a save system.', pf);
+      t.check('Plan first is a choice under the message box', pf.pill && /Plan first/.test(pf.placeholder) && pf.sent && pf.sent.to === 'plan' && pf.sent.by === 'claude' && pf.sent.kind === 'codex' && pf.sent.text === 'Add a save system.', pf);
       t.check('one card follows it: drafting, then who builds it, under the plan', /Claude is drafting a plan; Codex checks it next/.test(pf.drafting) && /checked by Codex\. Who builds it\?/.test(pf.ready) && pf.last, pf);
-      t.check('picking a builder sends it the go-ahead', pf.build && pf.build.to === 'partner' && /Build it as planned above/.test(pf.build.text) && /Codex is building it/.test(pf.after), pf);
+      t.check('picking a builder sends it the go-ahead', pf.build && pf.build.to === 'partner' && pf.build.kind === 'codex' && /Build it as planned above/.test(pf.build.text) && /Codex is building it/.test(pf.after), pf);
       // Reviews both ways: a dual review card shows who found each finding, and fixes go to the writer.
       const rv = await b.eval(`handle({ kind: 'review', id: 'dual1', by: 'both', what: 'your uncommitted changes', state: 'done', overall: 'Both found one problem.', findings: [{ title: 'Off by one', by: 'both', file: 'a.js', start: 10 }, { title: 'Typo', by: 'claude' }], seq: 950 });
         handle({ kind: 'review', id: 'cl1', by: 'claude', what: 'the last commit', state: 'done', overall: 'One thing.', findings: [{ title: 'Missing check' }], seq: 951 });
@@ -1744,10 +1747,10 @@ module.exports = [
       await b.eval(`ChatUI.close(); go('folder', S.projects.find(p => p.name === 'Starfall Tavern').cwd); return 1`); await sleep(900);
       await b.clickOn('[data-act="newgemini"]'); await sleep(1200);
       t.check('New Gemini chat opens a Gemini chat in that project', calls.some(([p, body]) => p === '/api/chat/open' && body.provider === 'gemini' && body.mode === 'new' && /Starfall Tavern/.test(body.cwd || '')));
-      // All three in one chat: a Claude chat shows a pill for Codex and one for Gemini, and All.
+      // All three in one chat: a Claude chat shows a pill for Codex and one for Gemini, and Together.
       await b.eval(`ChatUI.close(); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
-      const pills = await b.eval(`return { kinds: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), all: document.querySelector('[data-crew="both"] .crew-n')?.textContent, hint: document.getElementById('cHint').textContent }`);
-      t.check('a Claude chat has a pill for Codex and one for Gemini, and All', JSON.stringify(pills.kinds) === '["codex","gemini"]' && pills.all === 'All' && /@codex/.test(pills.hint) && /@gemini/.test(pills.hint) && /@all/.test(pills.hint), pills);
+      const pills = await b.eval(`return { kinds: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), all: document.querySelector('[data-crew="together"] .crew-n')?.textContent, hint: document.getElementById('cHint').textContent }`);
+      t.check('a Claude chat has a pill for Codex and one for Gemini, and Together', JSON.stringify(pills.kinds) === '["codex","gemini"]' && pills.all === 'Together' && /@codex/.test(pills.hint) && /@gemini/.test(pills.hint) && /@all/.test(pills.hint), pills);
       await b.clickOn('[data-crew="comp"][data-kind="gemini"]'); await sleep(400);
       const picked = await b.eval(`return { target: C.target, mate: partnerProv(), on: [...document.querySelectorAll('[data-crew="comp"].on')].map(x => x.dataset.kind), ph: document.getElementById('cText').placeholder }`);
       t.check('clicking Gemini’s pill writes to Gemini (only its pill lit)', picked.target === 'comp' && picked.mate === 'gemini' && JSON.stringify(picked.on) === '["gemini"]' && /Gemini/.test(picked.ph), picked);
@@ -1759,7 +1762,40 @@ module.exports = [
       await sendText('@codex check the rhyme scheme');
       t.check('“@codex …” goes to Codex, from the same chat', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'partner' && body.kind === 'codex' && /rhyme scheme/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
       await sendText('@all one verse each');
-      t.check('“@all …” goes round: Claude, then Codex and Gemini', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'all' && JSON.stringify(body.kinds) === '["codex","gemini"]' && /one verse each/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      t.check('“@all …” goes round: Claude, then Codex and Gemini', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'group' && JSON.stringify(body.kinds) === '["claude","codex","gemini"]' && /one verse each/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      // Together, picked: Gemini then Codex, Claude sitting out; then plan first with that pair.
+      await b.clickOn('[data-crew="together"]'); await sleep(300);
+      const rows0 = await b.eval(`return [...document.querySelectorAll('#cTogether [data-tg]')].map(x => x.dataset.tg + (x.getAttribute('aria-checked') === 'true' ? x.dataset.n : '-')).join()`);
+      t.check('the picker starts with all three, in order', rows0 === 'claude1,codex2,gemini3', rows0);
+      await b.clickOn('#cTogether [data-tg="claude"]'); await sleep(150);
+      await b.clickOn('#cTogether [data-tgup="gemini"]'); await sleep(150);
+      const rows1 = await b.eval(`const p = document.getElementById('cTogether'); return { rows: [...p.querySelectorAll('[data-tg]')].map(x => x.dataset.tg + (x.getAttribute('aria-checked') === 'true' ? x.dataset.n : '-')).join(), use: p.querySelector('[data-tgact="use"]').textContent }`);
+      t.check('untick Claude and move Gemini up: Gemini first, then Codex', rows1.rows === 'claude-,codex2,gemini1' && rows1.use === 'Write to Gemini and Codex', rows1);
+      await t.shot(b, 'together');
+      await b.clickOn('#cTogether [data-tgact="use"]'); await sleep(300);
+      const lit = await b.eval(`return { target: C.target, on: [...document.querySelectorAll('.crew.on')].map(x => x.dataset.kind || x.dataset.crew).join(), label: document.querySelector('[data-crew="together"] .crew-m')?.textContent }`);
+      t.check('Gemini’s and Codex’s pills light, Claude’s doesn’t, and Together says the order', lit.target === 'both' && lit.on === 'codex,gemini,together' && lit.label === 'Gemini → Codex', lit);
+      await sendText('sketch the menu screen');
+      t.check('the message goes to Gemini, then Codex', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'group' && JSON.stringify(body.kinds) === '["gemini","codex"]' && /sketch the menu/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      await b.clickOn('[data-crew="together"]'); await sleep(300);
+      await b.clickOn('#cTogether [data-tghow="plan"]'); await sleep(150);
+      await b.clickOn('#cTogether [data-tgact="use"]'); await sleep(300);
+      await sendText('add a save system');
+      t.check('plan first with them: Gemini drafts, Codex checks', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'plan' && body.by === 'gemini' && body.kind === 'codex' && /save system/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      // At the same time: both start on it at once, each on its own part.
+      await b.clickOn('[data-crew="together"]'); await sleep(300);
+      await b.clickOn('#cTogether [data-tghow="parallel"]'); await sleep(150);
+      const par = await b.eval(`const p = document.getElementById('cTogether'); return { rows: [...p.querySelectorAll('[data-tg]')].map(x => x.dataset.tg + (x.dataset.n || '-')).join(), note: p.querySelector('.mp-note').textContent, up: p.querySelectorAll('[data-tgup]').length }`);
+      t.check('At the same time: each ticked one works on its own part, no order to set', par.rows === 'claude-,codex✓,gemini✓' && /all start on your message at once/.test(par.note) && par.up === 0, par);
+      await t.shot(b, 'at-once');
+      await b.clickOn('#cTogether [data-tgact="use"]'); await sleep(300);
+      const atb = await b.eval(`return { n: document.querySelector('[data-crew="together"] .crew-n').textContent, m: document.querySelector('[data-crew="together"] .crew-m').textContent, ph: document.getElementById('cText').placeholder }`);
+      t.check('the button says At once, and the box says to split the work', atb.n === 'At once' && atb.m === 'Gemini + Codex' && /say who does what/.test(atb.ph), atb);
+      await sendText('Gemini: the lore text. Codex: the menu icons.');
+      t.check('it goes to both at once', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'group' && body.how === 'parallel' && JSON.stringify(body.kinds) === '["gemini","codex"]'), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      await b.clickOn('[data-crew="together"]'); await sleep(300);
+      await b.clickOn('#cTogether [data-tgact="off"]'); await sleep(300);
+      t.check('Back to Claude only ends it', await b.eval(`return C.target === 'main' && document.getElementById('cTogether').hidden`));
       const kept = await b.eval(`return Object.keys(C.comps).filter(k => C.comps[k] && !C.comps[k].ended)`);
       t.check('both partners stay in the chat (neither pushed the other out)', kept.includes('gemini') && kept.includes('codex'), kept);
       // Plain words in Ctrl+K.

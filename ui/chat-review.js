@@ -144,15 +144,21 @@ function renderPlanFirst(ev) {
   else if (ev.state === 'built') body = `<p class="pf-s ok">${esc(ev.by)} ${ev.by.includes(' and ') ? 'are' : 'is'} building it.</p>`;
   else {
     body = `<p class="pf-s">The plan is ready${ev.checked === false ? '' : `, checked by ${to}`}. Who builds it?</p>
-      <div class="pf-b"><button type="button" class="btn gilt" data-build="main">${who}</button><button type="button" class="btn" data-build="comp">${to}</button><button type="button" class="btn" data-build="both">Both (${who} first)</button></div>`;
+      <div class="pf-b"><button type="button" class="btn gilt" data-build="${card._who}">${who}</button><button type="button" class="btn" data-build="${card._to}">${to}</button><button type="button" class="btn" data-build="both">Both (${who} first)</button></div>`;
     withStick(() => feed.appendChild(card));
   }
   card.innerHTML = head + body;
 }
+// Who builds it: the one that drafted it, the one that checked it, or both in turn (the drafter
+// first). Either may be this chat's own assistant or one of the others.
 async function buildPlan(btn) {
   const card = btn.closest('.planfirst'); if (!card) return;
-  const t = btn.dataset.build, who = PROV_NAME[card._who], to = PROV_NAME[card._to];
-  const text = `Build it as planned above${t === 'comp' ? ` (${who}’s plan, with your own check)` : `, taking in ${to}’s check`}. Go ahead and make the changes.`;
-  await api('/api/chat/send', { key: C.key, text, ...(t === 'main' ? {} : { to: t === 'both' ? 'both' : 'partner', account: S.acct }) });
-  renderPlanFirst({ state: 'built', by: t === 'both' ? `${who} and ${to}` : t === 'comp' ? to : who });
+  const kinds = { main: C.provider, comp: card._to }, t = kinds[btn.dataset.build] || btn.dataset.build;   // (older cards: main, comp)
+  const who = PROV_NAME[card._who], to = PROV_NAME[card._to];
+  const text = `Build it as planned above${t === card._to ? ` (${who}’s plan, with your own check)` : `, taking in ${to}’s check`}. Go ahead and make the changes.`;
+  const send = t === 'both' ? { to: 'group', kinds: [card._who, card._to], account: S.acct } : t === C.provider ? {} : { to: 'partner', kind: t, account: S.acct };
+  if (t === 'both') C.sentGroup = [card._who, card._to];
+  await api('/api/chat/send', { key: C.key, text, ...send });
+  for (const k of t === 'both' ? [card._who, card._to] : [t]) if (k !== C.provider) ensureCompanion(k).catch(() => {});
+  renderPlanFirst({ state: 'built', by: t === 'both' ? `${who} and ${to}` : PROV_NAME[t] });
 }

@@ -264,8 +264,8 @@ async function startServer(dataDir) {
         const b = await launch({ width: 1440, height: 900 });
         await b.nav(s.base + '/', 3000);
         await b.eval(`await ChatUI.open({ sessionId: ${JSON.stringify(open.sessionId)} }); return 1`); await sleep(5000);
-        const v = await b.eval(`return { pills: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), all: document.querySelector('[data-crew="both"] .crew-n')?.textContent, gem: document.querySelectorAll('#cFeed .turn[data-prov="gemini"]').length, cx: document.querySelectorAll('#cFeed .turn[data-prov="codex"]').length }`);
-        check('the window: a pill for Codex and Gemini, All, and both partners in the feed', v.pills.includes('codex') && v.pills.includes('gemini') && v.all === 'All' && v.gem >= 2 && v.cx >= 1, JSON.stringify(v));
+        const v = await b.eval(`return { pills: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), all: document.querySelector('[data-crew="together"] .crew-n')?.textContent, gem: document.querySelectorAll('#cFeed .turn[data-prov="gemini"]').length, cx: document.querySelectorAll('#cFeed .turn[data-prov="codex"]').length }`);
+        check('the window: a pill for Codex and Gemini, Together, and both partners in the feed', v.pills.includes('codex') && v.pills.includes('gemini') && v.all === 'Together' && v.gem >= 2 && v.cx >= 1, JSON.stringify(v));
         await b.shot(path.join(os.tmpdir(), 'real-crew-window.png'));
         b.close();
       }

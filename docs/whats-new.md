@@ -1,8 +1,9 @@
-# Pictures you can zoom and copy, Gemini in the top bar, links to any folder
+# Pick who works together, pictures you can zoom and copy, Gemini in the top bar, links to any folder
 
 - **Pictures open fitted to the window.** A tall screenshot used to open at full size with most of it cut off; now it fits whole. Zoom with the mouse wheel (or pinch on a phone, or − and +), drag to look around, and press 0 to fit it again.
 - **Copy picture and Save** in the picture viewer (Ctrl+C, Ctrl+S): copy it and paste it anywhere to share it. Pictures opened as files can be copied and viewed full screen too, and a picture you're about to send opens full size when you click it.
 - **Gemini in the top bar:** click the account chip and Gemini has its own row, with your Google AI plan. When a model runs out of quota, it says when it's back (Antigravity can't say how much is left, so there's no percentage).
+- **Together: pick who works on your message.** One **Together ▾** button under the message box (in place of All and Plan, which hid each other): tick who takes your next message and in what order (Claude and Codex, Gemini then Codex, all three…), and whether they **take turns**, work **at the same time** (Claude on the code while Codex makes the images: say who does what, and each keeps to its part) or **plan first**. The chat's own assistant can sit out.
 - **Links to any folder on your computer open,** not just ones in your user folder: a site in `C:\Sites`, a game on `D:\`. **Work here** starts a Claude, Codex or Gemini chat in that folder, **Open in Explorer** opens it, and a web page has **Open in browser**. Sign-in files, key folders like `.ssh`, AppData and other people's user folders stay closed.
 
 ## Earlier in 6.5: Switcher Lite, groups, the Commander and routines

@@ -342,7 +342,9 @@ async function sendMessage() {
     if (!all && w !== C.provider && kindReady(w)) focusMate(w);
     target = all ? 'both' : w === C.provider ? 'main' : 'comp'; text = text.slice(at[0].length);
   }
-  if (target !== 'comp' && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
+  // Together: the ones you picked, in order ("@all" is everyone, this once); plan first takes two.
+  const group = target === 'both' ? (at ? togetherAll() : groupKinds()) : target === 'plan' ? groupKinds().slice(0, 2) : null;
+  if ((group ? group.includes(C.provider) : target !== 'comp') && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
   // Writing to one while the other is mid-reply: both would work at once, maybe on the same files.
   let after = false;
   if (duo() && target !== 'both' && target !== 'plan') {
@@ -365,7 +367,12 @@ async function sendMessage() {
     if (lost.length) { toast(`“${lost[0]}” isn’t linked any more. Type @ and pick it again, so its messages come along.`, 6000); return; }
     speedMark('reply');
     let r;
-    try { r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' && crewKinds().length > 1 ? 'all' : target === 'both' || target === 'plan' ? target : 'partner', account: S.acct, kind: partnerProv(), ...(target === 'both' ? { kinds: crewKinds() } : {}) }), ...(after ? { after: true } : {}) }); } catch (err) {
+    // In turn, or (picked in Together) all at the same time.
+    const how = target === 'both' && !at && groupHow() === 'parallel' ? 'parallel' : 'turns';
+    const to = target === 'main' ? {} : target === 'both' ? { to: 'group', kinds: group, how, account: S.acct }
+      : target === 'plan' ? { to: 'plan', by: group[0], kind: group[1], account: S.acct } : { to: 'partner', account: S.acct, kind: partnerProv() };
+    C.sentGroup = group; C.sentHow = target === 'both' ? how : null;
+    try { r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...to, ...(after ? { after: true } : {}) }); } catch (err) {
       // No connection (the phone left the Wi-Fi): a plain message waits here and goes when it's back.
       if (!err.offline || images.length || target !== 'main' || !C.key) throw err;
       outboxAdd({ key: C.key, sessionId: C.sessionId, title: C.info && C.info.title, text });
@@ -374,7 +381,7 @@ async function sendMessage() {
     }
     clear();
     // Follow the partner's replies here (it may only just have started).
-    if (target === 'both') for (const k of crewKinds()) ensureCompanion(k).catch(() => {});
+    if (group) for (const k of group) { if (k !== C.provider) ensureCompanion(k).catch(() => {}); }
     else if (target !== 'main' && !(C.comp && !C.comp.ended && (!r || !r.key || C.comp.key === r.key))) ensureCompanion().catch(() => {});
   } finally { $c('cSend').disabled = false; $c('cText').focus(); }
 }

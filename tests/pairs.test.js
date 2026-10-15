@@ -341,6 +341,85 @@ test('crew: “All” goes round in turn, each seeing the answers before theirs'
   assert.match(lead.sent[1].text, /Gemini:\nThe Hearth and Harp\./);
 });
 
+test('crew: Together with the ones you picked: Gemini then Codex in a Claude chat, Claude sitting out', async () => {
+  const { pairs, add } = crewSetup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  const { handedOver } = await pairs.sendGroup(lead, 'Sketch the menu.', [], { kinds: ['gemini', 'codex'] });
+  assert.equal(lead.sent.length, 0, 'Claude isn’t asked');
+  const gm = pairs.crewOf(lead).find(c => c.provider === 'gemini');
+  assert.match(gm.sent[0].text, /to Codex and you, to take turns in this order: you, then Codex\. You answer first\. Codex picks it up after you/);
+  assert.ok(lead.buffer.some(e => e.kind === 'handoff' && e.to === 'codex' && e.state === 'waiting' && e.after === 'gemini'), 'the chat shows Codex is next, after Gemini');
+  gm.reply('Three tabs: Play, Load, Quit.');
+  await tick(); await tick();
+  const cx = pairs.crewOf(lead).find(c => c.provider === 'codex');
+  assert.match(cx.sent[0].text, /Gemini:\nThree tabs/);
+  assert.match(cx.sent[0].text, /to Gemini and you, to take turns in this order: Gemini, then you\. Gemini answered it before you \(above\).*You are the last one/s);
+  cx.reply('Added Settings.');
+  assert.equal(await handedOver, cx);
+  assert.equal(lead.sent.length, 0, 'still not Claude');
+});
+
+test('crew: Together in any order, Claude second; fewer than two is refused', async () => {
+  const { pairs, add } = crewSetup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  await assert.rejects(pairs.sendGroup(lead, 'Hi.', [], { kinds: ['codex'] }), /at least two/);
+  const { handedOver } = await pairs.sendGroup(lead, 'Review the save code.', [], { kinds: ['codex', 'claude'] });
+  const cx = pairs.crewOf(lead).find(c => c.provider === 'codex');
+  assert.equal(lead.sent.length, 0, 'Claude waits for Codex');
+  cx.reply('Found a race on autosave.');
+  await tick(); await tick();
+  assert.match(lead.sent[0].text, /Codex:\nFound a race on autosave\./);
+  assert.match(lead.sent[0].text, /in this order: Codex, then you\. Codex answered it before you/);
+  lead.reply('Fixed it with a lock.');
+  assert.equal(await handedOver, lead);
+});
+
+test('crew: at the same time, everyone picked starts at once, each on its own part', async () => {
+  const { pairs, add } = crewSetup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  await assert.rejects(pairs.sendTogether(lead, 'Hi.', [], { kinds: ['claude'] }), /at least two/);
+  const msg = 'Claude: write the save system. Codex: make the menu icons.';
+  await pairs.sendTogether(lead, msg, [], { kinds: ['claude', 'codex'] });
+  const cx = pairs.crewOf(lead).find(c => c.provider === 'codex');
+  assert.equal(lead.sent.length, 1, 'Claude has it'); assert.equal(cx.sent.length, 1, 'and Codex has it, before Claude answered');
+  assert.equal(lead.state, 'busy'); assert.equal(cx.state, 'busy', 'both at work at once');
+  assert.match(lead.sent[0].text, /to Codex and you at the same time: you all work on it at once.*Do only your own part.*yours is what it gives Claude.*Don't edit files it may be working on/s);
+  assert.match(cx.sent[0].text, /to Claude and you at the same time.*yours is what it gives Codex/s);
+  assert.ok(lead.sent[0].text.endsWith(msg) && cx.sent[0].text.endsWith(msg), 'your words, once, after the note');
+  // Afterwards each hears what the other did.
+  await tick(); lead.reply('Wrote save.lua.'); cx.reply('Made 4 icons in art/menu.'); await tick();
+  await pairs.send(lead, 'Wire the icons in.');
+  assert.match(lead.sent[1].text, /Codex:\nMade 4 icons in art\/menu\./);
+});
+
+test('crew: at the same time without the chat’s own: Codex and Gemini in a Claude chat', async () => {
+  const { pairs, add } = crewSetup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  await pairs.sendTogether(lead, 'Codex: icons. Gemini: the lore text.', [], { kinds: ['codex', 'gemini'] });
+  const [cx, gm] = ['codex', 'gemini'].map(k => pairs.crewOf(lead).find(c => c.provider === k));
+  assert.equal(lead.sent.length, 0, 'Claude sits out');
+  assert.equal(cx.sent.length, 1); assert.equal(gm.sent.length, 1);
+  assert.match(gm.sent[0].text, /to Codex and you at the same time/);
+});
+
+test('crew: plan first with the ones you picked: Gemini drafts, Codex checks', async () => {
+  const { pairs, add } = crewSetup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  await pairs.planFirst(lead, 'Add a save system.', [], { by: 'gemini', kind: 'codex' });
+  await tick();
+  const gm = pairs.crewOf(lead).find(c => c.provider === 'gemini');
+  assert.equal(lead.sent.length, 0, 'Claude doesn’t draft it');
+  assert.match(gm.sent.at(-1).text, /\(Plan first: .*Codex checks the plan next/s);
+  assert.ok(lead.buffer.some(e => e.kind === 'planfirst' && e.state === 'drafting' && e.who === 'gemini' && e.to === 'codex'));
+  gm.reply('1. save.lua 2. menu hook');
+  await tick(); await tick();
+  const cx = pairs.crewOf(lead).find(c => c.provider === 'codex');
+  assert.match(cx.sent.at(-1).text, /\(Plan first\) Check Gemini's plan above/);
+  cx.reply('Add a version number.');
+  await tick(); await tick();
+  assert.ok(lead.buffer.some(e => e.kind === 'planfirst' && e.state === 'ready' && e.checked));
+});
+
 test('crew: after a restart, the crew comes back, each by its own conversation', async () => {
   const one = crewSetup();
   const lead = one.add(new FakeChat({ sessionId: 'L' }));

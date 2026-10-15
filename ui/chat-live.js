@@ -80,7 +80,7 @@ function relaySide(src) {
   const done = st === 'ready' && C.justDone && C.justDone.src === src && Date.now() < C.justDone.until;
   const bgNow = st === 'ready' && ((src === 'comp' ? C.comp && C.comp.background : C.background) || []).length;
   const word = upNext ? 'Up next' : st === 'busy' && status ? status : done ? 'Done' : bgNow ? 'In the background' : RELAY_WORD[st] || 'Ready';
-  const on = C.target === 'both' || (src === 'comp' ? C.target === 'comp' && C.focus === prov : C.target === src);
+  const on = groupNow().includes(prov) || (src === 'comp' ? C.target === 'comp' && C.focus === prov : C.target === src);
   return `<button type="button" class="cr-side ${prov}${st === 'busy' || st === 'starting' ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}${upNext ? ' next' : ''}${done ? ' done' : ''}${on ? ' on' : ''}" data-relay="${src}"${src === 'comp' ? ` data-kind="${prov}"` : ''} aria-pressed="${on}" title="Write to ${PROV_NAME[prov]}"><span class="cr-dot" aria-hidden="true"></span><b>${PROV_NAME[prov]}</b><span class="cr-w">${esc(word)}</span></button>`;
 }
 function renderRelay() {
@@ -390,7 +390,7 @@ function crewPill(src) {
   const status = src === 'comp' ? C.comp && C.comp.status : '';
   const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : '');
   const label = mi ? `${modelLabel(mi)}${mi.effort ? ` ${cap(mi.effort)}` : ''}` : src === 'comp' && st === 'off' ? '' : '…';
-  const on = duo() ? (src === 'comp' ? (C.target === 'comp' && C.focus === prov) || C.target === 'both' : C.target === src || C.target === 'both') : true;
+  const on = duo() ? (src === 'comp' ? (C.target === 'comp' && C.focus === prov) : C.target === src) || groupNow().includes(prov) : true;
   const bgList = (src === 'comp' ? C.comp && C.comp.background : C.background) || [];
   const sub = st === 'waiting' ? 'needs your OK' : src === 'comp' && C.handoff === prov ? 'up next…' : busy && status ? status : st === 'ready' && bgList.length ? 'working in the background' : label;
   const mode = src === 'comp' ? compModeLabel() : '';
@@ -424,10 +424,13 @@ function renderCrew() {
   const box = $c('cCrew'); if (!box) return;
   if (C.watch || !C.key) { box.innerHTML = ''; return; }
   const two = duo();
-  const both = C.target === 'both';
-  const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
   const many = crewKinds().length > 1;
-  box.innerHTML = crewPill('main') + (two ? crewKinds().map(k => withComp(k, () => crewPill('comp'))).join('') + (C.target !== 'main' || Object.values(C.comps).some(c => c && !c.ended) ? `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : many ? `All: ${lead} answers, then ${crewKinds().map(k => PROV_NAME[k]).join(', then ')}, each building on what came before. Uses room on every account.` : `Both: ${lead} answers, then ${mate} picks it up and builds on that. Uses room on both accounts, about twice a single reply.`}"><span class="crew-n">${many ? 'All' : 'Both'}</span></button>` : '') + `<button type="button" class="crew both plan${C.target === 'plan' ? ' on' : ''}" data-crew="plan" aria-pressed="${C.target === 'plan'}" title="Plan first: ${lead} drafts a plan, ${mate} checks it, then you pick who builds it"><span class="crew-n">Plan</span></button>` : '');
+  // Together: one button for working as a group (who, in what order, and how), always in the row.
+  const tg = C.target === 'both' || C.target === 'plan', ks = groupKinds(), plan = C.target === 'plan', at = tg && !plan && groupHow() === 'parallel';
+  const who = plan ? ks.slice(0, 2) : ks;
+  const word = plan ? 'Plan first' : at ? 'At once' : 'Together';
+  const together = `<button type="button" class="crew both together${tg ? ' on' : ''}" data-crew="together" aria-haspopup="dialog" aria-expanded="${!$c('cTogether').hidden}" title="${tg ? `${at ? 'At the same time' : word}: ${who.map(k => PROV_NAME[k]).join(at ? ' and ' : ', then ')}. Click to change who, or to write to one again.` : 'Work together: pick which of them take your next message, and whether they take turns, work at the same time or plan first'}"><span class="crew-n">${word}</span>${tg ? `<span class="crew-m">${esc(who.map(k => PROV_NAME[k]).join(at ? ' + ' : ' → '))}</span>` : ''}<span class="crew-caret" aria-hidden="true">▾</span></button>`;
+  box.innerHTML = crewPill('main') + (two ? crewKinds().map(k => withComp(k, () => crewPill('comp'))).join('') + together : '');
   box.classList.toggle('duo', two);
   renderRelay();
   $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · ${crewKinds().map(k => `<b>@${k}</b>`).join(', ')} or <b>@${many ? 'all' : 'both'}</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;
@@ -436,15 +439,91 @@ function renderCrew() {
 function setTarget(t, focus = true) {
   if (!C.focus) C.focus = partnerProv();   // the one of the others in view
   C.target = duo() && (t === 'comp' || t === 'both' || t === 'plan') ? t : 'main';
-  const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
-  const others = crewKinds().map(k => PROV_NAME[k]), all = others.length > 1 ? `${others.slice(0, -1).join(', ')} and ${others[others.length - 1]}` : mate;
-  const name = C.target === 'both' ? `${lead} and ${all}` : C.target === 'plan' ? `${lead} and ${mate}` : PROV_NAME[provFor(C.target)];
+  const mate = PROV_NAME[partnerProv()];
+  const ks = groupKinds(), A = PROV_NAME[ks[0]], B = PROV_NAME[ks[1]];
+  const name = C.target === 'both' ? sayAnd(ks) : C.target === 'plan' ? `${A} and ${B}` : PROV_NAME[provFor(C.target)];
   $c('cText').placeholder = C.target === 'comp' ? ({ Codex: 'Ask Codex… an image, a quick test, a second opinion', Gemini: 'Ask Gemini… a draft, a picture read, a second opinion' }[mate] || 'Ask Claude… a plan, a review, a second opinion')
-    : C.target === 'both' ? (others.length > 1 ? `Write to all: ${lead} answers, then ${all} in turn, each building on the last…` : `Write to ${lead} and ${mate}: ${lead} answers, then ${mate} builds on it…`)
-    : C.target === 'plan' ? `Plan first: what should be done? ${lead} drafts a plan, ${mate} checks it, then you pick who builds…` : `Write to ${name}…`;
+    : C.target === 'both' && groupHow() === 'parallel' ? `At the same time: say who does what, like “${A}: the code. ${B}: the images.”…`
+    : C.target === 'both' ? `Write to ${name}: ${A} answers, then ${ks.slice(1).map(k => PROV_NAME[k]).join(', then ')}, each building on the last…`
+    : C.target === 'plan' ? `Plan first: what should be done? ${A} drafts a plan, ${B} checks it, then you pick who builds…` : `Write to ${name}…`;
   $c('cText').setAttribute('aria-label', `Message ${name}`);
   renderCrew(); syncSend(); closePick();
   if (focus) $c('cText').focus();
+}
+
+/* ---------- Together: which of them take your next message, in what order, and how ---------- */
+// "Claude", "Claude and Codex", "Claude, Codex and Gemini".
+const sayAnd = ks => (ks.length > 1 ? `${ks.slice(0, -1).map(k => PROV_NAME[k]).join(', ')} and ${PROV_NAME[ks[ks.length - 1]]}` : PROV_NAME[ks[0]] || '');
+// Everyone who can be in it: this chat's own assistant, then the others that are set up.
+const togetherAll = () => [C.provider, ...crewKinds()];
+// The ones your next message goes to as a group (none when it's to one of them).
+const groupNow = () => (C.target === 'plan' ? groupKinds().slice(0, 2) : C.target === 'both' ? groupKinds() : []);
+// The last group you picked (any chat), so the next one starts from it.
+const savedGroup = () => { try { return JSON.parse(store('together') || 'null'); } catch { return null; } };
+// The ones picked, in the order they answer: everyone, the chat's own first, until you choose.
+function groupKinds() {
+  const all = togetherAll(), g = ((C.group || savedGroup() || {}).kinds || []).filter(k => all.includes(k));
+  return g.length >= 2 ? g : all;
+}
+// How the group works: take turns, at the same time (parallel) or plan first.
+const HOWS = ['turns', 'parallel', 'plan'];
+const groupHow = () => { const h = (C.group || savedGroup() || {}).how; return HOWS.includes(h) ? h : 'turns'; };
+const Tg = { draft: null };
+function openTogether() {
+  closePick();
+  Tg.draft = { kinds: groupKinds().slice(), how: C.target === 'plan' ? 'plan' : groupHow() };
+  renderTogether();
+  $c('cTogether').hidden = false;
+  renderCrew();
+  $c('cTogether').querySelector('[data-tg]')?.focus();
+}
+function closeTogether(refocus = false) {
+  const p = $c('cTogether'); if (!p || p.hidden) return false;
+  p.hidden = true; renderCrew();
+  if (refocus) $c('[data-crew="together"]')?.focus();
+  return true;
+}
+function renderTogether() {
+  const d = Tg.draft, ks = d.kinds, n = ks.length, plan = d.how === 'plan', at = d.how === 'parallel';
+  // Each one's part: in turn (first, second…), at once (all on their own part), or in a plan.
+  const role = i => (at ? 'works on its own part, at the same time'
+    : i === 0 ? (plan ? 'drafts the plan' : 'answers first')
+      : plan ? (i === 1 ? 'checks the plan' : 'sits out a plan (only two take part)')
+        : `answers ${['', 'second', 'third'][i] || 'next'}, building on ${i === 1 ? PROV_NAME[ks[0]] : 'the ones before'}`);
+  const row = k => {
+    const i = ks.indexOf(k), on = i >= 0;
+    return `<button type="button" role="checkbox" aria-checked="${on}" class="tg-row ${k}" data-tg="${k}" ${on ? `data-n="${at ? '✓' : i + 1}"` : ''}>
+      <b>${PROV_NAME[k]}${k === C.provider ? ' <span class="tg-own">this chat’s own</span>' : ''}</b><small>${on ? role(i) : 'not in this one'}</small>${on && i > 0 && !at ? `<span class="tg-up" data-tgup="${k}" role="button" tabindex="0" title="Answer earlier" aria-label="Move ${PROV_NAME[k]} earlier">↑</span>` : ''}</button>`;
+  };
+  const note = n < 2 ? 'Tick at least two.'
+    : plan ? `${PROV_NAME[ks[0]]} drafts a plan (no changes yet), ${PROV_NAME[ks[1]]} checks it, then you pick who builds it.`
+      : at ? `${sayAnd(ks)} all start on your message at once, each on its own part. Say who does what, like “${PROV_NAME[ks[0]]}: the save code. ${PROV_NAME[ks[1]]}: the menu icons.” They’re told not to edit each other’s files. Uses room on each one’s account.`
+        : `${sayAnd(ks)} take your message in turn: each sees the answers before theirs and builds on them, and they never edit files at the same time. Uses room on each one’s account.`;
+  $c('cTogether').innerHTML = `<p class="mp-h">Who works together${at ? '' : ' <i class="tg-hint">· in the order you tick them</i>'}</p>
+    <div class="tg-list">${togetherAll().map(row).join('')}</div>
+    <p class="mp-h">How</p>
+    <div class="mp-eff tg-how" role="radiogroup" aria-label="How they work"><button type="button" role="radio" aria-checked="${d.how === 'turns'}" data-tghow="turns">Take turns</button><button type="button" role="radio" aria-checked="${at}" data-tghow="parallel">At the same time</button><button type="button" role="radio" aria-checked="${plan}" data-tghow="plan">Plan first</button></div>
+    <p class="mp-note">${esc(note)}</p>
+    <div class="tg-act"><button type="button" class="btn prime sm" data-tgact="use" ${n < 2 ? 'disabled' : ''}>Write to ${n >= 2 ? esc(sayAnd(plan ? ks.slice(0, 2) : ks)) : 'them'}</button>${C.target === 'both' || C.target === 'plan' ? `<button type="button" class="btn quiet sm" data-tgact="off">Back to ${PROV_NAME[C.provider]} only</button>` : ''}</div>`;
+}
+// A click in the Together picker: who's in (in order), how, and Use or Off.
+function togetherClick(t) {
+  const d = Tg.draft; if (!d) return false;
+  const up = t.closest('[data-tgup]');
+  if (up) { const i = d.kinds.indexOf(up.dataset.tgup); if (i > 0) [d.kinds[i - 1], d.kinds[i]] = [d.kinds[i], d.kinds[i - 1]]; renderTogether(); $c('cTogether').querySelector(`[data-tg="${up.dataset.tgup}"]`)?.focus(); return true; }
+  const r = t.closest('[data-tg]');
+  if (r) { const k = r.dataset.tg, i = d.kinds.indexOf(k); if (i >= 0) d.kinds.splice(i, 1); else d.kinds.push(k); renderTogether(); $c('cTogether').querySelector(`[data-tg="${k}"]`)?.focus(); return true; }
+  const h = t.closest('[data-tghow]');
+  if (h) { d.how = h.dataset.tghow; renderTogether(); return true; }
+  const a = t.closest('[data-tgact]');
+  if (!a) return false;
+  if (a.dataset.tgact === 'off') { closeTogether(); setTarget('main'); return true; }
+  if (d.kinds.length < 2) return true;
+  C.group = { kinds: d.kinds.slice(), how: d.how };
+  store('together', JSON.stringify(C.group));
+  closeTogether();
+  setTarget(d.how === 'plan' ? 'plan' : 'both');
+  return true;
 }
 
 // The model picker: quick picks (a model and an effort in one tap), every model the chat's tool

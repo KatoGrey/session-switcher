@@ -2724,7 +2724,14 @@ async function handleChat(req, res, url, body, c) {
       // "@chat[…]": other chats you brought in; their latest messages go along, before your words.
       if (Array.isArray(body.refs) && body.refs.length) text = (await Promise.all(body.refs.slice(0, 3).map(otherChatBlock))).join('') + text;
       if (body.to === 'both' || body.to === 'all') { await pairs.sendBoth(lead, text, images, { accountId: body.account, kind: body.kind, kinds: Array.isArray(body.kinds) ? body.kinds.map(String).slice(0, 3) : null }); return send(res, 200, { ok: true }); }
-      if (body.to === 'plan') { await pairs.planFirst(lead, text, images, { accountId: body.account, kind: body.kind }); return send(res, 200, { ok: true }); }
+      // group: the ones you picked (Together), in order; the chat's own one may sit out. They take
+      // turns, or with how: 'parallel' all start on it at once.
+      if (body.to === 'group') {
+        const kinds = Array.isArray(body.kinds) ? body.kinds.map(String).slice(0, 3) : [];
+        await (body.how === 'parallel' ? pairs.sendTogether : pairs.sendGroup)(lead, text, images, { accountId: body.account, kinds });
+        return send(res, 200, { ok: true });
+      }
+      if (body.to === 'plan') { await pairs.planFirst(lead, text, images, { accountId: body.account, kind: body.kind, by: typeof body.by === 'string' ? body.by : null }); return send(res, 200, { ok: true }); }
       const target = body.to === 'partner' ? await pairs.ensure(lead, { accountId: body.account, kind: body.kind }) : chat;
       // after: wait for the other one to finish first (you chose "Send when it's done").
       await (body.after ? pairs.sendAfter(target, text, images) : pairs.send(target, text, images));

@@ -29,12 +29,14 @@ function handoverHtml(prov, sh) {
   const caught = sh.items ? `<details class="shared"><summary>caught up on ${sh.items} message${sh.items === 1 ? '' : 's'}</summary><div class="sh-body">${plain(sh.context)}</div></details>` : '';
   return `<div class="handover${liveRender ? ' fresh' : ''}" data-prov="${prov}" role="note"><span class="ho-arrow" aria-hidden="true">↳</span><span class="ho-t"><b>${PROV_NAME[prov]}</b> takes it from here</span>${caught}</div>`;
 }
-// "Both": your latest message says it went to the first, then the other.
+// "Both" or Together: your latest message says who it went to, in turn.
 function markBoth(to) {
-  const u = [...$c('cFeed').querySelectorAll('.umsg:not(.to-partner)')].pop();
+  // The round you sent it to, when that's the one this hand-over is part of.
+  const g = C.sentGroup && C.sentGroup.includes(to) ? C.sentGroup : [C.provider, to];
+  const u = [...$c('cFeed').querySelectorAll(g[0] === C.provider ? '.umsg:not(.to-partner)' : '.umsg')].pop();
   if (!u) return;
   u.classList.add('to-both');
-  const label = `to ${PROV_NAME[C.provider]}, then ${PROV_NAME[to]}`, tag = u.querySelector('.to-tag');
+  const label = `to ${g.map(k => PROV_NAME[k]).join(', then ')}`, tag = u.querySelector('.to-tag');
   if (tag) tag.textContent = label; else u.insertAdjacentHTML('afterbegin', `<span class="to-tag">${label}</span>`);
 }
 
@@ -43,18 +45,28 @@ function targetsNow() {
   const main = { key: C.key, state: C.state, name: PROV_NAME[C.provider] };
   const comp = { key: C.comp && !C.comp.ended ? C.comp.key : null, state: C.comp && !C.comp.ended ? C.comp.state : 'ready', name: PROV_NAME[partnerProv()] };
   if (!duo() || C.target === 'main') return [main];
-  return C.target === 'comp' ? [comp] : [main, comp];
+  if (C.target === 'comp') return [comp];
+  // Together: each one in the group (the chat's own one only if it's among them).
+  const out = groupNow().map(k => (k === C.provider ? main : (c => ({ key: c && !c.ended ? c.key : null, state: c && !c.ended ? c.state : 'ready', name: PROV_NAME[k] }))((C.comps || {})[k] || (k === partnerProv() ? C.comp : null))));
+  return out.length ? out : [main, comp];
 }
 
-// A message sent to both at once (before they took turns) arrives twice, once from each; the second
-// joins the first, which then reads "to Claude & Codex". True if it joined (so it isn't drawn again).
+// A message sent to several at once (At the same time, or before they took turns) arrives once from
+// each; the later ones join the first, which then reads "to Claude & Codex". True if it joined (so it
+// isn't drawn again).
 function joinBoth(root, toPartner, own, at) {
-  for (let prev = root.lastElementChild, n = 0; prev && n < 6; prev = prev.previousElementSibling, n++) {
-    if (!prev.classList.contains('umsg') || prev.classList.contains('to-both')) continue;
-    if (prev.classList.contains('to-partner') === toPartner) continue;
+  const me = toPartner ? provNow() : C.provider;
+  const kindOfMsg = el => (el.classList.contains('to-partner') ? ['codex', 'claude', 'gemini'].find(k => el.classList.contains(`to-${k}`)) || partnerProv() : C.provider);
+  for (let prev = root.lastElementChild, n = 0; prev && n < 8; prev = prev.previousElementSibling, n++) {
+    // (One marked for turns, "to Claude, then Codex", is a single message, not one to join.)
+    if (!prev.classList.contains('umsg') || (prev.classList.contains('to-both') && !prev._to)) continue;
+    const to = prev._to || new Set([kindOfMsg(prev)]);
+    if (to.has(me)) continue;
     if ((RAW.get(prev) || '').trim() !== own.trim() || Math.abs((prev._at || 0) - at) > 120000) continue;
+    to.add(me); prev._to = to;
     prev.classList.remove('to-partner', 'to-codex', 'to-claude', 'to-gemini'); prev.classList.add('to-both');
-    const label = `to ${PROV_NAME[C.provider]} & ${PROV_NAME[partnerProv()]}`, tag = prev.querySelector('.to-tag');
+    const order = C.sentGroup && [...to].every(k => C.sentGroup.includes(k)) ? C.sentGroup.filter(k => to.has(k)) : [C.provider, ...['claude', 'codex', 'gemini'].filter(k => k !== C.provider)].filter(k => to.has(k));
+    const label = `to ${order.map(k => PROV_NAME[k]).join(' & ')}${C.sentHow === 'parallel' ? ' · at the same time' : ''}`, tag = prev.querySelector('.to-tag');
     if (tag) tag.textContent = label;
     else prev.insertAdjacentHTML('afterbegin', `<span class="to-tag">${label}</span>`);
     return true;
