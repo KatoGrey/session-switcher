@@ -1087,3 +1087,10 @@ blockquote p { margin: 4px 0; }
 .name-ideas-pop { position: absolute; left: 0; top: 100%; z-index: 30; margin-top: 4px; padding: 8px; background: var(--pane); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: 0 12px 30px -14px rgba(0,0,0,.45); max-width: min(520px, 80vw); }
 
 .msg-you a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+
+/* Later: a bucket of its own at the end of the sidebar. */
+.side-bucket-btn { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; cursor: pointer; }
+.side-bucket-btn .n { color: var(--muted); }
+.side-bucket-btn .chev { margin-left: auto; font-size: 10px; }
+.side-bucket-btn:hover { color: var(--fg); }
+.later-chats { opacity: .85; }
