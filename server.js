@@ -76,9 +76,12 @@ const LOG_FILE = path.join(DATA_DIR, 'switcher.log');
 // working, and so do the Commander's tools in a Commander that kept running.
 const TOKEN = /^[a-f0-9]{48}$/.test(process.env.SWITCHER_KEEP_TOKEN || '') ? process.env.SWITCHER_KEEP_TOKEN : crypto.randomBytes(24).toString('hex');
 delete process.env.SWITCHER_KEEP_TOKEN;
-// The token for helpers that outlive a launch (the Commander's tools read it each time).
+// The token for helpers that outlive a launch (the Commander's tools read it each time). Written once
+// this copy has the port (a copy that finds another running and hands over to it mustn't replace it).
 const TOKEN_FILE = path.join(DATA_DIR, 'app-token');
-try { fs.writeFileSync(TOKEN_FILE, TOKEN, { mode: 0o600 }); fs.chmodSync(TOKEN_FILE, 0o600); } catch { /* the env copy still works */ }
+function publishToken() {
+  try { const tmp = `${TOKEN_FILE}.${process.pid}.tmp`; fs.writeFileSync(tmp, TOKEN, { mode: 0o600 }); fs.renameSync(tmp, TOKEN_FILE); } catch { /* the env copy still works */ }
+}
 // Which code this server is running, so a copy started later can tell if it's out of date.
 const BUILD = handover.buildId(APP_DIR);
 const ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
@@ -179,19 +182,30 @@ function stopForQuit() {
 // Their processes are held by the keeper, not by this copy. A restart hands them over: this copy
 // stops reading, saves each chat's state and exits; the next copy picks them up where it stopped.
 // Quitting still ends them. Off on Windows, in preview mode, and with SWITCHER_NO_KEEPER set.
-const keeper = !sys.IS_WIN && !sys.DRY_RUN && !process.env.SWITCHER_NO_KEEPER ? keeperLib.createKeeperClient({ dataDir: DATA_DIR, appDir: APP_DIR, log }) : null;
+const keeper = !sys.IS_WIN && !sys.DRY_RUN && !(process.env.SWITCHER_NO_KEEPER || OWN_ENV.SWITCHER_NO_KEEPER) ? keeperLib.createKeeperClient({ dataDir: DATA_DIR, appDir: APP_DIR, log }) : null;
 const HANDOVER_FILE = path.join(DATA_DIR, 'handover.json');
 let handingOver = false;
+// A chat mid-start (its handshake, or a Codex turn being started) can't be handed over: the answer
+// it waits for would go to the copy that's leaving. Waits up to five seconds for those to settle.
+async function settleForHandover(ms = 5000) {
+  const until = Date.now() + ms;
+  while (Date.now() < until && [...chats.chats.values()].some(c => c.kept && c.kept() && c.handoverable && !c.handoverable())) await new Promise(r => setTimeout(r, 100));
+}
 function handOver() {
   if (!keeper || !keeper.usable()) return false;
+  // From here this copy takes no more changes (they'd be lost: the state is saved next).
+  handingOver = true;
   keeper.pause();
   const list = [];
-  for (const c of chats.chats.values()) if (c.kept && c.kept()) { try { list.push(c.snapshot()); } catch (err) { log(`Couldn’t save chat ${c.sessionId || c.key} for the restart: ${err.message}`); } }
+  for (const c of chats.chats.values()) {
+    if (!(c.handoverable && c.handoverable())) continue;   // the rest are reopened by the next copy, as before
+    try { list.push(c.snapshot()); c.handedOver = true; } catch (err) { log(`Couldn’t save chat ${c.sessionId || c.key} for the restart: ${err.message}`); }
+  }
   const servers = [];
   for (const x of codexAll()) { try { const sn = x.serverSnapshot && x.serverSnapshot(); if (sn) servers.push({ ...sn, accountId: x.ACCOUNT.id }); } catch (err) { log(`Couldn’t save Codex (${x.ACCOUNT.name}) for the restart: ${err.message}`); } }
-  try { store.writeJsonAtomic(HANDOVER_FILE, { at: Date.now(), from: process.pid, chats: list, codex: servers }); }
+  // The chats' recent messages are in it: readable by you only.
+  try { store.writeJsonAtomic(HANDOVER_FILE, { at: Date.now(), from: process.pid, chats: list, codex: servers }); fs.chmodSync(HANDOVER_FILE, 0o600); }
   catch (err) { log(`Couldn’t save the chats for the restart (${err.message}); the next copy reopens them instead.`); return false; }
-  handingOver = true;
   log(`Handing ${list.length} chat${list.length === 1 ? '' : 's'} over to the next copy.`);
   return true;
 }
@@ -210,11 +224,15 @@ async function takeOverKept() {
   // Fresh, and from a copy that has gone (a restart, or a copy replaced by the one starting now).
   const goneFrom = pid => { try { process.kill(pid, 0); return false; } catch (err) { return err.code !== 'EPERM'; } };
   if (hand && !(Date.now() - hand.at < 120000 && (restarted || goneFrom(hand.from)))) hand = null;
-  const alive = new Map((hello.kids || []).filter(k => k.alive && !k.gap).map(k => [k.id, k]));
+  // What it holds, by id. One can be taken over if it still has every line after the one the saved
+  // chat handled (or it ended meanwhile: its last lines and its end are passed on, then it's let go).
+  const held = new Map((hello.kids || []).map(k => [k.id, k]));
+  const usable = (ref) => { const k = ref && held.get(ref.id); return k && k.first <= (Number(ref.handled) || 0) + 1 ? k : null; };
   const claimed = new Set();
   const servers = new Set();
+  let carried = 0;
   for (const sn of (hand && hand.codex) || []) {
-    const inst = codexById(sn.accountId), k = sn.procRef && alive.get(sn.procRef.id);
+    const inst = codexById(sn.accountId), k = usable(sn.procRef);
     if (!inst || !k) continue;
     try { inst.adoptServer(sn, keeper.adopt(k.id, sn.procRef.handled)); claimed.add(k.id); servers.add(sn.accountId); }
     catch (err) { log(`Couldn’t take over Codex (${sn.accountId}): ${err.message}`); }
@@ -225,19 +243,22 @@ async function takeOverKept() {
         if (!servers.has(sn.accountRef.id)) continue;
         codexById(sn.accountRef.id).restoreChat(sn);
       } else {
-        const k = sn.procRef && alive.get(sn.procRef.id);
+        const k = usable(sn.procRef);
         if (!k) continue;
         const a = acc.findAccount(config(), sn.accountRef.id);
         if (!a) continue;
         chats.restore({ cfg: config(), account: a, cwd: sn.cwd }, sn, keeper.adopt(k.id, sn.procRef.handled));
         claimed.add(k.id);
       }
+      carried++;
       if (sn.sessionId) taken.add(String(sn.sessionId).toLowerCase());
     } catch (err) { log(`Couldn’t take over chat ${sn.sessionId || sn.key}: ${err.message}`); }
   }
-  for (const k of alive.values()) if (!claimed.has(k.id)) keeper.kill(k.id, 'SIGTERM');
-  const left = alive.size - claimed.size;
-  if (hand) log(`Keeper: carried ${taken.size} chat${taken.size === 1 ? '' : 's'} over the restart${left ? `; ended ${left} process${left === 1 ? '' : 'es'} it held that weren’t handed over` : ''}.`);
+  // Everything else still running is ended (a crash's leftovers, or a chat that couldn't be handed
+  // over): those chats are reopened from where they were, as before.
+  let left = 0;
+  for (const k of held.values()) if (!claimed.has(k.id) && k.alive) { keeper.kill(k.id, 'SIGTERM'); left++; }
+  if (hand) log(`Keeper: carried ${carried} chat${carried === 1 ? '' : 's'} over the restart${left ? `; ended ${left} process${left === 1 ? '' : 'es'} it held that weren’t handed over` : ''}.`);
   else if (left) log(`Keeper: ended ${left} process${left === 1 ? '' : 'es'} left from a copy that stopped without handing over (its chats reopen as before).`);
   return taken;
 }
@@ -2230,7 +2251,7 @@ async function handleApi(req, res, url, remote = false) {
       if (body.forUpdate) { try { writeOpenChats(); store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid }); handOver(); } catch (err) { log(`Couldn’t keep the open chats for the update: ${err.message}`); } }
       else toShell({ type: 'quit' });
       // Replaced by a newer copy (lib/handover.js): chats the keeper holds carry on into it.
-      if (body.handOver && !body.forUpdate) handOver();
+      if (body.handOver && !body.forUpdate) { await settleForHandover(2000); handOver(); }
       chatPrefs.flush(); organize.flush();
       phone.stop();
       routines.stop();
@@ -2636,6 +2657,7 @@ async function restartNow(why) {
   chatPrefs.flush();
   phone.stop();
   // The chats the keeper holds carry on; the next copy picks them up (see handOver).
+  await settleForHandover();
   handOver();
   stopForQuit();
   for (const x of codexAll()) if (!(handingOver && x.serverSnapshot())) x.stop(true);
@@ -3077,6 +3099,8 @@ async function handleRequest(req, res, { remote = false } = {}) {
     // Asked by a copy that's starting up: is this the same app and the same code? Nothing private.
     if (req.method === 'GET' && url.pathname === '/api/version') return send(res, 200, { app: 'session-switcher', version: APP_VERSION, build: BUILD, pid: process.pid });
     if (url.pathname.startsWith('/api/')) {
+      // Handing chats over to the next copy: changes now would be lost, so they wait for it.
+      if (handingOver && req.method !== 'GET') { res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '3' }); return res.end(JSON.stringify({ error: 'Switcher is restarting. Try again in a moment.' })); }
       // Images shown with <img> can't send headers, so that one read-only route also takes the token in the URL.
       const imageGet = req.method === 'GET' && (url.pathname === '/api/image' || url.pathname === '/api/media' || url.pathname === '/api/themes/art') && url.searchParams.get('token') === TOKEN;
       // Switcher Lite's gallery: a picture Codex generated (or its thumbnail), by thread and file name.
@@ -3411,6 +3435,7 @@ if (restartFrom && process.send) process.send({ type: restartLib.READY, pid: pro
 (restartFrom ? replacedGone() : Promise.resolve()).then(() => server.listen(PORT, '127.0.0.1', () => {
   log(`Session Switcher ${APP_VERSION} running at ${appUrl}${sys.DRY_RUN ? ' (preview mode: nothing is launched)' : ''}${restartFrom ? ' (restarted)' : ''}`);
   handover.writeLock(PORT, { pid: process.pid, version: APP_VERSION, build: BUILD, dir: APP_DIR, token: TOKEN });
+  publishToken();
   console.log('Keep this window open while you use it, or use “Quit” in the app.');
   sys.cleanupLaunchScripts();
   for (const a of config().accounts) {
