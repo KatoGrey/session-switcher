@@ -823,3 +823,29 @@ test('tasks: one from "Do this later" remembers the chat and reply it came from'
   assert.deepEqual(t.from, { id: 'c6e577cb-c6e5-46e5-ae57-c6e577cbc6e5', title: 'Balance pass', mid: 'msg_1' });
   assert.equal(tasks.validTask({ cwd: 'C:\\p', prompt: 'x', from: { id: '../../etc' } }, ctx).from, null, 'only a real chat id');
 });
+
+test('background work keeps a chat from being stopped for idling; it shows, and goes when done', () => {
+  const { LiveChat, idleStop } = require('../lib/chat');
+  const chat = new LiveChat({ cfg: {}, account: { id: 'main', name: 'Main' }, cwd: tmp(), log: () => {} });
+  const seen = [];
+  chat.emit = ev => seen.push(ev);
+  chat.state = 'ready';
+  const H = 3600e3, now = Date.now();
+  chat.lastActivity = now - H;
+  assert.equal(idleStop(chat, now), true, 'an hour idle with nothing running: stopped');
+  chat.handle({ type: 'system', subtype: 'background_tasks_changed', tasks: [{ task_id: 'b1', task_type: 'local_bash', description: 'Run the full test suite' }] });
+  assert.deepEqual(chat.background.map(t => t.description), ['Run the full test suite']);
+  assert.ok(seen.some(e => e.kind === 'background' && e.tasks.length === 1), 'the window hears');
+  assert.deepEqual(chat.info().background.map(t => t.id), ['b1']);
+  assert.deepEqual(chat.summary().background, ['Run the full test suite'], 'and the hub');
+  chat.lastActivity = now - 3 * H;
+  assert.equal(idleStop(chat, now), false, 'work running in the background: kept going');
+  chat.lastActivity = now - 25 * H;
+  assert.equal(idleStop(chat, now), true, 'but not past a day without a word (its end was never heard)');
+  chat.handle({ type: 'system', subtype: 'background_tasks_changed', tasks: [] });
+  assert.deepEqual(chat.background, []);
+  chat.lastActivity = now - H;
+  assert.equal(idleStop(chat, now), true, 'done: idle as usual');
+  chat.clients = new Set(['window']);
+  assert.equal(idleStop(chat, now), false, 'someone looking: never');
+});

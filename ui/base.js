@@ -210,15 +210,19 @@ async function setCodexActive(id) {
   const r = await api('/api/codex/active', { id });
   S.codex = r.codex; renderAll();
 }
-const ringById = id => { if (codexAcct(id)) return codexRing(id); const a = S.accounts.find(x => x.id === id); return a ? ringOf(a) : 'var(--ash-2)'; };
+const GEMINI_RING = '#c38ae0';
+const ringById = id => { if (id === 'gemini') return GEMINI_RING; if (codexAcct(id)) return codexRing(id); const a = S.accounts.find(x => x.id === id); return a ? ringOf(a) : 'var(--ash-2)'; };
 // A Claude account, or Codex shown as an account (for headers and the usage chip).
-const acctById = id => (codexAcct(id) ? (x => ({ id: x.id, name: x.name, email: x.email, plan: x.plan, signedIn: x.signedIn, codex: true }))(codexAcct(id)) : S.accounts.find(x => x.id === id) || null);
+const acctById = id => (id === 'gemini' && S.gemini ? { id: 'gemini', name: 'Gemini', email: null, plan: 'Google AI plan', signedIn: !!S.gemini.signedIn, gemini: true } : codexAcct(id) ? (x => ({ id: x.id, name: x.name, email: x.email, plan: x.plan, signedIn: x.signedIn, codex: true }))(codexAcct(id)) : S.accounts.find(x => x.id === id) || null);
 const codexReady = () => !!(S.codex && S.codex.enabled && S.codex.signedIn);
 const isCodex = s => !!(s && s.provider === 'codex');
+// Gemini (Google's Antigravity CLI): its own chats, in their projects with the rest.
+const isGemini = s => !!(s && s.provider === 'gemini');
+const geminiReady = () => !!(S.gemini && S.gemini.enabled && S.gemini.signedIn);
 // An OpenClaw agent's session (a Discord channel, a cron run…): listed with the rest, read-only here.
 const isOpenClaw = s => !!(s && s.provider === 'openclaw');
-const provOf = s => (isCodex(s) ? 'codex' : isOpenClaw(s) ? 'openclaw' : 'claude');
-const PROV_TITLE = { claude: 'Claude Code', codex: 'Codex', openclaw: 'OpenClaw' };
+const provOf = s => (isCodex(s) ? 'codex' : isGemini(s) ? 'gemini' : isOpenClaw(s) ? 'openclaw' : 'claude');
+const PROV_TITLE = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini', openclaw: 'OpenClaw' };
 const canLaunch = a => !!a && a.signedIn && a.lock.ok;
 const isRunning = id => !!S.running[String(id).toLowerCase()];
 function highlight(text, q) {
@@ -363,6 +367,8 @@ function ownStatus(x) {
   if (x.phase === 'waiting') return (x.pending || []).some(p => p.question) ? 'question' : 'approve';
   if (x.phase === 'waiting-terminal') return 'terminal-wait';
   if (WORKING.has(x.phase)) return 'working';
+  // Its reply is done, but work it started runs on in the background: at work until that's back.
+  if (x.background && x.background.length && x.phase !== 'ended') return 'working';
   if (x.phase === 'ended') return 'ended';
   if (x.finishedAt && (x.source === 'app' || x.lastText) && !isSeen(x)) return 'reply';
   return 'quiet';
@@ -467,7 +473,7 @@ const Boot = { raw: {} };
 async function loadState(pre) {
   const j = pre || await api('/api/state');
   Boot.raw.state = j;
-  S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.shell = j.shell || null; S.firstRun = !!j.firstRun; S.codex = j.codex || null; S.reopen = j.reopen || []; S.restart = j.restart || { pending: false }; S.update = !!j.update; S.pid = j.pid || null;
+  S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.shell = j.shell || null; S.firstRun = !!j.firstRun; S.codex = j.codex || null; S.gemini = j.gemini || null; S.reopen = j.reopen || []; S.restart = j.restart || { pending: false }; S.update = !!j.update; S.pid = j.pid || null;
   const saved = store('acct');
   if (!S.accounts.some(a => a.id === S.acct)) S.acct = S.accounts.some(a => a.id === saved) ? saved : S.accounts[0].id;
 }
@@ -603,23 +609,3 @@ function flip(lists, mutate) {
   }
 }
 
-// Any window (a <dialog>) closes, as Cancel, when you click outside it: on its dimmed backdrop.
-// Only when the press started outside too, so dragging out of a text box while selecting
-// doesn't close it. Windows that must stay put can opt out with data-stay.
-(() => {
-  let downOutside = null;
-  const outside = (d, e) => {
-    const r = d.getBoundingClientRect();
-    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
-  };
-  document.addEventListener('pointerdown', e => {
-    const d = e.target instanceof HTMLDialogElement ? e.target : null;
-    downOutside = d && d.open && outside(d, e) ? d : null;
-  }, true);
-  document.addEventListener('click', e => {
-    const d = e.target instanceof HTMLDialogElement ? e.target : null;
-    const was = downOutside; downOutside = null;
-    if (!d || d !== was || !d.open || d.hasAttribute('data-stay') || !outside(d, e) || e.defaultPrevented) return;
-    d.close('cancel');
-  });
-})();

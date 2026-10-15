@@ -25,9 +25,10 @@ function projectNamed(words) {
 function sayItems(q) {
   const t = String(q || '').trim(), out = [];
   let m;
-  if ((m = t.match(/^(?:start\s+|new\s+|open\s+)?(?:an?\s+)?(claude|codex)?\s*chat\s+(?:in|for|on)\s+(.+?)(?:\s*(?::|\bto\b|\babout\b|\bthat\b|\bwhich\b)\s+(.+))?$/i))) {
+  if ((m = t.match(/^(?:start\s+|new\s+|open\s+)?(?:an?\s+)?(claude|codex|gemini)?\s*chat\s+(?:in|for|on)\s+(.+?)(?:\s*(?::|\bto\b|\babout\b|\bthat\b|\bwhich\b)\s+(.+))?$/i))) {
     const p = projectNamed(m[2]), prov = (m[1] || 'claude').toLowerCase();
-    if (p && (prov === 'claude' ? canLaunch(current()) : codexReady())) out.push({ glyph: prov === 'codex' ? '◆' : '✦', t: `Start a ${prov === 'codex' ? 'Codex' : 'Claude'} chat in ${p.name}${m[3] ? `: ${m[3]}` : ''}`, s: m[3] ? 'it waits in the message box for you to send' : '', run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: prov === 'codex' ? 'codex' : undefined, initialText: m[3] || '' }) });
+    const ready = prov === 'claude' ? canLaunch(current()) : prov === 'gemini' ? geminiReady() : codexReady();
+    if (p && ready) out.push({ glyph: prov === 'codex' ? '◆' : prov === 'gemini' ? '✷' : '✦', t: `Start a ${PROV_NAME[prov]} chat in ${p.name}${m[3] ? `: ${m[3]}` : ''}`, s: m[3] ? 'it waits in the message box for you to send' : '', run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: prov === 'claude' ? undefined : prov, initialText: m[3] || '' }) });
   }
   if ((m = t.match(/^(?:queue|later|do later)\s+(.+?)\s+(?:in|for)\s+(.+?)(?:\s+(tonight|tomorrow(?:\s+morning)?|now|when there'?s room))?$/i))) {
     const p = projectNamed(m[2]);
@@ -35,7 +36,7 @@ function sayItems(q) {
   }
   if ((m = t.match(/^(race|split)\s+(.+?)\s+(?:in|for)\s+(.+)$/i))) {
     const p = projectNamed(m[3]), split = m[1].toLowerCase() === 'split';
-    if (p && codexReady()) out.push({ glyph: split ? '⑂' : '⚑', t: `${split ? 'Split' : 'Race'} in ${p.name}: ${m[2]}`, s: split ? 'each takes a part' : 'Claude and Codex, the same task', run: () => { openRaceDialog(p.cwd, split ? 'split' : 'race'); $('rcText').value = m[2]; } });
+    if (p && racePairs().length) out.push({ glyph: split ? '⑂' : '⚑', t: `${split ? 'Split' : 'Race'} in ${p.name}: ${m[2]}`, s: split ? 'each takes a part' : 'two of them, the same task', run: () => { openRaceDialog(p.cwd, split ? 'split' : 'race'); $('rcText').value = m[2]; } });
   }
   return out;
 }
@@ -54,9 +55,9 @@ function palItems(q) {
     { glyph: '⟳', t: 'Routines', s: 'chats that start on a schedule or when something new turns up', run: () => go('routines'), alias: 'schedule watch automation cron' },
     { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health' },
     { glyph: '✧', t: 'Take the tour', s: 'a minute on what’s where', run: () => startTour(), alias: 'tour help guide intro getting started' },
-    { glyph: '⚑', t: 'Race Claude and Codex', s: 'the same task in two copies of a project; keep the better one', run: () => openRaceDialog(paletteHere()), alias: 'race compete compare both versus head to head' },
+    { glyph: '⚑', t: 'Race', s: 'two of Claude, Codex and Gemini, the same task in two copies of a project; keep the better one', run: () => openRaceDialog(paletteHere()), alias: 'race compete compare both versus head to head claude codex gemini' },
     ...(window.ChatUI && ChatUI.isOpen() && C.info && C.info.cwd ? [{ glyph: '▶', t: 'Run the project', s: 'its dev server or start script, with its output, beside the chat', run: () => openRun(), alias: 'run start dev server preview serve launch' }] : []),
-    { glyph: '⑂', t: 'Split the work', s: 'Claude and Codex each take a part, in their own copies; keep both', run: () => openRaceDialog(paletteHere(), 'split'), alias: 'split divide parallel share both halves worktree' },
+    { glyph: '⑂', t: 'Split the work', s: 'two of them each take a part, in their own copies; keep both', run: () => openRaceDialog(paletteHere(), 'split'), alias: 'split divide parallel share both halves worktree' },
     { glyph: '⏳', t: 'Queue a task', s: 'starts as a new chat when an account has room, or at a time', run: () => openTaskDialog(paletteHere()), alias: 'queue later schedule task when limit resets' },
     { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, shared by Claude and Codex', run: () => openRules(paletteHere()), alias: 'claude.md agents.md mcp servers tools rules instructions memory' },
     { glyph: '◐', t: 'Appearance', s: 'themes, fonts, light or dark, text and interface size', run: () => openSetup('look'), alias: 'font fonts typeface' },

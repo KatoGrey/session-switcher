@@ -16,7 +16,7 @@ function headerAccount(id, fallbackName) {
 function refreshChatUsage() { if (!$c('chat').hidden) { headerAccount(C.info ? C.info.accountId : null, C.info ? C.info.accountName : ''); renderLedgerSoon(); } }
 function isViewing(x) {
   if (!x || $c('chat').hidden) return false;
-  if (C.key && x.key) return x.key === C.key || !!(C.comp && x.key === C.comp.key);
+  if (C.key && x.key) return x.key === C.key || Object.values(C.comps).some(c => c && c.key === x.key);
   const sid = C.watch ? C.watch.sessionId : C.sessionId;
   return !!(sid && x.sessionId && x.sessionId.toLowerCase() === String(sid).toLowerCase());
 }
@@ -223,7 +223,7 @@ document.addEventListener('pointerover', e => {
   clearTimeout(aheadTimer);
   if (!el || e.pointerType === 'touch') return;
   const id = el.dataset.chat || el.dataset.navchat;
-  aheadTimer = setTimeout(() => { const [s] = sessionById(id); if (s && !liveOf(id)) prefetchHistory(id, s.provider === 'codex' ? 'codex' : 'claude'); }, 180);
+  aheadTimer = setTimeout(() => { const [s] = sessionById(id); if (s && !liveOf(id)) prefetchHistory(id, ['codex', 'gemini'].includes(s.provider) ? s.provider : 'claude'); }, 180);
 });
 function historyPage(params) {
   const q = params.toString(), was = HistAhead.get(q);
@@ -246,13 +246,13 @@ async function loadHistory(before) {
   C.historyStart = h.start;
   C.historyCursor = h.cursor || null;
   let rows = h.items.map(it => ({ it, prov: C.provider }));
-  // The partner's earlier messages (Codex in a Claude chat, or Claude in a Codex chat) slot in by time,
-  // paged back as far as this page of the chat's own reaches.
-  if (C.compThread) {
-    const first = rows.find(r => r.it.at);
-    const mine = await partnerBack(h.start > 0 && first ? Date.parse(first.it.at) : -Infinity, gen, before === undefined);
-    if (mine === null) return null;
-    rows = mergeHelper(rows, mine);
+  // Each partner's earlier messages (Codex or Gemini in a Claude chat, Claude in a Codex chat…) slot in
+  // by time, paged back as far as this page of the chat's own reaches.
+  const first = rows.find(r => r.it.at), since = h.start > 0 && first ? Date.parse(first.it.at) : -Infinity;
+  for (const kind of Object.keys(C.compHist)) {
+    const theirs = await partnerBack(kind, since, gen, before === undefined);
+    if (theirs === null) return null;
+    rows = mergeHelper(rows, theirs, kind);
   }
   const tmp = document.createElement('div');
   for (const r of rows) { curProv = r.prov; try { renderItem(tmp, r.it, false); } finally { curProv = null; } }
@@ -263,33 +263,34 @@ async function loadHistory(before) {
     $c('cEarlier').after(...tmp.childNodes);
     s.scrollTop += s.scrollHeight - oldH;
   }
-  $c('cEarlier').hidden = h.start <= 0 && !(C.compThread && (C.compPending.length || C.compMore));
+  $c('cEarlier').hidden = h.start <= 0 && !Object.values(C.compHist).some(x => x.pending.length || x.more);
   $c('cEarlier').textContent = 'Show earlier messages';
   // The changes, undos and reviews that go with it (kept by the PC).
   if (before === undefined) loadExtras(gen, until).catch(() => {}); else applyExtras();
   laterMarks();
   return h;
 }
-// The partner's history, page by page, back to `since` (a time; -Infinity for all of it). Its turns
-// older than that wait for the next "Show earlier messages", so the two always read in order.
-const partnerReached = since => { const o = C.compPending.find(it => it.at); return !!o && Date.parse(o.at) <= since; };
-async function partnerBack(since, gen, fresh) {
-  if (fresh) { C.compPending = []; C.compCursor = null; C.compMore = true; }
+// A partner's history, page by page, back to `since` (a time; -Infinity for all of it). Its turns
+// older than that wait for the next "Show earlier messages", so they always read in order.
+const partnerReached = (x, since) => { const o = x.pending.find(it => it.at); return !!o && Date.parse(o.at) <= since; };
+async function partnerBack(kind, since, gen, fresh) {
+  const x = C.compHist[kind];
+  if (fresh) Object.assign(x, { pending: [], cursor: null, more: true });
   try {
-    for (let pages = 0; C.compMore && pages < 8 && !partnerReached(since); pages++) {
-      const q = new URLSearchParams({ id: C.compThread, provider: partnerProv() });
-      if (C.compCursor) q.set('cursor', C.compCursor);
+    for (let pages = 0; x.more && pages < 8 && !partnerReached(x, since); pages++) {
+      const q = new URLSearchParams({ id: x.thread, provider: kind });
+      if (x.cursor) q.set('cursor', x.cursor);
       const h = await api(`/api/chat/history?${q}`);
       if (gen !== C.gen) return null;
-      C.compPending = h.items.concat(C.compPending);
-      C.compCursor = h.cursor || null;
-      C.compMore = !!h.cursor && h.start > 0;
+      x.pending = h.items.concat(x.pending);
+      x.cursor = h.cursor || null;
+      x.more = !!h.cursor && h.start > 0;
     }
-  } catch { C.compMore = false; /* shown without the rest */ }
-  let k = since === -Infinity ? 0 : C.compPending.length;
-  if (k) for (let j = 0; j < C.compPending.length; j++) { const it = C.compPending[j]; if (it.kind === 'user' && it.at && Date.parse(it.at) >= since) { k = j; break; } }
-  const out = C.compPending.slice(k);
-  C.compPending = C.compPending.slice(0, k);
+  } catch { x.more = false; /* shown without the rest */ }
+  let k = since === -Infinity ? 0 : x.pending.length;
+  if (k) for (let j = 0; j < x.pending.length; j++) { const it = x.pending[j]; if (it.kind === 'user' && it.at && Date.parse(it.at) >= since) { k = j; break; } }
+  const out = x.pending.slice(k);
+  x.pending = x.pending.slice(0, k);
   return out;
 }
 // Waits (briefly) for the last pictures to size themselves, so "the bottom" is really the bottom.
@@ -298,12 +299,13 @@ async function settle() {
   if (imgs.length) await Promise.race([Promise.all(imgs.map(i => (i.decode ? i.decode().catch(() => {}) : null))), new Promise(r => setTimeout(r, 1500))]);
 }
 
-function mergeHelper(rows, items) {
-  // The partner's turns, each starting at your message; ones from a partner still running come live.
+function mergeHelper(rows, items, kind = partnerProv()) {
+  // A partner's turns, each starting at your message; ones from a partner still running come live.
   // Codex keeps a turn's time to the second, so its turn counts from the end of that second (a turn
   // handed over within a second of the other's reply still comes after it).
-  const cutoff = C.comp && C.comp.startedAt ? Date.parse(C.comp.startedAt) : Infinity;
-  const late = partnerProv() === 'codex' ? 999 : 0;
+  const live = C.comps[kind];
+  const cutoff = live && live.startedAt ? Date.parse(live.startedAt) : Infinity;
+  const late = kind === 'codex' ? 999 : 0;
   const groups = [];
   for (const it of items) {
     if (it.kind === 'user' || !groups.length) groups.push({ t: it.at ? Date.parse(it.at) + late : -Infinity, items: [] });
@@ -314,10 +316,10 @@ function mergeHelper(rows, items) {
   let gi = 0, last = -Infinity;
   for (const r of rows) {
     const t = r.it.at ? Date.parse(r.it.at) : last; last = t;
-    while (gi < keep.length && keep[gi].t <= t) out.push(...keep[gi++].items.map(it => ({ it, prov: partnerProv() })));
+    while (gi < keep.length && keep[gi].t <= t) out.push(...keep[gi++].items.map(it => ({ it, prov: kind })));
     out.push(r);
   }
-  while (gi < keep.length) out.push(...keep[gi++].items.map(it => ({ it, prov: partnerProv() })));
+  while (gi < keep.length) out.push(...keep[gi++].items.map(it => ({ it, prov: kind })));
   return out;
 }
 
@@ -333,7 +335,7 @@ function connect() {
 
 function reset() {
   mergeStart(false);
-  C.compPending = []; C.compCursor = null; C.compMore = false; C.extras = []; C.chatRefs = new Map();
+  C.compHist = {}; C.extras = []; C.chatRefs = new Map();
   // Nothing from the chat you were in carries over: its side question ends, its run panel and the
   // picture viewer close.
   closeAside(); closeLightbox(); resetRun();
@@ -343,7 +345,7 @@ function reset() {
   Preview.comments = [];
   if (C.es) { C.es.close(); C.es = null; }
   clearTimeout(C.liveTimer);
-  if (C.comp && C.comp.es) C.comp.es.close();
+  for (const c of Object.values(C.comps)) if (c && c.es) c.es.close();
   // Each chat has its own message box: what you typed stays with the chat it was for (as a draft).
   clearTimeout(draftTimer);
   clearInterval(C.watchTimer);
@@ -352,7 +354,7 @@ function reset() {
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
-  Object.assign(C, { compPending: [], compStarting: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+  Object.assign(C, { background: [], comps: {}, crewKinds: [], focus: null, compHist: {}, compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
   closePreview();
   Review.loop = null;
@@ -398,15 +400,33 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
   reset();
   const gen = C.gen;
   C.key = info.key; C.info = info; C.sessionId = info.sessionId || sessionId;
+  C.background = info.background || [];
   C.provider = info.provider || 'claude';
+  C.mate = info.mate && info.mate !== C.provider ? info.mate : null;
   if (info.modes) modeOptions(info.modes);
+  if (info.permissionMode) setMode(info.permissionMode);
   if (info.models && info.models.length) C.mi.main = info;
-  C.compThread = info.companionThread || null;
-  mergeStart(!!info.companionKey);
-  if (info.companionKey) { try { const ci = await api('/api/chat/attach', { key: info.companionKey }); if (gen !== C.gen) return; attachComp(ci); } catch { replayed('comp'); /* the helper has stopped */ } }
+  const crew = info.crew || {};
+  C.crewKinds = (crew.kinds || []).filter(k => k !== C.provider);
+  C.focus = C.mate;
+  C.compThread = (C.mate && crew.threads && crew.threads[C.mate]) || info.companionThread || null;
+  const threads = { ...(crew.threads || {}) };
+  if (!Object.keys(threads).length && info.companionThread) threads[C.mate || partnerProv()] = info.companionThread;
+  delete threads[C.provider];
+  C.compHist = Object.fromEntries(Object.entries(threads).filter(([, id]) => id).map(([k, id]) => [k, { thread: id, pending: [], cursor: null, more: false }]));
+  // The running ones: each by its kind (an older server says just the one companion).
+  const running = Object.entries(crew.running || {}).filter(([k]) => k !== C.provider);
+  if (!running.length && info.companionKey) running.push([null, info.companionKey]);
+  const order = running.sort(([a]) => (a === C.mate ? 1 : -1));   // the one in view attaches last
+  mergeStart(running.length ? (running.every(([k]) => k) ? running.map(([k]) => k) : true) : false);
+  await Promise.all(order.map(async ([k, key]) => {
+    try { const ci = await api('/api/chat/attach', { key }); if (gen !== C.gen) return; attachComp(ci); } catch { replayed(k || 'comp'); /* it has stopped */ }
+  }));
+  if (C.mate) focusMate(C.mate); else C.focus = partnerProv();
   if (gen !== C.gen) return;
   setTarget('main', false);
   $c('chat').classList.toggle('codex', C.provider === 'codex');
+  $c('chat').classList.toggle('gemini', C.provider === 'gemini');
   const [s, p] = findSession(C.sessionId);
   noteLastChat(C.sessionId, (s && s.title) || info.title, p && p.name);
   C.title = info.title && info.title !== 'New chat' ? info.title : mode === 'new' ? 'New chat' : mode === 'fork' ? `${s ? s.title : 'Chat'} (copy)` : (s ? s.title : info.title || 'Chat');
@@ -448,9 +468,9 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
   const prov = provider || (known && known.provider) || 'claude';
   // One chat per project: a new Codex chat where a Claude chat is open (or the other way round) adds
   // that one to the open chat instead, unless you'd rather have a separate chat. Esc does neither.
-  if (mode === 'new' && cwd && !separate) {
+  if (mode === 'new' && cwd && !separate && prov !== 'gemini') {
     const same = d => String(d || '').replace(/[\\/]+$/, '').toLowerCase();
-    const here = S.activity.find(x => x.source === 'app' && !x.parentKey && x.phase !== 'ended' && same(x.cwd) === same(cwd) && (x.provider || 'claude') !== prov);
+    const here = S.activity.find(x => x.source === 'app' && !x.parentKey && x.phase !== 'ended' && same(x.cwd) === same(cwd) && (x.provider || 'claude') !== prov && x.provider !== 'gemini');
     if (here) {
       const name = PROV_NAME[prov];
       const join = await window.appConfirm(`Add ${name} to “${here.title || 'the open chat'}”?\n\nThat chat is already open in this project. ${name} joins it and reads everything in it, so the work stays in one place.`, { ok: `Add ${name} to it`, cancel: `Start a separate ${name} chat`, escape: null });
@@ -471,7 +491,7 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
   try {
     info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov, parent: mode === 'new' ? parent : null });
   } catch (err) {
-    if (err.reason === 'codex-signin' || err.reason === 'codex-missing') { toast(err.message, 9000); return undefined; }
+    if (['codex-signin', 'codex-missing', 'gemini-signin', 'gemini-missing'].includes(err.reason)) { toast(err.message, 9000); return undefined; }
     if (err.reason === 'running') {
       if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return openChatView({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText, parent });
       return watch({ sessionId, source: 'terminal' });
@@ -500,7 +520,7 @@ async function watch({ sessionId, source = 'terminal' }) {
   reset();
   C.watch = { sessionId, source }; C.sessionId = sessionId;
   const [s, p] = findSession(sessionId);
-  C.provider = s && (s.provider === 'codex' || s.provider === 'openclaw') ? s.provider : 'claude';
+  C.provider = s && ['codex', 'gemini', 'openclaw'].includes(s.provider) ? s.provider : 'claude';
   const oc = C.provider === 'openclaw';
   if (oc) PROV_NAME.openclaw = s.agentName || 'OpenClaw';
   $c('chat').classList.toggle('openclaw', oc);
@@ -559,7 +579,7 @@ async function refreshWatch() {
 
 function closeChatView(silent) {
   if (C.es) { C.es.close(); C.es = null; }
-  if (C.comp && C.comp.es) { C.comp.es.close(); C.comp.es = null; }
+  for (const c of Object.values(C.comps)) if (c && c.es) { c.es.close(); c.es = null; }
   closePick();
   closeAside(); closeLightbox(); resetRun();
   clearInterval(C.watchTimer);
@@ -673,11 +693,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
     if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
     const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
-    const rl = t.closest('[data-relay]'); if (rl) return setTarget(rl.dataset.relay);
+    const rl = t.closest('[data-relay]'); if (rl) { if (rl.dataset.kind) focusMate(rl.dataset.kind); return setTarget(rl.dataset.relay); }
     const bp = t.closest('[data-build]');
     if (bp) return buildPlan(bp).catch(err => toast(err.message));
     const crew = t.closest('[data-crew]');
-    if (crew) { const src = crew.dataset.crew; if (src === 'both' || src === 'plan') return setTarget(C.target === src ? 'main' : src); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
+    if (crew) { const src = crew.dataset.crew; if (src === 'comp' && crew.dataset.kind && crew.dataset.kind !== C.mate) { focusMate(crew.dataset.kind); if (Pick.src === 'comp') closePick(); return setTarget('comp'); } if (src === 'both' || src === 'plan') return setTarget(C.target === src ? 'main' : src); if (duo() && C.target !== src) return setTarget(src); return !$c('cPick').hidden && Pick.src === src ? closePick() : openPick(src); }
     const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });
     const pp = t.closest('#cPick [data-preset]');
     if (pp) { const p = presetsFor(Pick.src).find(x => x.id === pp.dataset.preset); if (p) return pickModel(Pick.src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }); return undefined; }
@@ -708,10 +728,10 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'review': return startReview(c.dataset.base || null, c.dataset.by || 'codex');
       case 'limitas': { const card = c.closest('.limit-card'); if (card && card._auto) { clearTimeout(card._auto); card._auto = 0; } return continueAs(c.dataset.acct); }
       case 'limitnoauto': { const card = c.closest('.limit-card'); if (card) { clearTimeout(card._auto); card._auto = 0; c.closest('.lm-auto').remove(); } return undefined; }
-      case 'limithand': return handOver(c.dataset.to);
+      case 'limithand': { noAutopilot(c); return handOver(c.dataset.to); }
       case 'stuckwait': return c.closest('.stuck-card').remove();
       case 'stuckstop': { const card = c.closest('.stuck-card'); C.interruptedAt = Date.now(); card.remove(); return api('/api/chat/interrupt', { key: keyFor(card.dataset.src) }); }
-      case 'limitwait': case 'limitnowait': { const card = c.closest('.limit-card'); return card && card._ev ? waitForReset(card._ev, card.dataset.src || 'main', c.dataset.c === 'limitnowait') : undefined; }
+      case 'limitwait': case 'limitnowait': { const card = c.closest('.limit-card'); noAutopilot(c); return card && card._ev ? waitForReset(card._ev, card.dataset.src || 'main', c.dataset.c === 'limitnowait') : undefined; }
       case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
@@ -734,7 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!text) { toast('This reply has no text to copy yet.', 2500); return undefined; }
         return copyText(text, null).then(ok => { if (ok) copiedButton(c); });
       }
-      case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return openChatView({ sessionId: id, mode: 'resume', accountId: provider === 'codex' ? null : accountId, provider }); }
+      case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return openChatView({ sessionId: id, mode: 'resume', accountId: provider === 'claude' ? accountId : null, provider }); }
       case 'fork': { const id = C.watch && C.watch.sessionId; return openChatView({ sessionId: id, mode: 'fork' }); }
       case 'takeover': { const id = C.watch && C.watch.sessionId; return openChatView({ sessionId: id, mode: 'resume' }); }
       case 'more': return showMenu(c, C.watch && C.provider === 'openclaw' ? chatHeadItems() : C.watch ? [
@@ -776,7 +796,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Enter') closeSlash();
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); wrap(sendMessage)(); }
-    if (e.key === '.' && e.ctrlKey && duo()) { e.preventDefault(); setTarget(C.target === 'main' ? 'comp' : C.target === 'comp' ? 'both' : 'main'); return; }
+    if (e.key === '.' && e.ctrlKey && duo()) {
+      e.preventDefault();
+      const ks = crewKinds(), i = C.target === 'comp' ? ks.indexOf(C.mate) : -1;
+      if (C.target === 'main') { focusMate(ks[0]); setTarget('comp'); } else if (C.target === 'comp' && i >= 0 && i < ks.length - 1) { focusMate(ks[i + 1]); setTarget('comp'); } else setTarget(C.target === 'comp' ? 'both' : 'main');
+      return;
+    }
     if (e.key === 'Escape' && !$c('cPick').hidden) { e.preventDefault(); closePick(); return; }
     // Esc twice stops whoever your next message goes to (both, when it goes to both).
     const working = targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting'));
@@ -861,6 +886,14 @@ function modelItems(src) {
     // The partner's permission mode, changed from its pill (the lead's is in the header).
     ...(src === 'comp' && C.comp && C.comp.modes && C.comp.modes.length && !C.comp.ended ? ['-', ...C.comp.modes.map(m => ({ glyph: C.comp.mode === m.value ? '●' : '○', label: `May: ${m.label}`, checked: C.comp.mode === m.value, run: () => setCompMode(m.value) }))] : []),
   ];
+}
+// Writing to another of the assistants (@gemini, say): it comes into view, and joins the chat (caught
+// up on it) with your next message to it. The others stay.
+async function switchPartner(kind, quiet = false) {
+  if (!kindReady(kind) || kind === C.provider) return;
+  focusMate(kind);
+  renderCrew(); setTarget(C.target === 'main' ? 'comp' : C.target, false);
+  if (!quiet) toast(`Writing to ${PROV_NAME[kind]}: it joins this chat with your next message, caught up on it.`, 4000);
 }
 // ★ in the header pins this chat to the top of the sidebar.
 // Group › the chat it came from › …, and how many sub-sessions it has.
@@ -997,7 +1030,8 @@ function chatContextItems(t, at) {
     ];
   }
   const crew = t.closest('[data-crew]');
-  if (crew && crew.dataset.crew === 'both') return [{ glyph: '⇄', label: C.target === 'both' ? 'Write to Claude only' : 'Write to Claude and Codex at once', keys: 'Ctrl .', run: () => setTarget(C.target === 'both' ? 'main' : 'both') }];
+  if (crew && crew.dataset.crew === 'both') { const ks = crewKinds(); return [{ glyph: '⇄', label: C.target === 'both' ? `Write to ${PROV_NAME[C.provider]} only` : ks.length > 1 ? `Write to all of them, in turn` : `Write to ${PROV_NAME[C.provider]} and ${PROV_NAME[partnerProv()]} at once`, keys: 'Ctrl .', run: () => setTarget(C.target === 'both' ? 'main' : 'both') }]; }
+  if (crew && crew.dataset.kind) focusMate(crew.dataset.kind);
   if (crew) {
     const src = crew.dataset.crew, name = PROV_NAME[provFor(src)];
     return [

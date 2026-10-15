@@ -195,7 +195,7 @@ Routines are chats that start on their own. Open **Routines** in the sidebar, th
   - **A command's output:** runs a command in the routine's folder every few minutes, and each new line starts a run. It covers a Discord bot, a CLI or a database query you already have. A line can be JSON, like `{"id": "123", "text": "…", "link": "https://…"}`; otherwise the line is the text, and its first web address is the link.
   - An optional filter keeps only items that mention a word, or match a `/pattern/`.
   - The first look only notes what's already there, so turning a watcher on doesn't start a chat for every old post. Items are remembered by id, so nothing runs twice. A watcher starts at most six chats an hour; the rest wait their turn.
-- Each routine has a folder, an account (any Claude or Codex account, including Ollama), a prompt (or a saved prompt; `{project}` and `{date}` work), a permission mode, and whether each run starts a new chat or continues one chat.
+- Each routine has a folder, an account (any Claude or Codex account, including Ollama, or Gemini), a prompt (or a saved prompt; `{project}` and `{date}` work), a permission mode, and whether each run starts a new chat or continues one chat.
 - Runs happen in the app's own chat window, so they show under **At work** and **Awaiting you** like any chat. A watcher's run gets the new item's text and link in its first message.
 - Each routine keeps a history: when it ran, how it went, the last thing the chat said, and **Open chat**.
 - A run that was due while the Mac slept or the app was closed runs once when it's back, not once for every time it missed.
@@ -266,6 +266,7 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
 - **Controls:**
   - The selector in the header sets what Claude may do without asking.
   - **Stop**, or **Esc twice**, interrupts Claude. The first Esc only shows "Esc again stops Claude" under the message box, so a stray key never cuts a reply short. You can type while it works to queue your next message.
+  - **Idle chats:** a chat nobody has open, whose reply finished half an hour ago, is stopped to free its process (its conversation is kept, and it starts again with your next message). Not while Claude has work running in the background (a build, tests, a helper): the header says **Working in the background**, the hub keeps it under **At work**, and Claude carries on with the result when it's done. A restart or update waits for that work too, or says it would end it.
   - **Open in a new window** (in **⋯** and the chat's right-click menu) puts a chat in a window of its own, so two chats can sit side by side.
   - **Save as a web page** makes one `.html` file of the conversation, formatted and readable anywhere, with nothing else needed.
   - **⋯** holds everything the chat's right-click menu has, plus **Move to a terminal** (continues the chat in a terminal as the same account) and **Stop this chat**, which asks first only if Claude is in the middle of a reply.
@@ -313,6 +314,24 @@ Codex works with more than one ChatGPT account, and with Ollama:
 - Each account has its own usage dial, in a Codex shade of its own.
 - The Ollama account's settings are a copy of `~/.codex/ollama-launch.config.toml` (what `ollama launch codex` writes), in `~/.codex-ollama/config.toml`. Edit that copy to change its default model, or delete it and Session Switcher makes a fresh copy the next time it starts Codex for Ollama.
 
+## Gemini (Google)
+
+Gemini chats, including **Gemini 4 Argon**, sit next to Claude and Codex, on your Google AI plan (Pro or Ultra; Argon in Antigravity needs Ultra for now). They run through Google's **Antigravity CLI** (`agy`), signed in with your Google account; Session Switcher never sees your password.
+
+1. Setup → **Gemini** → **Use Gemini too**.
+2. Not installed yet? **Install the Antigravity CLI** (a terminal runs Google's installer). Then **Sign in** (a terminal opens Antigravity; sign in in the browser, then type `/quit`). **Check again** shows it's signed in, and whether Gemini 4 Argon is offered on your plan.
+3. On a project, **New Gemini chat** (or Ctrl+K: "gemini chat in starfall to write the lore book").
+
+Gemini's chats have their own group in the side list, in violet, and open with their history (Antigravity keeps each conversation in `~/.gemini/antigravity-cli`). Pick the model with the model pill: Argon Low, Medium or High, Flash, and the rest your plan offers.
+
+What's different from Claude and Codex, because of what the Antigravity CLI allows another app to do:
+
+- **Modes:** **Plan only** changes nothing; **Edit files** lets it change files, and a command it wants to run becomes an approval card once its reply ends (Gemini can't pause mid-reply to ask): **Allow** runs it (Gemini is told it may, and carries on), **Always** switches the chat to Full access; **Full access** runs commands without asking.
+- **Pictures:** one you attach or paste is saved to a temp folder and Gemini reads it from there (it's told where), so it can describe, compare or work from it.
+- **Stop** ends the reply; your next message carries on with the same conversation.
+- **In the crew:** Gemini can join a Claude or Codex chat (or have them join its own), race or split the work with either, take queued tasks, and run routines. The Commander reads and nudges Gemini chats, and side chats, sub-sessions and renaming work for them too. See [Claude, Codex and Gemini in one chat](#claude-codex-and-gemini-in-one-chat).
+- **Its usage isn't shown here:** Antigravity's `/usage` shows your plan's limits.
+
 ## OpenClaw agents
 
 If [OpenClaw](https://openclaw.ai) is installed, its agents' sessions (Discord channels, cron runs, subagents, voice rooms and direct chats) are listed with your other chats:
@@ -326,34 +345,36 @@ If [OpenClaw](https://openclaw.ai) is installed, its agents' sessions (Discord c
 - **Archive:** the ⋯ menu on an OpenClaw row can **Archive in OpenClaw**, which runs `openclaw sessions archive` for that session after a confirming dialog. What's archived keeps its transcript; nothing is deleted here or there.
 - **Without OpenClaw** nothing changes: the list is empty, and the app checks for it again every ten minutes.
 
-## Claude and Codex in one chat
+## Claude, Codex and Gemini in one chat
 
-Claude and Codex work in the same chat, either way round: bring Codex into a Claude chat (to make images for a project while Claude does the main work, say), or Claude into a Codex chat. One window, one conversation, both reading each other.
+Claude, Codex and Gemini work in the same chat, any way round: bring Codex into a Claude chat (to make images for a project while Claude does the main work, say), Gemini too (for a draft or a second opinion), or Claude into a Codex chat. One window, one conversation, all of them reading each other.
 
-- **The crew, under the message box:** two pills, the chat's own assistant and its partner. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex).
-  - Click the other pill, or press `Ctrl+.`, to choose who your next message goes to. The box takes that one's color.
-  - Or start a message with `@codex` or `@claude` to send just that one message.
+- **The crew, under the message box:** a pill for the chat's own assistant and one for each other assistant you've set up. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex, violet for Gemini).
+  - Click a pill, or press `Ctrl+.` (it steps through them, then All), to choose who your next message goes to. The box takes that one's color. One that isn't in the chat yet joins with your first message to it, caught up on everything so far.
+  - Or start a message with `@codex`, `@gemini` or `@claude` to send just that one message.
   - The partner's pill shows what it may do (Codex's **Agent**, **Read only**…), changed from its menu, and how much room its account has left once that's low. **Both** says it uses room on both accounts.
 - **One feed:** the partner's replies appear in the same conversation, under its own name and color. Messages you sent it are tagged **to Codex** (or **to Claude**). Pictures Codex makes appear as it makes them.
 - **They read each other:** before each message one of them gets, the app catches it up on what it hasn't seen: what the other one said and did (which files it changed, how many commands it ran), and what you said to the other. In the feed that's a small fold-out ("Codex was caught up on 3 messages"), not text you wrote. So you can ask Claude for a plan, switch to Codex and say "do the second part", and Codex knows what that is.
   - The app works this out on the PC from the two conversations themselves, from the moment each one last caught up, so it's the same in every window and on your phone, and survives a reload or a restart. Nothing is told twice; a long stretch keeps the newest messages and says how many earlier ones it left out.
   - Files you undo from a reply are mentioned to that one with your next message, and to the other one too (it may have built on them).
+- **All three: in turn.** With more than one partner the pill reads **All** (or `@all`): the chat's own assistant answers first, then each of the others in turn, each knowing what the ones before it said. The relay under the title shows each one and who's up next.
 - **Both: they take turns.** The **Both** pill (or `@both`) sends your message to the chat's own assistant first. When it has answered, the other one picks the same message up, already knowing that answer, and builds on it (checks it, adds what it missed, does its part) instead of starting over. Your message reads "to Claude, then Codex", the second one's pill says **up next** while it waits, and the feed marks where it **takes it from here**. They never edit files at the same time. Stopping the first one skips the hand-over.
+- **New chats start in Auto (Claude) and Full access (Codex)** unless a chat or project remembers another mode; change it in Setup → **New Claude chats start in** / **New Codex chats start in**.
 - **The partner follows the chat's mode:** what you let Claude do without asking carries over to Codex (Auto or Bypass is Codex's Full access, Accept edits is Agent, Plan is Read only), when the partner starts and whenever you change it, so Codex doesn't ask about every step. Ask before acting leaves Codex's own choice alone.
 - **Review big changes by itself:** with Setup → Codex → **Review big changes by itself** on, after Claude changes forty lines or more in one reply, Codex reviews them and the findings come back as a card.
 - **One chat per project:** starting a Codex chat in a project where a Claude chat is open (or the other way round) offers to add it to that chat instead, so the work stays in one place. **Start a separate chat** is still there if you want one.
   - A partner's own conversation lives inside its chat: it isn't listed as a chat of its own, the chat's row says **with Codex**, and opening it (from search, a notification or a card) opens the chat it belongs to.
   - On the hub and in the chat window's list, a chat reads as at work while its partner works, and as needing you when its partner does ("Codex: Needs your OK").
-- **Always there:** one partner per chat, never two processes on one conversation (a partner left running is picked up again, not started twice). It resumes its earlier conversation even before Codex's own list has caught up; if that conversation can't be picked up, it starts a new one, caught up on the chat, and says so. A partner never outlives its chat.
+- **Always there:** one partner of each kind per chat, never two processes on one conversation (a partner left running is picked up again, not started twice). It resumes its earlier conversation even before Codex's own list has caught up; if that conversation can't be picked up, it starts a new one, caught up on the chat, and says so. A partner never outlives its chat.
 - **Codex reviews Claude's work:** **Review with Codex** on a Claude reply (or **⋯** → **Have Codex review the changes**) has Codex look over the changes, read-only.
   - The findings appear as a card, each with its priority, file and lines. **All clear** when there are none.
   - **Ask Claude to fix this** on one finding, or **Fix and recheck until clean**: Claude fixes them all, then Codex reviews again, up to three rounds. **Stop after this** ends it early.
 - **Hand-offs:**
   - **Ask Codex** on a reply quotes it to the partner (as Markdown), for example Claude's description of a cover image. **Send to Claude** on the partner's reply quotes it back.
   - **Give to Claude** on a picture Codex made attaches it to your next message to Claude, with where it's saved.
-- **It's remembered:** the partner is tied to the chat. Reopen the chat later and the partner's earlier messages appear in place, and your next message to it continues the same conversation.
+- **It's remembered:** the partners are tied to the chat. Reopen the chat later and each partner's earlier messages appear in place (all of them, with Codex and Gemini both in it), and your next message to it continues the same conversation.
 - **Approvals:** each one's approval cards are in its own color and say who's asking ("Codex wants to…"). Esc stops whichever one you're writing to.
-- The partner uses its own sign-in and usage (Codex: your Codex account; Claude: the account you're working as) and shows in the ledger as **With Codex**. **Close** or **Stop this chat** stops both.
+- Each partner uses its own sign-in and usage (Codex: your Codex account; Gemini: your Google account; Claude: the account you're working as) and shows in the ledger as **With Codex** or **With Gemini**. **Close** or **Stop this chat** stops all of them.
 
 ## Rules and tools
 
@@ -647,7 +668,7 @@ The Commander is one chat that keeps an eye on the others. It's at the top of th
 
 It can:
 
-- list your chats with what each is doing (working, needs your OK, has a question, finished its turn, not running), plus their groups and sub-sessions
+- list your chats (Claude, Codex and Gemini) with what each is doing (working, needs your OK, has a question, finished its turn, not running), plus their groups and sub-sessions
 - read a chat's latest messages
 - **nudge** a chat: send it a message. A chat that isn't running is opened in the chat window first. It can't type into a chat running in a terminal.
 - start a sub-session from a chat, with a task
@@ -656,6 +677,20 @@ It can:
 Everything it does shows in the chat it touched: a gold **Commander** note, and its messages are marked **from Commander**. It asks you before each nudge unless you choose **Always allow** on that request. Its settings are in its right-click menu or the chat's **⋯** menu.
 
 It runs in the `commander/` folder inside Session Switcher's folder, with a `CLAUDE.md` that explains its job. Its tools come from `lib/commander-mcp.js`, a small MCP server that only talks to this Session Switcher, on this computer, with the per-launch token. Phones can't use those tools directly.
+
+## Switcher Lite
+
+A second, calmer way into the same app, at `http://127.0.0.1:4777/lite` (on a paired phone too, at the phone address plus `/lite`). Same chats, accounts and sign-in; **Full app** in its sidebar goes back.
+
+- **Now:** what needs you and what's running, with Allow / Deny and quick replies, Triage (one chat at a time), upcoming routines, your plans and the Commander's box.
+- **Sidebar:** your projects in buckets you name (Exploring, Building, Finishing, Later, Done), a Status view and Focus.
+- **A chat:** the conversation without each step's output (much lighter), a side chat, a panel for files and links, name ideas when renaming, and messages that steer a reply while it works. **Who answers** sends to the chat, its partner (Codex, Claude or Gemini), or Both.
+- **Plans:** a use-next order: per family, the plan that resets soonest is used first, down to a floor you pick (10, 15 or 20%). New chats and routines can follow it.
+- **Also:** Bugs (bug chats by stage: Working, PR, Preview, Merged; needs GitHub's `gh`), Routines, Automation (runs started by routines and scripts), Images (Codex's pictures), Clean up (disk space in worktrees), Alerts (phone notifications) and a Hackathon board.
+- **Background checks only where Lite is used:** from the first time Lite is opened on this computer, it reads each plan's usage once an hour, and every ten minutes asks a local Ollama model (if there is one) to sort chats and checks pull requests of chats you marked Waiting. Before that, none of it runs.
+- **Start idle weeks for me** (in Lite's look menu, off unless you turn it on): a plan whose week hasn't started gets one tiny message ("Reply with just: ok") to start it, at most once every six hours.
+- **On Windows:** Clean up's sizes read 0 (it uses `du`), Lite's own sign-in and model list need `sh` on the PATH (Git for Windows has it), and a Slack routine's token comes from the `SWITCHER_SLACK_TOKEN` variable instead of the Keychain.
+- Its settings are kept in `lite.json` (and `lite-usage.json`) in the app's data folder.
 
 ## Pinned and favorites
 

@@ -151,6 +151,7 @@ const pageClicks = wrap(async e => {
   if (act === 'new') return reportLaunch(await api('/api/new', { account: a.id, cwd: S.folder }), `Starting a new chat as ${a.name}`);
   if (act === 'newchat') return ChatUI.open({ cwd: S.folder, mode: 'new' });
   if (act === 'newcodex') return ChatUI.open({ cwd: S.folder, mode: 'new', provider: 'codex' });
+  if (act === 'newgemini') return ChatUI.open({ cwd: S.folder, mode: 'new', provider: 'gemini' });
   if (act === 'newcodex-term') return reportLaunch(await api('/api/new', { provider: 'codex', cwd: S.folder }), 'Starting a new Codex chat');
   if (b.dataset.acct && act.startsWith('codex-')) await setCodexActive(b.dataset.acct);
   if (act === 'codex-signin') return codexSignIn();
@@ -320,13 +321,15 @@ function appChoice(text, buttons, { escape = '' } = {}) {
    A fresh copy of the app takes over: the window shows that it's restarting, reconnects by itself
    and reloads, and the chats that were open come back (the one you were in opens again). With chats
    still working, it can wait until their replies finish. */
-const workingNow = () => Object.values(S.live || {}).filter(x => ['starting', 'busy', 'waiting'].includes(x.state)).length;
+const workingNow = () => Object.values(S.live || {}).filter(x => ['starting', 'busy', 'waiting'].includes(x.state) || (x.state === 'ready' && (x.background || []).length)).length;
+// Chats whose reply is done but whose background work (a build, tests, a helper) still runs.
+const behindNow = () => Object.values(S.live || {}).filter(x => x.state === 'ready' && (x.background || []).length).length;
 async function restartApp() {
   const n = workingNow(), update = S.update ? ' A new version is ready.' : '';
   let when;
   if (n) {
-    when = await appChoice(`Restart Session Switcher?${update}\n\n${n === 1 ? 'A chat is' : `${nword(n)} chats are`} still working. Restarting now stops ${n === 1 ? 'it' : 'them'} mid-reply (the conversation is kept); waiting lets ${n === 1 ? 'it' : 'them'} finish first. Either way the chats come back where they were.`,
-      [{ v: '', label: 'Cancel', kind: 'quiet' }, { v: 'now', label: 'Restart now' }, { v: 'idle', label: 'When replies finish', kind: 'prime' }]);
+    when = await appChoice(`Restart Session Switcher?${update}\n\n${n === 1 ? 'A chat is' : `${nword(n)} chats are`} still working${behindNow() ? ` (${behindNow() === n ? (n === 1 ? 'in the background' : 'all in the background') : `${nword(behindNow())} in the background`})` : ''}. Restarting now stops ${n === 1 ? 'it' : 'them'} (the conversation is kept, but work running in the background ends); waiting lets ${n === 1 ? 'it' : 'them'} finish first. Either way the chats come back where they were.`,
+      [{ v: '', label: 'Cancel', kind: 'quiet' }, { v: 'now', label: 'Restart now' }, { v: 'idle', label: 'When they finish', kind: 'prime' }]);
   } else {
     when = (await appConfirm(`Restart Session Switcher?${update}\n\nThe window reconnects by itself, and the chats open in it come back where they were.`, { ok: 'Restart' })) ? 'now' : '';
   }
@@ -423,8 +426,8 @@ function projectItems(cwd) {
     { glyph: '§', label: 'Rules and tools…', hint: 'CLAUDE.md · AGENTS.md · MCP', disabled: !p.exists, why: 'The folder is gone', run: () => openRules(cwd) },
     { glyph: '❖', label: 'Project crest…', hint: 'choose a picture or make one with Codex', disabled: !p.exists, run: () => ProjectArt.open(cwd) },
     { glyph: '⏳', label: 'Queue a task here…', hint: 'starts when an account has room', disabled: !p.exists, why: 'The folder is gone', run: () => openTaskDialog(cwd) },
-    ...(S.codex && S.codex.enabled ? [{ glyph: '⚑', label: 'Race Claude and Codex…', hint: 'same task, keep the better', disabled: !p.exists || !codexReady(), why: !p.exists ? 'The folder is gone' : 'Sign in to Codex first', run: () => openRaceDialog(cwd) },
-      { glyph: '⑂', label: 'Split the work…', hint: 'each takes a part, keep both', disabled: !p.exists || !codexReady(), why: !p.exists ? 'The folder is gone' : 'Sign in to Codex first', run: () => openRaceDialog(cwd, 'split') }] : []),
+    ...((S.codex && S.codex.enabled) || (S.gemini && S.gemini.enabled) ? [{ glyph: '⚑', label: 'Race…', hint: 'two of them, the same task; keep the better', disabled: !p.exists || !racePairs().length, why: !p.exists ? 'The folder is gone' : 'Set up Codex or Gemini first', run: () => openRaceDialog(cwd) },
+      { glyph: '⑂', label: 'Split the work…', hint: 'each takes a part, keep both', disabled: !p.exists || !racePairs().length, why: !p.exists ? 'The folder is gone' : 'Set up Codex or Gemini first', run: () => openRaceDialog(cwd, 'split') }] : []),
     '-',
     { label: 'Open folder', hint: S.platform === 'darwin' ? 'in Finder' : 'in Explorer', disabled: !p.exists || window.REMOTE, why: window.REMOTE ? 'Only on the PC' : 'The folder is gone', run: async () => { const r = await api('/api/reveal', { cwd }); if (r.dryRun) toast(`Would run: ${r.script}`); } },
     { label: 'Browse files', disabled: !p.exists, run: () => Viewer.open({ path: cwd, cwd }) },

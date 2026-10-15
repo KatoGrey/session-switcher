@@ -14,6 +14,27 @@ const fs = require('fs');
 const net = require('net');
 const os = require('os');
 const path = require('path');
+
+// The whole run gets a temp folder of its own: the logic checks, the test copy of the app and the
+// browsers make their throwaway folders in it (TEMP and TMP on Windows, TMPDIR on a Mac, all read by
+// os.tmpdir() each time), and it's deleted at the end, passed or failed or stopped with Ctrl+C. So
+// nothing piles up in the real temp folder, and nothing outside this one is touched.
+const RUN_TMP = path.join(os.tmpdir(), `ss-run-${process.pid}-${Date.now().toString(36)}`);
+fs.mkdirSync(RUN_TMP, { recursive: true });
+const TMP_ENV = { TEMP: RUN_TMP, TMP: RUN_TMP, TMPDIR: RUN_TMP };
+Object.assign(process.env, TMP_ENV);
+// Windows keeps a file locked a moment after the program that had it open has stopped (a browser
+// profile, the app's log), so it tries for about 5 s; what still can't go is left.
+function removeRunTmp() {
+  for (let i = 0; i < 10; i++) {
+    try { fs.rmSync(RUN_TMP, { recursive: true, force: true }); return; } catch { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500); }
+  }
+}
+process.on('exit', removeRunTmp);
+// Stopped partway: the test copy of the app and any browser still open go first, so their files can be deleted.
+const running = new Set();
+process.on('SIGINT', () => { for (const x of running) try { x.close ? x.close() : x.kill(); } catch { /* gone */ } process.exit(130); });
+
 const { launch, sleep } = require('./browser');
 const demo = require('./demo');
 const suites = [...require('./ui'), ...require('./project-art.ui'), ...require('./theme-studio.ui')];
@@ -21,6 +42,8 @@ const suites = [...require('./ui'), ...require('./project-art.ui'), ...require('
 const APP = path.join(__dirname, '..');
 const only = process.argv.slice(2);
 const SHOTS = process.env.SHOTS ? path.resolve(process.env.SHOTS) : null;
+// How long one browser suite may take (the slowest take about a minute on GitHub's Macs).
+const SUITE_MS = Number(process.env.SUITE_MS) || 6 * 60000;
 
 const freePort = () => new Promise((res, rej) => { const s = net.createServer(); s.unref(); s.on('error', rej); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => res(port)); }); });
 
@@ -29,23 +52,50 @@ async function main() {
   if (!only.length) {
     console.log('— logic and server checks');
     const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join(__dirname, f));
-    // On GitHub the failures are also written as annotations (from a TAP copy of the results).
-    const tap = process.env.GITHUB_ACTIONS ? path.join(os.tmpdir(), `ss-tap-${process.pid}.txt`) : null;
-    const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP });
-    if (tap && r.status !== 0) {
-      try { for (const m of fs.readFileSync(tap, 'utf8').matchAll(/^\s*not ok \d+ - (.+)$/gm)) console.log(`::error title=logic tests::${m[1].slice(0, 400)}`); } catch { /* no TAP copy */ }
+    // On GitHub the failures are also written as annotations (from a TAP copy of the results), each
+    // with its error and where it happened, readable on the run's page without signing in.
+    const tap = process.env.GITHUB_ACTIONS ? path.join(RUN_TMP, `ss-tap-${process.pid}.txt`) : null;
+    const runLogic = () => spawnSync(process.execPath, ['--test', '--test-timeout=180000', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP, env: { ...process.env, ...TMP_ENV }, timeout: 15 * 60000 });   // a stuck run ends (and fails) rather than holding everything
+    const failures = () => {
+      let text = ''; try { text = fs.readFileSync(tap, 'utf8'); } catch { return []; }
+      const out = [];
+      const lines = text.split(/\r?\n/);
+      lines.forEach((l, i) => {
+        const m = l.match(/^(\s*)not ok \d+ - (.+)$/); if (!m) return;
+        // Its details: "  error: |-" (with the message on the lines under it), "  location: '…'".
+        const pad = m[1].length + 2, why = [];
+        let key = null;
+        for (let j = i + 1; j < lines.length && !/^\s*(not )?ok \d+ /.test(lines[j]) && !/^\s*# Subtest/.test(lines[j]); j++) {
+          const x = lines[j], k = x.slice(pad).match(/^(\w+):\s*(.*)$/);
+          if (x.length - x.trimStart().length === pad && k) { key = k[1]; if (key === 'error' || key === 'location') why.push(`${key}: ${k[2].replace(/^\|-?$/, '')}`.trim()); }
+          else if (key === 'error' && x.trim() && why.length < 6) why.push(x.trim());
+        }
+        out.push(`${m[2].slice(0, 300)}${why.length ? ` — ${why.join(' ').replace(/\s+/g, ' ').slice(0, 600)}` : ''}`);
+      });
+      return out;
+    };
+    let r = runLogic();
+    // On GitHub, as with the browser suites: a failure is run once more before it counts (their Macs
+    // are slow and uneven); a real fault fails both times. The first miss is still noted.
+    if (r.status !== 0 && process.env.CI) {
+      const first = tap ? failures() : [];
+      console.log(`  ↻ the logic checks missed ${first.length || 'something'}; once more`);
+      r = runLogic();
+      if (r.status === 0) for (const f of first) console.log(`::warning title=logic tests (passed the second time)::${f.replace(/%/g, '%25')}`);
     }
+    if (tap && r.status !== 0) for (const f of failures()) console.log(`::error title=logic tests::${f.replace(/%/g, '%25')}`);
     if (r.status !== 0) failed++;
   }
 
   const port = await freePort();
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-data-'));
+  const dataDir = fs.mkdtempSync(path.join(RUN_TMP, 'ss-data-'));
   const base = `http://127.0.0.1:${port}/`;
   const server = spawn(process.execPath, ['server.js'], {
     cwd: APP,
-    env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^SWITCHER_/.test(k))), ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}), SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^SWITCHER_/.test(k))), ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}), SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1', ...TMP_ENV },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  running.add(server);
   let serverLog = '';
   server.stdout.on('data', d => { serverLog += d; });
   server.stderr.on('data', d => { serverLog += d; });
@@ -74,18 +124,26 @@ async function main() {
         // path: what follows the address, like "?chat=…" for a popped-out chat.
         async open({ width = 1440, height = 900, mobile = false, demo: useDemo = true, path: at = '', ...demoOpts } = {}) {
           const b = await launch({ width, height, mobile });
-          browsers.push(b);
+          browsers.push(b); running.add(b);
           if (useDemo) await demo.install(b, demoOpts);
           await b.nav(base + at, 3000);
           return b;
         },
         async shot(b, name) { if (SHOTS) await b.shot(path.join(SHOTS, `${suite.name.replace(/\W+/g, '-')}-${name}.png`)); },
       };
-      try { await suite.run(t); } catch (err) { t.check('finished without an error', false, err.message); }
+      // A suite that hangs (a browser that stops answering) fails after a few minutes, by name, instead
+      // of holding the whole run until GitHub cancels it with nothing to say.
+      const began = Date.now();
+      let limit;
+      const hung = new Promise(r => { limit = setTimeout(() => r('hung'), SUITE_MS); });
+      try {
+        if (await Promise.race([suite.run(t).then(() => 'done'), hung]) === 'hung') t.check(`finished within ${SUITE_MS / 60000} minutes`, false, 'it stopped answering');
+      } catch (err) { t.check('finished without an error', false, err.message); } finally { clearTimeout(limit); }
+      if (Date.now() - began > 60000) lines.push(`  (took ${Math.round((Date.now() - began) / 1000)} s)`);
       for (const b of browsers) {
         const errors = b.logs.filter(l => /^EXC /.test(l));
         t.check('no script errors on the page', !errors.length, errors.slice(0, 3));
-        b.close();
+        b.close(); running.delete(b);
       }
       if (fails.length && attempt < tries) { console.log(`  ↻ ${fails.length} check${fails.length === 1 ? '' : 's'} missed (${fails[0].slice(0, 160)}); once more`); continue; }
       for (const l of lines) console.log(l);

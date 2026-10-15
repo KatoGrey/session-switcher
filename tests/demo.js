@@ -58,6 +58,22 @@ const ocSessions = [
   { id: 'agent:main:discord:channel:42', provider: 'openclaw', sessionId: 'oc-1', agent: 'main', agentName: 'Nova', title: 'Nova · #tavern-dev', autoTitle: 'Nova · #tavern-dev', preview: 'Stored session', updated: min(6), cwd: P('Starfall Tavern'), folderExists: true, status: 'idle', channel: 'discord' },
   { id: 'agent:scout:cron:nightly', provider: 'openclaw', sessionId: 'oc-2', agent: 'scout', agentName: 'Scout', title: 'Scout · Cron run', autoTitle: 'Scout · Cron run', preview: 'Running right now', updated: min(1), cwd: 'C:\\Users\\alex\\clawd', folderExists: true, status: 'running', channel: 'cron' },
 ];
+// Gemini (with the gemini option): set up and signed in, with one chat in Starfall Tavern.
+const GEM_ID = 'b158a376-5571-4317-a62a-61b783c0218a';
+const GEMINI_STATE = { id: 'gemini', name: 'Gemini', provider: 'gemini', kind: 'gemini', enabled: true, command: 'agy', checked: true, installed: true, signedIn: true, version: '1.3.5', error: null, models: 4, hasArgon: true };
+const GEM_MODELS = [['gemini-4-argon-medium', 'Gemini 4 Argon (Medium)', true], ['gemini-4-argon-high', 'Gemini 4 Argon (High)'], ['gemini-4-argon-low', 'Gemini 4 Argon (Low)'], ['gemini-3.8-flash-medium', 'Gemini 3.8 Flash (Medium)']].map(([value, label, d]) => ({ value, label, description: '', efforts: [], isDefault: !!d }));
+const withGemini = list => list.map(p => (p.name === 'Starfall Tavern' ? { ...p, sessions: [...p.sessions, { id: GEM_ID, provider: 'gemini', cwd: p.cwd, title: 'The tavern’s lore book', autoTitle: 'The tavern’s lore book', firstPrompt: 'Write the tavern’s lore book', lastPrompt: null, branch: null, updated: min(30), active: false, sizeKB: 12, lastOpened: null }] } : p));
+const gemHistory = [
+  { kind: 'user', text: 'Write the opening of the tavern’s lore book: one short paragraph, warm and a little mysterious.', images: [], at: iso(NOW - 31 * 60e3) },
+  { kind: 'assistant', mid: 'g1', at: iso(NOW - 30 * 60e3), blocks: [{ type: 'tool', id: 'gt1', name: 'Write', summary: 'C:\\Projects\\Starfall Tavern\\lore\\opening.md', detail: '', detailKind: 'text', meta: { path: 'lore/opening.md', paths: ['lore/opening.md'] }, result: { text: '', isError: false, images: [] } }, { type: 'text', text: 'Before the roads had names, there was a lantern in the window of the Starfall, and it has not gone out since. Travellers say the hearth remembers every song sung beside it; the bard says it only remembers the good ones.' }] },
+];
+// A crew (with the crew option): the bard chat has Codex and Gemini in it; Gemini isn't running now,
+// but its earlier reply is in its own conversation.
+const CREW = { kinds: ['codex', 'gemini'], running: { codex: 'k-bard-cx' }, threads: { codex: 't-bard-codex', gemini: 't-bard-gemini' } };
+const gemPartnerHistory = [
+  { kind: 'user', text: 'Give the Rally song one new verse, for the festival.', images: [], at: iso(NOW - 12 * 60e3) },
+  { kind: 'assistant', mid: 'gp1', at: iso(NOW - 11.5 * 60e3), blocks: [{ type: 'text', text: 'Lift your mugs to the harvest moon, the lanterns low and the fiddles in tune.' }] },
+];
 const withOpenClaw = list => {
   const out = list.map(p => ({ ...p, sessions: [...p.sessions, ...ocSessions.filter(x => x.cwd === p.cwd)].sort((a, b) => b.updated - a.updated) }));
   out.push({ cwd: ocSessions[1].cwd, name: 'clawd', exists: true, notes: 0, updated: ocSessions[1].updated, sessions: [ocSessions[1]] });
@@ -145,10 +161,10 @@ const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}
 // Options: state (the chat's state), seen(path, url, body) for every API call, context (how
 // full the chat is), events (more chat events sent after it connects), extras (kept changes and reviews), openclaw (OpenClaw sessions in the list), noHistory (the history
 // isn't there yet, as for a brand-new chat).
-async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false } = {}) {
+async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false, gemini = false, crew = false } = {}) {
   // Windows Firewall, as a fresh PC has it: nothing let in, the Wi-Fi set as public.
   let firewall = { known: true, program: 'C:\\Program Files\\nodejs\\node.exe', port: 4788, firewallOn: true, allowed: false, blocked: true, network: 'Public' };
-  const info = { ...chatInfo, ...(context ? { context } : {}) };
+  const info = { ...chatInfo, ...(context ? { context } : {}), ...(crew ? { crew: CREW, mate: 'codex' } : {}) };
   let reviews = 0;
   // Rules and tools: the project's CLAUDE.md and AGENTS.md differ; one tool on each side, and Codex's own.
   const rules = {
@@ -182,9 +198,9 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     let body = {}; try { body = JSON.parse(postData || '{}'); } catch { /* not JSON */ }
     if (seen) seen(p, url, body);
     if (p === '/api/reopen') { const out = { reopened: body.action === 'reopen' ? reopen.map(c => c.sessionId) : [], failed: [] }; reopen = []; return { body: out }; }
-    if (p === '/api/state') return { body: { reopen, accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '6.0.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
+    if (p === '/api/state') return { body: { gemini: gemini ? GEMINI_STATE : null, reopen, accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '6.0.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
     if (p === '/api/chat/done') { if (body.done) doneMarks[String(body.id).toLowerCase()] = { done: Date.now(), undone: 0 }; else doneMarks[String(body.id).toLowerCase()] = { done: 0, undone: Date.now() }; return { body: { doneMarks } }; }
-    if (p === '/api/sessions') return { body: { doneMarks, projects: openclaw ? withOpenClaw(projects) : projects, skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
+    if (p === '/api/sessions') return { body: { doneMarks, projects: (l => (gemini ? withGemini(l) : l))(openclaw ? withOpenClaw(projects) : projects), skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
     if (p === '/api/activity') return { body: { list: activity, at: NOW } };
     // The day at a glance: bursts of messages through the last few hours.
     if (p === '/api/problems' && body.message) { problemList.unshift({ id: `pb${problemList.length}`, where: 'Page', message: body.message, stack: body.stack || '', at: new Date(NOW).toISOString(), count: 1 }); return { body: { ok: true } }; }
@@ -214,11 +230,14 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/project/info') return { body: projInfo(q.get('cwd')) };
     if (p === '/api/image') { const f = artFor(q.get('path') || ''); return f && fs.existsSync(path.join(ART, f)) ? { type: 'image/png', body: fs.readFileSync(path.join(ART, f)) } : { status: 404, body: {} }; }
     if (p === '/api/events') return { type: 'text/event-stream', body: 'retry: 600000\n\n' };
+    if (p === '/api/chat/open' && gemini && (body.provider === 'gemini' || body.sessionId === GEM_ID)) return { body: { ...info, key: 'k-gem', provider: 'gemini', accountId: 'gemini', accountName: 'Gemini', sessionId: body.sessionId || null, permissionMode: 'accept-edits', modes: [{ value: 'plan', label: 'Plan only' }, { value: 'accept-edits', label: 'Edit files' }, { value: 'full', label: 'Full access' }], model: 'gemini-4-argon-medium', resolvedModel: 'gemini-4-argon-medium', models: GEM_MODELS, effort: null, efforts: [], companionKey: null, companionThread: null, title: body.sessionId ? 'The tavern’s lore book' : 'New Gemini chat', context: null } };
     if (p === '/api/chat/open') return { body: info };
     if (p === '/api/chat/attach') return { body: compInfo };
     // extras: what the PC kept from the chat's earlier runs (changes, undos, reviews).
     if (p === '/api/chat/extras') return { body: { extras: extras && q.get('id') === ID['s-bard'] ? extras : [] } };
     if (p === '/api/chat/history' && noHistory) return { status: 404, body: { error: 'That chat wasn’t found. It may have been deleted; refresh the list.' } };
+    if (p === '/api/chat/history' && crew && q.get('id') === 't-bard-gemini') return { body: { items: gemPartnerHistory, start: 0, cursor: null } };
+    if (p === '/api/chat/history' && (q.get('provider') === 'gemini' || q.get('id') === GEM_ID)) return { body: { items: gemHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history' && q.get('provider') === 'openclaw') return { body: { items: ocHistory, start: 0, cursor: null } };
     if (p === '/api/chat/history') return { body: { items: q.get('provider') === 'codex' || q.get('id') === 't-bard-codex' ? codexHistory : claudeHistory, start: 0, cursor: null } };
     // A side question: its own chat, which answers once.
@@ -231,6 +250,11 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
       const evs = [['hello', { ...info, key: 'k-aside' }], ['chat', { kind: 'assistant', mid: 'as1', at: iso(NOW), blocks: [{ type: 'text', text: 'It sets the **co-op** bonus cap; 0.15 means +15%.' }], seq: 1 }, 1], ['chat', { kind: 'result', ok: true, seq: 2 }, 2], ['replayed', {}]];
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
     }
+    // Gemini brought in as a Claude chat's partner (instead of Codex).
+    const gemComp = { key: 'k-gem-cx', provider: 'gemini', sessionId: null, accountId: 'gemini', accountName: 'Gemini', state: 'ready', startedAt: iso(NOW), cwd: P('Starfall Tavern'), permissionMode: 'accept-edits', modes: [{ value: 'plan', label: 'Plan only' }, { value: 'accept-edits', label: 'Edit files' }, { value: 'full', label: 'Full access' }], model: 'gemini-4-argon-medium', resolvedModel: 'gemini-4-argon-medium', models: GEM_MODELS, effort: null, efforts: [], parentKey: 'k-bard', companionKey: null, title: 'Gemini · Balance pass' };
+    if (p === '/api/chat/companion') return { body: gemini && body.kind === 'gemini' ? gemComp : compInfo };
+    if (p === '/api/chat/events' && q.get('key') === 'k-gem-cx') return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse([['hello', gemComp], ['chat', { kind: 'state', state: 'ready', seq: 1 }, 1], ['replayed', {}]]) };
+    if (p === '/api/chat/events' && q.get('key') === 'k-gem') return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse([['hello', { key: 'k-gem', provider: 'gemini', state: 'ready' }], ['chat', { kind: 'state', state: 'ready', seq: 1 }, 1], ['replayed', {}]]) };
     if (p === '/api/chat/events') {
       const comp = (q.get('key') || '').includes('cx');
       const evs = [['hello', comp ? compInfo : info]];

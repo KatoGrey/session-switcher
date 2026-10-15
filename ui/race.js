@@ -1,17 +1,19 @@
 'use strict';
-/* Race: Claude and Codex take the same task, each in its own copy of the project. The hub shows each
+/* Race: two of Claude, Codex and Gemini take the same task, each in its own copy of the project. The hub shows each
    race with what both have changed; keep the better one (its changes come into your project) or
    discard both. Split the work: each takes its own part instead, and you keep both at once. */
 
 async function loadRaces() { S.races = (await api('/api/races')).races || []; renderRaces(); }
 
-const RACERS = [['claude', 'Claude'], ['codex', 'Codex']];
+// Who races in this one (Claude and Codex in races from before there was a choice).
+const RACE_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' };
+const racersOf = r => (r.who && r.who.length ? r.who : Object.keys(r.racers || {}).length ? Object.keys(r.racers) : ['claude', 'codex']).map(w => [w, RACE_NAME[w] || w]);
 // Both have changed something (so there's something to compare, or to pick from).
-const both = r => RACERS.every(([w]) => ((r.racers[w] || {}).files || []).length);
+const both = r => racersOf(r).every(([w]) => ((r.racers[w] || {}).files || []).length);
 const racerState = x => (x.state === 'busy' || x.state === 'starting' ? 'working' : x.state === 'waiting' ? 'needs your OK' : x.state === 'ended' ? (x.sessionId ? 'paused' : 'stopped') : 'done');
 function raceCard(r) {
-  const head = `<p class="race-h"><span class="glyph" aria-hidden="true">${r.split ? '⑂' : '⚑'}</span><b>${r.split ? 'Split' : 'Race'}</b> in ${esc(r.folder || base(r.cwd))}<small>${esc(stamp(Date.parse(r.createdAt)))}</small></p>${r.split && r.prompt === `${r.split.claude} · ${r.split.codex}` ? '' : `<p class="race-p">${esc(r.prompt.split('\n')[0].slice(0, 200))}</p>`}`;
-  if (r.state !== 'running') return `<li class="race over">${head}<p class="race-end">${r.state === 'kept' ? (r.kept === 'both' ? 'Kept both sets of changes.' : r.kept === 'files' ? 'Kept the files you picked from each.' : `Kept ${r.kept === 'codex' ? 'Codex' : 'Claude'}’s changes.`) : 'Discarded.'}</p></li>`;
+  const head = `<p class="race-h"><span class="glyph" aria-hidden="true">${r.split ? '⑂' : '⚑'}</span><b>${r.split ? 'Split' : 'Race'}</b> in ${esc(r.folder || base(r.cwd))}<small>${esc(stamp(Date.parse(r.createdAt)))}</small></p>${r.split && r.prompt === racersOf(r).map(([w]) => r.split[w]).join(' · ') ? '' : `<p class="race-p">${esc(r.prompt.split('\n')[0].slice(0, 200))}</p>`}`;
+  if (r.state !== 'running') return `<li class="race over">${head}<p class="race-end">${r.state === 'kept' ? (r.kept === 'both' ? 'Kept both sets of changes.' : r.kept === 'files' ? 'Kept the files you picked from each.' : `Kept ${RACE_NAME[r.kept] || 'its'}’s changes.`) : 'Discarded.'}</p></li>`;
   const col = ([who, name]) => {
     const x = r.racers[who] || {};
     const f = x.files;
@@ -22,7 +24,7 @@ function raceCard(r) {
       <p class="rc-b">${x.key ? `<button class="btn quiet sm" data-act="race-open" data-key="${esc(x.key)}">Open chat</button>` : x.sessionId ? `<button class="btn quiet sm" data-act="race-open" data-sid="${esc(x.sessionId)}" title="Starts it again where it left off">Open chat</button>` : ''}${f && f.length ? `<button class="btn quiet sm" data-act="race-diff" data-id="${esc(r.id)}" data-who="${who}">See changes</button>` : ''}</p>
       <button class="btn${f && f.length && !r.split ? ' gilt' : ''} sm" data-act="race-keep" data-id="${esc(r.id)}" data-who="${who}" ${f && f.length ? '' : 'disabled'}>Keep ${name}’s</button></div>`;
   };
-  return `<li class="race">${head}<div class="race-cols">${RACERS.map(col).join('')}</div>${r.judge ? `<p class="race-j"><span class="glyph" aria-hidden="true">⚖</span><b>Judge</b> ${esc(racerState(r.judge))}${r.judge.key ? ` <button class="btn quiet sm" data-act="race-open" data-key="${esc(r.judge.key)}">Read its verdict</button>` : r.judge.sessionId ? ` <button class="btn quiet sm" data-act="race-open" data-sid="${esc(r.judge.sessionId)}">Read its verdict</button>` : ''}</p>` : ''}<p class="race-b">${both(r) ? `${r.judge ? '' : `<button class="btn quiet sm" data-act="race-judge" data-id="${esc(r.id)}" title="A chat that can only look compares both and says which to keep">Ask a judge</button>`}<button class="btn quiet sm" data-act="race-files" data-id="${esc(r.id)}">Pick files…</button>` : ''}<button class="btn quiet sm" data-act="race-discard" data-id="${esc(r.id)}">Discard both</button>${r.split ? `<button class="btn gilt sm" data-act="race-both" data-id="${esc(r.id)}" ${RACERS.some(([w]) => (r.racers[w] || {}).files && r.racers[w].files.length) ? '' : 'disabled'}>Keep both</button>` : ''}</p></li>`;
+  return `<li class="race">${head}<div class="race-cols">${racersOf(r).map(col).join('')}</div>${r.judge ? `<p class="race-j"><span class="glyph" aria-hidden="true">⚖</span><b>Judge</b> ${esc(racerState(r.judge))}${r.judge.key ? ` <button class="btn quiet sm" data-act="race-open" data-key="${esc(r.judge.key)}">Read its verdict</button>` : r.judge.sessionId ? ` <button class="btn quiet sm" data-act="race-open" data-sid="${esc(r.judge.sessionId)}">Read its verdict</button>` : ''}</p>` : ''}<p class="race-b">${both(r) ? `${r.judge ? '' : `<button class="btn quiet sm" data-act="race-judge" data-id="${esc(r.id)}" title="A chat that can only look compares both and says which to keep">Ask a judge</button>`}<button class="btn quiet sm" data-act="race-files" data-id="${esc(r.id)}">Pick files…</button>` : ''}<button class="btn quiet sm" data-act="race-discard" data-id="${esc(r.id)}">Discard both</button>${r.split ? `<button class="btn gilt sm" data-act="race-both" data-id="${esc(r.id)}" ${racersOf(r).some(([w]) => (r.racers[w] || {}).files && r.racers[w].files.length) ? '' : 'disabled'}>Keep both</button>` : ''}</p></li>`;
 }
 function renderRaces() {
   const sec = $('secRaces'), list = $('raceList');
@@ -36,19 +38,20 @@ function raceDialog() {
   let d = $('raceDlg');
   if (d) return d;
   document.body.insertAdjacentHTML('beforeend', `<dialog id="raceDlg" class="wide task-dlg" aria-labelledby="rcTitle"><form method="dialog" id="rcForm">
-    <div class="setup-head"><h3 id="rcTitle">Race Claude and Codex</h3><button type="button" class="icon" data-rc="close" aria-label="Close">✕</button></div>
+    <div class="setup-head"><h3 id="rcTitle">Race</h3><button type="button" class="icon" data-rc="close" aria-label="Close">✕</button></div>
     <div class="tk-body">
       <div class="rc-mode seg" role="radiogroup" aria-label="How they work"><label><input type="radio" name="rcMode" value="race" checked> Race: the same task</label><label><input type="radio" name="rcMode" value="split"> Split the work</label></div>
       <p class="rd-intro">Both take the same task, each in its own copy of the project (your uncommitted work included; ignored files like node_modules aren’t copied). Your project isn’t touched until you keep one. Needs a git project.</p>
-      <div class="tk-grid"><label>Project<select id="rcProject"></select></label><label>Claude’s account<select id="rcAcct"></select></label></div>
+      <div class="tk-grid"><label>Project<select id="rcProject"></select></label><label>Who<select id="rcWho"></select></label><label id="rcAcctWrap">Claude’s account<select id="rcAcct"></select></label></div>
       <label class="tk-prompt">The task<select id="rcFrom"><option value="">Start from a saved prompt…</option></select><textarea id="rcText" rows="7" placeholder="Fix the save-file bug on Steam Deck, and add a test that shows it’s fixed."></textarea></label>
-      <div class="rc-parts" hidden><label class="tk-prompt">Claude’s part<textarea id="rcClaude" rows="3" placeholder="The save code: find why it fails on Steam Deck and fix it."></textarea></label><label class="tk-prompt">Codex’s part<textarea id="rcCodex" rows="3" placeholder="A test that shows the bug, in tests/save.test.js."></textarea></label></div>
+      <div class="rc-parts" hidden><label class="tk-prompt"><span id="rcPartA">Claude’s part</span><textarea id="rcClaude" rows="3" placeholder="The save code: find why it fails on Steam Deck and fix it."></textarea></label><label class="tk-prompt"><span id="rcPartB">Codex’s part</span><textarea id="rcCodex" rows="3" placeholder="A test that shows the bug, in tests/save.test.js."></textarea></label></div>
       <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-rc="close">Cancel</button><button type="submit" class="btn prime">Start the race</button></div>
     </div></form></dialog>`);
   d = $('raceDlg');
   d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-rc="close"]')) d.close(); });
   d.addEventListener('change', e => {
     if (e.target.name === 'rcMode') return raceMode(e.target.value);
+    if (e.target.id === 'rcWho') return raceWho();
     if (e.target.id !== 'rcFrom' || !e.target.value) return;
     const pr = S.prompts.find(x => x.id === e.target.value), p = S.projects.find(x => x.cwd === $('rcProject').value);
     if (pr) $('rcText').value = fillPrompt(pr.text, p ? p.name : '');
@@ -60,7 +63,8 @@ function raceDialog() {
     if (split && (!$('rcClaude').value.trim() || !$('rcCodex').value.trim())) { toast('Write each one’s part.'); return; }
     const go = d.querySelector('[type="submit"]'), label = go.textContent; go.disabled = true; go.textContent = 'Making the copies…';
     try {
-      const r = await api('/api/race', { action: 'start', cwd: $('rcProject').value, accountId: $('rcAcct').value, prompt: $('rcText').value, ...(split ? { split: { claude: $('rcClaude').value, codex: $('rcCodex').value } } : {}) });
+      const who = $('rcWho').value.split('+');
+      const r = await api('/api/race', { action: 'start', who, cwd: $('rcProject').value, accountId: $('rcAcct').value, prompt: $('rcText').value, ...(split ? { split: { [who[0]]: $('rcClaude').value, [who[1]]: $('rcCodex').value } } : {}) });
       S.races = r.races; renderRaces(); d.close();
       toast(split ? 'They’re on it, each on its own part. Both are under At work; keep both on the card when they’re done.' : 'The race is on. Both are under At work; compare them on the race’s card.', 6000);
     } finally { go.disabled = false; go.textContent = label; }
@@ -73,17 +77,32 @@ function raceMode(m) {
   const d = raceDialog();
   d.querySelector(`[name="rcMode"][value="${split ? 'split' : 'race'}"]`).checked = true;
   d.querySelector('.rc-parts').hidden = !split;
-  $('rcTitle').textContent = split ? 'Split the work' : 'Race Claude and Codex';
+  raceWho();
   d.querySelector('.rd-intro').firstChild.textContent = split ? 'Each takes its own part, in its own copy of the project (your uncommitted work included; ignored files like node_modules aren’t copied). Keep both and the two parts come into your project together; if they touched the same file, nothing changes and it says which. Needs a git project.' : 'Both take the same task, each in its own copy of the project (your uncommitted work included; ignored files like node_modules aren’t copied). Your project isn’t touched until you keep one. Needs a git project.';
   $('rcText').placeholder = split ? 'Optional: the whole task, so each knows what it’s part of.' : 'Fix the save-file bug on Steam Deck, and add a test that shows it’s fixed.';
   d.querySelector('[type="submit"]').textContent = split ? 'Start both parts' : 'Start the race';
 }
-function openRaceDialog(cwd = null, mode = 'race') {
-  if (!codexReady()) { toast('A race needs Codex too: sign in to it first, under Accounts and usage.'); return; }
+// The pairs that can race now: any two of the assistants that are set up.
+function racePairs() {
+  const ok = { claude: S.accounts.some(canLaunch), codex: codexReady(), gemini: geminiReady() };
+  return [['claude', 'codex'], ['claude', 'gemini'], ['codex', 'gemini']].filter(([a, b]) => ok[a] && ok[b]);
+}
+function raceWho() {
+  const d = raceDialog(), split = d.querySelector('[name="rcMode"]:checked').value === 'split';
+  const [a, b] = ($('rcWho').value || 'claude+codex').split('+');
+  $('rcTitle').textContent = split ? `Split the work: ${RACE_NAME[a]} and ${RACE_NAME[b]}` : `Race ${RACE_NAME[a]} and ${RACE_NAME[b]}`;
+  $('rcPartA').textContent = `${RACE_NAME[a]}’s part`; $('rcPartB').textContent = `${RACE_NAME[b]}’s part`;
+  $('rcAcctWrap').hidden = a !== 'claude';
+}
+function openRaceDialog(cwd = null, mode = 'race', who = null) {
+  const pairs = racePairs();
+  if (!pairs.length) { toast('A race needs two assistants: set up Codex or Gemini too (Setup), beside Claude.'); return; }
   const d = raceDialog();
   const projects = S.projects.filter(p => p.exists).slice().sort((a, b) => a.name.localeCompare(b.name));
   const pick = cwd || (S.view === 'folder' ? S.folder : null) || (projects[0] && projects[0].cwd);
   $('rcProject').innerHTML = projects.map(p => `<option value="${esc(p.cwd)}"${p.cwd === pick ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  const want = who && pairs.find(p => p.join('+') === who) ? who : pairs[0].join('+');
+  $('rcWho').innerHTML = pairs.map(p => `<option value="${p.join('+')}"${p.join('+') === want ? ' selected' : ''}>${RACE_NAME[p[0]]} and ${RACE_NAME[p[1]]}</option>`).join('');
   $('rcAcct').innerHTML = `<option value="auto">Whichever has the most room</option>${S.accounts.filter(canLaunch).map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}`;
   $('rcFrom').innerHTML = `<option value="">Start from a saved prompt…</option>${S.prompts.map(pr => `<option value="${esc(pr.id)}">${esc(pr.title)}</option>`).join('')}`;
   $('rcFrom').hidden = !S.prompts.length;
@@ -97,7 +116,7 @@ async function raceAction(act, b) {
   if (act === 'split-new') return openRaceDialog(b.dataset.cwd || null, 'split');
   if (act === 'race-open') return b.dataset.key ? ChatUI.openKey(b.dataset.key) : ChatUI.open({ sessionId: b.dataset.sid });
   const r = (S.races || []).find(x => x.id === b.dataset.id); if (!r) return undefined;
-  const name = b.dataset.who === 'codex' ? 'Codex' : 'Claude';
+  const name = RACE_NAME[b.dataset.who] || 'its';
   if (act === 'race-diff') return viewRaceChanges(r, b.dataset.who);
   if (act === 'race-discard') {
     if (!(await appConfirm('Discard both?\n\nBoth chats stop and both copies are deleted. Your project stays as it is.', { ok: 'Discard both', danger: true }))) return undefined;
@@ -112,7 +131,7 @@ async function raceAction(act, b) {
   }
   if (act === 'race-files') return pickRaceFiles(r);
   if (act === 'race-both') {
-    const n = RACERS.reduce((k, [w]) => k + ((r.racers[w] || {}).files || []).length, 0);
+    const n = racersOf(r).reduce((k, [w]) => k + ((r.racers[w] || {}).files || []).length, 0);
     if (!(await appConfirm(`Keep both?\n\nBoth parts (${n} changed file${n === 1 ? '' : 's'}) come into ${r.folder || 'your project'} together; both chats stop and both copies are deleted.`, { ok: 'Keep both' }))) return undefined;
     let res = await api('/api/race', { action: 'keepboth', id: r.id });
     if (!res.kept && res.why === 'changed' && await appConfirm(`${r.folder || 'Your project'} changed since they began.\n\nTry to bring both parts in anyway? If anything clashes, nothing is changed.`, { ok: 'Try anyway' })) {
@@ -140,12 +159,12 @@ async function raceAction(act, b) {
 // File by file: tick the files to keep from each copy (a file both changed comes from one of them).
 async function pickRaceFiles(r) {
   const files = {}, all = new Map();
-  for (const [w] of RACERS) for (const f of (r.racers[w] || {}).files || []) { (files[w] || (files[w] = [])).push(f); const k = f.path.toLowerCase(); all.set(k, [...(all.get(k) || []), w]); }
+  for (const [w] of racersOf(r)) for (const f of (r.racers[w] || {}).files || []) { (files[w] || (files[w] = [])).push(f); const k = f.path.toLowerCase(); all.set(k, [...(all.get(k) || []), w]); }
   const row = (w, f) => { const shared = all.get(f.path.toLowerCase()).length > 1; return `<label class="pf-row"><input type="${shared ? 'radio' : 'checkbox'}" name="${shared ? `pf-${esc(f.path)}` : ''}" data-who="${w}" data-path="${esc(f.path)}"><span class="pf-p">${esc(f.path)}</span><span class="pf-n"><i class="d-add">+${f.add || 0}</i> <i class="d-del">−${f.del || 0}</i>${shared ? ' · both changed it' : ''}</span></label>`; };
   const d = document.createElement('dialog');
   d.className = 'wide pick-files';
   d.innerHTML = `<form method="dialog"><div class="setup-head"><h3>Pick files to keep</h3><button type="button" class="icon" data-pf="x" aria-label="Close">✕</button></div>
-    <div class="pf-body">${RACERS.map(([w, name]) => (files[w] || []).length ? `<p class="pf-h"><span class="crew-dot ${w}" aria-hidden="true"></span>From ${name}’s copy</p>${files[w].map(f => row(w, f)).join('')}` : '').join('')}
+    <div class="pf-body">${racersOf(r).map(([w, name]) => (files[w] || []).length ? `<p class="pf-h"><span class="crew-dot ${w}" aria-hidden="true"></span>From ${name}’s copy</p>${files[w].map(f => row(w, f)).join('')}` : '').join('')}
     <p class="pf-note">A file both changed comes from one of them. The files come into ${esc(r.folder || 'your project')} together, all or nothing; both chats stop and both copies are deleted.</p>
     <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-pf="x">Cancel</button><button type="submit" class="btn prime">Keep these files</button></div></div></form>`;
   document.body.appendChild(d);
@@ -174,7 +193,7 @@ async function pickRaceFiles(r) {
 async function viewRaceChanges(r, who) {
   const files = (r.racers[who] && r.racers[who].files) || [];
   const fake = { _ev: { files, turn: null }, dataset: { src: 'main' } };
-  await viewChanges(fake, `/api/race/diff?id=${encodeURIComponent(r.id)}&who=${who}`, `What ${who === 'codex' ? 'Codex' : 'Claude'} changed in its copy`);
+  await viewChanges(fake, `/api/race/diff?id=${encodeURIComponent(r.id)}&who=${who}`, `What ${RACE_NAME[who] || 'it'} changed in its copy`);
 }
 
 // While a race runs, its card follows what each one has changed (on the hub, while it's on screen).

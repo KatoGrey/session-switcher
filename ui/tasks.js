@@ -17,7 +17,7 @@ const taskWaiting = t => (t.why === 'time' ? `Starts ${whenText(t.at)}`
   : t.why === 'room' ? 'Waiting for an account with room' : t.why === 'account' ? 'Waiting for a signed-in account' : 'Starting…');
 function taskRow(t) {
   const first = t.prompt.split('\n').find(l => l.trim()) || t.prompt;
-  const who = t.provider === 'codex' ? 'Codex' : t.accountName || (t.accountId === 'auto' ? 'Claude, whichever account has room' : `Claude as ${(S.accounts.find(a => a.id === t.accountId) || {}).name || t.accountId}`);
+  const who = t.provider === 'codex' ? 'Codex' : t.provider === 'gemini' ? 'Gemini' : t.accountName || (t.accountId === 'auto' ? 'Claude, whichever account has room' : `Claude as ${(S.accounts.find(a => a.id === t.accountId) || {}).name || t.accountId}`);
   const st = t.state === 'started' ? '<span class="tk-st ok">▶ Started</span>' : t.state === 'failed' ? `<span class="tk-st err" title="${esc(t.error || '')}">✕ Couldn’t start: ${esc(t.error || 'unknown error')}</span>` : `<span class="tk-st">${esc(taskWaiting(t))}</span>`;
   const btns = t.state === 'queued'
     ? `<button class="btn sm" data-act="task-start" data-id="${esc(t.id)}">Start now</button><button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Remove from the queue" title="Remove">✕</button>`
@@ -55,7 +55,7 @@ function taskDialog() {
   d = $('taskDlg');
   d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-tk="close"]')) d.close(); });
   d.addEventListener('change', e => {
-    if (e.target.id === 'tkWho') $('tkAcctWrap').hidden = e.target.value === 'codex';
+    if (e.target.id === 'tkWho') $('tkAcctWrap').hidden = e.target.value !== 'claude';
     if (e.target.id === 'tkWhen') $('tkAtWrap').hidden = $('tkRepWrap').hidden = e.target.value !== 'at';
     if (e.target.id === 'tkFrom' && e.target.value) {
       const pr = S.prompts.find(x => x.id === e.target.value);
@@ -82,7 +82,7 @@ function openTaskDialog(cwd = null, text = '') {
   if (!projects.length) { toast('Add a project first.'); return; }
   const pick = cwd || (S.view === 'folder' ? S.folder : null) || (projects[0] && projects[0].cwd);
   $('tkProject').innerHTML = projects.map(p => `<option value="${esc(p.cwd)}"${p.cwd === pick ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
-  $('tkWho').innerHTML = `<option value="claude">Claude</option>${S.codex && S.codex.enabled ? `<option value="codex"${codexReady() ? '' : ' disabled'}>Codex</option>` : ''}`;
+  $('tkWho').innerHTML = `<option value="claude">Claude</option>${S.codex && S.codex.enabled ? `<option value="codex"${codexReady() ? '' : ' disabled'}>Codex</option>` : ''}${S.gemini && S.gemini.enabled ? `<option value="gemini"${geminiReady() ? '' : ' disabled'}>Gemini</option>` : ''}`;
   $('tkAcct').innerHTML = `<option value="auto">Whichever has the most room</option>${S.accounts.filter(canLaunch).map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}`;
   $('tkFrom').innerHTML = `<option value="">Start from a saved prompt…</option>${S.prompts.map(pr => `<option value="${esc(pr.id)}">${esc(pr.title)}</option>`).join('')}`;
   $('tkFrom').hidden = !S.prompts.length;

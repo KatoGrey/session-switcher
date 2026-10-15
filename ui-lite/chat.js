@@ -254,7 +254,7 @@ function onEvent(ev) {
     }
     case 'delta': if (!ev.thinking) { CV.live += ev.text || ''; CV.status = 'Writing'; CV.thinking = ''; } else { CV.status = 'Thinking'; if (ev.text) CV.thinking = ((CV.thinking || '') + ev.text).slice(-600); } paintLive(); paintStatus(); break;
     case 'assistant': { CV.live = ''; const last = CV.items[CV.items.length - 1]; if (last && last.kind === 'assistant' && last.mid === ev.mid) last.blocks = mergeBlocks(last.blocks, ev.blocks); else CV.items.push({ ...ev, blocks: [...(ev.blocks || [])] }); paintFeed(); const tool = (ev.blocks || []).filter(b => b.type === 'tool').pop(); if (tool) CV.status = `${tool.name}${tool.summary ? ` · ${tool.summary}` : ''}`; paintStatus(); break; }
-    case 'handoff': if (ev.state === 'sent') { const n = { kind: 'notice', level: 'info', text: `${partnerName()} picks it up now.` }; CV.items.push(n); appendItem(n); } break;
+    case 'handoff': if (ev.state === 'sent') { const n = { kind: 'notice', level: 'info', text: `${NAME_OF[ev.to] || partnerName()} picks it up now.` }; CV.items.push(n); appendItem(n); } break;
     case 'tool_start': CV.status = `Using ${ev.name}`; CV.thinking = ''; paintStatus(); break;
     case 'notice': CV.items.push(ev); appendItem(ev); break;
     case 'permission': CV.pending.set(ev.requestId, ev); paintPending(); break;
@@ -361,10 +361,14 @@ function paintHead() {
 
 // Every link the chat mentioned (its PRs, previews, local servers, threads), newest first, named
 // for what it is, so they're a click away at the top instead of somewhere up the scroll.
-function linkLabel(u) {
+// own: the chat's repo and its PR's preview, from the Bugs pipeline, when it has a PR there.
+function linkLabel(u, own = null) {
   let m;
-  if ((m = /github\.com\/[^/]+\/([^/]+)\/pull\/(\d+)/.exec(u))) return { kind: 'pr', label: `PR #${m[2]}${m[1] === 'latitude' ? '' : ` · ${m[1]}`}` };
+  // A PR in the chat's own repo (or Latitude's) is just "PR #n"; one elsewhere says which repo.
+  if ((m = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(u))) return { kind: 'pr', label: `PR #${m[3]}${m[2] === 'latitude' || (own && own.repo && `${m[1]}/${m[2]}`.toLowerCase() === own.repo.toLowerCase()) ? '' : ` · ${m[2]}`}` };
+  // Latitude's preview sites by name; any other repo's preview link (see REPOS in lib/lite-pipeline.js) as its PR's.
   if ((m = /\/\/pr-(\d+)\.preview\.(voyage\.io|aidungeon\.com)/.exec(u))) return { kind: 'preview', label: `Preview #${m[1]} · ${m[2] === 'voyage.io' ? 'Voyage' : 'AI Dungeon'}` };
+  if (own && own.preview && u.replace(/\/+$/, '') === own.preview.replace(/\/+$/, '')) return { kind: 'preview', label: `Preview #${own.n}` };
   if ((m = /\/\/(localhost|127\.0\.0\.1)(:\d+)?/.exec(u))) return { kind: 'local', label: `localhost${m[2] || ''}` };
   if ((m = /linear\.app\/[^/]+\/issue\/([A-Z]+-\d+)/.exec(u))) return { kind: 'other', label: m[1] };
   if ((m = /github\.com\/[^/]+\/([^/?#]+)/.exec(u))) return { kind: 'other', label: `GitHub · ${m[1]}` };
@@ -373,7 +377,10 @@ function linkLabel(u) {
   try { const x = new URL(u); return { kind: 'other', label: (x.host.replace(/^www\./, '') + (x.pathname.length > 1 ? x.pathname : '')).slice(0, 48) }; } catch { return { kind: 'other', label: u.slice(0, 48) }; }
 }
 function chatLinks() {
-  const key = `${CV.id}:${CV.items.length}`;
+  const c = chatBy.get(CV.id), it = c && typeof pipeItem === 'function' ? pipeItem(c) : null;
+  const prev = it && it.pr && typeof previewUrl === 'function' ? previewUrl(it.pr) : null;
+  const own = it && it.pr ? { repo: it.repo || null, preview: prev, n: it.pr.number } : null;
+  const key = `${CV.id}:${CV.items.length}:${own ? own.n : ''}`;
   if (chatLinks.memo && chatLinks.memo.key === key) return chatLinks.memo.list;
   const seen = new Set(), list = [];
   const add = u => {
@@ -381,7 +388,7 @@ function chatLinks() {
     if (/\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(u)) return;
     try { const h = new URL(u).hostname; if (!h.includes('.') && h !== 'localhost') return; } catch { return; }
     const k = u.replace(/\/+$/, '');
-    if (seen.has(k)) return; seen.add(k); list.push({ url: u, ...linkLabel(u) });
+    if (seen.has(k)) return; seen.add(k); list.push({ url: u, ...linkLabel(u, own) });
   };
   for (const it of [...CV.items].reverse()) {
     const text = it.kind === 'assistant' ? (it.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n') : it.kind === 'user' ? it.text || '' : '';
@@ -389,8 +396,7 @@ function chatLinks() {
     for (const u of found.reverse()) add(u);
   }
   // A bug chat's PR is known even when the chat never wrote its link.
-  const c = chatBy.get(CV.id), it = c && typeof pipeItem === 'function' ? pipeItem(c) : null;
-  if (it && it.pr && it.pr.url) { add(it.pr.url); const prev = typeof previewUrl === 'function' ? previewUrl(it.pr) : null; if (prev) add(prev); }
+  if (it && it.pr && it.pr.url) { add(it.pr.url); if (prev) add(prev); }
   chatLinks.memo = { key, list: list.slice(0, 20) };
   return chatLinks.memo.list;
 }
@@ -603,7 +609,7 @@ function rememberModels(prov, info) {
   if (info && Array.isArray(info.models) && info.models.length) local.set(`models:${prov}`, info.models.map(m => ({ value: m.value, label: m.label })).slice(0, 30));
   if (info && Array.isArray(info.efforts) && info.efforts.length) local.set(`efforts:${prov}`, info.efforts);
 }
-const provNow = () => (S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : NC.who === 'ollama' ? 'ollama' : 'codex') : CV.provider === 'codex' ? ((CV.info && /ollama/i.test(CV.info.accountName || '')) || (chatBy.get(CV.id) || {}).ollama ? 'ollama' : 'codex') : 'claude');
+const provNow = () => (S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : NC.who === 'ollama' ? 'ollama' : 'codex') : CV.provider === 'gemini' ? 'gemini' : CV.provider === 'codex' ? ((CV.info && /ollama/i.test(CV.info.accountName || '')) || (chatBy.get(CV.id) || {}).ollama ? 'ollama' : 'codex') : 'claude');
 const prettyModel = m => String(m).replace(/^claude-/, '').replace(/-(\d)-(\d)/, ' $1.$2').replace(/\[1m\]$/, ' 1M').replace(/^(\w)/, c => c.toUpperCase());
 const modelLabel = (prov, v) => { const base = String(v).replace(/\[1m\]$/, ''); const m = modelsFor(prov).find(x => x.value === v || x.value === base); return m ? `${m.label}${/\[1m\]$/.test(v) ? ' 1M' : ''}` : prettyModel(v); };
 const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -790,7 +796,7 @@ async function sendInChat({ fromQueue = false } = {}) {
   // The message belongs to the chat it was written in. Starting a chat that wasn't running takes a
   // few seconds; if you open another chat meanwhile, it still goes here (Oct 13: it went to the chat
   // you'd moved to), and only this chat's view is touched.
-  const id = CV.id, provider = CV.provider, inRepo = CV.inRepo, perm = COMP.perm || permDefault(CV.provider), model = COMP.model, effort = COMP.effort, fast = COMP.fast;
+  const id = CV.id, provider = CV.provider, inRepo = CV.inRepo, perm = COMP.perm || (CV.provider === 'gemini' ? null : permDefault(CV.provider)), model = COMP.model, effort = COMP.effort, fast = COMP.fast;
   const to = CV.to && CV.to !== 'chat' ? CV.to : null;
   const here = () => S.view === 'chat' && CV.id === id;
   let key = CV.key;
@@ -828,7 +834,7 @@ async function sendInChat({ fromQueue = false } = {}) {
     const out = withFiles(text, files); local.text = out;
     for (const i of sentImages) if (i.url) URL.revokeObjectURL(i.url);
     if (here()) { resetComposer(); paintAttachments(); }
-    try { await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...(to ? { to } : {}) }); }
+    try { await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...toBody(to) }); }
     catch (err) {
       // It stopped since Lite last looked (idle for a while, or the app restarted): started again, then sent.
       if (!(err.status === 409 || err.status === 404) || !/stopped|isn.t running|not running/i.test(err.message)) throw err;
@@ -838,10 +844,10 @@ async function sendInChat({ fromQueue = false } = {}) {
       key = info.key;
       if (here()) { CV.key = key; CV.info = info; listen(key); }
       await waitReadyFor(key);
-      await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...(to ? { to } : {}) });
+      await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...toBody(to) });
     }
     if (here()) {
-      if (to) partnerSoon();
+      if (to) { const b = toBody(to); partnerSoon(b.kinds || (b.kind ? [b.kind] : [])); }
       CV.busy = true; if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
     }
   } catch (err) {
@@ -891,7 +897,7 @@ function chatMenu(anchor) {
 // the plan (your use-next Claude or ChatGPT plan, or Ollama). In a chat, the same provider's models
 // switch in place; another provider's start a new chat there that picks up where this one is.
 const PROVS = [['claude', 'Claude'], ['codex', 'ChatGPT'], ['ollama', 'Ollama']];
-const provName = p => (PROVS.find(x => x[0] === p) || [p, p])[1];
+const provName = p => (PROVS.find(x => x[0] === p) || [p, p === 'gemini' ? 'Gemini' : p])[1];
 const hasProv = p => (p === 'claude' ? plans().some(x => x.family === 'claude' && !x.broken) : p === 'codex' ? plans().some(x => x.family === 'chatgpt' && !x.broken) : plans().some(x => x.family === 'ollama' && !x.broken));
 // The models offered (Ryan's picks): five Claude models, and the current GPT ones (not GPT-5.6 or
 // the older GPT-6 Sol). Ollama lists whatever is pulled.
@@ -910,6 +916,7 @@ function modelMenu(anchor) {
   if (!S.models) { loadModels().then(() => modelMenu(anchor)); return toast('Reading the models…'); }
   const item = (p, m) => `<button class="mm" data-v="${esc(p)}|${esc(m.value)}" role="menuitemradio" aria-checked="${p === prov && m.value === cur}" title="${esc(m.note || '')}"><span class="mm-name">${esc(String(m.label || prettyModel(m.value)).replace(/:cloud$/, ""))}</span>${m.note && m.note !== 'In Ollama' ? `<span class="mm-note">${esc(m.note.replace(/^[^·]*· /, ''))}</span>` : ''}</button>`;
   const group = p => {
+    if (p === 'gemini') return p === prov && running && (CV.info.models || []).length ? `<div class="ph">Gemini</div>${CV.info.models.map(m => item(p, m)).join('')}` : '';
     const md0 = MD(p); if (!md0 || !hasProv(p)) return '';
     const here = p === prov;
     const runList = here && running && CV.info.models && CV.info.models.length ? CV.info.models.filter(m => m.value !== 'default') : null;
@@ -921,9 +928,11 @@ function modelMenu(anchor) {
   };
   const order = [prov, ...PROVS.map(x => x[0]).filter(p => p !== prov)];
   // Who answers in this chat: it, its partner (the other assistant, in this same chat), or both in turn.
-  const duoOk = inChat && hasProv('claude') && hasProv('codex') && prov !== 'ollama';
-  const to = CV.to || 'chat';
-  const who = duoOk ? `<div class="ph">Who answers</div><div class="who-seg">${[['chat', selfName()], ['partner', partnerName()], ['both', 'Both']].map(([v, l]) => `<button class="mm who-opt" data-v="to|${v}" role="menuitemradio" aria-checked="${to === v}" title="${v === 'both' ? `${selfName()} answers, then ${partnerName()} picks it up` : v === 'partner' ? `${partnerName()} answers in this chat, caught up on it first` : 'This chat, as usual'}">${esc(l)}</button>`).join('')}</div><hr>` : '';
+  const crew = crewKindsLite();
+  const duoOk = inChat && prov !== 'ollama' && crew.length > 0;
+  const to = CV.to === 'partner' ? `partner:${partnerProv()}` : CV.to || 'chat';
+  const allName = crew.length > 1 ? 'All' : 'Both';
+  const who = duoOk ? `<div class="ph">Who answers</div><div class="who-seg">${[['chat', selfName()], ...crew.map(k => [`partner:${k}`, NAME_OF[k]]), ['both', allName]].map(([v, l]) => `<button class="mm who-opt" data-v="to|${v}" role="menuitemradio" aria-checked="${to === v}" title="${v === 'both' ? `${selfName()} answers, then ${crew.map(k => NAME_OF[k]).join(', then ')} picks it up` : v !== 'chat' ? `${l} answers in this chat, caught up on it first` : 'This chat, as usual'}">${esc(l)}</button>`).join('')}</div><hr>` : '';
   // Fast (Codex): its priority tier, about twice as quick, using more of the plan.
   const codexHere = inChat ? prov === 'codex' : (typeof NC !== 'undefined' && NC.who === 'codex');
   const fastOn = running ? !!CV.info.fast : !!COMP.fast;
@@ -935,7 +944,7 @@ function modelMenu(anchor) {
       if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, fast: on })); paintBar(); toast(on ? 'Fast is on for this chat.' : 'Fast is off.'); })();
       COMP.fast = on; paintBar(); if (S.view === 'newchat') paintNewChat(); toast(on ? 'Fast: on for this chat when it starts.' : 'Fast is off.'); return undefined;
     }
-    if (p === 'to') { CV.to = v; setTo(CV.id, v); paintBar(); if (v !== 'chat') toast(v === 'both' ? `Both: ${selfName()} answers, then ${partnerName()} picks it up.` : `${partnerName()} answers in this chat.`); return undefined; }
+    if (p === 'to') { CV.to = v; setTo(CV.id, v); paintBar(); if (v !== 'chat') toast(v === 'both' ? `${toName('both')}: ${selfName()} answers, then ${crewKindsLite().map(k => NAME_OF[k]).join(', then ')}, each building on the last.` : `${toName(v)} answers in this chat.`); return undefined; }
     if (inChat && p !== prov) return continueElsewhere(p, v);
     if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, model: v })); paintBar(); })();
     if (S.view === 'newchat' && p !== prov) {
@@ -973,6 +982,13 @@ function effortMenu(anchor) {
 }
 // Conversation settings: how much it may do without asking. Your default is preselected.
 function settingsMenu(anchor) {
+  // Gemini: its own modes, from the running chat.
+  if (S.view === 'chat' && CV.provider === 'gemini') {
+    const modes = (CV.info && CV.info.modes) || [];
+    if (!CV.key || !modes.length) return toast('Gemini’s modes show once the chat is running.');
+    return pop(anchor, `<div class="ph">Gemini · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === CV.info.permissionMode}">${esc(m.label)}</button>`).join('')}`,
+      v => wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; toast(`This chat: ${(modes.find(m => m.value === v) || {}).label || v}.`); })());
+  }
   const prov = permFam(S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : 'codex') : CV.provider);
   const running = S.view === 'chat' && CV.key && CV.info;
   const cur = (running && CV.info.permissionMode) || COMP.perm || permDefault(prov);

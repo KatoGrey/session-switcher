@@ -128,8 +128,9 @@ function loadPipeline(force = false) {
       () => { S.pipeline = { items: [], fetched: Date.now(), byChat: new Map() }; })
     .finally(() => { pipeLoading = null; render(); });
 }
-// A preview link for repos whose pull requests get one (Latitude's: pr-<n>.preview.voyage.io).
-const previewUrl = pr => (/github\.com\/latitudegames\/latitude\/pull\//.test(pr.url) ? `https://pr-${pr.number}.preview.voyage.io/` : null);
+// A preview link for repos whose pull requests get one (the server knows which: REPOS in
+// lib/lite-pipeline.js; Latitude's are pr-<n>.preview.voyage.io).
+const previewUrl = pr => (pr && pr.preview) || null;
 // One bug, one line: the title, then small marks for what matters (needs you or running, its PR,
 // on a preview or with testers, checks).
 function bugRow(c) {
@@ -221,7 +222,7 @@ function cleanupView() {
   return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Clean up</h1></div>
       <span class="crumb">Go quiet after <span class="seg" role="group" aria-label="Days before a chat goes quiet">${[2, 4, 7].map(d => `<button data-quietdays="${d}" aria-pressed="${quietDays() === d}">${d} days</button>`).join('')}</span></span></div>
     <div class="plans" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
-      <div class="plan"><small>Chats’ worktrees on disk</small><span class="big-number">${sp.at ? gb(sp.totalKB) : '…'}</span><small>${sp.worktrees.filter(w => w.worktree).length} worktrees${sp.scanning ? ' · measuring…' : ''}</small></div>
+      <div class="plan"><small>Chats’ worktrees on disk</small><span class="big-number">${sp.at ? gb(sp.totalKB) : '…'}${sp.at && sp.approx ? '+' : ''}</span><small>${sp.worktrees.filter(w => w.worktree).length} worktrees${sp.scanning ? ' · measuring…' : ''}</small></div>
       <div class="plan"><small>Dependencies and build output</small><span class="big-number">${sp.at ? gb(sp.heavyKB) : '…'}</span><small>node_modules, .next, dist, build, caches (git-ignored only)</small></div>
       <div class="plan"><small>From quiet or archived chats</small><span class="big-number">${sp.at ? gb(slimKB) : '…'}</span><small>${slim.length} worktrees can be slimmed</small></div>
     </div>
@@ -230,7 +231,7 @@ function cleanupView() {
       <div class="clean-row"><span><b>Remove ${removable.length} worktrees of archived chats</b><small>Only ones with nothing uncommitted; any with changes are left. The branch stays, so Archived can rebuild it.</small></span><button class="btn" data-clean="wt" ${removable.length ? '' : 'disabled'}>Remove ${removable.length}</button></div>
       <div class="clean-row"><span><b>Archive ${quiet.length} quiet chats</b><small>Chats that haven’t moved in ${quietDays()} days. They go to Archived with their record; nothing is deleted.</small></span><button class="btn" data-clean="quiet" ${quiet.length ? '' : 'disabled'}>Archive ${quiet.length}</button></div>
     </div>
-    ${top.length ? `<section class="section"><div class="sec-h"><h2>Biggest worktrees</h2><button class="hint" data-rescan="1">${sp.scanning ? 'Measuring…' : 'Measure again'}</button></div><div class="rows">${top.map(w => { const c = chatBy.get(w.chats[0]); return `<div class="row acts" data-cur="w:${esc(w.path)}" ${c ? `data-open="${esc(c.id)}"` : ''}><span></span><span class="t"><b>${esc(c ? c.title : w.path.split('/').pop())}</b><small class="mono">${esc(w.path.replace(/^\/Users\/[^/]+/, '~'))}${w.branch ? ` · ${esc(w.branch)}` : ''}</small></span><span class="side-tags">${w.heavyKB ? `<span class="tag">${gb(w.heavyKB)} removable</span>` : ''}</span><span class="when">${gb(w.kb || 0)}</span>${w.heavyKB ? `<button class="btn sm" data-free="${esc(w.path)}">Free</button>` : '<span></span>'}</div>`; }).join('')}</div></section>` : sp.scanning ? '<p class="empty-note">Measuring worktrees… this takes a minute the first time.</p>' : ''}
+    ${top.length ? `<section class="section"><div class="sec-h"><h2>Biggest worktrees</h2><button class="hint" data-rescan="1">${sp.scanning ? 'Measuring…' : 'Measure again'}</button></div><div class="rows">${top.map(w => { const c = chatBy.get(w.chats[0]); return `<div class="row acts" data-cur="w:${esc(w.path)}" ${c ? `data-open="${esc(c.id)}"` : ''}><span></span><span class="t"><b>${esc(c ? c.title : w.path.split(/[\\/]/).pop())}</b><small class="mono">${esc(w.path.replace(/^\/Users\/[^/]+/, '~'))}${w.branch ? ` · ${esc(w.branch)}` : ''}</small></span><span class="side-tags">${w.heavyKB ? `<span class="tag">${gb(w.heavyKB)} removable</span>` : ''}</span><span class="when" ${w.approx ? 'title="At least this much: too many files to count them all"' : ''}>${gb(w.kb || 0)}${w.approx ? '+' : ''}</span>${w.heavyKB ? `<button class="btn sm" data-free="${esc(w.path)}">Free</button>` : '<span></span>'}</div>`; }).join('')}</div></section>` : sp.scanning ? '<p class="empty-note">Measuring worktrees… this takes a minute the first time.</p>' : ''}
     <p class="hint-line">Nothing here runs on its own.</p></div>`;
 }
 async function loadSpace(fresh = false) {

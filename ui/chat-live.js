@@ -75,12 +75,13 @@ const RELAY_WORD = { starting: 'Starting', busy: 'Working', waiting: 'Needs your
 function relaySide(src) {
   const prov = provFor(src);
   const st = src === 'comp' ? (C.comp && !C.comp.ended ? C.comp.state : 'off') : C.state;
-  const upNext = src === 'comp' && C.handoff && st !== 'busy';
+  const upNext = src === 'comp' && C.handoff && C.handoff === partnerProv() && st !== 'busy';
   const status = (src === 'comp' ? C.comp && C.comp.status : C.status) || '';
   const done = st === 'ready' && C.justDone && C.justDone.src === src && Date.now() < C.justDone.until;
-  const word = upNext ? 'Up next' : st === 'busy' && status ? status : done ? 'Done' : RELAY_WORD[st] || 'Ready';
-  const on = C.target === src || C.target === 'both';
-  return `<button type="button" class="cr-side ${prov}${st === 'busy' || st === 'starting' ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}${upNext ? ' next' : ''}${done ? ' done' : ''}${on ? ' on' : ''}" data-relay="${src}" aria-pressed="${on}" title="Write to ${PROV_NAME[prov]}"><span class="cr-dot" aria-hidden="true"></span><b>${PROV_NAME[prov]}</b><span class="cr-w">${esc(word)}</span></button>`;
+  const bgNow = st === 'ready' && ((src === 'comp' ? C.comp && C.comp.background : C.background) || []).length;
+  const word = upNext ? 'Up next' : st === 'busy' && status ? status : done ? 'Done' : bgNow ? 'In the background' : RELAY_WORD[st] || 'Ready';
+  const on = C.target === 'both' || (src === 'comp' ? C.target === 'comp' && C.focus === prov : C.target === src);
+  return `<button type="button" class="cr-side ${prov}${st === 'busy' || st === 'starting' ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}${upNext ? ' next' : ''}${done ? ' done' : ''}${on ? ' on' : ''}" data-relay="${src}"${src === 'comp' ? ` data-kind="${prov}"` : ''} aria-pressed="${on}" title="Write to ${PROV_NAME[prov]}"><span class="cr-dot" aria-hidden="true"></span><b>${PROV_NAME[prov]}</b><span class="cr-w">${esc(word)}</span></button>`;
 }
 function renderRelay() {
   const box = $c('cRelay'); if (!box) return;
@@ -90,7 +91,7 @@ function renderRelay() {
   const compBusy = C.comp && !C.comp.ended && C.comp.state === 'busy';
   const passing = C.passedAt && Date.now() - C.passedAt < 1300;
   const link = C.handoff ? 'flow' : passing ? 'lit pass' : compBusy && C.target === 'both' ? 'lit' : '';
-  const h = `${relaySide('main')}<span class="cr-link ${link}" aria-hidden="true"><i></i></span>${relaySide('comp')}`;
+  const h = relaySide('main') + crewKinds({ inChat: true }).map(k => withComp(k, () => `<span class="cr-link ${C.handoff === k ? 'flow' : link === 'flow' ? '' : link}" aria-hidden="true"><i></i></span>${relaySide('comp')}`)).join('');
   if (box._h !== h) { box.innerHTML = h; box._h = h; }
 }
 // A reply landed: its side of the relay says Done for a moment, and the reply's last part glows once.
@@ -108,8 +109,11 @@ function setState(s) {
   C.state = s;
   renderRelay();
   const pill = $c('cState');
-  pill.textContent = STATE_LABELS[s] || s;
-  pill.className = `c-state ${s}`;
+  // Its reply is done but work it started is still running (a build, tests, a helper): it carries on.
+  const bg = s === 'ready' && (C.background || []).length;
+  pill.textContent = bg ? 'Working in the background' : STATE_LABELS[s] || s;
+  pill.className = `c-state ${s}${bg ? ' bg' : ''}`;
+  pill.title = bg ? `Still running: ${C.background.map(t => t.description).join('; ')}. It carries on with the result when that's done; the chat stays open for it.` : '';
   syncSend();
 }
 // Stop, the typing dots and Send/Queue follow whichever one your next message goes to.
@@ -125,6 +129,7 @@ function syncSend() {
   $c('cSend').title = busy ? `${name} ${ts.length > 1 ? 'are' : 'is'} working; this will be sent when ready` : `Send to ${name}`;
   $c('chat').classList.toggle('to-codex', C.target === 'comp' && duo() && partnerProv() === 'codex');
   $c('chat').classList.toggle('to-claude', C.target === 'comp' && duo() && partnerProv() === 'claude');
+  $c('chat').classList.toggle('to-gemini', C.target === 'comp' && duo() && partnerProv() === 'gemini');
   $c('chat').classList.toggle('to-both', C.target === 'both' && duo());
   // While either of them is writing, a band of light runs along the top of the message box (Codex's
   // color when only Codex is).
@@ -243,6 +248,7 @@ function handleEvent(ev, src) {
       toBottom();
       break;
     }
+    case 'background': { const box = src === 'comp' ? C.comp : C; if (box) box.background = ev.tasks || []; if (src !== 'comp') setState(C.state); renderCrew(); break; }
     default: break;
   }
 }
@@ -384,19 +390,21 @@ function crewPill(src) {
   const status = src === 'comp' ? C.comp && C.comp.status : '';
   const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : '');
   const label = mi ? `${modelLabel(mi)}${mi.effort ? ` ${cap(mi.effort)}` : ''}` : src === 'comp' && st === 'off' ? '' : '…';
-  const on = duo() ? C.target === src || C.target === 'both' : true;
-  const sub = st === 'waiting' ? 'needs your OK' : src === 'comp' && C.handoff ? 'up next…' : busy && status ? status : label;
+  const on = duo() ? (src === 'comp' ? (C.target === 'comp' && C.focus === prov) || C.target === 'both' : C.target === src || C.target === 'both') : true;
+  const bgList = (src === 'comp' ? C.comp && C.comp.background : C.background) || [];
+  const sub = st === 'waiting' ? 'needs your OK' : src === 'comp' && C.handoff === prov ? 'up next…' : busy && status ? status : st === 'ready' && bgList.length ? 'working in the background' : label;
   const mode = src === 'comp' ? compModeLabel() : '';
   // The partner's own account: how much room it has (the lead's is in the header).
   const acct = src === 'comp' && C.comp ? C.comp.accountId : null, room = acct ? usageLine(acct, { short: true }) : '';
   const left = acct ? roomLeft(acct) : null;
   const tip = (on ? `${PROV_NAME[prov]}: choose its model, effort${src === 'comp' && C.comp && C.comp.modes ? ' and what it may do' : ''}` : `Send your next message to ${PROV_NAME[prov]}${duo() ? ' (Ctrl+.)' : ''}`)
+    + (st === 'ready' && bgList.length ? `\nIn the background: ${bgList.map(t => t.description).join('; ')}` : '')
     + (mode ? `\nMay: ${mode}` : '')
     + (room ? `\nRoom: ${room}` : '')
     + (C.ctx[src] ? `\nContext: ${ctxLine(src)}` : '');
   const f = ctxFill(C.ctx[src]);
   const ring = f === null ? '' : `<span class="crew-ctx ${ctxClass(f)}" style="--p:${Math.round(f * 100)}" aria-hidden="true"></span>`;
-  return `<button type="button" class="crew ${prov}${on ? ' on' : ''}${busy ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}" data-crew="${src}" aria-pressed="${on}" title="${esc(tip)}">
+  return `<button type="button" class="crew ${prov}${on ? ' on' : ''}${busy ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}" data-crew="${src}"${src === 'comp' ? ` data-kind="${prov}"` : ''} aria-pressed="${on}" title="${esc(tip)}">
       <span class="crew-dot" aria-hidden="true"></span><span class="crew-n">${PROV_NAME[prov]}</span><span class="crew-m">${esc(sub)}</span>${mode && !busy && st !== 'waiting' && !['agent', 'default'].includes(C.comp && C.comp.mode) ? `<span class="crew-mode">${esc(mode)}</span>` : ''}${left !== null && left <= 25 ? `<span class="crew-room${left <= 5 ? ' low' : ''}" title="${esc(room)}">${left}%<span class="cr-l"> left</span></span>` : ''}${ring}${on ? '<span class="crew-caret" aria-hidden="true">▾</span>' : ''}</button>`;
 }
 // The partner's permission mode, by its own label ("Ask before acting", Codex's "Agent", …).
@@ -418,18 +426,21 @@ function renderCrew() {
   const two = duo();
   const both = C.target === 'both';
   const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
-  box.innerHTML = crewPill('main') + (two ? crewPill('comp') + (C.target !== 'main' || (C.comp && !C.comp.ended) ? `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : `Both: ${lead} answers, then ${mate} picks it up and builds on that. Uses room on both accounts, about twice a single reply.`}"><span class="crew-n">Both</span></button>` : '') + `<button type="button" class="crew both plan${C.target === 'plan' ? ' on' : ''}" data-crew="plan" aria-pressed="${C.target === 'plan'}" title="Plan first: ${lead} drafts a plan, ${mate} checks it, then you pick who builds it"><span class="crew-n">Plan</span></button>` : '');
+  const many = crewKinds().length > 1;
+  box.innerHTML = crewPill('main') + (two ? crewKinds().map(k => withComp(k, () => crewPill('comp'))).join('') + (C.target !== 'main' || Object.values(C.comps).some(c => c && !c.ended) ? `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : many ? `All: ${lead} answers, then ${crewKinds().map(k => PROV_NAME[k]).join(', then ')}, each building on what came before. Uses room on every account.` : `Both: ${lead} answers, then ${mate} picks it up and builds on that. Uses room on both accounts, about twice a single reply.`}"><span class="crew-n">${many ? 'All' : 'Both'}</span></button>` : '') + `<button type="button" class="crew both plan${C.target === 'plan' ? ' on' : ''}" data-crew="plan" aria-pressed="${C.target === 'plan'}" title="Plan first: ${lead} drafts a plan, ${mate} checks it, then you pick who builds it"><span class="crew-n">Plan</span></button>` : '');
   box.classList.toggle('duo', two);
   renderRelay();
-  $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · <b>@${partnerProv()}</b> or <b>@both</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;
+  $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · ${crewKinds().map(k => `<b>@${k}</b>`).join(', ')} or <b>@${many ? 'all' : 'both'}</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;
   if (!two && C.target !== 'main') setTarget('main');
 }
 function setTarget(t, focus = true) {
+  if (!C.focus) C.focus = partnerProv();   // the one of the others in view
   C.target = duo() && (t === 'comp' || t === 'both' || t === 'plan') ? t : 'main';
   const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
-  const name = C.target === 'both' || C.target === 'plan' ? `${lead} and ${mate}` : PROV_NAME[provFor(C.target)];
-  $c('cText').placeholder = C.target === 'comp' ? (mate === 'Codex' ? 'Ask Codex… an image, a quick test, a second opinion' : 'Ask Claude… a plan, a review, a second opinion')
-    : C.target === 'both' ? `Write to ${lead} and ${mate}: ${lead} answers, then ${mate} builds on it…`
+  const others = crewKinds().map(k => PROV_NAME[k]), all = others.length > 1 ? `${others.slice(0, -1).join(', ')} and ${others[others.length - 1]}` : mate;
+  const name = C.target === 'both' ? `${lead} and ${all}` : C.target === 'plan' ? `${lead} and ${mate}` : PROV_NAME[provFor(C.target)];
+  $c('cText').placeholder = C.target === 'comp' ? ({ Codex: 'Ask Codex… an image, a quick test, a second opinion', Gemini: 'Ask Gemini… a draft, a picture read, a second opinion' }[mate] || 'Ask Claude… a plan, a review, a second opinion')
+    : C.target === 'both' ? (others.length > 1 ? `Write to all: ${lead} answers, then ${all} in turn, each building on the last…` : `Write to ${lead} and ${mate}: ${lead} answers, then ${mate} builds on it…`)
     : C.target === 'plan' ? `Plan first: what should be done? ${lead} drafts a plan, ${mate} checks it, then you pick who builds…` : `Write to ${name}…`;
   $c('cText').setAttribute('aria-label', `Message ${name}`);
   renderCrew(); syncSend(); closePick();
@@ -557,47 +568,98 @@ async function quickSwitch(kind, value) {
 }
 
 // Starts (or reconnects to) the Codex helper for this Claude chat.
-function ensureCompanion() {
-  if (C.comp && !C.comp.ended) return Promise.resolve(C.comp);
-  if (C.compStarting) return C.compStarting;
+function ensureCompanion(kind = partnerProv()) {
+  const have = C.comps[kind];
+  if (have && !have.ended) return Promise.resolve(have);
+  const starting = C.compStarting || (C.compStarting = {});
+  if (starting[kind]) return starting[kind];
   const gen = C.gen;
-  C.compStarting = api('/api/chat/companion', { key: C.key, account: S.acct })
-    .then(info => { if (gen !== C.gen) throw new Error('You switched chats.'); attachComp(info); return C.comp; })
-    .finally(() => { C.compStarting = null; });
-  return C.compStarting;
+  starting[kind] = api('/api/chat/companion', { key: C.key, account: S.acct, kind })
+    .then(info => { if (gen !== C.gen) throw new Error('You switched chats.'); attachComp(info); return C.comps[info.provider || kind]; })
+    .finally(() => { delete starting[kind]; });
+  return starting[kind];
+}
+// The others that show as pills: the ones in the chat (running, or from before), then (unless only
+// those in the chat are asked for) every other assistant that's set up, ready to join.
+function crewKinds({ inChat = false } = {}) {
+  const out = [];
+  const add = k => { if (k && k !== C.provider && !out.includes(k)) out.push(k); };
+  for (const k of Object.keys(C.comps || {})) if (C.comps[k] && !C.comps[k].ended) add(k);
+  for (const k of C.crewKinds || []) add(k);
+  if (inChat) { if (!out.length && C.comp) add(C.comp.provider); if (!out.length) add(partnerProv()); return out; }
+  add(partnerProv());
+  for (const k of ['claude', 'codex', 'gemini']) if (kindReady(k)) add(k);
+  return out.filter(k => kindReady(k) || (C.comps[k] && !C.comps[k].ended));
+}
+// Runs f as if `kind` were the partner in view (its pill, its events, its model picker): the partner
+// code reads C.comp, C.mi.comp and C.ctx.comp, which point at that one meanwhile.
+function withComp(kind, f) {
+  const c = (C.comps || {})[kind] || null;
+  if (C.mate === kind && C.comp === c) return f();
+  if (C.comp) { C.comp.mi = C.mi.comp; C.comp.ctx = C.ctx.comp; }
+  const keep = { comp: C.comp, mate: C.mate, mi: C.mi.comp, ctx: C.ctx.comp };
+  C.comp = c; C.mate = kind; C.mi.comp = c ? c.mi || null : null; C.ctx.comp = c ? c.ctx || null : null;
+  try { return f(); } finally {
+    if (c) { c.mi = C.mi.comp; c.ctx = C.ctx.comp; }
+    C.comp = keep.comp; C.mate = keep.mate; C.mi.comp = keep.mi; C.ctx.comp = keep.ctx;
+  }
+}
+// Puts one of the others in view: the one you write to with its pill, Ctrl+. or @name.
+function focusMate(kind) {
+  if (!kind || kind === C.provider) return;
+  if (C.comp) { C.comp.mi = C.mi.comp; C.comp.ctx = C.ctx.comp; }
+  const c = C.comps[kind] || null;
+  C.comp = c; C.mate = kind; C.focus = kind; C.mi.comp = c ? c.mi || null : null; C.ctx.comp = c ? c.ctx || null : null;
 }
 // Opening a duo chat: both chats replay what they've done so far. The two replays are held until each
 // has finished and then played in time order, so the feed reads as one conversation (an event without
 // a time of its own keeps its place after the one before it in its own chat).
-const Merge = { on: false, q: { main: [], comp: [] }, done: { main: false, comp: false }, timer: null };
-function mergeStart(withComp) {
+const Merge = { on: false, q: { main: [] }, done: { main: false }, timer: null };
+// kinds: the crew members whose replays are coming (true, for one partner of unknown kind).
+function mergeStart(kinds) {
   clearTimeout(Merge.timer);
-  Object.assign(Merge, { on: !!withComp, q: { main: [], comp: [] }, done: { main: false, comp: !withComp } });
-  if (withComp) Merge.timer = setTimeout(mergeFlush, 5000);   // a replay that never finishes doesn't hold the feed
+  const list = kinds === true ? ['comp'] : Array.isArray(kinds) ? kinds : [];
+  Object.assign(Merge, { on: list.length > 0, q: { main: [] }, done: { main: false } });
+  for (const k of list) { Merge.q[k] = []; Merge.done[k] = false; }
+  if (list.length) Merge.timer = setTimeout(mergeFlush, 5000);   // a replay that never finishes doesn't hold the feed
 }
-function feedIn(ev, src) { if (Merge.on) Merge.q[src].push(ev); else handle(ev, src); }
-function replayed(src) { if (!Merge.on) return; Merge.done[src] = true; if (Merge.done.main && Merge.done.comp) mergeFlush(); }
+// src 'main' for the chat's own; a crew member's events come with its kind.
+function feedIn(ev, src, kind = null) {
+  const q = kind && Merge.q[kind] ? kind : kind && Merge.q.comp ? 'comp' : src;
+  if (Merge.on && Merge.q[q]) { Merge.q[q].push({ ev, kind }); return; }
+  if (kind) withComp(kind, () => handle(ev, 'comp')); else handle(ev, src);
+}
+function replayed(src) { if (!Merge.on) return; Merge.done[src] = true; if (Object.values(Merge.done).every(Boolean)) mergeFlush(); }
 function mergeFlush() {
   if (!Merge.on) return;
   Merge.on = false; clearTimeout(Merge.timer);
-  const stamp = (list, src) => { let t = 0; return list.map(ev => { t = (ev.at && Date.parse(ev.at)) || t; return { ev, t, src }; }); };
-  const a = stamp(Merge.q.main, 'main'), b = stamp(Merge.q.comp, 'comp'), all = [];
-  let i = 0, j = 0;
-  while (i < a.length || j < b.length) all.push(j >= b.length || (i < a.length && a[i].t <= b[j].t) ? a[i++] : b[j++]);
-  Merge.q = { main: [], comp: [] };
-  for (const x of all) { try { handle(x.ev, x.src); } catch (err) { console.error(err); } }
+  const stamp = (list, src) => { let t = 0; return list.map((x, n) => { t = (x.ev.at && Date.parse(x.ev.at)) || t; return { ev: x.ev, kind: x.kind, t, n, src }; }); };
+  // Each list keeps its own order; across them, the earliest next one goes first (a tie: the chat's own).
+  const lists = Object.entries(Merge.q).map(([k, l]) => stamp(l, k === 'main' ? 'main' : 'comp'));
+  const at = lists.map(() => 0), out = [];
+  for (;;) {
+    let best = -1;
+    lists.forEach((l, i) => { if (at[i] < l.length && (best < 0 || l[at[i]].t < lists[best][at[best]].t)) best = i; });
+    if (best < 0) break;
+    out.push(lists[best][at[best]++]);
+  }
+  Merge.q = { main: [] };
+  for (const x of out) { try { if (x.kind) withComp(x.kind, () => handle(x.ev, 'comp')); else handle(x.ev, x.src); } catch (err) { console.error(err); } }
 }
 function attachComp(info) {
-  if (C.comp && C.comp.es) C.comp.es.close();
-  C.comp = { key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
-  if (info.models && info.models.length) C.mi.comp = info;
-  if (info.context) C.ctx.comp = info.context;
+  const kind = info.provider || partnerProv();
+  const old = C.comps[kind];
+  if (old && old.es) old.es.close();
+  const slot = { background: info.background || [], provider: kind, mi: info.models && info.models.length ? info : null, ctx: info.context || null, key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
+  C.comps[kind] = slot;
+  // In view if it's the one you're working with (or the only one).
+  if (!C.comp || C.comp.provider === kind || C.mate === kind || C.comp.ended) focusMate(kind);
   const key = info.key;
   const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=0`);
-  es.addEventListener('chat', e => { if (!C.comp || C.comp.key !== key) return; try { feedIn(JSON.parse(e.data), 'comp'); } catch (err) { console.error(err); } });
-  es.addEventListener('replayed', () => { if (C.comp && C.comp.key === key) replayed('comp'); });
-  es.onerror = () => { if (C.comp && C.comp.key === key && C.comp.ended) es.close(); };
-  C.comp.es = es;
+  es.addEventListener('chat', e => { const c = C.comps[kind]; if (!c || c.key !== key) return; try { feedIn(JSON.parse(e.data), 'comp', kind); } catch (err) { console.error(err); } });
+  es.addEventListener('replayed', () => { const c = C.comps[kind]; if (c && c.key === key) replayed(Merge.q[kind] ? kind : 'comp'); });
+  es.onerror = () => { const c = C.comps[kind]; if (c && c.key === key && c.ended) es.close(); };
+  slot.es = es;
   renderCrew(); renderLedgerSoon();
 }
 
