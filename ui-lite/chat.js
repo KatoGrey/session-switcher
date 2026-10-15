@@ -131,7 +131,7 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
   if (CV.es) { CV.es.close(); CV.es = null; }
   // When it catches up on a chat you're reading higher up in, you stay where you were; otherwise it opens at the end.
   const readAt = keepRead ? CV.readAt : null;
-  Object.assign(CV, { readAt, id, key, inRepo: false, info: null, items: [], queue: queueFor(id), cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false });
+  Object.assign(CV, { readAt, id, key, inRepo: false, info: null, items: [], queue: queueFor(id), cursor: null, live: '', status: '', pending: new Map(), busy: false, startedAt: 0, loading: true, error: null, readOnly: null, sending: false, replaying: null });
   CV.to = toFor(id); partnerReset();
   CV.progressAt = 0; CV.lastStep = null;
   resetComposer();
@@ -162,8 +162,10 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
   } catch (err) { if (seq !== openSeq) return; CV.error = hit ? null : err.message; }
   CV.loading = false;
   if (S.view !== 'chat' || CV.id !== id) return;
-  paintChat(); paintQueue();
-  if (CV.key) { listen(CV.key); partnerFind(); }
+  // A running chat is painted once its stream has caught up (see listen), so the end of the
+  // conversation doesn't vanish and then play back step by step.
+  if (CV.key) { listen(CV.key, { paint: true }); partnerFind(); } else paintChat();
+  paintQueue();
   // Anything queued while you were away goes once it's free.
   if (CV.queue.length) setTimeout(sendQueued, 1500);
 }
@@ -182,10 +184,17 @@ async function loadEarlier() {
   if (sc) sc.scrollTop = sc.scrollHeight - before;
 }
 
-function listen(key) {
+function listen(key, { paint = false } = {}) {
   if (CV.es) CV.es.close();
   const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}`);
   CV.es = es; CV.lastEventAt = Date.now();
+  // On connecting, the stream first replays this run so far (its steps, the "working" line, the
+  // reply). That's taken in without painting and shown once at the end ("replayed"); before, opening
+  // a chat showed its reply, played the last turn back, then showed the reply again.
+  CV.replaying = es;
+  const caughtUp = () => { if (CV.replaying !== es) return; CV.replaying = null; if (paint) paintChat(); else { paintFeed(); paintBar(); } };
+  es.addEventListener('replayed', caughtUp);
+  setTimeout(caughtUp, 4000);
   es.addEventListener('hello', e => { CV.lastEventAt = Date.now(); try { CV.info = JSON.parse(e.data); CV.busy = ['busy', 'waiting', 'starting'].includes(CV.info.state) || CV.sending; paintBar(); paintHead(); } catch { /* fine */ } });
   es.addEventListener('chat', e => { CV.lastEventAt = Date.now(); let ev; try { ev = JSON.parse(e.data); } catch { return; } onEvent(ev); });
 }
@@ -489,7 +498,7 @@ const nearBottom = () => { const f = $('feed'); return !f || f.scrollHeight - f.
 // Messages already on screen stay as they are (pictures don't reload, open step lists stay open);
 // new ones are added at the end and only a segment that changed is swapped.
 function paintFeed() {
-  const el = $('feedInner'); if (!el) return;
+  const el = $('feedInner'); if (!el || CV.replaying) return;
   const stick = nearBottom();
   if (!$('feedSegs')) el.innerHTML = '<div id="feedTop" class="segs"></div><div id="feedSegs" class="segs"></div><div id="liveText" class="msg-ai live"></div><div id="pendingBox"></div><div id="statusLine" class="step live-status"></div>';
   const top = `${CV.cursor ? '<button class="linkish earlier" data-earlier="1">Earlier messages</button>' : ''}${CV.loading ? '<p class="empty-note">Loading…</p>' : CV.error ? `<p class="empty-note">${esc(CV.error)}</p>` : !CV.items.length ? '<p class="empty-note">Nothing here yet.</p>' : ''}`;
@@ -506,13 +515,13 @@ function paintFeed() {
   if (stick) $('feed').scrollTop = $('feed').scrollHeight;
 }
 function appendItem() { paintFeed(); }
-function paintLive() { const el = $('liveText'); if (!el) return; const stick = nearBottom(); const pl = typeof PARTNER !== 'undefined' ? PARTNER.live : ''; el.innerHTML = (CV.live ? mdHtml(CV.live) : '') + (pl ? `<div class="from-partner"><span class="who">${esc(partnerName())}</span>${mdHtml(pl)}</div>` : ''); el.hidden = !CV.live && !pl; if (stick) $('feed').scrollTop = $('feed').scrollHeight; }
+function paintLive() { const el = $('liveText'); if (!el || CV.replaying) return; const stick = nearBottom(); const pl = typeof PARTNER !== 'undefined' ? PARTNER.live : ''; el.innerHTML = (CV.live ? mdHtml(CV.live) : '') + (pl ? `<div class="from-partner"><span class="who">${esc(partnerName())}</span>${mdHtml(pl)}</div>` : ''); el.hidden = !CV.live && !pl; if (stick) $('feed').scrollTop = $('feed').scrollHeight; }
 // How long it's been working, to the second (the page's own clock, not the list's).
 const workedFor = t => { const s = Math.max(0, Math.floor((Date.now() - t) / 1000)); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m ${String(s % 60).padStart(2, '0')}s` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 // The line under the conversation while it works: what it's doing, the end of its thinking when the
 // model shares it (Claude does; Codex only says it's thinking), and the time.
 function paintStatus() {
-  const el = $('statusLine'); if (!el) return;
+  const el = $('statusLine'); if (!el || CV.replaying) return;
   const quietMin = CV.busy && CV.progressAt && CV.lastStep !== 'tool' && !CV.pending.size ? Math.floor((Date.now() - CV.progressAt) / 60000) : 0;
   if (quietMin >= 4) {
     el.hidden = false;
@@ -532,7 +541,7 @@ function paintStatus() {
 }
 function paintPending() {
   paintStatus();
-  const el = $('pendingBox'); if (!el) return;
+  const el = $('pendingBox'); if (!el || CV.replaying) return;
   // Only redrawn when what's asked changes, so answers you've started picking stay picked.
   const sig = [...CV.pending.keys()].join(',');
   if (el._sig === sig && el.innerHTML) { if (CV.pending.size && nearBottom()) $('feed').scrollTop = $('feed').scrollHeight; return; }
@@ -628,7 +637,7 @@ function toolsHtml({ fresh }) {
     ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button><button type="submit" class="send" aria-label="Queue (↵) · tell it now (⌥↵)" title="↵ queues it for when it finishes · ⌥↵ tells it now, while it works">↑</button>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
 }
 function paintBar() {
-  const t = $('barTools'); if (!t || S.view !== 'chat') return;
+  const t = $('barTools'); if (!t || S.view !== 'chat' || CV.replaying) return;
   if (CV.info) rememberModels(provNow(), CV.info);
   const ro = $('roNote');
   if (ro) { ro.hidden = !CV.readOnly; ro.textContent = CV.readOnly || ''; }
