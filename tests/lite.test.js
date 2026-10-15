@@ -28,6 +28,17 @@ test('use-next order: per family, soonest reset first, plans at or below the flo
   assert.deepEqual(lite.useNextOrder(plans, 50).chatgpt, ['cx-per', 'cx-aid'], 'below a 50% floor it drops out');
 });
 
+test('use-next order: a cancelled plan goes first until it ends, then drops out', () => {
+  const plans = [
+    { id: 'cx-lat', family: 'chatgpt', left: 97, resetsAt: at(NOW + 3 * D) },
+    { id: 'cx-per', family: 'chatgpt', left: 99, resetsAt: at(NOW + 4 * D) },
+    { id: 'cx-aid', family: 'chatgpt', left: 99, resetsAt: at(NOW + 4 * D), endsAt: at(NOW + 16 * D) },
+  ];
+  assert.deepEqual(lite.useNextOrder(plans, 15, NOW).chatgpt, ['cx-aid', 'cx-lat', 'cx-per'], 'ending: its whole remaining time is lost, so it goes first');
+  assert.deepEqual(lite.useNextOrder(plans, 15, NOW + 17 * D).chatgpt, ['cx-lat', 'cx-per'], 'after it ends it is out');
+  assert.deepEqual(lite.useNextOrder([{ ...plans[2], left: 10 }, plans[0]], 15, NOW).chatgpt, ['cx-lat'], 'still kept above the floor');
+});
+
 test('use-next order: a week that hasn’t started goes last; ties go to the one with less left', () => {
   const plans = [
     { id: 'fresh', family: 'chatgpt', left: 100, resetsAt: null },
