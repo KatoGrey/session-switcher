@@ -2938,7 +2938,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
     if (req.method === 'GET' && (url.pathname === '/lite' || url.pathname === '/lite/')) {
       // Opened here: from now on (and after restarts) its background checks run.
       try { if (liteStore.markUsed()) log('Switcher Lite opened here for the first time; its background checks start.'); liteRoutes.startSampling(); } catch (err) { log(`Lite: ${err.message}`); }
-      const html = fs.readFileSync(path.join(APP_DIR, 'ui-lite', 'index.html'), 'utf8').replace('/apple-touch-icon.png', liteIconPath()).replace('__TOKEN__', TOKEN).replace('__REMOTE__', remote ? 'true' : 'false');
+      const html = fs.readFileSync(path.join(APP_DIR, 'ui-lite', 'index.html'), 'utf8').replace('/apple-touch-icon.png', liteIconPath()).replace('__ICON__', liteIconPath()).replace('__TOKEN__', TOKEN).replace('__REMOTE__', remote ? 'true' : 'false');
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': LITE_CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       return res.end(html);
     }

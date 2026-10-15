@@ -85,16 +85,20 @@ function paintMute() {
   b.innerHTML = `<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6h2.3L8 3.3v9.4L4.8 10H2.5Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>${prefs.sound ? '<path d="M10.6 5.6a3.4 3.4 0 0 1 0 4.8M12.4 3.9a5.8 5.8 0 0 1 0 8.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' : '<path d="m10.5 6 4 4m0-4-4 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'}</svg>`;
 }
 
-/* ---------- the count in the title and the tab's icon ---------- */
+/* ---------- the tab: its name and icon ---------- */
+// Just "Switcher", with the look's icon (icons.js). When a chat needs you, the icon gets a dot in
+// the needs colour; it follows the running list, so it goes as soon as nothing does. (No count: it
+// went stale in a background tab, and routine reports kept it up.)
 const FAV = $('favicon');
 let favBase = null;
 function updateBadge() {
-  const n = S.live.filter(needsLive).length + (typeof rtEventsOpen === 'function' ? rtEventsOpen().filter(e => e.kind !== 'ran').length : 0);
-  document.title = n ? `(${n}) Switcher Lite` : 'Switcher Lite';
-  if (!FAV) return;
-  if (!favBase) favBase = FAV.href;
-  if (!n) { FAV.href = favBase; return; }
+  const n = S.live.filter(needsLive).length;
+  if (document.title !== 'Switcher') document.title = 'Switcher';
+  if (!FAV || typeof ICONS === 'undefined') return;
+  const key = shownIcon || iconFor(baseSkin(S.lite.look && S.lite.look.skin));   // the one the look put up
   const accent = getComputedStyle(document.documentElement).getPropertyValue('--needs').trim() || '#3b78e7';
-  FAV.href = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6Z" fill="#7a7b74"/><circle cx="12.5" cy="3.5" r="3.3" fill="${accent}"/></svg>`)}`;
+  const svg = n ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${ICONS[key].svg.replace('<svg ', '<svg width="64" height="64" ')}<circle cx="51" cy="13" r="11" fill="${accent}" stroke="#fff" stroke-width="3"/></svg>` : ICONS[key].svg;
+  const href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  if (FAV.href !== href) FAV.href = href;
 }
 paintMute();
