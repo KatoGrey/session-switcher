@@ -336,7 +336,6 @@ document.addEventListener('click', e => {
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
   if ((b = el('[data-renamechat]'))) return editTitleInline();
   if ((b = el('[data-barmodel]'))) return modelMenu(b);
-  if ((b = el('[data-chataccount]'))) return chatAccountMenu(b);
   if ((b = el('[data-bareffort]'))) return effortMenu(b);
   if ((b = el('[data-chatsettings]'))) return settingsMenu(b);
   if ((b = el('[data-attach]'))) { $('attIn')?.click(); return undefined; }

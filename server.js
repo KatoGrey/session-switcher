@@ -362,7 +362,7 @@ const pairs = pairsLib.createPairs({
       const follow = followMode(leadKind, lead.permissionMode, 'claude');
       return chats.open({ extraArgs: chatArgs(), cfg: c, account: a, cwd: lead.cwd, sessionId, permissionMode: chatLib.MODES.includes(follow) ? follow : chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: `Claude · ${lead.title || 'New chat'}`, folder: lead.folder });
     }
-    let inst = await codexChecked(codexForThread(remembered));
+    let inst = await codexChecked(codexForThread(remembered, accountId && isCodexAccount(accountId) ? accountId : null));
     if (!inst.publicState().signedIn) inst = await codexChecked(codexActive());
     requireCodexSignedIn(inst);
     const pref = chatPrefs.get({ sessionId: remembered, cwd: lead.cwd, provider: 'codex' });

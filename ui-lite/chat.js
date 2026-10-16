@@ -693,7 +693,7 @@ async function ensureReply(p) {
   const check = () => { if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) throw new Error('The chat changed. Pick the assistant again here.'); };
   let lead = CV.info;
   if (!CV.key) {
-    lead = await api('/api/chat/open', { sessionId: id, mode: 'resume', provider: CV.provider, account: (chatBy.get(id) || {}).accountId || accountFor(provNow()), permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
+    lead = await api('/api/chat/open', { sessionId: id, mode: 'resume', provider: CV.provider, account: accountFor(provNow()) || (chatBy.get(id) || {}).accountId, permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
     check(); CV.key = lead.key; CV.info = lead; listen(lead.key);
   }
   await waitReadyFor(CV.key); check();
@@ -720,7 +720,9 @@ async function changeReply(p, changes = {}) {
       // Stopping a lead also stops its partners. Never discard an active turn to change accounts.
       const fresh = await api('/api/chat/attach', { key: info.key });
       if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
-      if (['busy', 'waiting', 'starting'].includes(fresh.state) || (info.key === CV.key && PARTNER.busy)) throw new Error('Let this reply finish, or stop it, before changing accounts.');
+      const crew = info.key === CV.key ? await Promise.all((fresh.crew || []).map(p => api('/api/chat/attach', { key: p.key }))) : [];
+      if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
+      if ([fresh, ...crew].some(p => ['busy', 'waiting', 'starting'].includes(p.state) || (p.background || []).length)) throw new Error('Let the current reply and background work finish before changing accounts.');
       if (!fresh.sessionId) throw new Error('The chat is still starting. Try the account again in a moment.');
       const isLead = info.key === CV.key;
       await api('/api/chat/stop', { key: info.key });
@@ -751,16 +753,33 @@ async function changeReply(p, changes = {}) {
       }
       await waitReadyFor(info.key);
     }
-    const { account, ...modelChanges } = changes;
+    const modelChanges = { ...changes }; delete modelChanges.account;
     if (Object.keys(modelChanges).length) Object.assign(info, await api('/api/chat/model', { key: info.key, ...modelChanges }));
     if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
     if (info.key === CV.key) CV.info = info;
     else if (PARTNERS.has(info.key)) PARTNERS.get(info.key).info = info;
     CV.to = keepBoth ? 'both' : p === provNow() ? 'chat' : `partner:${p}`;
-    if (account) { const chosen = local.get('chat-accounts', {}); chosen[id] = { ...chosen[id], [p]: account }; local.set('chat-accounts', chosen); }
     setTo(id, CV.to); paintBar();
     toast(keepBoth ? `${toName('both')} will answer your next message.` : `${p === 'codex' ? 'Codex' : provName(p)}${info.accountName ? ` · ${info.accountName}` : ''} answers your next message here.`);
   } finally { switchingChat = null; paintBar(); }
+}
+// Account selection belongs to the Bridge. Apply it when a message is about to start, and fall
+// back automatically when the current plan is exhausted. Changing a plan never submits a prompt.
+async function applyReplyPlan() {
+  const id = CV.id, seq = openSeq, to = CV.to;
+  const kinds = to === 'both' ? [provNow(), ...crewKindsLite()] : [replyProv()];
+  for (const p of kinds) {
+    if (!['claude', 'codex'].includes(p)) continue;
+    const family = p === 'claude' ? 'claude' : 'chatgpt', next = useNext(family);
+    const target = p === provNow() ? CV.info || chatBy.get(id) : ([...PARTNERS.values()].find(x => x.prov === p) || {}).info;
+    const current = target && planById(target.accountId);
+    if (!next || (target && target.accountId === next.id)) continue;
+    if (!preferredPlan(family) && !(current && (current.broken || current.left === 0 || current.fiveLeft === 0))) continue;
+    await changeReply(p, { account: next.id });
+    if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return false;
+    CV.to = to; setTo(id, to); paintBar();
+  }
+  return true;
 }
 const prettyModel = m => String(m).replace(/^claude-/, '').replace(/-(\d)-(\d)/, ' $1.$2').replace(/\[1m\]$/, ' 1M').replace(/^(\w)/, c => c.toUpperCase());
 const modelLabel = (prov, v) => { const base = String(v).replace(/\[1m\]$/, ''); const m = modelsFor(prov).find(x => x.value === v || x.value === base); return m ? `${m.label}${/\[1m\]$/.test(v) ? ' 1M' : ''}` : prettyModel(v); };
@@ -774,7 +793,6 @@ function toolsHtml({ fresh }) {
   const md0 = MD(prov);
   const busy = !fresh && replyBusy();
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
-    ${fresh ? '' : `<button type="button" class="model account-chip" data-chataccount="1" aria-haspopup="menu" title="Switch assistant or account">${esc(CV.to === 'both' ? toName('both') : `${prov === 'codex' ? 'Codex' : provName(prov)}${info && info.accountName ? ` · ${info.accountName}` : ''}`)}<span>▾</span></button>`}
     <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : ''}${prov === 'codex' && ((info && info.fast) || (!info && COMP.fast)) ? ' ⚡' : ''}<span>▾</span></button>
     <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
     <span class="bar-hint" id="barHint"></span>
@@ -947,6 +965,7 @@ async function sendInChat({ fromQueue = false } = {}) {
     if (!steer) { CV.queue.push({ text, images: imgs }); paintQueue(); sfx('chip'); return undefined; }
     return steerIn(text, imgs);
   }
+  try { if (!await applyReplyPlan()) return; } catch (err) { toast(err.message); return; }
   if (COMP.converting) return toast('One moment: a picture is still being prepared.');
   // The message belongs to the chat it was written in. Starting a chat that wasn't running takes a
   // few seconds; if you open another chat meanwhile, it still goes here (Oct 13: it went to the chat
@@ -1084,7 +1103,7 @@ function modelMenu(anchor) {
     const runList = here && running && info.models && info.models.length ? info.models.filter(m => m.value !== 'default') : null;
     const all = offered(p, runList || [...md0.models, ...md0.more]);
     const main = all, more = [];
-    const plan = p === 'ollama' ? null : useNext(p === 'claude' ? 'claude' : 'chatgpt');
+    const plan = p === 'ollama' ? null : (here && info && planById(info.accountId)) || useNext(p === 'claude' ? 'claude' : 'chatgpt');
     const sub = inChat && !here ? p === 'ollama' || provNow() === 'ollama' ? 'starts a new chat there' : 'answers in this chat' : p === 'ollama' ? 'no plan limits' : plan ? `${plan.label} · ${plan.left}%` : '';
     return `<div class="ph">${provName(p)}${sub ? ` · ${esc(sub)}` : ''}${here && md0.defaultModel ? ` · default ${esc(md0.defaultModel)}` : ''}</div>${main.map(m => item(p, m)).join('')}${more.length ? `<details class="pop-more"><summary>More ${provName(p)} models</summary>${more.map(m => item(p, m)).join('')}</details>` : ''}`;
   };
@@ -1175,23 +1194,8 @@ const NC = { project: null, who: 'claude', account: null };
 function accountFor(who) {
   if (who === 'ollama') { const o = plans().find(p => p.family === 'ollama' && !p.broken); return o ? o.id : null; }
   if (S.view === 'newchat' && NC.who === who && NC.account) return NC.account;
-  const chosen = S.view === 'chat' && (local.get('chat-accounts', {})[CV.id] || {})[who];
-  if (chosen && plans().some(p => p.id === chosen && !p.broken)) return chosen;
   const p = useNext(who === 'claude' ? 'claude' : 'chatgpt');
   return p ? p.id : null;
-}
-function chatAccountMenu(anchor) {
-  const prov = replyProv(), info = replyTarget().info;
-  const group = (p, family, name) => {
-    const ps = plans().filter(x => x.family === family && !x.broken);
-    if (!ps.length) return '';
-    return `<div class="ph">${name} · same conversation</div>${ps.map(x => `<button data-v="${esc(p)}|${esc(x.id)}" role="menuitemradio" aria-checked="${p === prov && !!info && info.accountId === x.id}">${esc(x.label)}<small>${typeof x.fiveLeft === 'number' ? `${x.fiveLeft}% of 5h left` : typeof x.left === 'number' ? `${x.left}% of week left` : 'usage unknown'}</small></button>`).join('')}`;
-  };
-  const groups = provNow() === 'ollama' ? [group('ollama', 'ollama', 'Ollama')] : [group('claude', 'claude', 'Claude'), group('codex', 'chatgpt', 'Codex')];
-  pop(anchor, groups.filter(Boolean).join('<hr>') || '<div class="ph">No signed-in accounts available</div>', raw => {
-    const [p, account] = raw.split('|');
-    return wrap(changeReply)(p, { account });
-  });
 }
 function accountMenu(anchor) {
   const row = (who, id, label, sub, checked) => `<button data-v="${who}:${id}" role="menuitemradio" aria-checked="${checked}">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
