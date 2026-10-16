@@ -1105,3 +1105,55 @@ blockquote p { margin: 4px 0; }
 .side-bucket-btn .chev { margin-left: auto; font-size: 10px; }
 .side-bucket-btn:hover { color: var(--fg); }
 .later-chats { opacity: .85; }
+
+/* ---------- Tokens (tokens.js): the Bridge card and its page ---------- */
+.tk-card { display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(180px, 1.3fr) minmax(200px, 1.2fr); gap: 22px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r); background: var(--pane); }
+.tk-stat { display: flex; flex-direction: column; gap: 2px; }
+.tk-label { color: var(--muted); font-size: 12px; }
+.tk-big { font: 600 34px/1.05 var(--f-ui, inherit); letter-spacing: -0.01em; color: var(--fg); }
+.tk-sub { font-size: 12px; color: var(--muted); }
+.tk-delta { font-weight: 600; color: var(--fg-2); }
+.tk-spark { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tk-cap { color: var(--muted); font-size: 11px; }
+.tk-proj, .tk-bars { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tk-prow, .tk-brow { display: grid; grid-template-columns: minmax(80px, 1fr) minmax(60px, 1.2fr) auto; gap: 10px; align-items: center; text-align: left; padding: 2px 4px; margin: 0 -4px; border-radius: 6px; font-size: 13px; color: var(--fg); }
+button.tk-prow:hover, button.tk-brow:hover { background: var(--hover); }
+.tk-pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-pname small, .tk-pval small { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.tk-ptrack { height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--accent) 12%, transparent); overflow: hidden; }
+.tk-ptrack i { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--accent); }
+.tk-pval { font-variant-numeric: tabular-nums; color: var(--fg-2); font-size: 12.5px; text-align: right; white-space: nowrap; }
+.tk-chart { position: relative; width: 100%; }
+.tk-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.tk-bar { fill: var(--accent); }
+.tk-bar.old { fill: color-mix(in srgb, var(--muted) 45%, transparent); }
+.tk-hit { fill: transparent; cursor: default; }
+.tk-hit:hover { fill: color-mix(in srgb, var(--fg) 5%, transparent); }
+.tk-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.tk-base { stroke: var(--line-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.tk-tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.tk-tip { position: absolute; top: -8px; transform: translateY(-100%); width: 170px; padding: 8px 10px; border-radius: 8px; background: var(--pane); border: 1px solid var(--line-2); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--fg-2); pointer-events: none; z-index: 5; }
+.tk-tip b { color: var(--fg); font-size: 14px; }
+.tk-tip-row { color: var(--muted); }
+.tk-page { gap: 26px; }
+.tk-hero { display: flex; flex-direction: column; gap: 4px; padding: 6px 0 4px; }
+.tk-hero-n { font: 600 64px/1 var(--f-ui, inherit); letter-spacing: -0.02em; color: var(--fg); }
+.tk-split { margin: 6px 0 0; color: var(--fg-2); font-size: 13.5px; }
+.tk-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.tk-fact { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--pane); min-width: 0; }
+.tk-fact span { color: var(--muted); font-size: 12px; }
+.tk-fact b { font: 600 22px/1.2 var(--f-ui, inherit); color: var(--fg); }
+.tk-fact small { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-table summary { color: var(--muted); font-size: 12px; cursor: pointer; margin-top: 8px; }
+.tk-table table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.tk-table th, .tk-table td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.tk-table th:first-child, .tk-table td:first-child { text-align: left; }
+.tk-table th { color: var(--muted); font-weight: 500; }
+.tk-chat { display: flex; align-items: center; gap: 12px; }
+.tk-chat .t { flex: 1; min-width: 0; }
+.tk-note { color: var(--muted); font-size: 12px; margin: 0; }
+@media (max-width: 760px) {
+  .tk-card { grid-template-columns: 1fr; gap: 14px; }
+  .tk-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tk-hero-n { font-size: 52px; }
+}

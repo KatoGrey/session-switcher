@@ -157,7 +157,7 @@ function score(text, q) {
 function palItems(q) {
   const acts = [
     { t: L('Now'), s: 'g n', run: () => go('now') }, { t: L('Projects'), s: 'g p', run: () => go('home') }, { t: 'Hackathon', s: 'g h', run: () => go('hack') }, { t: 'Bugs', s: 'g b', run: () => go('bugs') }, { t: 'Routines', s: 'g o', run: () => go('routines'), alias: 'automation schedule checker cron' }, { t: 'New routine', run: () => newRoutine('check'), alias: 'automation schedule checker' },
-    { t: L('Recents'), s: 'g r', run: () => go('recent') }, { t: 'Images', s: 'g i', run: () => go('images'), alias: 'pictures gallery gpt image' }, { t: 'Archived', s: 'g a', run: () => go('archived') },
+    { t: L('Recents'), s: 'g r', run: () => go('recent') }, { t: 'Images', s: 'g i', run: () => go('images'), alias: 'pictures gallery gpt image' }, { t: 'Tokens', run: () => go('tokens'), alias: 'usage tokens spent per day month projects flex' }, { t: 'Archived', s: 'g a', run: () => go('archived') },
     { t: 'Clean up', s: 'g c · free space, worktrees', run: () => go('cleanup'), alias: 'disk space node_modules worktree' }, { t: 'Phone alerts', run: () => go('alerts'), alias: 'push notifications iphone' },
     { t: L('New chat'), s: 'c', run: () => go('newchat'), alias: 'start' },
     ...(S.view === 'chat' && chatBy.get(CV.id) ? [{ t: 'Rename this chat', s: 'or click its title', run: () => editTitleInline(), alias: 'title name' }] : []),
