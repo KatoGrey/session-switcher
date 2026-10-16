@@ -1,4 +1,13 @@
-# Pick who works together, pictures you can zoom and copy, Gemini in the top bar, links to any folder
+# Update Codex and Gemini from Setup, a safety fix for links, and a smoother app
+
+- **Update Codex** and **Update Gemini** in Setup, beside **Update Claude Code**. New Codex models (like GPT-6.1-Sol) only show up with a newer Codex, so Setup's Codex part now says which version you have and when a newer one is out. If Codex or Gemini chats are running, it says so: Windows can't update a program that's in use, so stop them and click again.
+- **Safer links:** a link or picture with a network path (`\\some-server\share\…`) no longer opens, and isn't even looked up. Looking one up made Windows connect to that server and offer it your sign-in. Folders on your own computer open as before.
+- **Together, steadier:** if one of them can't take your message, it says who missed it and the others carry on (no error asking you to send it all again), and taking turns no longer stalls when one in the middle can't start. From Codex's own check of the app.
+- **With three in a chat:** "still working, send now?" and the light along the message box notice every one of them, not only the one in view; `@gemini` and `@all` work like `@codex`; a Gemini chat that stops says Gemini (not Claude Code); a Gemini partner's "getting full" note names Gemini.
+- **Smoother:** the buttons under the message box aren't redrawn several times a second while a reply streams (a tooltip under your pointer stays put), and while Session Switcher is minimized or in the tray it waits to redraw until you're back; the title and the tray's count stay up to date.
+- **Race on a Mac:** a copy's quick edit that kept a file the same size could go unseen; now it's always counted.
+
+## Earlier in 6.5.3: pick who works together, pictures you can zoom and copy, Gemini in the top bar, links to any folder
 
 - **Pictures open fitted to the window.** A tall screenshot used to open at full size with most of it cut off; now it fits whole. Zoom with the mouse wheel (or pinch on a phone, or − and +), drag to look around, and press 0 to fit it again.
 - **Copy picture and Save** in the picture viewer (Ctrl+C, Ctrl+S): copy it and paste it anywhere to share it. Pictures opened as files can be copied and viewed full screen too, and a picture you're about to send opens full size when you click it.
