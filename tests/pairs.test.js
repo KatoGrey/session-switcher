@@ -283,7 +283,7 @@ test('pairs: plan first drafts, has the other check it, then asks who builds', a
 });
 
 // A crew of three: Codex and Gemini in a Claude chat.
-function crewSetup() {
+function crewSetup({ unavailable = [] } = {}) {
   const all = new Map();
   const chats = {
     get: k => { const c = all.get(k); if (!c) throw new Error('gone'); return c; },
@@ -297,7 +297,7 @@ function crewSetup() {
     chats, prefs,
     transcript: async () => [],
     kindOf: id => kinds.get(id) || null,
-    startPartner: async (lead, { remembered, kind }) => { started.push({ remembered, kind }); const id = remembered || `${kind}-${n + 1}`; kinds.set(id, kind); return add(new FakeChat({ provider: kind, sessionId: id })); },
+    startPartner: async (lead, { remembered, kind }) => { started.push({ remembered, kind }); if (unavailable.includes(kind)) throw new Error(`${kind} is unavailable`); const id = remembered || `${kind}-${n + 1}`; kinds.set(id, kind); return add(new FakeChat({ provider: kind, sessionId: id })); },
   });
   return { pairs, prefs, add, started, kinds };
 }
@@ -400,6 +400,45 @@ test('crew: at the same time without the chat’s own: Codex and Gemini in a Cla
   assert.equal(lead.sent.length, 0, 'Claude sits out');
   assert.equal(cx.sent.length, 1); assert.equal(gm.sent.length, 1);
   assert.match(gm.sent[0].text, /to Codex and you at the same time/);
+});
+
+test('crew: at the same time, a delivery failure leaves the successful sends accepted', async () => {
+  const { pairs, add } = crewSetup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  const cx = await pairs.ensure(lead, { kind: 'codex' });
+  cx.send = () => { throw new Error('The chat has stopped.'); };
+  const sent = await pairs.sendTogether(lead, 'Claude: code. Codex: icons. Gemini: review.', [], { kinds: ['claude', 'codex', 'gemini'] });
+  assert.deepEqual(sent.map(c => c.provider), ['claude', 'gemini']);
+  assert.equal(lead.sent.length, 1, 'the successful send is not reported as failed and retried');
+  assert.equal(sent[1].sent.length, 1);
+  assert.ok(lead.buffer.some(e => e.kind === 'notice' && e.level === 'warning' && /Codex.*The chat has stopped\./.test(e.text)), 'the failed recipient is named');
+});
+
+test('crew: at the same time, all delivery failures reject after naming each recipient', async () => {
+  const { pairs, add } = crewSetup();
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  const cx = await pairs.ensure(lead, { kind: 'codex' });
+  for (const c of [lead, cx]) c.send = () => { throw new Error('The chat has stopped.'); };
+  await assert.rejects(pairs.sendTogether(lead, 'Try both.', [], { kinds: ['claude', 'codex'] }), err => err.status === 500);
+  const warnings = lead.buffer.filter(e => e.kind === 'notice' && e.level === 'warning').map(e => e.text);
+  assert.ok(warnings.some(t => /Claude.*The chat has stopped\./.test(t)));
+  assert.ok(warnings.some(t => /Codex.*The chat has stopped\./.test(t)));
+});
+
+test('crew: take turns skips an unavailable middle assistant without waiting for the first again', async () => {
+  const { pairs, add } = crewSetup({ unavailable: ['codex'] });
+  const lead = add(new FakeChat({ sessionId: 'L' }));
+  const { handedOver } = await pairs.sendGroup(lead, 'Review the save system.', [], { kinds: ['claude', 'codex', 'gemini'] });
+  await tick();
+  lead.reply('The save needs a version number.');
+  await tick(); await tick();
+  const gm = pairs.crewOf(lead).find(c => c.provider === 'gemini');
+  assert.equal(gm.sent.length, 1, 'Gemini gets the request after Codex fails to start');
+  assert.match(gm.sent[0].text, /The save needs a version number\./);
+  assert.match(gm.sent[0].text, /in this order: Claude, then you\. Claude answered it before you/, 'only assistants that received the request are described as having answered');
+  assert.equal(await handedOver, gm);
+  assert.ok(lead.buffer.some(e => e.kind === 'handoff' && e.to === 'codex' && e.state === 'skipped'));
+  assert.ok(lead.buffer.some(e => e.kind === 'handoff' && e.to === 'gemini' && e.state === 'sent'));
 });
 
 test('crew: plan first with the ones you picked: Gemini drafts, Codex checks', async () => {
