@@ -35,11 +35,12 @@ const monthName = m => new Date(`${m}-15T12:00:00`).toLocaleDateString(undefined
 // The month so far against the same days of last month.
 function tokDelta(t) {
   if (!t.prevMonthTo) return '';
-  const d = t.monthTotal / t.prevMonthTo - 1;
-  const pct = Math.round(Math.abs(d) * 100);
+  const ratio = t.monthTotal / t.prevMonthTo, d = ratio - 1;
   const prev = new Date(`${t.month}-15T12:00:00`); prev.setMonth(prev.getMonth() - 1);
   const name = prev.toLocaleDateString(undefined, { month: 'short' });
-  return `<span class="tk-delta ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '▲' : '▼'} ${pct}%</span> <span class="tk-vs">vs ${name} 1–${new Date().getDate()}</span>`;
+  // Past double, a multiple reads better than a percentage (34×, not ▲ 3333%).
+  const how = ratio >= 2 ? `${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1)}×` : `${d >= 0 ? '▲' : '▼'} ${Math.round(Math.abs(d) * 100)}%`;
+  return `<span class="tk-delta ${d >= 0 ? 'up' : 'down'}">${how}</span> <span class="tk-vs">${ratio >= 2 ? 'the same days of' : 'vs'} ${name}${ratio >= 2 ? '' : ` 1–${new Date().getDate()}`}</span>`;
 }
 
 /* ---------- the columns (one per day) ---------- */

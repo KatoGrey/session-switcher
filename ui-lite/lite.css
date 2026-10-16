@@ -1132,7 +1132,7 @@ button.tk-prow:hover, button.tk-brow:hover { background: var(--hover); }
 .tk-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .tk-base { stroke: var(--line-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .tk-tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.tk-tip { position: absolute; top: -8px; transform: translateY(-100%); width: 170px; padding: 8px 10px; border-radius: 8px; background: var(--pane); border: 1px solid var(--line-2); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--fg-2); pointer-events: none; z-index: 5; }
+.tk-tip { position: absolute; top: 4px; width: 170px; padding: 8px 10px; border-radius: 8px; background: var(--pane); border: 1px solid var(--line-2); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--fg-2); pointer-events: none; z-index: 5; }
 .tk-tip b { color: var(--fg); font-size: 14px; }
 .tk-tip-row { color: var(--muted); }
 .tk-page { gap: 26px; }
