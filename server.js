@@ -360,7 +360,7 @@ const pairs = pairsLib.createPairs({
       acc.prepareForLaunch(c, a);
       const pref = chatPrefs.get({ sessionId, cwd: lead.cwd, provider: 'claude' });
       const follow = followMode(leadKind, lead.permissionMode, 'claude');
-      return chats.open({ cfg: c, account: a, cwd: lead.cwd, sessionId, permissionMode: chatLib.MODES.includes(follow) ? follow : chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: `Claude · ${lead.title || 'New chat'}`, folder: lead.folder });
+      return chats.open({ extraArgs: chatArgs(), cfg: c, account: a, cwd: lead.cwd, sessionId, permissionMode: chatLib.MODES.includes(follow) ? follow : chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: `Claude · ${lead.title || 'New chat'}`, folder: lead.folder });
     }
     let inst = await codexChecked(codexForThread(remembered));
     if (!inst.publicState().signedIn) inst = await codexChecked(codexActive());
@@ -852,6 +852,9 @@ const SHOWS_PICTURES_FILE = (() => {
   return /^[\w.:=\/-]+$/.test(arg) ? arg : null; // a path with spaces couldn't be passed; chats start without the note
 })();
 const SHOWS_PICTURES_ARGS = SHOWS_PICTURES_FILE ? ['--append-system-prompt-file', SHOWS_PICTURES_FILE] : [];
+// Claude in Chrome: chats here can use your Chrome (through the Claude extension) like a terminal
+// session started with /chrome can. Off with prefs.chromeInChats = false.
+const chatArgs = () => [...SHOWS_PICTURES_ARGS, ...(config().prefs.chromeInChats === false ? [] : ['--chrome'])];
 async function openChatNow(c, body) {
   // A partner's conversation opens inside the chat it belongs to.
   const lead = (!body.mode || body.mode === 'resume') && body.sessionId ? chatPrefs.parentOf(body.sessionId) : null;
@@ -953,7 +956,7 @@ async function openChatInner(c, body) {
   if (sessionId) { try { title = sessions.find(sessionId).session.title; } catch { /* untitled */ } }
   if (mode === 'fork' && title) title = `${title} (copy)`;
   const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder, extraArgs: SHOWS_PICTURES_ARGS });
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder, extraArgs: chatArgs() });
   if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
   log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
   return { ...chat.info(), attached: false, remembered: !!pref.mode && !body.permissionMode, companionThread: sessionId && mode !== 'new' ? chatPrefs.companionOf(sessionId) : null };
@@ -1353,7 +1356,7 @@ async function routineChat({ account, cwd, sessionId, permissionMode, model, eff
   if (sessionId && running[sessionId.toLowerCase()]) throw fail(409, 'That chat is open in a terminal, so the routine left it alone.');
   await guarded(a);
   acc.prepareForLaunch(c, a);
-  const chat = chats.open({ cfg: c, account: a, cwd, sessionId: sessionId || null, permissionMode, model, effort: effort || undefined, title, folder });
+  const chat = chats.open({ extraArgs: chatArgs(), cfg: c, account: a, cwd, sessionId: sessionId || null, permissionMode, model, effort: effort || undefined, title, folder });
   if (sessionId) sessions.recordLaunch(sessionId, a, 'app');
   return chat;
 }
@@ -2445,7 +2448,7 @@ async function chatForCommander(c, id) {
   const a = await accountForCommander(c, session.id);
   acc.prepareForLaunch(c, a);
   const pref = chatPrefs.get({ sessionId: session.id, cwd: project.cwd, provider: 'claude' });
-  const chat = chats.open({ cfg: c, account: a, cwd: project.cwd, sessionId: session.id, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: session.title, folder: project.name });
+  const chat = chats.open({ extraArgs: chatArgs(), cfg: c, account: a, cwd: project.cwd, sessionId: session.id, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: session.title, folder: project.name });
   sessions.recordLaunch(session.id, a, 'app');
   return { chat, opened: true };
 }
@@ -2512,7 +2515,7 @@ async function openSubChat(c, pid) {
     const a = await accountForCommander(c, pid);
     acc.prepareForLaunch(c, a);
     const pref = chatPrefs.get({ cwd, provider: 'claude' });
-    chat = chats.open({ cfg: c, account: a, cwd, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: 'New chat', folder });
+    chat = chats.open({ extraArgs: chatArgs(), cfg: c, account: a, cwd, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: 'New chat', folder });
   }
   chat.parentSession = pid;
   return { chat, cwd, folder, title };
