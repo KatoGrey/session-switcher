@@ -250,8 +250,8 @@ function listen(key, { paint = false } = {}) {
   const caughtUp = () => { if (CV.replaying !== es) return; CV.replaying = null; if (paint) paintChat(); else { paintFeed(); paintBar(); } };
   es.addEventListener('replayed', caughtUp);
   setTimeout(caughtUp, 4000);
-  es.addEventListener('hello', e => { CV.lastEventAt = Date.now(); try { CV.info = JSON.parse(e.data); CV.busy = ['busy', 'waiting', 'starting'].includes(CV.info.state) || CV.sending; paintBar(); paintHead(); } catch { /* fine */ } });
-  es.addEventListener('chat', e => { CV.lastEventAt = Date.now(); let ev; try { ev = JSON.parse(e.data); } catch { return; } onEvent(ev); });
+  es.addEventListener('hello', e => { if (CV.es !== es) return; CV.lastEventAt = Date.now(); try { CV.info = JSON.parse(e.data); CV.busy = ['busy', 'waiting', 'starting'].includes(CV.info.state) || CV.sending; paintBar(); paintHead(); } catch { /* fine */ } });
+  es.addEventListener('chat', e => { if (CV.es !== es) return; CV.lastEventAt = Date.now(); let ev; try { ev = JSON.parse(e.data); } catch { return; } onEvent(ev); });
 }
 // While it works: the time under it ticks every second, and if the stream has gone quiet for a
 // while, Lite asks the server whether the chat actually finished; if it did, it catches up.
@@ -676,18 +676,97 @@ function rememberModels(prov, info) {
   if (info && Array.isArray(info.efforts) && info.efforts.length) local.set(`efforts:${prov}`, info.efforts);
 }
 const provNow = () => (S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : NC.who === 'ollama' ? 'ollama' : 'codex') : CV.provider === 'gemini' ? 'gemini' : CV.provider === 'codex' ? ((CV.info && /ollama/i.test(CV.info.accountName || '')) || (chatBy.get(CV.id) || {}).ollama ? 'ollama' : 'codex') : 'claude');
+// The composer controls the assistant selected to answer, which can be a partner of this chat.
+const replyProv = () => S.view === 'chat' && toKind(CV.to) || provNow();
+function replyTarget() {
+  const kind = S.view === 'chat' && toKind(CV.to);
+  if (!kind) return { key: CV.key, info: CV.info, busy: CV.busy };
+  return [...PARTNERS.values()].find(p => p.prov === kind) || { key: null, info: null, busy: false };
+}
+const replyBusy = () => CV.to === 'both' ? CV.busy || PARTNER.busy : replyTarget().busy;
+let switchingChat = null;
+
+// Start only the processes needed for the selection. No message is sent by changing a control.
+async function ensureReply(p) {
+  if (CV.readOnly) throw new Error(CV.readOnly);
+  const id = CV.id, seq = openSeq;
+  const check = () => { if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) throw new Error('The chat changed. Pick the assistant again here.'); };
+  let lead = CV.info;
+  if (!CV.key) {
+    lead = await api('/api/chat/open', { sessionId: id, mode: 'resume', provider: CV.provider, account: (chatBy.get(id) || {}).accountId || accountFor(provNow()), permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
+    check(); CV.key = lead.key; CV.info = lead; listen(lead.key);
+  }
+  await waitReadyFor(CV.key); check();
+  let info = p === provNow() ? CV.info : await api('/api/chat/companion', { key: CV.key, kind: p, account: accountFor(p) });
+  check();
+  if (info.key !== CV.key) {
+    if (!PARTNERS.has(info.key)) partnerListen(info.key, p);
+    PARTNERS.get(info.key).info = info;
+    await waitReadyFor(info.key); check();
+    info = await api('/api/chat/attach', { key: info.key }); check();
+    PARTNERS.get(info.key).info = info;
+  }
+  return info;
+}
+async function changeReply(p, changes = {}) {
+  if (switchingChat || CV.sending) return toast('One moment: the chat is connecting.');
+  const id = CV.id, seq = openSeq;
+  const keepBoth = CV.to === 'both' && p === provNow() && ['model', 'effort', 'fast'].some(k => k in changes);
+  switchingChat = id;
+  toast('Connecting…');
+  try {
+    let info = await ensureReply(p);
+    if (changes.account && info.accountId !== changes.account) {
+      // Stopping a lead also stops its partners. Never discard an active turn to change accounts.
+      const fresh = await api('/api/chat/attach', { key: info.key });
+      if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
+      if (['busy', 'waiting', 'starting'].includes(fresh.state) || (info.key === CV.key && PARTNER.busy)) throw new Error('Let this reply finish, or stop it, before changing accounts.');
+      if (!fresh.sessionId) throw new Error('The chat is still starting. Try the account again in a moment.');
+      const isLead = info.key === CV.key;
+      await api('/api/chat/stop', { key: info.key });
+      if (S.view === 'chat' && CV.id === id && openSeq === seq) {
+        if (isLead) partnerReset();
+        else { const old = PARTNERS.get(info.key); if (old && old.es) old.es.close(); PARTNERS.delete(info.key); }
+      }
+      // Reopen the partner itself, rather than the default route back to its parent chat.
+      info = await api('/api/chat/open', { sessionId: fresh.sessionId, mode: 'resume', provider: fresh.provider, account: changes.account, alone: true, permissionMode: fresh.permissionMode, model: fresh.model, fast: fresh.fast });
+      if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
+      if (info.accountId !== changes.account) throw new Error('The account did not change. Try again once the chat has stopped.');
+      if (isLead) { CV.key = info.key; CV.info = info; listen(info.key); }
+      else {
+        // Reattach the resumed process to its lead before the next message is routed to it.
+        info = await api('/api/chat/companion', { key: CV.key, kind: p });
+        if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
+        if (!PARTNERS.has(info.key)) partnerListen(info.key, p);
+        PARTNERS.get(info.key).info = info;
+      }
+      await waitReadyFor(info.key);
+    }
+    const { account, ...modelChanges } = changes;
+    if (Object.keys(modelChanges).length) Object.assign(info, await api('/api/chat/model', { key: info.key, ...modelChanges }));
+    if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
+    if (info.key === CV.key) CV.info = info;
+    else if (PARTNERS.has(info.key)) PARTNERS.get(info.key).info = info;
+    CV.to = keepBoth ? 'both' : p === provNow() ? 'chat' : `partner:${p}`;
+    if (account) { const chosen = local.get('chat-accounts', {}); chosen[id] = { ...chosen[id], [p]: account }; local.set('chat-accounts', chosen); }
+    setTo(id, CV.to); paintBar();
+    toast(keepBoth ? `${toName('both')} will answer your next message.` : `${p === 'codex' ? 'Codex' : provName(p)}${info.accountName ? ` · ${info.accountName}` : ''} answers your next message here.`);
+  } finally { switchingChat = null; paintBar(); }
+}
 const prettyModel = m => String(m).replace(/^claude-/, '').replace(/-(\d)-(\d)/, ' $1.$2').replace(/\[1m\]$/, ' 1M').replace(/^(\w)/, c => c.toUpperCase());
 const modelLabel = (prov, v) => { const base = String(v).replace(/\[1m\]$/, ''); const m = modelsFor(prov).find(x => x.value === v || x.value === base); return m ? `${m.label}${/\[1m\]$/.test(v) ? ' 1M' : ''}` : prettyModel(v); };
 const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
 function toolsHtml({ fresh }) {
-  const prov = provNow();
-  const info = fresh ? null : CV.info;
-  const model = (info && (info.replyModel || info.resolvedModel || info.model)) || COMP.model || (!fresh && chatBy.get(CV.id) && chatBy.get(CV.id).model) || null;
-  const effort = (info && info.effort) || COMP.effort || null;
+  const prov = replyProv();
+  const info = fresh ? null : replyTarget().info;
+  const own = fresh || prov === provNow();
+  const model = (info && (info.replyModel || info.resolvedModel || info.model)) || (own && (COMP.model || (!fresh && chatBy.get(CV.id) && chatBy.get(CV.id).model))) || null;
+  const effort = (info && info.effort) || (own && COMP.effort) || null;
   const md0 = MD(prov);
-  const busy = !fresh && CV.busy;
+  const busy = !fresh && replyBusy();
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
-    <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : !fresh && CV.to === 'partner' ? ` → ${esc(partnerName())}` : ''}${prov === 'codex' && ((info && info.fast) || (!info && COMP.fast)) ? ' ⚡' : ''}<span>▾</span></button>
+    ${fresh ? '' : `<button type="button" class="model account-chip" data-chataccount="1" aria-haspopup="menu" title="Switch assistant or account">${esc(CV.to === 'both' ? toName('both') : `${prov === 'codex' ? 'Codex' : provName(prov)}${info && info.accountName ? ` · ${info.accountName}` : ''}`)}<span>▾</span></button>`}
+    <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : ''}${prov === 'codex' && ((info && info.fast) || (!info && COMP.fast)) ? ' ⚡' : ''}<span>▾</span></button>
     <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
@@ -799,7 +878,7 @@ function paintQueue() {
   el.hidden = !(CV.queue || []).length;
 }
 async function sendQueued() {
-  if (!CV.queue || !CV.queue.length || CV.busy || CV.sending) return;
+  if (!CV.queue || !CV.queue.length || replyBusy() || CV.sending || switchingChat) return;
   const q = CV.queue.shift(); paintQueue();
   const box = $('msgBox'); const typed = box ? box.value : '';
   if (box) box.value = q.text;
@@ -834,7 +913,7 @@ async function steerIn(text, imgs) {
   const images = imgs.map(i => ({ mediaType: i.mediaType, data: i.data }));
   const local = { kind: 'user', text, images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
   CV.items.push(local); paintFeed(); sfx('slide');
-  try { await api('/api/lite/steer', { key: CV.key, text, ...(images.length ? { images } : {}) }); }
+  try { await api('/api/lite/steer', { key: replyTarget().key || CV.key, text, ...(images.length ? { images } : {}) }); }
   catch (err) {
     CV.items = CV.items.filter(x => x !== local); paintFeed();
     CV.queue.unshift({ text, images: imgs }); paintQueue();
@@ -844,14 +923,15 @@ async function steerIn(text, imgs) {
 function steerQueued(i) {
   const q = CV.queue.splice(i, 1)[0]; paintQueue();
   if (!q) return;
-  if (!CV.busy) { CV.queue.unshift(q); sendQueued(); return; }
+  if (!replyBusy()) { CV.queue.unshift(q); sendQueued(); return; }
   steerIn(q.text, q.images);
 }
 async function sendInChat({ fromQueue = false } = {}) {
+  if (switchingChat) return toast('One moment: the assistant or account is changing.');
   const box = $('msgBox'); const text = box.value.trim();
   if ((!text && !COMP.images.length && !COMP.files.length) || CV.sending) return;
   if (DRAW_RE.test(text)) return wrap(drawIntoMessage)(text);
-  if (!fromQueue && CV.busy && CV.key) {
+  if (!fromQueue && replyBusy() && CV.key) {
     const steer = COMP.steerNow; COMP.steerNow = false;
     const imgs = COMP.images.slice();
     box.value = ''; autosize(box); resetComposer(); paintAttachments(); DRAFTS.delete(String(CV.id)); saveDrafts();
@@ -916,7 +996,11 @@ async function sendInChat({ fromQueue = false } = {}) {
     }
     if (here()) {
       if (to) { const b = toBody(to); partnerSoon(b.kinds || (b.kind ? [b.kind] : [])); }
-      CV.busy = true; if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
+      if (toKind(to)) {
+        CV.busy = ['busy', 'waiting', 'starting'].includes(CV.info && CV.info.state);
+        const partner = [...PARTNERS.values()].find(p => p.prov === toKind(to)); if (partner) partner.busy = true;
+      } else CV.busy = true;
+      if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
     }
   } catch (err) {
     // Didn't go: the message comes back to the box, as you wrote it (or as that chat's draft, if you've moved on).
@@ -963,7 +1047,7 @@ function chatMenu(anchor) {
 }
 // One list of every model you have, grouped by who runs it. In New chat, picking one also picks
 // the plan (your use-next Claude or ChatGPT plan, or Ollama). In a chat, the same provider's models
-// switch in place; another provider's start a new chat there that picks up where this one is.
+// switch in place; Claude and Codex answer in the same chat through its partners.
 const PROVS = [['claude', 'Claude'], ['codex', 'ChatGPT'], ['ollama', 'Ollama']];
 const provName = p => (PROVS.find(x => x[0] === p) || [p, p === 'gemini' ? 'Gemini' : p])[1];
 const hasProv = p => (p === 'claude' ? plans().some(x => x.family === 'claude' && !x.broken) : p === 'codex' ? plans().some(x => x.family === 'chatgpt' && !x.broken) : plans().some(x => x.family === 'ollama' && !x.broken));
@@ -977,21 +1061,22 @@ function offered(p, list) {
   return list;
 }
 function modelMenu(anchor) {
-  const prov = provNow();
+  const prov = replyProv();
   const inChat = S.view === 'chat';
-  const running = inChat && CV.key && CV.info;
-  const cur = running ? CV.info.model : COMP.model;
+  const info = inChat ? replyTarget().info : null;
+  const running = info && info.key;
+  const cur = running ? info.model : prov === provNow() ? COMP.model : null;
   if (!S.models) { loadModels().then(() => modelMenu(anchor)); return toast('Reading the models…'); }
   const item = (p, m) => `<button class="mm" data-v="${esc(p)}|${esc(m.value)}" role="menuitemradio" aria-checked="${p === prov && m.value === cur}" title="${esc(m.note || '')}"><span class="mm-name">${esc(String(m.label || prettyModel(m.value)).replace(/:cloud$/, ""))}</span>${m.note && m.note !== 'In Ollama' ? `<span class="mm-note">${esc(m.note.replace(/^[^·]*· /, ''))}</span>` : ''}</button>`;
   const group = p => {
-    if (p === 'gemini') return p === prov && running && (CV.info.models || []).length ? `<div class="ph">Gemini</div>${CV.info.models.map(m => item(p, m)).join('')}` : '';
+    if (p === 'gemini') return p === prov && running && (info.models || []).length ? `<div class="ph">Gemini</div>${info.models.map(m => item(p, m)).join('')}` : '';
     const md0 = MD(p); if (!md0 || !hasProv(p)) return '';
     const here = p === prov;
-    const runList = here && running && CV.info.models && CV.info.models.length ? CV.info.models.filter(m => m.value !== 'default') : null;
+    const runList = here && running && info.models && info.models.length ? info.models.filter(m => m.value !== 'default') : null;
     const all = offered(p, runList || [...md0.models, ...md0.more]);
     const main = all, more = [];
     const plan = p === 'ollama' ? null : useNext(p === 'claude' ? 'claude' : 'chatgpt');
-    const sub = inChat && !here ? 'starts a new chat there' : p === 'ollama' ? 'no plan limits' : plan ? `${plan.label} · ${plan.left}%` : '';
+    const sub = inChat && !here ? p === 'ollama' || provNow() === 'ollama' ? 'starts a new chat there' : 'answers in this chat' : p === 'ollama' ? 'no plan limits' : plan ? `${plan.label} · ${plan.left}%` : '';
     return `<div class="ph">${provName(p)}${sub ? ` · ${esc(sub)}` : ''}${here && md0.defaultModel ? ` · default ${esc(md0.defaultModel)}` : ''}</div>${main.map(m => item(p, m)).join('')}${more.length ? `<details class="pop-more"><summary>More ${provName(p)} models</summary>${more.map(m => item(p, m)).join('')}</details>` : ''}`;
   };
   const order = [prov, ...PROVS.map(x => x[0]).filter(p => p !== prov)];
@@ -1003,18 +1088,23 @@ function modelMenu(anchor) {
   const who = duoOk ? `<div class="ph">Who answers</div><div class="who-seg">${[['chat', selfName()], ...crew.map(k => [`partner:${k}`, NAME_OF[k]]), ['both', allName]].map(([v, l]) => `<button class="mm who-opt" data-v="to|${v}" role="menuitemradio" aria-checked="${to === v}" title="${v === 'both' ? `${selfName()} answers, then ${crew.map(k => NAME_OF[k]).join(', then ')} picks it up` : v !== 'chat' ? `${l} answers in this chat, caught up on it first` : 'This chat, as usual'}">${esc(l)}</button>`).join('')}</div><hr>` : '';
   // Fast (Codex): its priority tier, about twice as quick, using more of the plan.
   const codexHere = inChat ? prov === 'codex' : (typeof NC !== 'undefined' && NC.who === 'codex');
-  const fastOn = running ? !!CV.info.fast : !!COMP.fast;
+  const fastOn = running ? !!info.fast : !!COMP.fast;
   const fast = codexHere ? `<button class="mm" data-v="fast|${fastOn ? 'off' : 'on'}" role="menuitemcheckbox" aria-checked="${fastOn}"><span class="mm-name">⚡ Fast</span><span class="mm-note">about 2x speed, uses more of the plan</span></button><hr>` : '';
   pop(anchor, who + fast + order.map(group).filter(Boolean).join('<hr>'), raw => {
     const [p, v] = raw.split('|');
     if (p === 'fast') {
       const on = v === 'on';
-      if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, fast: on })); paintBar(); toast(on ? 'Fast is on for this chat.' : 'Fast is off.'); })();
+      if (inChat) return wrap(changeReply)(prov, { fast: on });
       COMP.fast = on; paintBar(); if (S.view === 'newchat') paintNewChat(); toast(on ? 'Fast: on for this chat when it starts.' : 'Fast is off.'); return undefined;
     }
-    if (p === 'to') { CV.to = v; setTo(CV.id, v); paintBar(); if (v !== 'chat') toast(v === 'both' ? `${toName('both')}: ${selfName()} answers, then ${crewKindsLite().map(k => NAME_OF[k]).join(', then ')}, each building on the last.` : `${toName(v)} answers in this chat.`); return undefined; }
-    if (inChat && p !== prov) return continueElsewhere(p, v);
-    if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, model: v })); paintBar(); })();
+    if (p === 'to') {
+      if (v !== 'both') return wrap(changeReply)(v === 'chat' ? provNow() : toKind(v));
+      CV.to = v; setTo(CV.id, v); paintBar(); return undefined;
+    }
+    if (inChat) {
+      if (p !== provNow() && (p === 'ollama' || provNow() === 'ollama')) return continueElsewhere(p, v);
+      return wrap(changeReply)(p, { model: v });
+    }
     if (S.view === 'newchat' && p !== prov) {
       NC.who = p === 'claude' ? 'claude' : p === 'ollama' ? 'ollama' : 'codex'; NC.account = null; COMP.effort = null; COMP.perm = null;
       const plan = planById(accountFor(NC.who));
@@ -1024,8 +1114,7 @@ function modelMenu(anchor) {
     return S.view === 'newchat' ? paintNewChat() : paintBar();
   });
 }
-// Another provider can't take over this conversation, so a new chat there starts with where this
-// one got to, in the same project, as its sub-chat.
+// Ollama uses its own Codex backend, so moving to or from it starts a sub-chat.
 function continueElsewhere(p, model) {
   const c = chatBy.get(CV.id);
   const lastAi = [...CV.items].reverse().find(it => it.kind === 'assistant' && (it.blocks || []).some(b => b.type === 'text'));
@@ -1040,13 +1129,13 @@ function continueElsewhere(p, model) {
   setTimeout(() => { const b = $('msgBox'); if (b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); } }, 50);
 }
 function effortMenu(anchor) {
-  const prov = provNow();
-  const running = S.view === 'chat' && CV.key && CV.info;
-  const list = running && CV.info.efforts && CV.info.efforts.length ? CV.info.efforts : effortsFor(prov);
-  const cur = running ? CV.info.effort : COMP.effort;
+  const prov = replyProv(), inChat = S.view === 'chat';
+  const info = inChat ? replyTarget().info : null;
+  const list = info && info.efforts && info.efforts.length ? info.efforts : effortsFor(prov);
+  const cur = info ? info.effort : prov === provNow() ? COMP.effort : null;
   const md0 = MD(prov);
   pop(anchor, `<div class="ph">Effort${md0 && md0.defaultEffort ? ` · default ${esc(cap(md0.defaultEffort))}` : ''}</div>${list.map(e => `<button data-v="${esc(e)}" role="menuitemradio" aria-checked="${e === cur}">${esc(cap(e))}</button>`).join('')}`,
-    v => { if (running) return wrap(async () => { Object.assign(CV.info, await api('/api/chat/model', { key: CV.key, effort: v })); paintBar(); })(); COMP.effort = v; return S.view === 'newchat' ? paintNewChat() : paintBar(); });
+    v => { if (inChat) return wrap(changeReply)(prov, { effort: v }); COMP.effort = v; return paintNewChat(); });
 }
 // Conversation settings: how much it may do without asking. Your default is preselected.
 function settingsMenu(anchor) {
@@ -1077,8 +1166,23 @@ const NC = { project: null, who: 'claude', account: null };
 function accountFor(who) {
   if (who === 'ollama') { const o = plans().find(p => p.family === 'ollama' && !p.broken); return o ? o.id : null; }
   if (S.view === 'newchat' && NC.who === who && NC.account) return NC.account;
+  const chosen = S.view === 'chat' && (local.get('chat-accounts', {})[CV.id] || {})[who];
+  if (chosen && plans().some(p => p.id === chosen && !p.broken)) return chosen;
   const p = useNext(who === 'claude' ? 'claude' : 'chatgpt');
   return p ? p.id : null;
+}
+function chatAccountMenu(anchor) {
+  const prov = replyProv(), info = replyTarget().info;
+  const group = (p, family, name) => {
+    const ps = plans().filter(x => x.family === family && !x.broken);
+    if (!ps.length) return '';
+    return `<div class="ph">${name} · same conversation</div>${ps.map(x => `<button data-v="${esc(p)}|${esc(x.id)}" role="menuitemradio" aria-checked="${p === prov && !!info && info.accountId === x.id}">${esc(x.label)}<small>${typeof x.fiveLeft === 'number' ? `${x.fiveLeft}% of 5h left` : typeof x.left === 'number' ? `${x.left}% of week left` : 'usage unknown'}</small></button>`).join('')}`;
+  };
+  const groups = provNow() === 'ollama' ? [group('ollama', 'ollama', 'Ollama')] : [group('claude', 'claude', 'Claude'), group('codex', 'chatgpt', 'Codex')];
+  pop(anchor, groups.filter(Boolean).join('<hr>') || '<div class="ph">No signed-in accounts available</div>', raw => {
+    const [p, account] = raw.split('|');
+    return wrap(changeReply)(p, { account });
+  });
 }
 function accountMenu(anchor) {
   const row = (who, id, label, sub, checked) => `<button data-v="${who}:${id}" role="menuitemradio" aria-checked="${checked}">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;

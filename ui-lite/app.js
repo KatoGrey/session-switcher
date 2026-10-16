@@ -336,13 +336,14 @@ document.addEventListener('click', e => {
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
   if ((b = el('[data-renamechat]'))) return editTitleInline();
   if ((b = el('[data-barmodel]'))) return modelMenu(b);
+  if ((b = el('[data-chataccount]'))) return chatAccountMenu(b);
   if ((b = el('[data-bareffort]'))) return effortMenu(b);
   if ((b = el('[data-chatsettings]'))) return settingsMenu(b);
   if ((b = el('[data-attach]'))) { $('attIn')?.click(); return undefined; }
   if ((b = el('[data-rmimg]'))) { const [im] = COMP.images.splice(Number(b.dataset.rmimg), 1); if (im && im.url) URL.revokeObjectURL(im.url); return paintAttachments(); }
   if ((b = el('[data-rmfile]'))) { COMP.files.splice(Number(b.dataset.rmfile), 1); return paintAttachments(); }
   if ((b = el('[data-zoom]'))) return showPicture(b.src, picsNear(b));
-  if ((b = el('[data-stopchat]'))) { sfx('close'); return wrap(() => api('/api/chat/interrupt', { key: CV.key }))(); }
+  if ((b = el('[data-stopchat]'))) { sfx('close'); return wrap(() => api('/api/chat/interrupt', { key: replyTarget().key || CV.key }))(); }
   if ((b = el('[data-ncproject]'))) return pickProject(b, k => { NC.project = k; paintNewChat(); $('msgBox').focus(); });
   if ((b = el('[data-ncwho]'))) return accountMenu(b);
   if ((b = el('[data-triage]'))) return startTriage();
