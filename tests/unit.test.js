@@ -102,7 +102,9 @@ test('file viewer: a network path never opens, and isn’t even looked up (that 
     assert.equal(files.allowed(p, project), false, p);
   }
   assert.ok(Date.now() - t0 < 500, 'answered at once, without reaching for the network');
-  assert.throws(() => files.readEntry(project, '\\\\attacker.example\\share\\pic.png'), e => e.status === 403);
+  // (On a Mac or Linux a backslash is part of a file's name, so there that's a file that isn't there.)
+  assert.throws(() => files.readEntry(project, '\\\\attacker.example\\share\\pic.png'), e => e.status === 403 || (process.platform !== 'win32' && e.status === 404));
+  assert.throws(() => files.readEntry(project, '//attacker.example/share/pic.png'), e => e.status === 403, 'the forward-slash way, everywhere');
   assert.throws(() => files.locate(project, 'file://attacker.example/share/pic.png'), e => e.status === 403 || e.status === 404, 'a file:// link to a server either');
 });
 
