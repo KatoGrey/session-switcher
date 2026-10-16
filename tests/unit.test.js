@@ -219,6 +219,10 @@ test('limits: running out becomes a notice and an offer to carry on; nearly out 
   assert.deepEqual(warn.map(x => x.kind), ['notice']);
   assert.match(warn[0].text, /close to your weekly limit on this account \(91% used\)/);
   assert.deepEqual(translate({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed' } }, {}), []);
+  // The warning comes with every request: shown once, then again only 10% further on.
+  const st = {}, w = u => translate({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'seven_day', utilization: u } }, st).length;
+  assert.deepEqual([w(0.64), w(0.65), w(0.66), w(0.71), w(0.72)], [1, 0, 0, 1, 0]);
+  assert.ok(translate({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'seven_day' } }, st).length >= 1, 'reaching the limit always shows');
 });
 
 /* ---------- rules and tools for both ---------- */
