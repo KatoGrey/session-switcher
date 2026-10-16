@@ -729,7 +729,16 @@ async function changeReply(p, changes = {}) {
         else { const old = PARTNERS.get(info.key); if (old && old.es) old.es.close(); PARTNERS.delete(info.key); }
       }
       // Reopen the partner itself, rather than the default route back to its parent chat.
-      info = await api('/api/chat/open', { sessionId: fresh.sessionId, mode: 'resume', provider: fresh.provider, account: changes.account, alone: true, permissionMode: fresh.permissionMode, model: fresh.model, fast: fresh.fast });
+      for (let attempt = 0; ; attempt++) {
+        try {
+          info = await api('/api/chat/open', { sessionId: fresh.sessionId, mode: 'resume', provider: fresh.provider, account: changes.account, alone: true, permissionMode: fresh.permissionMode, model: fresh.model, fast: fresh.fast });
+          break;
+        } catch (err) {
+          // The keeper can report exit just before the OS process listing catches up.
+          if (attempt >= 15 || err.status !== 409 || !/already open.*process/i.test(err.message)) throw err;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
       if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
       if (info.accountId !== changes.account) throw new Error('The account did not change. Try again once the chat has stopped.');
       if (isLead) { CV.key = info.key; CV.info = info; listen(info.key); }
