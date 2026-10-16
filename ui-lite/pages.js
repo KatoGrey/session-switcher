@@ -88,7 +88,7 @@ function project() {
   const cs = chatsOfProject(p.key).sort((x, y) => y.updated - x.updated);
   const foc = cs.filter(c => c.focus && !parked(statusOf(c)));
   const focusSec = foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span></div><div class="rows">${foc.map(c => rowHtml(c, { showStage: true })).join('')}</div></section>` : '';
-  const sections = focusSec + STATUSES.map(s => {
+  const sections = focusSec + statusesShown().map(s => {
     const all = cs.filter(c => isTop(c) && statusOf(c) === s.id && !(c.focus && !parked(s.id)));
     if (!all.length) return '';
     const folded = parked(s.id) ? !S.more['p-' + s.id] : false;

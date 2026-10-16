@@ -20,6 +20,9 @@ const STATUSES = [
 ];
 // Off the active lists: the backlog and what's finished.
 const parked = id => id === 'done' || id === 'later';
+// The order the lists show them in: what's nearly done first, so it's seen without scrolling.
+const SHOWN_ORDER = ['finishing', 'building', 'exploring', 'later', 'done'];
+const statusesShown = () => SHOWN_ORDER.map(id => STATUSES.find(s => s.id === id)).filter(Boolean);
 const statusById = id => STATUSES.find(s => s.id === id) || STATUSES[1];
 // Set once. Feature is the plain default and carries no tag.
 const KINDS = [{ id: 'feature', name: 'Feature' }, { id: 'bug', name: 'Bug' }, { id: 'prototype', name: 'Prototype' }, { id: 'idea', name: 'Idea' }];

@@ -63,7 +63,7 @@ function renderSide() {
   const laterAll = chats.filter(c => isTop(c) && statusOf(c) === 'later');
   const laterOpen = !!S.more['side-later'];
   const laterRow = laterAll.length ? `<div class="group">${laterOpen ? `<div class="quiet-chats">${laterAll.map(c => sideChat(c) + sideFam(c)).join('')}</div>` : ''}<button class="nav-i chat-i quiet-toggle" data-side-later="*" aria-expanded="${laterOpen}"><span class="lbl">${laterOpen ? 'Hide later' : `${laterAll.length} later`}</span></button></div>` : '';
-  const folders = [focusSt, ...STATUSES.filter(x => !parked(x.id)), waitSt, ...STATUSES.filter(x => x.id === 'done')].map(st => {
+  const folders = [focusSt, ...statusesShown().filter(x => !parked(x.id)), waitSt, ...STATUSES.filter(x => x.id === 'done')].map(st => {
     const all = chats.filter(c => (st.id === 'focus' ? c.focus && !parked(statusOf(c)) : st.id === 'waiting' ? isTop(c) && c.waiting && !c.focus && !parked(statusOf(c)) : isTop(c) && statusOf(c) === st.id && !(c.focus && !parked(st.id)) && !(c.waiting && !parked(st.id))));
     const act = st.id === 'later' ? all : all.filter(c => !famQuiet(c)), quiet = st.id === 'later' ? [] : all.filter(famQuiet);
     const open = all.length && !S.folded[st.id];
@@ -136,7 +136,7 @@ function sideProjects(all) {
       inner = foc.map(c => sideChatDot(c) + sideFam(c)).join('');
       if (bucketStages(g.p.bucket)) {
         const shown = [];
-        for (const st of STATUSES.filter(x => !parked(x.id))) {
+        for (const st of statusesShown().filter(x => !parked(x.id))) {
           const list = rest.filter(c => statusOf(c) === st.id); if (!list.length || n >= limit) continue;
           const take = list.slice(0, limit - n); n += take.length; shown.push([st, take]);
         }
