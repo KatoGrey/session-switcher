@@ -1151,6 +1151,9 @@ async function startNewChat() {
       local.text = out;
       return out;
     });
+    // Started from a project that shares its folder with others (Labs and Platform in one repo, say):
+    // it belongs to the one you started it from, not to whichever its title suggests.
+    if (id && p.key !== p.cwd) api('/api/lite/chats', { ids: [id], patch: { project: p.key } }).then(() => loadState()).catch(() => {});
     if (mine()) { if (id) adoptChatId(id); CV.sending = false; if (CV.status === 'Starting') CV.status = ''; paintStatus(); paintBar(); }
   } catch (err) {
     toast(err.message);
