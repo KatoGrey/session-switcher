@@ -127,6 +127,9 @@ async function main() {
           browsers.push(b); running.add(b);
           if (useDemo) await demo.install(b, demoOpts);
           await b.nav(base + at, 3000);
+          // A busy PC can take longer than that: wait (up to 30 s more) for the page to finish loading,
+          // so a check never runs before the page's own scripts have.
+          for (let i = 0; i < 60; i++) { try { if (await b.eval(`return document.readyState === 'complete'`)) break; } catch { /* not yet */ } await sleep(500); }
           return b;
         },
         async shot(b, name) { if (SHOTS) await b.shot(path.join(SHOTS, `${suite.name.replace(/\W+/g, '-')}-${name}.png`)); },

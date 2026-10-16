@@ -1385,7 +1385,7 @@ const liteRoutes = createLiteRoutes({
 
 // Things only the PC itself may do: quit the app, manage phone access, open windows on the PC that
 // a phone couldn't see.
-const LOCAL_ONLY = new Set(['/api/file/browser', '/api/gemini/install', '/api/gemini/login', '/api/gemini/settings', '/api/claude/install', '/api/phone/firewall', '/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send', '/api/routines/secret']);
+const LOCAL_ONLY = new Set(['/api/file/browser', '/api/codex/update', '/api/gemini/update', '/api/gemini/install', '/api/gemini/login', '/api/gemini/settings', '/api/claude/install', '/api/phone/firewall', '/api/tools/copy', '/api/quit', '/api/restart', '/api/shortcut', '/api/share-copy', '/api/project/pick', '/api/codex/install', '/api/update-claude', '/api/openclaw/archive', '/api/openclaw/send', '/api/routines/secret']);
 
 async function handleApi(req, res, url, remote = false) {
   const c = config();
@@ -1520,6 +1520,14 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, { scope: cwd ? 'project' : 'user', cwd, ...rulesLib.readRules(rulesPathsFor(cwd)) });
   }
   if (route === 'GET /api/tools') return send(res, 200, await toolsFor(url.searchParams.get('cwd') || null));
+  // Setup: the Codex this app runs and the newest one out (a newer Codex lists newer models), and
+  // the Antigravity CLI's version.
+  if (route === 'GET /api/tools/versions') {
+    const c = config(), cxOn = !!(c.codex && c.codex.enabled);
+    const [cx, latest] = await Promise.all([cxOn ? sys.codexVersion(c).catch(() => null) : null, cxOn ? sys.newestOnNpm('@openai/codex').catch(() => null) : null]);
+    const codexV = cx && cx.found ? { version: cx.version, latest: latest || null, newer: !!(latest && !sys.versionAtLeast(cx.version, latest)) } : null;
+    return send(res, 200, { codex: codexV, gemini: c.gemini.enabled ? { version: gemini.publicState().version || null } : null });
+  }
   // The day at a glance: when each chat was active since a moment (Claude's message by message, Codex's
   // last activity), for the hub's Today strip.
   if (route === 'GET /api/today') {
@@ -1914,6 +1922,25 @@ async function handleApi(req, res, url, remote = false) {
         ? '@echo off\r\ntitle Install Codex\r\necho Installing Codex (OpenAI)...\r\ncall npm install -g @openai/codex\r\necho.\r\necho Done. Close this window and click Check again in Session Switcher.\r\n'
         : '#!/bin/sh\necho "Installing Codex (OpenAI)..."\nnpm install -g @openai/codex\necho\necho "Done. Close this window and click Check again in Session Switcher."\n');
       return send(res, 200, r);
+    }
+    // Updates: Codex to the newest on npm (new models need a newer Codex), Gemini by its own updater.
+    // A running chat holds the program open, which can stop the update on Windows: the window says
+    // so, and the answer says how many are running here.
+    case '/api/codex/update': {
+      const running = [...chats.chats.values()].filter(x => x.provider === 'codex' && x.state !== 'ended').length;
+      const r = await sys.runInTerminal(c, os.homedir(), 'Update Codex', sys.IS_WIN
+        ? '@echo off\r\ntitle Update Codex\r\necho Updating Codex (OpenAI) to the newest version...\r\ncall npm install -g @openai/codex@latest\r\necho.\r\necho If it says EBUSY or EPERM, a Codex chat is still running: stop it in Session Switcher, then click Update Codex again.\r\necho Done. Close this window. New Codex chats use the new version; open ones do once they start again.\r\n'
+        : '#!/bin/sh\necho "Updating Codex (OpenAI) to the newest version..."\nnpm install -g @openai/codex@latest\necho\necho "Done. Close this window. New Codex chats use the new version; open ones do once they start again."\n');
+      sys.forget(`version:codex:${sys.codexCommand(c)}`);
+      return send(res, 200, { ...r, running });
+    }
+    case '/api/gemini/update': {
+      const running = [...chats.chats.values()].filter(x => x.provider === 'gemini' && x.state !== 'ended').length;
+      const agy = geminiLib.agyPath(gemini.command());
+      const r = await sys.runInTerminal(c, os.homedir(), 'Update Gemini', sys.IS_WIN
+        ? `@echo off\r\ntitle Update Gemini\r\necho Updating Google's Antigravity CLI (agy)...\r\n"${agy}" update\r\necho.\r\necho If it couldn't replace agy, a Gemini chat is still running: stop it in Session Switcher, then click Update Gemini again.\r\necho Done. Close this window and click Check again under Gemini in Setup.\r\n`
+        : `#!/bin/sh\necho "Updating Google's Antigravity CLI (agy)..."\n"${agy}" update\necho\necho "Done. Close this window and click Check again under Gemini in Setup."\n`);
+      return send(res, 200, { ...r, running });
     }
     case '/api/open': {
       if (body.provider === 'codex' || isCodexId(body.sessionId)) {

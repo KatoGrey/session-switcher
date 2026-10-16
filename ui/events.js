@@ -229,6 +229,15 @@ document.addEventListener('keydown', e => {
 let es = null, sessTimer = null;
 // Pages behind the chat window, a dialog or a menu wait until they're visible again.
 const idle = () => !document.hidden && !document.body.classList.contains('chat-open') && !document.querySelector('dialog[open]') && $('menu').hidden;
+// While the window is hidden (minimized, in the tray, another tab), what's at work and what waits
+// still reach the title and the tray at once; the hub and the side list are drawn once it's back,
+// instead of on every update meanwhile.
+let liveDirty = false;
+function renderLiveSoon() {
+  if (document.hidden) { liveDirty = true; updateTitle(); return; }
+  renderLive(); renderNav();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && liveDirty) { liveDirty = false; renderLive(); renderNav(); } });
 function connectLive() {
   try { es = new EventSource(`/api/events?token=${TOKEN}`); } catch { return; }
   es.onopen = () => { S.connected = true; renderLivePill(); Promise.all([loadActivity(), loadUsage()]).then(() => { watchActivity(); renderLive(); }).catch(() => {}); };
@@ -251,7 +260,7 @@ function connectLive() {
   es.addEventListener('themes', () => { if (window.ThemeStudio) ThemeStudio.refresh().catch(() => {}); });
   es.addEventListener('project-art', e => { try { const { cwd } = JSON.parse(e.data); if (window.ProjectArt) ProjectArt.refresh(cwd).catch(() => {}); } catch { /* invalid event */ } });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
-  es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLive(); renderNav(); });
+  es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLiveSoon(); });
   es.addEventListener('routines', () => { if (window.Routines) Routines.changed(); });
   es.addEventListener('organize', e => { try { S.org = orgShape(JSON.parse(e.data)); } catch { return; } renderNav(); renderLive(); if (window.ChatUI && ChatUI.refreshCrumb) ChatUI.refreshCrumb(); });
   es.addEventListener('restart', e => { try { S.restart = JSON.parse(e.data) || {}; } catch { return; } if (S.restart.restarting) restarting(S.pid); else { renderRestartBar(); if (S.restart.error) toast(S.restart.error, 9000); } });

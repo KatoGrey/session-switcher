@@ -158,7 +158,7 @@ function mentionAt() {
   if (C.watch || ta.selectionStart !== ta.selectionEnd) return null;
   const before = ta.value.slice(0, ta.selectionStart);
   const m = before.match(/(^|[\s(“"'[])@([^\s@"]{0,80})$/);
-  if (!m || /^(codex|claude|both)$/i.test(m[2])) return null;
+  if (!m || /^(codex|claude|gemini|both|all)$/i.test(m[2])) return null;
   return { q: m[2], start: before.length - m[2].length - 1, end: before.length };
 }
 function mentionFiles() {
@@ -348,11 +348,16 @@ async function sendMessage() {
   // Writing to one while the other is mid-reply: both would work at once, maybe on the same files.
   let after = false;
   if (duo() && target !== 'both' && target !== 'plan') {
-    const otherState = target === 'main' ? (C.comp && !C.comp.ended ? C.comp.state : null) : C.state;
-    if (otherState === 'busy' || otherState === 'waiting') {
-      const other = PROV_NAME[target === 'main' ? partnerProv() : C.provider], to = PROV_NAME[target === 'main' ? C.provider : partnerProv()];
-      const pick = await appChoice(`${other} is still working.\n\nSend it to ${to} when ${other} is done, so they don't edit the same files at once, or send it now and let both work?`,
-        [{ v: 'after', label: `When ${other} is done`, kind: 'prime' }, { v: 'now', label: 'Send now' }, { v: '', label: 'Cancel', kind: 'quiet' }]);
+    // Every other one in the chat that's mid-reply (with three, not only the one in view).
+    const me = target === 'main' ? C.provider : partnerProv();
+    const states = new Map([[C.provider, C.state]]);
+    for (const [k, c] of Object.entries(C.comps || {})) if (c && !c.ended) states.set(k, c.state);
+    if (C.comp && !C.comp.ended && !states.has(partnerProv())) states.set(partnerProv(), C.comp.state);
+    const busy = [...states].filter(([k, st]) => k !== me && (st === 'busy' || st === 'waiting')).map(([k]) => k);
+    if (busy.length) {
+      const other = busy.map(k => PROV_NAME[k]).join(' and '), is = busy.length > 1 ? 'are' : 'is', to = PROV_NAME[me];
+      const pick = await appChoice(`${other} ${is} still working.\n\nSend it to ${to} when ${busy.length > 1 ? 'they’re' : `${other} is`} done, so they don't edit the same files at once, or send it now and let ${busy.length > 1 ? 'them all' : 'both'} work?`,
+        [{ v: 'after', label: `When ${other} ${is} done`, kind: 'prime' }, { v: 'now', label: 'Send now' }, { v: '', label: 'Cancel', kind: 'quiet' }]);
       if (!pick) return;
       after = pick === 'after';
     }

@@ -57,7 +57,9 @@ function stableCut(text) {
 function flushLive() {
   C.liveTimer = null;
   for (const [mid, text] of Object.entries(C.liveText)) {
-    const p = $c('cFeed').querySelector(`.part[data-mid="${CSS.escape(mid)}"] .live`);
+    // The part from the map (no search through the whole feed on every flush), else by a search.
+    const feed = $c('cFeed'), known = PARTS.get(mid);
+    const p = known && feed.contains(known) ? known.querySelector('.live') : feed.querySelector(`.part[data-mid="${CSS.escape(mid)}"] .live`);
     if (!p) continue;
     let done = p.firstElementChild && p.firstElementChild.classList.contains('live-done') ? p.firstElementChild : null;
     if (!done) { p.innerHTML = '<div class="live-done"></div><div class="live-tail"></div>'; done = p.firstElementChild; done._len = 0; }
@@ -133,7 +135,8 @@ function syncSend() {
   $c('chat').classList.toggle('to-both', C.target === 'both' && duo());
   // While either of them is writing, a band of light runs along the top of the message box (Codex's
   // color when only Codex is).
-  const writing = [C.state === 'busy' && C.provider, C.comp && !C.comp.ended && C.comp.state === 'busy' && partnerProv()].filter(Boolean);
+  // (Each of the others counts, not only the one in view: with three, any of them may be writing.)
+  const writing = [...new Set([C.state === 'busy' && C.provider, C.comp && !C.comp.ended && C.comp.state === 'busy' && partnerProv(), ...Object.entries(C.comps || {}).filter(([, c]) => c && !c.ended && c.state === 'busy').map(([k]) => k)].filter(Boolean))];
   $c('chat').classList.toggle('is-working', writing.length > 0);
   $c('chat').classList.toggle('codex-working', writing.length > 0 && writing.every(p => p === 'codex'));
 }
@@ -242,7 +245,7 @@ function handleEvent(ev, src) {
       setState('ended');
       // The Codex helper may still be running and waiting on you; keep its cards.
       for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src !== 'comp') card.remove();
-      const tool = C.provider === 'codex' ? 'Codex' : 'Claude Code';
+      const tool = { codex: 'Codex', gemini: 'Gemini' }[C.provider] || 'Claude Code';
       const why = ev.stopped ? 'This chat was stopped.' : ev.code ? `${tool} stopped unexpectedly.` : `${tool} finished and closed this chat.`;
       withStick(() => feed.insertAdjacentHTML('beforeend', `<div class="ended"><p><b>${why}</b> Your conversation is saved; start it again to keep going.</p>${ev.detail ? `<pre class="t-out err">${esc(ev.detail)}</pre>` : ''}<button type="button" class="btn prime" data-c="restart">Start again</button></div>`));
       toBottom();
@@ -365,7 +368,7 @@ function ctxWarn(src) {
   C.ctxWarned[src] = true;
   const name = PROV_NAME[provFor(src)];
   withStick(() => $c('cFeed').insertAdjacentHTML('beforeend', `<div class="ctx-warn ${provFor(src)}" data-src="${src}" role="status">
-    <p><b>${src === 'comp' ? 'Codex’s side of this chat' : 'This chat'} is getting full</b> (${esc(ctxLine(src))}). ${name} will summarize the conversation by itself soon, maybe in the middle of a task. Summarizing now, between tasks, keeps what matters.</p>
+    <p><b>${src === 'comp' ? `${name}’s side of this chat` : 'This chat'} is getting full</b> (${esc(ctxLine(src))}). ${name} will summarize the conversation by itself soon, maybe in the middle of a task. Summarizing now, between tasks, keeps what matters.</p>
     <button type="button" class="btn" data-c="compact" data-src="${src}">Summarize now</button></div>`));
   if (nearBottom()) toBottom(); else noteUnseen();
 }
@@ -422,7 +425,7 @@ async function setCompMode(mode) {
 }
 function renderCrew() {
   const box = $c('cCrew'); if (!box) return;
-  if (C.watch || !C.key) { box.innerHTML = ''; return; }
+  if (C.watch || !C.key) { box.innerHTML = ''; box._h = ''; return; }
   const two = duo();
   const many = crewKinds().length > 1;
   // Together: one button for working as a group (who, in what order, and how), always in the row.
@@ -430,7 +433,10 @@ function renderCrew() {
   const who = plan ? ks.slice(0, 2) : ks;
   const word = plan ? 'Plan first' : at ? 'At once' : 'Together';
   const together = `<button type="button" class="crew both together${tg ? ' on' : ''}" data-crew="together" aria-haspopup="dialog" aria-expanded="${!!$c('cTogether') && !$c('cTogether').hidden}" title="${tg ? `${at ? 'At the same time' : word}: ${who.map(k => PROV_NAME[k]).join(at ? ' and ' : ', then ')}. Click to change who, or to write to one again.` : 'Work together: pick which of them take your next message, and whether they take turns, work at the same time or plan first'}"><span class="crew-n">${word}</span>${tg ? `<span class="crew-m">${esc(who.map(k => PROV_NAME[k]).join(at ? ' + ' : ' → '))}</span>` : ''}<span class="crew-caret" aria-hidden="true">▾</span></button>`;
-  box.innerHTML = crewPill('main') + (two ? crewKinds().map(k => withComp(k, () => crewPill('comp'))).join('') + together : '');
+  // Drawn only when something in it changed: while a reply streams this runs several times a second,
+  // and redrawing the same pills would also drop a tooltip or hover under the pointer.
+  const crewHtml = crewPill('main') + (two ? crewKinds().map(k => withComp(k, () => crewPill('comp'))).join('') + together : '');
+  if (box._h !== crewHtml) { box.innerHTML = crewHtml; box._h = crewHtml; }
   box.classList.toggle('duo', two);
   renderRelay();
   $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · ${crewKinds().map(k => `<b>@${k}</b>`).join(', ')} or <b>@${many ? 'all' : 'both'}</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;

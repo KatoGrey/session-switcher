@@ -102,6 +102,21 @@ test('rules: saved to CLAUDE.md and AGENTS.md for every project (in a throwaway 
   } finally { await s.stop(); }
 });
 
+test('updates: Codex to the newest from npm and Gemini by its own updater, each in a terminal; versions for Setup', async () => {
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
+  try {
+    const v = await s.call('/api/tools/versions');
+    assert.equal(v.status, 200);
+    assert.ok('codex' in v.json && 'gemini' in v.json, 'says what it knows (null for one that’s off)');
+    const cx = await s.call('/api/codex/update', {});
+    assert.equal(cx.status, 200); assert.equal(cx.json.dryRun, true); assert.equal(cx.json.running, 0);
+    if (cx.json.script) assert.match(cx.json.script, /npm install -g @openai\/codex@latest/);
+    const gm = await s.call('/api/gemini/update', {});
+    assert.equal(gm.status, 200); assert.equal(gm.json.dryRun, true);
+    if (gm.json.script) assert.match(gm.json.script, /" update/);
+  } finally { await s.stop(); }
+});
+
 test('tools: listed (each side may be missing), and copying checks the name first', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-home-'));
   const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')), { home });

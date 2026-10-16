@@ -34,7 +34,7 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
     'about:blank',
   ], { stdio: 'ignore' });
   let ws;
-  for (let i = 0; i < 75 && !ws; i++) {
+  for (let i = 0; i < 150 && !ws; i++) {   // up to 30 s: a busy PC starts a browser slowly
     try {
       const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
       const pg = list.find(x => x.type === 'page');

@@ -268,7 +268,21 @@ async function setChatDone(id, done, quiet = false) {
   offerUndo(done ? 'Done. It’s off the lists; find it under Done in its project, and it comes back if it’s used again.' : 'Back on the lists.', () => setChatDone(id, !done, true));
 }
 function allSessions() { const all = []; for (const p of S.projects) for (const s of p.sessions) all.push([s, p]); return all; }
-function sessionById(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
+// A chat by its id: from an index built once per list (the sidebar and Today ask for one chat after
+// another), checked to still be where it was; else, as before, by looking through every project.
+let byId = { of: null, map: null };
+function sessionById(id) {
+  const want = String(id || '').toLowerCase();
+  if (byId.of !== S.projects) {
+    const map = new Map();
+    for (const p of S.projects) for (const s of p.sessions.concat(p.done || [])) { const k = String(s.id).toLowerCase(); if (!map.has(k)) map.set(k, [s, p]); }
+    byId = { of: S.projects, map };
+  }
+  const hit = byId.map.get(want);
+  if (hit && S.projects.includes(hit[1]) && (hit[1].sessions.includes(hit[0]) || (hit[1].done || []).includes(hit[0]))) return hit;
+  for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; }
+  return [null, null];
+}
 const lastLine = t => { const parts = String(t || '').trim().split(/\n\s*\n/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean); return parts.length ? parts[parts.length - 1] : ''; };
 // Markdown as plain text for a one-line preview: emphasis, code marks, headings and links go; an
 // asterisk that's part of the words (A*, 2*3) stays.

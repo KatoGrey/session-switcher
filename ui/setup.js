@@ -64,6 +64,7 @@ function renderSetup(j) {
       <div class="field"><label for="prefCodex">Codex command</label>
         <div class="row2"><input id="prefCodex" value="${esc(j.codex ? j.codex.command : 'codex')}" spellcheck="false"><button class="btn" id="saveCodex">Save</button></div>
         <small>Leave as “codex” unless Setup can’t find it; then paste the full path to codex.cmd.</small></div>
+      ${window.REMOTE || !(j.codex && j.codex.enabled) ? '' : '<div id="cxVer"></div>'}
       <label class="toggle"><input type="checkbox" data-pref="autoReview" ${p.autoReview ? 'checked' : ''}><span><b>Review big changes by itself</b><span>After Claude changes forty lines or more in one reply, Codex reviews them and the findings appear in the chat.</span></span></label>
       <div class="field"><label>Rules and tools</label><div class="row2"><span class="rd-hint">Write rules once for both (CLAUDE.md and AGENTS.md), and give each one the other’s MCP tools.</span><button class="btn" data-fix="rules">Rules and tools…</button></div></div>
     </div>
@@ -77,6 +78,8 @@ function renderSetup(j) {
       ${S.shell ? '' : `<button class="btn" data-fix="shortcut">${S.platform === 'darwin' ? 'Add to Applications' : 'Create desktop shortcut'}</button>`}
       <button class="btn" data-fix="share-copy" title="A zip of the app for someone else, without your accounts, chats or settings">Make a copy to share</button>
       <button class="btn" data-fix="update-claude">Update Claude Code</button>
+      ${!window.REMOTE && S.codex && S.codex.enabled && S.codex.installed !== false ? '<button class="btn" data-fix="update-codex">Update Codex</button>' : ''}
+      ${!window.REMOTE && S.gemini && S.gemini.enabled && S.gemini.installed !== false ? '<button class="btn" data-fix="update-gemini">Update Gemini</button>' : ''}
       <button class="btn" data-fix="tour">Take the tour</button>
       <button class="btn" data-fix="restart">Restart</button><button class="btn danger" data-fix="quit">Quit Session Switcher</button>
     </div>
@@ -177,6 +180,18 @@ document.addEventListener('click', wrap(async e => {
   return undefined;
 }));
 
+/* ---------- Codex's version: a newer one lists newer models (Update Codex is under App) ---------- */
+async function loadToolVersions() {
+  const box = $('cxVer'); if (!box) return;
+  let v;
+  try { v = await api('/api/tools/versions'); } catch { return; }
+  const cx = v && v.codex;
+  if (!cx || !$('cxVer')) return;
+  $('cxVer').innerHTML = cx.newer
+    ? `<p class="gm-st">Codex ${esc(cx.version)} here; ${esc(cx.latest)} is out. New models (and their names in the model picker) come with a newer Codex.</p><p class="pb-act"><button class="btn prime sm" data-fix="update-codex">Update Codex</button></p>`
+    : `<p class="gm-st ok">Codex ${esc(cx.version)}${cx.latest ? ', the newest' : ''}.</p>`;
+}
+
 /* ---------- phone access: use this PC's Session Switcher from the Android app ---------- */
 let phoneTimer = null;
 async function loadPhone() {
@@ -216,7 +231,7 @@ async function openSetup(tab = 'health') {
   if (!$('setup').open) $('setup').showModal();
   if (tab === 'look') return renderLook();
   $('setupBody').innerHTML = '<p class="loading">Checking Claude Code, your accounts and shared data…</p>';
-  try { await loadHealth(true); loadPhone(); renderPushBox(); loadProblems(); loadDeskBox(); } catch (err) {
+  try { await loadHealth(true); loadPhone(); renderPushBox(); loadProblems(); loadDeskBox(); loadToolVersions(); } catch (err) {
     // A slip in the page itself shouldn't show as programmer's text.
     const msg = err instanceof TypeError || err instanceof ReferenceError ? 'Setup couldn’t finish loading. Close it and open it again; if it keeps happening, restart Session Switcher.' : err.message;
     $('setupBody').innerHTML = `<p class="loading">${esc(msg)}</p>`;
@@ -402,6 +417,13 @@ $('setupBody').addEventListener('click', wrap(async e => {
   }
   if (what === 'install-claude') { const r = await api('/api/claude/install', {}); return r.dryRun ? reportLaunch(r) : toast(`Installing Claude Code in a ${r.how}. When it says Done, click Check again here.`, 9000); }
   if (what === 'update-claude') { const r = await api('/api/update-claude', {}); return r.dryRun ? reportLaunch(r) : toast(`Updating Claude Code in a ${r.how}. Close it when it finishes, then reopen Setup.`, 8000); }
+  if (what === 'update-codex' || what === 'update-gemini') {
+    const cx = what === 'update-codex', name = cx ? 'Codex' : 'Gemini';
+    const r = await api(cx ? '/api/codex/update' : '/api/gemini/update', {});
+    if (r.dryRun) return reportLaunch(r);
+    const busy = r.running ? ` ${r.running} ${name} chat${r.running === 1 ? ' is' : 's are'} running here: if the update says it couldn’t replace ${cx ? 'Codex' : 'agy'}, stop ${r.running === 1 ? 'it' : 'them'} and update again.` : '';
+    return toast(`Updating ${name} in a ${r.how}.${busy} When it’s done, new ${name} chats use the new version.`, 10000);
+  }
   if (what === 'share-copy') return shareCopy();
   if (what === 'shortcut') { const r = await api('/api/shortcut', {}); return toast(r.dryRun ? 'Would create a desktop shortcut.' : S.platform === 'darwin' ? 'Added “Session Switcher” to Applications in your home folder. Find it with Spotlight or Launchpad.' : 'Added “Claude Session Switcher” to your desktop.'); }
   if (what === 'restart') { $('setup').close(); return restartApp(); }

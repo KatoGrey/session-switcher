@@ -1743,6 +1743,12 @@ module.exports = [
       const chip = await b.eval(`renderBar(); return document.getElementById('usechip').textContent.replace(/\\s+/g, ' ').trim()`);
       t.check('the top bar says the chat runs as Gemini, with its quota', /This chat runs as ?Gemini/.test(chip) && /Quota|Out of quota/.test(chip), chip);
       await t.shot(b, 'chat');
+      const small = await b.eval(`const ta = document.getElementById('cText'); ta.value = 'ask @gemini'; ta.setSelectionRange(11, 11); const m1 = mentionAt();
+        ta.value = 'ask @all'; ta.setSelectionRange(8, 8); const m2 = mentionAt(); ta.value = 'ask @song'; ta.setSelectionRange(9, 9); const m3 = mentionAt(); ta.value = '';
+        handle({ kind: 'ended', code: 1, seq: 9001 }); const ended = [...document.querySelectorAll('#cFeed .ended')].pop()?.textContent || '';
+        return { m1, m2, m3: !!m3, ended }`);
+      t.check('@gemini and @all are names, not a file search (@song still is)', small.m1 === null && small.m2 === null && small.m3, small);
+      t.check('a Gemini chat that stops says Gemini, not Claude Code', /Gemini stopped unexpectedly/.test(small.ended), small);
       // A new Gemini chat from the project page.
       await b.eval(`ChatUI.close(); go('folder', S.projects.find(p => p.name === 'Starfall Tavern').cwd); return 1`); await sleep(900);
       await b.clickOn('[data-act="newgemini"]'); await sleep(1200);
@@ -1814,6 +1820,44 @@ module.exports = [
       t.check('Setup → Gemini says it’s signed in, with Gemini 4 Argon, and what the modes mean', /Use Gemini too/.test(setup) && /Signed in/.test(setup) && /Gemini 4 Argon/.test(setup) && /Edit files/.test(setup), setup.slice(0, 300));
       await b.eval(`document.getElementById('st-gemini').scrollIntoView(); return 1`); await sleep(200);
       await t.shot(b, 'setup');
+      // Updating Codex and Gemini from Setup, like Claude Code; a Codex that's behind says so.
+      const up = await b.eval(`const real = api; window._upd = [];
+        api = async (u, body) => { if (u === '/api/tools/versions') return { codex: { version: '0.155.1', latest: '0.163.0', newer: true }, gemini: { version: '1.3.5' } };
+          if (u === '/api/codex/update' || u === '/api/gemini/update') { _upd.push(u); return { ok: true, how: 'terminal window', running: u === '/api/codex/update' ? 2 : 0 }; } return real(u, body); };
+        await loadToolVersions();
+        const acts = [...document.querySelectorAll('.app-actions button')].map(x => x.textContent.trim());
+        const line = document.getElementById('cxVer')?.textContent.replace(/\\s+/g, ' ').trim();
+        document.querySelector('#cxVer [data-fix="update-codex"]').click(); await new Promise(r => setTimeout(r, 200));
+        const toast1 = document.getElementById('toast').textContent;
+        document.querySelector('.app-actions [data-fix="update-gemini"]').click(); await new Promise(r => setTimeout(r, 200));
+        api = real;
+        return { acts, line, toast1, calls: _upd }`);
+      t.check('Setup has Update Codex and Update Gemini beside Update Claude Code', up.acts.includes('Update Claude Code') && up.acts.includes('Update Codex') && up.acts.includes('Update Gemini'), up.acts);
+      t.check('a Codex that’s behind says which version is out, with Update Codex', /Codex 0\.155\.1 here; 0\.163\.0 is out/.test(up.line || ''), up.line);
+      t.check('Update Codex runs the update, and says to stop running Codex chats if it can’t', JSON.stringify(up.calls) === '["/api/codex/update","/api/gemini/update"]' && /2 Codex chats are running here/.test(up.toast1), up);
+    },
+  },
+  {
+    name: 'hidden window',
+    // Minimized or in the tray: updates still reach the title (and the tray), but the hub and the
+    // side list aren't redrawn for each one; they're drawn once when it's back, with what changed.
+    async run(t) {
+      const b = await t.open(); await sleep(400);
+      const r = await b.eval(`let nav = 0, live = 0; const rn = renderNav, rl = renderLive;
+        renderNav = (...a) => { nav++; return rn(...a); }; renderLive = (...a) => { live++; return rl(...a); };
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+        const before = document.title;
+        S.activity = S.activity.map(x => ({ ...x, status: 'perm', phase: 'perm' }));
+        for (let i = 0; i < 5; i++) renderLiveSoon();
+        const hidden = { nav, live, title: document.title, changed: document.title !== before };
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+        document.dispatchEvent(new Event('visibilitychange'));
+        const back = { nav, live };
+        renderNav = rn; renderLive = rl; delete document.hidden;
+        return { hidden, back }`);
+      t.check('while hidden, nothing is redrawn for each update', r.hidden.nav === 0 && r.hidden.live === 0, r);
+      t.check('but the title still says what waits', /^\(\d+\) Session Switcher$/.test(r.hidden.title), r);
+      t.check('back in view, it’s drawn once', r.back.nav === 1 && r.back.live === 1, r);
     },
   },
   {
