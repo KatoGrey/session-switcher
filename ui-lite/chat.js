@@ -784,6 +784,7 @@ async function applyReplyPlan() {
 const prettyModel = m => String(m).replace(/^claude-/, '').replace(/-(\d)-(\d)/, ' $1.$2').replace(/\[1m\]$/, ' 1M').replace(/^(\w)/, c => c.toUpperCase());
 const modelLabel = (prov, v) => { const base = String(v).replace(/\[1m\]$/, ''); const m = modelsFor(prov).find(x => x.value === v || x.value === base); return m ? `${m.label}${/\[1m\]$/.test(v) ? ' 1M' : ''}` : prettyModel(v); };
 const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
+const followUpDelivery = () => local.get('followUpDelivery', 'queue') === 'steer' ? 'steer' : 'queue';
 function toolsHtml({ fresh }) {
   const prov = replyProv();
   const info = fresh ? null : replyTarget().info;
@@ -792,12 +793,16 @@ function toolsHtml({ fresh }) {
   const effort = (info && info.effort) || (own && COMP.effort) || null;
   const md0 = MD(prov);
   const busy = !fresh && replyBusy();
+  const delivery = followUpDelivery();
+  const sendLabel = fresh ? 'Start' : busy ? delivery === 'steer' ? 'Steer now' : 'Queue' : 'Send';
+  const sendHint = `${sendLabel} (Enter)${busy ? ` · ⌘⇧Enter / Ctrl+Shift+Enter to ${delivery === 'steer' ? 'queue' : 'steer now'}` : ''}`;
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
     <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : ''}${prov === 'codex' && ((info && info.fast) || (!info && COMP.fast)) ? ' ⚡' : ''}<span>▾</span></button>
     <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
-    ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button><span class="delivery-actions"><button type="submit" class="btn" data-delivery="queue" title="Wait until the current turn finishes (Enter)">Queue</button><button type="submit" class="btn prime" data-delivery="steer" title="Send into the current work (Option–Enter)">Steer now</button></span>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
+    ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button>' : ''}
+    <button type="submit" class="send" aria-label="${sendHint}" title="${sendHint}">↑</button>`;
 }
 function paintBar() {
   const t = $('barTools'); if (!t || S.view !== 'chat' || CV.replaying) return;
@@ -1218,20 +1223,27 @@ function effortMenu(anchor) {
 }
 // Conversation settings: how much it may do without asking. Your default is preselected.
 function settingsMenu(anchor) {
+  const follow = `<hr><div class="ph">Follow-up behavior · on this browser</div>${[['queue', 'Queue', 'Wait until the current turn finishes'], ['steer', 'Steer', 'Guide the current work now']].map(([v, label, note]) => `<button data-v="follow:${v}" role="menuitemradio" aria-checked="${followUpDelivery() === v}">${label}<small>${note}</small></button>`).join('')}<div class="ph">⌘⇧Enter / Ctrl+Shift+Enter uses the other action once</div>`;
+  const setFollow = v => {
+    if (!v.startsWith('follow:')) return false;
+    local.set('followUpDelivery', v.slice(7));
+    if (S.view === 'newchat') paintNewChat(); else paintBar();
+    return true;
+  };
   // Gemini: its own modes, from the running chat.
   if (S.view === 'chat' && CV.provider === 'gemini') {
     const modes = (CV.info && CV.info.modes) || [];
-    if (!CV.key || !modes.length) return toast('Gemini’s modes show once the chat is running.');
-    return pop(anchor, `<div class="ph">Gemini · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === CV.info.permissionMode}">${esc(m.label)}</button>`).join('')}`,
-      v => wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; toast(`This chat: ${(modes.find(m => m.value === v) || {}).label || v}.`); })());
+    return pop(anchor, `<div class="ph">Gemini · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === CV.info.permissionMode}">${esc(m.label)}</button>`).join('')}${follow}`,
+      v => setFollow(v) || wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; toast(`This chat: ${(modes.find(m => m.value === v) || {}).label || v}.`); })());
   }
   const prov = permFam(S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : 'codex') : CV.provider);
   const running = S.view === 'chat' && CV.key && CV.info;
   const cur = (running && CV.info.permissionMode) || COMP.perm || permDefault(prov);
   const modes = (S.permissionModes || {})[prov] || [];
   const def = permDefault(prov);
-  pop(anchor, `<div class="ph">Conversation settings · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m)}" role="menuitemradio" aria-checked="${m === cur}">${esc(PERM_LABELS[m] || m)}${m === def ? '<small>your default</small>' : ''}</button>`).join('')}<hr><button data-v="__default">Make “${esc(PERM_LABELS[cur] || cur)}” my default</button>`,
+  pop(anchor, `<div class="ph">Conversation settings · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m)}" role="menuitemradio" aria-checked="${m === cur}">${esc(PERM_LABELS[m] || m)}${m === def ? '<small>your default</small>' : ''}</button>`).join('')}<hr><button data-v="__default">Make “${esc(PERM_LABELS[cur] || cur)}” my default</button>${follow}`,
     v => {
+      if (setFollow(v)) return undefined;
       if (v === '__default') return wrap(setLook)({ permissions: { [prov]: cur } }).then(() => toast(`New ${prov === 'claude' ? 'Claude' : 'Codex'} chats start in ${PERM_LABELS[cur]}.`));
       if (running) return wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; toast(`This chat: ${PERM_LABELS[v]}.`); })();
       COMP.perm = v; toast(`This chat will start in ${PERM_LABELS[v]}.`); return undefined;

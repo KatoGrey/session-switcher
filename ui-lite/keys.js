@@ -6,7 +6,7 @@ const SHORTCUTS = [
   ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g b', 'Bugs'], ['g o', 'Routines'], ['g r', 'Recents'], ['g u', 'Automation'], ['g i', 'Images'], ['g l', 'Alerts'], ['g a', 'Archived'], ['g c', 'Clean up'], ['[ / ] or ⌥↑ / ⌥↓', 'Previous / next chat in the sidebar (⌥ works while typing)'], ['n or ⌥⇧↓', 'Next chat that needs you'], ['m', 'Sounds on / off'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
   ['Needs you', [['t', 'Triage: one at a time, the next opens by itself'], ['a / d', 'Allow / deny'], ['r', 'Reply'], ['e', 'Done'], ['o', 'Open the chat']]],
   ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–4', 'Status: Exploring, Building, Finishing, Done'], ['→ / ←', 'Open / fold a chat’s sub-chats'], ['f', 'Focus on / off'], ['w', 'Waiting on…'], ['s', 'Status, kind and more'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
-  ['In a chat', [['↵', 'Send, or queue while working'], ['⌥↵', 'Steer the current work now'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['e e', 'Archive it (press twice)'], ['esc', 'Back to where you were']]],
+  ['In a chat', [['↵', 'Send using your follow-up setting'], ['⌘⇧↵ / Ctrl+Shift+Enter', 'Use the other follow-up action once (queue / steer)'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['e e', 'Archive it (press twice)'], ['esc', 'Back to where you were']]],
 ];
 
 /* ---------- the cursor ---------- */

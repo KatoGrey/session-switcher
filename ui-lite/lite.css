@@ -865,14 +865,11 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .q-item { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border: 1px dashed var(--line-2); border-radius: 8px; font-size: 13px; color: var(--fg-2); background: var(--pane); }
 .q-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 200px; }
 .q-item .q-text { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.q-actions, .delivery-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.q-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .q-editing .q-main, .q-editing textarea, .q-error { flex-basis: 100%; }
 .q-error { color: var(--st-bug); }
-.delivery-actions .btn { padding: 5px 9px; white-space: nowrap; }
 @media (max-width: 600px) {
   .q-actions { margin-left: auto; }
-  .box .tools:has(.delivery-actions) { flex-wrap: wrap; }
-  .delivery-actions { margin-left: auto; }
 }
 /* Pictures Codex drew, in the conversation */
 .gen-fig { margin: 0; display: flex; flex-direction: column; gap: 6px; max-width: 520px; }

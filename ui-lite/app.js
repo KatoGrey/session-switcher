@@ -391,7 +391,7 @@ document.addEventListener('contextmenu', e => {
 document.addEventListener('submit', e => {
   if (e.target.id === 'trForm') { e.preventDefault(); return triageReply(); }
   if (e.target.id === 'cmdForm') { e.preventDefault(); const v = $('cmdInput').value; $('cmdInput').value = ''; return askCommander(v); }
-  if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat({ delivery: e.submitter?.dataset.delivery || 'queue' }); }
+  if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat({ delivery: followUpDelivery() }); }
   if (e.target.id === 'genForm') { e.preventDefault(); const v = $('genPrompt').value.trim(); if (!v) return undefined; $('genPrompt').value = ''; return wrap(startGenerate)(v, S.genN || 1); }
   if (e.target.id === 'rtForm') { e.preventDefault(); return wrap(saveRoutine)(); }
   if (e.target.dataset.olread) {
@@ -405,8 +405,15 @@ document.addEventListener('submit', e => {
 });
 document.addEventListener('keydown', e => {
   // On a phone, Return is a new line in a message box (the ↑ button sends); with a keyboard, Enter sends.
-  if (e.key === 'Enter' && TOUCH() && e.target.tagName === 'TEXTAREA') return;
-  if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); const b = e.altKey && document.querySelector('[data-delivery="steer"]'); if (b) $('composer').requestSubmit(b); else $('composer').requestSubmit(); return; }
+  if (e.key === 'Enter' && TOUCH() && !e.metaKey && !e.ctrlKey && e.target.tagName === 'TEXTAREA') return;
+  if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.isComposing) {
+    const alternate = (e.metaKey || e.ctrlKey) && e.shiftKey;
+    if (e.shiftKey && !alternate) return;
+    e.preventDefault();
+    if (alternate && S.view === 'chat') sendInChat({ delivery: followUpDelivery() === 'queue' ? 'steer' : 'queue' });
+    else $('composer').requestSubmit();
+    return;
+  }
   if (e.target.id === 'trBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); triageReply(); return; }
   if (e.target.id === 'msgBox' && e.key.toLowerCase() === 'p' && (e.metaKey || e.ctrlKey) && S.view === 'newchat') { e.preventDefault(); document.querySelector('[data-ncproject]')?.click(); return; }
   if (e.target.dataset && e.target.dataset.qr && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendQuick(e.target.dataset.qr); }
