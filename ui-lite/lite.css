@@ -259,6 +259,8 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 [data-skin="rebel"] .label-dot { width: 4px; height: 12px; border-radius: 1px; }
 .needs-dot { background: var(--needs); }
 .drop-hot { background: color-mix(in srgb, var(--accent) 14%, transparent) !important; box-shadow: inset 0 0 0 1px var(--accent) !important; }
+.drop-before { box-shadow: inset 0 3px var(--accent) !important; }
+.drop-after { box-shadow: inset 0 -3px var(--accent) !important; }
 
 /* ---------- main ---------- */
 .main { min-width: 0; overflow-y: auto; background: var(--pane); }
@@ -347,6 +349,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .pop .ph { padding: 6px 10px 4px; color: var(--muted); font-size: 11.5px; }
 .pop button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 7px 10px; border-radius: 6px; }
 .pop button:hover, .pop button:focus-visible { background: var(--hover); outline: none; }
+.pop button:disabled { opacity: .4; cursor: default; }
 .pop button small, .pop button kbd { margin-left: auto; color: var(--muted); font-size: 11.5px; font-family: var(--f-mono); }
 .pop button[aria-checked="true"]::after { content: "✓"; margin-left: auto; color: var(--accent); }
 .pop hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }

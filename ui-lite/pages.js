@@ -49,12 +49,13 @@ function cardHtml(p) {
     <span class="body"><span class="name">${esc(p.name)}</span>${stageBar(cs)}
       <span class="meta">${nd ? '<span class="dot needs-dot"></span>' : ''}<span>${lv.length} active${w ? ` · ${w} waiting` : ''}</span></span></span></button>`;
 }
-const projectsIn = b => S.projects.filter(p => !p.archived && (b === null ? !p.bucket : p.bucket === b));
+const projectOrder = (a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || b.updated - a.updated || a.name.localeCompare(b.name);
+const projectsIn = b => S.projects.filter(p => !p.archived && (p.bucket || null) === (b || null)).sort(projectOrder);
 const hasChats = p => chatsOfProject(p.key).length > 0;
 function home() {
   const groups = [...buckets().map(b => ({ id: b.id, name: b.name })), { id: null, name: 'Unsorted' }];
   const sections = groups.map(b => {
-    const ps = projectsIn(b.id).filter(p => b.id !== null || hasChats(p)).sort((x, y) => y.updated - x.updated);
+    const ps = projectsIn(b.id).filter(p => b.id !== null || hasChats(p));
     if (b.id === null && !ps.length) return '';
     const act = ps.filter(p => live(chatsOfProject(p.key)).length);
     const quiet = ps.filter(p => !live(chatsOfProject(p.key)).length);
@@ -67,7 +68,7 @@ function home() {
   }).join('');
   const setup = !buckets().length ? '<p class="lead">No buckets yet. Buckets say what a project is for (a product, games, personal apps). They live in lite.json in your data folder.</p>' : '';
   return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${L('Projects')}</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>${setup}${sections}
-    <p class="hint-line">Drag a project (card or quiet chip) onto another bucket to move it. Right-click one for its picture, bucket or archive.</p></div>`;
+    <p class="hint-line">Drag projects before or after one another to reorder them, or onto a bucket to move them. The project menu also has Move up, Move down and Archive.</p></div>`;
 }
 
 function listView(kind) {
@@ -455,8 +456,12 @@ function rowMenu(anchor, id, at) {
 }
 function projMenu(anchor, k, at) {
   const p = projBy.get(k); if (!p) return;
-  pop(anchor, `<div class="ph">${esc(p.name)}</div><button data-v="open">Project overview</button>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button><button data-v="img">Change picture…</button>' : ''}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`,
+  const peers = projectsIn(p.bucket), i = peers.findIndex(x => x.key === k);
+  const moves = p.archived ? '' : `<hr><button data-v="up" ${i <= 0 ? 'disabled' : ''}>Move up</button><button data-v="down" ${i < 0 || i === peers.length - 1 ? 'disabled' : ''}>Move down</button>`;
+  pop(anchor, `<div class="ph">${esc(p.name)}</div><button data-v="open">Project overview</button>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button><button data-v="img">Change picture…</button>' : ''}${moves}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`,
     v => {
+      if (v === 'up' && i > 0) return wrap(placeProject)(k, peers[i - 1].key);
+      if (v === 'down' && i < peers.length - 1) return wrap(placeProject)(k, peers[i + 1].key, true);
       if (v === 'open') return go('project', { project: k });
       if (v === 'new') return go('newchat', { ncProject: k });
       if (v.startsWith('b:')) return wrap(setBucket)(k, v.slice(2) || null);

@@ -96,11 +96,9 @@ function sideProjects(all) {
   for (const c of all) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
   const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
   const mainsOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)));
-  const hot = g => g.cs.some(c => needs(c) || running(c)) ? 1 : 0;
-  const ord = g => (typeof g.p.order === 'number' ? g.p.order : 1e9);
   const active = g => mainsOf(g).some(c => !famQuiet(c));
-  const act = groups.filter(active).sort((a, b) => ord(a) - ord(b) || hot(b) - hot(a) || Math.max(...b.cs.map(c => c.updated)) - Math.max(...a.cs.map(c => c.updated)));
-  const quiet = groups.filter(g => !active(g));
+  const act = groups.filter(active).sort((a, b) => projectOrder(a.p, b.p));
+  const quiet = groups.filter(g => !active(g)).sort((a, b) => projectOrder(a.p, b.p));
   const projRow = g => {
     const mains = mainsOf(g), lead = projectMain(mains);
     const many = mains.length > 1, children = descOf(lead.id).filter(c => c.project === g.p.key);
@@ -141,7 +139,7 @@ function sideProjects(all) {
     html += `<button class="side-bucket side-bucket-btn" data-side-later="*" aria-expanded="${lo}">Later <span class="n">${later.length}</span><span class="chev">${lo ? '▾' : '▸'}</span></button>`;
     if (lo) html += `<div class="later-chats">${later.map(c => sideChat(c).replace('<span class="lbl">', `<span class="lbl" title="${esc(projOf(c).name || '')}">`) + sideFam(c)).join('')}</div>`;
   }
-  if (quiet.length) html += S.more.quietProj ? `<div class="side-bucket">Quiet</div>${quiet.map(g => `<button class="nav-i chat-i" data-project="${esc(g.p.key)}"><span class="lbl">${esc(g.p.name)}</span></button>`).join('')}<button class="nav-i chat-i quiet-toggle" data-quietproj="1"><span class="lbl">Hide quiet</span></button>` : `<button class="nav-i quiet-toggle" data-quietproj="1"><span class="lbl">${quiet.length} quiet project${quiet.length === 1 ? '' : 's'}</span></button>`;
+  if (quiet.length) html += S.more.quietProj ? `<div class="side-bucket">Quiet</div>${quiet.map(g => `<button class="nav-i chat-i" draggable="true" data-project="${esc(g.p.key)}"><span class="lbl">${esc(g.p.name)}</span></button>`).join('')}<button class="nav-i chat-i quiet-toggle" data-quietproj="1"><span class="lbl">Hide quiet</span></button>` : `<button class="nav-i quiet-toggle" data-quietproj="1"><span class="lbl">${quiet.length} quiet project${quiet.length === 1 ? '' : 's'}</span></button>`;
   return html || '<p class="side-empty">No chats here yet.</p>';
 }
 // In a project without status labels (and for Focus chats), each chat carries its status as a small dot.
@@ -526,36 +524,43 @@ const nestTarget = t => {
   const fz = r.closest('[data-drop-focus]'); if (fz && !me.focus) return fz;
   return r;
 };
-// A project dropped on another one goes just above it, in that one's bucket; the bucket's order is saved.
-async function placeProject(key, before) {
-  const target = projBy.get(before); if (!target) return;
-  const keys = [...document.querySelectorAll('#sideScroll .proj-row [data-project]')].map(b => b.dataset.project)
-    .filter(k => k !== key && (projBy.get(k) || {}).bucket === target.bucket);
-  keys.splice(keys.indexOf(before), 0, key);
+// Save the whole destination bucket, including projects outside the current sidebar view.
+async function placeProject(key, targetKey, after = false) {
+  const target = projBy.get(targetKey), moving = projBy.get(key);
+  if (!target || !moving || key === targetKey || target.archived || moving.archived) return;
+  const keys = projectsIn(target.bucket).map(p => p.key).filter(k => k !== key);
+  keys.splice(keys.indexOf(targetKey) + Number(after), 0, key);
   for (const [i, k] of keys.entries()) await api('/api/lite/project', { key: k, patch: { order: i + 1, ...(k === key ? { bucket: target.bucket || null } : {}) } });
   sfx('card'); await loadState(); render();
 }
-const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? t.closest('.proj-row [data-project]:not(.drop-self)') || t.closest('[data-drop-bucket]') : null);
+const projectDropTarget = t => {
+  const p = t.closest('[data-project]') || t.closest('.proj-row')?.querySelector('[data-project]');
+  return p && p.dataset.project !== drag.project && !projBy.get(p.dataset.project)?.archived ? p : null;
+};
+const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? projectDropTarget(t) || t.closest('[data-drop-bucket]') : null);
+const projectDropAfter = (e, z) => { const r = z.getBoundingClientRect(); return e.clientY > r.top + r.height / 2; };
+const clearDrop = () => document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot', 'drop-before', 'drop-after'));
 document.addEventListener('dragover', e => {
   const z = dropZone(e.target); if (!z) return;
   e.preventDefault();
-  document.querySelectorAll('.drop-hot').forEach(x => x !== z && x.classList.remove('drop-hot'));
+  clearDrop();
   z.classList.add('drop-hot');
+  if (drag.project && z.dataset.project) z.classList.add(projectDropAfter(e, z) ? 'drop-after' : 'drop-before');
 });
-document.addEventListener('dragleave', e => { const z = dropZone(e.target); if (z && !z.contains(e.relatedTarget)) z.classList.remove('drop-hot'); });
+document.addEventListener('dragleave', e => { const z = dropZone(e.target); if (z && !z.contains(e.relatedTarget)) z.classList.remove('drop-hot', 'drop-before', 'drop-after'); });
 document.addEventListener('drop', e => {
   const z = dropZone(e.target);
-  document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot'));
+  clearDrop();
   if (!z) return;
   e.preventDefault();
   const d = drag; drag = null;
   if (d.idea) { if (z.dataset.ideaDrop) { const over = e.target.closest('[data-idea]'); wrap(moveIdea)(d.idea, over && over.dataset.idea !== d.idea ? over.dataset.idea : null); } else wrap(startIdea)(d.idea); }
   else if (d.chats && z.dataset.chat) wrap(nestChats)(d.chats, z.dataset.chat);
   else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : z.dataset.dropStage === 'waiting' ? { waiting: true } : { status: z.dataset.dropStage, waiting: false });
-  else if (z.dataset.project) { if (z.dataset.project !== d.project) wrap(placeProject)(d.project, z.dataset.project); }
+  else if (z.dataset.project) { if (z.dataset.project !== d.project) wrap(placeProject)(d.project, z.dataset.project, projectDropAfter(e, z)); }
   else wrap(setBucket)(d.project, z.dataset.dropBucket || null);
 });
-document.addEventListener('dragend', () => { drag = null; document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot')); });
+document.addEventListener('dragend', () => { drag = null; clearDrop(); });
 addEventListener('resize', () => { if (S.view === 'side' && !small()) render(); });
 
 /* ---------- start ---------- */
