@@ -862,8 +862,18 @@ button.prow.next:hover { background: color-mix(in srgb, var(--accent) 10%, var(-
 .box .stop-sm:hover { color: var(--fg); background: var(--hover); }
 .queue-box { max-width: 760px; width: calc(100% - 32px); margin: 0 auto 6px; display: flex; flex-direction: column; gap: 4px; }
 .queue-box[hidden] { display: none; }
-.q-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; border: 1px dashed var(--line-2); border-radius: 8px; font-size: 13px; color: var(--fg-2); background: var(--pane); }
-.q-item .q-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-item { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border: 1px dashed var(--line-2); border-radius: 8px; font-size: 13px; color: var(--fg-2); background: var(--pane); }
+.q-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 200px; }
+.q-item .q-text { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.q-actions, .delivery-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.q-editing .q-main, .q-editing textarea, .q-error { flex-basis: 100%; }
+.q-error { color: var(--st-bug); }
+.delivery-actions .btn { padding: 5px 9px; white-space: nowrap; }
+@media (max-width: 600px) {
+  .q-actions { margin-left: auto; }
+  .box .tools:has(.delivery-actions) { flex-wrap: wrap; }
+  .delivery-actions { margin-left: auto; }
+}
 /* Pictures Codex drew, in the conversation */
 .gen-fig { margin: 0; display: flex; flex-direction: column; gap: 6px; max-width: 520px; }
 .gen-fig img { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); cursor: zoom-in; background: var(--bg); }
@@ -1150,6 +1160,44 @@ button.tk-prow:hover, button.tk-brow:hover { background: var(--hover); }
 .tk-chat { display: flex; align-items: center; gap: 12px; }
 .tk-chat .t { flex: 1; min-width: 0; }
 .tk-note { color: var(--muted); font-size: 12px; margin: 0; }
+.recent-row { width: 100%; grid-template-columns: minmax(0, 1fr) auto 12px; text-align: left; }
+.recent-row .when { display: block; }
+.recent-row .t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-archived .t { color: var(--muted); }
+.recent-archived .t b { color: var(--muted); font-weight: 400; }
+.recent-more { align-self: flex-start; margin-top: 8px; }
+#recentBox .sec-h .linkish { margin-left: auto; }
+.tk-toggle { margin-left: auto; flex-shrink: 0; }
+.tk-calendars { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r); background: var(--pane); }
+.tk-calendars > .tk-cap { margin: 0 0 14px; }
+.tk-calendar-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; }
+.tk-calendar { min-width: 0; }
+.tk-calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.tk-calendar-head .tk-pname { text-align: left; font-weight: 600; }
+.tk-calendar-grid { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 4px; }
+.tk-months { grid-column: 2; display: grid; grid-template-columns: repeat(var(--weeks), minmax(0, 1fr)); gap: 3px; font-size: 10px; color: var(--muted); }
+.tk-months span { white-space: nowrap; }
+.tk-weekdays { display: grid; grid-template-rows: repeat(7, 1fr); gap: 3px; font-size: 9px; color: var(--muted); align-items: center; }
+.tk-weekdays span:nth-child(1) { grid-row: 2; }
+.tk-weekdays span:nth-child(2) { grid-row: 4; }
+.tk-weekdays span:nth-child(3) { grid-row: 6; }
+.tk-heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 1fr); grid-template-columns: repeat(var(--weeks), minmax(0, 1fr)); aspect-ratio: var(--weeks) / 7; gap: 3px; }
+.tk-heat-cell { display: block; padding: 0; min-width: 0; border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); border-radius: 3px; background: color-mix(in srgb, var(--muted) 12%, transparent); }
+.tk-heat-cell[data-level="1"] { background: color-mix(in srgb, var(--accent) 25%, var(--pane)); }
+.tk-heat-cell[data-level="2"] { background: color-mix(in srgb, var(--accent) 45%, var(--pane)); }
+.tk-heat-cell[data-level="3"] { background: color-mix(in srgb, var(--accent) 70%, var(--pane)); }
+.tk-heat-cell[data-level="4"] { background: var(--accent); }
+button.tk-heat-cell:hover, button.tk-heat-cell:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+.tk-heat-detail { color: var(--muted); font-size: 11px; min-height: 30px; margin: 7px 0 0; }
+.tk-calendar-foot, .tk-legend { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tk-calendar-foot { justify-content: space-between; gap: 10px; margin-top: 12px; }
+.tk-legend { color: var(--muted); font-size: 10px; }
+.tk-legend i { width: 11px; height: 11px; }
+@media (max-width: 700px) {
+  .tk-calendar-list { grid-template-columns: 1fr; }
+  #recentBox .sec-h .hint { display: none; }
+  #tokBox .sec-h { flex-wrap: wrap; }
+}
 @media (max-width: 760px) {
   .tk-card { grid-template-columns: 1fr; gap: 14px; }
   .tk-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }

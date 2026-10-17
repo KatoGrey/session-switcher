@@ -77,10 +77,31 @@ function listView(kind) {
     const q = S.q.toLowerCase();
     list = all.filter(c => c.title.toLowerCase().includes(q) || projOf(c).name.toLowerCase().includes(q) || (c.firstPrompt || '').toLowerCase().includes(q)).sort((a, b) => b.updated - a.updated).slice(0, 80);
     title = `Search: ${S.q}`;
-  } else { list = all.filter(inBucket).sort((a, b) => b.updated - a.updated).slice(0, 60); title = L('Recents'); }
+  } else { list = recentChats().slice(0, 60); title = L('Recents'); }
   return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${esc(title)}</h1></div></div>
-    <div class="rows">${list.map(c => rowHtml(c, { showProject: true, showStage: true })).join('') || '<p class="empty-note">Nothing here.</p>'}</div>${selHint()}</div>`;
+    ${kind === 'recent' ? '<p class="hint-line">Across all projects, including archived chats. Last opened or updated.</p>' : ''}
+    <div class="rows">${list.map(c => kind === 'recent' ? recentRow(c) : rowHtml(c, { showProject: true, showStage: true })).join('') || '<p class="empty-note">Nothing here.</p>'}</div>${selHint()}</div>`;
 }
+
+const recentAt = c => Math.max(c.updated || 0, S.seen[c.id] || 0);
+const recentChats = () => S.chats.filter(c => !c.auto && !c.routineRun).sort((a, b) => recentAt(b) - recentAt(a));
+function recentRow(c) {
+  const p = projOf(c), archived = c.archived || c.desktopArchived || p.archived;
+  return `<button class="row recent-row${archived ? ' recent-archived' : ''}" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" title="${esc(c.title)}">
+    <span class="t"><b>${esc(c.title)}</b><small>${esc(p.name)} · ${c.provider === 'codex' ? 'Codex' : c.provider === 'gemini' ? 'Gemini' : 'Claude'}${archived ? ' · Archived' : ''}</small></span>
+    <span class="when">${ago(recentAt(c))}</span><span aria-hidden="true">›</span></button>`;
+}
+function recentSection() {
+  const list = recentChats(), more = local.get('recentMore', false);
+  return `<section class="section" id="recentBox"><div class="sec-h"><h2>Recent chats</h2><span class="hint">Across all projects</span><button class="linkish" data-go="recent">All recents ›</button></div>
+    <div class="rows">${list.slice(0, more ? 20 : 10).map(recentRow).join('') || '<p class="empty-note">No recent chats.</p>'}</div>
+    ${list.length > 10 ? `<button class="linkish recent-more" data-recent-more="1" aria-expanded="${more}">${more ? 'Show 10' : `Show ${Math.min(20, list.length)}`}</button>` : ''}</section>`;
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('[data-recent-more]')) return;
+  local.set('recentMore', !local.get('recentMore', false));
+  $('recentBox').outerHTML = recentSection();
+});
 
 function project() {
   const p = projBy.get(S.project);

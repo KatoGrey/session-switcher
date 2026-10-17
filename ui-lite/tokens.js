@@ -79,13 +79,48 @@ document.addEventListener('pointermove', e => {
   tip.style.left = `${left}px`;
 });
 
+/* ---------- project calendars: one square per day, Sunday through Saturday ---------- */
+const tokProjectMode = () => local.get('tokenChart', 'bars') === 'projects';
+function tokChartToggle() {
+  return `<div class="seg tk-toggle" role="group" aria-label="Token chart"><button data-tkview="bars" aria-pressed="${!tokProjectMode()}">Bars</button><button data-tkview="projects" aria-pressed="${tokProjectMode()}">By project</button></div>`;
+}
+function tokProjectCalendars() {
+  const t = S.tokens, projects = t.projectDays || [], more = local.get('tokenProjectsMore', false);
+  if (!projects.length) return '<p class="empty-note">No project history available yet.</p>';
+  const days = t.days, first = new Date(`${days[0].day}T12:00:00`), offset = first.getDay();
+  const weeks = Math.ceil((offset + days.length) / 7);
+  const max = Math.max(1, ...projects.flatMap(p => Object.values(p.days)));
+  const level = n => n ? Math.max(1, Math.ceil(4 * Math.sqrt(n / max))) : 0;
+  const card = p => {
+    const cells = Array.from({ length: weeks * 7 }, (_, i) => {
+      const d = days[i - offset];
+      if (!d) return '<span class="tk-heat-blank"></span>';
+      const n = p.days[d.day] || 0;
+      const label = `${p.name} · ${dayLabel(d.day, { weekday: 'short', month: 'short', day: 'numeric' })} · ${n ? `${longTok(n)} recorded tokens` : 'No records'}`;
+      return `<button class="tk-heat-cell" data-level="${level(n)}" data-tkheat="1" title="${esc(label)}" aria-label="${esc(label)}"></button>`;
+    }).join('');
+    const months = Array.from({ length: weeks }, (_, w) => {
+      const slice = days.slice(Math.max(0, w * 7 - offset), Math.max(0, (w + 1) * 7 - offset));
+      const d = slice.find(d => d.day.endsWith('-01')) || (w === 0 && slice[0]);
+      return `<span>${d ? esc(dayLabel(d.day, { month: 'short' })) : ''}</span>`;
+    }).join('');
+    const name = projBy.has(p.key) ? `<button class="linkish tk-pname" data-go-project="${esc(p.key)}" title="Open ${esc(p.name)}">${esc(p.name)}</button>` : `<span class="tk-pname">${esc(p.name)}</span>`;
+    return `<div class="tk-calendar"><div class="tk-calendar-head">${name}<span class="tk-pval">${fmtTok(p.total)}</span></div>
+      <div class="tk-calendar-grid" style="--weeks:${weeks}"><div class="tk-months">${months}</div><div class="tk-weekdays"><span>Mon</span><span>Wed</span><span>Fri</span></div><div class="tk-heat">${cells}</div></div>
+      <p class="tk-heat-detail" aria-live="polite">Select a day for its recorded tokens.</p></div>`;
+  };
+  return `<div class="tk-calendars"><p class="tk-cap">Last 90 days · recorded tokens · gaps mean no records</p><div class="tk-calendar-list">${projects.slice(0, more ? projects.length : 6).map(card).join('')}</div>
+    <div class="tk-calendar-foot"><span class="tk-legend">Less ${[0, 1, 2, 3, 4].map(n => `<i class="tk-heat-cell" data-level="${n}"></i>`).join('')} More · same scale across projects</span>${projects.length > 6 ? `<button class="linkish" data-tkmore="1" aria-expanded="${more}">${more ? 'Show fewer' : `All ${projects.length} projects`}</button>` : ''}</div></div>`;
+}
+
 /* ---------- the card on the Bridge ---------- */
 function tokensBoxHtml() {
   tokensWanted();
   const t = S.tokens;
-  const head = `<div class="sec-h"><h2>Tokens</h2>${t && t.counting ? '<span class="hint">Counting…</span>' : ''}<button class="linkish" data-go="tokens" style="${t && t.counting ? '' : 'margin-left:auto'}">All of it ›</button></div>`;
+  const head = `<div class="sec-h"><h2>Tokens</h2>${t && t.counting ? '<span class="hint">Counting…</span>' : ''}${tokChartToggle()}<button class="linkish" data-go="tokens">All of it ›</button></div>`;
   if (!t) return `${head}<p class="empty-note">Reading your chats’ records…</p>`;
   if (!t.ready) return `${head}<p class="empty-note">Counting every chat’s tokens for the first time. This takes a few minutes and runs in the background.</p>`;
+  if (tokProjectMode()) return head + tokProjectCalendars();
   const top = t.projects.slice(0, 4), most = top.length ? top[0].total : 1;
   return `${head}<div class="tk-card">
     <div class="tk-stat"><span class="tk-label">This ${esc(monthName(t.month))}</span><span class="tk-big">${fmtTok(t.monthTotal)}</span><span class="tk-sub">Available local records</span></div>
@@ -122,8 +157,8 @@ function tokensView() {
     <section class="section"><div class="sec-h"><h2>Every day</h2><span class="hint">90 days · gaps mean no records</span></div>${tokColumns(t.days, { height: 180 })}
       <details class="tk-table"><summary>As a table</summary><table><thead><tr><th>Day</th><th>Total</th><th>Claude</th><th>Codex</th><th>Fresh</th></tr></thead><tbody>${t.days.slice().reverse().map(d => `<tr><td>${esc(dayLabel(d.day, { weekday: 'short', month: 'short', day: 'numeric' }))}</td>${d.total ? `<td>${fmtTok(d.total)}</td><td>${fmtTok(d.claude)}</td><td>${fmtTok(d.codex)}</td><td>${fmtTok(d.fresh)}</td>` : '<td colspan="4">No records</td>'}</tr>`).join('')}</tbody></table></details>
     </section>
-    <section class="section"><div class="sec-h"><h2>By project, this month</h2><span class="hint">Where the tokens went</span></div>
-      <div class="tk-bars">${projects.map(p => `<${p.key ? `button data-go-project="${esc(p.key)}"` : 'div'} class="tk-brow"><span class="tk-pname">${esc(p.name)}<small>${p.chats} chat${p.chats === 1 ? '' : 's'}</small></span><span class="tk-ptrack"><i style="width:${Math.max(1, (p.total / most) * 100)}%"></i></span><span class="tk-pval">${fmtTok(p.total)}<small>${Math.round(p.share * 100)}%</small></span></${p.key ? 'button' : 'div'}>`).join('')}</div>
+    <section class="section"><div class="sec-h"><h2>By project${tokProjectMode() ? '' : ', this month'}</h2>${tokChartToggle()}</div>
+      ${tokProjectMode() ? tokProjectCalendars() : `<div class="tk-bars">${projects.map(p => `<${p.key ? `button data-go-project="${esc(p.key)}"` : 'div'} class="tk-brow"><span class="tk-pname">${esc(p.name)}<small>${p.chats} chat${p.chats === 1 ? '' : 's'}</small></span><span class="tk-ptrack"><i style="width:${Math.max(1, (p.total / most) * 100)}%"></i></span><span class="tk-pval">${fmtTok(p.total)}<small>${Math.round(p.share * 100)}%</small></span></${p.key ? 'button' : 'div'}>`).join('')}</div>`}
     </section>
     <section class="section"><div class="sec-h"><h2>Biggest chats, this month</h2></div>
       <div class="rows">${t.chats.map(c => `<button class="row tk-chat" data-open="${esc(c.id)}"><span class="t"><b>${esc(c.title || 'A chat')}</b><small>${esc(c.project || '')} · ${c.provider === 'claude' ? 'Claude' : 'Codex'}</small></span><span class="tk-pval">${fmtTok(c.total)}</span></button>`).join('')}</div>
@@ -133,8 +168,11 @@ function tokensView() {
 }
 
 document.addEventListener('click', e => {
-  const b = e.target.closest('[data-tokrefresh], [data-go-project]'); if (!b) return;
+  const b = e.target.closest('[data-tokrefresh], [data-go-project], [data-tkview], [data-tkmore], [data-tkheat]'); if (!b) return;
   e.preventDefault();
+  if (b.dataset.tkview) { local.set('tokenChart', b.dataset.tkview); paintTokens(); return; }
+  if (b.dataset.tkmore) { local.set('tokenProjectsMore', !local.get('tokenProjectsMore', false)); paintTokens(); return; }
+  if (b.dataset.tkheat) { b.closest('.tk-calendar').querySelector('.tk-heat-detail').textContent = b.title; return; }
   if (b.dataset.tokrefresh !== undefined) { loadTokens(true).then(paintTokens); toast('Counting again in the background.'); return; }
   go('project', { project: b.dataset.goProject });
 });

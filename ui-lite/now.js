@@ -109,6 +109,7 @@ function now() {
     <div class="page-h"><div class="proj-h" style="align-items:flex-start"><button class="iconbtn back" data-go="side" aria-label="Back">‹</button><div><h1>${L('Now')}</h1><p class="lead" id="nowLead">${leadHtml()}</p></div></div></div>
     ${commanderHtml()}
     <div id="nowLive" class="section-stack">${nowLiveHtml()}</div>
+    ${recentSection()}
     ${eventsSection()}
     ${foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span><span class="hint">Your top few; <kbd>f</kbd> on any chat</span></div><div class="rows">${foc.map(c => rowHtml(c, { showProject: true, showStage: true })).join('')}</div></section>` : ''}
     <section class="section"><div class="sec-h"><h2>Waiting on others</h2><span class="n">${waiting.length}</span><span class="hint">Checks their PRs every ten minutes; reminds you after two days</span></div>

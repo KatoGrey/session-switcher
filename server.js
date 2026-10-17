@@ -1465,11 +1465,11 @@ const liteRoutes = createLiteRoutes({
   },
   // A message while a chat works: Codex adds it to the running turn (turn/steer); Claude Code
   // already folds a message sent mid-turn into the turn, so it's an ordinary send there.
-  steerChat: (key, text, images = []) => {
+  steerChat: async (key, text, images = []) => {
     const chat = chats.get(key);
     if (!chat) throw fail(404, 'That chat isn’t running any more.');
     const imgs = validImages(images);
-    if (chat.provider === 'codex' && typeof chat.steer === 'function' && !imgs.length) chat.steer(text); else chat.send(text, imgs);
+    if (chat.provider === 'codex' && typeof chat.steer === 'function') await chat.steer(text, imgs); else chat.send(text, imgs);
     return { ok: true };
   },
   // A bug chat Lite started gets its name once it has an id (as routines name theirs).

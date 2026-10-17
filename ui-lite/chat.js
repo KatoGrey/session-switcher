@@ -797,7 +797,7 @@ function toolsHtml({ fresh }) {
     <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
-    ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button><button type="submit" class="send" aria-label="Queue (↵) · tell it now (⌥↵)" title="↵ queues it for when it finishes · ⌥↵ tells it now, while it works">↑</button>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
+    ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button><span class="delivery-actions"><button type="submit" class="btn" data-delivery="queue" title="Wait until the current turn finishes (Enter)">Queue</button><button type="submit" class="btn prime" data-delivery="steer" title="Send into the current work (Option–Enter)">Steer now</button></span>' : `<button type="submit" class="send" aria-label="${fresh ? 'Start' : 'Send'} (↵)" title="${fresh ? 'Start' : 'Send'} (↵)">↑</button>`}`;
 }
 function paintBar() {
   const t = $('barTools'); if (!t || S.view !== 'chat' || CV.replaying) return;
@@ -881,19 +881,28 @@ const QUEUES = (() => { try { return JSON.parse(localStorage.getItem('lite.queue
 const queueFor = id => (id ? (QUEUES[id] = QUEUES[id] || []) : []);
 function saveQueues() {
   for (const k of Object.keys(QUEUES)) if (!QUEUES[k].length) delete QUEUES[k];
-  try { localStorage.setItem('lite.queues', JSON.stringify(Object.fromEntries(Object.entries(QUEUES).map(([k, v]) => [k, v.map(q => ({ text: q.text, images: [] }))])))); } catch { /* fine */ }
+  try { localStorage.setItem('lite.queues', JSON.stringify(Object.fromEntries(Object.entries(QUEUES).map(([k, v]) => [k, v.map(q => ({ text: q.text, images: [], route: q.route, editText: q.editText, error: q.error }))])))); } catch { /* fine */ }
 }
 let bgSending = false;
 async function sendBackgroundQueues() {
   if (bgSending) return;
   for (const [id, q] of Object.entries(QUEUES)) {
-    if (!q.length || (S.view === 'chat' && CV.id === id)) continue;
+    if (!q.length || q[0].sending || q[0].editText !== undefined || q[0].error || (S.view === 'chat' && CV.id === id)) continue;
     const x = S.live.find(l => l.sessionId && l.sessionId.toLowerCase() === id.toLowerCase());
     if (!x || !x.key || x.source !== 'app' || x.working || (x.pending || []).length) continue;
-    const item = q.shift(); saveQueues(); bgSending = true;
-    try { await api('/api/chat/send', { key: x.key, text: item.text, ...(item.images.length ? { images: item.images.map(i => ({ mediaType: i.mediaType, data: i.data })) } : {}) }); toast('Sent a queued message.'); }
-    catch (err) { q.unshift(item); saveQueues(); toast(err.message); }
-    finally { bgSending = false; }
+    if (q[0].route?.to) {
+      bgSending = true;
+      try {
+        const crew = (x.crew || []).filter(p => q[0].route.to !== 'partner' || p.provider === q[0].route.kind);
+        const states = await Promise.all(crew.map(p => api(`/api/chat/attach`, { key: p.key })));
+        if (states.some(p => ['busy', 'waiting', 'starting'].includes(p.state))) continue;
+      } catch { continue; } finally { bgSending = false; }
+    }
+    if (!q.length || q[0].sending || q[0].editText !== undefined || q[0].error || (S.view === 'chat' && CV.id === id)) continue;
+    const item = q[0]; item.sending = true; bgSending = true;
+    try { await api('/api/chat/send', { key: x.key, text: item.text, ...(item.route || {}), ...(item.images.length ? { images: item.images.map(i => ({ mediaType: i.mediaType, data: i.data })) } : {}) }); q.splice(q.indexOf(item), 1); saveQueues(); toast('Sent a queued message.'); }
+    catch (err) { item.error = err.message; saveQueues(); toast(err.message); }
+    finally { delete item.sending; bgSending = false; }
     return;
   }
 }
@@ -901,17 +910,45 @@ function paintQueue() {
   if (CV.id && CV.queue && CV.queue.length) QUEUES[CV.id] = CV.queue;
   saveQueues();
   const el = $('queueBox'); if (!el) return;
-  el.innerHTML = (CV.queue || []).map((q, i) => `<div class="q-item"><span class="tag">Queued</span><span class="q-text">${esc(q.text.slice(0, 160))}${q.images.length ? ` · ${q.images.length} picture${q.images.length === 1 ? '' : 's'}` : ''}</span><button type="button" class="btn" data-steerq="${i}" title="Tell it now, while it works">Steer</button><button type="button" class="iconbtn" data-unqueue="${i}" aria-label="Remove from the queue">×</button></div>`).join('');
+  keepFocused(el, () => { el.innerHTML = (CV.queue || []).map((q, i) => `<div class="q-item${q.editText !== undefined ? ' q-editing' : ''}"><div class="q-main"><span class="tag">${q.sending ? 'Sending…' : q.error ? 'Not sent' : 'Queued'}</span><span class="q-text" title="${esc(q.text)}">${esc(q.text)}${q.images.length ? ` · ${q.images.length} picture${q.images.length === 1 ? '' : 's'}` : ''}</span></div>
+    ${q.editText !== undefined ? `<textarea class="field" id="queuedEdit-${i}" data-qedit="${i}" rows="3" aria-label="Edit queued message">${esc(q.editText)}</textarea><div class="q-actions"><button type="button" class="btn prime" data-qsave="${i}">Save</button><button type="button" class="btn" data-qcancel="${i}">Cancel</button></div>` : `<div class="q-actions"><button type="button" class="btn" data-steerq="${i}" ${q.sending || CV.sending ? 'disabled' : ''} title="Send into the current work, or start now if idle">${q.error ? 'Retry now' : 'Steer now'}</button><button type="button" class="btn" data-qedit-start="${i}" ${q.sending ? 'disabled' : ''}>Edit</button><button type="button" class="iconbtn" data-unqueue="${i}" ${q.sending ? 'disabled' : ''} aria-label="Remove queued message">×</button></div>`}
+    ${q.error ? `<small class="q-error">${esc(q.error)} · Kept here for you to retry.</small>` : ''}</div>`).join(''); });
   el.hidden = !(CV.queue || []).length;
 }
+function editQueued(i, action) {
+  const q = CV.queue[i]; if (!q || q.sending) return;
+  if (action === 'start') q.editText = q.text;
+  else {
+    if (action === 'save') {
+      if (!q.editText.trim() && !q.images.length) return toast('Type a message, or cancel the edit.');
+      q.text = q.editText.trim();
+    }
+    delete q.editText;
+  }
+  paintQueue();
+  if (action === 'start') document.querySelector(`[data-qedit="${i}"]`)?.focus();
+  else sendQueued();
+}
 async function sendQueued() {
-  if (!CV.queue || !CV.queue.length || replyBusy() || CV.sending || switchingChat) return;
-  const q = CV.queue.shift(); paintQueue();
-  const box = $('msgBox'); const typed = box ? box.value : '';
-  if (box) box.value = q.text;
-  const saved = COMP.images; COMP.images = q.images;
-  await sendInChat({ fromQueue: true });
-  COMP.images = saved; if (box && !box.value) { box.value = typed; autosize(box); }
+  const q = CV.queue && CV.queue[0];
+  if (!q || q.sending || q.editText !== undefined || q.error || queueTarget(q.route).busy || CV.sending || switchingChat) return;
+  const queue = CV.queue, id = CV.id;
+  q.sending = true; paintQueue();
+  const sent = await sendInChat({ queued: q });
+  delete q.sending;
+  if (sent) queue.splice(queue.indexOf(q), 1);
+  else q.error = q.error || 'Could not send the message.';
+  saveQueues();
+  if (CV.id === id) paintQueue();
+}
+// A queued message keeps the recipient it had when written. With Both selected, live steering
+// goes to the assistant currently working; the shared conversation carries it to the next one.
+function queueTarget(route = {}) {
+  if (route.to === 'partner') return [...PARTNERS.values()].find(p => p.prov === route.kind) || { key: null, busy: false };
+  if (route.to === 'both' || route.to === 'all') {
+    if (!CV.busy) { const p = [...PARTNERS.values()].find(p => p.busy); if (p) return p; }
+  }
+  return { key: CV.key, busy: CV.busy };
 }
 // /draw <what> (or /draw 3 <what>) in any input bar: Codex draws it on your use-next ChatGPT plan,
 // and the picture lands in this message's attachments, ready to send (to Claude, Codex, anyone).
@@ -936,53 +973,65 @@ async function drawIntoMessage(text) {
 }
 function paintDrawHint() { const h = $('barHint'); if (h) h.textContent = drawIntoMessage.pending ? `Drawing ${drawIntoMessage.pending === 1 ? 'a picture' : `${drawIntoMessage.pending} pictures`}…` : ''; }
 // Into the running turn now: on screen at once, and it reads it while it works.
-async function steerIn(text, imgs) {
+async function steerIn(text, imgs, route = {}) {
+  const id = CV.id, key = queueTarget(route).key;
+  if (!key) { toast('That assistant is not running yet. The message stays queued.'); return false; }
+  const here = () => S.view === 'chat' && CV.id === id;
   const images = imgs.map(i => ({ mediaType: i.mediaType, data: i.data }));
   const local = { kind: 'user', text, images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
-  CV.items.push(local); paintFeed(); sfx('slide');
-  try { await api('/api/lite/steer', { key: replyTarget().key || CV.key, text, ...(images.length ? { images } : {}) }); }
+  CV.sending = true; CV.items.push(local); paintFeed(); sfx('slide');
+  try { await api('/api/lite/steer', { key, text, ...(images.length ? { images } : {}) }); return true; }
   catch (err) {
-    CV.items = CV.items.filter(x => x !== local); paintFeed();
-    CV.queue.unshift({ text, images: imgs }); paintQueue();
-    toast(`${err.message} It’s back in the queue.`);
-  }
+    if (here()) { CV.items = CV.items.filter(x => x !== local); paintFeed(); }
+    toast(`${err.message} The message stays queued.`);
+    return false;
+  } finally { if (here()) { CV.sending = false; paintQueue(); } }
 }
-function steerQueued(i) {
-  const q = CV.queue.splice(i, 1)[0]; paintQueue();
-  if (!q) return;
-  if (!replyBusy()) { CV.queue.unshift(q); sendQueued(); return; }
-  steerIn(q.text, q.images);
+async function steerQueued(i) {
+  const q = CV.queue[i];
+  if (!q || q.sending || q.editText !== undefined || CV.sending || switchingChat) return;
+  const queue = CV.queue, id = CV.id;
+  q.sending = true; delete q.error; paintQueue();
+  const sent = queueTarget(q.route).busy ? await steerIn(q.text, q.images, q.route) : await sendInChat({ queued: q });
+  delete q.sending;
+  if (sent) queue.splice(queue.indexOf(q), 1);
+  else q.error = q.error || 'Could not send the message.';
+  saveQueues();
+  if (CV.id === id) paintQueue();
 }
-async function sendInChat({ fromQueue = false } = {}) {
+async function sendInChat({ queued = null, delivery = 'queue' } = {}) {
   if (switchingChat) return toast('One moment: the assistant or account is changing.');
-  const box = $('msgBox'); const text = box.value.trim();
-  if ((!text && !COMP.images.length && !COMP.files.length) || CV.sending) return;
-  if (DRAW_RE.test(text)) return wrap(drawIntoMessage)(text);
-  if (!fromQueue && replyBusy() && CV.key) {
-    const steer = COMP.steerNow; COMP.steerNow = false;
-    const imgs = COMP.images.slice();
-    box.value = ''; autosize(box); resetComposer(); paintAttachments(); DRAFTS.delete(String(CV.id)); saveDrafts();
-    if (!steer) { CV.queue.push({ text, images: imgs }); paintQueue(); sfx('chip'); return undefined; }
-    return steerIn(text, imgs);
+  const box = $('msgBox'); const text = queued ? queued.text : box.value.trim();
+  if ((!text && !(queued ? queued.images.length : COMP.images.length + COMP.files.length)) || CV.sending) return;
+  if (!queued && DRAW_RE.test(text)) return wrap(drawIntoMessage)(text);
+  if (!queued && COMP.converting) return toast('One moment: a picture is still being prepared.');
+  if (!queued && replyBusy() && CV.key) {
+    if (COMP.files.some(f => !f.rel)) return toast('Wait for the attached files to finish uploading, or remove failed uploads.');
+    const q = { text: withFiles(text), images: COMP.images.slice(), route: toBody(CV.to) };
+    const queue = CV.queue, id = CV.id;
+    box.value = ''; autosize(box); resetComposer(); paintAttachments(); DRAFTS.delete(String(id)); saveDrafts();
+    if (delivery !== 'steer') { queue.push(q); paintQueue(); sfx('chip'); return; }
+    if (!await steerIn(q.text, q.images, q.route)) { q.error = 'Live steering did not go through.'; queue.unshift(q); QUEUES[id] = queue; saveQueues(); if (CV.id === id) paintQueue(); }
+    return;
   }
-  try { if (!await applyReplyPlan()) return; } catch (err) { toast(err.message); return; }
-  if (COMP.converting) return toast('One moment: a picture is still being prepared.');
+  try { if (!queued && !await applyReplyPlan()) return; } catch (err) { toast(err.message); return; }
   // The message belongs to the chat it was written in. Starting a chat that wasn't running takes a
   // few seconds; if you open another chat meanwhile, it still goes here (Oct 13: it went to the chat
   // you'd moved to), and only this chat's view is touched.
   const id = CV.id, provider = CV.provider, inRepo = CV.inRepo, perm = COMP.perm || (CV.provider === 'gemini' ? null : permDefault(CV.provider)), model = COMP.model, effort = COMP.effort, fast = COMP.fast;
-  const to = CV.to && CV.to !== 'chat' ? CV.to : null;
+  const to = queued ? null : CV.to && CV.to !== 'chat' ? CV.to : null;
+  const route = queued ? queued.route || {} : toBody(to), wasBusy = CV.busy;
   const here = () => S.view === 'chat' && CV.id === id;
   let key = CV.key;
   CV.sending = true;
   // On screen at once: your message, and the line under it, while the chat starts up.
-  const images = imagesOut();
+  const images = queued ? queued.images.map(i => ({ mediaType: i.mediaType, data: i.data })) : imagesOut();
   // The pictures and files go with the message at once: off the input bar now, back on it if it doesn't go.
-  const sentImages = COMP.images, files = COMP.files;
-  COMP.images = []; COMP.files = []; paintAttachments();
+  const sentImages = queued ? queued.images : COMP.images, files = queued ? [] : COMP.files;
+  if (!queued) { COMP.images = []; COMP.files = []; paintAttachments(); }
   const local = { kind: 'user', text: withFiles(text, files), images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
   CV.items.push(local);
-  box.value = ''; autosize(box); DRAFTS.delete(String(id)); saveDrafts();
+  if (!queued) { box.value = ''; autosize(box); DRAFTS.delete(String(id)); saveDrafts(); }
   if (!CV.busy) { CV.busy = true; CV.status = key ? 'Sending' : 'Starting'; CV.startedAt = Date.now(); }
   // Your message is progress: the "may be stuck" line counts from now, not from the last old event.
   CV.progressAt = Date.now(); CV.lastStep = 'user';
@@ -1009,8 +1058,8 @@ async function sendInChat({ fromQueue = false } = {}) {
     await uploadPending(key, files);
     const out = withFiles(text, files); local.text = out;
     for (const i of sentImages) if (i.url) URL.revokeObjectURL(i.url);
-    if (here()) { resetComposer(); paintAttachments(); }
-    try { await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...toBody(to) }); }
+    if (here() && !queued) { resetComposer(); paintAttachments(); }
+    try { await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...route }); }
     catch (err) {
       // It stopped since Lite last looked (idle for a while, or the app restarted): started again, then sent.
       if (!(err.status === 409 || err.status === 404) || !/stopped|isn.t running|not running/i.test(err.message)) throw err;
@@ -1020,17 +1069,19 @@ async function sendInChat({ fromQueue = false } = {}) {
       key = info.key;
       if (here()) { CV.key = key; CV.info = info; listen(key); }
       await waitReadyFor(key);
-      await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...toBody(to) });
+      await api('/api/chat/send', { key, text: out, ...(images.length ? { images } : {}), ...route });
     }
     if (here()) {
-      if (to) { const b = toBody(to); partnerSoon(b.kinds || (b.kind ? [b.kind] : [])); }
-      if (toKind(to)) {
+      if (route.to) partnerSoon(route.kinds || (route.kind ? [route.kind] : []));
+      if (route.to === 'partner') {
         CV.busy = ['busy', 'waiting', 'starting'].includes(CV.info && CV.info.state);
-        const partner = [...PARTNERS.values()].find(p => p.prov === toKind(to)); if (partner) partner.busy = true;
+        const partner = [...PARTNERS.values()].find(p => p.prov === route.kind); if (partner) partner.busy = true;
       } else CV.busy = true;
       if (CV.status === 'Starting' || CV.status === 'Sending') CV.status = ''; paintBar(); paintStatus();
     }
+    return true;
   } catch (err) {
+    if (queued) { queued.error = err.message; if (here()) { CV.busy = wasBusy; CV.status = ''; paintStatus(); paintBar(); CV.items = CV.items.filter(x => x !== local); paintFeed(); } return false; }
     // Didn't go: the message comes back to the box, as you wrote it (or as that chat's draft, if you've moved on).
     if (here()) {
       CV.items = CV.items.filter(x => x !== local);

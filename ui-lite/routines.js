@@ -46,6 +46,7 @@ function routinesView() {
     <p class="hint-line" style="margin-top:-12px">Chats that start on their own. A checker runs on a small model, reads what you point it at, and only bothers you when something needs attention; then a bug chat on your use-next Claude plan writes it up. Never posts anywhere.</p>
     ${list.length ? `<div class="rows">${list.map(row).join('')}</div>` : `<div class="rt-presets">${presetCards()}</div>`}
     ${eventsSection(true)}
+    ${recentSection()}
   </div>`;
 }
 function presetCards() {

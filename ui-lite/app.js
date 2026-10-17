@@ -280,7 +280,10 @@ document.addEventListener('click', e => {
   if ((b = el('[data-chatlinks]'))) return linksMenu(b);
   if ((b = el('[data-side-later]'))) { const k = b.dataset.sideLater === '*' ? 'side-later' : 'pl:' + b.dataset.sideLater; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-steerq]'))) { steerQueued(Number(b.dataset.steerq)); return undefined; }
-  if ((b = el('[data-unqueue]'))) { CV.queue.splice(Number(b.dataset.unqueue), 1); paintQueue(); return undefined; }
+  if ((b = el('[data-qedit-start]'))) return editQueued(Number(b.dataset.qeditStart), 'start');
+  if ((b = el('[data-qsave]'))) return editQueued(Number(b.dataset.qsave), 'save');
+  if ((b = el('[data-qcancel]'))) return editQueued(Number(b.dataset.qcancel), 'cancel');
+  if ((b = el('[data-unqueue]'))) { const i = Number(b.dataset.unqueue); if (!CV.queue[i]?.sending) CV.queue.splice(i, 1); paintQueue(); return undefined; }
   if ((b = el('[data-rtnew]'))) return newRoutine(b.dataset.rtnew);
   if ((b = el('[data-rtmenu]'))) { e.stopPropagation(); return routineMenu(b, b.dataset.rtmenu); }
   if ((b = el('[data-inrepo]'))) { CV.inRepo = true; COMP.perm = 'read-only'; const g = $('folderGone'); if (g) g.outerHTML = folderNotice(); if (typeof paintBar === 'function') paintBar(); $('msgBox')?.focus(); return undefined; }
@@ -388,7 +391,7 @@ document.addEventListener('contextmenu', e => {
 document.addEventListener('submit', e => {
   if (e.target.id === 'trForm') { e.preventDefault(); return triageReply(); }
   if (e.target.id === 'cmdForm') { e.preventDefault(); const v = $('cmdInput').value; $('cmdInput').value = ''; return askCommander(v); }
-  if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat(); }
+  if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat({ delivery: e.submitter?.dataset.delivery || 'queue' }); }
   if (e.target.id === 'genForm') { e.preventDefault(); const v = $('genPrompt').value.trim(); if (!v) return undefined; $('genPrompt').value = ''; return wrap(startGenerate)(v, S.genN || 1); }
   if (e.target.id === 'rtForm') { e.preventDefault(); return wrap(saveRoutine)(); }
   if (e.target.dataset.olread) {
@@ -403,12 +406,15 @@ document.addEventListener('submit', e => {
 document.addEventListener('keydown', e => {
   // On a phone, Return is a new line in a message box (the ↑ button sends); with a keyboard, Enter sends.
   if (e.key === 'Enter' && TOUCH() && e.target.tagName === 'TEXTAREA') return;
-  if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); COMP.steerNow = e.altKey; $('composer').requestSubmit(); return; }
+  if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); const b = e.altKey && document.querySelector('[data-delivery="steer"]'); if (b) $('composer').requestSubmit(b); else $('composer').requestSubmit(); return; }
   if (e.target.id === 'trBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); triageReply(); return; }
   if (e.target.id === 'msgBox' && e.key.toLowerCase() === 'p' && (e.metaKey || e.ctrlKey) && S.view === 'newchat') { e.preventDefault(); document.querySelector('[data-ncproject]')?.click(); return; }
   if (e.target.dataset && e.target.dataset.qr && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendQuick(e.target.dataset.qr); }
 }, true);
-document.addEventListener('input', e => { if (e.target.id === 'msgBox') autosize(e.target); });
+document.addEventListener('input', e => {
+  if (e.target.id === 'msgBox') autosize(e.target);
+  if (e.target.dataset.qedit !== undefined) { const q = CV.queue[Number(e.target.dataset.qedit)]; if (q) { q.editText = e.target.value; saveQueues(); } }
+});
 // Pictures and files: paste (several at once), drop anywhere on a chat, or pick with +.
 // The routine form redraws when what it asks for changes (the trigger, the plan, triage on or off).
 document.addEventListener('change', e => { if (e.target.form && e.target.form.id === 'rtForm' && ['kind', 'account', 'triage'].includes(e.target.name)) { readRoutineForm(); render(); } });
