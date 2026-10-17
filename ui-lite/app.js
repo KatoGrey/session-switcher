@@ -83,12 +83,12 @@ function renderSide() {
     + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`);
 }
 
-// Each project starts as one row. Its name opens the default main chat; the count reveals
+// Each project starts as one row. Its name opens a sole main chat or the project list; the count reveals
 // other main chats, or the children of a single main chat. Full status groups live on its page.
 S.sideMode = local.get('sideMode', 'projects');
 const bucketStages = id => { const b = buckets().find(x => x.id === id); return !b || b.stages !== false; };
-function projectMain(p, mains) {
-  return mains.find(c => c.id === p.mainChat) || [...mains].sort((a, b) => Number(!!b.focus) - Number(!!a.focus) || a.id.localeCompare(b.id))[0];
+function projectMain(mains) {
+  return [...mains].sort((a, b) => Number(!!b.focus) - Number(!!a.focus) || b.updated - a.updated)[0];
 }
 function sideProjects(all) {
   if (typeof loadPipeline === 'function') loadPipeline();
@@ -102,7 +102,7 @@ function sideProjects(all) {
   const act = groups.filter(active).sort((a, b) => ord(a) - ord(b) || hot(b) - hot(a) || Math.max(...b.cs.map(c => c.updated)) - Math.max(...a.cs.map(c => c.updated)));
   const quiet = groups.filter(g => !active(g));
   const projRow = g => {
-    const mains = mainsOf(g), lead = projectMain(g.p, mains);
+    const mains = mainsOf(g), lead = projectMain(mains);
     const many = mains.length > 1, children = descOf(lead.id).filter(c => c.project === g.p.key);
     const count = many ? mains.length : children.length;
     const open = S.folded['p:' + g.p.key] === false;
@@ -125,7 +125,7 @@ function sideProjects(all) {
     const cur = S.view === 'project' && S.project === g.p.key || S.view === 'chat' && g.cs.some(c => low(c.id) === low(CV.id));
     const st = statusById(statusOf(lead));
     const label = `${count} ${many ? 'main chats' : count === 1 ? 'subchat' : 'subchats'}`;
-    return `<div class="group folder compact-proj" data-folded="${!open}"><div class="proj-row"><button class="nav-i proj-btn" data-project="${esc(g.p.key)}" data-main-chat="${esc(lead.id)}" draggable="true" aria-current="${cur}" title="${esc(g.p.name)}: ${esc(lead.title)}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span><span class="st-dot" style="background:${st.c}" title="${st.name}"></span>${nd ? '<span class="dot needs-dot" title="Needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}</button>${count ? `<button class="proj-chev" data-foldproj="${esc(g.p.key)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} ${label}" title="${label}"><span>${count}</span></button>` : ''}<button class="proj-options" data-projmenu="${esc(g.p.key)}" aria-label="${esc(g.p.name)} options" title="Project options">⋯</button></div><div class="folder-items">${inner}</div></div>`;
+    return `<div class="group folder compact-proj" data-folded="${!open}"><div class="proj-row"><button class="nav-i proj-btn" data-project="${esc(g.p.key)}" ${many ? '' : `data-main-chat="${esc(lead.id)}"`} draggable="true" aria-current="${cur}" title="${esc(g.p.name)}: ${many ? `${mains.length} main chats` : esc(lead.title)}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span><span class="st-dot" style="background:${st.c}" title="${st.name}"></span>${nd ? '<span class="dot needs-dot" title="Needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}</button>${count ? `<button class="proj-chev" data-foldproj="${esc(g.p.key)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} ${label}" title="${label}"><span>${count}</span></button>` : ''}<button class="proj-options" data-projmenu="${esc(g.p.key)}" aria-label="${esc(g.p.name)} options" title="Project options">⋯</button></div><div class="folder-items">${inner}</div></div>`;
   };
   let html = '';
   if (S.bucket === 'all') {
