@@ -403,12 +403,13 @@ function rowMenu(anchor, id, at) {
   const c = chatBy.get(id); if (!c) return;
   const ids = S.sel.has(id) && S.sel.size > 1 ? [...S.sel] : [id];
   pop(anchor, `<div class="ph">${ids.length > 1 ? `${ids.length} chats` : esc(c.title.slice(0, 60))}</div>
-    <button data-v="open">Open<kbd>↵</kbd></button><button data-v="full">Open in the full app</button><hr><div class="ph">Status</div>
+    <button data-v="open">Open<kbd>↵</kbd></button><button data-v="full">Open in the full app</button>${ids.length === 1 && isTop(c) && !parked(statusOf(c)) ? `<button data-v="main" role="menuitemradio" aria-checked="${projOf(c).mainChat === id}">Default chat for ${esc(projOf(c).name)}</button>` : ''}<hr><div class="ph">Status</div>
     ${STATUSES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && statusOf(c) === s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('')}
     <div class="ph">Kind</div><div class="kind-seg">${KINDS.map(k => `<button data-v="k:${k.id}" role="menuitemradio" aria-checked="${ids.length === 1 && c.kind === k.id}">${k.name}</button>`).join('')}</div>
     <hr><button data-v="routine">Make this a routine…</button><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}
     <button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="rename">Rename…</button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
     if (v === 'open') return openChat(id);
+    if (v === 'main') return wrap(async () => { await api('/api/lite/project', { key: c.project, patch: { mainChat: id } }); await loadState(); render(); toast(`Default chat for ${projOf(c).name}`); })();
     if (v === 'rename') return askRename(id);
     if (v === 'nest') return pickParent(anchor, ids);
     if (v === 'routine') return routineFromChat(c);
@@ -434,7 +435,7 @@ function rowMenu(anchor, id, at) {
 }
 function projMenu(anchor, k, at) {
   const p = projBy.get(k); if (!p) return;
-  pop(anchor, `<div class="ph">${esc(p.name)}</div><button data-v="open">Open</button>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button><button data-v="img">Change picture…</button>' : ''}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`,
+  pop(anchor, `<div class="ph">${esc(p.name)}</div><button data-v="open">Project overview</button>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button><button data-v="img">Change picture…</button>' : ''}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`,
     v => {
       if (v === 'open') return go('project', { project: k });
       if (v === 'new') return go('newchat', { ncProject: k });

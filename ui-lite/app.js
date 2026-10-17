@@ -83,99 +83,57 @@ function renderSide() {
     + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`);
 }
 
-// Open bugs, together above the projects (their own group, whatever project they're in), under
-// their stage: Exploring, Working, Finish line.
-const WAIT_LABEL = { id: 'waiting', name: 'Waiting on others', c: 'var(--muted)' };
-function sideBugs(chats, key = 'all') {
-  if (typeof loadPipeline === 'function') loadPipeline();
-  const open = chats.filter(c => isBug(c) && isTop(c) && bugStage(c) !== 'done');
-  if (!open.length) return '';
-  const fk = 'p:__bugs:' + key, folded = !!S.folded[fk];
-  // Up to five per stage, so every stage shows; "N more" opens them all.
-  const per = S.more['all-bugs-' + key] ? 400 : 5;
-  let n = 0, inner = '';
-  const groups = [...BUG_STAGES.filter(x => x.id !== 'done'), WAIT_LABEL].map(st => [st, open.filter(c => (st === WAIT_LABEL ? c.waiting : !c.waiting && bugStage(c) === st.id))]).filter(([, l]) => l.length);
-  for (const [st, list] of groups) {
-    const take = list.slice(0, per); n += take.length;
-    // One stage only: no label over it.
-    inner += `${groups.length === 1 ? '' : `<div class="side-stage"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>`}${take.map(c => sideChat(c)).join('')}`;
-  }
-  if (open.length > n) inner += `<button class="nav-i chat-i quiet-toggle" data-more-all="bugs-${esc(key)}"><span class="lbl">${open.length - n} more</span></button>`;
-  const nd = open.some(needs), rn = open.some(running);
-  return `<div class="group folder" data-folded="${folded}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-go="bugs"><span class="ic">${IC.bug}</span><span class="lbl">Bugs</span>${!folded ? '' : nd ? '<span class="dot needs-dot" title="A bug needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}<span class="n">${open.length}</span></button><button class="proj-chev" data-foldproj="__bugs:${esc(key)}" aria-expanded="${!folded}" aria-label="${folded ? 'Show' : 'Hide'} bugs" title="${folded ? 'Show' : 'Hide'} bugs"></button></div><div class="folder-items">${inner}</div></div>`;
-}
-
-// The sidebar by project (the default): each project with its chats, Focus first. In buckets where
-// status matters (Latitude…), chats sit under small status labels; elsewhere it's a plain recent
-// list. Quiet projects fold to one line at the end.
+// Each project starts as one row. Its name opens the default main chat; the count reveals
+// other main chats, or the children of a single main chat. Full status groups live on its page.
 S.sideMode = local.get('sideMode', 'projects');
 const bucketStages = id => { const b = buckets().find(x => x.id === id); return !b || b.stages !== false; };
+function projectMain(p, mains) {
+  return mains.find(c => c.id === p.mainChat) || [...mains].sort((a, b) => Number(!!b.focus) - Number(!!a.focus) || a.id.localeCompare(b.id))[0];
+}
 function sideProjects(all) {
   if (typeof loadPipeline === 'function') loadPipeline();
-  const chats = all.filter(c => !isBug(c));
-  const bugsIn = bid => all.filter(c => isBug(c) && (projOf(c).bucket || null) === bid);
   const byProj = new Map();
-  for (const c of chats) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
+  for (const c of all) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
   const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
-  const activeOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && !famQuiet(c));
+  const mainsOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)));
   const hot = g => g.cs.some(c => needs(c) || running(c)) ? 1 : 0;
   const ord = g => (typeof g.p.order === 'number' ? g.p.order : 1e9);
-  const act = groups.filter(g => activeOf(g).length).sort((a, b) => ord(a) - ord(b) || hot(b) - hot(a) || Math.max(...b.cs.map(c => c.updated)) - Math.max(...a.cs.map(c => c.updated)));
-  const quiet = groups.filter(g => !activeOf(g).length);
+  const active = g => mainsOf(g).some(c => !famQuiet(c));
+  const act = groups.filter(active).sort((a, b) => ord(a) - ord(b) || hot(b) - hot(a) || Math.max(...b.cs.map(c => c.updated)) - Math.max(...a.cs.map(c => c.updated)));
+  const quiet = groups.filter(g => !active(g));
   const projRow = g => {
-    const lv = activeOf(g), q = g.cs.filter(c => isTop(c) && famQuiet(c) && !parked(statusOf(c)));
-    // Projects in buckets without stages (Games, Apps…) start folded to one line; Latitude's open.
-    const stageless = !bucketStages(g.p.bucket);
-    const open = stageless ? S.folded['p:' + g.p.key] === false : !S.folded['p:' + g.p.key];
+    const mains = mainsOf(g), lead = projectMain(g.p, mains);
+    const many = mains.length > 1, children = descOf(lead.id).filter(c => c.project === g.p.key);
+    const count = many ? mains.length : children.length;
+    const open = S.folded['p:' + g.p.key] === false;
     const nd = g.cs.some(needs), rn = g.cs.some(running);
     let inner = '';
     if (open) {
-      const limit = S.more['pall:' + g.p.key] ? 200 : 8;
-      const foc = lv.filter(c => c.focus), rest = lv.filter(c => !c.focus && !c.waiting), waits = lv.filter(c => !c.focus && c.waiting);
-      let n = foc.length;
-      inner = foc.map(c => sideChatDot(c) + sideFam(c)).join('');
-      if (bucketStages(g.p.bucket)) {
-        const shown = [];
-        for (const st of statusesShown().filter(x => !parked(x.id))) {
-          const list = rest.filter(c => statusOf(c) === st.id); if (!list.length || n >= limit) continue;
-          const take = list.slice(0, limit - n); n += take.length; shown.push([st, take]);
+      if (many) {
+        const lv = mains.filter(c => !famQuiet(c) || c === lead).sort((a, b) => Number(b === lead) - Number(a === lead) || Number(!!b.focus) - Number(!!a.focus) || b.updated - a.updated);
+        const q = mains.filter(c => famQuiet(c) && c !== lead);
+        const limit = S.more['pall:' + g.p.key] ? lv.length : 8;
+        inner = lv.slice(0, limit).map(c => sideChatDot(c) + sideFam(c)).join('');
+        if (lv.length > 8) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}" aria-expanded="${lv.length <= limit}"><span class="lbl">${lv.length > limit ? `${lv.length - limit} more` : 'Show fewer'}</span></button>`;
+        if (q.length) {
+          const qo = !!S.more['pq:' + g.p.key];
+          if (qo) inner += `<div class="quiet-chats">${q.map(c => sideChatDot(c) + sideFam(c)).join('')}</div>`;
+          inner += `<button class="nav-i chat-i quiet-toggle" data-side-quiet="${esc(g.p.key)}" aria-expanded="${qo}"><span class="lbl">${qo ? 'Hide quiet' : `${q.length} quiet`}</span></button>`;
         }
-        // Only one stage on show (and nothing waiting): its label says nothing, so it's left out.
-        const one = shown.length === 1 && !waits.length;
-        for (const [st, take] of shown) inner += `${one ? '' : `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>`}${take.map(c => sideChat(c) + sideFam(c)).join('')}`;
-      } else { const take = rest.slice(0, Math.max(0, limit - n)); n += take.length; inner += take.map(c => sideChatDot(c) + sideFam(c)).join(''); }
-      // Waiting on someone else: out of the way at the end, whatever its status.
-      if (waits.length) inner += `<div class="side-stage"><span class="label-dot" style="background:${WAIT_LABEL.c}"></span>${WAIT_LABEL.name}</div>${waits.map(c => sideChatDot(c) + sideFam(c)).join('')}`;
-      // "N more" and "N quiet" open in place and close again.
-      if (lv.length > 8) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}" aria-expanded="${lv.length <= limit}"><span class="lbl">${lv.length > limit ? `${lv.length - limit} more` : 'Show fewer'}</span></button>`;
-      if (q.length) {
-        const qo = !!S.more['pq:' + g.p.key];
-        if (qo) inner += `<div class="quiet-chats">${q.map(c => sideChatDot(c) + sideFam(c)).join('')}</div>`;
-        inner += `<button class="nav-i chat-i quiet-toggle" data-side-quiet="${esc(g.p.key)}" aria-expanded="${qo}"><span class="lbl">${qo ? 'Hide quiet' : `${q.length} quiet`}</span></button>`;
-      }
+      } else inner = kidsOf(lead.id).filter(c => c.project === g.p.key).map(c => sideChatDot(c) + sideFam(c)).join('');
     }
-    // The name opens the project; the chevron beside it folds its chats away.
-    const here = S.view === 'project' && S.project === g.p.key;
-    // Games, Apps, Personal: one line per project saying where it's at. The line opens its latest
-    // chat; a project with a few open chats has a count that shows them.
-    if (stageless) {
-      const lead = [...lv].sort((x, y) => y.updated - x.updated)[0];
-      const st = statusById(statusOf(lead));
-      const cur = S.view === 'chat' && g.cs.some(c => low(c.id) === low(CV.id));
-      const many = lv.length > 1;
-      return `<div class="group folder flat-proj" data-folded="${!(open && many)}"><div class="proj-row"><button class="nav-i chat-i flat-btn" data-chat="${esc(lead.id)}" aria-current="${cur}" title="${esc(g.p.name)}: ${esc(lead.title)}"><span class="st-dot" style="background:${st.c}"></span><span class="lbl">${esc(g.p.name)}</span><span class="flat-st">${st.name}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : ''}</button>${many ? `<button class="proj-chev flat-n" data-foldproj="${esc(g.p.key)}" data-stageless="1" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} its ${lv.length} chats" title="${lv.length} open chats">${lv.length}</button>` : ''}</div>${many ? `<div class="folder-items">${inner}</div>` : ''}</div>`;
-    }
-    return `<div class="group folder" data-folded="${!open}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-project="${esc(g.p.key)}" draggable="true" aria-current="${here}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span>${open ? '' : nd ? '<span class="dot needs-dot" title="Something in here needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}<span class="n">${lv.length || ''}</span></button><button class="proj-chev" data-foldproj="${esc(g.p.key)}" ${stageless ? 'data-stageless="1"' : ''} aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} chats" title="${open ? 'Hide' : 'Show'} chats"></button></div><div class="folder-items">${inner}</div></div>`;
+    const cur = S.view === 'project' && S.project === g.p.key || S.view === 'chat' && g.cs.some(c => low(c.id) === low(CV.id));
+    const st = statusById(statusOf(lead));
+    const label = `${count} ${many ? 'main chats' : count === 1 ? 'subchat' : 'subchats'}`;
+    return `<div class="group folder compact-proj" data-folded="${!open}"><div class="proj-row"><button class="nav-i proj-btn" data-project="${esc(g.p.key)}" data-main-chat="${esc(lead.id)}" draggable="true" aria-current="${cur}" title="${esc(g.p.name)}: ${esc(lead.title)}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span><span class="st-dot" style="background:${st.c}" title="${st.name}"></span>${nd ? '<span class="dot needs-dot" title="Needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}</button>${count ? `<button class="proj-chev" data-foldproj="${esc(g.p.key)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} ${label}" title="${label}"><span>${count}</span></button>` : ''}<button class="proj-options" data-projmenu="${esc(g.p.key)}" aria-label="${esc(g.p.name)} options" title="Project options">⋯</button></div><div class="folder-items">${inner}</div></div>`;
   };
-  // With every bucket showing, projects sit under their bucket's name.
   let html = '';
   if (S.bucket === 'all') {
     for (const b of [...buckets(), { id: null, name: 'Unsorted' }]) {
       const gs = act.filter(g => (g.p.bucket || null) === b.id);
-      const bugs = sideBugs(bugsIn(b.id), b.id || 'unsorted');
-      if (gs.length || bugs) html += `<div class="side-bucket">${esc(b.name)}</div>${bugs}${gs.map(projRow).join('')}`;
+      if (gs.length) html += `<div class="side-bucket">${esc(b.name)}</div>${gs.map(projRow).join('')}`;
     }
-  } else html = sideBugs(all.filter(isBug), S.bucket) + act.map(projRow).join('');
+  } else html = act.map(projRow).join('');
   // Later (the backlog) is a bucket of its own, after the others: folded, one click to open.
   const later = all.filter(c => isTop(c) && statusOf(c) === 'later').sort((x, y) => y.updated - x.updated);
   if (later.length) {
@@ -386,7 +344,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-projmenu]'))) return projMenu(b, b.dataset.projmenu);
   if ((b = el('[data-bstages]'))) return wrap(async () => { const list = buckets().map(x => (x.id === b.dataset.bstages ? { ...x, stages: !bucketStages(x.id) } : x)); S.lite.buckets = (await api('/api/lite/buckets', { buckets: list })).buckets; render(); })();
   if ((b = el('[data-sidemode]'))) { S.sideMode = b.dataset.sidemode; local.set('sideMode', S.sideMode); return renderSide(); }
-  if ((b = el('[data-foldproj]'))) { const k = 'p:' + b.dataset.foldproj; if (b.dataset.stageless) { if (S.folded[k] === false) delete S.folded[k]; else S.folded[k] = false; } else if (S.folded[k]) delete S.folded[k]; else S.folded[k] = true; local.set('folded', S.folded); return renderSide(); }
+  if ((b = el('[data-foldproj]'))) { const k = 'p:' + b.dataset.foldproj; if (S.folded[k] === false) delete S.folded[k]; else S.folded[k] = false; local.set('folded', S.folded); return renderSide(); }
   if ((b = el('[data-more-proj]'))) { const k = 'pall:' + b.dataset.moreProj; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-side-quiet]'))) { const k = 'pq:' + b.dataset.sideQuiet; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-quietproj]'))) { S.more.quietProj = !S.more.quietProj; return renderSide(); }
@@ -401,7 +359,7 @@ document.addEventListener('click', e => {
   if ((b = el('#lookBtn'))) return lookMenu(b);
   if ((b = el('#muteBtn'))) return toggleSound();
   if ((b = el('[data-open]'))) { if (el('input') || el('a[href]') || (el('button') && !el('button').dataset.open)) return undefined; return b.dataset.open ? openChat(b.dataset.open) : toast('That chat hasn’t started yet.'); }
-  if ((b = el('[data-project]'))) return go('project', { project: b.dataset.project });
+  if ((b = el('[data-project]'))) return b.dataset.mainChat ? openChat(b.dataset.mainChat) : go('project', { project: b.dataset.project });
   if ((b = el('[data-chat]'))) {
     const id = b.dataset.chat;
     if (e.metaKey || e.ctrlKey) { if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); S.selAnchor = id; return render(); }
