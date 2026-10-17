@@ -32,17 +32,6 @@ const longTok = n => Math.round(n).toLocaleString();
 const dayLabel = (d, opts = { month: 'short', day: 'numeric' }) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, opts);
 const monthName = m => new Date(`${m}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long' });
 
-// The month so far against the same days of last month.
-function tokDelta(t) {
-  if (!t.prevMonthTo) return '';
-  const ratio = t.monthTotal / t.prevMonthTo, d = ratio - 1;
-  const prev = new Date(`${t.month}-15T12:00:00`); prev.setMonth(prev.getMonth() - 1);
-  const name = prev.toLocaleDateString(undefined, { month: 'short' });
-  // Past double, a multiple reads better than a percentage (34×, not ▲ 3333%).
-  const how = ratio >= 2 ? `${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1)}×` : `${d >= 0 ? '▲' : '▼'} ${Math.round(Math.abs(d) * 100)}%`;
-  return `<span class="tk-delta ${d >= 0 ? 'up' : 'down'}">${how}</span> <span class="tk-vs">${ratio >= 2 ? 'the same days of' : 'vs'} ${name}${ratio >= 2 ? '' : ` 1–${new Date().getDate()}`}</span>`;
-}
-
 /* ---------- the columns (one per day) ---------- */
 // days: [{ day, total, claude, codex, fresh }]. This month's days in the accent; earlier ones quieter.
 function tokColumns(days, { height = 160, axis = true, tips = true, id = 'tkc' } = {}) {
@@ -77,7 +66,7 @@ document.addEventListener('pointermove', e => {
   const d = days[Number(hit.dataset.tkday)]; if (!d) return;
   const tip = chart.querySelector('.tk-tip');
   tip.innerHTML = '';
-  const v = document.createElement('b'); v.textContent = `${fmtTok(d.total)} tokens`;
+  const v = document.createElement('b'); v.textContent = d.total ? `${fmtTok(d.total)} recorded tokens` : 'No records';
   const when = document.createElement('span'); when.textContent = dayLabel(d.day, { weekday: 'short', month: 'short', day: 'numeric' });
   tip.append(v, when);
   for (const [k, n] of [['Claude', d.claude], ['Codex', d.codex], ['Fresh (new input and output)', d.fresh]]) {
@@ -99,7 +88,7 @@ function tokensBoxHtml() {
   if (!t.ready) return `${head}<p class="empty-note">Counting every chat’s tokens for the first time. This takes a few minutes and runs in the background.</p>`;
   const top = t.projects.slice(0, 4), most = top.length ? top[0].total : 1;
   return `${head}<div class="tk-card">
-    <div class="tk-stat"><span class="tk-label">This ${esc(monthName(t.month))}</span><span class="tk-big">${fmtTok(t.monthTotal)}</span><span class="tk-sub">${tokDelta(t)}</span></div>
+    <div class="tk-stat"><span class="tk-label">This ${esc(monthName(t.month))}</span><span class="tk-big">${fmtTok(t.monthTotal)}</span><span class="tk-sub">Available local records</span></div>
     <div class="tk-spark">${tokColumns(t.days.slice(-30), { height: 64, axis: false, id: 'tkc30' })}<span class="tk-cap">Last 30 days</span></div>
     <div class="tk-proj">${top.map(p => `<button class="tk-prow" data-go-project="${esc(p.key)}" title="${esc(longTok(p.total))} tokens"><span class="tk-pname">${esc(p.name)}</span><span class="tk-ptrack"><i style="width:${Math.max(2, (p.total / most) * 100)}%"></i></span><span class="tk-pval">${fmtTok(p.total)}</span></button>`).join('')}</div>
   </div>`;
@@ -119,19 +108,19 @@ function tokensView() {
   if (rest.length) projects.push({ key: null, name: `${rest.length} more`, total: rest.reduce((n, p) => n + p.total, 0), share: rest.reduce((n, p) => n + p.share, 0), chats: rest.reduce((n, p) => n + p.chats, 0) });
   return `<div class="wrap tk-page">${head}
     <section class="tk-hero">
-      <span class="tk-label">Tokens this ${esc(monthName(t.month))}</span>
+      <span class="tk-label">Recorded tokens this ${esc(monthName(t.month))}</span>
       <span class="tk-hero-n" title="${esc(longTok(t.monthTotal))}">${fmtTok(t.monthTotal)}</span>
-      <span class="tk-sub">${tokDelta(t)}</span>
+      <span class="tk-sub">Available local records</span>
       <p class="tk-split">${esc(fmtTok(t.monthFresh))} fresh (new input and output) · ${esc(fmtTok(cache))} read back from cache${prov ? ` · ${esc(prov)}` : ''}</p>
     </section>
     <div class="tk-facts">
       ${best}
-      <div class="tk-fact"><span>A day, lately</span><b>${fmtTok(avg)}</b><small>average of the last 30 days</small></div>
-      <div class="tk-fact"><span>Last month</span><b>${fmtTok(t.prevMonthTotal)}</b><small>all of ${esc(monthName(new Date(new Date(`${t.month}-15T12:00:00`).setMonth(new Date(`${t.month}-15T12:00:00`).getMonth() - 1)).toISOString().slice(0, 7)))}</small></div>
-      <div class="tk-fact"><span>Since ${t.since ? esc(dayLabel(t.since, { month: 'short', day: 'numeric', year: 'numeric' })) : 'the start'}</span><b>${fmtTok(t.all)}</b><small>everything on record</small></div>
+      <div class="tk-fact"><span>A day, lately</span><b>${fmtTok(avg)}</b><small>per recorded day, last 30 days</small></div>
+      <div class="tk-fact"><span>Last month</span><b>${fmtTok(t.prevMonthTotal)}</b><small>recorded in ${esc(monthName(new Date(new Date(`${t.month}-15T12:00:00`).setMonth(new Date(`${t.month}-15T12:00:00`).getMonth() - 1)).toISOString().slice(0, 7)))}</small></div>
+      <div class="tk-fact"><span>Since ${t.since ? esc(dayLabel(t.since, { month: 'short', day: 'numeric', year: 'numeric' })) : 'the start'}</span><b>${fmtTok(t.all)}</b><small>available history · incomplete</small></div>
     </div>
-    <section class="section"><div class="sec-h"><h2>Every day</h2><span class="hint">90 days · this month in colour</span></div>${tokColumns(t.days, { height: 180 })}
-      <details class="tk-table"><summary>As a table</summary><table><thead><tr><th>Day</th><th>Total</th><th>Claude</th><th>Codex</th><th>Fresh</th></tr></thead><tbody>${t.days.slice().reverse().filter(d => d.total).map(d => `<tr><td>${esc(dayLabel(d.day, { weekday: 'short', month: 'short', day: 'numeric' }))}</td><td>${fmtTok(d.total)}</td><td>${fmtTok(d.claude)}</td><td>${fmtTok(d.codex)}</td><td>${fmtTok(d.fresh)}</td></tr>`).join('')}</tbody></table></details>
+    <section class="section"><div class="sec-h"><h2>Every day</h2><span class="hint">90 days · gaps mean no records</span></div>${tokColumns(t.days, { height: 180 })}
+      <details class="tk-table"><summary>As a table</summary><table><thead><tr><th>Day</th><th>Total</th><th>Claude</th><th>Codex</th><th>Fresh</th></tr></thead><tbody>${t.days.slice().reverse().map(d => `<tr><td>${esc(dayLabel(d.day, { weekday: 'short', month: 'short', day: 'numeric' }))}</td>${d.total ? `<td>${fmtTok(d.total)}</td><td>${fmtTok(d.claude)}</td><td>${fmtTok(d.codex)}</td><td>${fmtTok(d.fresh)}</td>` : '<td colspan="4">No records</td>'}</tr>`).join('')}</tbody></table></details>
     </section>
     <section class="section"><div class="sec-h"><h2>By project, this month</h2><span class="hint">Where the tokens went</span></div>
       <div class="tk-bars">${projects.map(p => `<${p.key ? `button data-go-project="${esc(p.key)}"` : 'div'} class="tk-brow"><span class="tk-pname">${esc(p.name)}<small>${p.chats} chat${p.chats === 1 ? '' : 's'}</small></span><span class="tk-ptrack"><i style="width:${Math.max(1, (p.total / most) * 100)}%"></i></span><span class="tk-pval">${fmtTok(p.total)}<small>${Math.round(p.share * 100)}%</small></span></${p.key ? 'button' : 'div'}>`).join('')}</div>
@@ -139,7 +128,7 @@ function tokensView() {
     <section class="section"><div class="sec-h"><h2>Biggest chats, this month</h2></div>
       <div class="rows">${t.chats.map(c => `<button class="row tk-chat" data-open="${esc(c.id)}"><span class="t"><b>${esc(c.title || 'A chat')}</b><small>${esc(c.project || '')} · ${c.provider === 'claude' ? 'Claude' : 'Codex'}</small></span><span class="tk-pval">${fmtTok(c.total)}</span></button>`).join('')}</div>
     </section>
-    <p class="tk-note">Counted from every chat’s own records (here, the Claude app, terminals and Codex), updated every 15 minutes. Most of it is the model reading its own cache, which is quick and cheap; fresh tokens are the new input and the output.${t.at ? ` Last counted ${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}.` : ''}</p>
+    <p class="tk-note">Counted from available Claude Code and Codex transcripts on this Mac, updated every 15 minutes. This is incomplete history, not an account-wide usage report: deleted transcripts, other devices, and web chats may be missing. A gap means no records, not zero usage. Counted totals are now kept when transcripts are removed. Most of it is the model reading its own cache, which is quick and cheap; fresh tokens are the new input and the output.${t.at ? ` Last counted ${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}.` : ''}</p>
   </div>`;
 }
 
