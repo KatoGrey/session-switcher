@@ -1241,11 +1241,13 @@ function settingsMenu(anchor) {
   const cur = (running && CV.info.permissionMode) || COMP.perm || permDefault(prov);
   const modes = (S.permissionModes || {})[prov] || [];
   const def = permDefault(prov);
-  pop(anchor, `<div class="ph">Conversation settings · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m)}" role="menuitemradio" aria-checked="${m === cur}">${esc(PERM_LABELS[m] || m)}${m === def ? '<small>your default</small>' : ''}</button>`).join('')}<hr><button data-v="__default">Make “${esc(PERM_LABELS[cur] || cur)}” my default</button>${follow}`,
+  const nextTurn = running && CV.provider === 'codex' && CV.busy;
+  const permissionNote = nextTurn ? '<p class="pd-note">The current turn keeps its original permissions, including when you steer it. To apply a change now, stop this turn, then send a new message.</p>' : '';
+  pop(anchor, `<div class="ph">${nextTurn ? 'Codex permissions · for the next turn' : 'Conversation settings · without asking, it may'}</div>${permissionNote}${modes.map(m => `<button data-v="${esc(m)}" role="menuitemradio" aria-checked="${m === cur}">${esc(PERM_LABELS[m] || m)}${m === def ? '<small>your default</small>' : ''}</button>`).join('')}<hr><button data-v="__default">Make “${esc(PERM_LABELS[cur] || cur)}” my default</button>${follow}`,
     v => {
       if (setFollow(v)) return undefined;
       if (v === '__default') return wrap(setLook)({ permissions: { [prov]: cur } }).then(() => toast(`New ${prov === 'claude' ? 'Claude' : 'Codex'} chats start in ${PERM_LABELS[cur]}.`));
-      if (running) return wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; toast(`This chat: ${PERM_LABELS[v]}.`); })();
+      if (running) return wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; toast(nextTurn ? `${PERM_LABELS[v]} is saved for the next turn. The current turn keeps its original permissions.` : `This chat: ${PERM_LABELS[v]}.`); })();
       COMP.perm = v; toast(`This chat will start in ${PERM_LABELS[v]}.`); return undefined;
     });
 }
