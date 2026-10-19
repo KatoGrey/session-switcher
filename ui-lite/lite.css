@@ -991,7 +991,7 @@ body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr
 
 /* ---------- tables, quotes and HTML in replies ---------- */
 .md-table { overflow-x: auto; margin: 8px 0; max-width: 100%; }
-.md-table table { border-collapse: collapse; font-size: .92em; min-width: 50%; }
+.md-table table { border-collapse: collapse; font-size: .92em; min-width: 50%; overflow-wrap: normal; word-break: normal; }
 .md-table th, .md-table td { border: 1px solid var(--line); padding: 5px 10px; text-align: left; vertical-align: top; }
 .md-table th { background: var(--hover); font-weight: 600; white-space: nowrap; }
 .md-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--hover) 45%, transparent); }
