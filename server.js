@@ -1436,6 +1436,7 @@ const liteRoutes = createLiteRoutes({
     const texts = items.filter(it => it.kind === 'assistant').map(it => (it.blocks || []).map(b => (b.type === 'text' ? b.text : b.type === 'tool' && b.detailKind === 'command' && typeof b.detail === 'string' ? b.detail : '')).filter(Boolean).join('\n')).filter(Boolean);
     return texts.slice(-turns).join('\n\n').slice(-120000);
   },
+  titleContext: id => otherChatBlock({ id }),
   lastReply: async (id, provider) => {
     // The whole reply: a sweep can list many findings, and anything past a cut would be lost.
     if (provider !== 'codex') return lastReply(id, 60000);
@@ -2115,14 +2116,17 @@ async function handleApi(req, res, url, remote = false) {
         const title = gemini.rename(body.sessionId, body.name);
         const live = chats.bySession(body.sessionId); if (live) live.title = title;
         geminiRows.at = 0; broadcast('sessions');
+        liteStore.setChats([body.sessionId], { titleLocked: true });
         return send(res, 200, { title });
       }
       if (isCodexId(body.sessionId)) {
         await codex.rename(body.sessionId, body.name);
+        liteStore.setChats([body.sessionId], { titleLocked: true });
         codexSessions(0);
         return send(res, 200, { title: body.name });
       }
       const title = sessions.rename(body.sessionId, body.name);
+      liteStore.setChats([body.sessionId], { titleLocked: true });
       broadcast('sessions');
       return send(res, 200, { title });
     }
