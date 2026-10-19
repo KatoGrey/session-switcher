@@ -118,7 +118,13 @@ function loadPlans(fresh = false) {
 
 // Live updates come over the full app's own event stream.
 const timers = {};
-const later = (name, ms, fn) => { clearTimeout(timers[name]); timers[name] = setTimeout(() => fn().catch(() => {}), ms); };
+const later = (name, ms, fn) => {
+  // Busy chats can emit faster than this delay. Keep the first live refresh scheduled,
+  // rather than postponing it indefinitely and hiding completions or approval requests.
+  if (name === 'live' && timers[name]) return;
+  clearTimeout(timers[name]);
+  timers[name] = setTimeout(() => { delete timers[name]; fn().catch(() => {}); }, ms);
+};
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || !S.loaded) return;
   if (S.stale) { S.stale = false; later('state', 50, async () => { if (await loadState()) renderWhenIdle(); }); }

@@ -877,11 +877,8 @@ const fileLines = (files = COMP.files) => files.filter(f => f.rel).map(f => `Att
 const withFiles = (text, files = COMP.files) => { const l = fileLines(files); return l ? `${text.replace(/\s+$/, '')}${text.trim() ? '\n\n' : ''}${l}` : text; };
 const imagesOut = () => COMP.images.map(i => ({ mediaType: i.mediaType, data: i.data }));
 
-// While it works: ↵ queues a message for when the turn ends (shown above the box, with Steer
-// to tell it straight away); ⌥↵ tells it now.
-// Queues are kept per chat, so leaving a chat (or reloading) doesn't lose them; while you're
-// elsewhere, sendBackgroundQueues sends the next one when that chat finishes its turn. Pictures stay
-// only for this visit (too big to keep in the browser).
+// Follow-ups wait for the actual turn to finish, independent of the selected view.
+// Queues survive navigation and reloads; images stay only for this visit.
 const QUEUES = (() => { try { return JSON.parse(localStorage.getItem('lite.queues') || '{}') || {}; } catch { return {}; } })();
 const queueFor = id => (id ? (QUEUES[id] = QUEUES[id] || []) : []);
 function saveQueues() {
@@ -891,26 +888,40 @@ function saveQueues() {
 let bgSending = false;
 async function sendBackgroundQueues() {
   if (bgSending) return;
-  for (const [id, q] of Object.entries(QUEUES)) {
-    if (!q.length || q[0].sending || q[0].editText !== undefined || q[0].error || (S.view === 'chat' && CV.id === id)) continue;
-    const x = S.live.find(l => l.sessionId && l.sessionId.toLowerCase() === id.toLowerCase());
-    if (!x || !x.key || x.source !== 'app' || x.working || (x.pending || []).length) continue;
-    if (q[0].route?.to) {
-      bgSending = true;
+  bgSending = true;
+  try {
+    for (const [id, q] of Object.entries(QUEUES)) {
+      const item = q[0];
+      const here = () => S.view === 'chat' && String(CV.id).toLowerCase() === id.toLowerCase();
+      const held = () => q[0] !== item || !item || item.sending || item.editText !== undefined || item.error || (here() && (CV.sending || switchingChat || CV.loading || CV.replaying));
+      if (held()) continue;
+      const x = S.live.find(l => l.sessionId && l.sessionId.toLowerCase() === id.toLowerCase());
+      const key = here() && CV.key || (x && x.source === 'app' && x.key);
+      if (!key) continue;
+      // "Working" also includes background helpers. Only a real turn or approval holds the queue.
+      let info, states;
       try {
-        const crew = (x.crew || []).filter(p => q[0].route.to !== 'partner' || p.provider === q[0].route.kind);
-        const states = await Promise.all(crew.map(p => api(`/api/chat/attach`, { key: p.key })));
-        if (states.some(p => ['busy', 'waiting', 'starting'].includes(p.state))) continue;
-      } catch { continue; } finally { bgSending = false; }
+        info = await api('/api/chat/attach', { key });
+        const route = item.route || {};
+        const crew = Object.entries(info.crew?.running || {}).filter(([kind]) => route.to !== 'partner' || kind === route.kind);
+        states = route.to ? await Promise.all(crew.map(([, k]) => api('/api/chat/attach', { key: k }))) : [];
+        if (route.to !== 'partner') states.push(info);
+      } catch { continue; }
+      if (held() || info.state === 'ended' || states.some(p => p.state !== 'ready')) continue;
+      item.sending = true;
+      const inView = here();
+      if (inView) { CV.sending = true; paintQueue(); }
+      try {
+        await api('/api/chat/send', { key, text: item.text, ...(item.route || {}), ...(item.images.length ? { images: item.images.map(i => ({ mediaType: i.mediaType, data: i.data })) } : {}) });
+        q.splice(q.indexOf(item), 1);
+      } catch (err) { item.error = err.message; toast(err.message); }
+      finally { delete item.sending; saveQueues(); if (here()) { if (inView) CV.sending = false; paintQueue(); } }
     }
-    if (!q.length || q[0].sending || q[0].editText !== undefined || q[0].error || (S.view === 'chat' && CV.id === id)) continue;
-    const item = q[0]; item.sending = true; bgSending = true;
-    try { await api('/api/chat/send', { key: x.key, text: item.text, ...(item.route || {}), ...(item.images.length ? { images: item.images.map(i => ({ mediaType: i.mediaType, data: i.data })) } : {}) }); q.splice(q.indexOf(item), 1); saveQueues(); toast('Sent a queued message.'); }
-    catch (err) { item.error = err.message; saveQueues(); toast(err.message); }
-    finally { delete item.sending; bgSending = false; }
-    return;
-  }
+  } finally { bgSending = false; }
 }
+// A missed stream event or an unchanged live list must not strand a follow-up.
+setInterval(() => sendBackgroundQueues().catch(() => {}), 3000);
+
 function paintQueue() {
   if (CV.id && CV.queue && CV.queue.length) QUEUES[CV.id] = CV.queue;
   saveQueues();
@@ -934,18 +945,7 @@ function editQueued(i, action) {
   if (action === 'start') document.querySelector(`[data-qedit="${i}"]`)?.focus();
   else sendQueued();
 }
-async function sendQueued() {
-  const q = CV.queue && CV.queue[0];
-  if (!q || q.sending || q.editText !== undefined || q.error || queueTarget(q.route).busy || CV.sending || switchingChat) return;
-  const queue = CV.queue, id = CV.id;
-  q.sending = true; paintQueue();
-  const sent = await sendInChat({ queued: q });
-  delete q.sending;
-  if (sent) queue.splice(queue.indexOf(q), 1);
-  else q.error = q.error || 'Could not send the message.';
-  saveQueues();
-  if (CV.id === id) paintQueue();
-}
+function sendQueued() { return sendBackgroundQueues(); }
 // A queued message keeps the recipient it had when written. With Both selected, live steering
 // goes to the assistant currently working; the shared conversation carries it to the next one.
 function queueTarget(route = {}) {
