@@ -483,12 +483,12 @@ function chatHead() {
   const p = c ? projOf(c) : CV.info && CV.info.cwd ? S.projects.find(x => x.cwd === CV.info.cwd && !x.key.includes('#')) || null : null;
   const st = c ? statusById(statusOf(c)) : null;
   return `<div class="chat-h" id="chatHead"><button class="iconbtn back" data-go="back" aria-label="Back">‹</button>
-      <div class="ch-name"><div class="crumb">${p ? `<span>${esc(bucketName(p.bucket))}</span>›<button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div>${c ? `<button class="ttl" id="chatTitle" data-renamechat="1" title="Rename">${esc(chatTitle())}</button>` : `<span class="ttl" id="chatTitle">${esc(chatTitle())}</span>`}</div>
-      ${st ? `${kindTag(c)}${waitTag(c)}<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>` : ''}
+      <div class="ch-name"><div class="crumb${p && c && p.name.trim().toLowerCase() === chatTitle().trim().toLowerCase() ? ' same' : ''}">${p ? `<span class="crumb-bucket">${esc(bucketName(p.bucket))}</span><span class="crumb-bucket">›</span><button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div>${c ? `<button class="ttl" id="chatTitle" data-renamechat="1" title="Rename">${esc(chatTitle())}</button>` : `<span class="ttl" id="chatTitle">${esc(chatTitle())}</span>`}</div>
+      <div class="ch-tools">${st ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>${kindTag(c)}${waitTag(c)}` : ''}
       ${(n => (n ? `<button class="iconbtn pics-btn" data-chatpics="1" aria-haspopup="menu" title="Pictures in this chat">${IC.image}<span>${n}</span></button>` : ''))(chatPictures().length)}
       ${headLinks()}
       ${c ? '<button class="iconbtn side-btn" data-sidechat="1" title="Side chat: ask or try something beside this chat, without derailing it">Side chat</button>' : ''}
-      ${typeof chatFiles === 'function' && chatFiles().length ? `<button class="iconbtn files-btn" data-viewfiles="1" title="Files this chat read or changed (opens beside the chat)">Files</button>` : ''}
+      ${typeof chatFiles === 'function' && chatFiles().length ? `<button class="iconbtn files-btn" data-viewfiles="1" title="Files this chat read or changed (opens beside the chat)">Files</button>` : ''}</div>
       <button class="iconbtn" data-chatmenu="1" aria-haspopup="menu" aria-label="More">${IC.dots}</button></div>`;
 }
 // A chat whose folder was deleted can't run until the folder is there again.
@@ -544,8 +544,22 @@ function paintChat() {
   // Near the top, earlier messages load by themselves (no button to press).
   if (!f._watching) {
     f._watching = true;
+    // (prevY: the last position; turnY: where the current direction of scrolling began.)
+    let prevY = f.scrollTop, turnY = f.scrollTop, dir = 0;
     f.addEventListener('scroll', () => {
       CV.readAt = f.scrollHeight - f.scrollTop - f.clientHeight < 160 ? null : f.scrollTop;
+      // On a phone the header's chip row tucks away while you read back through the conversation,
+      // and comes back as you scroll down again (40px or more) or reach the newest message.
+      if (matchMedia('(max-width: 760px)').matches) {
+        const v = $('chatView'), y = f.scrollTop, atEnd = f.scrollHeight - y - f.clientHeight < 80;
+        const d = Math.sign(y - prevY);
+        if (d && d !== dir) { dir = d; turnY = prevY; }
+        prevY = y;
+        if (v) {
+          const want = atEnd ? false : dir < 0 && y < turnY - 40 ? true : dir > 0 && y > turnY + 40 ? false : null;
+          if (want !== null && want !== v.classList.contains('ch-tucked')) v.classList.toggle('ch-tucked', want);
+        }
+      }
       if (f.scrollTop < 900 && CV.cursor && !CV.loading && !loadEarlier.busy) loadEarlier().catch(() => {});
     }, { passive: true });
   }

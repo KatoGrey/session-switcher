@@ -984,7 +984,21 @@ body.has-viewer .app { grid-template-columns: var(--side-w, 288px) minmax(0, 1fr
   .chat-h .ch-name ~ :not([data-chatmenu]) { order: 2; }
   .chat-h .crumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-h .ch-name ~ * { flex: none; }
+  /* The name: one line. The bucket is left out, and the project too when it's the chat's own name. */
+  .chat-h { padding-top: 8px; padding-bottom: 8px; row-gap: 4px; }
+  .chat-h .crumb-bucket, .chat-h .crumb.same { display: none; }
+  .chat-h .crumb { font-size: 11.5px; line-height: 1.3; }
+  .chat-h .ttl { font-size: 15.5px; }
+  /* The chips: one row you can swipe along, fading at the edge, instead of lines of their own. */
+  .chat-h .ch-tools { flex: 1 1 100% !important; display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; max-height: 34px; transition: max-height .22s ease, opacity .18s ease, margin .22s ease;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 24px; }
+  .chat-h .ch-tools::-webkit-scrollbar { display: none; }
+  .chat-h .ch-tools > * { flex: none; }
+  .chat-h .ch-tools .stage, .chat-h .ch-tools .iconbtn, .chat-h .ch-tools .hlink { height: 28px; font-size: 13px; }
+  .chat-h .ch-tools .tag { margin-right: 0; }
+  .ch-tucked .chat-h .ch-tools { max-height: 0; opacity: 0; margin-top: -4px; pointer-events: none; }
 }
+.ch-tools { display: contents; }
 
 /* The page slides with the iPhone keyboard (about its speed and easing) instead of snapping after it. */
 .kb-glide .app, .kb-glide .main { transition: height .32s cubic-bezier(.25, .8, .25, 1), top .32s cubic-bezier(.25, .8, .25, 1); }
