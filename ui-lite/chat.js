@@ -499,7 +499,7 @@ function folderNotice() {
   const dir = c.runDir || c.cwd || '';
   const scratch = /[\\/]scratch-workspaces[\\/]/.test(dir);
   const where = scratch ? 'This chat ran in a Claude scratch folder, which was cleaned up.' : `It ran in <span class="mono">${esc(dir.replace(/^\/Users\/[^/]+/, '~'))}</span>, which was deleted or moved.`;
-  if (c.runIsWorktree && c.provider === 'codex') {
+  if (c.runIsWorktree && ['claude', 'codex'].includes(c.provider)) {
     if (CV.inRepo) return `<div class="folder-gone" id="folderGone"><p><b>Asking from the main checkout, read-only.</b> It can look things up (GitHub, Slack, the repo) but won’t change files there. Its branch’s own files aren’t in that folder.</p></div>`;
     return `<div class="folder-gone" id="folderGone"><p><b>Its worktree is gone.</b> ${where} You can still ask it things from the main checkout (read-only), or archive it and rebuild the worktree on the Archived page.</p>
     <button class="btn sm prime" data-inrepo="1">Ask from the main checkout</button></div>`;
@@ -707,7 +707,7 @@ async function ensureReply(p) {
   const check = () => { if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) throw new Error('The chat changed. Pick the assistant again here.'); };
   let lead = CV.info;
   if (!CV.key) {
-    lead = await api('/api/chat/open', { sessionId: id, mode: 'resume', provider: CV.provider, account: accountFor(provNow()) || (chatBy.get(id) || {}).accountId, permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
+    lead = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(CV.inRepo ? { inRepo: true } : {}), provider: CV.provider, account: accountFor(provNow()) || (chatBy.get(id) || {}).accountId, permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
     check(); CV.key = lead.key; CV.info = lead; listen(lead.key);
   }
   await waitReadyFor(CV.key); check();
@@ -747,7 +747,7 @@ async function changeReply(p, changes = {}, fromSend = false) {
       // Reopen the partner itself, rather than the default route back to its parent chat.
       for (let attempt = 0; ; attempt++) {
         try {
-          info = await api('/api/chat/open', { sessionId: fresh.sessionId, mode: 'resume', provider: fresh.provider, account: changes.account, alone: true, permissionMode: fresh.permissionMode, model: fresh.model, fast: fresh.fast });
+          info = await api('/api/chat/open', { sessionId: fresh.sessionId, mode: 'resume', ...(CV.inRepo ? { inRepo: true } : {}), provider: fresh.provider, account: changes.account, alone: true, permissionMode: fresh.permissionMode, model: fresh.model, fast: fresh.fast });
           break;
         } catch (err) {
           // The keeper can report exit just before the OS process listing catches up.
@@ -1089,7 +1089,7 @@ async function sendInChat({ queued = null, delivery = 'queue' } = {}) {
       if (!(err.status === 409 || err.status === 404) || !/stopped|isn.t running|not running/i.test(err.message)) throw err;
       const c = chatBy.get(id);
       const claudeAcct = provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
-      const info = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: perm, ...(model ? { model } : {}), ...(fast != null ? { fast: !!fast } : {}) });
+      const info = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(inRepo ? { inRepo: true } : {}), ...(provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: perm, ...(model ? { model } : {}), ...(fast != null ? { fast: !!fast } : {}) });
       key = info.key;
       if (here()) { CV.key = key; CV.info = info; listen(key); }
       await waitReadyFor(key);

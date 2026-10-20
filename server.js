@@ -564,6 +564,8 @@ function applyDesktop(projects, byCwd) {
 // A folder in the list (Claude Code, Codex, or created here), by its path.
 // The repo a deleted worktree came from: a listed folder with the same name that still exists and isn't a worktree.
 function repoForGone(dir) {
+  const root = String(dir || '').split(/[\\/]\.claude[\\/]worktrees[\\/]/)[0];
+  if (root !== dir) { const p = projectAt(root); if (p && p.exists) return p; }
   const name = String(dir || '').split(/[\\/]/).filter(Boolean).pop();
   return sessionsWithCodex().projects.find(p => p.exists && p.cwd.split(/[\\/]/).filter(Boolean).pop() === name && !/[\\/]worktrees[\\/]/.test(p.cwd)) || null;
 }
@@ -929,8 +931,10 @@ async function openChatInner(c, body) {
   let cwd, sessionId = null;
   if (mode !== 'new') {
     const { project, session } = sessions.find(body.sessionId);
-    if (!project.exists) throw fail(400, `The folder ${project.cwd} no longer exists, so this chat can’t run there.`);
-    cwd = project.cwd; sessionId = session.id;
+    const home = !project.exists && body.inRepo ? repoForGone(project.cwd) : null;
+    if (!project.exists && !home) throw fail(400, `The folder ${project.cwd} no longer exists, so this chat can’t run there.`);
+    cwd = home ? home.cwd : project.cwd; sessionId = session.id;
+    if (home) body.permissionMode = 'plan';
     if (mode === 'resume') {
       const live = chats.bySession(session.id);
       if (live) return attachedInfo(live);
