@@ -388,12 +388,13 @@ const changeWords = (ids, patch) => {
 };
 async function setChats(ids, patch, label) {
   // Undo puts back exactly what was there, guesses included (a guessed status goes back to a guess).
-  const prev = ids.map(id => { const c = chatBy.get(id) || {}, g = c.guessed || {}; return { id, patch: { status: g.status ? null : c.status, kind: g.kind ? null : c.kind || null, focus: !!c.focus, waiting: !!c.waiting, waitingOn: c.waitingOn || '', note: c.note || '', remindAt: c.remindAt || null } }; });
+  const prev = ids.map(id => { const c = chatBy.get(id) || {}, g = c.guessed || {}; return { id, patch: { ...('project' in patch ? { project: S.lite?.chats?.[id]?.project || null } : {}), status: g.status ? null : c.status, kind: g.kind ? null : c.kind || null, focus: !!c.focus, waiting: !!c.waiting, waitingOn: c.waitingOn || '', note: c.note || '', remindAt: c.remindAt || null } }; });
   await api('/api/lite/chats', { ids, patch });
   // Show it straight away; the server's own list follows.
   for (const id of ids) {
     const c = chatBy.get(id); if (!c) continue;
     for (const k of ['status', 'kind']) if (k in patch && patch[k]) { c[k] = patch[k]; c.guessed = { ...(c.guessed || {}), [k]: false }; }
+    if ('project' in patch && patch.project) c.project = patch.project;
     for (const k of ['focus', 'waiting']) if (k in patch) c[k] = !!patch[k];
     for (const k of ['waitingOn', 'note']) if (k in patch) c[k] = patch[k] || null;
   }

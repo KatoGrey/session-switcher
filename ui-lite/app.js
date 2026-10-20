@@ -537,7 +537,7 @@ const projectDropTarget = t => {
   const p = t.closest('[data-project]') || t.closest('.proj-row')?.querySelector('[data-project]');
   return p && p.dataset.project !== drag.project && !projBy.get(p.dataset.project)?.archived ? p : null;
 };
-const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? projectDropTarget(t) || t.closest('[data-drop-bucket]') : null);
+const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? projectDropTarget(t) || nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? projectDropTarget(t) || t.closest('[data-drop-bucket]') : null);
 const projectDropAfter = (e, z) => { const r = z.getBoundingClientRect(); return e.clientY > r.top + r.height / 2; };
 const clearDrop = () => document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot', 'drop-before', 'drop-after'));
 document.addEventListener('dragover', e => {
@@ -555,6 +555,7 @@ document.addEventListener('drop', e => {
   e.preventDefault();
   const d = drag; drag = null;
   if (d.idea) { if (z.dataset.ideaDrop) { const over = e.target.closest('[data-idea]'); wrap(moveIdea)(d.idea, over && over.dataset.idea !== d.idea ? over.dataset.idea : null); } else wrap(startIdea)(d.idea); }
+  else if (d.chats && z.dataset.project) wrap(async () => { await setChats(d.chats, { project: z.dataset.project }, `Moved to ${projBy.get(z.dataset.project)?.name || 'project'}`); await loadState(); render(); })();
   else if (d.chats && z.dataset.chat) wrap(nestChats)(d.chats, z.dataset.chat);
   else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : z.dataset.dropStage === 'waiting' ? { waiting: true } : { status: z.dataset.dropStage, waiting: false });
   else if (z.dataset.project) { if (z.dataset.project !== d.project) wrap(placeProject)(d.project, z.dataset.project, projectDropAfter(e, z)); }
