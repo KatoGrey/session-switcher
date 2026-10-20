@@ -722,8 +722,8 @@ async function ensureReply(p) {
   }
   return info;
 }
-async function changeReply(p, changes = {}) {
-  if (switchingChat || CV.sending) return toast('One moment: the chat is connecting.');
+async function changeReply(p, changes = {}, fromSend = false) {
+  if (switchingChat || (CV.sending && !fromSend)) return toast('One moment: the chat is connecting.');
   const id = CV.id, seq = openSeq;
   const keepBoth = CV.to === 'both' && p === provNow() && ['model', 'effort', 'fast'].some(k => k in changes);
   switchingChat = id;
@@ -789,7 +789,7 @@ async function applyReplyPlan() {
     const current = target && planById(target.accountId);
     if (!next || (target && target.accountId === next.id)) continue;
     if (!preferredPlan(family) && !(current && (current.broken || current.left === 0 || current.fiveLeft === 0))) continue;
-    await changeReply(p, { account: next.id });
+    await changeReply(p, { account: next.id }, true);
     if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return false;
     CV.to = to; setTo(id, to); paintBar();
   }
@@ -1033,7 +1033,6 @@ async function sendInChat({ queued = null, delivery = 'queue' } = {}) {
     if (!await steerIn(q.text, q.images, q.route)) { q.error = 'Live steering did not go through.'; queue.unshift(q); QUEUES[id] = queue; saveQueues(); if (CV.id === id) paintQueue(); }
     return;
   }
-  try { if (!queued && !await applyReplyPlan()) return; } catch (err) { toast(err.message); return; }
   // The message belongs to the chat it was written in. Starting a chat that wasn't running takes a
   // few seconds; if you open another chat meanwhile, it still goes here (Oct 13: it went to the chat
   // you'd moved to), and only this chat's view is touched.
@@ -1056,6 +1055,12 @@ async function sendInChat({ queued = null, delivery = 'queue' } = {}) {
   CV.progressAt = Date.now(); CV.lastStep = 'user';
   sfx('slide'); paintFeed(); paintStatus(); $('feed').scrollTop = $('feed').scrollHeight;
   try {
+    // Show the message before account checks or reconnects. Keep the send lock while
+    // switching, and use the reopened process rather than the captured old key.
+    if (!queued) {
+      if (!await applyReplyPlan() || !here()) throw new Error('The chat changed before the message was sent.');
+      key = CV.key;
+    }
     if (!key) {
       // First message: picked up here, always in your permission default (or what you chose for it
       // with the gear), and on the model you picked if you did.
