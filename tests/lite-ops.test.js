@@ -216,3 +216,18 @@ test('phone alerts: a phone can switch kinds off, hackathon alerts only when swi
   assert.equal(wants(p, { kind: 'hack' }), false);
   assert.equal(wants(cleanPrefs({ kinds: { hack: true } }), { kind: 'hack' }), true);
 });
+
+test('floor alert: once a week, and only for the plan in use as it drains', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lite-floor-'));
+  try {
+    const ops = createLiteOps({ dataDir: dir, store: lite.createLite({ dataDir: dir }) });
+    const got = []; ops.usePush(p => { got.push(p.title); return Promise.resolve(1); });
+    // Claude reports the reset a fraction of a second differently on each check.
+    const plan = (id, left, ms) => ({ id, family: 'claude', label: id, left, resetsAt: new Date(Date.parse('2026-10-21T15:00:00Z') + ms).toISOString() });
+    ops.watchPlans([plan('A', 40, 300), plan('B', 5, 100)], { claude: ['A'] }, 15);
+    ops.watchPlans([plan('A', 30, -200), plan('B', 5, 400)], { claude: ['A'] }, 15);
+    ops.watchPlans([plan('A', 14, 700), plan('B', 5, -300)], { claude: ['C'] }, 15);
+    ops.watchPlans([plan('A', 12, -600), plan('B', 4, 200)], { claude: ['C'] }, 15);
+    assert.deepEqual(got, ['A at 14%'], 'B was low but not in use; A alerts once as it hands over, not on every check');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
