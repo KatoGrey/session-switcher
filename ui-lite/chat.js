@@ -537,9 +537,10 @@ function chatView() {
 function paintChat() {
   if (S.view !== 'chat' || !$('chatView')) return;
   const h = $('chatHead'); if (h && !h._h) h._h = chatHead();
+  const hadMessages = !!$('feedSegs')?.children.length;
   paintFeed(); paintPending(); paintBar(); paintStatus();
   if (typeof paintViewer === 'function') { if (VW.open && VW.chat !== CV.id) closeViewer(); else paintViewer(); }
-  const f = $('feed'); f.scrollTop = CV.readAt != null ? CV.readAt : f.scrollHeight;
+  const f = $('feed'); if (CV.readAt == null) f.scrollTop = f.scrollHeight; else if (!hadMessages) f.scrollTop = CV.readAt;
   // Where you're reading: null at the end (it follows new messages), else how far down you are.
   // Near the top, earlier messages load by themselves (no button to press).
   if (!f._watching) {
@@ -574,16 +575,26 @@ function paintFeed() {
   if (!$('feedSegs')) el.innerHTML = '<div id="feedTop" class="segs"></div><div id="feedSegs" class="segs"></div><div id="liveText" class="msg-ai live"></div><div id="pendingBox"></div><div id="statusLine" class="step live-status"></div>';
   const top = `${CV.cursor ? '<button class="linkish earlier" data-earlier="1">Earlier messages</button>' : ''}${CV.loading ? '<p class="empty-note">Loading…</p>' : CV.error ? `<p class="empty-note">${esc(CV.error)}</p>` : !CV.items.length ? '<p class="empty-note">Nothing here yet.</p>' : ''}`;
   const t = $('feedTop'); if (t._h !== top) { t.innerHTML = top; t._h = top; }
-  const box = $('feedSegs'), segs = feedSegments(), kids = box.children;
+  const box = $('feedSegs'), segs = feedSegments(), feed = $('feed');
+  const oldTop = feed.scrollTop, edge = feed.getBoundingClientRect().top;
+  const anchor = !stick && [...box.children].find(k => k.getBoundingClientRect().bottom > edge);
+  const offset = anchor ? anchor.getBoundingClientRect().top - edge : 0;
+  // History can prepend steps or regroup them after replay. Reuse matching nodes
+  // instead of replacing every later segment by index (which collapses the feed).
+  const available = new Map();
+  for (const k of box.children) { const list = available.get(k._h) || []; list.push(k); available.set(k._h, list); }
   for (let i = 0; i < segs.length; i++) {
-    const k = kids[i];
-    if (k && k._h === segs[i]) continue;
-    const d = document.createElement('div'); d.className = 'segs'; d.innerHTML = segs[i]; d._h = segs[i];
-    if (k) box.replaceChild(d, k); else box.appendChild(d);
+    let d = available.get(segs[i])?.shift();
+    if (!d) { d = document.createElement('div'); d.className = 'segs'; d.innerHTML = segs[i]; d._h = segs[i]; }
+    if (box.children[i] !== d) box.insertBefore(d, box.children[i] || null);
   }
-  while (kids.length > segs.length) box.lastChild.remove();
+  while (box.children.length > segs.length) box.lastChild.remove();
   paintLive(); paintPending(); paintStatus(); paintHead();
-  if (stick) $('feed').scrollTop = $('feed').scrollHeight;
+  if (stick) feed.scrollTop = feed.scrollHeight;
+  else {
+    feed.scrollTop = anchor?.isConnected ? feed.scrollTop + anchor.getBoundingClientRect().top - edge - offset : oldTop;
+    CV.readAt = feed.scrollTop;
+  }
 }
 function appendItem() { paintFeed(); }
 function paintLive() { const el = $('liveText'); if (!el || CV.replaying) return; const stick = nearBottom(); const pl = typeof PARTNER !== 'undefined' ? PARTNER.live : ''; el.innerHTML = (CV.live ? mdHtml(CV.live) : '') + (pl ? `<div class="from-partner"><span class="who">${esc(partnerName())}</span>${mdHtml(pl)}</div>` : ''); el.hidden = !CV.live && !pl; if (stick) $('feed').scrollTop = $('feed').scrollHeight; }
