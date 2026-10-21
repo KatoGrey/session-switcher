@@ -323,7 +323,7 @@ function onEvent(ev) {
     case 'notice': CV.items.push(ev); appendItem(ev); break;
     case 'permission': CV.pending.set(ev.requestId, ev); paintPending(); break;
     case 'permission_cancel': case 'permission_done': CV.pending.delete(ev.requestId); paintPending(); break;
-    case 'result': CV.busy = false; CV.status = ''; CV.startedAt = 0; CV.live = ''; CV.thinking = ''; setTimeout(sendQueued, 300); markSeen(CV.id); if (!ev.ok && (ev.errors || []).length) { const n = { kind: 'notice', level: 'warning', text: ev.errors.join(' ') }; CV.items.push(n); appendItem(n); } paintLive(); paintStatus(); paintBar(); break;
+    case 'result': CV.busy = false; CV.status = ''; CV.startedAt = 0; CV.live = ''; CV.thinking = ''; setTimeout(sendQueued, 300); markSeen(CV.id); if (!ev.ok && (ev.errors || []).length) { const n = { kind: 'notice', level: 'warning', text: ev.errors.join(' ') }; const last = CV.items[CV.items.length - 1]; if (last?.kind !== 'notice' || last.text !== n.text) { CV.items.push(n); appendItem(n); } } paintLive(); paintStatus(); paintBar(); break;
     default: break;
   }
 }
