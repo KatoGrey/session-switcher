@@ -71,12 +71,23 @@ function home() {
     <p class="hint-line">Drag projects before or after one another to reorder them, or onto a bucket to move them. The project menu also has Move up, Move down and Archive.</p></div>`;
 }
 
+// Chats matching the search: by name, project or first message, newest first.
+function searchMatches(q, { archived = false } = {}) {
+  q = String(q || '').toLowerCase();
+  const pool = archived ? S.chats.filter(c => !c.auto && !c.routineRun) : allChats();
+  return pool.filter(c => c.title.toLowerCase().includes(q) || projOf(c).name.toLowerCase().includes(q) || (c.firstPrompt || '').toLowerCase().includes(q)).sort((a, b) => recentAt(b) - recentAt(a));
+}
+// On a phone the search filters the sidebar as you type (going to a page of results took the box,
+// and the keyboard, away after every letter). Archived chats are found too, dimmed.
+function sideSearchHtml() {
+  const list = searchMatches(S.q, { archived: true }).slice(0, 60);
+  return `<div class="group side-results"><div class="side-h">${list.length ? `${list.length === 60 ? '60+' : list.length} match${list.length === 1 ? '' : 'es'}` : 'Nothing matches'}</div>${list.map(recentRow).join('')}</div>`;
+}
 function listView(kind) {
   const all = allChats();
   let list, title;
   if (kind === 'search') {
-    const q = S.q.toLowerCase();
-    list = all.filter(c => c.title.toLowerCase().includes(q) || projOf(c).name.toLowerCase().includes(q) || (c.firstPrompt || '').toLowerCase().includes(q)).sort((a, b) => b.updated - a.updated).slice(0, 80);
+    list = searchMatches(S.q).slice(0, 80);
     title = `Search: ${S.q}`;
   } else { list = recentChats().slice(0, 60); title = L('Recents'); }
   return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${esc(title)}</h1></div></div>

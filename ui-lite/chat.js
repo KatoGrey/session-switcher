@@ -604,7 +604,9 @@ const workedFor = t => { const s = Math.max(0, Math.floor((Date.now() - t) / 100
 // model shares it (Claude does; Codex only says it's thinking), and the time.
 function paintStatus() {
   const el = $('statusLine'); if (!el || CV.replaying) return;
-  const quietMin = CV.busy && CV.progressAt && CV.lastStep !== 'tool' && !CV.pending.size ? Math.floor((Date.now() - CV.progressAt) / 60000) : 0;
+  // Quiet since its last sign of progress, and never since before this turn began (a time left from another chat).
+  const since = Math.max(CV.progressAt || 0, CV.startedAt || 0);
+  const quietMin = CV.busy && since && CV.lastStep !== 'tool' && !CV.pending.size ? Math.floor((Date.now() - since) / 60000) : 0;
   if (quietMin >= 4) {
     el.hidden = false;
     const h = `<span class="live-dot stall"></span><span class="st-what">Nothing from it for ${quietMin} min. It may be stuck.</span><button type="button" class="btn sm" data-nudge="1" title="Stop this turn and tell it to carry on">Nudge</button><span class="st-time">${CV.startedAt ? workedFor(CV.startedAt) : ''}</span>`;
@@ -1348,7 +1350,7 @@ async function startNewChat() {
   if (CV.es) { CV.es.close(); CV.es = null; }
   const run = {};
   const continues = NC.parent || null; NC.parent = null;
-  Object.assign(CV, { run, continues, id: null, key: null, info: { cwd: p.cwd, state: 'starting', title: 'New chat' }, items: [local], cursor: null, live: '', status: 'Starting', pending: new Map(), busy: true, startedAt: Date.now(), loading: false, error: null, readOnly: null, sending: true, provider: prov });
+  Object.assign(CV, { progressAt: Date.now(), lastStep: 'user', run, continues, id: null, key: null, info: { cwd: p.cwd, state: 'starting', title: 'New chat' }, items: [local], cursor: null, live: '', status: 'Starting', pending: new Map(), busy: true, startedAt: Date.now(), loading: false, error: null, readOnly: null, sending: true, provider: prov });
   const mine = () => CV.run === run && S.view === 'chat';
   sfx('slide');
   go('chat', { draft: true }, { push: false });

@@ -80,7 +80,8 @@ function renderSide() {
   const nArch = S.chats.filter(c => c.archived).length + S.projects.filter(p => p.archived).length;
   const mode = S.sideMode || 'projects';
   const modeSeg = `<span class="side-seg" role="group" aria-label="Sidebar shows"><button data-sidemode="projects" aria-pressed="${mode === 'projects'}">Projects</button><button data-sidemode="stages" aria-pressed="${mode === 'stages'}">Status</button></span>`;
-  swapHtml($('sideScroll'), top + focusSection + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders.join('') : sideProjects(chats)}</div>`
+  if (small() && S.q) swapHtml($('sideScroll'), sideSearchHtml());
+  else swapHtml($('sideScroll'), top + focusSection + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders.join('') : sideProjects(chats)}</div>`
     + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`);
 }
 
@@ -470,8 +471,8 @@ function showPicture(src, list = []) {
   addEventListener('keydown', onKey, true);
   paint();
 }
-$('q').addEventListener('input', e => { S.q = e.target.value.trim(); if (S.q) { if (S.view !== 'search') go('search', {}, { push: false }); else render(); } else if (S.view === 'search') go('now', {}, { push: false }); });
-$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { const r = document.querySelector('#main [data-cur]'); if (r) { e.preventDefault(); r.click(); } } if (e.key === 'ArrowDown') { e.preventDefault(); e.target.blur(); setCur(0); } });
+$('q').addEventListener('input', e => { S.q = e.target.value.trim(); if (small()) { $('sideScroll').scrollTop = 0; return renderSide(); } if (S.q) { if (S.view !== 'search') go('search', {}, { push: false }); else render(); } else if (S.view === 'search') go('now', {}, { push: false }); });
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { const r = document.querySelector(small() ? '#sideScroll [data-cur]' : '#main [data-cur]'); if (r) { e.preventDefault(); r.click(); } } if (e.key === 'ArrowDown') { e.preventDefault(); e.target.blur(); setCur(0); } });
 
 async function sendQuick(key) {
   const input = document.querySelector(`[data-qr="${CSS.escape(key)}"]`);

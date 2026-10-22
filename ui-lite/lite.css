@@ -1217,3 +1217,8 @@ button.tk-heat-cell:hover, button.tk-heat-cell:focus-visible { outline: 2px soli
   .tk-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tk-hero-n { font-size: 52px; }
 }
+/* A phone's search, filtering the sidebar as you type. */
+.side-results { display: flex; flex-direction: column; gap: 2px; }
+.side-results .side-h { color: var(--muted); font-size: 12px; padding: 4px 8px; }
+.side-results .recent-row { padding: 10px 8px; border-radius: 8px; }
+.side-results .recent-row:active { background: var(--hover); }
