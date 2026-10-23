@@ -633,7 +633,7 @@ function paintPending() {
   el.innerHTML = [...CV.pending.values()].map(p => {
     if (p.questions && p.questions.length) return questionCard(p);
     const v = p.view || {};
-    return `<div class="ask-card" data-req="${esc(p.requestId)}"><p class="q">Wants to ${esc(wantsTo(p.toolName))}</p>${v.detail || v.summary ? `<code class="ask-code">${esc(v.detail || v.summary)}</code>` : ''}
+    return `<div class="ask-card" data-req="${esc(p.requestId)}"><p class="q">Wants to ${esc(wantsTo(p.toolName))}</p>${p.reason ? `<p>${esc(p.reason)}</p>` : ''}${v.detail || v.summary ? `<code class="ask-code">${esc(v.detail || v.summary)}</code>` : ''}
       <div class="opts"><button class="btn prime" data-perm-c="allow" data-req="${esc(p.requestId)}">Allow <kbd>a</kbd></button>${p.canAlways ? `<button class="btn" data-perm-c="always" data-req="${esc(p.requestId)}">Always allow</button>` : ''}<button class="btn" data-perm-c="deny" data-req="${esc(p.requestId)}">Deny <kbd>d</kbd></button></div></div>`;
   }).join('');
   if (CV.pending.size && nearBottom()) $('feed').scrollTop = $('feed').scrollHeight;
