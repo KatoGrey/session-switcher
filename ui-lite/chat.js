@@ -745,11 +745,22 @@ async function changeReply(p, changes = {}, fromSend = false) {
     let info = await ensureReply(p);
     if (changes.account && info.accountId !== changes.account) {
       // Stopping a lead also stops its partners. Never discard an active turn to change accounts.
-      const fresh = await api('/api/chat/attach', { key: info.key });
+      let fresh = await api('/api/chat/attach', { key: info.key });
       if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
-      const crew = info.key === CV.key ? await Promise.all(Object.values(fresh.crew?.running || {}).map(key => api('/api/chat/attach', { key }))) : [];
+      let crew = info.key === CV.key ? await Promise.all(Object.values(fresh.crew?.running || {}).map(key => api('/api/chat/attach', { key }))) : [];
       if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
-      if ([fresh, ...crew].some(p => ['busy', 'waiting', 'starting'].includes(p.state) || (p.background || []).length)) throw new Error('Let the current reply and background work finish before changing accounts.');
+      if ([fresh, ...crew].some(p => ['busy', 'waiting', 'starting'].includes(p.state))) throw new Error('Let the current reply finish, or stop it, before changing accounts.');
+      const background = [fresh, ...crew].flatMap(p => p.background || []);
+      if (background.length) {
+        const tasks = background.map(t => esc(t.description || 'Background task')).join('; ');
+        if (!await confirmBox({ title: 'Stop background work and switch accounts?', body: `Still running: ${tasks}. Switching accounts stops this background work. Your conversation and draft stay.`, yes: 'Stop work and switch' })) throw new Error('Account change cancelled.');
+        if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
+        // A reply may have started on another device while the confirmation was open.
+        fresh = await api('/api/chat/attach', { key: info.key });
+        crew = info.key === CV.key ? await Promise.all(Object.values(fresh.crew?.running || {}).map(key => api('/api/chat/attach', { key }))) : [];
+        if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
+        if ([fresh, ...crew].some(p => ['busy', 'waiting', 'starting'].includes(p.state))) throw new Error('A reply started while you were choosing. Stop it before changing accounts.');
+      }
       if (!fresh.sessionId) throw new Error('The chat is still starting. Try the account again in a moment.');
       const isLead = info.key === CV.key;
       await api('/api/chat/stop', { key: info.key });
