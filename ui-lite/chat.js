@@ -234,6 +234,7 @@ async function loadEarlier() {
   // You've moved to another chat since: these belong to the one you left.
   if (seq !== openSeq || CV.id !== id) return;
   const sc = $('feed'), before = sc ? sc.scrollHeight - sc.scrollTop : 0;
+  if (sc) CV.readAt = sc.scrollTop;
   CV.items = [...(h.items || []), ...CV.items]; CV.cursor = h.cursor || null;
   paintFeed();
   if (sc) sc.scrollTop = sc.scrollHeight - before;
@@ -545,9 +546,25 @@ function paintChat() {
   // Near the top, earlier messages load by themselves (no button to press).
   if (!f._watching) {
     f._watching = true;
+    // Images, fonts, replay and the composer can change the layout after we scroll
+    // to the end. That is not a request to start reading an older message.
+    const size = () => `${f.scrollHeight}:${f.clientHeight}:${f.clientWidth}`;
+    let layout = size();
+    const follow = () => {
+      if (CV.readAt == null) f.scrollTop = f.scrollHeight;
+      layout = size();
+    };
+    const resize = new ResizeObserver(() => {
+      if (!f.isConnected) { resize.disconnect(); return; }
+      if (f === $('feed') && S.view === 'chat') follow();
+    });
+    resize.observe(f);
+    resize.observe($('feedInner'));
     // (prevY: the last position; turnY: where the current direction of scrolling began.)
     let prevY = f.scrollTop, turnY = f.scrollTop, dir = 0;
     f.addEventListener('scroll', () => {
+      if (f !== $('feed') || S.view !== 'chat') return;
+      if (layout !== size()) { follow(); prevY = f.scrollTop; return; }
       CV.readAt = f.scrollHeight - f.scrollTop - f.clientHeight < 160 ? null : f.scrollTop;
       // On a phone the header's chip row tucks away while you read back through the conversation,
       // and comes back as you scroll down again (40px or more) or reach the newest message.
@@ -561,7 +578,7 @@ function paintChat() {
           if (want !== null && want !== v.classList.contains('ch-tucked')) v.classList.toggle('ch-tucked', want);
         }
       }
-      if (f.scrollTop < 900 && CV.cursor && !CV.loading && !loadEarlier.busy) loadEarlier().catch(() => {});
+      if (CV.readAt != null && f.scrollTop < 900 && CV.cursor && !CV.loading && !CV.replaying && !loadEarlier.busy) loadEarlier().catch(() => {});
     }, { passive: true });
   }
   if (!REMOTE && !matchMedia('(max-width: 760px)').matches) $('msgBox')?.focus();
@@ -571,7 +588,7 @@ const nearBottom = () => { const f = $('feed'); return !f || f.scrollHeight - f.
 // new ones are added at the end and only a segment that changed is swapped.
 function paintFeed() {
   const el = $('feedInner'); if (!el || CV.replaying) return;
-  const stick = nearBottom();
+  const stick = CV.readAt == null;
   if (!$('feedSegs')) el.innerHTML = '<div id="feedTop" class="segs"></div><div id="feedSegs" class="segs"></div><div id="liveText" class="msg-ai live"></div><div id="pendingBox"></div><div id="statusLine" class="step live-status"></div>';
   const top = `${CV.cursor ? '<button class="linkish earlier" data-earlier="1">Earlier messages</button>' : ''}${CV.loading ? '<p class="empty-note">Loading…</p>' : CV.error ? `<p class="empty-note">${esc(CV.error)}</p>` : !CV.items.length ? '<p class="empty-note">Nothing here yet.</p>' : ''}`;
   const t = $('feedTop'); if (t._h !== top) { t.innerHTML = top; t._h = top; }
@@ -597,7 +614,7 @@ function paintFeed() {
   }
 }
 function appendItem() { paintFeed(); }
-function paintLive() { const el = $('liveText'); if (!el || CV.replaying) return; const stick = nearBottom(); const pl = typeof PARTNER !== 'undefined' ? PARTNER.live : ''; el.innerHTML = (CV.live ? mdHtml(CV.live) : '') + (pl ? `<div class="from-partner"><span class="who">${esc(partnerName())}</span>${mdHtml(pl)}</div>` : ''); el.hidden = !CV.live && !pl; if (stick) $('feed').scrollTop = $('feed').scrollHeight; }
+function paintLive() { const el = $('liveText'); if (!el || CV.replaying) return; const pl = typeof PARTNER !== 'undefined' ? PARTNER.live : ''; el.innerHTML = (CV.live ? mdHtml(CV.live) : '') + (pl ? `<div class="from-partner"><span class="who">${esc(partnerName())}</span>${mdHtml(pl)}</div>` : ''); el.hidden = !CV.live && !pl; if (CV.readAt == null) $('feed').scrollTop = $('feed').scrollHeight; }
 // How long it's been working, to the second (the page's own clock, not the list's).
 const workedFor = t => { const s = Math.max(0, Math.floor((Date.now() - t) / 1000)); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m ${String(s % 60).padStart(2, '0')}s` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 // The line under the conversation while it works: what it's doing, the end of its thinking when the
