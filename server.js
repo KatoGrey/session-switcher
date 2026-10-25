@@ -897,7 +897,14 @@ async function openChatInner(c, body) {
     return { ...chat.info(), attached: false, remembered: !!pref.mode };
   }
   if (body.provider === 'codex' || (body.mode !== 'new' && isCodexId(body.sessionId))) {
-    const inst = await codexChecked(body.mode === 'new' ? (codexById(body.account) || codexActive()) : codexForThread(body.sessionId, body.account));
+    let inst = body.mode === 'new' ? (codexById(body.account) || codexActive()) : codexForThread(body.sessionId, body.account);
+    // Unsubscribing leaves Codex's writer alive for a grace period. Reattach on
+    // its owning account instead of trying to open a second writer elsewhere.
+    if ((!body.mode || body.mode === 'resume') && body.sessionId && !body.account) {
+      const owners = await Promise.all(codexAll().filter(x => modelFits(x, body.model)).map(async x => await x.hasLoadedThread(body.sessionId) ? x : null));
+      inst = owners.find(Boolean) || inst;
+    }
+    inst = await codexChecked(inst);
     requireCodexSignedIn(inst);
     const mode = ['resume', 'fork', 'new'].includes(body.mode) ? body.mode : 'resume';
     let cwd, threadId = null, title = null;

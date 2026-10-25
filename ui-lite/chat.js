@@ -1162,13 +1162,15 @@ async function sendInChat({ queued = null, delivery = 'queue' } = {}) {
   } finally { if (here()) CV.sending = false; }
 }
 // Ready for a message: this chat's own stream says so while you're in it; otherwise asked directly.
-const waitReadyFor = key => new Promise(res => {
+const waitReadyFor = key => new Promise((res, reject) => {
   const t0 = Date.now();
   const tick = async () => {
     let st = null;
     if (CV.key === key && CV.info) st = CV.info.state;
-    else { try { st = (await api('/api/chat/attach', { key })).state; } catch { return res(); } }
-    if ((st && st !== 'starting') || Date.now() - t0 > 45e3) return res();
+    else { try { st = (await api('/api/chat/attach', { key })).state; } catch (err) { return reject(err); } }
+    if (st === 'ended') return reject(new Error('The chat could not start. Your message has not been sent.'));
+    if (st && st !== 'starting') return res();
+    if (Date.now() - t0 > 45e3) return reject(new Error('The chat is taking too long to start. Your message has not been sent.'));
     return setTimeout(tick, CV.key === key ? 100 : 400);
   };
   tick();
