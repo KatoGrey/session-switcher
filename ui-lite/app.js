@@ -280,6 +280,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-chatlinks]'))) return linksMenu(b);
   if ((b = el('[data-side-later]'))) { const k = b.dataset.sideLater === '*' ? 'side-later' : 'pl:' + b.dataset.sideLater; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-steerq]'))) { steerQueued(Number(b.dataset.steerq)); return undefined; }
+  if ((b = el('[data-delivery]'))) return deliveryMenu(b);
   if ((b = el('[data-qedit-start]'))) return editQueued(Number(b.dataset.qeditStart), 'start');
   if ((b = el('[data-qsave]'))) return editQueued(Number(b.dataset.qsave), 'save');
   if ((b = el('[data-qcancel]'))) return editQueued(Number(b.dataset.qcancel), 'cancel');
@@ -407,10 +408,11 @@ document.addEventListener('keydown', e => {
   // On a phone, Return is a new line in a message box (the ↑ button sends); with a keyboard, Enter sends.
   if (e.key === 'Enter' && TOUCH() && !e.metaKey && !e.ctrlKey && e.target.tagName === 'TEXTAREA') return;
   if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.isComposing) {
-    const alternate = (e.metaKey || e.ctrlKey) && e.shiftKey;
-    if (e.shiftKey && !alternate) return;
+    if (e.altKey || e.repeat) return;
+    const explicit = e.metaKey || e.ctrlKey;
+    if (e.shiftKey && !explicit) return;
     e.preventDefault();
-    if (alternate && S.view === 'chat') sendInChat({ delivery: followUpDelivery() === 'queue' ? 'steer' : 'queue' });
+    if (explicit && S.view === 'chat') sendInChat({ delivery: e.shiftKey ? 'queue' : 'steer' });
     else $('composer').requestSubmit();
     return;
   }

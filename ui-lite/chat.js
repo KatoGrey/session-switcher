@@ -719,6 +719,7 @@ function composerHtml({ fresh = false } = {}) {
     ${fresh ? '' : '<div class="readonly-note" id="roNote" hidden></div>'}
     <div class="att-strip" id="attStrip" hidden></div>
     <textarea autocomplete="off" id="msgBox" rows="1" placeholder="${fresh ? 'What should it do?' : 'Reply…'}" aria-label="Message"></textarea>
+    <div class="delivery-bar" id="deliveryBar" hidden></div>
     <div class="tools" id="barTools"></div>
     <input type="file" id="attIn" multiple hidden>
   </form>`;
@@ -856,6 +857,12 @@ const prettyModel = m => String(m).replace(/^claude-/, '').replace(/-(\d)-(\d)/,
 const modelLabel = (prov, v) => { const base = String(v).replace(/\[1m\]$/, ''); const m = modelsFor(prov).find(x => x.value === v || x.value === base); return m ? `${m.label}${/\[1m\]$/.test(v) ? ' 1M' : ''}` : prettyModel(v); };
 const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const followUpDelivery = () => local.get('followUpDelivery', 'queue') === 'steer' ? 'steer' : 'queue';
+const sendShortcut = (queue = false) => /Mac|iPhone|iPad/.test(navigator.platform) ? `⌘${queue ? '⇧' : ''}↵` : `Ctrl+${queue ? 'Shift+' : ''}Enter`;
+function deliveryMenu(anchor) {
+  pop(anchor, `<div class="ph">While the assistant is working</div>${[['queue', 'Queue', 'After the current reply', `${sendShortcut(true)}`], ['steer', 'Steer now', 'Guide the current work', `${sendShortcut()}`]].map(([v, label, note, key]) => `<button data-v="${v}" role="menuitemradio" aria-checked="${followUpDelivery() === v}"><span>${label}<span class="delivery-note">${note}</span></span><kbd>${key}</kbd></button>`).join('')}<div class="ph">Sets the send button and Enter. Shortcuts override it once.</div>`, v => {
+    local.set('followUpDelivery', v); paintBar(); $('msgBox')?.focus({ preventScroll: true });
+  });
+}
 function toolsHtml({ fresh }) {
   const prov = replyProv();
   const info = fresh ? null : replyTarget().info;
@@ -866,7 +873,7 @@ function toolsHtml({ fresh }) {
   const busy = !fresh && replyBusy();
   const delivery = followUpDelivery();
   const sendLabel = fresh ? 'Start' : busy ? delivery === 'steer' ? 'Steer now' : 'Queue' : 'Send';
-  const sendHint = `${sendLabel} (Enter)${busy ? ` · ⌘⇧Enter / Ctrl+Shift+Enter to ${delivery === 'steer' ? 'queue' : 'steer now'}` : ''}`;
+  const sendHint = `${sendLabel}${TOUCH() ? '' : ' (Enter)'}${busy ? ` · ${sendShortcut()} to steer · ${sendShortcut(true)} to queue` : ''}`;
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
     <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : ''}${prov === 'codex' && ((info && info.fast) || (!info && COMP.fast)) ? ' ⚡' : ''}<span>▾</span></button>
     <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
@@ -882,6 +889,14 @@ function paintBar() {
   if (ro) { ro.hidden = !CV.readOnly; ro.textContent = CV.readOnly || ''; }
   const th = toolsHtml({ fresh: false }); if (t._h !== th) { t.innerHTML = th; t._h = th; }
   const box = $('msgBox'); if (box) box.disabled = !!CV.readOnly;
+  const deliveryBar = $('deliveryBar');
+  if (deliveryBar) {
+    deliveryBar.hidden = !replyBusy();
+    const steer = followUpDelivery() === 'steer';
+    const h = `<button type="button" data-delivery="1" aria-haspopup="menu" title="Choose what the send button does">${steer ? 'Steer current work' : 'Queue after reply'} <span>▾</span></button><span class="delivery-shortcut">${sendShortcut()} steer · ${sendShortcut(true)} queue</span>`;
+    if (deliveryBar._h !== h) { deliveryBar.innerHTML = h; deliveryBar._h = h; }
+    if (box) box.placeholder = replyBusy() ? steer ? 'Guide the current work…' : 'Add a follow-up…' : 'Reply…';
+  }
   paintAttachments();
 }
 function autosize(el) { el.style.height = 'auto'; const cap = parseFloat(getComputedStyle(el).maxHeight) || 280; el.style.height = Math.min(el.scrollHeight, cap, 280) + 'px'; }
@@ -974,7 +989,7 @@ async function sendBackgroundQueues() {
       try {
         info = await api('/api/chat/attach', { key });
         const route = item.route || {};
-        const crew = Object.entries(info.crew?.running || {}).filter(([kind]) => route.to !== 'partner' || kind === route.kind);
+        const crew = Object.entries(info.crew?.running || {}).filter(([kind]) => route.to === 'partner' ? kind === route.kind : route.to === 'both' ? !route.kind || kind === route.kind : !route.kinds?.length || route.kinds.includes(kind));
         states = route.to ? await Promise.all(crew.map(([, k]) => api('/api/chat/attach', { key: k }))) : [];
         if (route.to !== 'partner') states.push(info);
       } catch { continue; }
@@ -997,7 +1012,7 @@ function paintQueue() {
   if (CV.id && CV.queue && CV.queue.length) QUEUES[CV.id] = CV.queue;
   saveQueues();
   const el = $('queueBox'); if (!el) return;
-  keepFocused(el, () => { el.innerHTML = (CV.queue || []).map((q, i) => `<div class="q-item${q.editText !== undefined ? ' q-editing' : ''}"><div class="q-main"><span class="tag">${q.sending ? 'Sending…' : q.error ? 'Not sent' : 'Queued'}</span><span class="q-text" title="${esc(q.text)}">${esc(q.text)}${q.images.length ? ` · ${q.images.length} picture${q.images.length === 1 ? '' : 's'}` : ''}</span></div>
+  keepFocused(el, () => { el.innerHTML = `<div class="queue-heading"><span>${(CV.queue || []).length} queued</span><span>Sent in order after each reply</span></div>` + (CV.queue || []).map((q, i) => `<div class="q-item${q.editText !== undefined ? ' q-editing' : ''}"><div class="q-main"><span class="q-meta">${q.sending ? 'Sending…' : q.error ? 'Not sent' : `${i + 1} · ${esc(q.route?.to === 'partner' ? NAME_OF[q.route.kind] || q.route.kind : q.route?.to === 'both' ? 'Both' : q.route?.to === 'all' ? 'All' : selfName())}`}</span><span class="q-text" title="${esc(q.text)}">${esc(q.text)}${q.images.length ? ` · ${q.images.length} picture${q.images.length === 1 ? '' : 's'}` : ''}</span></div>
     ${q.editText !== undefined ? `<textarea class="field" id="queuedEdit-${i}" data-qedit="${i}" rows="3" aria-label="Edit queued message">${esc(q.editText)}</textarea><div class="q-actions"><button type="button" class="btn prime" data-qsave="${i}">Save</button><button type="button" class="btn" data-qcancel="${i}">Cancel</button></div>` : `<div class="q-actions"><button type="button" class="btn" data-steerq="${i}" ${q.sending || CV.sending ? 'disabled' : ''} title="Send into the current work, or start now if idle">${q.error ? 'Retry now' : 'Steer now'}</button><button type="button" class="btn" data-qedit-start="${i}" ${q.sending ? 'disabled' : ''}>Edit</button><button type="button" class="iconbtn" data-unqueue="${i}" ${q.sending ? 'disabled' : ''} aria-label="Remove queued message">×</button></div>`}
     ${q.error ? `<small class="q-error">${esc(q.error)} · Kept here for you to retry.</small>` : ''}</div>`).join(''); });
   el.hidden = !(CV.queue || []).length;
@@ -1022,7 +1037,7 @@ function sendQueued() { return sendBackgroundQueues(); }
 function queueTarget(route = {}) {
   if (route.to === 'partner') return [...PARTNERS.values()].find(p => p.prov === route.kind) || { key: null, busy: false };
   if (route.to === 'both' || route.to === 'all') {
-    if (!CV.busy) { const p = [...PARTNERS.values()].find(p => p.busy); if (p) return p; }
+    if (!CV.busy) { const p = [...PARTNERS.values()].find(p => p.busy && (route.to === 'both' ? !route.kind || p.prov === route.kind : !route.kinds?.length || route.kinds.includes(p.prov))); if (p) return p; }
   }
   return { key: CV.key, busy: CV.busy };
 }
@@ -1056,7 +1071,7 @@ async function steerIn(text, imgs, route = {}) {
   const images = imgs.map(i => ({ mediaType: i.mediaType, data: i.data }));
   const local = { kind: 'user', text, images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
   CV.sending = true; CV.items.push(local); paintFeed(); sfx('slide');
-  try { await api('/api/lite/steer', { key, text, ...(images.length ? { images } : {}) }); return true; }
+  try { await api('/api/lite/steer', { key, text, ...(images.length ? { images } : {}) }); if (here()) toast('Steering sent to the current work.'); return true; }
   catch (err) {
     if (here()) { CV.items = CV.items.filter(x => x !== local); paintFeed(); }
     toast(`${err.message} The message stays queued.`);
@@ -1301,7 +1316,7 @@ function effortMenu(anchor) {
 }
 // Conversation settings: how much it may do without asking. Your default is preselected.
 function settingsMenu(anchor) {
-  const follow = `<hr><div class="ph">Follow-up behavior · on this browser</div>${[['queue', 'Queue', 'Wait until the current turn finishes'], ['steer', 'Steer', 'Guide the current work now']].map(([v, label, note]) => `<button data-v="follow:${v}" role="menuitemradio" aria-checked="${followUpDelivery() === v}">${label}<small>${note}</small></button>`).join('')}<div class="ph">⌘⇧Enter / Ctrl+Shift+Enter uses the other action once</div>`;
+  const follow = `<hr><div class="ph">Follow-up behavior · on this browser</div>${[['queue', 'Queue', 'Wait until the current turn finishes'], ['steer', 'Steer', 'Guide the current work now']].map(([v, label, note]) => `<button data-v="follow:${v}" role="menuitemradio" aria-checked="${followUpDelivery() === v}">${label}<small>${note}</small></button>`).join('')}<div class="ph">${sendShortcut()} steers · ${sendShortcut(true)} queues</div>`;
   const setFollow = v => {
     if (!v.startsWith('follow:')) return false;
     local.set('followUpDelivery', v.slice(7));
