@@ -452,11 +452,71 @@ function showPicture(src, list = []) {
     root.innerHTML = `<div class="modal-back lightbox" data-piclight="1">${many ? `<button class="lb-nav prev" data-pic="-1" aria-label="Previous picture (←)" ${i > 0 ? '' : 'disabled'}>‹</button>` : ''}`
       + `<figure><img src="${esc(pics[i])}" alt="">${many ? `<figcaption>${i + 1} of ${pics.length}</figcaption>` : ''}</figure>`
       + `${many ? `<button class="lb-nav next" data-pic="1" aria-label="Next picture (→)" ${i < pics.length - 1 ? '' : 'disabled'}>›</button>` : ''}</div>`;
-    const back = root.querySelector('.modal-back');
-    back.addEventListener('click', e => { const nav = e.target.closest('[data-pic]'); if (nav) { e.stopPropagation(); step(Number(nav.dataset.pic)); } else close(); });
-    let x0 = null;
-    back.addEventListener('touchstart', e => { x0 = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
-    back.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 50) { e.preventDefault(); step(dx < 0 ? 1 : -1); } });
+    const back = root.querySelector('.modal-back'), img = back.querySelector('figure img');
+    // Zoom: pinch (and drag while zoomed), double-tap or double-click, or a trackpad pinch. Lite's
+    // phone page doesn't zoom as a whole, so the picture zooms itself.
+    let z = { s: 1, x: 0, y: 0 }, g = null, lastTap = 0;
+    const show = (anim = false) => { img.style.transition = anim ? 'transform .2s ease' : 'none'; img.style.transform = z.s === 1 ? '' : `translate(${z.x}px, ${z.y}px) scale(${z.s})`; back.classList.toggle('zoomed', z.s > 1); };
+    const centre = () => { const r = img.getBoundingClientRect(); return { cx: r.left + r.width / 2 - z.x, cy: r.top + r.height / 2 - z.y }; };
+    // Zooms to s with the point (px, py) on screen staying where it is.
+    const zoomAt = (s, px, py, anim) => {
+      s = Math.min(5, Math.max(1, s));
+      const { cx, cy } = centre();
+      z.x = px - cx - (s / z.s) * (px - cx - z.x); z.y = py - cy - (s / z.s) * (py - cy - z.y); z.s = s;
+      if (s === 1) z = { s: 1, x: 0, y: 0 };
+      show(anim);
+    };
+    const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const mid = t => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+    back.addEventListener('click', e => {
+      const nav = e.target.closest('[data-pic]');
+      if (nav) { e.stopPropagation(); step(Number(nav.dataset.pic)); return; }
+      if (e.target === img || (g && g.moved)) return;   // the picture itself (or the end of a drag) doesn't close it
+      close();
+    });
+    back.addEventListener('dblclick', e => { if (e.target !== img) return; e.preventDefault(); zoomAt(z.s > 1 ? 1 : 2.5, e.clientX, e.clientY, true); });
+    back.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); zoomAt(z.s * Math.exp(-e.deltaY / 100), e.clientX, e.clientY, false); }, { passive: false });
+    back.addEventListener('touchstart', e => {
+      const t = e.touches;
+      if (t.length === 2) { const m = mid(t); g = { kind: 'pinch', d: dist(t), s: z.s, mx: m.x, my: m.y, moved: true }; }
+      else if (t.length === 1) g = { kind: z.s > 1 ? 'pan' : 'swipe', x0: t[0].clientX, y0: t[0].clientY, zx: z.x, zy: z.y, moved: false };
+    }, { passive: true });
+    back.addEventListener('touchmove', e => {
+      if (!g) return;
+      const t = e.touches;
+      if (g.kind === 'pinch' && t.length === 2) {
+        e.preventDefault();
+        // Each step: zoom by how much the fingers spread, around where they are, then follow them.
+        const m = mid(t), d = dist(t);
+        zoomAt(z.s * d / g.d, m.x, m.y, false);
+        if (z.s > 1) { z.x += m.x - g.mx; z.y += m.y - g.my; }
+        g.mx = m.x; g.my = m.y; g.d = d;
+        show();
+      } else if (g.kind === 'pan' && t.length === 1) {
+        e.preventDefault();
+        const dx = t[0].clientX - g.x0, dy = t[0].clientY - g.y0;
+        if (Math.abs(dx) + Math.abs(dy) > 6) g.moved = true;
+        z.x = g.zx + dx; z.y = g.zy + dy; show();
+      } else if (g.kind === 'swipe' && t.length === 1 && Math.abs(t[0].clientX - g.x0) > 6) g.moved = true;
+    }, { passive: false });
+    back.addEventListener('touchend', e => {
+      if (!g) return;
+      const was = g; if (e.touches.length) return;
+      setTimeout(() => { g = null; }, 0);
+      if (was.kind === 'pinch' && z.s < 1.05) { z = { s: 1, x: 0, y: 0 }; show(true); }
+      if (was.kind === 'swipe') {
+        const p = e.changedTouches[0], dx = p.clientX - was.x0;
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(p.clientY - was.y0)) { e.preventDefault(); step(dx < 0 ? 1 : -1); return; }
+        // A double-tap on the picture zooms in there (or back out).
+        if (!was.moved && e.target === img) {
+          const now = Date.now();
+          if (now - lastTap < 300) { e.preventDefault(); lastTap = 0; zoomAt(z.s > 1 ? 1 : 2.5, p.clientX, p.clientY, true); } else lastTap = now;
+        }
+      } else if (was.kind === 'pan' && !was.moved && e.target === img) {
+        const now = Date.now(), p = e.changedTouches[0];
+        if (now - lastTap < 300) { e.preventDefault(); lastTap = 0; zoomAt(1, p.clientX, p.clientY, true); } else lastTap = now;
+      }
+    });
   };
   const step = d => { const j = i + d; if (j < 0 || j >= pics.length) return; i = j; paint(); };
   const onKey = e => {

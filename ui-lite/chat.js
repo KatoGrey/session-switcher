@@ -550,8 +550,22 @@ function paintChat() {
     // to the end. That is not a request to start reading an older message.
     const size = () => `${f.scrollHeight}:${f.clientHeight}:${f.clientWidth}`;
     let layout = size();
+    // While you're scrolling yourself (a finger down, a wheel or trackpad, a scrollbar drag, keys,
+    // and the glide after a flick), a change in size is never a reason to jump to the end: on a
+    // phone the header's chip row tucking away, or Safari's address bar, resizes the feed mid-scroll,
+    // and following then snapped you back to the bottom as you tried to read up.
+    let touching = false, handAt = 0;
+    const hand = () => { handAt = Date.now(); };
+    const yours = () => touching || Date.now() - handAt < 600;
+    f.addEventListener('touchstart', () => { touching = true; hand(); }, { passive: true });
+    f.addEventListener('touchend', () => { touching = false; hand(); }, { passive: true });
+    f.addEventListener('touchcancel', () => { touching = false; hand(); }, { passive: true });
+    f.addEventListener('wheel', hand, { passive: true });
+    f.addEventListener('keydown', hand);
+    f.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') { touching = true; hand(); } });
+    addEventListener('pointerup', () => { if (touching) { touching = false; hand(); } });
     const follow = () => {
-      if (CV.readAt == null) f.scrollTop = f.scrollHeight;
+      if (CV.readAt == null && !yours()) f.scrollTop = f.scrollHeight;
       layout = size();
     };
     const resize = new ResizeObserver(() => {
@@ -564,7 +578,9 @@ function paintChat() {
     let prevY = f.scrollTop, turnY = f.scrollTop, dir = 0;
     f.addEventListener('scroll', () => {
       if (f !== $('feed') || S.view !== 'chat') return;
-      if (layout !== size()) { follow(); prevY = f.scrollTop; return; }
+      if (yours()) hand();   // the glide after a flick is still you
+      else if (layout !== size()) { follow(); prevY = f.scrollTop; return; }
+      layout = size();
       CV.readAt = f.scrollHeight - f.scrollTop - f.clientHeight < 160 ? null : f.scrollTop;
       // On a phone the header's chip row tucks away while you read back through the conversation,
       // and comes back as you scroll down again (40px or more) or reach the newest message.
