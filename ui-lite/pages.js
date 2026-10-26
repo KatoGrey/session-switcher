@@ -68,7 +68,7 @@ function home() {
   }).join('');
   const setup = !buckets().length ? '<p class="lead">No buckets yet. Buckets say what a project is for (a product, games, personal apps). They live in lite.json in your data folder.</p>' : '';
   return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${L('Projects')}</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>${setup}${sections}
-    <p class="hint-line">Drag projects before or after one another to reorder them, or onto a bucket to move them. The project menu also has Move up, Move down and Archive.</p></div>`;
+    <p class="hint-line">Drag projects before or after one another to reorder them, or onto a bucket to move them. Use the sidebar menu to move a project up or down; its page’s ⋯ menu has the other project settings.</p></div>`;
 }
 
 // Chats matching the search: by name, project or first message, newest first.
@@ -467,13 +467,14 @@ function rowMenu(anchor, id, at) {
 }
 function projMenu(anchor, k, at) {
   const p = projBy.get(k); if (!p) return;
+  const compact = !!anchor.closest('.side');
   const peers = projectsIn(p.bucket), i = peers.findIndex(x => x.key === k);
   const moves = p.archived ? '' : `<hr><button data-v="up" ${i <= 0 ? 'disabled' : ''}>Move up</button><button data-v="down" ${i < 0 || i === peers.length - 1 ? 'disabled' : ''}>Move down</button>`;
-  pop(anchor, `<div class="ph">${esc(p.name)}</div><button data-v="open">Project overview</button>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button><button data-v="img">Change picture…</button>' : ''}${moves}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`,
+  const settings = `${p.cwd ? '<button data-v="img">Change picture…</button>' : ''}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`;
+  pop(anchor, `<div class="ph">${esc(p.name)}</div>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button>' : ''}${compact ? moves : settings}`,
     v => {
       if (v === 'up' && i > 0) return wrap(placeProject)(k, peers[i - 1].key);
       if (v === 'down' && i < peers.length - 1) return wrap(placeProject)(k, peers[i + 1].key, true);
-      if (v === 'open') return go('project', { project: k });
       if (v === 'new') return go('newchat', { ncProject: k });
       if (v.startsWith('b:')) return wrap(setBucket)(k, v.slice(2) || null);
       if (v === 'arch') return wrap(archiveProject)(k, !p.archived);
