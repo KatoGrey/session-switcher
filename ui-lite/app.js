@@ -184,6 +184,7 @@ function renderLive() {
   if (!S.loaded) return;
   if (document.hidden) { updateBadge(); return; }   // nothing to draw in a tab you can't see
   renderSide(); updateBadge();
+  if (S.view === 'chat' && CV.readOnly !== externalChatNotice()) paintBar();
   if (S.view === 'triage') { if (!document.activeElement || document.activeElement.id !== 'trBox') render(); return; }
   if (S.view === 'now' && $('nowLive')) {
     $('nowLead').innerHTML = leadHtml();

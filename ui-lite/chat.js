@@ -180,6 +180,14 @@ function cacheChat() {
 // Each open is numbered; an answer that comes back after you've opened another chat is dropped
 // (before, a slow chat's messages could land in the chat you'd moved to).
 let openSeq = 0;
+function externalChatNotice() {
+  if (CV.key || !CV.id) return null;
+  const x = S.live.find(l => l.sessionId && l.sessionId.toLowerCase() === String(CV.id).toLowerCase());
+  // An idle desktop/terminal process still owns the history until that session is closed.
+  if (x?.source === 'terminal') return 'This chat is open in Claude desktop or a terminal, even if it has finished replying. Close that session there to continue here. Your draft stays here.';
+  if (x && x.source !== 'app' && x.working) return 'This chat is working in another app. Continue there, or close that session before replying here. Your draft stays here.';
+  return null;
+}
 async function openChatView(id, { key = null, provider = null, keepRead = false } = {}) {
   const seq = ++openSeq;
   if (CV.id && String(CV.id) !== String(id)) cacheChat();
@@ -199,7 +207,7 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
   if (!key && x && x.key && x.source === 'app' && x.phase !== 'ended') CV.key = x.key;
   // The Commander isn't in the running list; Now knows its key.
   if (!CV.key && S.cmd.key && S.cmd.sessionId && S.cmd.sessionId.toLowerCase() === String(id).toLowerCase()) CV.key = S.cmd.key;
-  if (!CV.key && x && x.source !== 'app' && x.working) CV.readOnly = x.source === 'terminal' ? 'It’s running in a terminal. Answer it there, or wait for it to finish.' : 'It’s running in another app (like the Claude desktop app). Answer it there, or wait for it to finish.';
+  CV.readOnly = externalChatNotice();
   try {
     let until = null;
     if (CV.key) { const info = await api('/api/chat/attach', { key: CV.key }); if (seq !== openSeq) return; CV.info = info; until = info.bufferFrom || info.startedAt || null; CV.provider = info.provider; }
@@ -880,15 +888,16 @@ function toolsHtml({ fresh }) {
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
     ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button>' : ''}
-    <button type="submit" class="send" aria-label="${sendHint}" title="${sendHint}">↑</button>`;
+    <button type="submit" class="send" ${!fresh && CV.readOnly ? 'disabled' : ''} aria-label="${sendHint}" title="${sendHint}">↑</button>`;
 }
 function paintBar() {
   const t = $('barTools'); if (!t || S.view !== 'chat' || CV.replaying) return;
+  CV.readOnly = externalChatNotice();
   if (CV.info) rememberModels(provNow(), CV.info);
   const ro = $('roNote');
   if (ro) { ro.hidden = !CV.readOnly; ro.textContent = CV.readOnly || ''; }
   const th = toolsHtml({ fresh: false }); if (t._h !== th) { t.innerHTML = th; t._h = th; }
-  const box = $('msgBox'); if (box) box.disabled = !!CV.readOnly;
+  const box = $('msgBox'); if (box) box.readOnly = !!CV.readOnly;
   const deliveryBar = $('deliveryBar');
   if (deliveryBar) {
     deliveryBar.hidden = !replyBusy();
@@ -1091,6 +1100,8 @@ async function steerQueued(i) {
   if (CV.id === id) paintQueue();
 }
 async function sendInChat({ queued = null, delivery = 'queue' } = {}) {
+  const external = externalChatNotice();
+  if (external) { paintBar(); toast(external); return false; }
   if (switchingChat) return toast('One moment: the assistant or account is changing.');
   const box = $('msgBox'); const text = queued ? queued.text : box.value.trim();
   if ((!text && !(queued ? queued.images.length : COMP.images.length + COMP.files.length)) || CV.sending) return;
