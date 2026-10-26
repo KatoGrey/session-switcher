@@ -141,7 +141,8 @@ function onKey(e) {
 }
 document.addEventListener('keydown', onKey);
 async function answerInChat(requestId, decision, answers) {
-  try { await api('/api/chat/permission', { key: CV.key, requestId, decision, ...(answers ? { answers } : {}) }); sfx(decision === 'deny' ? 'shove' : 'chip'); }
+  const p = CV.pending.get(requestId); if (!p) return;
+  try { await api('/api/chat/permission', { key: p.key || CV.key, requestId: p.originalRequestId || requestId, decision, ...(answers ? { answers } : {}) }); sfx(decision === 'deny' ? 'shove' : 'chip'); }
   catch (err) { toast(err.message); }
 }
 

@@ -656,11 +656,11 @@ function paintStatus() {
   }
   el._h = null;
   const pBusy = typeof PARTNER !== 'undefined' && PARTNER.busy;
-  el.hidden = !CV.busy && !pBusy;
+  el.hidden = !CV.busy && !pBusy && !CV.pending.size;
+  if (CV.pending.size) { el.innerHTML = '<span class="live-dot"></span><span class="st-what">Waiting for your answer</span>'; return; }
   if (!CV.busy && pBusy) { el.innerHTML = `<span class="live-dot"></span><span class="st-what">${esc(partnerName())} is working</span>`; return; }
   if (!CV.busy) { el.innerHTML = ''; return; }
-  // While it waits on a question or an approval, the card says what; this line just says it's waiting.
-  const what = CV.pending.size ? 'Waiting for your answer' : String(CV.status || 'Thinking').replace(/^mcp__(.+?)__/, '$1: ');
+  const what = String(CV.status || 'Thinking').replace(/^mcp__(.+?)__/, '$1: ');
   const tail = what === 'Thinking' && CV.thinking ? CV.thinking.replace(/\s+/g, ' ').trim().split(/(?<=[.!?:])\s+/).filter(Boolean).pop() || '' : '';
   el.innerHTML = `<span class="live-dot"></span><span class="st-what">${esc(what)}</span>${tail ? `<span class="st-think">${esc(tail.slice(-160))}</span>` : ''}<span class="st-time">${CV.startedAt ? workedFor(CV.startedAt) : ''}</span>`;
 }
@@ -674,7 +674,7 @@ function paintPending() {
   el.innerHTML = [...CV.pending.values()].map(p => {
     if (p.questions && p.questions.length) return questionCard(p);
     const v = p.view || {};
-    return `<div class="ask-card" data-req="${esc(p.requestId)}"><p class="q">Wants to ${esc(wantsTo(p.toolName))}</p>${p.reason ? `<p>${esc(p.reason)}</p>` : ''}${v.detail || v.summary ? `<code class="ask-code">${esc(v.detail || v.summary)}</code>` : ''}
+    return `<div class="ask-card" data-req="${esc(p.requestId)}"><p class="q">${p.partner ? `${esc(p.partner)} wants` : 'Wants'} to ${esc(wantsTo(p.toolName))}</p>${p.reason ? `<p>${esc(p.reason)}</p>` : ''}${v.detail || v.summary ? `<code class="ask-code">${esc(v.detail || v.summary)}</code>` : ''}
       <div class="opts"><button class="btn prime" data-perm-c="allow" data-req="${esc(p.requestId)}">Allow <kbd>a</kbd></button>${p.canAlways ? `<button class="btn" data-perm-c="always" data-req="${esc(p.requestId)}">Always allow</button>` : ''}<button class="btn" data-perm-c="deny" data-req="${esc(p.requestId)}">Deny <kbd>d</kbd></button></div></div>`;
   }).join('');
   if (CV.pending.size && nearBottom()) $('feed').scrollTop = $('feed').scrollHeight;
@@ -690,7 +690,7 @@ function questionCard(p) {
       ? `<button type="button" class="ask-opt" data-answer="${rid}" data-q="${qi}" data-o="${oi}"><kbd>${oi + 1}</kbd><span><b>${esc(o.label)}</b>${o.description ? `<small>${esc(o.description)}</small>` : ''}</span></button>`
       : `<label class="ask-opt"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="q${rid}-${qi}" value="${oi}"><span><b>${esc(o.label)}</b>${o.description ? `<small>${esc(o.description)}</small>` : ''}</span></label>`).join('')}
     <label class="ask-opt other">${quick ? '' : `<input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="q${rid}-${qi}" value="other">`}<span><b>Other</b><input type="text" class="other-t field" placeholder="Your own answer${quick ? ', then ↵' : ''}" aria-label="Your own answer" data-otherq="${rid}"></span></label></fieldset>`).join('');
-  return `<div class="ask-card ask" data-req="${rid}"><p class="q">${p.questions.length === 1 ? 'It has a question' : `It has ${p.questions.length} questions`}</p>${qs}
+  return `<div class="ask-card ask" data-req="${rid}"><p class="q">${esc(p.partner || 'It')} has ${p.questions.length === 1 ? 'a question' : `${p.questions.length} questions`}</p>${qs}
     <div class="opts">${quick ? '' : `<button class="btn prime" data-sendanswers="${rid}">Send answers</button>`}<button class="btn" data-perm-c="deny" data-req="${rid}">Skip</button></div></div>`;
 }
 // Answers from the card, as the full app sends them: each question's picks, joined.
