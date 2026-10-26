@@ -317,6 +317,7 @@ const chats = chatLib.createChatManager({
     const f = chat.activity.finishedAt;
     if (f && finishedSeen.get(chat.key) !== f) {
       finishedSeen.set(chat.key, f); scheduleUsage(chat.account.id, 8000);
+      if (chat.activity.ok && !chat.parentKey && !chat.aside) liteRoutes.replyFinished(chat.sessionId);
       for (const k of finishedSeen.keys()) if (!chats.chats.has(k)) finishedSeen.delete(k);
     }
   },
