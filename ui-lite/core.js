@@ -20,8 +20,8 @@ const STATUSES = [
 ];
 // Off the active lists: the backlog and what's finished.
 const parked = id => id === 'done' || id === 'later';
-// The order the lists show them in: what's nearly done first, so it's seen without scrolling.
-const SHOWN_ORDER = ['finishing', 'building', 'exploring', 'later', 'done'];
+// Keep current work ahead of the review queue and backlog.
+const SHOWN_ORDER = ['building', 'exploring', 'finishing', 'later', 'done'];
 const statusesShown = () => SHOWN_ORDER.map(id => STATUSES.find(s => s.id === id)).filter(Boolean);
 const statusById = id => STATUSES.find(s => s.id === id) || STATUSES[1];
 // Set once. Feature is the plain default and carries no tag.
@@ -42,7 +42,7 @@ const local = {
 const S = {
   view: local.get('view', 'now'), project: null, bucket: local.get('bucket', 'all'), q: '',
   lite: null, projects: [], chats: [], live: [], routines: [], plans: null, now: Date.now(),
-  folded: { later: true, ...local.get('folded', { done: true }) }, more: {}, sel: new Set(), seen: local.get('seen', {}),
+  folded: { later: true, finishing: true, waiting: true, ...local.get('folded', { done: true }) }, more: {}, sel: new Set(), seen: local.get('seen', {}),
   cmd: { key: null, events: [], state: 'idle', error: null, es: null, sentAt: 0 },
   loaded: false, connected: false,
 };
@@ -200,6 +200,8 @@ const liveOf = c => liveBy.get(String(c.id).toLowerCase()) || null;
 const quietDays = () => (S.lite ? S.lite.quietDays : 4);
 const floor = () => (S.lite ? S.lite.plans.floor : 15);
 const statusOf = c => c.status;
+// Waiting keeps its underlying stage; only its place on the board changes.
+const boardStage = c => c.waiting && !parked(statusOf(c)) ? 'waiting' : statusOf(c);
 const kindTag = c => (c.kind && c.kind !== 'feature' ? `<span class="tag kind-tag k-${c.kind}">${kindById(c.kind).name}</span>` : '');
 const focusStar = c => (c.focus ? '<span class="focus-star" title="Focus">★</span>' : '');
 const waitTag = c => (c.waiting ? `<span class="tag wait-tag">${esc(c.waitingOn || 'Waiting')}</span>` : '');

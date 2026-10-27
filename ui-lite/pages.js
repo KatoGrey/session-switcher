@@ -121,17 +121,18 @@ function project() {
   const cs = chatsOfProject(p.key).sort((x, y) => y.updated - x.updated);
   const foc = cs.filter(c => c.focus && !parked(statusOf(c)));
   const focusSec = foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span></div><div class="rows">${foc.map(c => rowHtml(c, { showStage: true })).join('')}</div></section>` : '';
-  const sections = focusSec + statusesShown().map(s => {
-    const all = cs.filter(c => isTop(c) && statusOf(c) === s.id && !(c.focus && !parked(s.id)));
+  const sections = focusSec + [...statusesShown().filter(s => !parked(s.id)), { id: 'waiting', name: 'Waiting', c: 'var(--muted)' }, ...statusesShown().filter(s => parked(s.id))].map(s => {
+    const all = cs.filter(c => isTop(c) && boardStage(c) === s.id && !(c.focus && !parked(statusOf(c))));
     if (!all.length) return '';
-    const folded = parked(s.id) ? !S.more['p-' + s.id] : false;
-    const act = parked(s.id) ? all : all.filter(c => !famQuiet(c)), quiet = parked(s.id) ? [] : all.filter(famQuiet);
+    const deferred = parked(s.id) || s.id === 'finishing' || s.id === 'waiting';
+    const folded = deferred && !S.more['p-' + s.id];
+    const act = deferred ? all : all.filter(c => !famQuiet(c)), quiet = deferred ? [] : all.filter(famQuiet);
     const showQ = S.more['pq-' + s.id];
     const shown = showQ ? [...act, ...quiet] : act;
     // Later: one small "N later" line, out of the way like quiet; it opens in place.
     if (s.id === 'later') return `<section class="section later-sec" data-drop-stage="later"><button class="hint later-line" data-pfold="later">${folded ? `${all.length} later` : 'Hide later'}</button>${folded ? '' : `<div class="rows quiet-rows">${famRowsHtml(all)}</div>`}</section>`;
     return `<section class="section" data-drop-stage="${s.id}">
-      <div class="sec-h">${parked(s.id) ? `<button class="fold" data-pfold="${s.id}"><h2>${s.name}</h2><span class="n">${all.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${act.length}</span>`}
+      <div class="sec-h">${deferred ? `<button class="fold" data-pfold="${s.id}" aria-expanded="${!folded}"><h2>${s.name}</h2><span class="n">${all.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${act.length}</span>`}
         ${quiet.length ? `<button class="hint" data-pq="${s.id}">${showQ ? 'Hide quiet' : `${quiet.length} quiet`}</button>` : ''}</div>
       ${folded || !shown.length ? '' : `<div class="rows">${famRowsHtml(shown)}</div>`}
     </section>`;
