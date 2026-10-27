@@ -926,7 +926,7 @@ async function openChatInner(c, body) {
     }
     const art = themeStudio.project(cwd);
     const folder = art ? `Theme Studio · ${art.name}` : cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-    const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: 'codex' });
+    const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: inst.ACCOUNT.kind === 'ollama' ? 'ollama' : 'codex' });
     const last = threadId && mode !== 'new' && !body.model && !pref.model ? await codexStartedOn(threadId) : null;
     const model = [body.model, pref.model, last && last.model].find(m => m && modelFits(inst, m)) || null;
     const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, fast: body.fast === true || pref.fast === 'on', effort: pref.effort || (last && model === last.model ? last.effort : null), title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
@@ -1436,6 +1436,8 @@ const liteRoutes = createLiteRoutes({
   companionOf: id => chatPrefs.companionOf(id),
   threadKind: id => (isCodexId(id) ? 'codex' : isGeminiId(id) ? 'gemini' : 'claude'),
   crewOf: id => chatPrefs.crewOf(id),
+  modelDefault: provider => chatPrefs.defaultModel(provider),
+  modelPreference: args => chatPrefs.get(args).model,
   geminiReady: () => { const st = gemini.publicState(); return !!st.enabled && st.signedIn !== false && st.installed !== false; },
   routinesList: () => routines.list(),
   parentOf: id => organize.parentOf(id),
@@ -2830,6 +2832,7 @@ async function handleChat(req, res, url, body, c) {
       // The Commander's own chat reopens through its own route (it needs its tools).
       if ((body.mode || 'resume') === 'resume' && isCommanderId(body.sessionId)) return send(res, 200, await openCommander(c, {}));
       const info = await openChat(c, body);
+      if (body.mode === 'new' && body.model && info?.key) remember(chats.get(info.key), { model: body.model });
       // A sub-session remembers the chat it was started from once it has an id (see onSession).
       if (body.mode === 'new' && body.parent && info && info.key) { try { chats.get(info.key).parentSession = parentFor(body.parent); } catch { /* it ended already */ } }
       let mate = null, crew = {};
@@ -2945,6 +2948,9 @@ async function handleChat(req, res, url, body, c) {
       }
       return send(res, 200, { ok: true });
     }
+    case '/api/chat/model-default': {
+      return send(res, 200, { model: chatPrefs.chooseModel(body.provider, body.model) });
+    }
     case '/api/chat/model': {
       // Switches the model and/or effort for the next replies, and remembers the choice.
       const chat = chats.get(body.key);
@@ -2952,6 +2958,7 @@ async function handleChat(req, res, url, body, c) {
       if (body.effort) await chat.setEffort(String(body.effort));
       if (typeof body.fast === 'boolean' && typeof chat.setFast === 'function') chat.setFast(body.fast);
       remember(chat, { ...(body.model ? { model: chat.model } : {}), ...(body.effort ? { effort: chat.effort } : {}), ...(typeof body.fast === 'boolean' ? { fast: body.fast ? 'on' : null } : {}) });
+      if (body.model) chatPrefs.chooseModel(/:/.test(chat.model) ? 'ollama' : chat.provider || 'claude', chat.model);
       return send(res, 200, chat.modelInfo());
     }
     case '/api/chat/companion': {

@@ -87,7 +87,7 @@ function loadState() {
       const x = k.startsWith('p:') ? j.projects.find(p => p.key === k.slice(2)) : j.chats.find(c => c.id === k);
       if (x) x.archived = v.on;
     }
-    Object.assign(S, { lite: j.lite, projects: j.projects, chats: j.chats, routines: j.routines, now: j.now, appPermissions: j.appPermissions, permissionModes: j.permissionModes, gemini: !!j.gemini, loaded: true });
+    Object.assign(S, { modelDefaults: j.modelDefaults || {}, lite: j.lite, projects: j.projects, chats: j.chats, routines: j.routines, now: j.now, appPermissions: j.appPermissions, permissionModes: j.permissionModes, gemini: !!j.gemini, loaded: true });
     for (const [k, v] of Object.entries(j.lite.seen || {})) if (!S.seen[k] || S.seen[k] < v) S.seen[k] = v;
     setLive(j.live);
     index();

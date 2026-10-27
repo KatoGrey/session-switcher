@@ -743,10 +743,20 @@ function composerHtml({ fresh = false } = {}) {
 // the chips work before a chat is running.
 // From the Mac (/api/lite/models: real names, and what a new chat gets by default); else what a
 // chat last reported.
-const MD = prov => (S.models && S.models[prov === 'ollama' ? 'ollama' : prov === 'codex' ? 'codex' : 'claude']) || null;
+const MD = prov => S.models?.[prov] || null;
 const modelsFor = prov => (MD(prov) ? [...MD(prov).models, ...MD(prov).more] : local.get(`models:${prov}`, []));
 const effortsFor = prov => (MD(prov) && MD(prov).efforts) || local.get(`efforts:${prov}`, prov === 'claude' ? ['low', 'medium', 'high', 'xhigh', 'max'] : ['low', 'medium', 'high', 'xhigh']);
 function loadModels() { if (S.models || loadModels.p) return loadModels.p; loadModels.p = api('/api/lite/models').then(j => { S.models = j; if (S.view === 'newchat') paintNewChat(); else if (S.view === 'chat') paintBar(); }).catch(() => {}); return loadModels.p; }
+const defaultReplyModel = prov => S.modelDefaults?.[prov] || MD(prov)?.defaultValue || null;
+const selectedReplyModel = (prov, fresh = false) => {
+  const info = fresh ? null : prov === provNow() ? CV.info : prov === replyProv() ? replyTarget().info : null;
+  const own = fresh || prov === provNow(), chat = !fresh && own ? chatBy.get(CV.id) : null;
+  return info?.model || info?.resolvedModel || info?.replyModel || (own && COMP.model) || chat?.preferredModel || defaultReplyModel(prov) || chat?.model || null;
+};
+async function rememberModelChoice(prov, model) {
+  await api('/api/chat/model-default', { provider: prov, model });
+  S.modelDefaults = { ...S.modelDefaults, [prov]: model };
+}
 function rememberModels(prov, info) {
   if (info && Array.isArray(info.models) && info.models.length) local.set(`models:${prov}`, info.models.map(m => ({ value: m.value, label: m.label })).slice(0, 30));
   if (info && Array.isArray(info.efforts) && info.efforts.length) local.set(`efforts:${prov}`, info.efforts);
@@ -769,7 +779,7 @@ async function ensureReply(p) {
   const check = () => { if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) throw new Error('The chat changed. Pick the assistant again here.'); };
   let lead = CV.info;
   if (!CV.key) {
-    lead = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(CV.inRepo ? { inRepo: true } : {}), provider: CV.provider, account: accountFor(provNow()) || (chatBy.get(id) || {}).accountId, permissionMode: COMP.perm || permDefault(CV.provider), ...(COMP.model ? { model: COMP.model } : {}) });
+    lead = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(CV.inRepo ? { inRepo: true } : {}), provider: CV.provider, account: accountFor(provNow()) || (chatBy.get(id) || {}).accountId, permissionMode: COMP.perm || permDefault(CV.provider), ...(selectedReplyModel(provNow()) ? { model: selectedReplyModel(provNow()) } : {}) });
     check(); CV.key = lead.key; CV.info = lead; listen(lead.key);
   }
   await waitReadyFor(CV.key); check();
@@ -842,6 +852,10 @@ async function changeReply(p, changes = {}, fromSend = false) {
     }
     const modelChanges = { ...changes }; delete modelChanges.account;
     if (Object.keys(modelChanges).length) Object.assign(info, await api('/api/chat/model', { key: info.key, ...modelChanges }));
+    if (changes.model) {
+      S.modelDefaults = { ...S.modelDefaults, [p]: info.model || changes.model };
+      const chat = chatBy.get(info.sessionId); if (chat) chat.preferredModel = info.model || changes.model;
+    }
     if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
     if (info.key === CV.key) CV.info = info;
     else if (PARTNERS.has(info.key)) PARTNERS.get(info.key).info = info;
@@ -882,7 +896,7 @@ function toolsHtml({ fresh }) {
   const prov = replyProv();
   const info = fresh ? null : replyTarget().info;
   const own = fresh || prov === provNow();
-  const model = (info && (info.replyModel || info.resolvedModel || info.model)) || (own && (COMP.model || (!fresh && chatBy.get(CV.id) && chatBy.get(CV.id).model))) || null;
+  const model = selectedReplyModel(prov, fresh);
   const effort = (info && info.effort) || (own && COMP.effort) || null;
   const md0 = MD(prov);
   const busy = !fresh && replyBusy();
@@ -1126,7 +1140,7 @@ async function sendInChat({ queued = null, delivery = 'queue' } = {}) {
   // The message belongs to the chat it was written in. Starting a chat that wasn't running takes a
   // few seconds; if you open another chat meanwhile, it still goes here (Oct 13: it went to the chat
   // you'd moved to), and only this chat's view is touched.
-  const id = CV.id, provider = CV.provider, inRepo = CV.inRepo, perm = COMP.perm || (CV.provider === 'gemini' ? null : permDefault(CV.provider)), model = COMP.model, effort = COMP.effort, fast = COMP.fast;
+  const id = CV.id, provider = CV.provider, inRepo = CV.inRepo, perm = COMP.perm || (CV.provider === 'gemini' ? null : permDefault(CV.provider)), model = selectedReplyModel(provNow()), effort = COMP.effort, fast = COMP.fast;
   const to = queued ? null : CV.to && CV.to !== 'chat' ? CV.to : null;
   const route = queued ? queued.route || {} : toBody(to), wasBusy = CV.busy;
   const here = () => S.view === 'chat' && CV.id === id;
@@ -1260,7 +1274,7 @@ function modelMenu(anchor) {
   const inChat = S.view === 'chat';
   const info = inChat ? replyTarget().info : null;
   const running = info && info.key;
-  const cur = running ? info.model : prov === provNow() ? COMP.model : null;
+  const cur = selectedReplyModel(prov, !inChat);
   if (!S.models) { loadModels().then(() => modelMenu(anchor)); return toast('Reading the models…'); }
   const item = (p, m) => `<button class="mm" data-v="${esc(p)}|${esc(m.value)}" role="menuitemradio" aria-checked="${p === prov && m.value === cur}" title="${esc(m.note || '')}"><span class="mm-name">${esc(String(m.label || prettyModel(m.value)).replace(/:cloud$/, ""))}</span>${m.note && m.note !== 'In Ollama' ? `<span class="mm-note">${esc(m.note.replace(/^[^·]*· /, ''))}</span>` : ''}</button>`;
   const group = p => {
@@ -1272,7 +1286,7 @@ function modelMenu(anchor) {
     const main = all, more = [];
     const plan = p === 'ollama' ? null : (here && info && planById(info.accountId)) || useNext(p === 'claude' ? 'claude' : 'chatgpt');
     const sub = inChat && !here ? p === 'ollama' || provNow() === 'ollama' ? 'starts a new chat there' : 'answers in this chat' : p === 'ollama' ? 'no plan limits' : plan ? `${plan.label} · ${plan.left}%` : '';
-    return `<div class="ph">${provName(p)}${sub ? ` · ${esc(sub)}` : ''}${here && md0.defaultModel ? ` · default ${esc(md0.defaultModel)}` : ''}</div>${main.map(m => item(p, m)).join('')}${more.length ? `<details class="pop-more"><summary>More ${provName(p)} models</summary>${more.map(m => item(p, m)).join('')}</details>` : ''}`;
+    return `<div class="ph">${provName(p)}${sub ? ` · ${esc(sub)}` : ''}${here && defaultReplyModel(p) ? ` · default ${esc(modelLabel(p, defaultReplyModel(p)))}` : ''}</div>${main.map(m => item(p, m)).join('')}${more.length ? `<details class="pop-more"><summary>More ${provName(p)} models</summary>${more.map(m => item(p, m)).join('')}</details>` : ''}`;
   };
   const order = [prov, ...PROVS.map(x => x[0]).filter(p => p !== prov)];
   // Who answers in this chat: it, its partner (the other assistant, in this same chat), or both in turn.
@@ -1306,6 +1320,7 @@ function modelMenu(anchor) {
       toast(`${modelLabel(p, v)} runs on ${p === 'ollama' ? 'Ollama' : `${provName(p)}${plan ? ` · ${plan.label} (use next)` : ''}`}.`);
     }
     COMP.model = v;
+    wrap(rememberModelChoice)(p, v);
     return S.view === 'newchat' ? paintNewChat() : paintBar();
   });
 }
@@ -1421,7 +1436,7 @@ async function startNewChat() {
   const prov = NC.who === 'claude' ? 'claude' : 'codex';
   const perm = COMP.perm || permDefault(prov);
   const account = accountFor(NC.who);
-  const model = COMP.model, effort = COMP.effort, images = imagesOut(), files = COMP.files.slice();
+  const model = selectedReplyModel(NC.who, true), effort = COMP.effort, images = imagesOut(), files = COMP.files.slice();
   // Straight to the conversation: your message is on screen with Starting… under it while the chat
   // starts, and everything else happens behind it.
   const local = { kind: 'user', text: files.length ? `${text}${text ? '\n\n' : ''}${files.map(f => `Attached file: \`${f.name}\``).join('\n')}` : text, images: images.map(i => ({ src: `data:${i.mediaType};base64,${i.data}` })), onTheWay: true };
@@ -1429,7 +1444,7 @@ async function startNewChat() {
   if (CV.es) { CV.es.close(); CV.es = null; }
   const run = {};
   const continues = NC.parent || null; NC.parent = null;
-  Object.assign(CV, { progressAt: Date.now(), lastStep: 'user', run, continues, id: null, key: null, info: { cwd: p.cwd, state: 'starting', title: 'New chat' }, items: [local], cursor: null, live: '', status: 'Starting', pending: new Map(), busy: true, startedAt: Date.now(), loading: false, error: null, readOnly: null, sending: true, provider: prov });
+  Object.assign(CV, { progressAt: Date.now(), lastStep: 'user', run, continues, id: null, key: null, info: { cwd: p.cwd, state: 'starting', title: 'New chat', model }, items: [local], cursor: null, live: '', status: 'Starting', pending: new Map(), busy: true, startedAt: Date.now(), loading: false, error: null, readOnly: null, sending: true, provider: prov });
   const mine = () => CV.run === run && S.view === 'chat';
   sfx('slide');
   go('chat', { draft: true }, { push: false });
