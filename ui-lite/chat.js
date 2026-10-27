@@ -107,7 +107,7 @@ function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' 
   };
   const out = [];
   let list = null;
-  const flush = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${i}</li>`).join('')}</${list.tag}>`); list = null; } const th = thumbs(); if (th) out.push(th); };
+  const flush = () => { if (list) { out.push(`<${list.tag}${list.tag === 'ol' ? ` start="${list.start}"` : ''}>${list.items.map(i => `<li>${list.loose ? `<p>${i}</p>` : i}</li>`).join('')}</${list.tag}>`); list = null; } const th = thumbs(); if (th) out.push(th); };
   const lines = t.split('\n');
   // A table: a row of cells, a |---|:--:| line under it, then its rows. Cells may hold links and code.
   const cells = l => l.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
@@ -136,7 +136,14 @@ function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' 
       continue;
     }
     if ((m = /^\s*[-*•]\s+(.*)$/.exec(line))) { if (!list || list.tag !== 'ul') { flush(); list = { tag: 'ul', items: [] }; } list.items.push(inline(m[1])); continue; }
-    if ((m = /^\s*\d+[.)]\s+(.*)$/.exec(line))) { if (!list || list.tag !== 'ol') { flush(); list = { tag: 'ol', items: [] }; } list.items.push(inline(m[1])); continue; }
+    if ((m = /^\s*(\d+)[.)]\s+(.*)$/.exec(line))) { if (!list || list.tag !== 'ol') { flush(); list = { tag: 'ol', start: Number(m[1]), items: [] }; } list.items.push(inline(m[2])); continue; }
+    // Blank lines separate loose list items, not the list itself.
+    if (list && !line.trim()) {
+      let next = i + 1;
+      while (next < lines.length && !lines[next].trim()) next++;
+      const marker = list.tag === 'ol' ? /^\s*\d+[.)]\s+/ : /^\s*[-*•]\s+/;
+      if (marker.test(lines[next] || '')) { list.loose = true; i = next - 1; continue; }
+    }
     flush();
     if ((m = /^(#{1,4})\s+(.*)$/.exec(line))) { out.push(`<p class="h">${inline(m[2])}</p>`); continue; }
     if (/^\s*([-*_])\1{2,}\s*$/.test(line)) { out.push('<hr>'); continue; }
