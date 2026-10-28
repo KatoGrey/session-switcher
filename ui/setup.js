@@ -48,7 +48,7 @@ function renderSetup(j) {
         <select id="prefTerminal" data-pref="terminal">
           ${(S.platform === 'darwin' ? [['auto', 'Terminal'], ['iterm', 'iTerm']] : [['auto', 'Windows Terminal tab when available, otherwise a console window'], ['wt-tab', 'Windows Terminal, new tab'], ['wt-window', 'Windows Terminal, new window'], ['console', 'Classic console window']]).map(([v, l]) => `<option value="${v}" ${p.terminal === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select></div>
-      ${t('syncSettings', 'Keep extra accounts’ settings in step', 'Copies your main settings.json, CLAUDE.md and keybindings to extra accounts whenever the main copy is newer.')}
+      ${t('syncSettings', 'Keep extra accounts’ settings in step', 'Copies your main settings.json and keybindings to extra accounts whenever the main copy is newer, and points their CLAUDE.md at your main one.')}
       ${t('syncState', 'Carry over MCP servers and folder trust', 'Before a chat opens with an extra account, adds any MCP servers, approved tools and trusted folders from your main account that it doesn’t have yet.')}
       <label class="toggle"><input type="checkbox" data-pref="autoSwitch" ${p.autoSwitch !== false ? 'checked' : ''}><span><b>Carry on when an account runs out</b><span>A chat that runs out of room mid-reply carries on as the account with the most room, by itself (you get a moment to say no).</span></span></label>
       <label class="toggle"><input type="checkbox" data-tips ${store('tips') !== 'off' ? 'checked' : ''}><span><b>Show tips</b><span>A one-line tip the first time something new appears, once each (on this device).</span></span></label>
