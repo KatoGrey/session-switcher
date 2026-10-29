@@ -4,6 +4,26 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('module');
+const fs = require('fs');
+const path = require('path');
+
+// In an installed copy (the nightly self-check runs these there) the desktop app's own code is inside
+// the app, not beside its tests: nothing here to check.
+if (!fs.existsSync(path.join(__dirname, '..', 'desktop', 'shell'))) {
+  test('desktop: the desktop app’s own code', { skip: 'not beside the tests in an installed copy' }, () => {});
+  return;
+}
+
+// What the installer packs: everything the app reads or serves from its own folder. Switcher Lite's
+// pages (ui-lite) were left out once, and Lite didn't open in the desktop app at all.
+test('desktop: the installer packs every folder the app needs', () => {
+  const pack = require('../desktop/package.json').build.extraResources.find(r => r.to === 'app-files').filter;
+  for (const want of ['server.js', 'index.html', 'theme.js', 'styles.css', 'sw.js', 'package.json', 'lib/**', 'ui/**', 'ui-lite/**', 'bin/**', 'fonts/**', 'sounds/**', 'art/**', 'docs/whats-new.md', 'tests/**']) {
+    assert.ok(pack.includes(want), `${want} is packed`);
+  }
+  // And each of those is really there to pack.
+  for (const p of pack.filter(x => !x.startsWith('!')).map(x => x.replace(/\/\*\*$/, ''))) assert.ok(fs.existsSync(path.join(__dirname, '..', p)), `${p} exists`);
+});
 
 // The updater asks Electron for its version; a stand-in is enough here.
 const load = Module._load;

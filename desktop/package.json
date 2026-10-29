@@ -45,6 +45,8 @@
           "crest.webp",
           "lib/**",
           "ui/**",
+          "ui-lite/**",
+          "bin/**",
           "fonts/**",
           "sounds/**",
           "docs/whats-new.md",
