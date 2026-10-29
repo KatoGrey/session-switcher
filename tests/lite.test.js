@@ -147,9 +147,9 @@ test('lite.json: kind, status, Focus, Waiting with a reminder, buckets, archive 
   assert.equal(s.get().archived.chats.c1.kind, 'bug');
   s.archive({ chats: ['c1'] }, false);
   assert.equal(s.get().archived.chats.c1, undefined);
-  assert.deepEqual(s.get().permissions, { claude: null, codex: null }, 'follows the full app until set');
+  assert.deepEqual(s.get().permissions, { claude: null, codex: null, gemini: null }, 'follows the full app until set');
   s.setLook({ permissions: { claude: 'bypassPermissions', codex: 'full' } });
-  assert.deepEqual(s.get().permissions, { claude: 'bypassPermissions', codex: 'full' });
+  assert.deepEqual(s.get().permissions, { claude: 'bypassPermissions', codex: 'full', gemini: null });
   s.setLook({ permissions: { codex: 'yolo' } });
   assert.equal(s.get().permissions.codex, null, 'an unknown mode goes back to following the app');
   s.setLook({ skin: 'rebel', floor: 20, quietDays: 7, mode: 'nope' });

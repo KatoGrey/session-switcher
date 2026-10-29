@@ -892,7 +892,7 @@ async function openChatInner(c, body) {
     const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
     const pref = chatPrefs.get({ sessionId, cwd, provider: 'gemini' });
     const asked = geminiLib.MODES.some(m => m.value === body.permissionMode) ? body.permissionMode : null;
-    const chat = gemini.open({ cfg: c, cwd, sessionId, mode: asked || pref.mode, model: body.model || pref.model || null, title: title || 'New Gemini chat', folder });
+    const chat = gemini.open({ cfg: c, cwd, sessionId, mode: asked || pref.mode || liteStore.get().permissions.gemini, model: body.model || pref.model || null, title: title || 'New Gemini chat', folder });
     if (sessionId) sessions.recordLaunch(sessionId, geminiLib.ACCOUNT, 'app');
     log(`Gemini chat window: ${mode} ${sessionId || '(new)'}`);
     return { ...chat.info(), attached: false, remembered: !!pref.mode };

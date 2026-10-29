@@ -10,7 +10,7 @@ const PERM_LABELS = {
   ask: 'Ask before acting', agent: 'Agent', 'read-only': 'Read only', full: 'Full access',
 };
 const permFam = provider => (provider === 'codex' ? 'codex' : 'claude');
-const permDefault = provider => { if (provider === 'gemini') return 'accept-edits'; const f = permFam(provider); return (S.lite.permissions && S.lite.permissions[f]) || (S.appPermissions && S.appPermissions[f]) || (f === 'claude' ? 'default' : 'agent'); };
+const permDefault = provider => { if (provider === 'gemini') return S.lite.permissions?.gemini || 'accept-edits'; const f = permFam(provider); return (S.lite.permissions && S.lite.permissions[f]) || (S.appPermissions && S.appPermissions[f]) || (f === 'claude' ? 'default' : 'agent'); };
 
 /* ---------- Markdown, just enough (escaped first; links only to http(s)) ---------- */
 // Pictures a reply names: a Markdown image, a link or address ending in .png/.jpg/.gif/.webp, or a
@@ -1140,7 +1140,7 @@ async function sendInChat({ queued = null, delivery = 'queue' } = {}) {
   // The message belongs to the chat it was written in. Starting a chat that wasn't running takes a
   // few seconds; if you open another chat meanwhile, it still goes here (Oct 13: it went to the chat
   // you'd moved to), and only this chat's view is touched.
-  const id = CV.id, provider = CV.provider, inRepo = CV.inRepo, perm = COMP.perm || (CV.provider === 'gemini' ? null : permDefault(CV.provider)), model = selectedReplyModel(provNow()), effort = COMP.effort, fast = COMP.fast;
+  const id = CV.id, provider = CV.provider, inRepo = CV.inRepo, perm = COMP.perm || permDefault(CV.provider), model = selectedReplyModel(provNow()), effort = COMP.effort, fast = COMP.fast;
   const to = queued ? null : CV.to && CV.to !== 'chat' ? CV.to : null;
   const route = queued ? queued.route || {} : toBody(to), wasBusy = CV.busy;
   const here = () => S.view === 'chat' && CV.id === id;
@@ -1360,10 +1360,12 @@ function settingsMenu(anchor) {
   if (provNow() === 'gemini') {
     const running = S.view === 'chat' && CV.key && CV.info;
     const modes = (running && CV.info.modes) || [{ value: 'plan', label: 'Plan only' }, { value: 'accept-edits', label: 'Edit files' }, { value: 'full', label: 'Full access' }];
-    const cur = (running && CV.info.permissionMode) || COMP.perm || permDefault('gemini');
-    return pop(anchor, `<div class="ph">Gemini · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === cur}">${esc(m.label)}</button>`).join('')}${follow}`,
+    const def = permDefault('gemini');
+    const cur = (running && CV.info.permissionMode) || COMP.perm || def;
+    return pop(anchor, `<div class="ph">Gemini · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === cur}">${esc(m.label)}${m.value === def ? '<small>your default</small>' : ''}</button>`).join('')}<hr><button data-v="__default">Make “${esc((modes.find(m => m.value === cur) || {}).label || cur)}” my default</button>${follow}`,
       v => {
         if (setFollow(v)) return undefined;
+        if (v === '__default') return wrap(setLook)({ permissions: { gemini: cur } }).then(() => toast('Gemini permission default saved.'));
         const label = (modes.find(m => m.value === v) || {}).label || v;
         if (running) return wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; toast(`This chat: ${label}.`); })();
         COMP.perm = v; toast(`This chat will start in ${label}.`); return undefined;
