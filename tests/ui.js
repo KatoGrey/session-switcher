@@ -2283,8 +2283,14 @@ module.exports = [
       t.check('welcome back includes an unread reply from the second assistant', /1 reply came in/.test(partnerWelcome.text) && partnerWelcome.chip, partnerWelcome);
       const questionWelcome = await b.eval(`const previous = S.activity; try { S.activity = [{ key: 'welcome-question', title: 'A question', phase: 'waiting', pending: [{ question: true }] }, { key: 'welcome-terminal', title: 'Terminal', phase: 'waiting-terminal' }]; const el = document.createElement('div'); el.innerHTML = welcomeHtml(); return el.textContent; } finally { S.activity = previous; }`);
       t.check('questions and terminal waits ask for attention, not an approval', /2 need your attention/.test(questionWelcome) && !/your OK/.test(questionWelcome), questionWelcome);
-      t.check('a quick look away doesn’t bring it back', await b.eval(`dropWelcome(); localStorage.setItem('seen-at', String(Date.now() - 60e3)); checkAway(); await new Promise(r => setTimeout(r, 300)); return !document.querySelector('.welcome')`));
-      await b.eval(`localStorage.setItem('seen-at', String(Date.now() - 3 * 3600e3)); checkAway(); return 1`); await sleep(400);
+      // (Its fade can take a while on a slow machine: waited for, up to two seconds.)
+      t.check('a quick look away doesn’t bring it back', await b.eval(`dropWelcome(); localStorage.setItem('seen-at', String(Date.now() - 60e3)); checkAway(); for (let i = 0; i < 20 && document.querySelector('.welcome'); i++) await new Promise(r => setTimeout(r, 100)); return !document.querySelector('.welcome')`));
+      // Away again while a card is still fading out: the new card stays (the fade used to clear it too).
+      const again = await b.eval(`localStorage.setItem('seen-at', String(Date.now() - 3 * 3600e3)); checkAway(); await new Promise(r => setTimeout(r, 50));
+        dropWelcome(); localStorage.setItem('seen-at', String(Date.now() - 3 * 3600e3)); checkAway(); await new Promise(r => setTimeout(r, 700));
+        return !!document.querySelector('[data-welcome="continue"]')`);
+      t.check('back again while the last card fades out: the new one stays', again);
+      await b.eval(`dropWelcome(); localStorage.setItem('seen-at', String(Date.now() - 3 * 3600e3)); checkAway(); return 1`); await sleep(900);
       await b.eval(`document.querySelector('[data-welcome="continue"]').click(); return 1`); await sleep(1500);
       t.check('“Back to …” opens that chat, and the card goes', await b.eval(`return ChatUI.isOpen() && !document.querySelector('.welcome')`));
       // The map: a long chat gets one; each of your messages has a mark.

@@ -80,7 +80,9 @@ function renderWelcome() {
 function dropWelcome() {
   Welcome.card = null;
   const slot = $('welcomeSlot'); if (!slot || !slot.firstElementChild) return;
-  const done = () => { slot.innerHTML = ''; slot._h = ''; };
+  // Only the card it fades out: a new card shown meanwhile (back again after a while) stays.
+  const el = slot.firstElementChild;
+  const done = () => { if (slot.firstElementChild === el && !Welcome.card) { slot.innerHTML = ''; slot._h = ''; } };
   if (!motionOk()) return done();
   slot.firstElementChild.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(-6px)' }], { duration: 200, easing: 'ease-in' }).finished.then(done, done);
   return undefined;
