@@ -1811,6 +1811,11 @@ button.nav-h.fold:hover{color:var(--parch)}
 button.nav-h.fold[aria-expanded="false"] .fold-c{transform:rotate(-90deg)}
 .nav-h.pinned{color:var(--gilt)}
 .nav-h.pinned .pmark{background:var(--gilt)}
+/* Recent: your latest chats, the same rows as pinned ones; All recent chats at its foot */
+.nav-h.recent{color:var(--parch-2)}
+.nav-h.recent .pmark{background:none;box-shadow:inset 0 0 0 1.5px var(--parch-2)}
+.nav-more .ni-t{color:var(--ash);font-style:italic}
+.nav-more:hover .ni-t{color:var(--parch)}
 .nav-i.pin .glyph{color:var(--gilt)}
 .nav-chat .ni-t{display:flex;flex-direction:column;gap:1px;white-space:normal}
 .nav-chat .ni-t{overflow:hidden}

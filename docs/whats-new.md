@@ -1,4 +1,13 @@
-# Update Codex and Gemini from Setup, a safety fix for links, and a smoother app
+# Big Codex chats open again, Lite in the desktop app, a self-check that works, and Continue in a fresh chat
+
+- **A Codex chat full of pictures no longer cuts the app off from Codex.** One chat's history (2.4 GB of portraits) came back as more than the app could read at once, and from then on every Codex chat lost its connection: one wouldn't open, one showed no chats, one sat thinking, until a restart. Now such an answer is set aside and only its own request fails; that chat's history comes a few turns at a time (every step still shown, the rest with **Earlier**). Claude and Gemini chats are guarded the same way.
+- **Switcher Lite opens in the desktop app.** Its pages were left out of the installer, so `/lite` only showed an error there. They're in now, with the helper commands its tools use.
+- **The nightly self-check works on your PC.** It runs the app's own tests on the installed copy, and it couldn't pass there: some of its tests needed parts that only a developer's copy has, and the theme check counted every update as a failure, every night after. Now those tests skip where they can't run, and the theme check starts fresh with each new version (a real change shows once, then becomes the new look to compare with).
+- **Continue in a fresh chat:** in a chat's **⋯** menu. The chat writes a handoff (the goal, what's done, where it stands, the files that matter, what's next), and a new chat in the same folder, linked to the old one, opens with it in the message box to read and send. For a chat that's grown long or slow.
+- **Recent, in the sidebar:** your six latest chats (any assistant) under Pinned, with their project and how long ago, and **All recent chats** at the foot.
+- **A steadier log:** a message repeated thousands of times is written once a minute with a count, so the part that says what went wrong stays in it. And Claude chats start even if Windows' cleanup emptied the temp folder (it held a note Claude Code needs).
+
+## Earlier in 6.5.4 and 6.5.5: Update Codex and Gemini from Setup, a safety fix for links, and a smoother app
 
 - **Update Codex** and **Update Gemini** in Setup, beside **Update Claude Code**. New Codex models (like GPT-6.1-Sol) only show up with a newer Codex, so Setup's Codex part now says which version you have and when a newer one is out. If Codex or Gemini chats are running, it says so: Windows can't update a program that's in use, so stop them and click again.
 - **Safer links:** a link or picture with a network path (`\\some-server\share\…`) no longer opens, and isn't even looked up. Looking one up made Windows connect to that server and offer it your sign-in. Folders on your own computer open as before.

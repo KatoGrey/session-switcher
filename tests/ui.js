@@ -988,6 +988,11 @@ module.exports = [
     async run(t) {
       const dir = process.env.LOOKS || path.join(process.env.LOCALAPPDATA || require('os').homedir(), 'SessionSwitcher', 'looks');
       fs.mkdirSync(dir, { recursive: true });
+      // Compared within one version of the app: a new version is meant to look different, so its first
+      // run keeps a fresh set to compare with (an update used to read as a failure every night after).
+      const version = (fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8').match(/APP_VERSION = '([^']+)'/) || [])[1] || '?';
+      const verFile = path.join(dir, 'version.txt');
+      const fresh = !!process.env.LOOKS_RESET || (fs.existsSync(verFile) ? fs.readFileSync(verFile, 'utf8').trim() : '') !== version;
       const b = await t.open();
       // Still pictures: no motion, the same clock.
       const still = `document.documentElement.classList.add('low-power'); document.body.classList.add('low-power'); for (const el of document.querySelectorAll('[data-clock]')) el.textContent = '9:00 AM'; for (const a of document.getAnimations()) { try { a.finish(); } catch {} } return 1`;
@@ -1002,7 +1007,7 @@ module.exports = [
             await b.eval(still); await sleep(150);
             const now = await b.shotData();
             const file = path.join(dir, `${where}-${theme}-${mode}.png`);
-            if (process.env.LOOKS_RESET || !fs.existsSync(file)) { fs.writeFileSync(file, Buffer.from(now, 'base64')); kept++; continue; }
+            if (fresh || !fs.existsSync(file)) { fs.writeFileSync(file, Buffer.from(now, 'base64')); kept++; continue; }
             const was = fs.readFileSync(file).toString('base64');
             // Compared in the page: both drawn small, the share of spots that differ clearly.
             const diff = await b.eval(`const load = s => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/png;base64,' + s; });
@@ -1011,11 +1016,14 @@ module.exports = [
               const a = px(x), z = px(y); let n = 0;
               for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - z[i]) + Math.abs(a[i + 1] - z[i + 1]) + Math.abs(a[i + 2] - z[i + 2]) > 60) n++;
               return n / (w * h)`);
-            if (diff > 0.03) { changed.push(`${where} ${theme} ${mode}: ${(diff * 100).toFixed(1)}% looks different`); fs.writeFileSync(file.replace(/\.png$/, '.now.png'), Buffer.from(now, 'base64')); }
+            // A change is said once: the old look is kept beside it (.was.png), and the new one is what's
+            // compared with next time.
+            if (diff > 0.03) { changed.push(`${where} ${theme} ${mode}: ${(diff * 100).toFixed(1)}% looks different`); fs.copyFileSync(file, file.replace(/\.png$/, '.was.png')); fs.writeFileSync(file, Buffer.from(now, 'base64')); }
           }
         }
       }
-      if (kept) console.log(`  · kept ${kept} new baseline picture${kept === 1 ? '' : 's'} in ${dir}`);
+      fs.writeFileSync(verFile, version);
+      if (kept) console.log(`  · kept ${kept} new baseline picture${kept === 1 ? '' : 's'} in ${dir}${fresh ? ` (for ${version})` : ''}`);
       t.check('every theme looks as it did last time', !changed.length, changed.join('; '));
       await b.eval(`Look.reset(); return 1`);
     },
@@ -1719,7 +1727,7 @@ module.exports = [
       const calls = [];
       const b = await t.open({ gemini: true, seen: (p, u, body) => calls.push([p, body]) });
       await sleep(600);
-      const nav = await b.eval(`const h = document.querySelector('.nav-h.gemini'); return h && { text: h.textContent.replace(/\\s+/g, ' ').trim(), items: [...document.querySelectorAll('.nav-i.gemini')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
+      const nav = await b.eval(`const h = document.querySelector('.nav-h.gemini'); return h && { text: h.textContent.replace(/\\s+/g, ' ').trim(), items: [...document.querySelectorAll('.nav-i.gemini[data-view="folder"]')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
       t.check('Gemini has its own group in the side list, with its project', !!nav && /Gemini/.test(nav.text) && nav.items.some(x => /Starfall Tavern/.test(x)), nav);
       // The top bar's accounts list has Gemini too: signed in, and any model out of quota with its reset.
       await b.clickOn('#usechip'); await sleep(300);
@@ -1730,7 +1738,7 @@ module.exports = [
       t.check('a model out of quota shows there, with when it comes back', /Gemini 4 Argon \(Medium\) ran out, back /.test(out), out);
       await t.shot(b, 'accounts');
       await b.esc(); await sleep(200);
-      await b.clickOn('.nav-i.gemini'); await sleep(900);
+      await b.clickOn('.nav-i.gemini[data-view="folder"]'); await sleep(900);   // the project (a Gemini chat in Recent is a .nav-i.gemini too)
       const page = await b.eval(`return { eyebrow: document.querySelector('.wp-in .eyebrow')?.textContent, btn: !!document.querySelector('[data-act="newgemini"]'), rows: [...document.querySelectorAll('#wbList .rows > li')].length }`);
       t.check('its project page lists the Gemini chats, with a New Gemini chat button', /Gemini chats in this project/.test(page.eyebrow || '') && page.btn && page.rows === 1, page);
       await t.shot(b, 'project');
@@ -1835,6 +1843,38 @@ module.exports = [
       t.check('Setup has Update Codex and Update Gemini beside Update Claude Code', up.acts.includes('Update Claude Code') && up.acts.includes('Update Codex') && up.acts.includes('Update Gemini'), up.acts);
       t.check('a Codex that’s behind says which version is out, with Update Codex', /Codex 0\.155\.1 here; 0\.163\.0 is out/.test(up.line || ''), up.line);
       t.check('Update Codex runs the update, and says to stop running Codex chats if it can’t', JSON.stringify(up.calls) === '["/api/codex/update","/api/gemini/update"]' && /2 Codex chats are running here/.test(up.toast1), up);
+    },
+  },
+  {
+    name: 'recent and fresh',
+    // The sidebar's Recent: the latest chats themselves, a click away. And a long chat carried on in a
+    // fresh one, from its handoff.
+    async run(t) {
+      const b = await t.open(); await sleep(500);
+      const side = await b.eval(`const h = document.querySelector('.nav-h.recent'); const rows = [...document.querySelectorAll('.nav-h.recent ~ .nav-chat')].slice(0, 6);
+        const want = allSessions().filter(([, p]) => p.cwd !== cmdrSet().cwd).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6).map(([s]) => s.id);
+        return { head: h && h.textContent.replace(/\\s+/g, ' ').trim(), ids: rows.map(r => r.dataset.navchat), want, more: !!document.querySelector('.nav-more[data-view="recent"]'), sub: rows[0] && rows[0].querySelector('small').textContent }`);
+      t.check('the sidebar has Recent: the latest chats, newest first', !!side.head && /Recent/.test(side.head) && JSON.stringify(side.ids) === JSON.stringify(side.want) && side.ids.length > 0, side);
+      t.check('each says its project and how long ago', / · /.test(side.sub || ''), side.sub);
+      await b.clickOn('.nav-more[data-view="recent"]'); await sleep(500);
+      t.check('All recent chats opens the Recent chats page', await b.eval(`return S.view === 'recent'`));
+      await b.clickOn('.nav-h.recent'); await sleep(200);
+      t.check('Recent folds away like the other sections', await b.eval(`return !document.querySelector('.nav-h.recent ~ .nav-chat[data-navchat="${side.ids[0]}"]') || !!document.querySelector('.nav-h.recent[aria-expanded="false"]')`));
+      await b.clickOn('.nav-h.recent'); await sleep(200);
+      await t.shot(b, 'recent');
+      // Continue in a fresh chat: a handoff from this one, then a new linked chat with it in the box.
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2200);
+      const r = await b.eval(`const real = api, opened = []; window._asked = [];
+        api = async (u, body) => { if (u === '/api/chat/handoff') { _asked.push(body); return { text: '**Goal** Balance the bard.\\n\\n**Next steps** 1. Retest the songs.' }; } return real(u, body); };
+        const realOpen = ChatUI.open; ChatUI.open = o => { opened.push(o); return Promise.resolve(); };
+        const item = chatHeadItems().find(x => x && x.label === 'Continue in a fresh chat…');
+        await continueFresh();
+        api = real; ChatUI.open = realOpen;
+        return { item: !!item, disabled: item && item.disabled, asked: _asked, opened, key: C.key, id: C.sessionId }`);
+      t.check('the chat’s ⋯ menu has Continue in a fresh chat…', r.item, r);
+      t.check('it asks this chat for its handoff', r.asked.length === 1 && r.asked[0].key === r.key, r.asked);
+      const o = r.opened[0] || {};
+      t.check('then opens a new chat in the same folder, linked to this one, with the handoff in its box', o.mode === 'new' && o.parent === r.id && /Starfall Tavern/.test(o.cwd || '') && /Its handoff:/.test(o.initialText || '') && /Retest the songs/.test(o.initialText || ''), o);
     },
   },
   {

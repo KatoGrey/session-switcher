@@ -70,6 +70,12 @@ function renderNav() {
   const pinnedHtml = pinnedP.length || pinnedC.length ? `${fold('pinned', 'Pinned', pinnedP.length + pinnedC.length, 'pinned')}
     ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd && !S.prov}"><span class="glyph" aria-hidden="true">★</span><span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
       + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${provOf(c) === 'claude' ? '' : provOf(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : isOpenClaw(c) ? ' · OpenClaw' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
+  // Recent: your latest chats, any assistant, a click away (every one on the Recent chats page).
+  const provName = c => ({ codex: ' · Codex', gemini: ' · Gemini', openclaw: ' · OpenClaw' })[provOf(c)] || '';
+  const recentC = allSessions().filter(([, p]) => p.cwd !== cmdrSet().cwd).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6);
+  const recentHtml = recentC.length ? `${fold('recent', 'Recent', recentC.length, 'recent')}
+    ${S.navFold.has('recent') ? '' : recentC.map(([c, p]) => `<button class="nav-i nav-chat ${provOf(c) === 'claude' ? '' : provOf(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)} · ${esc(agoL(c.updated))}${provName(c)}</small></span>${chatDot(c.id)}</button>`).join('')
+      + `<button class="nav-i nav-more" data-view="recent"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">All recent chats</span><span class="count">${total}</span></button>`}` : '';
   const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0), nOc = ocF.reduce((n, x) => n + x.list.length, 0), nGem = gemF.reduce((n, x) => n + x.list.length, 0);
   const showGemini = S.gemini && S.gemini.enabled;
   const showCodex = S.codex && S.codex.enabled;
@@ -90,6 +96,7 @@ function renderNav() {
     <button class="nav-i nav-new" data-view="newproject"><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New project</span></button>
     ${fresh.length ? `<div class="nav-h prov fresh"><span class="pmark" aria-hidden="true"></span>No chats yet<span class="count">${fresh.length}</span></div>${fresh.map(p => `<button class="nav-i" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${esc(p.name)}</span><span class="tag ghost">New</span></button>`).join('')}` : ''}
     ${pinnedHtml}
+    ${recentHtml}
     ${navGroupsHtml()}
     ${navFamiliesHtml()}
     ${fold('claude', 'Claude Code', nClaude, 'claude')}

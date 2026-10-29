@@ -114,6 +114,9 @@ test('updates: Codex to the newest from npm and Gemini by its own updater, each 
     const gm = await s.call('/api/gemini/update', {});
     assert.equal(gm.status, 200); assert.equal(gm.json.dryRun, true);
     if (gm.json.script) assert.match(gm.json.script, /" update/);
+    // Continue in a fresh chat asks a running chat; one that isn't says so.
+    const h = await s.call('/api/chat/handoff', { key: 'not-a-chat' });
+    assert.equal(h.status, 404); assert.match(h.json.error, /isn’t running any more/);
   } finally { await s.stop(); }
 });
 
@@ -185,7 +188,9 @@ test('races: one can’t start without Codex, and nothing is left behind', async
   } finally { await s.stop(); }
 });
 
-test('restart: a new copy takes over (same port, new process, same build), the old one exits, and the old page is told to reload', async () => {
+// (Not under the desktop app's own Node, as the nightly self-check runs: there the desktop app starts the
+// new copy itself, so a copy on its own never restarts that way.)
+test('restart: a new copy takes over (same port, new process, same build), the old one exits, and the old page is told to reload', { skip: process.versions.electron ? 'the desktop app restarts itself' : false }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
   const s = await startServer(dir);
   let next = null;

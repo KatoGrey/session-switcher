@@ -98,7 +98,7 @@ The hub is the main screen. Its sections, from the top:
     - a warning if, at the current pace, a window runs out before it resets
   - When another account has much more room, the hub suggests switching.
 - **Your projects:** every folder you work in, as a card with its banner (see below), plus **New project**.
-- **Recent chats:** the latest chats from every folder.
+- **Recent chats:** the latest chats from every folder. The sidebar's **Recent** section (under Pinned) lists your six latest, with their project and how long ago; **All recent chats** at its foot opens the full list.
 
 The top bar is visible everywhere:
 
@@ -661,6 +661,7 @@ A sub-session is a new chat in the same folder, linked to the chat it came from.
 - Right-click a chat (or open its **⋯** menu) and choose **Start a sub-session**. It runs as the same assistant and, for Claude, the same account.
 - **Start a sub-session with a brief** fills the new chat's message box with a blank for its task, plus the first chat's latest reply as context. Type over the blank and send.
 - Sub-sessions sit under their parent in the sidebar (inside its group, or under **Sub-sessions**) and join the parent's group.
+- **Continue in a fresh chat** (the chat window's **⋯** menu), for a chat that's grown long or slow: the chat writes a handoff (the goal, what's done, where it stands, decisions, the files that matter, next steps and what to watch out for), and a new chat opens as a sub-session with that handoff in its message box. Read it, change anything, and send. The request and the handoff stay in the old chat too.
 - In a sub-session, the line above the title shows its group and the chat it came from; click that to go back. A chat with sub-sessions shows how many, and clicking that lists them.
 
 ### The Commander
@@ -748,7 +749,7 @@ Press `?` anywhere (outside a text box) for the full list of keyboard shortcuts.
 ## Keeping itself good
 
 - **Problems:** anything that goes wrong on the page (on the PC or a phone) or in the PC's server is noted, the same one counted rather than repeated. Setup → **Problems and speed** lists them with **Ask Claude to fix this**, which opens a chat in the app's own folder with the error and the end of `switcher.log`.
-- **Nightly self-check:** at half past three in the morning, when nothing is working, the app runs its own tests and the look checks at low priority. If something failed, a card on the hub says so. **Run the self-check now** is in Setup; **Check itself every night** turns it off.
+- **Nightly self-check:** at half past three in the morning, when nothing is working, the app runs its own tests and the look checks at low priority. If something failed, a card on the hub says so. **Run the self-check now** is in Setup; **Check itself every night** turns it off. In the desktop app it checks the installed copy, skipping the few tests that need a developer's copy. The look checks compare within one version: the first night after an update keeps that version's look as the one to compare with, and a real change is reported once, then kept as the new look (the old picture stays beside it as `.was.png`).
 - **Look checks:** `node tests/run.js "look checks"` takes a picture of every theme, light and dark, on the hub and in a chat, and compares it with the last time (kept in `%LOCALAPPDATA%\SessionSwitcher\looks`; `LOOKS_RESET=1` keeps new ones). It only looks, it never changes a theme.
 - **Speed:** how long the hub, a chat and a reply's first word take on this device, this week against last, in Setup → Problems and speed.
 

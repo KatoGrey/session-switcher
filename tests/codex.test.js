@@ -53,3 +53,22 @@ test('codex: a chat’s history too big for twelve turns comes three, then one, 
     assert.equal(asked[4], '12/full', 'another chat starts at twelve again');
   } finally { CodexServer.prototype.request = real; }
 });
+
+const fs = require('fs'), os = require('os'), path = require('path');
+const { createLog } = require('../lib/logger');
+test('log: the same message thousands of times is written once, then how many more times; others as they come', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-log-')), 'switcher.log');
+  let t = Date.parse('2026-10-29T00:55:00Z');
+  const log = createLog(file, { echo: false, now: () => t });
+  log('Codex: a message of 700 MB was too big to read; skipped it.');
+  for (let i = 0; i < 3452; i++) { t += 10; log('Codex: a message of 700 MB was too big to read; skipped it.'); }
+  log('Error on GET /api/chat/history: something else');
+  t += 61e3; log('Error on GET /api/chat/history: something else');
+  log.flush();
+  const lines = fs.readFileSync(file, 'utf8').trim().split(/\r?\n/);
+  assert.equal(lines.length, 4, lines.join('\n'));
+  assert.match(lines[0], /too big to read/);
+  assert.match(lines[1], /\(the message above, 3452 more times\)/);
+  assert.match(lines[2], /something else/);
+  assert.match(lines[3], /something else/, 'a minute on, a repeat is written again');
+});

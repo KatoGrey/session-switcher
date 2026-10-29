@@ -933,6 +933,7 @@ function chatHeadItems() {
     ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; closeChatView(); popOutChat(sid); } }] : []),
     ...(C.info && C.info.cwd && !C.watch ? [{ glyph: '▶', label: 'Run the project', hint: 'its dev server or start script, with its output', run: () => openRun() }] : []),
     ...(C.key && !C.watch ? [{ glyph: '❦', label: 'Ask a side question', hint: '/btw · doesn’t derail this chat', run: () => openAside() }] : []),
+    ...(C.key && !C.watch && id && window.continueFresh ? [{ glyph: '⇢', label: 'Continue in a fresh chat…', hint: 'it writes a handoff; a new chat starts with it', disabled: C.state !== 'ready', why: C.state === 'ended' ? 'Start the chat again first' : 'Wait for the reply to finish', run: () => window.continueFresh() }] : []),
     ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark done', hint: 'off the lists until it’s used again', run: () => { const sid = id; closeChatView(); return setChatDone(sid, true); } }] : []),
     { glyph: '◻', label: document.getElementById('chat').classList.contains('focus') ? 'Leave focus mode' : 'Focus mode', hint: 'just the conversation', keys: 'Ctrl \\', run: () => toggleFocus() },
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },

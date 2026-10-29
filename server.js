@@ -80,15 +80,9 @@ const DESKTOP_MIN = '2.1.285';
 
 // ---------- logging ----------
 
-function log(msg) {
-  const line = `[${new Date().toISOString()}] ${msg}`;
-  console.log(line);
-  try {
-    const st = fs.statSync(LOG_FILE);
-    if (st.size > 1024 * 1024) fs.renameSync(LOG_FILE, `${LOG_FILE}.old`);
-  } catch { /* no log yet */ }
-  try { fs.appendFileSync(LOG_FILE, line + os.EOL); } catch { /* read-only folder */ }
-}
+// switcher.log (lib/logger.js): a message repeated thousands of times is written once a minute, with a count.
+const logLine = require('./lib/logger').createLog(LOG_FILE);
+function log(msg) { logLine(msg); }
 
 // ---------- config (reloaded when the file changes on disk) ----------
 
@@ -307,6 +301,8 @@ async function openGeminiFor(c, { sessionId = null, cwd, mode = null, model = nu
   return chat;
 }
 const assistantName = provider => (provider === 'codex' ? 'Codex' : provider === 'gemini' ? 'Gemini' : 'Claude');
+// What a chat is asked for when you continue in a fresh chat: everything the next one needs, nothing it doesn't.
+const HANDOFF_ASK = 'Please write a handoff so a fresh chat can carry on this work without this conversation. Reply with only the handoff, in Markdown, under 600 words, with these parts: **Goal** (what this work is for), **Done so far**, **Where it stands** (what works, what doesn’t yet), **Decisions** (and why, briefly), **Files** (the ones that matter, by path), **Next steps** (in order), and **Watch out for** (anything easy to get wrong). Don’t change any files for this.';
 function requireGeminiReady() {
   const st = gemini.publicState();
   if (!st.enabled) throw fail(409, 'Gemini is turned off in Setup.');
@@ -2746,6 +2742,21 @@ async function handleChat(req, res, url, body, c) {
       return send(res, 200, { ...info, mate, ...crew });
     }
     case '/api/chat/attach': { const ch = chats.get(body.key); let mate = null; try { mate = pairs.kindFor(pairs.leadOf(ch)); } catch { /* gone */ } return send(res, 200, { ...attachedInfo(ch), mate }); }
+    // Continue in a fresh chat: this chat writes a handoff (what the work is for, what's done, where it
+    // stands, what's next), and the window opens a new chat in the same folder with it. The request
+    // goes into this chat's own conversation, like any message you'd send it.
+    case '/api/chat/handoff': {
+      const chat = chats.get(body.key);
+      if (chat.state === 'ended') throw fail(409, 'This chat has stopped. Start it again first.');
+      if (chat.state !== 'ready') throw fail(409, `${assistantName(chat.provider)} is still working. Ask for the handoff once it’s done.`);
+      const from = chat.seq || 0, done = chat.turnDone();
+      await pairs.send(chat, HANDOFF_ASK);
+      const ev = await Promise.race([done, new Promise(r => setTimeout(() => r({ kind: 'timeout' }), 15 * 60e3).unref())]);
+      const text = chat.buffer.filter(e => e.seq > from && e.kind === 'assistant')
+        .map(e => (e.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n')).join('\n\n').trim();
+      if (!text) throw fail(502, ev.kind === 'timeout' ? 'The handoff took too long; the chat is still working on it.' : ev.kind === 'ended' ? 'The chat stopped before it wrote the handoff.' : 'The handoff came back empty. Try again, or start a sub-session with a brief.');
+      return send(res, 200, { text });
+    }
     case '/api/chat/send': {
       // to: 'partner' (the other assistant in this chat, started if need be), 'both' (they take
       // turns), or the chat `key` itself.
