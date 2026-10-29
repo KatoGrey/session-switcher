@@ -9,6 +9,21 @@ const VW = { open: false, chat: null, kind: null, target: null, data: null, erro
 const NO_FRAME = /(^|\.)(github\.com|linear\.app|slack\.com|discord\.com|discord\.gg|notion\.so|google\.com|figma\.com|x\.com|twitter\.com|reddit\.com|youtube\.com|apple\.com|claude\.ai|chatgpt\.com|openai\.com|1password\.com)$/i;
 const canFrame = url => { try { const u = new URL(url, location.href); return /^https?:$/.test(u.protocol) && !NO_FRAME.test(u.hostname); } catch { return false; } };
 
+// Links to Switcher chats are navigation, including localhost links opened on a phone.
+function linkedChat(url) {
+  try {
+    const u = new URL(url, location.href);
+    const local = ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname) && u.port === '4777';
+    if (!/^https?:$/.test(u.protocol) || (u.origin !== location.origin && !local) || !['/', '/lite', '/lite/'].includes(u.pathname)) return null;
+    const id = u.searchParams.get('chat');
+    return id && /^[\w-]{1,128}$/.test(id) ? id : null;
+  } catch { return null; }
+}
+function visitLinkedChat(id) {
+  closeViewer();
+  openChat(id);
+}
+
 function fileQuery(p) {
   const q = new URLSearchParams({ path: p });
   if (CV.key) q.set('key', CV.key);
@@ -47,6 +62,8 @@ async function viewFile(p, { from } = {}) {
   if (VW.target === p) paintViewer();
 }
 function viewUrl(url, { from } = {}) {
+  const chat = linkedChat(url);
+  if (chat) return visitLinkedChat(chat);
   if (!canFrame(url)) { window.open(url, '_blank', 'noopener'); return; }
   if (VW.open && VW.target && from !== 'back') VW.back.push({ kind: VW.kind, target: VW.target });
   Object.assign(VW, { open: true, chat: CV.id, kind: 'url', target: url, data: null, error: null, loading: false });
@@ -134,6 +151,11 @@ function paintViewer() {
 // click still opens a tab), file paths in steps and in `code`, and the viewer's own buttons.
 document.addEventListener('click', e => {
   const t = e.target;
+  const a = t.closest('a[href]');
+  const chat = a && linkedChat(a.getAttribute('href'));
+  if (chat && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) {
+    e.preventDefault(); e.stopPropagation(); visitLinkedChat(chat); return;
+  }
   const b = t.closest('[data-vw], [data-viewfile], [data-viewfiles], .msg-ai a[href], .msg-you a[href], .msg-ai code.vpath');
   if (!b || t.closest('#palRoot')) return;
   if (b.matches('.msg-ai a[href], .msg-you a[href]')) {
