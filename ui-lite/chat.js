@@ -90,7 +90,7 @@ function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' 
   });
   // Code, links and bare addresses are set aside first, so bold and italics can't reach inside them.
   const inline = x => {
-    const held = [], hold = h => `\u0001${held.push(h) - 1}\u0001`;
+    const held = [], hold = h => `\u0001${held.push(h.replace(/\u0001(\d+)\u0001/g, (m, i) => held[Number(i)] || m)) - 1}\u0001`;
     // A Markdown image shows where it's written.
     x = String(x).replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (m, alt, ref) => { if (isMedia(ref)) { const v = mediaHtml(ref, session); return v ? `\u0002${held.push(v) - 1}\u0002` : alt; } const u = picSrc(ref, session); return u ? `\u0002${held.push(`<img class="md-img" src="${esc(u)}" alt="${esc(alt)}" data-zoom="1" onerror="this.remove()">`) - 1}\u0002` : alt; });
     return esc(x)

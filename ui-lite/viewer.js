@@ -11,6 +11,7 @@ const canFrame = url => { try { const u = new URL(url, location.href); return /^
 
 // Links to Switcher chats are navigation, including localhost links opened on a phone.
 function linkedChat(url) {
+  if (!url || url.startsWith('#')) return null;
   try {
     const u = new URL(url, location.href);
     const local = ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname) && u.port === '4777';
@@ -158,7 +159,7 @@ document.addEventListener('click', e => {
   }
   const b = t.closest('[data-vw], [data-viewfile], [data-viewfiles], .msg-ai a[href], .msg-you a[href], .msg-ai code.vpath');
   if (!b || t.closest('#palRoot')) return;
-  if (b.matches('.msg-ai a[href], .msg-you a[href]')) {
+  if (b.matches('.msg-ai a[href], .msg-you a[href]') && !b.dataset.viewfile) {
     // On a phone a link just opens (the panel would cover the chat, and sites won't sign in inside it).
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0 || S.view !== 'chat' || matchMedia('(max-width: 760px)').matches) return;
     const href = b.getAttribute('href');
