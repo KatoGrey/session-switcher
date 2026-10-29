@@ -97,6 +97,16 @@ function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' 
       .replace(/\u0002(\d+)\u0002/g, (m, i) => hold(held[Number(i)]))
       .replace(/`([^`\n]+)`/g, (m, c) => ((IMG_EXT.test(c.trim()) || isMedia(c.trim())) && typeof looksLikePath === 'function' && looksLikePath(c.trim()) ? pic(c.trim()) : null, hold(`<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`)))
       .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, href) => ((IMG_EXT.test(href) || isMedia(href) || musicEmbed(href)) && pic(href.replace(/&amp;/g, '&')), hold(`<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`)))
+      // Gemini cites local files with file:// URLs, sometimes with a line fragment.
+      .replace(/\[([^\]\n]+)\]\((file:\/\/[^\s)]+)\)/gi, (m, label, href) => {
+        try {
+          const u = new URL(href.replace(/&amp;/g, '&'));
+          if (u.hostname && u.hostname !== 'localhost') return m;
+          const file = decodeURIComponent(u.pathname).replace(/^\/([A-Za-z]:\/)/, '$1');
+          if (IMG_EXT.test(file) || isMedia(file)) pic(file);
+          return hold(`<a href="#" class="vlink" data-viewfile="${esc(file)}">${label}</a>`);
+        } catch { return m; }
+      })
       // A link to a file (a relative path, ~/…, /Users/…) opens it beside the chat.
       .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : ((IMG_EXT.test(href) || isMedia(href)) && pic(href), hold(`<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`))))
       // A bare address is a link too (without the full stop or bracket that ends its sentence).
