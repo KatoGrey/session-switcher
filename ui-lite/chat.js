@@ -10,7 +10,7 @@ const PERM_LABELS = {
   ask: 'Ask before acting', agent: 'Agent', 'read-only': 'Read only', full: 'Full access',
 };
 const permFam = provider => (provider === 'codex' ? 'codex' : 'claude');
-const permDefault = provider => { const f = permFam(provider); return (S.lite.permissions && S.lite.permissions[f]) || (S.appPermissions && S.appPermissions[f]) || (f === 'claude' ? 'default' : 'agent'); };
+const permDefault = provider => { if (provider === 'gemini') return 'accept-edits'; const f = permFam(provider); return (S.lite.permissions && S.lite.permissions[f]) || (S.appPermissions && S.appPermissions[f]) || (f === 'claude' ? 'default' : 'agent'); };
 
 /* ---------- Markdown, just enough (escaped first; links only to http(s)) ---------- */
 // Pictures a reply names: a Markdown image, a link or address ending in .png/.jpg/.gif/.webp, or a
@@ -745,7 +745,7 @@ function composerHtml({ fresh = false } = {}) {
 // chat last reported.
 const MD = prov => S.models?.[prov] || null;
 const modelsFor = prov => (MD(prov) ? [...MD(prov).models, ...MD(prov).more] : local.get(`models:${prov}`, []));
-const effortsFor = prov => (MD(prov) && MD(prov).efforts) || local.get(`efforts:${prov}`, prov === 'claude' ? ['low', 'medium', 'high', 'xhigh', 'max'] : ['low', 'medium', 'high', 'xhigh']);
+const effortsFor = prov => (MD(prov) && MD(prov).efforts) || local.get(`efforts:${prov}`, prov === 'gemini' ? [] : prov === 'claude' ? ['low', 'medium', 'high', 'xhigh', 'max'] : ['low', 'medium', 'high', 'xhigh']);
 function loadModels() { if (S.models || loadModels.p) return loadModels.p; loadModels.p = api('/api/lite/models').then(j => { S.models = j; if (S.view === 'newchat') paintNewChat(); else if (S.view === 'chat') paintBar(); }).catch(() => {}); return loadModels.p; }
 const defaultReplyModel = prov => S.modelDefaults?.[prov] || MD(prov)?.defaultValue || null;
 const selectedReplyModel = (prov, fresh = false) => {
@@ -761,7 +761,7 @@ function rememberModels(prov, info) {
   if (info && Array.isArray(info.models) && info.models.length) local.set(`models:${prov}`, info.models.map(m => ({ value: m.value, label: m.label })).slice(0, 30));
   if (info && Array.isArray(info.efforts) && info.efforts.length) local.set(`efforts:${prov}`, info.efforts);
 }
-const provNow = () => (S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : NC.who === 'ollama' ? 'ollama' : 'codex') : CV.provider === 'gemini' ? 'gemini' : CV.provider === 'codex' ? ((CV.info && /ollama/i.test(CV.info.accountName || '')) || (chatBy.get(CV.id) || {}).ollama ? 'ollama' : 'codex') : 'claude');
+const provNow = () => (S.view === 'newchat' ? NC.who : CV.provider === 'gemini' ? 'gemini' : CV.provider === 'codex' ? ((CV.info && /ollama/i.test(CV.info.accountName || '')) || (chatBy.get(CV.id) || {}).ollama ? 'ollama' : 'codex') : 'claude');
 // The composer controls the assistant selected to answer, which can be a partner of this chat.
 const replyProv = () => S.view === 'chat' && toKind(CV.to) || provNow();
 function replyTarget() {
@@ -905,7 +905,7 @@ function toolsHtml({ fresh }) {
   const sendHint = `${sendLabel}${TOUCH() ? '' : ' (Enter)'}${busy ? ` · ${sendShortcut()} to steer · ${sendShortcut(true)} to queue` : ''}`;
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
     <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : ''}${prov === 'codex' && ((info && info.fast) || (!info && COMP.fast)) ? ' ⚡' : ''}<span>▾</span></button>
-    <button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>
+    ${prov !== 'gemini' || effortsFor(prov).length ? `<button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>` : ''}
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
     ${busy ? '<button type="button" class="iconbtn stop-sm" data-stopchat="1" aria-label="Stop (⌘.)" title="Stop (⌘.)">■</button>' : ''}
@@ -1257,9 +1257,9 @@ function chatMenu(anchor) {
 // One list of every model you have, grouped by who runs it. In New chat, picking one also picks
 // the plan (your use-next Claude or ChatGPT plan, or Ollama). In a chat, the same provider's models
 // switch in place; Claude and Codex answer in the same chat through its partners.
-const PROVS = [['claude', 'Claude'], ['codex', 'ChatGPT'], ['ollama', 'Ollama']];
+const PROVS = [['claude', 'Claude'], ['codex', 'ChatGPT'], ['ollama', 'Ollama'], ['gemini', 'Gemini']];
 const provName = p => (PROVS.find(x => x[0] === p) || [p, p === 'gemini' ? 'Gemini' : p])[1];
-const hasProv = p => (p === 'claude' ? plans().some(x => x.family === 'claude' && !x.broken) : p === 'codex' ? plans().some(x => x.family === 'chatgpt' && !x.broken) : plans().some(x => x.family === 'ollama' && !x.broken));
+const hasProv = p => (p === 'gemini' ? !!S.gemini : p === 'claude' ? plans().some(x => x.family === 'claude' && !x.broken) : p === 'codex' ? plans().some(x => x.family === 'chatgpt' && !x.broken) : plans().some(x => x.family === 'ollama' && !x.broken));
 // The models offered (Ryan's picks): five Claude models, and the current GPT ones (not GPT-5.6 or
 // the older GPT-6 Sol). Ollama lists whatever is pulled.
 const CLAUDE_PICKS = ['opus', 'fable', 'sonnet', 'haiku', 'claude-opus-4-8'];
@@ -1278,13 +1278,12 @@ function modelMenu(anchor) {
   if (!S.models) { loadModels().then(() => modelMenu(anchor)); return toast('Reading the models…'); }
   const item = (p, m) => `<button class="mm" data-v="${esc(p)}|${esc(m.value)}" role="menuitemradio" aria-checked="${p === prov && m.value === cur}" title="${esc(m.note || '')}"><span class="mm-name">${esc(String(m.label || prettyModel(m.value)).replace(/:cloud$/, ""))}</span>${m.note && m.note !== 'In Ollama' ? `<span class="mm-note">${esc(m.note.replace(/^[^·]*· /, ''))}</span>` : ''}</button>`;
   const group = p => {
-    if (p === 'gemini') return p === prov && running && (info.models || []).length ? `<div class="ph">Gemini</div>${info.models.map(m => item(p, m)).join('')}` : '';
-    const md0 = MD(p); if (!md0 || !hasProv(p)) return '';
+    const md0 = MD(p); if ((!md0 || !hasProv(p)) && !(p === 'gemini' && p === prov && running && info.models?.length)) return '';
     const here = p === prov;
     const runList = here && running && info.models && info.models.length ? info.models.filter(m => m.value !== 'default') : null;
     const all = offered(p, runList || [...md0.models, ...md0.more]);
     const main = all, more = [];
-    const plan = p === 'ollama' ? null : (here && info && planById(info.accountId)) || useNext(p === 'claude' ? 'claude' : 'chatgpt');
+    const plan = p === 'ollama' || p === 'gemini' ? null : (here && info && planById(info.accountId)) || useNext(p === 'claude' ? 'claude' : 'chatgpt');
     const sub = inChat && !here ? p === 'ollama' || provNow() === 'ollama' ? 'starts a new chat there' : 'answers in this chat' : p === 'ollama' ? 'no plan limits' : plan ? `${plan.label} · ${plan.left}%` : '';
     return `<div class="ph">${provName(p)}${sub ? ` · ${esc(sub)}` : ''}${here && defaultReplyModel(p) ? ` · default ${esc(modelLabel(p, defaultReplyModel(p)))}` : ''}</div>${main.map(m => item(p, m)).join('')}${more.length ? `<details class="pop-more"><summary>More ${provName(p)} models</summary>${more.map(m => item(p, m)).join('')}</details>` : ''}`;
   };
@@ -1315,7 +1314,7 @@ function modelMenu(anchor) {
       return wrap(changeReply)(p, { model: v });
     }
     if (S.view === 'newchat' && p !== prov) {
-      NC.who = p === 'claude' ? 'claude' : p === 'ollama' ? 'ollama' : 'codex'; NC.account = null; COMP.effort = null; COMP.perm = null;
+      NC.who = p; NC.account = null; COMP.effort = null; COMP.perm = null;
       const plan = planById(accountFor(NC.who));
       toast(`${modelLabel(p, v)} runs on ${p === 'ollama' ? 'Ollama' : `${provName(p)}${plan ? ` · ${plan.label} (use next)` : ''}`}.`);
     }
@@ -1333,7 +1332,7 @@ function continueElsewhere(p, model) {
   const prefill = `Picking up from the chat “${title}” (on ${provName(provNow())}).${lastText ? ` Where it got to:\n\n${lastText.slice(0, 1800)}${lastText.length > 1800 ? '…' : ''}` : ''}\n\nNext: `;
   const parent = CV.id;
   go('newchat', { ncProject: c ? c.project : null, prefill });
-  NC.who = p === 'claude' ? 'claude' : p === 'ollama' ? 'ollama' : 'codex'; NC.account = null; NC.parent = parent;
+  NC.who = p; NC.account = null; NC.parent = parent;
   COMP.model = model; COMP.effort = null; COMP.perm = null;
   paintNewChat();
   setTimeout(() => { const b = $('msgBox'); if (b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); } }, 50);
@@ -1342,6 +1341,7 @@ function effortMenu(anchor) {
   const prov = replyProv(), inChat = S.view === 'chat';
   const info = inChat ? replyTarget().info : null;
   const list = info && info.efforts && info.efforts.length ? info.efforts : effortsFor(prov);
+  if (!list.length) return;
   const cur = info ? info.effort : prov === provNow() ? COMP.effort : null;
   const md0 = MD(prov);
   pop(anchor, `<div class="ph">Effort${md0 && md0.defaultEffort ? ` · default ${esc(cap(md0.defaultEffort))}` : ''}</div>${list.map(e => `<button data-v="${esc(e)}" role="menuitemradio" aria-checked="${e === cur}">${esc(cap(e))}</button>`).join('')}`,
@@ -1356,11 +1356,18 @@ function settingsMenu(anchor) {
     if (S.view === 'newchat') paintNewChat(); else paintBar();
     return true;
   };
-  // Gemini: its own modes, from the running chat.
-  if (S.view === 'chat' && CV.provider === 'gemini') {
-    const modes = (CV.info && CV.info.modes) || [];
-    return pop(anchor, `<div class="ph">Gemini · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === CV.info.permissionMode}">${esc(m.label)}</button>`).join('')}${follow}`,
-      v => setFollow(v) || wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; toast(`This chat: ${(modes.find(m => m.value === v) || {}).label || v}.`); })());
+  // Gemini's permission modes also apply before its first message.
+  if (provNow() === 'gemini') {
+    const running = S.view === 'chat' && CV.key && CV.info;
+    const modes = (running && CV.info.modes) || [{ value: 'plan', label: 'Plan only' }, { value: 'accept-edits', label: 'Edit files' }, { value: 'full', label: 'Full access' }];
+    const cur = (running && CV.info.permissionMode) || COMP.perm || permDefault('gemini');
+    return pop(anchor, `<div class="ph">Gemini · without asking, it may</div>${modes.map(m => `<button data-v="${esc(m.value)}" role="menuitemradio" aria-checked="${m.value === cur}">${esc(m.label)}</button>`).join('')}${follow}`,
+      v => {
+        if (setFollow(v)) return undefined;
+        const label = (modes.find(m => m.value === v) || {}).label || v;
+        if (running) return wrap(async () => { await api('/api/chat/mode', { key: CV.key, mode: v }); CV.info.permissionMode = v; toast(`This chat: ${label}.`); })();
+        COMP.perm = v; toast(`This chat will start in ${label}.`); return undefined;
+      });
   }
   const prov = permFam(S.view === 'newchat' ? (NC.who === 'claude' ? 'claude' : 'codex') : CV.provider);
   const running = S.view === 'chat' && CV.key && CV.info;
@@ -1383,6 +1390,7 @@ function settingsMenu(anchor) {
 // use-next order; you can also pick a particular account.
 const NC = { project: null, who: 'claude', account: null };
 function accountFor(who) {
+  if (who === 'gemini') return 'gemini';
   if (who === 'ollama') { const o = plans().find(p => p.family === 'ollama' && !p.broken); return o ? o.id : null; }
   if (S.view === 'newchat' && NC.who === who && NC.account) return NC.account;
   const p = useNext(who === 'claude' ? 'claude' : 'chatgpt');
@@ -1396,7 +1404,7 @@ function accountMenu(anchor) {
     return `<div class="ph">${title}</div>${row(who, 'auto', `Use next${nx ? ` · ${nx.label}` : ''}`, nx ? `${nx.left}%` : '', NC.who === who && !NC.account)}${ps.map(p => row(who, p.id, p.label, `${p.left}% · ${wd(p.resetsAt) || ''}`, NC.who === who && NC.account === p.id)).join('')}`;
   };
   const ol = plans().find(p => p.family === 'ollama' && !p.broken);
-  pop(anchor, `${group('claude', 'claude', 'Claude')}<hr>${group('codex', 'chatgpt', 'ChatGPT (Codex)')}${ol ? `<hr>${row('ollama', 'auto', 'Ollama', 'no plan limits', NC.who === 'ollama')}` : ''}`, v => {
+  pop(anchor, `${group('claude', 'claude', 'Claude')}<hr>${group('codex', 'chatgpt', 'ChatGPT (Codex)')}${ol ? `<hr>${row('ollama', 'auto', 'Ollama', 'no plan limits', NC.who === 'ollama')}` : ''}${S.gemini ? `<hr>${row('gemini', 'auto', 'Gemini', 'Google models', NC.who === 'gemini')}` : ''}`, v => {
     const [who, id] = v.split(':');
     if (who !== NC.who) { COMP.model = null; COMP.effort = null; COMP.perm = null; }
     NC.who = who; NC.account = id === 'auto' ? null : id;
@@ -1420,7 +1428,7 @@ function paintNewChat() {
   const p = projBy.get(NC.project);
   const acc = accountFor(NC.who), plan = acc && planById(acc);
   $('ncChips').innerHTML = `<button type="button" class="chip big" data-ncproject="1">${p ? `<span class="thumb-xs" style="${artStyle(p)};width:16px;height:16px;border-radius:4px"></span>${esc(p.name)}` : 'Pick a project'} ▾</button>
-    <button type="button" class="chip big" data-ncwho="1">${NC.who === 'ollama' ? 'Ollama' : `${NC.who === 'claude' ? 'Claude' : 'ChatGPT'}${plan ? ` · ${esc(plan.label)}` : ''}`}${plan && NC.who !== 'ollama' ? ` <small>${NC.account ? '' : 'use next · '}${typeof plan.left === 'number' ? `${plan.left}%` : ''}</small>` : ''} ▾</button>`;
+    <button type="button" class="chip big" data-ncwho="1">${provName(NC.who)}${plan && NC.who !== 'ollama' ? ` · ${esc(plan.label)}` : ''}${plan && NC.who !== 'ollama' ? ` <small>${NC.account ? '' : 'use next · '}${typeof plan.left === 'number' ? `${plan.left}%` : ''}</small>` : ''} ▾</button>`;
   $('barTools').innerHTML = toolsHtml({ fresh: true });
   $('barHint').textContent = '';
   loadModels();
@@ -1433,7 +1441,7 @@ async function startNewChat() {
   if (DRAW_RE.test(text)) return wrap(drawIntoMessage)(text);
   if (!p) return toast('Pick a project first.');
   if (COMP.converting) return toast('One moment: a picture is still being prepared.');
-  const prov = NC.who === 'claude' ? 'claude' : 'codex';
+  const prov = NC.who === 'ollama' ? 'codex' : NC.who;
   const perm = COMP.perm || permDefault(prov);
   const account = accountFor(NC.who);
   const model = selectedReplyModel(NC.who, true), effort = COMP.effort, images = imagesOut(), files = COMP.files.slice();

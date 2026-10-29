@@ -411,7 +411,7 @@ function requireGeminiReady() {
   const st = gemini.publicState();
   if (!st.enabled) throw fail(409, 'Gemini is turned off in Setup.');
   if (st.installed === false) throw fail(409, 'The Antigravity CLI isn’t installed yet. Open Setup → Gemini to install it.', 'gemini-missing');
-  if (st.checked && !st.signedIn) throw fail(409, 'Sign in to Gemini first: Setup → Gemini → Sign in.', 'gemini-signin');
+  if (st.checked && !st.signedIn) throw fail(409, st.authMode === 'apiKey' ? st.error || 'Check the configured Gemini API key and model.' : 'Sign in to Gemini first: Setup → Gemini → Sign in.', 'gemini-signin');
 }
 const codexExtra = new Map(); // id -> instance, for config().codexAccounts
 function codexAll() {
@@ -1439,6 +1439,7 @@ const liteRoutes = createLiteRoutes({
   modelDefault: provider => chatPrefs.defaultModel(provider),
   modelPreference: args => chatPrefs.get(args).model,
   geminiReady: () => { const st = gemini.publicState(); return !!st.enabled && st.signedIn !== false && st.installed !== false; },
+  geminiModels: () => gemini.refreshModels(),
   routinesList: () => routines.list(),
   parentOf: id => organize.parentOf(id),
   // Routines in Lite: a run's last reply (Ollama's Codex threads aren't in Codex's list, so the
@@ -1993,6 +1994,17 @@ async function handleApi(req, res, url, remote = false) {
         if (!cmd || /["\r\n%&|<>^]/.test(cmd)) throw fail(400, 'Enter the full path to agy.exe (or just “agy”).');
         c.gemini.command = cmd;
       }
+      if (body.apiKeyFile !== undefined) {
+        const file = String(body.apiKeyFile || '').trim();
+        if (file && (!path.isAbsolute(file) || /[\r\n]/.test(file))) throw fail(400, 'Use an absolute path to the Gemini API key file.');
+        c.gemini.apiKeyFile = file || null;
+      }
+      if (body.apiModel !== undefined) {
+        const model = String(body.apiModel || '').trim();
+        if (model && !/^[\w.-]{2,80}$/.test(model)) throw fail(400, 'Enter a valid Gemini model ID.');
+        c.gemini.apiModel = model || null;
+      }
+      if (body.apiModelLabel !== undefined) c.gemini.apiModelLabel = String(body.apiModelLabel || '').trim().slice(0, 100) || null;
       save();
       geminiRows.at = 0;
       const st = c.gemini.enabled ? await gemini.refreshAccount() : gemini.publicState();

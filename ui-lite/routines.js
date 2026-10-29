@@ -122,7 +122,7 @@ function editRoutine(id) {
   go('routine');
 }
 const provOfPlan = id => { const p = planById(id); return !p ? 'claude' : p.family === 'claude' ? 'claude' : 'codex'; };
-const rtModelsFor = id => { if (id === 'gemini') return []; const p = planById(id); const m = MD(!p ? 'claude' : p.family === 'ollama' ? 'ollama' : p.family === 'chatgpt' ? 'codex' : 'claude'); return m ? [...m.models, ...(m.more || [])] : []; };
+const rtModelsFor = id => { const p = planById(id); const m = MD(id === 'gemini' ? 'gemini' : !p ? 'claude' : p.family === 'ollama' ? 'ollama' : p.family === 'chatgpt' ? 'codex' : 'claude'); return m ? [...m.models, ...(m.more || [])] : []; };
 const permsFor = id => (id === 'gemini' ? ['accept-edits', 'plan', 'full'] : provOfPlan(id) === 'codex' ? ['read-only', 'ask', 'agent', 'full'] : ['default', 'acceptEdits', 'plan', 'bypassPermissions']);
 const PERM_NAMES = { 'accept-edits': 'Edit files', 'read-only': 'Read-only', ask: 'Ask', agent: 'Agent', full: 'Full access', default: 'Ask first', acceptEdits: 'Accept edits', plan: 'Plan only', bypassPermissions: 'Bypass permissions' };
 function routineEditorView() {
@@ -130,7 +130,7 @@ function routineEditorView() {
   const t = d.trigger, s = t.schedule || {}, src = t.source || {};
   const kind = t.type === 'watch' ? (src.type === 'slack' ? 'slack' : 'command') : s.kind || 'weekdays';
   const accts = plans().filter(p => !p.broken).map(p => `<option value="${esc(p.id)}" ${p.id === d.account ? 'selected' : ''}>${esc(p.family === 'ollama' ? 'Ollama (outside your Claude and ChatGPT limits)' : `${famName(p.family)} · ${p.label}`)}</option>`).join('')
-    + (S.gemini || d.account === 'gemini' ? `<option value="gemini" ${d.account === 'gemini' ? 'selected' : ''}>Gemini · your Google AI plan</option>` : '');
+    + (S.gemini || d.account === 'gemini' ? `<option value="gemini" ${d.account === 'gemini' ? 'selected' : ''}>Gemini · Google models</option>` : '');
   const models = rtModelsFor(d.account);
   // The chosen model stays on the list even before the lists have loaded.
   if (d.model && !models.some(m => m.value === d.model)) models.unshift({ value: d.model, label: d.model.replace(/:cloud$/, '') });
