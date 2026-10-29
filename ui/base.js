@@ -433,7 +433,7 @@ function wantsTo(p) {
 }
 function whereOf(x) {
   const as = x.accountId ? `<span class="ring" style="--ring:${ringById(x.accountId)}"></span>as ${esc(x.accountName || '')}` : '';
-  const place = x.source === 'terminal' ? 'in a terminal' : x.source === 'elsewhere' ? 'in another app' : '';
+  const place = x.leftover ? 'finishing from before the restart' : x.source === 'terminal' ? 'in a terminal' : x.source === 'elsewhere' ? 'in another app' : '';
   return [x.folder ? esc(x.folder) : '', place, as].filter(Boolean).join(', ');
 }
 function sparkSvg(spark) {

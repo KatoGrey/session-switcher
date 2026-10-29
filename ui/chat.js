@@ -463,6 +463,9 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
   if (sessionId) speedMark('chat');
   const [known] = sessionId ? findSession(sessionId) : [null];
+  // A copy is a second chat: said plainly first, so it isn't made by accident (they piled up, each
+  // carrying on the same work, with no telling which was the one).
+  if (mode === 'fork' && !(await window.appConfirm(`Make a copy of “${(known && known.title) || 'this chat'}”?\n\nA copy is a second chat with the same history so far, separate from now on, named “(copy)”. Both can work at the same time, in the same files.\n\nTo keep to one chat, wait for it to finish where it is (or close it there and choose Continue it here) instead.`, { ok: 'Make a copy' }))) return undefined;
   // An OpenClaw agent's session is read here; it carries on in OpenClaw.
   if (known && known.provider === 'openclaw') return watch({ sessionId: known.id, source: 'openclaw' });
   const prov = provider || (known && known.provider) || 'claude';
@@ -535,7 +538,11 @@ async function watch({ sessionId, source = 'terminal' }) {
   $c('cCompose').hidden = !oc;
   if (oc) { $c('cText').placeholder = `Write to ${PROV_NAME[C.provider]}…`; $c('cText').rows = 1; }
   $c('cWatch').hidden = false;
-  $c('cWatch').innerHTML = oc ? '<p><b>Live.</b> This OpenClaw agent’s session carries on in OpenClaw; new messages appear here by themselves, and what you send becomes your next turn in it.</p>'
+  // Left running by the app before it restarted: it opens here again by itself, so no copy is offered.
+  const leftover = !oc && S.activity.some(x => x.leftover && x.sessionId && x.sessionId.toLowerCase() === String(sessionId).toLowerCase());
+  C.watch.leftover = leftover;
+  $c('cWatch').innerHTML = leftover ? '<p><b>Finishing from before the restart.</b> The app was closed while this chat was working, so it carried on by itself. Read along here: once it has finished, it opens here again by itself, as this chat. No need to make a copy.</p>'
+    : oc ? '<p><b>Live.</b> This OpenClaw agent’s session carries on in OpenClaw; new messages appear here by themselves, and what you send becomes your next turn in it.</p>'
     : source === 'terminal'
     ? '<p><b>Watching live.</b> This chat is running in a terminal, so you can read along here and reply in its terminal window. New messages appear by themselves.</p><button type="button" class="btn" data-c="fork">Open a copy here</button>'
     : '<p><b>Read-only.</b> This chat was last used in another app, like the desktop app. Continue it here if it’s closed there.</p><button type="button" class="btn prime" data-c="takeover">Continue it here</button><button type="button" class="btn quiet" data-c="fork">Open a copy</button>';
@@ -555,6 +562,8 @@ let watchBusy = false;
 async function refreshWatch() {
   if (!C.watch || watchBusy) return;
   const id = C.watch.sessionId, gen = C.gen;
+  // A chat left running from before the restart, now open here again: the window becomes that chat.
+  if (C.watch.leftover && liveOf(id)) return openChatView({ sessionId: id });
   watchBusy = true;
   try {
     const h = await api(`/api/chat/history?${new URLSearchParams({ id, provider: C.provider })}`);

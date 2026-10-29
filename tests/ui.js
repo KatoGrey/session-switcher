@@ -1875,6 +1875,24 @@ module.exports = [
       t.check('it asks this chat for its handoff', r.asked.length === 1 && r.asked[0].key === r.key, r.asked);
       const o = r.opened[0] || {};
       t.check('then opens a new chat in the same folder, linked to this one, with the handoff in its box', o.mode === 'new' && o.parent === r.id && /Starfall Tavern/.test(o.cwd || '') && /Its handoff:/.test(o.initialText || '') && /Retest the songs/.test(o.initialText || ''), o);
+      // A chat left running from before a restart: said so, and no copy offered (it opens here by itself).
+      const lo = await b.eval(`ChatUI.close(); const id = ${JSON.stringify(demo.ID['s-brawl'])};
+        const where = whereOf({ leftover: true, source: 'terminal', folder: 'Rebirth' });
+        S.activity = [...S.activity.filter(x => x.sessionId !== id), { source: 'terminal', leftover: true, key: null, sessionId: id, title: 'Tavern brawl encounter design', folder: 'Starfall Tavern', phase: 'idle', state: 'ready', pids: [122184] }];
+        await watch({ sessionId: id, source: 'terminal' }); await new Promise(r => setTimeout(r, 300));
+        const w = document.getElementById('cWatch');
+        return { where, text: w.textContent.replace(/\\s+/g, ' ').trim(), copy: !!w.querySelector('[data-c="fork"]') }`);
+      t.check('a chat left running from before the restart says so on its card', lo.where === 'Rebirth, finishing from before the restart', lo.where);
+      t.check('and reading it says it opens here by itself, with no copy to make', /Finishing from before the restart/.test(lo.text) && /opens here again by itself/.test(lo.text) && !lo.copy, lo);
+      // Making a copy asks first; saying no makes nothing.
+      const fork = await b.eval(`ChatUI.close(); const real = window.appConfirm, realApi = api, asked = [], opened = [];
+        window.appConfirm = async text => { asked.push(text); return false; };
+        api = async (u, body) => { if (u === '/api/chat/open') opened.push(body); return realApi(u, body); };
+        await openChatView({ sessionId: ${JSON.stringify(demo.ID['s-bard'])}, mode: 'fork' });
+        window.appConfirm = real; api = realApi;
+        return { asked, opened: opened.length, open: ChatUI.isOpen() }`);
+      t.check('making a copy asks first, saying what a copy is', fork.asked.length === 1 && /Make a copy of “Balance pass on the bard’s songs”/.test(fork.asked[0]) && /second chat/.test(fork.asked[0]), fork.asked);
+      t.check('and Cancel makes no copy', fork.opened === 0 && !fork.open, fork);
     },
   },
   {

@@ -156,6 +156,10 @@ const restarted = (() => {
     return { ...j, chats: list };
   } catch { return null; }
 })();
+// The chats that were open in the window when the app last closed (read before anything uses the list up).
+const OPEN_LAST_TIME = restarted ? restarted.chats : toReopen();
+// Chats of those left running by the app before it was closed (see checkLeftovers): id -> { pid, title, since }.
+const leftovers = new Map();
 function stopForQuit() { shuttingDown = true; clearTimeout(openTimer); chats.stopAll(); try { runner.stopAll(); } catch { /* not started yet */ } }
 
 // Each conversation's changes, undos and reviews, kept beyond the chat's run (lib/extras.js).
@@ -194,6 +198,8 @@ const chats = chatLib.createChatManager({
     if (chat.aside && chat.sessionId) chatPrefs.setDone(chat.sessionId, true);
     if (chat.provider === 'gemini') { gemini.noteChat(chat.sessionId, { cwd: chat.cwd, title: chat.title }); geminiRows.at = 0; }
     if (chat.provider !== 'codex') sessions.recordLaunch(chat.sessionId, chat.account, chat.fork ? 'fork' : 'app');
+    // A copy is named "<original> (copy)" everywhere (its own first words would read as just another chat).
+    if (chat.fork && chat.provider === 'claude' && /\(copy\)$/.test(chat.title || '')) sessions.nameIfUnnamed(chat.sessionId, chat.title);
     // Choices made before the chat had an id, a partner paired before then, and when it last caught
     // up on that partner, are kept now.
     if (chat.choices && Object.keys(chat.choices).length) chatPrefs.set({ sessionId: chat.sessionId }, chat.choices);
@@ -1102,7 +1108,7 @@ function activityList() {
       // A tool step with no result for a while, in a terminal, is usually a permission prompt waiting there.
       if (age > 25000 && (phase === 'thinking' || phase === 'tool')) phase = pids && phase === 'tool' ? 'waiting-terminal' : 'idle';
       out.push({
-        source: pids ? 'terminal' : 'elsewhere', key: null, sessionId: s.id, title: s.title, folder: p.name, cwd: p.cwd,
+        source: pids ? 'terminal' : 'elsewhere', key: null, sessionId: s.id, title: s.title, folder: p.name, cwd: p.cwd, leftover: leftovers.has(String(s.id).toLowerCase()),
         accountId: s.lastOpened ? s.lastOpened.account : null, accountName: s.lastOpened ? s.lastOpened.accountName : null,
         state: phase === 'idle' ? 'ready' : 'busy', phase, tool: t.tool, detail: t.detail, lastText: t.lastText, lastPrompt: t.lastPrompt, steps: t.steps,
         turnStartedAt: null, lastEventAt: s.updated, finishedAt: phase === 'idle' ? s.updated : null, ok: true, pending: [], pids, spark: [],
@@ -2254,7 +2260,8 @@ function writeCommanderFiles() {
   const file = path.join(dir, `commander-mcp-${PORT}.json`);
   const arg = file.replace(/\\/g, '/'); // Claude Code takes forward slashes on Windows too
   if (!SAFE_ARG.test(arg)) throw fail(500, `The Commander’s settings file would be at ${file}, and that path has characters Session Switcher can’t pass to Claude Code.`);
-  const config = { mcpServers: { switcher: { type: 'stdio', command: process.execPath, args: [MCP_SCRIPT], env: { SWITCHER_URL: `http://127.0.0.1:${PORT}`, SWITCHER_TOKEN: TOKEN } } } };
+  // (In the desktop app, with ELECTRON_RUN_AS_NODE: see lib/commander-config.js.)
+  const config = require('./lib/commander-config').commanderMcpConfig({ execPath: process.execPath, script: MCP_SCRIPT, port: PORT, token: TOKEN, runAsNode: RUN_AS_NODE });
   fs.writeFileSync(file, JSON.stringify(config, null, 2), { mode: 0o600 });
   try { fs.chmodSync(file, 0o600); } catch { /* best effort */ }
   return arg;
@@ -2619,8 +2626,63 @@ function newBuildReady() {
 }
 setInterval(() => { const was = diskBuild.id !== BUILD; if (newBuildReady() !== was) broadcast('update', { ready: !was }); }, 60000).unref();
 // Reopens chats (each started again, resuming its conversation, as the account it ran as).
+// ---------- chats left running from before ----------
+// Closed without stopping its chats (an installer, a crash, Task Manager), the app leaves Claude Code
+// running in them, which nothing can reach any more. Its chat then looked open elsewhere ("in a
+// terminal"), so it couldn't be opened here, only copied, and copies piled up. Now each one of the
+// chats that were open in the window is left to finish what it was doing (its conversation, and its
+// helpers' and background work's files, quiet for a while), then stopped and opened here again, the
+// chat itself, where it was.
+const LEFTOVER_QUIET = 90e3, STARTED_AT = Date.now();
+function lastWriteOf(id) {
+  let latest = 0;
+  const seen = f => { try { latest = Math.max(latest, fs.statSync(f).mtimeMs); } catch { /* not there */ } };
+  let file = null;
+  try { file = sessions.fileFor(id); } catch { return 0; }
+  seen(file);
+  // Its helpers (subagents) and background work write beside it, in a folder named after it.
+  const dir = path.join(path.dirname(file), id);
+  const walk = (d, depth) => { let names = []; try { names = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const n of names) { const p = path.join(d, n.name); if (n.isDirectory()) { if (depth < 2) walk(p, depth + 1); } else seen(p); } };
+  walk(dir, 0);
+  return latest;
+}
+let leftoverBusy = false;
+async function checkLeftovers() {
+  if (sys.DRY_RUN || shuttingDown || leftoverBusy) return;
+  // Looked for in the first quarter hour after a start, and while any are still finishing.
+  if (Date.now() - STARTED_AT > 15 * 60e3 && !leftovers.size) return;
+  const wanted = new Map(OPEN_LAST_TIME.filter(c => c.provider !== 'codex' && c.provider !== 'gemini').map(c => [String(c.sessionId).toLowerCase(), c]));
+  if (!wanted.size) return;
+  leftoverBusy = true;
+  try {
+    const found = (await sys.leftoverChats(process.pid)).filter(x => wanted.has(x.sessionId));
+    for (const x of found) {
+      if (leftovers.has(x.sessionId)) continue;
+      const c = wanted.get(x.sessionId);
+      leftovers.set(x.sessionId, { pid: x.pid, title: c.title || x.sessionId, since: Date.now() });
+      log(`“${c.title || x.sessionId}” was left running from before the restart (process ${x.pid}): it opens here again once it has finished what it was doing.`);
+      scheduleActivity();
+    }
+    for (const [id, l] of leftovers) {
+      const still = found.find(x => x.sessionId === id);
+      const quiet = Date.now() - (lastWriteOf(id) || 0);
+      if (still && quiet < LEFTOVER_QUIET) continue;
+      if (still) { log(`“${l.title}” has finished (quiet for ${Math.round(quiet / 1000)} s): stopping what was left running (process ${l.pid}) and opening it here again.`); sys.killPid(l.pid); }
+      leftovers.delete(id);
+      sys.forget('running');
+      // Once it's gone (a few seconds), the chat itself opens here, as it was.
+      setTimeout(() => reopenChats([wanted.get(id)], 'that was left running from before').catch(err => log(`Couldn’t open “${l.title}” again: ${err.message}`)), still ? 4000 : 0).unref();
+      scheduleActivity();
+    }
+  } catch (err) { log(`Couldn’t look for chats left running: ${err.message}`); }
+  finally { leftoverBusy = false; }
+}
+setTimeout(() => checkLeftovers(), 8000).unref();
+setInterval(() => checkLeftovers(), 30e3).unref();
 async function reopenChats(list, what) {
   const reopened = [], failed = [];
+  // Chats left running from before are found first: they open here by themselves once they've finished.
+  await checkLeftovers().catch(() => {});
   // Codex chats are found in Codex's own list, which loads a moment after a start: wait for it (and
   // for Codex's sign-in to be checked), or they'd look like chats that no longer exist.
   if (list.some(c => c.provider === 'codex') && config().codex.enabled) {
@@ -2637,7 +2699,7 @@ async function reopenChats(list, what) {
       if (c.provider !== 'codex') {
         let open = (await sys.runningSessions().catch(() => ({})))[String(c.sessionId).toLowerCase()];
         if (open) { await new Promise(r => setTimeout(r, 3000)); sys.forget('running'); open = (await sys.runningSessions().catch(() => ({})))[String(c.sessionId).toLowerCase()]; }
-        if (open) { failed.push({ sessionId: c.sessionId, title: c.title, error: 'open in the Claude app or a terminal' }); continue; }
+        if (open) { failed.push({ sessionId: c.sessionId, title: c.title, error: leftovers.has(String(c.sessionId).toLowerCase()) ? 'finishing from before the restart; it opens here by itself when it’s done' : 'open in the Claude app or a terminal', leftover: leftovers.has(String(c.sessionId).toLowerCase()) }); continue; }
       }
       await openChat(config(), { account: c.accountId, sessionId: c.sessionId, mode: 'resume', provider: c.provider, force: true, ...(c.permissionMode ? { permissionMode: c.permissionMode } : {}), ...(c.model ? { model: c.model } : {}), ...(c.fast ? { fast: true } : {}) });
       reopened.push(c.sessionId);
@@ -2647,7 +2709,8 @@ async function reopenChats(list, what) {
   // Just after a start, Codex (and an account's sign-in) may not be ready yet: those get one more try.
   if (failed.length && !/again/.test(what)) {
     setTimeout(() => {
-      const again = list.filter(c => failed.some(f => f.sessionId === c.sessionId));
+      const again = list.filter(c => failed.some(f => f.sessionId === c.sessionId && !f.leftover));
+      if (!again.length) return;
       reopenChats(again, `${what}, trying again`).catch(err => log(`Couldn’t reopen chats: ${err.message}`));
     }, 15000).unref();
   }

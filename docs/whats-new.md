@@ -1,4 +1,10 @@
-# Big Codex chats open again, Lite in the desktop app, a self-check that works, and Continue in a fresh chat
+# The Commander's tools work, no more surprise copies, and chats that pick up where they were after an update
+
+- **The Commander works in the desktop app.** Its tools (list, read and nudge your chats, answer them, start sub-sessions, set up routines) never connected there: they were started with the desktop app's own program in the wrong way, which opened a second copy of the app instead, and it closed at once. They connect now.
+- **Chats left running by an update or a crash pick up where they were.** If Session Switcher is closed without stopping its chats (an installer run by hand, a crash, Task Manager), they carry on by themselves with no way to reach them, and the app then thought they were open somewhere else: it wouldn't open them, only copy them. Now it finds them, shows them as **finishing from before the restart** (read along live), and once each has finished what it was doing, it stops it and opens that same chat here again.
+- **Copies only when you mean it.** **Open a copy** now asks first and says what a copy is: a second chat with the same history, working alongside the first. And a copy is named “(copy)” everywhere, not after its first words, so it can't be mistaken for the chat it came from.
+
+## Earlier in 6.5.6: big Codex chats open again, Lite in the desktop app, a self-check that works, and Continue in a fresh chat
 
 - **A Codex chat full of pictures no longer cuts the app off from Codex.** One chat's history (2.4 GB of portraits) came back as more than the app could read at once, and from then on every Codex chat lost its connection: one wouldn't open, one showed no chats, one sat thinking, until a restart. Now such an answer is set aside and only its own request fails; that chat's history comes a few turns at a time (every step still shown, the rest with **Earlier**). Claude and Gemini chats are guarded the same way.
 - **Switcher Lite opens in the desktop app.** Its pages were left out of the installer, so `/lite` only showed an error there. They're in now, with the helper commands its tools use.

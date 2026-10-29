@@ -278,7 +278,9 @@ Behind the scenes this is Claude Code itself, run in its official streaming mode
 
 Chats running in a terminal, or recently used in the desktop app, also appear on the hub. Click one to **watch it live**: you can read along as it works, but you reply in its own window. Its menus offer **Watch it live** first, since opening it in two places at once can mix up its history.
 
-**Open a copy here** branches the chat so you can continue it in the app without touching the original.
+**Open a copy here** branches the chat so you can continue it in the app without touching the original. It asks first: a copy is a second chat with the same history, working alongside the first (in the same files), and it's named “(copy)” everywhere so it can't be mistaken for the original.
+
+**Finishing from before the restart:** if Session Switcher was closed without stopping its chats (an installer run by hand, a crash, Task Manager), they carry on by themselves. The app finds those that were open in its window, shows each as *finishing from before the restart* (read along live; no copy needed), and once one has finished what it was doing (its conversation and its helpers' files quiet for a minute and a half), it stops it and opens that same chat here again, where it was.
 
 ### Done, and tidying up
 
