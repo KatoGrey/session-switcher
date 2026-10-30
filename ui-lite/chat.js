@@ -117,7 +117,11 @@ function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' 
   };
   const out = [];
   let list = null;
-  const flush = () => { if (list) { out.push(`<${list.tag}${list.tag === 'ol' ? ` start="${list.start}"` : ''}>${list.items.map(i => `<li>${list.loose ? `<p>${i}</p>` : i}</li>`).join('')}</${list.tag}>`); list = null; } const th = thumbs(); if (th) out.push(th); };
+  const levels = [];
+  const renderList = l => `<${l.tag}${l.tag === 'ol' ? ` start="${l.start}"` : ''}>${l.items.map(parts => `<li>${parts.map(p => typeof p === 'string' ? (l.loose ? `<p>${p}</p>` : p) : renderList(p)).join('')}</li>`).join('')}</${l.tag}>`;
+  const flush = () => { if (list) { out.push(renderList(list)); list = null; levels.length = 0; } const th = thumbs(); if (th) out.push(th); };
+  const indentOf = line => /^\s*/.exec(line)[0].replace(/\t/g, '    ').length;
+  const listMarker = line => /^\s*(?:([-+*•])|(\d+)[.)])\s+(.*)$/.exec(line || '');
   const lines = t.split('\n');
   // A table: a row of cells, a |---|:--:| line under it, then its rows. Cells may hold links and code.
   const cells = l => l.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
@@ -145,14 +149,40 @@ function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' 
       out.push(`<blockquote>${q.map(x => (x.trim() ? `<p>${inline(x)}</p>` : '')).join('')}</blockquote>`);
       continue;
     }
-    if ((m = /^\s*[-*•]\s+(.*)$/.exec(line))) { if (!list || list.tag !== 'ul') { flush(); list = { tag: 'ul', items: [] }; } list.items.push(inline(m[1])); continue; }
-    if ((m = /^\s*(\d+)[.)]\s+(.*)$/.exec(line))) { if (!list || list.tag !== 'ol') { flush(); list = { tag: 'ol', start: Number(m[1]), items: [] }; } list.items.push(inline(m[2])); continue; }
-    // Blank lines separate loose list items, not the list itself.
+    if ((m = listMarker(line))) {
+      const indent = indentOf(line), tag = m[1] ? 'ul' : 'ol';
+      while (levels.length > 1 && levels[levels.length - 1].indent > indent) levels.pop();
+      if (levels.length && levels[0].indent > indent) flush();
+      let current = levels[levels.length - 1];
+      if (current && current.indent === indent && current.tag !== tag) {
+        if (levels.length === 1) flush(); else levels.pop();
+        current = levels[levels.length - 1];
+      }
+      if (!current || current.indent < indent) {
+        const child = { tag, indent, start: Number(m[2]), items: [] };
+        if (current) current.items[current.items.length - 1].push(child); else list = child;
+        levels.push(child); current = child;
+      }
+      current.items.push([inline(m[3])]); continue;
+    }
+    // Blank lines keep loose lists together; indentation still decides the level.
     if (list && !line.trim()) {
       let next = i + 1;
       while (next < lines.length && !lines[next].trim()) next++;
-      const marker = list.tag === 'ol' ? /^\s*\d+[.)]\s+/ : /^\s*[-*•]\s+/;
-      if (marker.test(lines[next] || '')) { list.loose = true; i = next - 1; continue; }
+      const indent = indentOf(lines[next] || '');
+      if (listMarker(lines[next]) || (lines[next]?.trim() && indent > levels[levels.length - 1].indent)) {
+        const level = [...levels].reverse().find(l => l.indent <= indent) || list;
+        level.loose = true;
+        if (!listMarker(lines[next])) level.items[level.items.length - 1].push('');
+        i = next - 1; continue;
+      }
+    }
+    if (list && line.trim() && indentOf(line) > levels[levels.length - 1].indent) {
+      const parts = levels[levels.length - 1].items.at(-1);
+      const text = inline(line.trim());
+      if (typeof parts.at(-1) === 'string') parts[parts.length - 1] += (parts.at(-1) ? ' ' : '') + text;
+      else parts.push(text);
+      continue;
     }
     flush();
     if ((m = /^(#{1,4})\s+(.*)$/.exec(line))) { out.push(`<p class="h">${inline(m[2])}</p>`); continue; }

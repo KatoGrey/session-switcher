@@ -522,6 +522,7 @@ kbd { font-family: var(--f-mono); font-size: 10.5px; line-height: 1; padding: 2p
 .msg-ai p.h { font-weight: 600; margin-top: 14px; }
 .msg-ai ul, .msg-ai ol { margin: 0 0 10px; padding-left: 22px; }
 .msg-ai li { margin: 2px 0; }
+.msg-ai li > ul, .msg-ai li > ol { margin: 4px 0 8px; }
 .msg-ai code { font-family: var(--f-mono); font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .msg-ai pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 0 0 10px; }
 .msg-ai pre code { border: 0; padding: 0; background: none; }
