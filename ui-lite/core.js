@@ -168,6 +168,28 @@ const TOUCH = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
 let pressAt = 0;
 const pressing = () => pressAt && Date.now() - pressAt < 5000;
 const heldSwaps = new Map();
+// Brings el's contents in line with html, changing only what differs. Rows, pictures and running
+// animations that didn't change stay the same elements, so nothing reloads, blinks or restarts.
+const morphKey = n => (n.nodeType === 1 ? n.id || n.getAttribute('data-chat') || n.getAttribute('data-fam') || n.getAttribute('data-project') || '' : '');
+function morphNode(a, b) {
+  if (a.nodeType !== 1) { if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue; return; }
+  if (a.isEqualNode(b)) return;
+  for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name);
+  for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
+  morphKids(a, b);
+}
+function morphKids(a, b) {
+  let x = a.firstChild, y = b.firstChild;
+  while (y) {
+    const nextY = y.nextSibling;
+    if (!x) a.appendChild(y);
+    else if (x.nodeType === y.nodeType && x.nodeName === y.nodeName && morphKey(x) === morphKey(y)) { morphNode(x, y); x = x.nextSibling; }
+    else { const nextX = x.nextSibling; a.replaceChild(y, x); x = nextX; }
+    y = nextY;
+  }
+  while (x) { const nextX = x.nextSibling; a.removeChild(x); x = nextX; }
+}
+function morph(el, html) { const t = document.createElement('template'); t.innerHTML = html; morphKids(el, t.content); }
 function swapHtml(el, html, write = (e, h) => { e.innerHTML = h; }) {
   if (!el) return;
   if (pressing()) { heldSwaps.set(el, [html, write]); return; }

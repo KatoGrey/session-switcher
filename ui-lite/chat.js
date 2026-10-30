@@ -969,7 +969,23 @@ function paintBar() {
   }
   paintAttachments();
 }
-function autosize(el) { el.style.height = 'auto'; const cap = parseFloat(getComputedStyle(el).maxHeight) || 280; el.style.height = Math.min(el.scrollHeight, cap, 280) + 'px'; }
+// Measured on a hidden copy. Collapsing the box itself to measure it resized the conversation above
+// on every keystroke, which on a phone moved the text off the bottom and back. The box changes
+// height only when a line is really added or removed.
+let sizer = null;
+function autosize(el) {
+  if (!el.offsetWidth) return;
+  const cs = getComputedStyle(el);
+  if (!sizer) {
+    sizer = document.createElement('textarea'); sizer.tabIndex = -1; sizer.setAttribute('aria-hidden', 'true');
+    sizer.style.cssText = 'position:fixed;left:-9999px;top:0;visibility:hidden;height:auto;max-height:none;overflow:hidden;pointer-events:none;resize:none';
+    document.body.appendChild(sizer);
+  }
+  for (const p of ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'wordSpacing', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight', 'borderTopWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderRightWidth', 'borderStyle', 'boxSizing', 'whiteSpace', 'wordBreak', 'overflowWrap', 'minHeight', 'width']) sizer.style[p] = cs[p];
+  sizer.rows = el.rows || 1; sizer.value = el.value;
+  const h = `${Math.min(sizer.scrollHeight, parseFloat(cs.maxHeight) || 280, 280)}px`;
+  if (el.style.height !== h) el.style.height = h;
+}
 
 /* ----- pictures and files ----- */
 const readData = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });

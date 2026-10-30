@@ -39,8 +39,8 @@ function sideFam(t, depth = 1) {
 function renderSide() {
   famMemo = null;
   renderChip();
-  $('brand').textContent = L('Switcher');
-  $('q').placeholder = L('Search chats');
+  if ($('brand').textContent !== L('Switcher')) $('brand').textContent = L('Switcher');
+  if ($('q').placeholder !== L('Search chats')) $('q').placeholder = L('Search chats');
   const b = buckets().find(x => x.id === S.bucket);
   const chats = allChats().filter(inBucket).sort((x, y) => y.updated - x.updated);
   const nNeed = S.live.filter(needsLive).length;
@@ -80,9 +80,9 @@ function renderSide() {
   const nArch = S.chats.filter(c => c.archived).length + S.projects.filter(p => p.archived).length;
   const mode = S.sideMode || 'projects';
   const modeSeg = `<span class="side-seg" role="group" aria-label="Sidebar shows"><button data-sidemode="projects" aria-pressed="${mode === 'projects'}">Projects</button><button data-sidemode="stages" aria-pressed="${mode === 'stages'}">Status</button></span>`;
-  if (small() && S.q) swapHtml($('sideScroll'), sideSearchHtml());
+  if (small() && S.q) swapHtml($('sideScroll'), sideSearchHtml(), morph);
   else swapHtml($('sideScroll'), top + focusSection + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders.join('') : sideProjects(chats)}</div>`
-    + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`);
+    + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`, morph);
 }
 
 // Each project starts as one row. Its name opens a sole main chat or the project list; the count reveals
@@ -691,7 +691,7 @@ setSideW(local.get('sideW', SIDE_W.def), false);
 if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').matches) {
   // Once a frame at most (the keyboard fires these many times as it slides), and a conversation
   // that was at its end stays at its end.
-  let frame = 0;
+  let frame = 0, fitSig = '';
   const fit = () => {
     if (frame) return;
     frame = requestAnimationFrame(() => {
@@ -700,6 +700,11 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
       const r = document.documentElement.style;
       const k = Math.round(innerHeight - visualViewport.height);
       const up = k > 150;
+      // iOS sends these while you type too. With nothing changed, nothing moves.
+      const sig = `${k}:${Math.round(visualViewport.height)}:${Math.round(visualViewport.offsetTop)}:${scrollY}`;
+      if (sig === fitSig) return;
+      const sized = sig.split(':')[1] !== fitSig.split(':')[1];
+      fitSig = sig;
       if (up) { kbH = k; try { localStorage.setItem('lite.kb', String(k)); } catch { /* fine */ } }
       document.documentElement.classList.toggle('kb-up', up);
       // With the keyboard away, iOS can leave the page scrolled by the keyboard's push (40-60px, the
@@ -707,7 +712,7 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
       if (!up && (visualViewport.offsetTop > 0 || scrollY > 0 || pageYOffset > 0)) { try { scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch { /* fine */ } }
       r.setProperty('--app-h', `${Math.round(visualViewport.height)}px`);
       r.setProperty('--vv-top', `${up ? Math.round(visualViewport.offsetTop) : 0}px`);
-      if (pinned) f.scrollTop = f.scrollHeight;
+      if (pinned && sized) f.scrollTop = f.scrollHeight;
     });
   };
   // iOS says how tall the keyboard is only once it has finished sliding, so the page would snap after
@@ -717,6 +722,7 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
   let glideT = 0;
   const glide = h => {
     const root = document.documentElement;
+    fitSig = '';   // the next real measurement always applies
     root.classList.add('kb-glide'); root.style.setProperty('--app-h', `${Math.round(h)}px`); root.style.setProperty('--vv-top', '0px');
     clearTimeout(glideT); glideT = setTimeout(() => root.classList.remove('kb-glide'), 450);
   };
