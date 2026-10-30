@@ -53,7 +53,7 @@ const looksLikePath = s => /^(~|\.{0,2}\/|[A-Za-z]:\\)?[\w@.+-]+([\\/][\w@.+ -]+
 
 async function viewFile(p, { from } = {}) {
   if (VW.open && VW.target && from !== 'back') VW.back.push({ kind: VW.kind, target: VW.target });
-  Object.assign(VW, { open: true, chat: CV.id, kind: 'file', target: p, data: null, error: null, loading: true });
+  Object.assign(VW, { open: true, chat: CV.id, kind: 'file', target: p, data: null, error: null, loading: true, source: false });
   paintViewer();
   try { VW.data = await api(`/api/lite/file?${fileQuery(p)}`); } catch (err) {
     // A Switcher that hasn't restarted onto this version only has the full app's file route.
@@ -108,6 +108,11 @@ function viewerBody() {
   if (d.kind === 'dir') return `<div class="vw-pad"><div class="vw-files">${(d.entries || []).map(e => `<button class="vw-file" data-viewfile="${esc(`${(d.path || VW.target).replace(/[\\/]$/, '')}/${e.name}`)}"><b>${esc(e.name)}${e.dir ? '/' : ''}</b></button>`).join('')}</div></div>`;
   if (d.kind === 'binary') return `<p class="empty-note vw-pad">${esc(d.note || 'This file can’t be shown here.')}</p>`;
   if (d.kind === 'text') {
+    if (d.lang === 'html' && !d.truncated && !VW.source) {
+      // Local reports can run their controls, but cannot access Switcher's origin or send requests.
+      const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; form-action 'none'; base-uri 'none'">`;
+      return `<iframe class="vw-frame" srcdoc="${esc(policy + (d.text || ''))}" title="${esc(baseName(VW.target))}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer"></iframe>`;
+    }
     const body = d.markdown ? `<div class="msg-ai vw-md">${mdHtml(d.text || '')}</div>` : `<pre class="vw-code"><code>${esc(d.text || '')}</code></pre>`;
     return `<div class="vw-pad">${body}${d.truncated ? '<p class="hint-line">Only the start of this file is shown.</p>' : ''}</div>`;
   }
@@ -121,6 +126,7 @@ function viewerHead() {
     `<div class="vw-title"><b title="${esc(VW.target || '')}">${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div>`,
     VW.kind === 'url' ? '<button class="iconbtn" data-vw="reload" aria-label="Reload" title="Reload">↻</button>' : '',
     VW.kind === 'url' ? `<a class="iconbtn" href="${esc(VW.target)}" target="_blank" rel="noopener noreferrer" aria-label="Open in a new tab" title="Open in a new tab">↗</a>` : '',
+    VW.kind === 'file' && VW.data?.lang === 'html' && !VW.data.truncated ? `<button class="iconbtn" data-vw="source" aria-label="${VW.source ? 'Show preview' : 'Show source'}" title="${VW.source ? 'Show preview' : 'Show source'}">${VW.source ? 'Preview' : 'Source'}</button>` : '',
     VW.kind === 'file' && VW.data && VW.data.kind === 'text' ? '<button class="iconbtn" data-vw="copy" aria-label="Copy" title="Copy the text">⧉</button>' : '',
     VW.kind === 'side' && SD.sessionId ? '<button class="iconbtn sd-act" data-sidenew="1" title="Start another side chat">New</button><button class="iconbtn sd-act" data-sideopen="1" title="Open the side chat in full">Open</button>' : '',
     VW.kind !== 'list' && VW.kind !== 'side' ? '<button class="iconbtn" data-vw="files" aria-label="Files in this chat" title="Files in this chat">☰</button>' : '',
@@ -174,6 +180,7 @@ document.addEventListener('click', e => {
   if (act === 'close') closeViewer();
   else if (act === 'back') viewerBack();
   else if (act === 'files') viewFilesList();
+  else if (act === 'source') { VW.source = !VW.source; paintViewer(); }
   else if (act === 'reload') { const f = $('viewer')?.querySelector('iframe.vw-frame'); if (f) f.src = VW.target; }
   else if (act === 'copy' && VW.data && VW.data.text) navigator.clipboard.writeText(VW.data.text).then(() => toast('Copied.'), () => toast('Couldn’t copy.'));
 }, true);
