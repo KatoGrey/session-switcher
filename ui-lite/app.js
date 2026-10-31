@@ -285,7 +285,6 @@ document.addEventListener('click', e => {
   if ((b = el('[data-chatlinks]'))) return linksMenu(b);
   if ((b = el('[data-side-later]'))) { const k = b.dataset.sideLater === '*' ? 'side-later' : 'pl:' + b.dataset.sideLater; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-steerq]'))) { steerQueued(Number(b.dataset.steerq)); return undefined; }
-  if ((b = el('[data-delivery]'))) return deliveryMenu(b);
   if ((b = el('[data-qedit-start]'))) return editQueued(Number(b.dataset.qeditStart), 'start');
   if ((b = el('[data-qsave]'))) return editQueued(Number(b.dataset.qsave), 'save');
   if ((b = el('[data-qcancel]'))) return editQueued(Number(b.dataset.qcancel), 'cancel');

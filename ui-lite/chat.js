@@ -774,7 +774,6 @@ function composerHtml({ fresh = false } = {}) {
     ${fresh ? '' : '<div class="readonly-note" id="roNote" hidden></div>'}
     <div class="att-strip" id="attStrip" hidden></div>
     <textarea autocomplete="off" id="msgBox" rows="1" placeholder="${fresh ? 'What should it do?' : 'Reply…'}" aria-label="Message"></textarea>
-    <div class="delivery-bar" id="deliveryBar" hidden></div>
     <div class="tools" id="barTools"></div>
     <input type="file" id="attIn" multiple hidden>
   </form>`;
@@ -925,13 +924,9 @@ async function applyReplyPlan() {
 const prettyModel = m => String(m).replace(/^claude-/, '').replace(/-(\d)-(\d)/, ' $1.$2').replace(/\[1m\]$/, ' 1M').replace(/^(\w)/, c => c.toUpperCase());
 const modelLabel = (prov, v) => { const base = String(v).replace(/\[1m\]$/, ''); const m = modelsFor(prov).find(x => x.value === v || x.value === base); return m ? `${m.label}${/\[1m\]$/.test(v) ? ' 1M' : ''}` : prettyModel(v); };
 const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
-const followUpDelivery = () => local.get('followUpDelivery', 'queue') === 'steer' ? 'steer' : 'queue';
+// While it works: Enter queues for after the reply, ⌘↵ steers the current work (no setting, no menu).
+const followUpDelivery = () => 'queue';
 const sendShortcut = (queue = false) => /Mac|iPhone|iPad/.test(navigator.platform) ? `⌘${queue ? '⇧' : ''}↵` : `Ctrl+${queue ? 'Shift+' : ''}Enter`;
-function deliveryMenu(anchor) {
-  pop(anchor, `<div class="ph">While the assistant is working</div>${[['queue', 'Queue', 'After the current reply', `${sendShortcut(true)}`], ['steer', 'Steer now', 'Guide the current work', `${sendShortcut()}`]].map(([v, label, note, key]) => `<button data-v="${v}" role="menuitemradio" aria-checked="${followUpDelivery() === v}"><span>${label}<span class="delivery-note">${note}</span></span><kbd>${key}</kbd></button>`).join('')}<div class="ph">Sets the send button and Enter. Shortcuts override it once.</div>`, v => {
-    local.set('followUpDelivery', v); paintBar(); $('msgBox')?.focus({ preventScroll: true });
-  });
-}
 function toolsHtml({ fresh }) {
   const prov = replyProv();
   const info = fresh ? null : replyTarget().info;
@@ -942,7 +937,7 @@ function toolsHtml({ fresh }) {
   const busy = !fresh && replyBusy();
   const delivery = followUpDelivery();
   const sendLabel = fresh ? 'Start' : busy ? delivery === 'steer' ? 'Steer now' : 'Queue' : 'Send';
-  const sendHint = `${sendLabel}${TOUCH() ? '' : ' (Enter)'}${busy ? ` · ${sendShortcut()} to steer · ${sendShortcut(true)} to queue` : ''}`;
+  const sendHint = `${sendLabel}${TOUCH() ? '' : ' (Enter)'}${busy && !TOUCH() ? ` · ${sendShortcut()} to steer` : ''}`;
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
     <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : ''}${prov === 'codex' && ((info && info.fast) || (!info && COMP.fast)) ? ' ⚡' : ''}<span>▾</span></button>
     ${prov !== 'gemini' || effortsFor(prov).length ? `<button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>` : ''}
@@ -959,14 +954,7 @@ function paintBar() {
   if (ro) { ro.hidden = !CV.readOnly; ro.textContent = CV.readOnly || ''; }
   const th = toolsHtml({ fresh: false }); if (t._h !== th) { t.innerHTML = th; t._h = th; }
   const box = $('msgBox'); if (box) box.readOnly = !!CV.readOnly;
-  const deliveryBar = $('deliveryBar');
-  if (deliveryBar) {
-    deliveryBar.hidden = !replyBusy();
-    const steer = followUpDelivery() === 'steer';
-    const h = `<button type="button" data-delivery="1" aria-haspopup="menu" title="Choose what the send button does">${steer ? 'Steer current work' : 'Queue after reply'} <span>▾</span></button><span class="delivery-shortcut">${sendShortcut()} steer · ${sendShortcut(true)} queue</span>`;
-    if (deliveryBar._h !== h) { deliveryBar.innerHTML = h; deliveryBar._h = h; }
-    if (box) box.placeholder = replyBusy() ? steer ? 'Guide the current work…' : 'Add a follow-up…' : 'Reply…';
-  }
+  if (box) { const ph = replyBusy() ? 'Add a follow-up…' : 'Reply…'; if (box.placeholder !== ph) box.placeholder = ph; }
   paintAttachments();
 }
 // Measured on a hidden copy. Collapsing the box itself to measure it resized the conversation above
@@ -1405,7 +1393,7 @@ function effortMenu(anchor) {
 }
 // Conversation settings: how much it may do without asking. Your default is preselected.
 function settingsMenu(anchor) {
-  const follow = `<hr><div class="ph">Follow-up behavior · on this browser</div>${[['queue', 'Queue', 'Wait until the current turn finishes'], ['steer', 'Steer', 'Guide the current work now']].map(([v, label, note]) => `<button data-v="follow:${v}" role="menuitemradio" aria-checked="${followUpDelivery() === v}">${label}<small>${note}</small></button>`).join('')}<div class="ph">${sendShortcut()} steers · ${sendShortcut(true)} queues</div>`;
+  const follow = '';
   const setFollow = v => {
     if (!v.startsWith('follow:')) return false;
     local.set('followUpDelivery', v.slice(7));
