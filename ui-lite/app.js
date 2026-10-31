@@ -64,14 +64,8 @@ function renderSide() {
   const laterRow = laterAll.length ? `<div class="group">${laterOpen ? `<div class="quiet-chats">${laterAll.map(c => sideChat(c) + sideFam(c)).join('')}</div>` : ''}<button class="nav-i chat-i quiet-toggle" data-side-later="*" aria-expanded="${laterOpen}"><span class="lbl">${laterOpen ? 'Hide later' : `${laterAll.length} later`}</span></button></div>` : '';
   const focused = chats.filter(c => c.focus);
   const focusSection = `<div class="group" data-drop-focus="1"><div class="side-h">Focus</div>${focused.length ? focused.map(c => sideChat(c)).join('') : '<div class="empty-note">Star a chat or drop it here.</div>'}</div>`;
-  // Quick: one lane across projects, each row saying which project it's in.
-  const quickAll = chats.filter(c => isTop(c) && isQuick(c));
-  const quickAct = quickAll.filter(c => !famQuiet(c)), quickQuiet = quickAll.filter(famQuiet);
-  const quickRow = c => sideChat(c).replace('</button>', `<small class="quick-proj">${esc(projOf(c).name)}</small></button>`) + sideFam(c);
-  const quickShown = quickAct.slice(0, S.more['quick-all'] ? 200 : 8), quickQuietOpen = !!S.more['quick-quiet'];
-  const quickSection = quickAll.length ? `<div class="group quick-lane" data-drop-quick="1"><div class="side-h">Quick</div>${quickShown.map(quickRow).join('')}${quickAct.length > 8 ? `<button class="nav-i chat-i quiet-toggle" data-more-quick="quick-all" aria-expanded="${quickShown.length === quickAct.length}"><span class="lbl">${quickShown.length < quickAct.length ? `${quickAct.length - quickShown.length} more` : 'Show fewer'}</span></button>` : ''}${quickQuietOpen ? `<div class="quiet-chats">${quickQuiet.map(quickRow).join('')}</div>` : ''}${quickQuiet.length ? `<button class="nav-i chat-i quiet-toggle" data-more-quick="quick-quiet" aria-expanded="${quickQuietOpen}"><span class="lbl">${quickQuietOpen ? 'Hide quiet' : `${quickQuiet.length} quiet`}</span></button>` : ''}</div>` : '';
   const folders = [...statusesShown().filter(x => !parked(x.id)), waitSt, ...STATUSES.filter(x => x.id === 'done')].map(st => {
-    const all = chats.filter(c => (st.id === 'waiting' ? isTop(c) && c.waiting && !c.focus && !parked(statusOf(c)) : isTop(c) && statusOf(c) === st.id && !(c.focus && !parked(st.id)) && !(c.waiting && !parked(st.id)) && !isQuick(c)));
+    const all = chats.filter(c => (st.id === 'waiting' ? isTop(c) && c.waiting && !c.focus && !parked(statusOf(c)) : isTop(c) && statusOf(c) === st.id && !(c.focus && !parked(st.id)) && !(c.waiting && !parked(st.id))));
     const act = st.id === 'later' ? all : all.filter(c => !famQuiet(c)), quiet = st.id === 'later' ? [] : all.filter(famQuiet);
     const open = all.length && !S.folded[st.id];
     const showQuiet = S.more[st.id];
@@ -87,7 +81,7 @@ function renderSide() {
   const mode = S.sideMode || 'projects';
   const modeSeg = `<span class="side-seg" role="group" aria-label="Sidebar shows"><button data-sidemode="projects" aria-pressed="${mode === 'projects'}">Projects</button><button data-sidemode="stages" aria-pressed="${mode === 'stages'}">Status</button></span>`;
   if (small() && S.q) swapHtml($('sideScroll'), sideSearchHtml(), morph);
-  else swapHtml($('sideScroll'), top + focusSection + quickSection + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders.join('') : sideProjects(chats)}</div>`
+  else swapHtml($('sideScroll'), top + focusSection + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders.join('') : sideProjects(chats)}</div>`
     + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`, morph);
 }
 
@@ -103,7 +97,7 @@ function sideProjects(all) {
   const byProj = new Map();
   for (const c of all) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
   const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
-  const mainsOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && !['waiting', 'finishing'].includes(boardStage(c)) && !isQuick(c));
+  const mainsOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && !['waiting', 'finishing'].includes(boardStage(c)));
   const active = g => mainsOf(g).some(c => !famQuiet(c));
   const act = groups.filter(active).sort((a, b) => projectOrder(a.p, b.p));
   const quiet = groups.filter(g => !active(g) && (mainsOf(g).length || g.cs.every(c => parked(statusOf(c))))).sort((a, b) => projectOrder(a.p, b.p));
@@ -133,13 +127,15 @@ function sideProjects(all) {
     const label = `${count} ${many ? 'main chats' : count === 1 ? 'subchat' : 'subchats'}`;
     return `<div class="group folder compact-proj" data-folded="${!open}"><div class="proj-row"><button class="nav-i proj-btn" data-project="${esc(g.p.key)}" ${many ? '' : `data-main-chat="${esc(lead.id)}"`} draggable="true" aria-current="${cur}" title="${esc(g.p.name)}: ${many ? `${mains.length} main chats` : esc(lead.title)}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span><span class="st-dot" style="background:${st.c}" title="${st.name}"></span>${nd ? '<span class="dot needs-dot" title="Needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}</button>${count ? `<button class="proj-chev" data-foldproj="${esc(g.p.key)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} ${label}" title="${label}"><span>${count}</span></button>` : ''}<button class="proj-options" data-projmenu="${esc(g.p.key)}" aria-label="${esc(g.p.name)} options" title="Project options">⋯</button></div><div class="folder-items">${inner}</div></div>`;
   };
-  let html = '';
+  // Quick is the top project, above the buckets.
+  const quickG = act.find(g => g.p.quick);
+  let html = quickG ? projRow(quickG) : '';
   if (S.bucket === 'all') {
     for (const b of [...buckets(), { id: null, name: 'Unsorted' }]) {
-      const gs = act.filter(g => (g.p.bucket || null) === b.id);
+      const gs = act.filter(g => (g.p.bucket || null) === b.id && !g.p.quick);
       if (gs.length) html += `<div class="side-bucket">${esc(b.name)}</div>${gs.map(projRow).join('')}`;
     }
-  } else html = act.map(projRow).join('');
+  } else html += act.filter(g => !g.p.quick).map(projRow).join('');
   // Review and waiting stay reachable without filling the active project lists.
   for (const [stage, name] of [['finishing', 'Finishing'], ['waiting', 'Waiting']]) {
     const list = all.filter(c => isTop(c) && !c.focus && boardStage(c) === stage).sort((a, b) => b.updated - a.updated);
@@ -310,7 +306,6 @@ document.addEventListener('click', e => {
   if ((b = el('[data-rt]'))) { S.more[`rt:${b.dataset.rt}`] = !S.more[`rt:${b.dataset.rt}`]; return render(); }
   if ((b = el('[data-fam]'))) { e.stopPropagation(); toggleFam(b.dataset.fam); sfx('card'); return render(); }
   if ((b = el('[data-pipe-refresh]'))) { e.stopPropagation(); return loadPipeline(true); }
-  if ((b = el('[data-more-quick]'))) { const k = b.dataset.moreQuick; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
   if ((b = el('[data-renamechat]'))) return editTitleInline();
   if ((b = el('[data-barmodel]'))) return modelMenu(b);
@@ -602,7 +597,6 @@ const nestTarget = t => {
   const me = chatBy.get(drag.chats[0]) || {};
   const zone = r.closest('[data-drop-stage]'); if (zone && (zone.dataset.dropStage === 'waiting' ? !me.waiting : zone.dataset.dropStage !== statusOf(me))) return zone;
   const fz = r.closest('[data-drop-focus]'); if (fz && !me.focus) return fz;
-  const qz = r.closest('[data-drop-quick]'); if (qz && !me.quick) return qz;
   return r;
 };
 // Save the whole destination bucket, including projects outside the current sidebar view.
@@ -618,7 +612,7 @@ const projectDropTarget = t => {
   const p = t.closest('[data-project]') || t.closest('.proj-row')?.querySelector('[data-project]');
   return p && p.dataset.project !== drag.project && !projBy.get(p.dataset.project)?.archived ? p : null;
 };
-const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? projectDropTarget(t) || nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus], [data-drop-quick]') : drag && drag.project ? projectDropTarget(t) || t.closest('[data-drop-bucket]') : null);
+const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? projectDropTarget(t) || nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? projectDropTarget(t) || t.closest('[data-drop-bucket]') : null);
 const projectDropAfter = (e, z) => { const r = z.getBoundingClientRect(); return e.clientY > r.top + r.height / 2; };
 const clearDrop = () => document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot', 'drop-before', 'drop-after'));
 document.addEventListener('dragover', e => {
@@ -638,7 +632,7 @@ document.addEventListener('drop', e => {
   if (d.idea) { if (z.dataset.ideaDrop) { const over = e.target.closest('[data-idea]'); wrap(moveIdea)(d.idea, over && over.dataset.idea !== d.idea ? over.dataset.idea : null); } else wrap(startIdea)(d.idea); }
   else if (d.chats && z.dataset.project) wrap(async () => { await setChats(d.chats, { project: z.dataset.project, quick: false }, `Moved to ${projBy.get(z.dataset.project)?.name || 'project'}`); await loadState(); render(); })();
   else if (d.chats && z.dataset.chat) wrap(nestChats)(d.chats, z.dataset.chat);
-  else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : z.dataset.dropQuick ? { quick: true, waiting: false } : z.dataset.dropStage === 'waiting' ? { waiting: true } : { status: z.dataset.dropStage, waiting: false, quick: false });
+  else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : z.dataset.dropStage === 'waiting' ? { waiting: true } : { status: z.dataset.dropStage, waiting: false });
   else if (z.dataset.project) { if (z.dataset.project !== d.project) wrap(placeProject)(d.project, z.dataset.project, projectDropAfter(e, z)); }
   else wrap(setBucket)(d.project, z.dataset.dropBucket || null);
 });

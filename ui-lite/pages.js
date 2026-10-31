@@ -50,7 +50,7 @@ function cardHtml(p) {
       <span class="meta">${nd ? '<span class="dot needs-dot"></span>' : ''}<span>${lv.length} active${w ? ` · ${w} waiting` : ''}</span></span></span></button>`;
 }
 const projectOrder = (a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || b.updated - a.updated || a.name.localeCompare(b.name);
-const projectsIn = b => S.projects.filter(p => !p.archived && (p.bucket || null) === (b || null)).sort(projectOrder);
+const projectsIn = b => S.projects.filter(p => !p.archived && !p.quick && (p.bucket || null) === (b || null)).sort(projectOrder);
 const hasChats = p => chatsOfProject(p.key).length > 0;
 function home() {
   const groups = [...buckets().map(b => ({ id: b.id, name: b.name })), { id: null, name: 'Unsorted' }];
@@ -66,8 +66,11 @@ function home() {
       ${quiet.length ? `<div class="quiet-line"><span class="why" title="No chat here has moved in ${quietDays()} days, or every chat is Done. A new chat or message brings it back up.">Quiet:</span>${quiet.map(p => `<button data-project="${esc(p.key)}" draggable="true" data-cur="p:${esc(p.key)}"><span class="thumb-xs" style="${artStyle(p)}"></span>${esc(p.name)}</button>`).join('')}</div>` : ''}
     </section>`;
   }).join('');
+  // Quick is the top project, above the buckets.
+  const quickP = S.projects.find(p => p.quick && !p.archived && hasChats(p));
+  const quickTop = quickP ? `<section class="section"><div class="cards">${cardHtml(quickP)}</div></section>` : '';
   const setup = !buckets().length ? '<p class="lead">No buckets yet. Buckets say what a project is for (a product, games, personal apps). They live in lite.json in your data folder.</p>' : '';
-  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${L('Projects')}</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>${setup}${sections}
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${L('Projects')}</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>${setup}${quickTop}${sections}
     <p class="hint-line">Drag projects before or after one another to reorder them, or onto a bucket to move them. Use the sidebar menu to move a project up or down; its page’s ⋯ menu has the other project settings.</p></div>`;
 }
 
@@ -121,10 +124,7 @@ function project() {
   const cs = chatsOfProject(p.key).sort((x, y) => y.updated - x.updated);
   const foc = cs.filter(c => c.focus && !parked(statusOf(c)));
   const focusSec = foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span></div><div class="rows">${foc.map(c => rowHtml(c, { showStage: true })).join('')}</div></section>` : '';
-  // This project's quick chats, on its page too (the sidebar gathers them across projects).
-  const quickHere = cs.filter(c => isTop(c) && isQuick(c));
-  const quickSec = quickHere.length ? `<section class="section" data-drop-quick="1"><div class="sec-h"><h2>Quick</h2><span class="n">${quickHere.length}</span><span class="hint">Odds and ends</span></div><div class="rows">${famRowsHtml(quickHere)}</div></section>` : '';
-  const sections = focusSec + quickSec + [...statusesShown().filter(s => !parked(s.id)), { id: 'waiting', name: 'Waiting', c: 'var(--muted)' }, ...statusesShown().filter(s => parked(s.id))].map(s => {
+  const sections = focusSec + [...statusesShown().filter(s => !parked(s.id)), { id: 'waiting', name: 'Waiting', c: 'var(--muted)' }, ...statusesShown().filter(s => parked(s.id))].map(s => {
     const all = cs.filter(c => isTop(c) && boardStage(c) === s.id && !(c.focus && !parked(statusOf(c))));
     if (!all.length) return '';
     const deferred = parked(s.id) || s.id === 'finishing' || s.id === 'waiting';
@@ -454,7 +454,7 @@ function rowMenu(anchor, id, at) {
     if (v.startsWith('s:')) return wrap(setChats)(ids, { status: v.slice(2) });
     if (v.startsWith('k:')) return wrap(setChats)(ids, { kind: v.slice(2) });
     if (v === 'focus') return wrap(toggleFocus)(ids);
-    if (v === 'quick') { const on = !ids.every(i => (chatBy.get(i) || {}).quick); return wrap(setChats)(ids, { quick: on }, on ? 'Moved to Quick' : 'Out of Quick'); }
+    if (v === 'quick') { const on = !ids.every(i => (chatBy.get(i) || {}).quick); return wrap(async () => { await setChats(ids, { quick: on, project: null }, on ? 'Moved to Quick' : 'Moved out of Quick'); await loadState(); render(); })(); }
     if (v === 'wait') return askWaiting(ids);
     if (v === 'arch') return wrap(archiveChats)(ids);
     if (v === 'proj') return pickProject(anchor, k => wrap(async () => {

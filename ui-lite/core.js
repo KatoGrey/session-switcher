@@ -209,12 +209,10 @@ const activeTyping = () => { const a = document.activeElement; return a && (a.ta
 function renderConn() { const c = $('conn'); c.classList.toggle('on', S.connected); c.title = S.connected ? 'Live: updates as chats move' : 'Not connected to your Mac'; }
 
 /* ---------- derived data ---------- */
-let projBy = new Map(), chatBy = new Map(), liveBy = new Map(), projMains = new Map();
+let projBy = new Map(), chatBy = new Map(), liveBy = new Map();
 function index() {
   projBy = new Map(S.projects.map(p => [p.key, p]));
   chatBy = new Map(S.chats.map(c => [c.id, c]));
-  projMains = new Map();
-  for (const c of S.chats) if (!c.parent && !c.auto && !c.routineRun && !c.archived && !parked(statusOf(c))) projMains.set(c.project, (projMains.get(c.project) || 0) + 1);
   liveBy = new Map(S.live.filter(x => x.sessionId).map(x => [x.sessionId.toLowerCase(), x]));
 }
 const buckets = () => (S.lite ? S.lite.buckets : []);
@@ -225,12 +223,8 @@ const quietDays = () => (S.lite ? S.lite.quietDays : 4);
 const floor = () => (S.lite ? S.lite.plans.floor : 15);
 const statusOf = c => c.status;
 // Waiting keeps its underlying stage; only its place on the board changes.
-// A guess never empties a project: its only chat stays with it (your own say still counts).
-const quickOk = c => c.quick && (!c.guessed || !c.guessed.quick || (projMains.get(c.project) || 0) > 1);
-const boardStage = c => c.waiting && !parked(statusOf(c)) ? 'waiting' : quickOk(c) && !parked(statusOf(c)) ? 'quick' : statusOf(c);
-// Quick: odds and ends (a bug fix, a small change, a question), not projects. They sit in one lane
-// across all projects instead of filling each project's board and Finishing.
-const isQuick = c => boardStage(c) === 'quick' && !c.focus;
+const boardStage = c => c.waiting && !parked(statusOf(c)) ? 'waiting' : statusOf(c);
+
 const kindTag = c => (c.kind && c.kind !== 'feature' ? `<span class="tag kind-tag k-${c.kind}">${kindById(c.kind).name}</span>` : '');
 const focusStar = c => (c.focus ? '<span class="focus-star" title="Focus">★</span>' : '');
 const waitTag = c => (c.waiting ? `<span class="tag wait-tag">${esc(c.waitingOn || 'Waiting')}</span>` : '');
@@ -249,7 +243,8 @@ const running = c => { const x = liveOf(c); return !!(x && x.working); };
 const isQuiet = c => S.now - c.updated > quietDays() * DAY && !needs(c) && !running(c) && !c.waiting && !c.focus;
 const visible = c => !c.archived && !c.desktopArchived && !c.auto && !c.routineRun && !(projOf(c).archived);
 const allChats = () => S.chats.filter(visible);
-const inBucket = c => S.bucket === 'all' || (S.bucket === 'unsorted' ? !projOf(c).bucket : projOf(c).bucket === S.bucket);
+// Quick spans the buckets: it shows whichever one you're looking at.
+const inBucket = c => S.bucket === 'all' || projOf(c).quick || (S.bucket === 'unsorted' ? !projOf(c).bucket : projOf(c).bucket === S.bucket);
 const live = cs => cs.filter(c => !parked(statusOf(c)) && !isQuiet(c));
 /* ---------- families: a chat and the sub-chats started from it ---------- */
 const low = x => String(x || '').toLowerCase();
@@ -419,7 +414,7 @@ const changeWords = (ids, patch) => {
 };
 async function setChats(ids, patch, label) {
   // Undo puts back exactly what was there, guesses included (a guessed status goes back to a guess).
-  const prev = ids.map(id => { const c = chatBy.get(id) || {}, g = c.guessed || {}; return { id, patch: { ...('project' in patch ? { project: S.lite?.chats?.[id]?.project || null } : {}), ...('quick' in patch ? { quick: g.quick ? null : !!c.quick } : {}), status: g.status ? null : c.status, kind: g.kind ? null : c.kind || null, focus: !!c.focus, waiting: !!c.waiting, waitingOn: c.waitingOn || '', note: c.note || '', remindAt: c.remindAt || null } }; });
+  const prev = ids.map(id => { const c = chatBy.get(id) || {}, g = c.guessed || {}; return { id, patch: { ...('project' in patch ? { project: S.lite?.chats?.[id]?.project || null } : {}), ...('quick' in patch ? { quick: S.lite?.chats?.[id]?.quick ?? null } : {}), status: g.status ? null : c.status, kind: g.kind ? null : c.kind || null, focus: !!c.focus, waiting: !!c.waiting, waitingOn: c.waitingOn || '', note: c.note || '', remindAt: c.remindAt || null } }; });
   await api('/api/lite/chats', { ids, patch });
   // Show it straight away; the server's own list follows.
   for (const id of ids) {
