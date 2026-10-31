@@ -31,6 +31,22 @@ async function startServer(dataDir, { home = null, preload = null } = {}) {
   return { call, stop, base };
 }
 
+test('a home folder written with a Windows short name doesn’t bring the server down', { skip: process.platform !== 'win32' }, async t => {
+  const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const long = path.join(dir, 'a home with a long name'), dataDir = path.join(dir, 'data'), projects = path.join(long, '.claude', 'projects', 'work');
+  fs.mkdirSync(projects, { recursive: true }); fs.mkdirSync(dataDir);
+  fs.writeFileSync(path.join(dataDir, 'accounts.json'), JSON.stringify({ claudeCommand: path.join(dir, 'no-claude-here') }));
+  const short = require('child_process').execFileSync('cmd', ['/d', '/s', '/c', `for %I in ("${long}") do @echo %~sI`], { encoding: 'utf8', windowsVerbatimArguments: true, windowsHide: true }).trim();
+  if (!short || short.toLowerCase() === long.toLowerCase()) { t.skip('this drive has no short names'); return; }
+  const s = await startServer(dataDir, { home: short });
+  try {
+    fs.writeFileSync(path.join(projects, 'aaaaaaaa-1111-4222-8333-444444444445.jsonl'), `${JSON.stringify({ type: 'user', cwd: dir, timestamp: new Date().toISOString(), message: { content: 'A new chat' } })}\n`);
+    await new Promise(r => setTimeout(r, 1500));
+    assert.equal((await s.call('/api/state')).status, 200);
+  } finally { await s.stop(); }
+});
+
 test('reopen: last time’s open chats are offered once, and set aside when answered', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
   fs.writeFileSync(path.join(dataDir, 'open-chats.json'), JSON.stringify({ at: Date.now(), chats: [

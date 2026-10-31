@@ -50,6 +50,7 @@ const freePort = () => new Promise((res, rej) => { const s = net.createServer();
 
 async function main() {
   let failed = 0;
+  const allFails = [];
   if (!only.length) {
     console.log('— logic and server checks');
     const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join(__dirname, f));
@@ -84,7 +85,7 @@ async function main() {
       r = runLogic();
       if (r.status === 0) for (const f of first) console.log(`::warning title=logic tests (passed the second time)::${f.replace(/%/g, '%25')}`);
     }
-    if (tap && r.status !== 0) for (const f of failures()) console.log(`::error title=logic tests::${f.replace(/%/g, '%25')}`);
+    if (tap && r.status !== 0) for (const f of failures()) { allFails.push(`logic: ${f.split(' — ')[0]}`); console.log(`::error title=logic tests::${f.replace(/%/g, '%25')}`); }
     if (r.status !== 0) failed++;
   }
 
@@ -154,9 +155,16 @@ async function main() {
       if (!fails.length && attempt > 1) console.log('  (passed the second time)');
       failed += fails.length;
       // On GitHub, each failed check is also an annotation, readable on the run's page without signing in.
-      if (process.env.GITHUB_ACTIONS) for (const f of fails) console.log(`::error title=${suite.name.replace(/[\r\n:,]/g, ' ')}::${f.replace(/%/g, '%25').replace(/\r?\n/g, '%0A').slice(0, 900)}`);
+      if (process.env.GITHUB_ACTIONS) for (const f of fails) { allFails.push(`${suite.name}: ${f}`); console.log(`::error title=${suite.name.replace(/[\r\n:,]/g, ' ')}::${f.replace(/%/g, '%25').replace(/\r?\n/g, '%0A').slice(0, 900)}`); }
       break;
     }
+  }
+
+  // GitHub keeps only a step's first 10 errors, so the whole list goes in notices, which it counts apart (10 again).
+  for (let i = 0, part = 1; i < allFails.length && part <= 10; part++) {
+    let text = '';
+    while (i < allFails.length && text.length < 3000) text += `${allFails[i++].replace(/\s+/g, ' ').slice(0, 300)}\n`;
+    console.log(`::notice title=All ${allFails.length} failures (part ${part})::${text.replace(/%/g, '%25').replace(/\n/g, '%0A')}`);
   }
 
   // Stop this test copy of the app (only it: it's the process started above).

@@ -40,7 +40,8 @@ function framed(blocks, { single = false, sizeFlag = 0, dictionaryFlag = 0, unus
 }
 
 function fixture(t, options = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-agent-index-'));
+  // (Its real path: a Mac's temp folder is reached through a link, and GitHub's Windows one by a short name.)
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-agent-index-')));
   const home = path.join(root, 'codex'), cli = path.join(root, 'gemini'), dataDir = path.join(root, 'data');
   fs.mkdirSync(path.join(home, 'sessions'), { recursive: true });
   fs.mkdirSync(path.join(cli, 'brain'), { recursive: true });
@@ -56,7 +57,7 @@ function fixture(t, options = {}) {
   t.after(async () => {
     for (const s of stores) s.stop();
     await Promise.all(stores.map(s => s.idle()));
-    assert.equal(path.dirname(path.resolve(root)).toLowerCase(), path.resolve(os.tmpdir()).toLowerCase());
+    assert.equal(path.dirname(path.resolve(root)).toLowerCase(), fs.realpathSync.native(os.tmpdir()).toLowerCase());
     assert.ok(path.basename(root).startsWith('ss-agent-index-'));
     fs.rmSync(root, { recursive: true, force: true });
   });
@@ -199,6 +200,10 @@ test('agent index: concatenated Zstandard frames and skippable metadata cross ar
   const bytes = Buffer.concat([zlib.zstdCompressSync(Buffer.from(line(codex('user', 'first frame')))), metadata,
     zlib.zstdCompressSync(Buffer.from(line(codex('assistant', 'second frame'))), { params: { [zlib.constants.ZSTD_c_contentSizeFlag]: 0, [zlib.constants.ZSTD_c_checksumFlag]: 1 } })]);
   const file = a.file + '.zst'; fs.writeFileSync(file, bytes); fs.unlinkSync(a.file);
+  const whole = f.create(); whole.request([a]); await whole.idle();
+  assert.equal(all(whole.textOf(a.id)), 'first frame\n\nsecond frame', 'all of it arriving in one read, as a small archive does');
+  whole.stop(); await whole.idle();
+  fs.rmSync(f.dataDir, { recursive: true, force: true });
   const read = fs.createReadStream;
   t.mock.method(fs, 'createReadStream', (name, opts) => read(name, name === file ? { ...opts, highWaterMark: 1 } : opts));
   const ix = f.create(); ix.request([a]); await ix.idle();

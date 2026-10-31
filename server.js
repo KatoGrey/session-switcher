@@ -1321,7 +1321,9 @@ function startWatching() {
   let timer = null;
   try {
     fs.mkdirSync(sessions.root, { recursive: true });
-    const w = fs.watch(sessions.root, { recursive: true }, (_ev, f) => {
+    // (By its full name: a folder written with a Windows short one, like C:\Users\LONGNA~1, ends the whole
+    // process at the first change inside it, an assertion in Node's own file watching.)
+    const w = fs.watch(fs.realpathSync.native(sessions.root), { recursive: true }, (_ev, f) => {
       if (f && !String(f).endsWith('.jsonl')) return;
       clearTimeout(timer);
       timer = setTimeout(sessionsChanged, 600);

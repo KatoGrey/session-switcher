@@ -72,7 +72,7 @@ test('chat lifecycle: a parallel group shares a repository baseline, including a
 });
 
 test('chat lifecycle: text changes and Undo survive reopening and a parent folder becoming Git', async t => {
-  const base=fs.mkdtempSync(path.join(os.tmpdir(),'ss-shadow-lifecycle-')), root=path.join(base,'project'), data=path.join(base,'data');
+  const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ss-shadow-lifecycle-'))), root=path.join(base,'project'), data=path.join(base,'data');
   fs.mkdirSync(root); const file=path.join(root,'story.md'); fs.writeFileSync(file,'before\r\n');
   const extras=require('../lib/extras').createExtras({dir:path.join(base,'extras')});
   snapshots.configure({dataDir:data,attributes:async paths=>paths.map(()=>0)});

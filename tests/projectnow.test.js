@@ -64,6 +64,16 @@ test('project now: a project in a subfolder sees its own files, named from there
   assert.equal(g.files[0].file, path.join(r, 'sub', 'in.txt'));
 });
 
+test('project now: a project reached through a link names its files from where you opened it', { skip: noGit }, async t => {
+  const r = repo(), alias = path.join(fs.realpathSync(tmp()), 'link');
+  write(r, 'a.txt'); git(r, 'add', '.'); git(r, 'commit', '-qm', 'One'); write(r, 'a.txt', 'changed');
+  try { fs.symlinkSync(r, alias, process.platform === 'win32' ? 'junction' : 'dir'); }
+  catch (err) { if (err.code === 'EPERM') { t.skip('directory links unavailable'); return; } throw err; }
+  const { git: g } = await createProjectNow().read(alias);
+  assert.deepEqual(g.files.map(f => f.rel), ['a.txt']);
+  assert.equal(g.files[0].file, path.join(alias, 'a.txt'));
+});
+
 test('project now: asked again soon, it doesn’t run git again; a repository with no commits is fine', { skip: noGit }, async () => {
   const r = repo();
   write(r, 'a.txt');

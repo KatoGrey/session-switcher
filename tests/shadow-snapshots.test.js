@@ -8,7 +8,8 @@ const { execFileSync } = require('node:child_process');
 const { createShadowStore, eligible, broad } = require('../lib/shadow-snapshots');
 
 function fixture(t, options = {}) {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-text-snapshots-'));
+  // (Its real path: a Mac's temp folder is reached through a link, and GitHub's Windows one by a short name.)
+  const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-text-snapshots-')));
   const root = path.join(base, 'project'), data = path.join(base, 'data'); fs.mkdirSync(root);
   const store = createShadowStore({ dir: data, attributes: paths => Promise.resolve(paths.map(() => 0)), ...options });
   t.after(() => { store.close(); fs.rmSync(base, { recursive: true, force: true }); });
@@ -144,8 +145,25 @@ test('shadow snapshots reject a broad folder reached through an ancestor alias',
   try { fs.symlinkSync(real, alias, process.platform === 'win32' ? 'junction' : 'dir'); }
   catch (err) { if (err.code === 'EPERM') { t.skip('directory links unavailable'); return; } throw err; }
   const old = process.env.OneDrive; process.env.OneDrive = cloud;
-  try { await assert.rejects(store.capture(path.join(alias, 'Cloud')), /project folder/); }
-  finally { if (old === undefined) delete process.env.OneDrive; else process.env.OneDrive = old; }
+  try {
+    await assert.rejects(store.capture(path.join(alias, 'Cloud')), /project folder/);
+    process.env.OneDrive = path.join(alias, 'Cloud');
+    await assert.rejects(store.capture(cloud), /project folder/, 'nor when the OneDrive setting is the one reached through a link');
+  } finally { if (old === undefined) delete process.env.OneDrive; else process.env.OneDrive = old; }
+});
+
+test('shadow storage reached through a link still clears its own abandoned staging folders', async t => {
+  const { base, root, write } = fixture(t), real = path.join(base, 'real-data'), alias = path.join(base, 'data-link');
+  fs.mkdirSync(real);
+  try { fs.symlinkSync(real, alias, process.platform === 'win32' ? 'junction' : 'dir'); }
+  catch (err) { if (err.code === 'EPERM') { t.skip('directory links unavailable'); return; } throw err; }
+  const store = createShadowStore({ dir: alias, attributes: async paths => paths.map(() => 0) }); t.after(() => store.close());
+  write('story.md', 'test');
+  const id = (await store.capture(root)).split(':')[2];
+  const stale = path.join(alias, id, `capture-${'a'.repeat(16)}`); fs.mkdirSync(stale);
+  write('story.md', 'changed');
+  assert.ok(await store.capture(root));
+  assert.equal(fs.existsSync(stale), false);
 });
 
 test('shadow capture never asks Git to reopen a file that grows after the checked read', async t => {
