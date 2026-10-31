@@ -31,6 +31,7 @@ function renderQueue() {
   const tasks = S.tasks || [];
   sec.hidden = !tasks.length;
   list.innerHTML = tasks.map(taskRow).join('');
+  setSecCount('queue', tasks.length); renderJump();
 }
 
 /* ---------- the "Queue a task" dialog ---------- */
@@ -49,7 +50,7 @@ function taskDialog() {
         <label id="tkAtWrap" hidden>Time<input type="datetime-local" id="tkAt"></label>
         <label id="tkRepWrap" hidden title="A repeating task becomes a routine (on the Routines page)">Repeat<select id="tkRepeat"><option value="">Just once</option><option value="daily">Every day</option><option value="weekdays">Every weekday</option><option value="weekly">Every week</option></select></label>
       </div>
-      <label class="tk-prompt">What should it do?<select id="tkFrom"><option value="">Start from a saved prompt…</option></select><textarea id="tkText" rows="7" placeholder="Write the README for this project: how to install it, run it and test it."></textarea></label>
+      <label class="tk-prompt">What should it do?<select id="tkFrom" aria-label="Start from a saved prompt"><option value="">Start from a saved prompt…</option></select><textarea id="tkText" rows="7" aria-label="What should it do?" placeholder="Write the README for this project: how to install it, run it and test it."></textarea></label>
       <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-tk="close">Cancel</button><button type="submit" class="btn prime" id="tkGo">Queue it</button></div>
     </div></form></dialog>`);
   d = $('taskDlg');
@@ -60,7 +61,11 @@ function taskDialog() {
     if (e.target.id === 'tkFrom' && e.target.value) {
       const pr = S.prompts.find(x => x.id === e.target.value);
       const p = S.projects.find(x => x.cwd === $('tkProject').value);
-      if (pr) { $('tkText').value = fillPrompt(pr.text, p ? p.name : ''); if (pr.provider === 'codex' && codexReady()) { $('tkWho').value = 'codex'; $('tkAcctWrap').hidden = true; } }
+      if (pr) {
+        $('tkText').value = fillPrompt(pr.text, p ? p.name : '');
+        if (pr.provider === 'codex' && codexReady()) { $('tkWho').value = 'codex'; $('tkAcctWrap').hidden = true; }
+        else if (pr.provider === 'gemini' && geminiReady()) { $('tkWho').value = 'gemini'; $('tkAcctWrap').hidden = true; }
+      }
       e.target.value = '';
     }
   });

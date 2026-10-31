@@ -59,7 +59,9 @@ ipcMain.on('desktop:ready', e => {
 ipcMain.handle('desktop:update-state', e => (fromUs(e) && updates ? { ...updates.state } : null));
 ipcMain.handle('desktop:check-updates', async e => { if (fromUs(e) && updates) await updates.check(true, { silent: true }); return updates ? { ...updates.state } : null; });
 ipcMain.handle('desktop:install-update', e => (fromUs(e) && updates ? updates.install() : null));
-ipcMain.handle('desktop:settings', e => (fromUs(e) ? { ...desk.opt(), openAtLogin: app.getLoginItemSettings().openAtLogin, dataDir: DATA_DIR, version: app.getVersion() } : null));
+// Read with the same arguments it's set with: on Windows, anything else says it's off.
+const loginItem = () => app.getLoginItemSettings(IS_MAC ? {} : { args: ['--hidden'] });
+ipcMain.handle('desktop:settings', e => (fromUs(e) ? { ...desk.opt(), openAtLogin: loginItem().openAtLogin, dataDir: DATA_DIR, version: app.getVersion() } : null));
 ipcMain.handle('desktop:set', (e, patch) => {
   if (!fromUs(e) || !patch || typeof patch !== 'object') return null;
   if (typeof patch.openAtLogin === 'boolean') app.setLoginItemSettings({ openAtLogin: patch.openAtLogin, ...(IS_MAC ? {} : { args: ['--hidden'] }) });
@@ -67,7 +69,7 @@ ipcMain.handle('desktop:set', (e, patch) => {
   const r = desk.set(patch);
   // A different channel: look again now (a test version may be waiting, or no longer apply).
   if (patch.channel && updates) { updates.setChannel(); updates.check(false, { silent: true }); }
-  return { ...r, openAtLogin: app.getLoginItemSettings().openAtLogin };
+  return { ...r, openAtLogin: loginItem().openAtLogin };
 });
 const server = createServer({
   appFiles: APP_FILES, dataDir: DATA_DIR, env: shellPath(), log,
@@ -82,7 +84,7 @@ const server = createServer({
 const bounds = () => notes(DATA_DIR).window || { width: 1320, height: 920 };
 function saveBounds() {
   if (!win || win.isDestroyed() || win.isMinimized()) return;
-  setNotes(DATA_DIR, { window: { ...win.getNormalBounds(), maximized: win.isMaximized() } });
+  setNotes(DATA_DIR, { window: { ...win.getNormalBounds(), maximized: win.isMaximized() || !!win._maxOnShow } });
 }
 
 // Any of the app's windows: links that go elsewhere open in your browser, never inside the app.
@@ -95,7 +97,9 @@ const ours = u => u.startsWith(URL_BASE) || u.startsWith(`http://localhost:${POR
 const iconFile = () => path.join(APP_FILES, IS_MAC ? 'macos/icon.icns' : 'icon.ico');
 const LOADING = `data:text/html;charset=utf-8,${encodeURIComponent('<!doctype html><html><body style="margin:0;height:100vh;display:grid;place-items:center;background:#0a090c;color:#cfc6b6;font:16px Georgia,serif"><div style="text-align:center"><div style="letter-spacing:.3em;font-size:13px;color:#a5463f">SESSION SWITCHER</div><p>Starting…</p></div></body></html>')}`;
 
-function createWindow() {
+// hidden: started with the PC. The page still loads, out of sight: it's what notifies you and counts
+// what's working (the tray, keeping the PC awake).
+function createWindow(hidden = false) {
   const b = bounds();
   win = new BrowserWindow({
     width: b.width, height: b.height, x: b.x, y: b.y, minWidth: 420, minHeight: 500,
@@ -104,8 +108,8 @@ function createWindow() {
   });
   contextMenu(win.webContents);
   keys(win.webContents);
-  if (b.maximized) win.maximize();
-  win.once('ready-to-show', () => win.show());
+  if (b.maximized && !hidden) win.maximize(); else if (b.maximized) win._maxOnShow = true;   // maximizing a window shows it
+  win.once('ready-to-show', () => { if (!hidden) win.show(); });
   win.loadURL(LOADING);
   for (const e of ['resize', 'move']) win.on(e, () => { clearTimeout(win._save); win._save = setTimeout(saveBounds, 500); });
   // Closing the window keeps it running in the tray, so chats keep going and notifications come.
@@ -155,6 +159,7 @@ function show() {
   if (!started) { showLater = true; return; }
   if (!win || win.isDestroyed()) { createWindow(); win.loadURL(URL_BASE); }
   if (win.isMinimized()) win.restore();
+  if (win._maxOnShow) { win._maxOnShow = false; win.maximize(); }
   win.show(); win.focus();
 }
 
@@ -171,8 +176,8 @@ function createTray() {
     { label: 'New chat…', click: () => doIt('new-chat') },
     { label: 'Search every chat…', click: () => doIt('search') },
     { type: 'separator' },
-    { label: 'Start with Windows', visible: !IS_MAC, type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: i => app.setLoginItemSettings({ openAtLogin: i.checked, args: ['--hidden'] }) },
-    { label: 'Open at login', visible: IS_MAC, type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: i => app.setLoginItemSettings({ openAtLogin: i.checked }) },
+    { label: 'Start with Windows', visible: !IS_MAC, type: 'checkbox', checked: loginItem().openAtLogin, click: i => app.setLoginItemSettings({ openAtLogin: i.checked, args: ['--hidden'] }) },
+    { label: 'Open at login', visible: IS_MAC, type: 'checkbox', checked: loginItem().openAtLogin, click: i => app.setLoginItemSettings({ openAtLogin: i.checked }) },
     (u => ({ label: u.status === 'ready' ? `Restart to update to ${u.next}` : u.status === 'available' ? `Download ${u.next}` : u.status === 'downloading' ? `Downloading ${u.next || 'the update'}… ${u.percent || 0}%` : 'Check for updates', enabled: u.status !== 'downloading' && u.status !== 'checking', click: () => (u.status === 'ready' || u.status === 'available' ? updates.install() : updates.check(true)) }))(updates ? updates.state : {}),
     { label: 'Show its files', click: () => shell.openPath(DATA_DIR) },
     { label: `Version ${app.getVersion()}`, enabled: false },
@@ -221,8 +226,8 @@ app.whenReady().then(async () => {
       detail: `Found in ${from}.\n\nThey're copied, so that copy keeps working as it is.`,
     })).response === 0,
   }).catch(err => log(`Couldn’t bring them in: ${err.message}`));
-  const hidden = process.argv.includes('--hidden') || app.getLoginItemSettings().wasOpenedAsHidden;
-  if ((!hidden || showLater) && !win) createWindow();
+  const hidden = process.argv.includes('--hidden') || loginItem().wasOpenedAsHidden;
+  if (!win) createWindow(hidden && !showLater);
   started = true;
   createTray();
   server.start();

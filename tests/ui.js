@@ -99,14 +99,20 @@ module.exports = [
       await b.eval(`window.dispatchEvent(new Event('blur')); return 1`);
       t.check('leaving the window closes it', !(await st()).open);
       await b.eval(`window.scrollTo(0, 0); return 1`); await sleep(300);
+      const other = '#recentList [data-more]';
       await b.clickOn('#livepill'); await sleep(250);
-      await b.clickOn('#seal'); await sleep(300);
-      t.check('one click switches to another menu', await b.eval(`return ${menuOpen} && document.getElementById('seal').getAttribute('aria-expanded') === 'true' && document.getElementById('livepill').getAttribute('aria-expanded') === 'false'`));
+      await b.clickOn(other); await sleep(300);
+      t.check('one click switches to another menu', await b.eval(`return ${menuOpen} && document.querySelector(${JSON.stringify(other)}).getAttribute('aria-expanded') === 'true' && document.getElementById('livepill').getAttribute('aria-expanded') === 'false'`));
       await b.esc();
-      t.check('focus returns to its button', await b.eval(`return !${menuOpen} && document.activeElement.id === 'seal'`));
-      await b.clickOn('#seal'); await sleep(250);
-      await b.clickOn('#seal'); await sleep(250);
+      t.check('focus returns to its button', await b.eval(`return !${menuOpen} && document.activeElement === document.querySelector(${JSON.stringify(other)})`));
+      await b.clickOn(other); await sleep(250);
+      // (This one's too tall to go above or below its button, in the middle of the window.)
+      t.check('a tall menu doesn’t cover its button', await b.eval(`const q = document.querySelector(${JSON.stringify(other)}).getBoundingClientRect(), at = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return at.id === 'menuBack'`));
+      const pressed = () => b.eval(`return document.getElementById('toast').innerText`);
+      const toastsBefore = await pressed();
+      await b.clickOn(other); await sleep(250);
       t.check('its button again closes it', !(await st()).open);
+      t.check('and presses nothing in the menu', !(await b.eval(`return !!document.querySelector('dialog[open]')`)) && (await pressed()) === toastsBefore);
     },
   },
   {
@@ -132,7 +138,7 @@ module.exports = [
 
       await b.clickOn('[data-c="more"]'); await sleep(300);
       const items = await b.eval(`return [...document.querySelectorAll('#menu .m-l')].map(x => x.textContent)`);
-      t.check('⋯ has the terminal hand-off and Stop', items.some(x => /Move to a terminal/.test(x)) && items.some(x => /Stop this chat/.test(x)), items);
+      t.check('⋯ has Stop, and the terminal hand-off one click in', items.some(x => /Stop this chat/.test(x)) && await b.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => /^More/.test(x.querySelector('.m-l').textContent)).click(); await new Promise(r => setTimeout(r, 100)); const has = /Move to a terminal/.test(document.getElementById('menu').textContent); [...document.querySelectorAll('#menu [role=menuitem]')].find(x => /Back/.test(x.textContent)).click(); await new Promise(r => setTimeout(r, 100)); return has`), items);
       await b.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => /Stop this chat/.test(x.textContent)).click(); return 1`); await sleep(300);
       t.check('Stop asks while a reply is coming', await b.eval(`return ${confirmOpen} && /Stop this chat/.test(document.getElementById('cfQ').textContent)`));
       await b.esc();
@@ -196,7 +202,7 @@ module.exports = [
       await t.shot(b2, 'warning');
       await b2.clickOn('[data-crew="main"]'); await sleep(300); await b2.esc();
       await b2.clickOn('[data-c="more"]'); await sleep(300);
-      t.check('the ⋯ menu can summarize too', /Summarize the conversation now/.test(await b2.eval(`return document.getElementById('menu').textContent`)));
+      t.check('the ⋯ menu can summarize too', /Summarize the conversation now/.test(await b2.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => /^More/.test(x.querySelector('.m-l').textContent)).click(); await new Promise(r => setTimeout(r, 100)); return document.getElementById('menu').textContent`)));
       await b2.esc();
       await b2.eval(`openPalette('summarize'); return 1`); await sleep(500);
       t.check('and so can Ctrl+K', /summarize the conversation now/i.test(await b2.eval(`return document.getElementById('palette').textContent`)));
@@ -263,7 +269,7 @@ module.exports = [
       await t.shot(b, 'clean');
 
       await b.clickOn('[data-c="more"]'); await sleep(300);
-      t.check('the ⋯ menu offers a review', /Have Codex review the changes/.test(await b.eval(`return document.getElementById('menu').textContent`)));
+      t.check('the ⋯ menu offers a review', /Have Codex review the changes/.test(await b.eval(`const it = [...document.querySelectorAll('#menu [role=menuitem]')].find(x => /^Review the changes/.test(x.querySelector('.m-l').textContent)); if (it) { it.click(); await new Promise(r => setTimeout(r, 100)); } return document.getElementById('menu').textContent`)));
       await b.esc();
       await b.eval(`openPalette('review'); return 1`); await sleep(500);
       t.check('and so does Ctrl+K', /Have Codex review this chat’s changes/.test(await b.eval(`return document.getElementById('palette').textContent`)));
@@ -355,7 +361,7 @@ module.exports = [
       await push(now.slice().reverse());
       t.check('a chat that drops out for a moment comes back to its place', JSON.stringify(await rail()) === JSON.stringify(before), await rail());
 
-      const nav = () => b.eval(`return [...document.querySelectorAll('.nav-i[data-prov="claude"]')].map(x => x.dataset.cwd)`);
+      const nav = () => b.eval(`return [...document.querySelectorAll('.nav-proj')].map(x => x.dataset.cwd)`);
       await b.eval(`ChatUI.close ? ChatUI.close() : null; go('hub'); return 1`).catch(() => {}); await sleep(800);
       const n0 = await nav();
       await b.eval(`S.projects = S.projects.slice().reverse(); renderNav(); return 1`); await sleep(200);
@@ -626,7 +632,7 @@ module.exports = [
       const b = await t.open();
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
       await b.clickOn('[data-c="more"]'); await sleep(300);
-      t.check('the chat’s ⋯ menu can save it as a web page', /Save as a web page/.test(await b.eval(`return document.getElementById('menu').textContent`)));
+      t.check('the chat’s ⋯ menu can save it as a web page', /Save as a web page/.test(await b.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => /^Save or copy/.test(x.querySelector('.m-l').textContent)).click(); await new Promise(r => setTimeout(r, 100)); return document.getElementById('menu').textContent`)));
       await b.esc();
       const page = await b.eval(`window._blobs = []; URL.createObjectURL = x => { _blobs.push(x); return 'blob:test'; }; savePage(); return await _blobs[0].text()`);
       t.check('it’s a page of its own', /^<!doctype html>/.test(page) && /<title>Balance pass on the bard’s songs<\/title>/.test(page) && /<style>/.test(page));
@@ -723,7 +729,7 @@ module.exports = [
       await t.shot(b, 'first');
       await b.clickOn('[data-tour="next"]'); await sleep(400);
       s = await step();
-      t.check('Next moves on (to the account)', s && s.title === 'Your accounts' && await near('#seal', s.spot), s);
+      t.check('Next moves on (to the account)', s && s.title === 'Your accounts' && await near('#usechip', s.spot), s);
       await t.shot(b, 'accounts');
       await b.key('ArrowRight', 'ArrowRight', 39); await sleep(400);
       t.check('→ moves on too', (await step()).title === 'Your projects');
@@ -933,6 +939,8 @@ module.exports = [
         };
         ChatUI.open = o => { _calls.push(['open', o]); };
         Viewer.open({ path: 'D:\\\\Sites\\\\my-site' }); return 1`); await sleep(700);
+      const judged = await b.eval(`return [looksLikePath('C:\\\\x\\\\run.exe /c notes.txt'), looksLikePath('C:\\\\Program Files\\\\my app\\\\notes.txt'), looksLikePath('C:\\\\x\\\\run.exe')]`);
+      t.check('a command isn’t a path; a path with spaces is', judged[0] === false && judged[1] === true && judged[2] === true, judged);
       const head = await b.eval(`return [...document.querySelectorAll('#vHead .v-act button')].map(x => x.textContent.trim())`);
       t.check('a folder on another drive opens, with Work here and Open in Explorer', head.includes('Work here ▾') && head.includes('Open in Explorer'), head);
       await b.clickOn('#vHead [data-v="work"]'); await sleep(300);
@@ -946,6 +954,148 @@ module.exports = [
       await b.clickOn('#vHead [data-v="browser"]'); await sleep(300);
       calls = await b.eval(`return _calls`);
       t.check('a web page opens in the browser', calls.some(([u, body]) => u === '/api/file/browser' && body.path === 'D:\\Sites\\my-site\\index.html'), calls);
+      await b.eval(`Viewer.close && Viewer.close(); return 1`);
+      // Paths as agents really write them: Codex's /C:/…, folders with spaces, a zip, a folder.
+      const links = await b.eval(`const pathOf = s => { const d = document.createElement('div'); d.innerHTML = inline(s); return [...d.querySelectorAll('.flink')].map(x => x.dataset.path); };
+        return {
+          codex: pathOf('[site.zip](</C:/Users/me/Rebirth World/site.zip>)'),
+          unbracketed: pathOf('[site.zip](C:\\\\Users\\\\me\\\\Rebirth World\\\\site.zip)'),
+          x86: pathOf('[tool](C:\\\\Program Files (x86)\\\\Tool\\\\readme.md)'),
+          tick: pathOf('\`C:\\\\Users\\\\me\\\\Rebirth World\\\\site.zip\`'),
+          folder: pathOf('\`D:\\\\Sites\\\\my-site\`'),
+          command: pathOf('\`C:\\\\tools\\\\run.exe --fast\`'),
+          sentence: pathOf('C:\\\\foo and then some words.md'),
+          marked: (() => { const d = document.createElement('div'); d.innerHTML = inline('Run it from C:\\\\repo with \`npm test\`, the output goes to out/result.json.'); return { paths: [...d.querySelectorAll('.flink')].map(x => x.dataset.path), code: d.querySelector('code')?.textContent }; })(),
+          twoFiles: pathOf('Copied C:\\\\proj\\\\a.md to backup\\\\a.md'),
+          bare: pathOf('Saved to C:\\\\Users\\\\me\\\\Rebirth World\\\\plan.md, as asked.'),
+          relative: pathOf('See docs/plan.md and \`src/app.js\`.'),
+          web: pathOf('[site](https://example.com/a.zip)'),
+          fileUrl: pathOf('[a](file:///C:/Users/me/a.md)'),
+        }`);
+      t.check('Codex’s /C:/… link opens the path without the slash', links.codex[0] === 'C:/Users/me/Rebirth World/site.zip', links.codex);
+      t.check('a link with spaces and no <brackets> is still a link', links.unbracketed[0] === 'C:\\Users\\me\\Rebirth World\\site.zip', links.unbracketed);
+      t.check('and “(x86)” doesn’t end it early', links.x86[0] === 'C:\\Program Files (x86)\\Tool\\readme.md', links.x86);
+      t.check('a path in code with spaces is a link, and a zip', links.tick[0] === 'C:\\Users\\me\\Rebirth World\\site.zip', links.tick);
+      t.check('a folder in code is a link', links.folder[0] === 'D:\\Sites\\my-site', links.folder);
+      t.check('a command isn’t', links.command.length === 0, links.command);
+      t.check('the words after a path don’t run into it', !links.sentence.some(p => /^C:/.test(p)), links.sentence);
+      t.check('nor does code further along the sentence', links.marked.code === 'npm test' && !links.marked.paths.some(p => /^C:/.test(p)) && links.marked.paths.includes('out/result.json'), links.marked);
+      t.check('and two files in a sentence are two links', links.twoFiles.join() === 'C:\\proj\\a.md,backup\\a.md', links.twoFiles);
+      t.check('a bare path with spaces in its folders is one link', links.bare.length === 1 && links.bare[0] === 'C:\\Users\\me\\Rebirth World\\plan.md', links.bare);
+      t.check('relative ones work as before', links.relative.join() === 'docs/plan.md,src/app.js', links.relative);
+      t.check('web links stay web links', links.web.length === 0, links.web);
+      t.check('a file:/// link shows a plain path', links.fileUrl[0] === 'C:/Users/me/a.md', links.fileUrl);
+    },
+  },
+  {
+    name: 'audit fixes',
+    // From the audit: things that only go wrong once a chat has been reopened, or has three in it.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      // With Gemini and Codex both in the chat, a card acts for the one it came from, whoever's in view.
+      const cards = await b.eval(`const realApi = api, sent = [];
+        api = async (u, body) => { if (/^\\/api\\/chat\\/(undo|answer|permission|interrupt|resume-at|respond)/.test(u)) { sent.push([u, body && body.key]); return { restored: [], skipped: [] }; } return realApi(u, body); };
+        window.appConfirm = async () => true;
+        C.comps = { gemini: { key: 'key-gemini', provider: 'gemini', state: 'waiting' }, codex: { key: 'key-codex', provider: 'codex', state: 'busy' } };
+        C.crewKinds = ['codex', 'gemini'];
+        focusMate('codex');
+        withComp('gemini', () => addPermission({ requestId: 'g1', toolName: 'Bash', view: { summary: 'x', detail: 'x', detailKind: 'command' } }, 'comp'));
+        const card = document.querySelector('[data-req="comp:g1"]');
+        await answer(card, 'allow');
+        const bar = document.createElement('div'); bar.dataset.src = 'comp';
+        withComp('gemini', () => { bar._kind = compKind('comp'); });
+        bar._ev = { turn: 2, files: [{ path: 'a.js', status: 'modified', add: 1, del: 0 }] };
+        await undoChanges(bar);
+        withComp('gemini', () => renderStuck({ quietMin: 10 }, 'comp'));
+        withComp('codex', () => renderStuck({ quietMin: 10 }, 'comp'));
+        const stuck = document.querySelectorAll('.stuck-card').length;
+        const inView = C.comp.provider;
+        document.querySelectorAll('.stuck-card').forEach(x => x.remove());
+        api = realApi;
+        return { sent, stuck, inView }`);
+      t.check('Allow on Gemini’s card goes to Gemini, with Codex in view', cards.inView === 'codex' && cards.sent[0] && cards.sent[0][1] === 'key-gemini', cards);
+      t.check('Undo under Gemini’s reply undoes Gemini’s, not Codex’s turn of that number', cards.sent.some(([u, k]) => /undo/.test(u) && k === 'key-gemini') && !cards.sent.some(([, k]) => k === 'key-codex'), cards);
+      t.check('and each partner’s “stuck” card stays its own', cards.stuck === 2, cards);
+      // Opening a chat replays what's happened in it: that mustn't act again.
+      const limit = await b.eval(`const was = S.accounts, roomy = roomyAccounts;
+        roomyAccounts = () => [{ a: { id: 'other', name: 'Other account' }, left: 80 }];
+        const out = {};
+        const make = (at) => { liveRender = true; try { renderLimit({ kind: 'limit', which: 'five_hour', at }, 'main'); } finally { liveRender = false; } const c = document.querySelector('.limit-card[data-src="main"]'); const armed = !!(c && c._auto); if (c) { clearTimeout(c._auto); c._auto = 0; } const r = armed; c && c.remove(); return r; };
+        out.old = make(new Date(Date.now() - 3 * 3600e3).toISOString());
+        out.fresh = make(new Date().toISOString());
+        roomyAccounts = roomy;
+        return out`);
+      t.check('a limit reached hours ago doesn’t switch accounts by itself on opening the chat', limit.old === false, limit);
+      t.check('one reached just now still does', limit.fresh === true, limit);
+      // Each chat keeps its own pictures and last keystrokes while you look at another.
+      // (The demo's server answers every open with one chat: here each comes back as itself.)
+      const asItself = `const openReal = api; const itself = async (u, body) => { const r = await openReal(u, body); return u === '/api/chat/open' ? { ...r, sessionId: body.sessionId, key: 'k-' + body.sessionId.slice(0, 8) } : r; };`;
+      const draft = await b.eval(`${asItself} api = itself;
+        const k = draftKey(); localStorage.removeItem(k);
+        C.attachments = [{ mediaType: 'image/png', data: 'AAAA', url: null }];
+        const box = document.getElementById('cText'); box.value = 'typed just now'; saveDraft();
+        const id = C.sessionId;
+        await openChatView({ sessionId: ${JSON.stringify(demo.ID['s-brawl'])} }); await new Promise(r => setTimeout(r, 900));
+        const away = { pics: C.attachments.length, text: box.value };
+        const saved = localStorage.getItem(k);
+        await openChatView({ sessionId: id }); await new Promise(r => setTimeout(r, 900));
+        const back = { pics: C.attachments.length, text: box.value };
+        C.attachments = []; box.value = ''; localStorage.removeItem(k); renderAttachments();
+        api = openReal;
+        return { away, saved, back }`);
+      t.check('text typed the moment before switching is kept', draft.saved === 'typed just now', draft);
+      t.check('the other chat has its own empty box', draft.away.pics === 0 && draft.away.text !== 'typed just now', draft);
+      t.check('and coming back, the picture and the text are there', draft.back.pics === 1 && draft.back.text === 'typed just now', draft);
+      // The chat you clicked last is the one that opens.
+      const race = await b.eval(`${asItself} let release;
+        api = (u, body) => { if (u === '/api/chat/open' && !release) return new Promise(r => { release = () => r(itself(u, body)); }); return itself(u, body); };
+        const first = openChatView({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} });
+        await new Promise(r => setTimeout(r, 50));
+        await openChatView({ sessionId: ${JSON.stringify(demo.ID['s-brawl'])} });
+        const now = C.key;
+        release(); await first; await new Promise(r => setTimeout(r, 300));
+        api = openReal;
+        return { now, after: C.key, want: 'k-' + ${JSON.stringify(demo.ID['s-brawl'])}.slice(0, 8) }`);
+      t.check('an older click answering late doesn’t pull you away', race.now === race.want && race.after === race.want, race);
+      // Show earlier: once, however often it's clicked; a folded chapter still goes in a saved copy.
+      const early = await b.eval(`const real = loadHistory; let calls = 0;
+        loadHistory = async () => { calls++; await new Promise(r => setTimeout(r, 120)); return null; };
+        const e = document.getElementById('cEarlier'); e.hidden = false;
+        e.click(); e.click(); e.click();
+        const during = e.textContent;
+        await new Promise(r => setTimeout(r, 300));
+        loadHistory = real;
+        const after = e.textContent; e.hidden = true;
+        return { calls, during, after }`);
+      t.check('Show earlier loads one page however many clicks', early.calls === 1 && early.during === 'Loading…' && early.after === 'Show earlier messages', early);
+      const fold = await b.eval(`const feed = document.getElementById('cFeed');
+        const msg = document.createElement('div'); msg.className = 'umsg'; msg.textContent = 'tucked away in an old chapter';
+        const card = document.createElement('div'); card.className = 'chapter-fold'; card._nodes = document.createDocumentFragment(); card._nodes.appendChild(msg);
+        feed.prepend(card);
+        const md = chatMarkdown(), page = chatPage();
+        document.getElementById('cFindQ').value = 'tucked';
+        runFind();
+        const opened = !document.querySelector('.chapter-fold') || !feed.contains(card);
+        closeFind(); msg.remove(); card.remove();
+        return { inMd: /tucked away/.test(md), inPage: /tucked away/.test(page), opened }`);
+      t.check('saving a chat includes its folded chapters', fold.inMd && fold.inPage, fold);
+      t.check('and searching opens a folded chapter with a match', fold.opened, fold);
+      // A reply streaming in draws only what's new, so pictures and selections stay put.
+      const stream = await b.eval(`const part = document.createElement('div'); part.className = 'part'; part.dataset.mid = 'stream-1'; part.innerHTML = '<div class="live"></div>';
+        const feed = document.getElementById('cFeed'); feed.appendChild(part);
+        const show = t => { C.liveText = { 'stream-1': t }; flushLive(); return part.querySelector('.live-done'); };
+        const done = show('First paragraph.\\n\\n');
+        const firstP = done.firstElementChild;
+        show('First paragraph.\\n\\nSecond paragraph.\\n\\n');
+        const kept = done.firstElementChild === firstP;
+        show('First paragraph.\\n\\nSecond paragraph.\\n\\n1. one\\n\\n');
+        const whole = show('First paragraph.\\n\\nSecond paragraph.\\n\\n1. one\\n\\n2. two\\n\\n');
+        const items = whole.querySelectorAll('ol').length, text = whole.textContent;
+        C.liveText = {}; part.remove();
+        return { kept, items, text }`);
+      t.check('a finished paragraph stays the same on the page as more comes in', stream.kept, stream);
+      t.check('and a numbered list running on stays one list', stream.items === 1 && /Second paragraph/.test(stream.text), stream);
     },
   },
   {
@@ -954,8 +1104,8 @@ module.exports = [
     async run(t) {
       const calls = [];
       const b = await t.open({ openclaw: true, seen: (p, u) => calls.push([p, u]) });
-      const nav = await b.eval(`const h = document.querySelector('.nav-h.openclaw'); return h && h.textContent.replace(/\\s+/g, ' ').trim()`);
-      t.check('the sidebar has an OpenClaw group', nav && /^OpenClaw ?2/.test(nav), nav);
+      const nav = await b.eval(`const h = document.querySelector('[data-navprov="openclaw"]'); return h && h.textContent.replace(/\\s+/g, ' ').trim()`);
+      t.check('the sidebar can show just the projects with OpenClaw sessions', nav === 'OpenClaw', nav);
       await b.eval(`go('folder', ${JSON.stringify('C:\\Projects\\Starfall Tavern')}); return 1`); await sleep(900);
       const row = await b.eval(`const r = document.querySelector('[data-row="agent:main:discord:channel:42"]'); return r && { tag: r.querySelector('.tag.openclaw')?.textContent, btn: r.querySelector('[data-chat]')?.textContent, sub: r.querySelector('.r-sub')?.textContent }`);
       t.check('its session sits in the project, tagged with the agent', row && row.tag === 'OpenClaw · Nova' && row.btn === 'Read' && row.sub === 'Stored session', row);
@@ -994,8 +1144,9 @@ module.exports = [
       const verFile = path.join(dir, 'version.txt');
       const fresh = !!process.env.LOOKS_RESET || (fs.existsSync(verFile) ? fs.readFileSync(verFile, 'utf8').trim() : '') !== version;
       const b = await t.open();
-      // Still pictures: no motion, the same clock.
-      const still = `document.documentElement.classList.add('low-power'); document.body.classList.add('low-power'); for (const el of document.querySelectorAll('[data-clock]')) el.textContent = '9:00 AM'; for (const a of document.getAnimations()) { try { a.finish(); } catch {} } return 1`;
+      // Still pictures: no motion, the same clock and date. ("Saturday, October 31" can wrap where "Friday, October 30"
+      // didn't, and it moved the whole page: a false alarm most mornings.)
+      const still = `document.documentElement.classList.add('low-power'); document.body.classList.add('low-power'); for (const el of document.querySelectorAll('[data-clock]')) el.textContent = '9:00 AM'; for (const el of document.querySelectorAll('.hero .eyebrow')) el.innerHTML = el.innerHTML.replace(/[A-Z][a-z]+day, [A-Z][a-z]+ [0-9]+/, 'Monday, June 1'); for (const a of document.getAnimations()) { try { a.finish(); } catch {} } return 1`;
       const themes = await b.eval(`return Look.THEMES.filter(x => x.family !== 'custom').map(x => x.id)`);
       const changed = [];
       let kept = 0;
@@ -1182,7 +1333,7 @@ module.exports = [
       t.check('a chat can alert only when it needs you, or not at all', al.played.join() === 'needs', al);
       t.check('quiet hours hush alerts, overnight too', al.night && al.morning && !al.day, al);
       const used = await b.eval(`ChatUI.close(); S.spent = { studio: [{ sessionId: ${JSON.stringify(demo.ID['s-bard'])}, title: '', provider: 'claude', five: 7500, week: 9000 }, { sessionId: 'x', title: 'Old chat', provider: 'claude', five: 2500, week: 3000 }] };
-        renderLive(true); await new Promise(r => setTimeout(r, 300));
+        S.acctOpen.add('studio'); renderLive(true); await new Promise(r => setTimeout(r, 300));
         const p = document.querySelector('.dc-used'); return p && p.textContent.replace(/\\s+/g, ' ').trim()`);
       t.check('each account says which chats used most of its last five hours', /Used most, last 5 hours/.test(used) && /Balance pass on the bard’s songs 75%/.test(used) && /Old chat 25%/.test(used), used);
       // The mini window, with a frame standing in for the floating one (that needs a click and a screen).
@@ -1341,7 +1492,7 @@ module.exports = [
     async run(t) {
       const b = await t.open();
       const id = demo.ID['s-brawl'];
-      const inNav = () => b.eval(`return [...document.querySelectorAll('.nav-i, .r-row, .row')].some(x => /Tavern brawl/.test(x.textContent) && !x.closest('.done-chats'))`);
+      const inNav = () => b.eval(`return [...document.querySelectorAll('.nav-i:not([data-navopen]), .r-row, .row')].some(x => /Tavern brawl/.test(x.textContent) && !x.closest('.done-chats'))`);
       t.check('a chat is on the lists to begin with', await inNav());
       await b.eval(`setChatDone(${JSON.stringify(id)}, true); return 1`); await sleep(600);
       t.check('marked done, it leaves the lists', !(await inNav()));
@@ -1727,8 +1878,8 @@ module.exports = [
       const calls = [];
       const b = await t.open({ gemini: true, seen: (p, u, body) => calls.push([p, body]) });
       await sleep(600);
-      const nav = await b.eval(`const h = document.querySelector('.nav-h.gemini'); return h && { text: h.textContent.replace(/\\s+/g, ' ').trim(), items: [...document.querySelectorAll('.nav-i.gemini[data-view="folder"]')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
-      t.check('Gemini has its own group in the side list, with its project', !!nav && /Gemini/.test(nav.text) && nav.items.some(x => /Starfall Tavern/.test(x)), nav);
+      const nav = await b.eval(`const h = document.querySelector('[data-navprov="gemini"]'); if (!h) return null; const text = h.textContent.trim(); h.click(); await new Promise(r => setTimeout(r, 200)); return { text, on: document.querySelector('[data-navprov="gemini"]').getAttribute('aria-pressed'), items: [...document.querySelectorAll('.nav-proj.gemini[data-view="folder"]')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
+      t.check('the side list can show just the projects with Gemini chats', !!nav && nav.text === 'Gemini' && nav.on === 'true' && nav.items.some(x => /Starfall Tavern/.test(x)), nav);
       // The top bar's accounts list has Gemini too: signed in, and any model out of quota with its reset.
       await b.clickOn('#usechip'); await sleep(300);
       const pop = await b.eval(`const r = document.querySelector('#acctPop .ap-row.gemini'); return r && r.textContent.replace(/\\s+/g, ' ').trim()`);
@@ -1738,7 +1889,7 @@ module.exports = [
       t.check('a model out of quota shows there, with when it comes back', /Gemini 4 Argon \(Medium\) ran out, back /.test(out), out);
       await t.shot(b, 'accounts');
       await b.esc(); await sleep(200);
-      await b.clickOn('.nav-i.gemini[data-view="folder"]'); await sleep(900);   // the project (a Gemini chat in Recent is a .nav-i.gemini too)
+      await b.clickOn('.nav-proj.gemini[data-view="folder"]'); await sleep(900);   // the project (a Gemini chat in Recent is a .nav-i.gemini too)
       const page = await b.eval(`return { eyebrow: document.querySelector('.wp-in .eyebrow')?.textContent, btn: !!document.querySelector('[data-act="newgemini"]'), rows: [...document.querySelectorAll('#wbList .rows > li')].length }`);
       t.check('its project page lists the Gemini chats, with a New Gemini chat button', /Gemini chats in this project/.test(page.eyebrow || '') && page.btn && page.rows === 1, page);
       await t.shot(b, 'project');
@@ -1852,9 +2003,10 @@ module.exports = [
     async run(t) {
       const b = await t.open(); await sleep(500);
       const side = await b.eval(`const h = document.querySelector('.nav-h.recent'); const rows = [...document.querySelectorAll('.nav-h.recent ~ .nav-chat')].slice(0, 6);
-        const want = allSessions().filter(([, p]) => p.cwd !== cmdrSet().cwd).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6).map(([s]) => s.id);
+        const lists = navLists(), listed = new Set([...lists.active.flatMap(x => [x.sessionId, x.startedAs]), ...lists.pinned.map(x => x.sessionId)].filter(Boolean).map(x => x.toLowerCase()));
+        const want = allSessions().filter(([s, p]) => p.cwd !== cmdrSet().cwd && !listed.has(s.id.toLowerCase())).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6).map(([s]) => s.id);
         return { head: h && h.textContent.replace(/\\s+/g, ' ').trim(), ids: rows.map(r => r.dataset.navchat), want, more: !!document.querySelector('.nav-more[data-view="recent"]'), sub: rows[0] && rows[0].querySelector('small').textContent }`);
-      t.check('the sidebar has Recent: the latest chats, newest first', !!side.head && /Recent/.test(side.head) && JSON.stringify(side.ids) === JSON.stringify(side.want) && side.ids.length > 0, side);
+      t.check('the sidebar has Recent: the latest chats not listed above it, newest first', !!side.head && /Recent/.test(side.head) && JSON.stringify(side.ids) === JSON.stringify(side.want) && side.ids.length > 0, side);
       t.check('each says its project and how long ago', / · /.test(side.sub || ''), side.sub);
       await b.clickOn('.nav-more[data-view="recent"]'); await sleep(500);
       t.check('All recent chats opens the Recent chats page', await b.eval(`return S.view === 'recent'`));
@@ -2201,10 +2353,13 @@ module.exports = [
       await b.eval(`document.querySelector('.td-b').click(); return 1`); await sleep(1500);
       t.check('clicking a bar opens the chat that was busiest then', await b.eval(`return ChatUI.isOpen()`));
       await b.eval(`ChatUI.close(); return 1`); await sleep(600);
-      // Empty spots get a picture.
-      const e = await b.eval(`S.activity = []; renderLive(true); await new Promise(r => setTimeout(r, 300)); return { await: !!document.querySelector('#awaitList .empty-art[data-kind="await"] svg'), work: !!document.querySelector('#board .empty-art[data-kind="work"] svg'), text: (document.querySelector('#awaitList .empty-line') || {}).textContent || '' }`);
-      t.check('nothing waiting, nothing working: a small picture and the usual words', e.await && e.work && /Nothing is waiting on you/.test(e.text), e);
-      const pic = await b.eval(`Look.set({ theme: 'isekai' }); Look.theme().empty = { await: 'isekai-dark' }; renderLive(true); await new Promise(r => setTimeout(r, 300)); const img = document.querySelector('#awaitList .empty-art.painted img'); const ok = img && img.getAttribute('src') === '/art/isekai-dark.webp'; delete Look.theme().empty; return !!ok`);
+      // Nothing waiting, nothing working: those sections step aside, and the header says so.
+      const e = await b.eval(`S.activity = []; renderLive(true); await new Promise(r => setTimeout(r, 300)); return { await: document.getElementById('secAwait').hidden, work: document.getElementById('secWork').hidden, hero: document.querySelector('.hero h1').textContent, chips: [...document.querySelectorAll('#hubJump .hj')].map(x => x.dataset.jump) }`);
+      t.check('nothing waiting, nothing working: those sections step aside', e.await && e.work && /All quiet/.test(e.hero) && !e.chips.includes('secAwait') && !e.chips.includes('secWork'), e);
+      // Imperial and Rebel keep theirs: an empty spot with a small picture and the usual words.
+      const saga = await b.eval(`Look.set({ theme: 'imperial' }); await new Promise(r => setTimeout(r, 400)); return { await: !!document.querySelector('#awaitList .empty-art[data-kind="await"] svg'), work: !!document.querySelector('#board .empty-art[data-kind="work"] svg'), text: (document.querySelector('#awaitList .empty-line') || {}).textContent, seal: !!document.getElementById('seal'), jump: !!document.getElementById('hubJump') }`);
+      t.check('Imperial keeps its sidebar seal and its empty spots', saga.await && saga.work && /Nothing is waiting on you/.test(saga.text) && saga.seal && !saga.jump, saga);
+      const pic = await b.eval(`Look.set({ theme: 'isekai' }); Look.theme().empty = { await: 'isekai-dark' }; const d = document.createElement('div'); d.innerHTML = emptyArt('await', 'x'); const img = d.querySelector('.empty-art.painted img'); const ok = img && img.getAttribute('src') === '/art/isekai-dark.webp'; delete Look.theme().empty; return ok`);
       t.check('a theme that brings its own painting for an empty spot shows it', pic);
       await b.eval(`Look.reset(); return 1`);
     },

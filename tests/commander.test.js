@@ -50,7 +50,7 @@ test('commander: started from its settings, the tools answer and list what the C
   const runAsNode = process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {};
   const r = await askTools(process.execPath, runAsNode);
   assert.ok(r.init && r.init.result, 'it answers initialize');
-  for (const name of ['list_sessions', 'read_session', 'send_message']) assert.ok(r.tools.some(t => t.name === name), `${name} is there`);
+  for (const name of ['list_sessions', 'read_session', 'search_chats', 'send_message', 'keep_working']) assert.ok(r.tools.some(t => t.name === name), `${name} is there`);
 });
 
 // With Electron here (a developer's copy), the desktop app's own case: Electron running the script.

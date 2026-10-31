@@ -15,7 +15,7 @@ function rowHtml(c, { showProject = false, showStage = false, depth = 0 } = {}) 
   return `<div class="row ${depth ? 'sub kid' : par ? 'sub' : ''} ${isQuiet(c) ? 'is-quiet' : ''}" ${depth ? `style="--d:${depth}"` : ''} role="button" tabindex="-1" draggable="true" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" aria-selected="${S.sel.has(c.id)}">
     ${needs(c) ? '<span class="dot needs-dot" title="Needs you"></span>' : running(c) ? '<span class="live-dot" title="Running"></span>' : '<span></span>'}
     <span class="t"><b>${focusStar(c)}${esc(c.title)}</b>${sub ? `<small>${sub}</small>` : ''}</span>
-    <span class="side-tags">${c.fromRoutine ? `<span class="tag" title="Started by the routine “${esc(c.fromRoutine)}”">from ${esc(c.fromRoutine.slice(0, 24))}</span>` : ''}${ranTag}${kindTag(c)}${waitTag(c)}${c.provider === 'codex' ? '<span class="tag">Codex</span>' : ''}${showStage ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu"><span class="dot" style="background:${st.c}"></span>${st.name}</button>` : ''}</span>
+    <span class="side-tags">${c.fromRoutine ? `<span class="tag" title="Started by the routine “${esc(c.fromRoutine)}”">from ${esc(c.fromRoutine.slice(0, 24))}</span>` : ''}${ranTag}${kindTag(c)}${waitTag(c)}${c.provider === 'codex' ? '<span class="tag">Codex</span>' : c.provider === 'gemini' ? '<span class="tag">Gemini</span>' : ''}${showStage ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu"><span class="dot" style="background:${st.c}"></span>${st.name}</button>` : ''}</span>
     <span class="when">${ago(c.updated)}</span>
     <button class="iconbtn rmenu" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" aria-label="Move or change">${IC.dots}</button>
   </div>`;
@@ -301,7 +301,7 @@ function showImage(key) {
   const src = `/api/lite/gimg?token=${TOKEN}&thread=${encodeURIComponent(thread)}&file=${encodeURIComponent(file)}`;
   const root = $('modalRoot');
   const at = (S.gallery.images.find(im => im.thread === thread && im.file === file) || {}).at;
-  root.innerHTML = `<div class="modal-back lightbox" data-lightbox="1"><button class="lb-nav prev" data-lb="-1" aria-label="Previous (←)" ${showImage.i > 0 ? '' : 'disabled'}>‹</button><figure><img src="${src}" alt=""><figcaption>${c ? `<button class="linkish" data-open="${esc(c.id)}">${esc(c.title)}</button> · ${esc(projOf(c).name)}` : 'Drawn by Codex'}${at ? ` · ${esc(dayName(at))}` : ''} · <a class="linkish" href="${src}" target="_blank" rel="noopener">Full size</a> · <button class="linkish" data-useimg="${esc(src)}">Use in a chat…</button> · ${showImage.i + 1} of ${list.length}</figcaption></figure><button class="lb-nav next" data-lb="1" aria-label="Next (→)" ${showImage.i < list.length - 1 ? '' : 'disabled'}>›</button></div>`;
+  root.innerHTML = `<div class="modal-back lightbox" data-lightbox="1"><button class="lb-nav prev" data-lb="-1" aria-label="Previous (←)" ${showImage.i > 0 ? '' : 'disabled'}>‹</button><figure><img src="${esc(src)}" alt=""><figcaption>${c ? `<button class="linkish" data-open="${esc(c.id)}">${esc(c.title)}</button> · ${esc(projOf(c).name)}` : 'Drawn by Codex'}${at ? ` · ${esc(dayName(at))}` : ''} · <a class="linkish" href="${src}" target="_blank" rel="noopener">Full size</a> · <button class="linkish" data-useimg="${esc(src)}">Use in a chat…</button> · ${showImage.i + 1} of ${list.length}</figcaption></figure><button class="lb-nav next" data-lb="1" aria-label="Next (→)" ${showImage.i < list.length - 1 ? '' : 'disabled'}>›</button></div>`;
   root.querySelector('.modal-back').addEventListener('click', e => {
     const nav = e.target.closest('[data-lb]');
     if (nav) { e.stopPropagation(); return stepImage(Number(nav.dataset.lb)); }
@@ -422,7 +422,7 @@ function rowMenu(anchor, id, at) {
     if (v === 'proj') return pickProject(anchor, k => wrap(async () => {
       // Its own project in Personal: named for the chat, kept with your home folder.
       if (k === '__own__') {
-        const home = (/^\/Users\/[^/]+/.exec(c.cwd || '') || /^\/home\/[^/]+/.exec(c.cwd || '') || [''])[0];
+        const home = (/^\/Users\/[^/]+/.exec(c.cwd || '') || /^\/home\/[^/]+/.exec(c.cwd || '') || /^[A-Za-z]:[\\/]Users[\\/][^\\/]+/.exec(c.cwd || '') || [''])[0];
         if (!home) throw new Error('Couldn’t tell which home folder this chat belongs to.');
         k = `${home}#${c.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'project'}`;
         await api('/api/lite/project', { key: k, patch: { bucket: 'personal', name: c.title.slice(0, 60) } });

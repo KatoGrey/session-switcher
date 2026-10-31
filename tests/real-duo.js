@@ -91,6 +91,117 @@ async function startServer(dataDir) {
   console.log(`accounts: ${st.accounts.map(a => `${a.name}${a.signedIn ? '' : ' (signed out)'}`).join(', ')}; codex: ${st.codex && st.codex.signedIn ? 'signed in' : 'NOT signed in'}`);
   const run = name => !only.length || only.includes(name);
 
+  // Two chats changing one file at the same time: noticed, and everything a chat changed, in one place.
+  if (run('same-file')) {
+    const { execFileSync } = require('child_process');
+    const made = await s.call('/api/project/create', { parent: os.tmpdir(), name: `ss-same-${Date.now().toString(36)}` });
+    out.folders.push(made.cwd); save();
+    const git = (...a) => execFileSync('git', ['-C', made.cwd, ...a], { windowsHide: true, stdio: 'pipe' });
+    git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'T'); git('config', 'commit.gpgsign', 'false');
+    fs.writeFileSync(path.join(made.cwd, 'shared.txt'), 'start\n'); fs.writeFileSync(path.join(made.cwd, 'only-a.txt'), 'start\n');
+    git('add', '.'); git('commit', '-qm', 'Start');
+    const [a, b] = await Promise.all([1, 2].map(() => s.call('/api/chat/open', { account: acct.id, cwd: made.cwd, mode: 'new', model: 'haiku', permissionMode: 'acceptEdits' })));
+    // Ready first: a snapshot is taken before a message, once the chat has started.
+    for (const c of [a, b]) for (let i = 0; i < 60 && (await s.call('/api/chat/attach', { key: c.key })).state === 'starting'; i++) await sleep(500);
+    const task = word => `Use your Edit tool to add a new last line "${word}" to shared.txt in this folder. Read the file first if you need to. Then reply with exactly: done`;
+    await Promise.all([s.call('/api/chat/send', { key: a.key, text: task('from-a') }), s.call('/api/chat/send', { key: b.key, text: task('from-b') })]);
+    await Promise.all([s.waitTurn(a.key, 1, 'the first chat’s reply'), s.waitTurn(b.key, 1, 'the second chat’s reply')]);
+    const rows = (await s.call('/api/activity')).list.filter(x => x.key === a.key || x.key === b.key);
+    check('both chats are told about the other', rows.length === 2 && rows.every(r => r.overlaps && r.overlaps[0] && r.overlaps[0].rel === 'shared.txt' && r.overlaps[0].others.length === 1), JSON.stringify(rows.map(r => r.overlaps)));
+    const text = fs.readFileSync(path.join(made.cwd, 'shared.txt'), 'utf8');
+    console.log(`  shared.txt ended up with: ${JSON.stringify(text)}`);
+    await Promise.all([a, b].map(c => s.waitFor(c.key, e => e.kind === 'changes', 30000, 'what the reply changed')));
+    const bar = s.watch(a.key).events.find(e => e.kind === 'changes');
+    console.log(`  the first chat's reply: ${JSON.stringify(bar.files)}`);
+    const q = new URLSearchParams({ key: a.key });
+    const soFar = await s.call(`/api/chat/so-far?${q}`);
+    check('a chat lists everything it changed', soFar.files.some(f => f.path === 'shared.txt'), JSON.stringify(soFar));
+    const diff = await s.call(`/api/chat/so-far-diff?${new URLSearchParams({ key: a.key, path: 'shared.txt' })}`);
+    check('and shows the change', /^\+from-/m.test(diff.diff), diff.diff);
+    const changes = await s.call(`/api/project/changes?${new URLSearchParams({ cwd: made.cwd })}`);
+    const row = changes.changes.find(c => c.files.some(f => f.path === 'shared.txt'));
+    check('the project’s Changes lists each reply', !!row && row.by === 'claude' && row.chat, JSON.stringify(changes.changes).slice(0, 400));
+    if (row) {
+      const said = await s.call(`/api/project/change-diff?${new URLSearchParams({ id: row.id, turn: String(row.turn), path: 'shared.txt' })}`);
+      check('and shows what it changed', /^\+from-/m.test(said.diff), said.diff);
+    }
+    const now = await s.call(`/api/project/now?${new URLSearchParams({ cwd: made.cwd })}`);
+    check('the project says what isn’t committed', now.git && now.git.changed >= 1 && now.git.files.some(f => f.rel === 'shared.txt') && now.git.commits[0].subject === 'Start', JSON.stringify(now));
+    const un = await s.call(`/api/project/diff?${new URLSearchParams({ cwd: made.cwd, path: 'shared.txt' })}`);
+    check('and what it is', /^\+from-/m.test(un.diff), un.diff);
+    // Its name: given after the first reply, by the smallest model.
+    let list = null;
+    for (let i = 0; i < 60; i++) {
+      list = (await s.call('/api/sessions')).projects.find(p => p.cwd === made.cwd);
+      if (list && list.sessions.length && list.sessions.every(x => x.renamed)) break;
+      await sleep(500);
+    }
+    console.log(`  their names: ${JSON.stringify(list && list.sessions.map(x => x.title))}`);
+    check('a new chat gets a short name', list && list.sessions.length >= 1 && list.sessions.every(x => x.renamed && x.title.length < 70 && !/^Use your Edit tool/.test(x.title)), JSON.stringify(list && list.sessions.map(x => [x.title, x.renamed])));
+    await Promise.all([a, b].map(c => s.call('/api/chat/stop', { key: c.key }).catch(() => {})));
+  }
+
+  // Kept at it until a time: a crew told to carry on when it goes quiet, each doing its part, until they say they're finished.
+  if (run('keep')) {
+    const made = await s.call('/api/project/create', { parent: os.tmpdir(), name: `ss-keep-${Date.now().toString(36)}` });
+    out.folders.push(made.cwd); save();
+    const lead = await s.call('/api/chat/open', { account: acct.id, cwd: made.cwd, mode: 'new', model: 'haiku', permissionMode: 'acceptEdits' });
+    for (let i = 0; i < 60 && (await s.call('/api/chat/attach', { key: lead.key })).state === 'starting'; i++) await sleep(500);
+    await s.call('/api/chat/send', { key: lead.key, text: 'Reply with exactly: ready' });
+    await s.waitTurn(lead.key, 1, 'Claude’s first reply');
+    const r = await s.call('/api/chat/send', { key: lead.key, to: 'partner', kind: 'codex', text: 'Reply with exactly: ready' });
+    const comp = await s.call('/api/chat/companion', { key: lead.key, kind: 'codex' });
+    const mate = (r && r.key) || comp.key;
+    await s.waitTurn(mate, 1, 'Codex’s first reply');
+    // Gemini too, if it's signed in here.
+    await s.call('/api/gemini/settings', { enabled: true });
+    let gst = null;
+    for (let i = 0; i < 40; i++) { gst = (await s.call('/api/state')).gemini; if (gst && gst.checked) break; await sleep(1000); }
+    let third = null;
+    if (gst && gst.signedIn) {
+      const g = await s.call('/api/chat/send', { key: lead.key, to: 'partner', kind: 'gemini', text: 'Reply with exactly: ready' });
+      third = g.key;
+      await s.waitTurn(third, 1, 'Gemini’s first reply');
+      out.gemini = [...(out.gemini || []), (await s.call('/api/chat/attach', { key: third })).sessionId].filter(Boolean); save();
+    } else console.log('  (Gemini isn’t signed in here: the two of them)');
+    const on = await s.call('/api/chat/keep', { key: lead.key, until: Date.now() + 14 * 60e3, quiet: 1, note: `Your part. Claude: create claude.txt in this folder containing the word done. Codex: create codex.txt in this folder containing the word done.${third ? ' Gemini: create gemini.txt in this folder containing the word done.' : ''} Once your own file exists you have nothing more to do.` });
+    check('it’s on', on.keep && on.keep.quietMinutes === 1 && on.keep.nudges === 0, JSON.stringify(on));
+    const rowNow = (await s.call('/api/activity')).list.find(x => x.key === lead.key);
+    check('the chat’s row says so', rowNow && rowNow.keep && rowNow.keep.until > Date.now(), JSON.stringify(rowNow && rowNow.keep));
+    const said = key => s.watch(key).events.filter(e => e.kind === 'user' && /From Session Switcher: keep working/.test(e.text || ''));
+    let row = rowNow, t0 = Date.now(), lastSaid = '';
+    while (row && row.keep && Date.now() - t0 < 11 * 60e3) {
+      await sleep(5000);
+      row = (await s.call('/api/activity')).list.find(x => x.key === lead.key);
+      const line = row && row.keep ? `${row.keep.state}, ${row.keep.nudges} check-ins, done: ${row.keep.done}` : 'off';
+      if (line !== lastSaid) { console.log(`  ${Math.round((Date.now() - t0) / 1000)} s: ${line}`); lastSaid = line; }
+      // Approvals: allow anything these tiny tasks ask for.
+      for (const key of [lead.key, mate, third].filter(Boolean)) for (const e of s.watch(key).events) if (e.kind === 'permission' && !e._done) { e._done = true; await s.call('/api/chat/permission', { key, requestId: e.requestId, decision: 'allow' }).catch(() => {}); }
+    }
+    const haveA = fs.existsSync(path.join(made.cwd, 'claude.txt')), haveB = fs.existsSync(path.join(made.cwd, 'codex.txt'));
+    console.log(`  in the folder: ${fs.readdirSync(made.cwd).join(', ')}`);
+    console.log(`  Claude replied: ${JSON.stringify(s.texts(lead.key).slice(-200))}`);
+    console.log(`  Codex replied: ${JSON.stringify(s.texts(mate).slice(-200))}`);
+    if (third) console.log(`  Gemini replied: ${JSON.stringify(s.texts(third).slice(-200))}`);
+    check('both were told to carry on', said(lead.key).length >= 1 && said(mate).length >= 1, `${said(lead.key).length} and ${said(mate).length}`);
+    check('each did its part', haveA && haveB && (!third || fs.existsSync(path.join(made.cwd, 'gemini.txt'))), fs.readdirSync(made.cwd).join(', '));
+    if (third) check('Gemini was told too', said(third).length >= 1, String(said(third).length));
+    check('and it stopped by itself, before the time', !row || !row.keep, JSON.stringify(row && row.keep));
+    const endNote = s.watch(lead.key).events.filter(e => e.kind === 'notice' && /Keep working/.test(e.text || '')).pop();
+    console.log(`  it said: ${endNote && endNote.text}`);
+    // Search reads the real records too, and what a partner wrote is found under the chat it belongs to.
+    const codexWords = fs.existsSync(path.join(made.cwd, 'codex.txt')) ? fs.readFileSync(path.join(made.cwd, 'codex.txt'), 'utf8').trim().split(/\s+/)[0] : '';
+    const leadId = (await s.call('/api/chat/attach', { key: lead.key })).sessionId;
+    let found = null;
+    for (let i = 0; i < 40 && !found; i++) {
+      const r = await s.call(`/api/search?${new URLSearchParams({ q: 'codex.txt' })}`);
+      found = r.hits.find(h => String(h.id).toLowerCase() === String(leadId).toLowerCase());
+      if (!found) await sleep(2000);
+    }
+    check('search finds it, under the chat', !!found, JSON.stringify({ leadId, codexWords, found }).slice(0, 300));
+    await s.call('/api/chat/stop', { key: lead.key }).catch(() => {});
+  }
+
   // 1. A Claude chat, then Codex joins it and reads it; then Claude reads Codex.
   if (run('claude-lead')) {
     const made = await s.call('/api/project/create', { parent: os.tmpdir(), name: `ss-duo-${Date.now().toString(36)}` });
@@ -193,7 +304,7 @@ async function startServer(dataDir) {
       order: [...f.children].filter(x => x.matches('.umsg, .turn, .handover')).map(x => x.matches('.turn') ? x.dataset.prov : x.matches('.handover') ? 'handover' : (x.classList.contains('to-partner') ? 'you→codex' : 'you')) }`);
     check('the window shows both sides in one feed', v.codexTurns >= 2 && v.claudeTurns >= 2 && v.toCodex >= 1, JSON.stringify(v));
     check('with the Both hand-over in place', v.handover >= 1, JSON.stringify(v.order));
-    check('and the crew: Claude and Codex', v.crew.join() === 'Claude,Codex,Both', v.crew.join());
+    check('and the crew: Claude and Codex', /^Claude,Codex(,Gemini)?,Together$/.test(v.crew.join()), v.crew.join());
     await b.shot(path.join(os.tmpdir(), 'real-duo-window.png'));
     b.close();
   }
@@ -203,7 +314,8 @@ async function startServer(dataDir) {
     await s.stop();
     const f = path.join(out.dataDir, 'chat-prefs.json'), prefs = JSON.parse(fs.readFileSync(f, 'utf8'));
     const lid = out.lead.leadId.toLowerCase();
-    prefs.chats[lid] = { ...(prefs.chats[lid] || {}), companion: '019a0000-dead-7000-8000-00000000beef' };
+    const was = prefs.chats[lid] || {};
+    prefs.chats[lid] = { ...was, companion: '019a0000-dead-7000-8000-00000000beef', ...(was.crew ? { crew: { ...was.crew, codex: '019a0000-dead-7000-8000-00000000beef' } } : {}) };
     fs.writeFileSync(f, JSON.stringify(prefs));
     s = await startServer(out.dataDir);
     const lead = await s.call('/api/chat/open', { account: acct.id, sessionId: out.lead.leadId, mode: 'resume', model: 'haiku' });

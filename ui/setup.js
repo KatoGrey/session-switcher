@@ -50,6 +50,8 @@ function renderSetup(j) {
         </select></div>
       ${t('syncSettings', 'Keep extra accounts’ settings in step', 'Copies your main settings.json, CLAUDE.md and keybindings to extra accounts whenever the main copy is newer.')}
       ${t('syncState', 'Carry over MCP servers and folder trust', 'Before a chat opens with an extra account, adds any MCP servers, approved tools and trusted folders from your main account that it doesn’t have yet.')}
+      <label class="toggle"><input type="checkbox" data-pref="autoName" ${p.autoName !== false ? 'checked' : ''}><span><b>Name new chats by themselves</b><span>After a chat’s first reply, Claude’s smallest model gives it a short name, so your lists say what each is about. One small question each, with nothing kept. A name you’ve given a chat is never changed.</span></span></label>
+      ${window.REMOTE ? '' : '<div class="field"><label>Your older chats</label><div class="row2"><span class="rd-hint">Those that still go by their first words can have a short name too, the latest forty at a time.</span><button class="btn" data-fix="name-older">Name them</button></div></div>'}
       <label class="toggle"><input type="checkbox" data-pref="autoSwitch" ${p.autoSwitch !== false ? 'checked' : ''}><span><b>Carry on when an account runs out</b><span>A chat that runs out of room mid-reply carries on as the account with the most room, by itself (you get a moment to say no).</span></span></label>
       <label class="toggle"><input type="checkbox" data-tips ${store('tips') !== 'off' ? 'checked' : ''}><span><b>Show tips</b><span>A one-line tip the first time something new appears, once each (on this device).</span></span></label>
       ${t('cleanEnv', 'Use only account sign-ins', 'Ignores ANTHROPIC_API_KEY and similar settings on this PC, so the account you pick is always the one used.')}
@@ -66,7 +68,7 @@ function renderSetup(j) {
         <small>Leave as “codex” unless Setup can’t find it; then paste the full path to codex.cmd.</small></div>
       ${window.REMOTE || !(j.codex && j.codex.enabled) ? '' : '<div id="cxVer"></div>'}
       <label class="toggle"><input type="checkbox" data-pref="autoReview" ${p.autoReview ? 'checked' : ''}><span><b>Review big changes by itself</b><span>After Claude changes forty lines or more in one reply, Codex reviews them and the findings appear in the chat.</span></span></label>
-      <div class="field"><label>Rules and tools</label><div class="row2"><span class="rd-hint">Write rules once for both (CLAUDE.md and AGENTS.md), and give each one the other’s MCP tools.</span><button class="btn" data-fix="rules">Rules and tools…</button></div></div>
+      <div class="field"><label>Rules and tools</label><div class="row2"><span class="rd-hint">Write rules once for all of them (CLAUDE.md and AGENTS.md), and give each one the other’s MCP tools.</span><button class="btn" data-fix="rules">Rules and tools…</button></div></div>
     </div>
     ${geminiHtml()}
     ${window.REMOTE ? `<p class="d-h" id="st-phone">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p><div id="pushBox"></div>
@@ -133,7 +135,7 @@ function startHtml(j) {
     <ol class="gs-list">
       ${step(1, done(cl), 'Claude Code', done(cl) ? esc(cl.detail) : 'Session Switcher works with Anthropic’s Claude Code. Install it here; a terminal window shows it working.', fixBtn(cl))}
       ${step(2, done(acct), 'Your Claude account', done(acct) ? esc(acct.detail) : 'Sign in with the Claude account (Pro or Max) you use. More accounts can be added later, under Accounts on the hub.', fixBtn(acct))}
-      ${step(3, !!(S.codex && S.codex.enabled), 'Codex too (optional)', 'Use OpenAI’s Codex next to Claude, even in the same chat.', '<a class="btn quiet sm" href="#st-codex">Codex settings</a>')}
+      ${step(3, !!(S.codex && S.codex.enabled && S.codex.signedIn), 'Codex too (optional)', 'Use OpenAI’s Codex next to Claude, even in the same chat.', '<a class="btn quiet sm" href="#st-codex">Codex settings</a>')}
       ${step(4, !!(S.gemini && S.gemini.enabled && S.gemini.signedIn), 'Gemini too (optional)', 'Use Google’s Gemini (Gemini 4 Argon on a Google AI plan) beside Claude and Codex, even in the same chat.', '<a class="btn quiet sm" href="#st-gemini">Gemini settings</a>')}
       ${step(5, false, 'Your phone (optional)', 'Answer chats and approve steps from your phone, over your Wi-Fi.', '<a class="btn quiet sm" href="#st-phone">Phone access</a>')}
       ${step(6, !!store('toured'), 'A two-minute tour', 'Where everything is: the hub, projects, chats, Ctrl+K.', '<button class="btn quiet sm" data-fix="tour">Take the tour</button>')}
@@ -214,6 +216,7 @@ function renderPhone(st) {
     </div>
     ${S.platform === 'win32' ? '<div class="ph-fw" id="fwBox"></div>' : ''}
     <div class="ph-ts" id="tsBox"></div>
+    <details class="ph-port" ${st.error ? 'open' : ''}><summary>Use a different port</summary><p>${st.error ? `<b>${esc(st.error)}</b> ` : ''}Only if another program needs this one. Phones already paired will need the new address.</p><label>Port <input type="number" id="phPort" min="1024" max="65535" value="${esc(String(st.port))}"></label> <button class="btn sm" data-phone="port">Use this port</button></details>
     ${st.devices.length ? `<p class="ph-h">Paired phones</p><ul class="ph-dev">${st.devices.map(d => `<li><span class="glyph" aria-hidden="true">◈</span><span><b>${esc(d.name)}</b><small>paired ${esc(agoL(d.created))}${d.lastSeen ? ` · last used ${esc(agoL(d.lastSeen))}` : ''}</small></span><button class="btn quiet sm" data-phone="forget" data-id="${esc(d.id)}">Remove</button></li>`).join('')}</ul>` : ''}
     <p class="ph-warn">A paired phone can do anything you can do here, including letting Claude run commands on this PC. Pair only your own phones, and remove one you lose. ${S.platform === 'darwin' ? `macOS may ask to let ${S.shell ? 'Session Switcher' : 'Node'} accept incoming connections; allow it.` : ''}</p>` : ''}`;
   Push.phones = st.pushPhones || 0; Push.apps = (st.appsListening || []).length;
@@ -348,6 +351,7 @@ $('setupBody').addEventListener('click', e => {
       const root = document.documentElement;
       root.classList.add('look-fade');
       const t = document.startViewTransition(change);
+      t.ready.catch(() => {});
       t.finished.catch(() => {}).finally(() => root.classList.remove('look-fade'));
     } else change();
     if (engage && Local.sound) chime('engage');
@@ -397,6 +401,7 @@ $('setupBody').addEventListener('click', wrap(async e => {
     const act = ph.dataset.phone;
     if (act === 'pair') { const r = await api('/api/phone/pair', {}); return renderPhone(r.status); }
     if (act === 'cancel') return renderPhone(await api('/api/phone/pair-cancel', {}));
+    if (act === 'port') { const r = await api('/api/phone', { port: Number($('phPort').value) }); renderPhone(r); if (!r.error) toast(`Phone access is on port ${r.port} now. Paired phones need the new address.`, 6000); return undefined; }
     if (act === 'forget') { if (!(await appConfirm('Remove this phone?\n\nIt won’t be able to connect until you pair it again.', { ok: 'Remove', danger: true }))) return undefined; return renderPhone(await api('/api/phone/forget', { id: ph.dataset.id })); }
   }
   if (e.target.closest('[data-fix="phone-disconnect"]')) { if (await appConfirm('Disconnect this phone from your PC?\n\nYou can pair it again any time.', { ok: 'Disconnect', danger: true })) window.Android.disconnect(); return undefined; }
@@ -408,6 +413,11 @@ $('setupBody').addEventListener('click', wrap(async e => {
   if (what === 'set-claude-path') { $('prefClaude').focus(); return; }
   if (what === 'rules') { $('setup').close(); return openRules(null); }
   if (what === 'tour') { $('setup').close(); return startTour(); }
+  if (what === 'name-older') {
+    const r = await api('/api/chats/name-older', {});
+    toast(r.queued ? `Naming ${plural(r.queued, 'chat')}: a couple of seconds each. Their names change in the lists as they’re ready.${r.more ? ` ${r.more} more after that.` : ''}` : 'Every chat has a name already.', 7000);
+    return undefined;
+  }
   if (what === 'install-codex') return codexInstall();
   if (what === 'codex-signin') { $('setup').close(); return codexSignIn(); }
   if (what === 'fix-sharing') {
@@ -585,7 +595,7 @@ function watchActivity() {
     const pend = (x.pending || []).map(p => p.requestId).join(',');
     next.set(k, { st, pend, fin: x.finishedAt });
     // Looking at it right now counts as reading it.
-    const viewing = window.ChatUI && ChatUI.isViewing && ChatUI.isViewing(x) && document.hasFocus() && !document.hidden;
+    const viewing = window.ChatUI && ChatUI.isViewing && (ChatUI.isViewing(x) || (window.Split && Split.shows(x))) && document.hasFocus() && !document.hidden;
     if (viewing && st === 'reply') { markSeen(x); continue; }
     if (!Alerts.primed || viewing) continue;
     if (NEEDS.has(st) && (!was || !NEEDS.has(was.st) || (pend && pend !== was.pend))) notify('needs', x);
@@ -617,6 +627,7 @@ function inQuietHours(now = new Date()) {
   return a <= b ? m >= a && m < b : m >= a || m < b;   // overnight (22:00–08:00) wraps past midnight
 }
 function notify(kind, x) {
+  if (SOLO) return;   // the main window says it; a popped-out chat or a side of a split would say it twice
   const level = alertLevelOf(x.sessionId);
   if (level === 'off' || (level === 'needs' && kind === 'reply') || inQuietHours()) return;
   if (Local.sound) chime(kind);

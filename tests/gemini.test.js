@@ -156,6 +156,11 @@ test('gemini: reset times are read from the ways quota messages say them', () =>
 test('gemini: Antigravity’s wording is read right; a partner follows Claude’s mode', () => {
   assert.equal(ownWords('<USER_REQUEST>\nHi there\n</USER_REQUEST>\n<ADDITIONAL_METADATA>x</ADDITIONAL_METADATA>'), 'Hi there');
   assert.equal(toolBlock('t', 'run_command', { CommandLine: '"node --version"' }).summary, 'node --version', 'arguments arrive as JSON in strings');
+  const wb = toolBlock('t2', 'write_file', { Path: '"C:\\\\p\\\\new.txt"', Content: '"hello"' });
+  assert.equal(wb.name, 'Write');
+  assert.equal(wb.meta.path, 'C:\\p\\new.txt');
+  const ext = toolBlock('t3', 'call_mcp_tool', { ServerName: '"srv"', ToolName: '"mutate"' });
+  assert.deepEqual(ext.meta, { unknownWrites: true }, 'unknown/external tools mark unknownWrites for parallel undo safety');
   for (const v of Object.values(FROM_CLAUDE)) assert.ok(MODES.some(m => m.value === v), v);
   assert.equal(FROM_CLAUDE.bypassPermissions, 'full');
 });
@@ -191,10 +196,79 @@ test('gemini: a conversation’s history reads back from Antigravity’s own rec
     assert.ok(gemini.known('c1') && !gemini.known('nope'));
     // A short look (for the Commander): your words and Gemini's.
     assert.deepEqual(gemini.preview('c1').map(m => [m.role, m.text]), [['you', 'Write the note'], ['gemini', 'done']]);
+    // A long turn, all one item: reading it shows where it's got to, not how it began.
+    fs.appendFileSync(path.join(logs, 'transcript.jsonl'), `\n${[{ type: 'USER_INPUT', content: 'Keep going', created_at: '2026-01-01T00:00:00Z', step_index: 100 }, { type: 'PLANNER_RESPONSE', content: `The start. ${'x'.repeat(3000)}`, step_index: 101, created_at: '2026-01-01T00:01:00Z' }, { type: 'PLANNER_RESPONSE', content: `${'y'.repeat(3000)} The latest.`, step_index: 102, created_at: '2026-01-01T05:00:00Z' }].map(l => JSON.stringify(l)).join('\n')}\n`);
+    const long = gemini.preview('c1').pop();
+    assert.ok(long.text.endsWith('The latest.'), long.text.slice(-40));
+    assert.ok(long.text.length <= 901 && long.text.startsWith('…'));
+    assert.equal(long.at, '2026-01-01T05:00:00Z', 'carries the timestamp of the latest response in the turn');
     // Renamed here: that name wins over Antigravity's, and the chat's own title doesn't write over it.
     assert.equal(gemini.rename('c1', 'Lore notes'), 'Lore notes');
     gemini.noteChat('c1', { cwd: 'C:\\p', title: 'New Gemini chat' });
     assert.equal(gemini.list().find(r => r.id === 'c1').title, 'Lore notes');
     assert.throws(() => gemini.rename('c1', '   '), /name/);
   } finally { os.homedir = real; }
+});
+
+test('gemini: a late step after its process is gone can’t leave the chat Working for good', () => {
+  const { GeminiChat } = require('../lib/gemini');
+  const chat = { turn: null, emit() { throw new Error('nothing to say'); } };
+  GeminiChat.prototype.step.call(chat, { step_type: 'agent_response', step_index: 3, text_delta: 'late words' });
+  assert.equal(chat.turn, null, 'no turn is started by a step');
+});
+
+test('gemini: Stop counts as stopped for a round, and Deny with nothing further ends its turn', async () => {
+  const { GeminiChat } = require('../lib/gemini');
+  const idle = { turn: null };
+  await GeminiChat.prototype.interrupt.call(idle);
+  assert.ok(idle.interruptedAt > 0);
+  const said = [], states = [];
+  const chat = { pending: new Map([['r1', { event: {}, cmds: ['x'] }]]), emit: e => said.push(e), setState: s => states.push(s) };
+  GeminiChat.prototype.answer.call(chat, 'r1', { decision: 'deny' });
+  assert.deepEqual(states, ['ready']);
+  assert.ok(said.some(e => e.kind === 'result'), 'whatever waits on it (“When Gemini is done”) is told');
+});
+
+test('gemini: flush waits for finalizer snapshot, and interrupt recovers queued messages', async () => {
+  const { GeminiChat } = require('../lib/gemini');
+  let resumeFn = null, cleared = 0;
+  const events = [], states = [], written = [];
+  const fakeChat = Object.assign(Object.create(GeminiChat.prototype), {
+    state: 'ready',
+    turn: null,
+    queue: [],
+    pending: new Map(),
+    parentKey: 'lead-1',
+    waitForSnapshot(cb) { if (!resumeFn) { resumeFn = cb; return true; } return false; },
+    clearPendingSnapshot() { cleared++; },
+    emit: e => events.push(e),
+    setState: s => { fakeChat.state = s; states.push(s); },
+    proc_: () => ({ stdin: { write: s => written.push(s) } }),
+  });
+  fakeChat.send('<shared-context>\nctx\n</shared-context>\n\nHello Gemini', [{ mediaType: 'image/png', data: 'AAAA' }]);
+  assert.equal(written.length, 0, 'held while finalizer snapshot finishes');
+  assert.equal(fakeChat.queue.length, 1);
+  await fakeChat.interrupt();
+  assert.equal(cleared, 1);
+  assert.equal(fakeChat.state, 'ready');
+  const unsent = events.find(e => e.kind === 'unsent');
+  assert.ok(unsent, 'emits unsent for queued message');
+  assert.equal(unsent.text, 'Hello Gemini', 'shared-context stripped from recovered text');
+  assert.equal(unsent.images.length, 1);
+  assert.deepEqual(unsent.request, { to: 'other', kind: 'gemini' });
+
+  // Also verify resumeFn flushes when not interrupted, and queued messages wait for queued snapshot:
+  resumeFn = null;
+  let queuedNoted = 0, queuedResumeFn = null;
+  fakeChat.noteQueuedSnapshot = () => { queuedNoted++; };
+  fakeChat.waitForQueuedSnapshot = cb => { if (queuedNoted && !queuedResumeFn) { queuedResumeFn = cb; return true; } return false; };
+  fakeChat.snap = { finishing: true };
+  fakeChat.send('Second message');
+  assert.equal(queuedNoted, 1, 'notes queued snapshot when sending during finishing');
+  assert.equal(written.length, 0);
+  resumeFn();
+  assert.equal(written.length, 0, 'still waits for queued snapshot after finalizer finishes');
+  queuedResumeFn();
+  assert.equal(written.length, 1);
+  assert.match(written[0], /Second message/);
 });

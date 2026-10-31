@@ -23,7 +23,7 @@ const rtEventsOpen = () => (S.rt.events || []).filter(e => !e.seen);
 const runsOnLabel = r => { const p = planById(r.account); const name = r.account === 'gemini' ? 'Gemini' : p ? (p.family === 'ollama' ? 'Ollama' : `${p.label} ${famName(p.family)}`) : r.account; return `${name}${r.model ? ` · ${r.model.replace(/:cloud$/, '')}` : ''}`; };
 const RUN_ICONS = { done: '✓', failed: '✕', stopped: '✕', skipped: '–', 'needs-you': '!', working: '…', starting: '…' };
 const runIcon = (st, line = '') => (st === 'done' && /^\W*ESCALATE/i.test(line) ? '!' : RUN_ICONS[st] || '·');
-const rtProjName = cwd => { const p = S.projects.find(x => x.cwd === cwd && !x.key.includes('#')) || S.projects.find(x => x.cwd === cwd); return p ? p.name : (cwd || '').split('/').pop(); };
+const rtProjName = cwd => { const p = S.projects.find(x => x.cwd === cwd && !x.key.includes('#')) || S.projects.find(x => x.cwd === cwd); return p ? p.name : (cwd || '').split(/[\\/]/).filter(Boolean).pop() || ''; };
 
 /* ---------- the Routines page ---------- */
 function routinesView() {
@@ -36,7 +36,7 @@ function routinesView() {
     const lastLine = last ? `${runIcon(last.status, last.line)} ${last.line}` : 'No runs yet';
     return `<div class="row rt-row ${r.enabled ? '' : 'is-quiet'}" role="button" tabindex="-1" data-rt="${esc(r.id)}" data-cur="rt:${esc(r.id)}">
         <span>${r.running ? '<span class="live-dot"></span>' : ev && !ev.seen && ev.kind === 'escalate' ? '<span class="dot needs-dot"></span>' : ''}</span>
-        <span class="t"><b>${esc(r.name)}</b><small>${esc(r.when)} · ${esc(runsOnLabel(r))} · ${esc(rtProjName(r.cwd))}${r.flow.triage ? ' · checks and escalates' : ''}</small><small class="rt-last">${esc(lastLine.slice(0, 200))}</small></span>
+        <span class="t"><b>${esc(r.name)}</b><small>${esc(r.when)} · ${esc(runsOnLabel(r))}${r.chat && r.chat.to ? ` · crew (${r.chat.to === 'parallel' ? 'at once' : 'turns'})` : ''} · ${esc(rtProjName(r.cwd))}${r.flow.triage ? ' · checks and escalates' : ''}</small><small class="rt-last">${esc(lastLine.slice(0, 200))}</small></span>
         <span class="side-tags">${r.enabled ? '' : '<span class="tag">Paused</span>'}${r.watchError ? `<span class="tag warn" title="${esc(r.watchError)}">Can’t read its source</span>` : ''}</span>
         <span class="when">${r.enabled && r.nextAt ? esc(inWords(r.nextAt)) : ''}</span>
         <button class="iconbtn rmenu" data-rtmenu="${esc(r.id)}" aria-haspopup="menu" aria-label="Routine options">${IC.dots}</button>
@@ -117,11 +117,12 @@ function newRoutine(kind, draft = {}) {
 function editRoutine(id) {
   const r = (S.rt.list || []).find(x => x.id === id); if (!r) return;
   Promise.resolve(loadModels()).then(() => { if (S.view === 'routine' && S.rtEdit) { readRoutineForm(); render(); } });
-  S.rtEdit = { id: r.id, name: r.name, prompt: r.prompt, cwd: r.cwd, account: r.account, model: r.model, permissionMode: r.permissionMode, trigger: JSON.parse(JSON.stringify(r.trigger)), chat: { mode: r.chat ? r.chat.mode : 'new' }, flow: JSON.parse(JSON.stringify(r.flow)) };
+  const c = r.chat || {};
+  S.rtEdit = { id: r.id, name: r.name, prompt: r.prompt, cwd: r.cwd, account: r.account, model: r.model, permissionMode: r.permissionMode, untilAt: r.untilAt || null, stopHours: r.untilAt && r.untilAt > Date.now() ? String(Math.max(0.5, Math.round(((r.untilAt - Date.now()) / 3600e3) * 2) / 2)) : '', trigger: JSON.parse(JSON.stringify(r.trigger)), chat: { mode: c.mode || 'new', sessionId: c.sessionId || null, to: c.to || null, kinds: c.kinds || null }, flow: JSON.parse(JSON.stringify(r.flow)) };
   go('routine');
 }
 const provOfPlan = id => { const p = planById(id); return !p ? 'claude' : p.family === 'claude' ? 'claude' : 'codex'; };
-const rtModelsFor = id => { if (id === 'gemini') return []; const p = planById(id); const m = MD(!p ? 'claude' : p.family === 'ollama' ? 'ollama' : p.family === 'chatgpt' ? 'codex' : 'claude'); return m ? [...m.models, ...(m.more || [])] : []; };
+const rtModelsFor = id => { if (id === 'gemini') { const gm = MD('gemini'); return gm ? [...gm.models, ...(gm.more || [])] : []; } const p = planById(id); const m = MD(!p ? 'claude' : p.family === 'ollama' ? 'ollama' : p.family === 'chatgpt' ? 'codex' : 'claude'); return m ? [...m.models, ...(m.more || [])] : []; };
 const permsFor = id => (id === 'gemini' ? ['accept-edits', 'plan', 'full'] : provOfPlan(id) === 'codex' ? ['read-only', 'ask', 'agent', 'full'] : ['default', 'acceptEdits', 'plan', 'bypassPermissions']);
 const PERM_NAMES = { 'accept-edits': 'Edit files', 'read-only': 'Read-only', ask: 'Ask', agent: 'Agent', full: 'Full access', default: 'Ask first', acceptEdits: 'Accept edits', plan: 'Plan only', bypassPermissions: 'Bypass permissions' };
 function routineEditorView() {
@@ -139,25 +140,27 @@ function routineEditorView() {
     <label class="fl"><span>Name</span><input class="field" name="name" value="${esc(d.name)}" placeholder="Morning bug check" required></label>
     <label class="fl"><span>What it should do</span><textarea class="field" name="prompt" rows="5" placeholder="Look at … and tell me about …">${esc(d.prompt)}</textarea></label>
     <div class="fl"><span>When</span><div class="rt-when">
-      <select class="field" name="kind">${[['weekdays', 'Every weekday at'], ['daily', 'Every day at'], ['weekly', 'Every week on'], ['every-hours', 'Every few hours'], ['every-minutes', 'Every few minutes'], ['command', 'When a command prints something new'], ['slack', 'When a Slack channel has something new'], ['cron', 'A cron line']].map(([v, n]) => `<option value="${v}" ${(kind === v || (kind === 'every' && v === `every-${s.unit || 'hours'}`)) ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <select class="field" name="kind" aria-label="Schedule">${[['weekdays', 'Every weekday at'], ['daily', 'Every day at'], ['weekly', 'Every week on'], ['every-hours', 'Every few hours'], ['every-minutes', 'Every few minutes'], ['command', 'When a command prints something new'], ['slack', 'When a Slack channel has something new'], ['cron', 'A cron line']].map(([v, n]) => `<option value="${v}" ${(kind === v || (kind === 'every' && v === `every-${s.unit || 'hours'}`)) ? 'selected' : ''}>${n}</option>`).join('')}</select>
       ${kind === 'weekly' ? `<select class="field" name="day" aria-label="Day of the week">${DAY_NAMES.map((n, i) => `<option value="${i}" ${i === (s.day ?? 1) ? 'selected' : ''}>${n}</option>`).join('')}</select><span class="unit">at</span>` : ''}
-      ${kind === 'weekdays' || kind === 'daily' || kind === 'weekly' ? `<input class="field" name="time" type="time" value="${esc(s.time || '09:00')}">` : ''}
-      ${kind === 'every' || kind === 'every-hours' || kind === 'every-minutes' ? `<input class="field num" name="every" type="number" min="1" value="${esc(s.every || 2)}"><span class="unit">${s.unit === 'minutes' || kind === 'every-minutes' ? 'minutes' : 'hours'}</span>` : ''}
-      ${kind === 'cron' ? `<input class="field mono" name="cron" value="${esc(s.cron || '0 9 * * 1-5')}" placeholder="0 9 * * 1-5">` : ''}
+      ${kind === 'weekdays' || kind === 'daily' || kind === 'weekly' ? `<input class="field" name="time" type="time" aria-label="Time" value="${esc(s.time || '09:00')}">` : ''}
+      ${kind === 'every' || kind === 'every-hours' || kind === 'every-minutes' ? `<input class="field num" name="every" type="number" min="1" aria-label="Every" value="${esc(s.every || 2)}"><span class="unit">${s.unit === 'minutes' || kind === 'every-minutes' ? 'minutes' : 'hours'}</span>` : ''}
+      ${kind === 'cron' ? `<input class="field mono" name="cron" aria-label="Cron line" value="${esc(s.cron || '0 9 * * 1-5')}" placeholder="0 9 * * 1-5">` : ''}
     </div>
-    ${kind === 'command' ? `<input class="field mono" name="command" value="${esc(src.command || '')}" placeholder="a command that prints one line per new message"><div class="rt-when"><span class="unit">look every</span><input class="field num" name="srcEvery" type="number" min="1" value="${esc(src.every || 10)}"><span class="unit">minutes, only lines containing</span><input class="field" name="filter" value="${esc(src.filter || '')}" placeholder="(anything)"></div>` : ''}
-    ${kind === 'slack' ? `<input class="field mono" name="channel" value="${esc(src.channel || '')}" placeholder="C0123ABCD"><p class="hint-line">Needs a Slack token, set once in the full app (Routines → Slack). It only reads.</p>` : ''}
+    ${kind === 'command' ? `<input class="field mono" name="command" aria-label="Command" value="${esc(src.command || '')}" placeholder="a command that prints one line per new message"><div class="rt-when"><span class="unit">look every</span><input class="field num" name="srcEvery" type="number" min="1" aria-label="Check every (minutes)" value="${esc(src.every || 10)}"><span class="unit">minutes, only lines containing</span><input class="field" name="filter" aria-label="Only lines containing" value="${esc(src.filter || '')}" placeholder="(anything)"></div>` : ''}
+    ${kind === 'slack' ? `<input class="field mono" name="channel" aria-label="Slack channel" value="${esc(src.channel || '')}" placeholder="C0123ABCD"><p class="hint-line">Needs a Slack token, set once in the full app (Routines → Slack). It only reads.</p>` : ''}
     </div>
     <div class="fl"><span>Works in</span><button type="button" class="btn" data-rtproj="1">${esc(proj)}</button></div>
-    <div class="fl"><span>Runs on</span><div class="rt-when"><select class="field" name="account">${accts}</select>
-      <select class="field" name="model"><option value="">Its default model</option>${models.map(m => `<option value="${esc(m.value)}" ${m.value === d.model ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select>
-      <select class="field" name="perm">${permsFor(d.account).map(p => `<option value="${p}" ${p === d.permissionMode ? 'selected' : ''}>${PERM_NAMES[p] || p}</option>`).join('')}</select></div>
+    <div class="fl"><span>Runs on</span><div class="rt-when"><select class="field" name="account" aria-label="Plan">${accts}</select>
+      <select class="field" name="model" aria-label="Model"><option value="">Its default model</option>${models.map(m => `<option value="${esc(m.value)}" ${m.value === d.model ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select>
+      <select class="field" name="perm" aria-label="Permissions">${permsFor(d.account).map(p => `<option value="${p}" ${p === d.permissionMode ? 'selected' : ''}>${PERM_NAMES[p] || p}</option>`).join('')}</select></div>
       <p class="hint-line">${S.lite.routinesFollow ? 'Claude and ChatGPT routines follow your use-next order when they run. ' : ''}A small model on Ollama costs none of your Claude or ChatGPT room.</p></div>
-    <div class="fl"><span>Each run</span><div class="seg" role="group"><button type="button" data-rtchat="new" aria-pressed="${d.chat.mode !== 'continue'}">Starts a new chat</button><button type="button" data-rtchat="continue" aria-pressed="${d.chat.mode === 'continue'}">Continues one chat (it remembers)</button></div></div>
+    <div class="fl"><span>Each run</span><div class="rt-when"><div class="seg" role="group"><button type="button" data-rtchat="new" aria-pressed="${d.chat.mode !== 'continue'}">Starts a new chat</button><button type="button" data-rtchat="continue" aria-pressed="${d.chat.mode === 'continue'}">Continues one chat (it remembers)</button></div>
+      <select class="field" name="chatTo" aria-label="Who answers"><option value="" ${!d.chat.to ? 'selected' : ''}>Just this plan</option><option value="turns" ${d.chat.to && d.chat.to !== 'parallel' ? 'selected' : ''}>Crew · take turns</option><option value="parallel" ${d.chat.to === 'parallel' ? 'selected' : ''}>Crew · at once</option></select>
+      <span class="unit">stop after</span><input class="field num" name="stopHours" type="number" min="0" max="168" step="0.5" aria-label="Stop after (hours)" value="${esc(d.stopHours || '')}" placeholder="—"><span class="unit">hrs</span></div></div>
     <div class="fl"><span>Triage</span><label class="chk"><input type="checkbox" name="triage" ${d.flow.triage ? 'checked' : ''}> Ends each run with ALL CLEAR or ESCALATE, and Lite reads it</label>
       <label class="chk"><input type="checkbox" name="escalate" ${d.flow.escalate.on ? 'checked' : ''} ${d.flow.triage ? '' : 'disabled'}> On ESCALATE, start a bug-report chat on your use-next Claude plan (in your permission default; at most 3 a day; the same problem twice in a week joins the first)</label>
-      <details class="rt-esc"><summary>What the bug chat is told</summary><textarea class="field" name="escPrompt" rows="5">${esc(d.flow.escalate.prompt || S.rt.prompt || '')}</textarea><p class="hint-line">{name} is the routine, {findings} what it found.</p></details></div>
-    <div class="fl"><span>Tell me</span><select class="field" name="notify">${[['important', 'When it escalates, fails or needs me'], ['always', 'After every run'], ['never', 'Never (I’ll look)']].map(([v, n]) => `<option value="${v}" ${d.flow.notify === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <details class="rt-esc"><summary>What the bug chat is told</summary><textarea class="field" name="escPrompt" rows="5" aria-label="What the bug chat is told">${esc(d.flow.escalate.prompt || S.rt.prompt || '')}</textarea><p class="hint-line">{name} is the routine, {findings} what it found.</p></details></div>
+    <div class="fl"><span>Tell me</span><select class="field" name="notify" aria-label="Tell me">${[['important', 'When it escalates, fails or needs me'], ['always', 'After every run'], ['never', 'Never (I’ll look)']].map(([v, n]) => `<option value="${v}" ${d.flow.notify === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="acts"><button type="button" class="btn" data-go="routines">Cancel</button><button type="submit" class="btn prime">${d.id ? 'Save' : 'Create'}</button>${d.id ? '' : '<span class="hint-line">New routines start paused until you Run now or turn them on.</span>'}</div>
   </form></div>`;
 }
@@ -174,6 +177,12 @@ function readRoutineForm() {
   else if (kind === 'slack') d.trigger = { type: 'watch', source: { type: 'slack', channel: f.channel ? f.channel.value : '', every: 5 } };
   if (f.account.value !== d.account) { d.account = f.account.value; d.model = planById(d.account) && planById(d.account).family === 'ollama' ? smallModel() : null; d.permissionMode = permsFor(d.account)[0]; }
   else { d.model = f.model.value || null; d.permissionMode = f.perm.value; }
+  if (f.chatTo) d.chat.to = f.chatTo.value || null;
+  if (f.stopHours) {
+    d.stopHours = f.stopHours.value.trim();
+    const hrs = d.stopHours ? Number(d.stopHours) : 0;
+    d.untilAt = Number.isFinite(hrs) && hrs > 0 ? Math.round(Date.now() + hrs * 3600e3) : null;
+  }
   d.flow.triage = f.triage.checked; d.flow.escalate.on = f.triage.checked && f.escalate.checked; d.flow.escalate.prompt = f.escPrompt.value.trim() === (S.rt.prompt || '').trim() ? '' : f.escPrompt.value;
   d.flow.notify = f.notify.value;
   return d;
@@ -181,7 +190,7 @@ function readRoutineForm() {
 async function saveRoutine() {
   const d = readRoutineForm();
   if (!d.cwd) return toast('Pick the project it works in.');
-  const routine = { ...(d.id ? { id: d.id } : {}), name: d.name, prompt: d.prompt, cwd: d.cwd, account: d.account, model: d.model, permissionMode: d.permissionMode, trigger: d.trigger, chat: { mode: d.chat.mode } };
+  const routine = { ...(d.id ? { id: d.id } : {}), name: d.name, prompt: d.prompt, cwd: d.cwd, account: d.account, model: d.model, permissionMode: d.permissionMode, untilAt: d.untilAt || null, trigger: d.trigger, chat: { mode: d.chat.mode, ...(d.chat.mode === 'continue' && d.chat.sessionId ? { sessionId: d.chat.sessionId } : {}), to: d.chat.to || null, ...(d.chat.kinds ? { kinds: d.chat.kinds } : {}) } };
   const j = await api('/api/lite/routines/save', { routine, flow: d.flow });
   S.rt.list = j.routines; S.rt.events = j.events;
   const made = !d.id && j.routines.find(r => r.name === d.name);

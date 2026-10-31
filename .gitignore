@@ -21,6 +21,8 @@ lite-thumbs/
 devices.json
 push.json
 chat-extras/
+.session-index/
+.shadow-snapshots/
 drafts.json
 problems.json
 selfcheck.json
@@ -30,6 +32,10 @@ races.json
 open-chats.json
 reopen.json
 restart.json
+board.json
+keep-working.json
+gemini-chats.json
+run.json
 switcher.log
 switcher.log.old
 *.corrupt-*

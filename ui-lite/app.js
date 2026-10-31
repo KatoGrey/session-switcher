@@ -467,7 +467,7 @@ document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.bod
 document.addEventListener('drop', e => { document.body.classList.remove('dropping'); if ((S.view === 'chat' || S.view === 'newchat') && hasFiles(e)) { e.preventDefault(); addFiles([...e.dataTransfer.files]); } });
 function showPicture(src) {
   const root = $('modalRoot');
-  root.innerHTML = `<div class="modal-back lightbox"><figure><img src="${src}" alt=""></figure></div>`;
+  root.innerHTML = `<div class="modal-back lightbox"><figure><img src="${esc(src)}" alt=""></figure></div>`;
   root.querySelector('.modal-back').addEventListener('click', () => { root.innerHTML = ''; });
 }
 $('q').addEventListener('input', e => { S.q = e.target.value.trim(); if (S.q) { if (S.view !== 'search') go('search', {}, { push: false }); else render(); } else if (S.view === 'search') go('now', {}, { push: false }); });

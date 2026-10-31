@@ -50,7 +50,9 @@ function renderPicStrip(turn) {
   el.setAttribute('aria-label', `${n} picture${n === 1 ? '' : 's'} in this reply`);
   const tile = x => `<figure class="pic" data-how="${x.how}"><button type="button" class="pic-b" data-full="${esc(x.src)}" data-cap="${esc(x.label)}"${x.path ? ` data-path="${esc(x.path)}"` : ''} aria-label="Show ${esc(x.label || 'the picture')} larger"><img src="${esc(x.src)}" alt="${esc(x.label || 'A picture')}" loading="lazy" decoding="async" onerror="picGone(this)"></button><figcaption>${PIC_HOW[x.how] ? `<i>${PIC_HOW[x.how]}</i> ` : ''}${esc(x.label)}</figcaption></figure>`;
   const more = n > shown.length ? `<button type="button" class="pic-more" data-pic-more="${shown.length}">+${n - shown.length}<small>more</small></button>` : '';
-  withStick(() => { el.innerHTML = shown.map(tile).join('') + more; });
+  const made = st.list.filter(x => x.path && (x.how === 'made' || x.how === 'changed'));
+  const review = made.length >= 2 && picProject() ? `<button type="button" class="linkish pics-board" data-pic-board="${esc(made[made.length - 1].path)}">Review these on the board</button>` : '';
+  withStick(() => { el.innerHTML = shown.map(tile).join('') + more + review; });
 }
 // A picture that can't load (moved, or never there: a path in a sentence) leaves quietly.
 function picGone(img) {
@@ -106,8 +108,11 @@ function galleryList() {
 }
 // list: the pictures to step through, when not the chat's (a file opened in the viewer, a picture
 // you're about to send).
-function openGallery(src, from, list = null) {
+// review: going through a project's pictures to mark them (ui/board.js).
+function openGallery(src, from, list = null, review = null) {
   Gallery.back = document.activeElement;   // focus goes back there when it closes
+  Gallery.review = review;
+  $c('cLight').setAttribute('aria-label', review ? 'Review pictures' : 'Pictures in this chat');
   Gallery.list = list || galleryList();
   let i = Gallery.list.findIndex(x => x.src === src);
   if (i < 0) { Gallery.list.unshift({ src, path: (from && from.dataset.path) || null, cap: (from && from.dataset.cap) || '' }); i = 0; }
@@ -123,8 +128,11 @@ function galleryShow() {
   lb.classList.remove('zoomed');
   const img = lb.querySelector('.lb-stage img');
   img.style.width = img.style.height = '';
-  img.onload = galleryReadout;
+  img.onload = () => { img.classList.remove('lb-wait'); galleryReadout(); };
+  img.onerror = () => img.classList.remove('lb-wait');
   img.src = x.src; img.alt = x.cap || 'A picture from this chat';
+  // Until it's here it's dimmed: what's showing is still the last one.
+  img.classList.toggle('lb-wait', !img.complete);
   galleryReadout();
   const n = Gallery.list.length;
   lb.querySelector('.lb-cap').textContent = x.cap || (x.path ? base(x.path) : 'A picture from this chat');
@@ -132,6 +140,8 @@ function galleryShow() {
   for (const b of lb.querySelectorAll('.lb-nav')) b.hidden = n < 2;
   for (const b of lb.querySelectorAll('[data-lb="open"], [data-lb="reveal"]')) b.hidden = !x.path || !!window.REMOTE && b.dataset.lb === 'reveal';
   lb.querySelector('[data-lb="attach"]').hidden = !!C.watch || !C.key || !!x.noAttach;
+  lb.querySelector('[data-lb="board"]').hidden = !!Gallery.review || !x.path || !picProject();
+  if (Gallery.review) Gallery.review.show(x);
 }
 function galleryStep(d) {
   if (Gallery.list.length < 2) return;
@@ -153,7 +163,7 @@ function galleryFit() {
 const galleryScale = () => (Gallery.zoom ? Gallery.scale : galleryFit());
 function galleryScaleTo(s, at = null) {
   const lb = $c('cLight'), stage = lb.querySelector('.lb-stage'), img = stage.querySelector('img');
-  if (!img.naturalWidth) return;
+  if (!img.naturalWidth || (Gallery.two !== null && Gallery.two !== undefined)) return;   // two side by side stay fitted
   const fit = galleryFit();
   s = Math.min(ZOOM_MAX, Math.max(fit, s));
   const sr = stage.getBoundingClientRect(), r = img.getBoundingClientRect();
@@ -181,6 +191,7 @@ function galleryReadout() {
 }
 // Actual size (scroll or drag around it) or fitted to the screen.
 function galleryZoom(on = !Gallery.zoom, at = null) {
+  if (Gallery.two !== null && Gallery.two !== undefined) return;
   if (on && galleryFit() >= 1) { toast('That’s its actual size. Scroll or press + to zoom in further.', 2200); return; }
   galleryScaleTo(on ? 1 : 0, at);
 }
@@ -192,12 +203,32 @@ function gallerySave(x) {
   a.download = x.path ? base(x.path) : `${(x.cap || 'picture').replace(/[\\/:*?"<>|.]+/g, ' ').trim().slice(0, 60) || 'picture'}.${ext === 'jpeg' ? 'jpg' : ext || 'png'}`;
   document.body.appendChild(a); a.click(); a.remove();
 }
-function galleryClose() { $c('cLight').hidden = true; Gallery.list = []; const back = Gallery.back; Gallery.back = null; if (back && back.isConnected) back.focus({ preventScroll: true }); }
+function galleryClose() {
+  const review = Gallery.review, last = Gallery.list[Gallery.i];
+  $c('cLight').hidden = true;
+  if (review) { Gallery.review = null; review.closed(last && last.item); }
+  Gallery.list = [];
+  const back = Gallery.back; Gallery.back = null;
+  if (back && back.isConnected) back.focus({ preventScroll: true });
+}
 function closeLightbox() { if ($c('cLight').hidden) return false; galleryClose(); return true; }
+// The project of the chat you're looking at pictures in, if the app knows it as one.
+const picProject = () => { const cwd = C.info && C.info.cwd; return cwd && S.projects.find(p => p.exists && p.cwd.toLowerCase() === cwd.toLowerCase()); };
+// The project's picture board, on the folder this picture is in (a picture from anywhere else just opens the board).
+function picToBoard(file) {
+  const p = picProject(); if (!p) return undefined;
+  const full = /^([a-z]:[\\/]|[\\/])/i.test(file) ? file : `${p.cwd}/${file}`;
+  const fwd = full.replace(/\\/g, '/'), root = p.cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+  const inside = fwd.toLowerCase().startsWith(`${root.toLowerCase()}/`);
+  const dir = inside ? fwd.slice(root.length + 1).replace(/\/?[^/]*$/, '') || '.' : null;
+  ChatUI.close();
+  return openBoard(p.cwd, dir);
+}
 async function galleryAct(what) {
   const x = Gallery.list[Gallery.i]; if (!x) return;
-  if (what === 'open' && x.path) { galleryClose(); return openFile(x.path); }
-  if (what === 'reveal' && x.path) { const r = await api('/api/reveal', { path: x.path, key: C.key, session: C.sessionId }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
+  if (what === 'board' && x.path) { galleryClose(); return picToBoard(x.path); }
+  if (what === 'open' && x.path) { galleryClose(); return x.cwd ? Viewer.open({ path: x.path, cwd: x.cwd }) : openFile(x.path); }
+  if (what === 'reveal' && x.path) { const r = await api('/api/reveal', { path: x.path, ...(x.cwd ? { cwd: x.cwd } : { key: C.key, session: C.sessionId }) }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
   if (what === 'copy') return copyImage(x.src);
   if (what === 'save') return gallerySave(x);
   if (what === 'in' || what === 'out') return galleryScaleTo(galleryScale() * (what === 'in' ? 1.25 : 0.8));
@@ -228,6 +259,8 @@ document.addEventListener('DOMContentLoaded', () => {
     return undefined;
   });
   lb.addEventListener('keydown', e => {
+    if (Gallery.review && e.target.closest('input')) return;
+    if (Gallery.review && Gallery.review.key(e)) { e.preventDefault(); e.stopPropagation(); return; }
     if (e.key === 'ArrowLeft') { galleryStep(-1); e.preventDefault(); } else if (e.key === 'ArrowRight') { galleryStep(1); e.preventDefault(); }
     else if (e.key === '+' || e.key === '=') galleryScaleTo(galleryScale() * 1.25); else if (e.key === '-') galleryScaleTo(galleryScale() * 0.8);
     else if (e.key === '0') galleryScaleTo(0); else if (e.key === '1') galleryZoom(true);
@@ -264,6 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { passive: true });
   // The "+N more" tile opens the viewer at the first one not shown.
   $c('cFeed').addEventListener('click', e => {
+    const rb = e.target.closest('[data-pic-board]'); if (rb) { picToBoard(rb.dataset.picBoard); return; }
     const m = e.target.closest('[data-pic-more]'); if (!m) return;
     const turn = m.closest('.turn'), x = picsOf(turn).list[Number(m.dataset.picMore)];
     if (x) openGallery(x.src);

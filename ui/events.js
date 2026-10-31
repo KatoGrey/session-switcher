@@ -4,6 +4,9 @@
 /* ---------- clicks ---------- */
 $('nav').addEventListener('click', wrap(async e => {
   const seal = e.target.closest('#seal'); if (seal) return seal.getAttribute('aria-expanded') === 'true' ? closeMenu() : sealMenu(seal);
+  if (e.target.closest('[data-newchat]')) { document.body.classList.remove('nav-open'); return openNewChat(); }
+  const np = e.target.closest('[data-navprov]'); if (np) { S.navProv = np.dataset.navprov; store('navProv', S.navProv); return renderNav(); }
+  const no = e.target.closest('[data-navopen]'); if (no) { document.body.classList.remove('nav-open'); const x = findActivity(no.dataset.navopen); return x ? openActivity(x) : undefined; }
   const f = e.target.closest('[data-fold]');
   if (f) { const id = f.dataset.fold; if (S.navFold.has(id)) S.navFold.delete(id); else S.navFold.add(id); store('navFold', JSON.stringify([...S.navFold])); return renderNav(); }
   const nc = e.target.closest('[data-navchat]'); if (nc) { document.body.classList.remove('nav-open'); return openChatFromNav(nc.dataset.navchat); }
@@ -15,6 +18,18 @@ $('nav').addEventListener('click', wrap(async e => {
   if (b.dataset.view === 'newproject') { document.body.classList.remove('nav-open'); return openNewProject(); }
   go(b.dataset.view, b.dataset.cwd, b.dataset.prov);
 }));
+// The sidebar with the keyboard: Up and Down move through it, Home and End to its ends.
+$('nav').addEventListener('keydown', e => {
+  if (e.target.id === 'navQ' && e.key === 'Escape' && S.navQ) { e.stopPropagation(); S.navQ = ''; e.target.value = ''; renderNav(); return; }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key) || (e.target.id === 'navQ' && !['ArrowDown', 'ArrowUp'].includes(e.key))) return;
+  const all = [...$('nav').querySelectorAll('button:not([disabled]), input')].filter(x => x.offsetParent);
+  const i = all.indexOf(document.activeElement);
+  const to = e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : i + (e.key === 'ArrowDown' ? 1 : -1);
+  if (all[to]) { e.preventDefault(); all[to].focus(); }
+});
+$('nav').addEventListener('input', e => { if (e.target.id === 'navQ') { S.navQ = e.target.value; renderNav(); } });
+$('newChat').addEventListener('click', () => openNewChat());
+$('skipLink').addEventListener('click', e => { e.preventDefault(); const c = window.ChatUI && ChatUI.isOpen() ? $('cText') : $('page'); c.focus(); });
 $('brand').addEventListener('click', () => go('hub'));
 $('pulse').addEventListener('click', () => hubTo(awaiting().length ? 'secAwait' : 'secWork'));
 $('usechip').addEventListener('click', e => { e.stopPropagation(); return $('acctPop').hidden ? openAcctPop() : closeAcctPop(); });
@@ -100,6 +115,12 @@ $('navToggle').addEventListener('click', () => { const on = !document.body.class
 
 const pageClicks = wrap(async e => {
   const t = e.target;
+  // The hub's sections: folded, jumped to; the accounts' details; every project.
+  const sf = t.closest('[data-secfold]'); if (sf) return toggleSec(sf.dataset.secfold);
+  const jp = t.closest('[data-jump]'); if (jp) return jumpTo(jp.dataset.jump);
+  const ao = t.closest('[data-acct-open]');
+  if (ao) { const k = ao.dataset.acctOpen; if (S.acctOpen.has(k)) S.acctOpen.delete(k); else S.acctOpen.add(k); store('acctOpen', JSON.stringify([...S.acctOpen])); return renderLive(); }
+  if (t.closest('[data-proj-all]')) { if (S.hubFold.has('projects-all')) { S.hubFold.delete('projects-all'); S.projQ = ''; } else S.hubFold.add('projects-all'); store('hubFold', JSON.stringify([...S.hubFold])); renderProjAll(); if (S.hubFold.has('projects-all')) $('projQ')?.focus(); else $('projAll').querySelector('[data-proj-all]')?.focus(); return undefined; }
   // Cards on the hub.
   const card = t.closest('.omen, .qchip');
   const ab = t.closest('[data-a]');
@@ -123,11 +144,16 @@ const pageClicks = wrap(async e => {
   if (t.closest('[data-gact="new"]')) return newGroup();
   const wd = t.closest('.w-art[data-world]'); if (wd) return openWorld(wd.dataset.world, wd);
   const ct = t.closest('[data-continue]'); if (ct) { const [cs] = sessionById(ct.dataset.continue); if (cs && isRunning(cs.id) && !liveOf(cs.id)) return ChatUI.watch({ sessionId: cs.id, source: 'terminal' }); return ChatUI.open({ sessionId: ct.dataset.continue }); }
-  const dc = t.closest('[data-doc]'); if (dc) return Viewer.open({ path: dc.dataset.doc, cwd: S.folder });
+  const dc = t.closest('[data-doc]');
+  if (dc) {
+    // The ones showing, in order, to step through. (Imperial and Rebel keep theirs as it was.)
+    const list = sagaLook() ? null : [...document.querySelectorAll('#wpBody [data-doc]')].filter(x => x.getClientRects().length).map(x => x.dataset.doc);
+    return Viewer.open({ path: dc.dataset.doc, cwd: S.folder, list });
+  }
   const gi = t.closest('[data-img]'); if (gi) { const w = S.worlds[S.folder]; return Viewer.open({ path: gi.dataset.img, cwd: S.folder, list: w ? w.images.map(x => x.path) : null }); }
   const wp = t.closest('[data-wprov]'); if (wp) { S.prov = wp.dataset.wprov === 'all' ? null : wp.dataset.wprov; renderNav(); return renderFolder(); }
   const bn = t.closest('[data-banner]'); if (bn) { const w = await api('/api/project/banner', { cwd: S.folder, path: bn.dataset.banner === '-' ? null : bn.dataset.banner }); S.worlds[S.folder] = { ...w, at: Date.now() }; toast(bn.dataset.banner === '-' ? 'Banner reset to the automatic pick.' : 'Banner updated.', 2000); return renderFolder(); }
-  const tb = t.closest('[data-wtab]'); if (tb) { S.worldTab = tb.dataset.wtab; return renderWorldBody(); }
+  const tb = t.closest('[data-wtab]'); if (tb) { S.worldTab = tb.dataset.wtab; S.chatFilter = ''; S.changeFilter = ''; S.changeBy = null; return renderWorldBody(); }
   const sp = t.closest('[data-prompt]'); if (sp) { const pr = S.prompts.find(x => x.id === sp.dataset.prompt); if (pr) return startWithPrompt(S.folder, pr); return; }
   const ch = t.closest('[data-chat]');
   if (ch) {
@@ -172,6 +198,8 @@ const pageClicks = wrap(async e => {
   if (act === 'world-new') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : worldNewMenu(b, b.dataset.cwd);
   if (act === 'world-prompt') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : promptMenu(b, S.folder);
   if (act === 'project-new') return openNewProject();
+  if (act === 'gemini-setup') return openSetupAt('st-gemini');
+  if (act === 'gemini-check') { const g = await api('/api/gemini/check', {}); S.gemini = g.gemini; renderBar(); renderLive(); return toast(S.gemini.signedIn ? 'Gemini is signed in.' : 'Gemini isn’t signed in any more: Setup → Gemini → Sign in.', 3500); }
   if (act === 'world-more') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : worldMenu(b);
   if (act === 'reopen' || act === 'reopen-no') return reopenChats(act === 'reopen');
   if (/^task-(new|start|remove|open)$/.test(act)) return taskAction(act, b);
@@ -212,13 +240,19 @@ $('page').addEventListener('keydown', e => {
   const i = btns.indexOf(row.querySelector('.r-title'));
   btns[Math.max(0, Math.min(btns.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]?.focus(); e.preventDefault();
 });
-$('page').addEventListener('input', e => { if (e.target.id === 'docFilter') { S.docFilter = e.target.value; return filterDocs(); } if (e.target.matches('form.qr textarea')) { e.target.style.height = 'auto'; e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`; } });
+$('page').addEventListener('input', e => { if (e.target.id === 'chatFilter') { S.chatFilter = e.target.value; return renderWorldBody(); } if (e.target.id === 'pcFilter') { S.changeFilter = e.target.value; return renderProjectChanges(); } if (e.target.id === 'projQ') { S.projQ = e.target.value; return renderProjAll(); } if (e.target.id === 'docFilter') { S.docFilter = e.target.value; return filterDocs(); } if (e.target.matches('form.qr textarea')) { e.target.style.height = 'auto'; e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`; } });
 
 document.addEventListener('keydown', e => {
   const typing = e.target instanceof Element && e.target.closest('input, select, textarea, [contenteditable]');
   if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); return $('palette').hidden ? openPalette() : closePalette(); }
   if (!$('palette').hidden || document.querySelector('dialog[open]')) return;
   if (e.key === '/' && !typing && !document.body.classList.contains('chat-open')) { e.preventDefault(); return openPalette(); }
+  // N: a new chat, in any project. Alt+1 to 9: the open chats, in the order they're listed.
+  if (e.key.toLowerCase() === 'n' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey && !SOLO) { e.preventDefault(); return openNewChat(); }
+  if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && /^Digit[1-9]$/.test(e.code) && !SOLO) {
+    const x = navLists().active.filter(y => !isCommander(y.sessionId))[Number(e.code.slice(5)) - 1];
+    if (x) { e.preventDefault(); return openActivity(x); }
+  }
   if (e.key === 'Escape') {
     if (document.body.classList.contains('nav-open')) { document.body.classList.remove('nav-open'); return; }
     if (!$('drawer').hidden && $('menu').hidden) { const id = S.drawerId; closeDrawer(); document.querySelector(`[data-preview="${CSS.escape(id || '')}"]`)?.focus(); }
@@ -239,7 +273,8 @@ function renderLiveSoon() {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && liveDirty) { liveDirty = false; renderLive(); renderNav(); } });
 function connectLive() {
-  try { es = new EventSource(`/api/events?token=${TOKEN}`); } catch { return; }
+  try { es = new EventSource(`/api/events?token=${TOKEN}&stream=${Live.id}`); } catch { return; }
+  liveAttach(es);
   es.onopen = () => { S.connected = true; renderLivePill(); Promise.all([loadActivity(), loadUsage()]).then(() => { watchActivity(); renderLive(); }).catch(() => {}); };
   es.onerror = () => { S.connected = false; renderLivePill(); setTimeout(() => api('/api/state').catch(() => {}), 4000); };
   es.addEventListener('sessions', () => {
@@ -444,6 +479,8 @@ function projectItems(cwd) {
     ...(S.prompts.length ? [{ glyph: '❡', label: 'Start with a prompt…', disabled: !p.exists, run: () => showMenu(Ctx.at, worldNewItems(cwd).filter(x => x !== '-' && /^Start with|Edit prompts/.test(x.label || ''))) }] : []),
     { glyph: '§', label: 'Rules and tools…', hint: 'CLAUDE.md · AGENTS.md · MCP', disabled: !p.exists, why: 'The folder is gone', run: () => openRules(cwd) },
     { glyph: '❖', label: 'Project crest…', hint: 'choose a picture or make one with Codex', disabled: !p.exists, run: () => ProjectArt.open(cwd) },
+    { glyph: '▦', label: 'Review pictures', hint: 'keep or redo, folder by folder', disabled: !p.exists, why: 'The folder is gone', run: () => openBoard(cwd) },
+    ...(() => { const open = S.activity.filter(x => x.source === 'app' && x.key && !x.parentKey && x.cwd && x.cwd.toLowerCase() === cwd.toLowerCase()); return open.length > 1 ? [{ glyph: '❝', label: 'Message its open chats…', hint: `${open.length} open`, run: () => openManyDialog({ keys: open.map(x => x.key), title: `Message ${p.name}` }) }] : []; })(),
     { glyph: '⏳', label: 'Queue a task here…', hint: 'starts when an account has room', disabled: !p.exists, why: 'The folder is gone', run: () => openTaskDialog(cwd) },
     ...((S.codex && S.codex.enabled) || (S.gemini && S.gemini.enabled) ? [{ glyph: '⚑', label: 'Race…', hint: 'two of them, the same task; keep the better', disabled: !p.exists || !racePairs().length, why: !p.exists ? 'The folder is gone' : 'Set up Codex or Gemini first', run: () => openRaceDialog(cwd) },
       { glyph: '⑂', label: 'Split the work…', hint: 'each takes a part, keep both', disabled: !p.exists || !racePairs().length, why: !p.exists ? 'The folder is gone' : 'Set up Codex or Gemini first', run: () => openRaceDialog(cwd, 'split') }] : []),
@@ -485,6 +522,7 @@ function appItems() {
   const light = Look.isLight();
   return [
     { glyph: '✦', label: 'Search everything', keys: 'Ctrl K', run: () => openPalette() },
+    { glyph: '+', label: 'New chat', keys: 'N', run: () => openNewChat() },
     { glyph: '+', label: 'New project', run: () => openNewProject() },
     { glyph: '◉', label: 'The hub', run: () => go('hub') },
     { glyph: '✧', label: 'Recent chats', run: () => go('recent') },
@@ -503,6 +541,7 @@ function linkItems(a) {
   const url = a.href;
   return [
     { glyph: '↗', label: 'Open link', hint: a.host, run: () => window.open(url, '_blank', 'noopener') },
+    ...(window.ChatUI && ChatUI.isOpen() && window.Split && Split.can() && SITE_RE.test(siteUrl(url)) ? [{ glyph: '◫', label: 'Open beside this chat', run: () => openSiteBeside(url) }] : []),
     { label: 'Copy link', run: () => copyText(url) },
   ];
 }
@@ -510,6 +549,7 @@ const Ctx = { at: null };
 function contextItems(t) {
   // The chat window knows its own pieces (replies, code, pictures, files, the crew).
   if (window.ChatUI && ChatUI.isOpen() && t.closest('#chat')) { const it = ChatUI.contextItems(t, Ctx.at); if (it) return it; }
+  const pic = t.closest('.bd-t'); if (pic) return boardTileItems(pic.dataset.rel);
   const withFav = id => [favItem(id), ...orgItems(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
   const gh = t.closest('[data-group], [data-gcard]'); if (gh && !t.closest('[data-gchat]')) return groupItems(gh.dataset.group || gh.dataset.gcard);
   const gc = t.closest('[data-gchat]'); if (gc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(gc.dataset.gchat) }, ...withFav(gc.dataset.gchat)];
@@ -519,7 +559,8 @@ function contextItems(t) {
   const pv = t.closest('[data-preview], [data-continue]'); if (pv) return withFav(pv.dataset.preview || pv.dataset.continue);
   const card = t.closest('#awaitList > [data-k], #board > [data-k], #quietList > [data-k], #cPinList > [data-k], #cRailList > [data-k]');
   if (card) { const x = findActivity(card.dataset.k); if (x) return activityItems(x); }
-  const world = t.closest('#atlas > [data-k], [data-world], .nav-i[data-cwd]');
+  const no = t.closest('[data-navopen]'); if (no) { const x = findActivity(no.dataset.navopen); if (x) return activityItems(x); }
+  const world = t.closest('#atlas > [data-k], [data-world], .nav-i[data-cwd], .pa-row[data-cwd]');
   if (world) { const cwd = world.dataset.world || world.dataset.cwd || (world.dataset.k !== '+new' ? world.dataset.k : null); if (cwd) return projectItems(cwd); }
   const acct = t.closest('[data-acct-card], [data-acct]'); const aid = acct && (acct.dataset.acctCard || acct.dataset.acct); if (aid && S.accounts.some(a => a.id === aid)) return accountItems(aid);
   if (t.closest('.codex-card')) return null;
@@ -534,7 +575,7 @@ document.addEventListener('contextmenu', e => {
   if (!(t instanceof Element) || t.closest('input, textarea, select, [contenteditable="true"]')) return;
   const coarse = matchMedia('(pointer: coarse)').matches;
   // On a phone, a long press on text is for selecting it; only cards, pictures and controls get a menu.
-  if (coarse && !t.closest('[data-row], [data-k], [data-world], [data-gchat], [data-gcard], [data-group], .world, .gen, .thumb, .crew, .ri, .af-file, .umsg, .turn .who, .tool > summary, .nav-i')) return;
+  if (coarse && !t.closest('[data-row], [data-k], [data-world], [data-gchat], [data-gcard], [data-group], .world, .gen, .thumb, .crew, .ri, .af-file, .umsg, .turn .who, .tool > summary, .nav-i, .bd-t')) return;
   if (e.button !== 2 && !e.clientX && !e.clientY) { const r = t.getBoundingClientRect(); Ctx.at = { x: r.left + Math.min(24, r.width / 2), y: r.top + Math.min(r.height, 28) }; }
   else Ctx.at = { x: e.clientX, y: e.clientY };
   const items = contextItems(t);
@@ -549,9 +590,11 @@ function openShortcuts() {
   if (!d) {
     document.body.insertAdjacentHTML('beforeend', `<dialog id="keysDlg" class="keys-dlg" aria-labelledby="keysTitle"><div class="setup-head"><h3 id="keysTitle">Keyboard shortcuts</h3><button class="icon" data-keys-close aria-label="Close">✕</button></div>
       <div class="keys-body">${[
-        ['Anywhere', [['Ctrl K', 'Search chats, projects, documents, prompts and actions'], ['?', 'This list'], ['Right-click', 'Options for whatever you clicked (Shift for the browser’s menu)'], ['Esc', 'Close what’s open']]],
-        ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['Ctrl F', 'Find in this chat'], ['Ctrl \\', 'Focus mode: just the conversation'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc twice', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between open chats'], ['Alt Shift ↑ ↓', 'Move the chat you’re in up or down the list'], ['End', 'Jump to the latest message']]],
-        ['Pictures', [['← →', 'Step through a project’s pictures']]],
+        ['Anywhere', [['Ctrl K', 'Search chats, projects, documents, prompts and actions'], ['N', 'Start a new chat, in any project'], ['Alt 1 … 9', 'Open one of your open chats, in the order they’re listed'], ['?', 'This list'], ['Right-click', 'Options for whatever you clicked (Shift for the browser’s menu)'], ['Esc', 'Close what’s open']]],
+        ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['↑', 'In an empty box: what you last sent here'], ['Ctrl F', 'Find in this chat'], ['Ctrl \\', 'Focus mode: just the conversation'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc twice', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between open chats'], ['Alt Shift ↑ ↓', 'Move the chat you’re in up or down the list'], ['End', 'Jump to the latest message']]],
+        ['In the sidebar', [['↑ ↓', 'Move through it (Home and End for its ends)']]],
+        ['Pictures', [['← →', 'Step through a project’s pictures'], ['K', 'Keep the picture you’re on'], ['R', 'Redo it, and say why'], ['U', 'Take the mark back'], ['N', 'Add a note to it'], ['C', 'Side by side with the same name in another folder']]],
+        ['Reading a file', [['N', 'Add a note on the passage you’ve selected, or on the whole file'], ['Ctrl F', 'Find in the file']]],
       ].map(([h, rows]) => `<section><p class="d-h">${esc(h)}</p><dl>${rows.map(([k, v]) => `<dt><kbd class="kbd">${esc(k)}</kbd></dt><dd>${esc(v)}</dd>`).join('')}</dl></section>`).join('')}</div></dialog>`);
     d = $('keysDlg');
     d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-keys-close]')) d.close(); });

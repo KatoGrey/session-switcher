@@ -5,6 +5,8 @@ const TOKEN = window.TOKEN;
 // A chat popped out into its own window (?chat=<id>&solo=1): just that chat, side by side with the rest.
 const PAGE_ARGS = new URLSearchParams(location.search);
 const SOLO = PAGE_ARGS.get('solo') === '1';
+// One side of a split view (ui/split.js): such a chat, in a frame beside the main one.
+const PANE = PAGE_ARGS.get('pane') === '1';
 const canPopOut = () => !window.REMOTE && !window.Android && !SOLO;
 function popOutChat(id) {
   if (!id) { toast('Send a message first.'); return; }
@@ -33,6 +35,11 @@ const savePins = () => store('pins', JSON.stringify([...S.pins]));
 // Favorite chats (pinned to the top of the sidebar), and sidebar sections you've folded away.
 try { S.favs = new Set(JSON.parse(store('favChats') || '[]')); } catch { S.favs = new Set(); }
 try { S.navFold = new Set(JSON.parse(store('navFold') || '[]')); } catch { S.navFold = new Set(); }
+// Sections of the hub you've folded away, which account cards are open, and which assistant's chats
+// the sidebar's project list counts.
+try { S.hubFold = new Set(JSON.parse(store('hubFold') || '[]')); } catch { S.hubFold = new Set(); }
+try { S.acctOpen = new Set(JSON.parse(store('acctOpen') || '[]')); } catch { S.acctOpen = new Set(); }
+S.navProv = store('navProv') || 'all'; S.navQ = ''; S.projQ = '';
 function togglePin(cwd) {
   const on = !S.pins.has(cwd);
   if (on) S.pins.add(cwd); else S.pins.delete(cwd);
@@ -61,6 +68,8 @@ document.addEventListener('keydown', e => {
   if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;   // the text's own undo
   if (Undo.run && Date.now() <= Undo.until) { e.preventDefault(); wrap(takeBackLast)(); }
 });
+// Said to a screen reader, without taking focus or showing anything.
+function announce(text) { const el = $('hubLive'); if (el) el.textContent = text; }
 function toggleFav(id) {
   const k = String(id).toLowerCase(), on = !S.favs.has(k);
   if (on) S.favs.add(k); else S.favs.delete(k);
@@ -88,6 +97,53 @@ async function api(p, body) {
   if (r.status === 403 && (j.reason === 'stale' || !j.error)) { location.reload(); throw new Error('Reloading…'); }
   if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { reason: j.reason, status: r.status });
   return j;
+}
+
+/* ---------- one live connection per window ---------- */
+// A browser keeps at most six connections open to one address, across all its windows, and a stream
+// holds one all the time it's open. So a window's chats all come over its one connection (lib/streams.js).
+// A ChatStream looks like an EventSource for one chat. If the app on the other end is an older copy, or
+// the connection can't be made, each opens its own after all, as they used to.
+const Live = { id: `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`, mux: false, direct: false, n: 0, subs: new Map() };
+class ChatStream {
+  constructor(key, after = 0) {
+    Object.assign(this, { key, last: Number(after) || 0, sub: `s${++Live.n}`, on: {}, onerror: null, closed: false, own: null });
+    Live.subs.set(this.sub, this);
+    this.start();
+  }
+  addEventListener(name, fn) { (this.on[name] = this.on[name] || []).push(fn); if (this.own) this.own.addEventListener(name, fn); }
+  fire(name, data) { for (const fn of this.on[name] || []) fn({ data }); }
+  start() {
+    if (this.closed || this.own) return;
+    if (Live.mux) { api('/api/chat/watch', { stream: Live.id, sub: this.sub, key: this.key, after: this.last }).catch(err => { if (!err.offline && err.status !== 409 && this.onerror) this.onerror(err); }); return; }
+    if (!Live.direct) return;   // once the window's connection has said which
+    this.own = new EventSource(`/api/chat/events?key=${encodeURIComponent(this.key)}&token=${TOKEN}&after=${this.last}`);
+    for (const [name, fns] of Object.entries(this.on)) for (const fn of fns) this.own.addEventListener(name, fn);
+    this.own.onerror = e => { if (this.onerror) this.onerror(e); };
+  }
+  close() {
+    if (this.closed) return;
+    this.closed = true; Live.subs.delete(this.sub);
+    if (this.own) this.own.close();
+    else if (Live.mux) api('/api/chat/unwatch', { stream: Live.id, sub: this.sub }).catch(() => {});
+  }
+}
+const liveChat = (key, after) => new ChatStream(key, after);
+function liveAttach(es) {
+  const route = (name, e) => {
+    const nl = e.data.indexOf('\n'), [sub, seq] = e.data.slice(0, nl).split(' '), x = Live.subs.get(sub);
+    if (!x) return;
+    if (Number(seq)) x.last = Number(seq);
+    x.fire(name, e.data.slice(nl + 1));
+  };
+  es.addEventListener('c', e => route('chat', e));
+  es.addEventListener('ch', e => route('hello', e));
+  es.addEventListener('cr', e => route('replayed', e));
+  // Connected, or back after a drop: every chat asks again, from where it had got to.
+  es.addEventListener('mux', () => { Live.mux = true; Live.direct = false; clearTimeout(Live.wait); for (const x of Live.subs.values()) x.start(); });
+  const direct = () => { if (Live.mux || Live.direct) return; Live.direct = true; for (const x of Live.subs.values()) x.start(); };
+  es.addEventListener('open', () => { clearTimeout(Live.wait); Live.wait = setTimeout(direct, 1500); });
+  es.addEventListener('error', () => { if (Live.mux) Live.mux = false; else direct(); });
 }
 
 let toastTimer;
@@ -395,6 +451,8 @@ function ownStatus(x) {
   // Its reply is done, but work it started runs on in the background: at work until that's back.
   if (x.background && x.background.length && x.phase !== 'ended') return 'working';
   if (x.phase === 'ended') return 'ended';
+  // Being kept at it: between check-ins, nothing's waiting on you.
+  if (x.keep) return 'working';
   if (x.finishedAt && (x.source === 'app' || x.lastText) && !isSeen(x)) return 'reply';
   return 'quiet';
 }
@@ -486,6 +544,7 @@ function closeOff(x) {
 function openActivity(x) {
   if (!x) return;
   markSeen(x); if (x.partner) markSeen(x.partner);
+  if (window.Split && Split.shows(x)) return splitFocus({ key: x.key, sessionId: x.sessionId });   // it's beside you already
   // A partner opens inside the chat it works in.
   if (x.source === 'app' && x.parentKey) return ChatUI.openKey(x.parentKey);
   if (x.source === 'app') return ChatUI.openKey(x.key);
@@ -508,6 +567,11 @@ async function loadSessions(pre) {
   S.projects = j.projects; S.root = j.root; S.running = j.running || {}; S.live = j.live || {};
   S.doneMarks = j.doneMarks || {};
   sortDone();
+  // A pin, or the page you were on, from when its folder was written another way (C:/x for C:\\x) still finds its project.
+  const sameDir = x => String(x).replace(/\//g, '\\').toLowerCase();
+  const found = x => S.projects.some(p => p.cwd === x) ? null : S.projects.find(p => sameDir(p.cwd) === sameDir(x));
+  for (const pin of [...S.pins]) { const p = found(pin); if (p) { S.pins.delete(pin); S.pins.add(p.cwd); savePins(); } }
+  if (S.view === 'folder' && S.folder && found(S.folder)) S.folder = found(S.folder).cwd;
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
 async function loadActivity(pre) { const j = pre || await api('/api/activity'); Boot.raw.activity = j; S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }

@@ -23,12 +23,13 @@ const selfName = () => NAME_OF[selfKind()];
 const crewKindsLite = () => ['claude', 'codex', 'gemini'].filter(k => k !== selfKind() && (k === 'gemini' ? !!S.gemini : hasProv(k)));
 // "partner" (from before there could be several) means the chat's last partner.
 const toKind = to => (to === 'partner' ? partnerProv() : String(to || '').startsWith('partner:') ? to.slice(8) : null);
-const toName = to => (to === 'both' ? (crewKindsLite().length > 1 ? 'All' : 'Both') : to && to !== 'chat' ? NAME_OF[toKind(to)] : selfName());
-// What a message says about who it's for: one partner (started and caught up if need be), or all in
-// turn (the chat first, then each of the others, each knowing what the ones before said).
+const toName = to => (to === 'parallel' ? 'At once' : to === 'both' ? (crewKindsLite().length > 1 ? 'All' : 'Both') : to && to !== 'chat' ? NAME_OF[toKind(to)] : selfName());
+// What a message says about who it's for: one partner (started and caught up if need be), all in
+// turn (the chat first, then each of the others, each knowing what the ones before said), or all at once.
 function toBody(to) {
   if (!to || to === 'chat') return {};
   const ks = crewKindsLite();
+  if (to === 'parallel') return { to: 'group', kinds: [selfKind(), ...ks], how: 'parallel' };
   if (to === 'both') return ks.length > 1 ? { to: 'all', kinds: ks } : { to: 'both', ...(ks[0] ? { kind: ks[0] } : {}) };
   return { to: 'partner', kind: toKind(to) };
 }
@@ -58,19 +59,20 @@ function partnerListen(key, prov) {
   const me = { key, prov: prov || (selfKind() === 'claude' ? 'codex' : 'claude'), es: null, live: '', busy: false };
   PARTNERS.set(key, me);
   const name = () => NAME_OF[me.prov];
-  const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}`);
+  const es = liveChat(key);
   me.es = es;
   es.addEventListener('chat', e => {
     let ev; try { ev = JSON.parse(e.data); } catch { return; }
     if (PARTNERS.get(key) !== me) return;
     switch (ev.kind) {
-      case 'delta': if (!ev.thinking) { me.live += ev.text || ''; me.busy = true; paintLive(); } break;
+      case 'delta': if (!ev.thinking) { me.live += ev.text || ''; me.busy = true; paintLiveSoon(); } break;
       case 'assistant': {
         me.live = '';
         // Its replies join this chat's feed, named; a repeat of one already shown (the replay when
         // the stream reconnects) only updates it.
-        const had = CV.items.find(x => x.kind === 'assistant' && x.partner && x.mid === ev.mid);
-        if (had) had.blocks = mergeBlocks(had.blocks, ev.blocks);
+        const evText = (ev.blocks || []).filter(b => b.type === 'text' && b.text).map(b => b.text.trim()).join('\n\n');
+        const had = CV.items.find(x => x.kind === 'assistant' && x.partner === name() && (x.mid === ev.mid || (evText && (x.blocks || []).filter(b => b.type === 'text' && b.text).map(b => b.text.trim()).join('\n\n') === evText)));
+        if (had) { had.mid = ev.mid; had.blocks = mergeBlocks(had.blocks, ev.blocks); }
         else CV.items.push({ ...ev, partner: name(), blocks: [...(ev.blocks || [])] });
         paintFeed(); break;
       }

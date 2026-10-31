@@ -19,6 +19,7 @@ const path = require('path');
 // browsers make their throwaway folders in it (TEMP and TMP on Windows, TMPDIR on a Mac, all read by
 // os.tmpdir() each time), and it's deleted at the end, passed or failed or stopped with Ctrl+C. So
 // nothing piles up in the real temp folder, and nothing outside this one is touched.
+require('../lib/electron-node');   // (its own clean-up, run from the installed app's Node, has links and Git's read-only files in it)
 const RUN_TMP = path.join(os.tmpdir(), `ss-run-${process.pid}-${Date.now().toString(36)}`);
 fs.mkdirSync(RUN_TMP, { recursive: true });
 const TMP_ENV = { TEMP: RUN_TMP, TMP: RUN_TMP, TMPDIR: RUN_TMP };
@@ -37,7 +38,7 @@ process.on('SIGINT', () => { for (const x of running) try { x.close ? x.close() 
 
 const { launch, sleep } = require('./browser');
 const demo = require('./demo');
-const suites = [...require('./ui'), ...require('./project-art.ui'), ...require('./theme-studio.ui')];
+const suites = [...require('./ui'), ...require('./hub.ui'), ...require('./project-art.ui'), ...require('./theme-studio.ui')];
 
 const APP = path.join(__dirname, '..');
 const only = process.argv.slice(2);
@@ -55,7 +56,7 @@ async function main() {
     // On GitHub the failures are also written as annotations (from a TAP copy of the results), each
     // with its error and where it happened, readable on the run's page without signing in.
     const tap = process.env.GITHUB_ACTIONS ? path.join(RUN_TMP, `ss-tap-${process.pid}.txt`) : null;
-    const runLogic = () => spawnSync(process.execPath, ['--test', '--test-timeout=180000', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP, env: { ...process.env, ...TMP_ENV }, timeout: 15 * 60000 });   // a stuck run ends (and fails) rather than holding everything
+    const runLogic = () => spawnSync(process.execPath, [...(process.versions.electron ? ['--require', path.join(__dirname, '..', 'lib', 'electron-node.js')] : []), '--test', '--test-timeout=180000', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP, env: { ...process.env, ...TMP_ENV }, timeout: 15 * 60000 });   // a stuck run ends (and fails) rather than holding everything
     const failures = () => {
       let text = ''; try { text = fs.readFileSync(tap, 'utf8'); } catch { return []; }
       const out = [];

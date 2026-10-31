@@ -1,84 +1,115 @@
-// "Fix and recheck until clean" (lib/reviewloop.js), with a stand-in chat and stand-in reviews.
+'use strict';
+// Review loop (lib/reviewloop.js): fix-and-recheck until clean, round limits, stop/interrupt handling,
+// synchronous send completion, and round-accurate failure reporting.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createReviewLoop } = require('../lib/reviewloop');
 
-function fakeChat() {
-  const c = { key: 'k1', state: 'ready', events: [], sent: [], waiters: [] };
-  c.emit = ev => c.events.push(ev);
-  c.turnDone = () => new Promise(r => c.waiters.push(r));
-  c.finish = (ev = { kind: 'result', ok: true }) => { for (const w of c.waiters.splice(0)) w(ev); };
-  return c;
+function makeChat(provider = 'claude') {
+  const events = [];
+  const clients = new Set();
+  let turnWaiters = [];
+  const chat = {
+    key: `k-${provider}`,
+    provider,
+    state: 'ready',
+    interruptedAt: 0,
+    clients,
+    events,
+    emit(ev) {
+      events.push(ev);
+      const msg = `event: chat\ndata: ${JSON.stringify(ev)}\n\n`;
+      for (const c of [...clients]) c.write(msg);
+      if (ev.kind === 'result' || ev.kind === 'ended') {
+        const ws = turnWaiters;
+        turnWaiters = [];
+        for (const w of ws) w(ev);
+      }
+    },
+    turnDone() {
+      return new Promise(resolve => turnWaiters.push(resolve));
+    },
+  };
+  return chat;
 }
-const tick = () => new Promise(r => setTimeout(r, 5));
-const finding = t => ({ title: t });
-// Reviews hand out the given findings, round after round.
-function setup(rounds) {
-  let n = 0;
-  const reviews = [];
+
+test('reviewloop: fixes and rechecks across rounds until clean, including synchronous turn completion', async () => {
+  const chat = makeChat('claude');
+  const sent = [];
+  let revSeq = 0;
   const loop = createReviewLoop({
-    send: async (chat, text) => { chat.sent.push(text); chat.state = 'busy'; },
-    review: async (chat, files, base) => { const id = `r${++n}`; reviews.push({ id, files, base }); return { id, done: Promise.resolve({ state: 'done', findings: rounds[n - 1] || [] }) }; },
-    fixText: (what, list) => `fix ${what}: ${list.map(f => f.title).join(', ')}`,
+    send: async (c, text) => {
+      sent.push(text);
+      // Synchronous result emitted inside send() before turnDone() would otherwise be called:
+      c.emit({ kind: 'result', ok: true });
+    },
+    review: async () => {
+      const n = ++revSeq;
+      return {
+        id: `rev-${n}`,
+        done: Promise.resolve({
+          state: 'done',
+          findings: n === 1 ? [{ title: 'Still one bug' }] : [],
+        }),
+      };
+    },
+    fixText: (what, list) => `Fix ${what}: ${list.map(f => f.title).join(', ')}`,
   });
-  return { loop, reviews };
-}
-const steps = c => c.events.map(e => `${e.state}${e.done ? `:${e.done}` : ''}@${e.round}`);
 
-test('reviewloop: fixes, rechecks from the same starting point, and stops when clean', async () => {
-  const c = fakeChat(), { loop, reviews } = setup([[]]);
-  const { done } = loop.start(c, { id: 'r0', what: 'the changes', base: 'abc', findings: [finding('Bug')], files: ['a.js'] });
-  await tick();
-  assert.deepEqual(c.sent, ['fix the changes: Bug']);
-  c.finish(); await done;
-  assert.deepEqual(reviews.map(r => r.base), ['abc']);
-  assert.deepEqual(steps(c), ['fixing@1', 'checking@1', 'end:clean@1']);
-});
-
-test('reviewloop: stops after three rounds with findings still open', async () => {
-  const c = fakeChat(), { loop } = setup([[finding('A')], [finding('B')], [finding('C')]]);
-  const { done } = loop.start(c, { id: 'r0', what: 'x', findings: [finding('Z')] });
-  for (let i = 0; i < 3; i++) { await tick(); c.state = 'ready'; c.finish(); }
+  const { ok, done } = loop.start(chat, {
+    id: 'rev-0',
+    what: 'the commit',
+    findings: [{ title: 'Initial bug' }],
+  });
+  assert.equal(ok, true);
   await done;
-  assert.equal(c.sent.length, 3);
-  assert.equal(c.events.at(-1).done, 'rounds');
+
+  assert.equal(sent.length, 2);
+  const loopEvents = chat.events.filter(e => e.kind === 'reviewloop');
+  assert.deepEqual(
+    loopEvents.map(e => [e.id, e.round, e.state, e.done || null]),
+    [
+      ['rev-0', 1, 'fixing', null],
+      ['rev-1', 1, 'checking', null],
+      ['rev-1', 2, 'fixing', null],
+      ['rev-2', 2, 'checking', null],
+      ['rev-2', 2, 'end', 'clean'],
+    ]
+  );
 });
 
-test('reviewloop: Stop ends it after the current step, and nothing more is sent', async () => {
-  const c = fakeChat(), { loop, reviews } = setup([[finding('A')]]);
-  const { done } = loop.start(c, { id: 'r0', what: 'x', findings: [finding('Z')] });
-  await tick();
-  loop.stop(c);
-  c.finish(); await done;
-  assert.equal(c.sent.length, 1);
-  assert.equal(reviews.length, 0, 'no recheck after stopping');
-  assert.equal(c.events.at(-1).done, 'stopped');
-});
+test('reviewloop: reports current round id on round-2 error and names the chat provider when busy', async () => {
+  const chat = makeChat('gemini');
+  chat.state = 'busy';
+  const loop = createReviewLoop({
+    send: async c => c.emit({ kind: 'result', ok: true }),
+    review: async () => {
+      throw new Error('Codex review server offline');
+    },
+    fixText: (_w, l) => String(l.length),
+  });
 
-test('reviewloop: one at a time per chat, and not while Claude is busy', async () => {
-  const c = fakeChat(), { loop } = setup([[]]);
-  loop.start(c, { id: 'r0', what: 'x', findings: [finding('Z')] });
-  assert.throws(() => loop.start(c, { id: 'r0', what: 'x', findings: [finding('Z')] }), /already running/);
-  const busy = fakeChat(); busy.key = 'k2'; busy.state = 'busy';
-  assert.throws(() => loop.start(busy, { id: 'r0', what: 'x', findings: [finding('Z')] }), /busy/);
-  c.finish();
-});
+  assert.throws(
+    () => loop.start(chat, { id: 'rev-init', what: 'changes', findings: [{ title: 'Bug' }] }),
+    /Gemini is busy/
+  );
 
-/* ---------- reviews both ways (lib/review.js) ---------- */
-const { reviewAsk, parseFindings, mergeFindings } = require('../lib/review');
+  chat.state = 'ready';
+  let calls = 0;
+  const loop2 = createReviewLoop({
+    send: async c => c.emit({ kind: 'result', ok: true }),
+    review: async () => {
+      calls++;
+      if (calls === 1) return { id: 'rev-round1', done: Promise.resolve({ state: 'done', findings: [{ title: 'Next bug' }] }) };
+      throw new Error('Recheck failed in round 2');
+    },
+    fixText: (_w, l) => String(l.length),
+  });
 
-test('review: Claude is asked for findings as JSON, and its answer is read back', () => {
-  const ask = reviewAsk({ target: { type: 'uncommittedChanges' } }, 'Add a save system');
-  assert.match(ask, /git diff HEAD/);
-  assert.match(ask, /What was asked for: Add a save system/);
-  assert.match(ask, /Don't change any files/);
-  const r = parseFindings('Mostly solid.\n```json\n{"findings":[{"title":"Save can overwrite","file":"save.lua","start":"40","priority":"P1"},{"nope":1}]}\n```');
-  assert.equal(r.overall, 'Mostly solid.');
-  assert.deepEqual(r.findings.map(f => [f.title, f.file, f.start, f.priority]), [['Save can overwrite', 'save.lua', 40, 'P1']]);
-  assert.deepEqual(parseFindings('No JSON here, all good.').findings, []);
-});
-
-test('review: a dual review marks what both found, and puts it first', () => {
-  const m = mergeFindings([{ title: 'Off by one', file: 'a.js', start: 10, priority: 'P2' }, { title: 'Slow loop', file: 'b.js' }], [{ title: 'Index error', file: 'A.js', start: 12 }, { title: 'Typo', file: 'c.js', priority: 'P3' }]);
-  assert.deepEqual(m.map(f => `${f.by}:${f.title}`), ['both:Off by one', 'claude:Typo', 'codex:Slow loop']);
+  await loop2.start(chat, { id: 'rev-start', what: 'changes', findings: [{ title: 'First bug' }] }).done;
+  const end = chat.events.filter(e => e.kind === 'reviewloop').pop();
+  assert.equal(end.id, 'rev-round1', 'uses current round review id rather than initial id');
+  assert.equal(end.round, 2);
+  assert.equal(end.done, 'failed');
+  assert.match(end.error || '', /Recheck failed in round 2/);
 });

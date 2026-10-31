@@ -55,7 +55,7 @@ async function api(p, body) {
   let r;
   try {
     r = await fetch(p, { method: body ? 'POST' : 'GET', headers: { 'X-Switcher-Token': TOKEN, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
-  } catch { throw new Error('Session Switcher isn’t running on your Mac right now.'); }
+  } catch { throw new Error('Session Switcher isn’t running on your computer right now.'); }
   const j = await r.json().catch(() => ({ error: 'Unexpected answer from the app.' }));
   if (r.status === 403 && j.reason === 'stale') { location.reload(); throw new Error('Reloading…'); }
   if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { status: r.status });
@@ -113,7 +113,49 @@ function loadPlans(fresh = false) {
   return plansLoading;
 }
 
-// Live updates come over the full app's own event stream.
+// Live updates and open chat streams come over one connection per window (lib/streams.js), with
+// fallback to per-chat EventSource if needed.
+const Live = { id: `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`, mux: false, direct: false, n: 0, subs: new Map() };
+class ChatStream {
+  constructor(key, after = 0) {
+    Object.assign(this, { key, last: Number(after) || 0, sub: `s${++Live.n}`, on: {}, onerror: null, closed: false, own: null });
+    Live.subs.set(this.sub, this);
+    this.start();
+  }
+  get readyState() { return this.closed ? 2 : this.own ? this.own.readyState : Live.mux ? 1 : 0; }
+  addEventListener(name, fn) { (this.on[name] = this.on[name] || []).push(fn); if (this.own) this.own.addEventListener(name, fn); }
+  fire(name, data) { for (const fn of this.on[name] || []) fn({ data }); }
+  start() {
+    if (this.closed || this.own) return;
+    if (Live.mux) { api('/api/chat/watch', { stream: Live.id, sub: this.sub, key: this.key, after: this.last }).catch(err => { if (err.status !== 409 && this.onerror) this.onerror(err); }); return; }
+    if (!Live.direct) return;
+    this.own = new EventSource(`/api/chat/events?key=${encodeURIComponent(this.key)}&token=${TOKEN}&after=${this.last}`);
+    for (const [name, fns] of Object.entries(this.on)) for (const fn of fns) this.own.addEventListener(name, fn);
+    this.own.onerror = e => { if (this.onerror) this.onerror(e); };
+  }
+  close() {
+    if (this.closed) return;
+    this.closed = true; Live.subs.delete(this.sub);
+    if (this.own) this.own.close();
+    else if (Live.mux) api('/api/chat/unwatch', { stream: Live.id, sub: this.sub }).catch(() => {});
+  }
+}
+const liveChat = (key, after) => new ChatStream(key, after);
+function liveAttach(es) {
+  const route = (name, e) => {
+    const nl = e.data.indexOf('\n'), [sub, seq] = e.data.slice(0, nl).split(' '), x = Live.subs.get(sub);
+    if (!x) return;
+    if (Number(seq)) x.last = Number(seq);
+    x.fire(name, e.data.slice(nl + 1));
+  };
+  es.addEventListener('c', e => route('chat', e));
+  es.addEventListener('ch', e => route('hello', e));
+  es.addEventListener('cr', e => route('replayed', e));
+  es.addEventListener('mux', () => { Live.mux = true; Live.direct = false; clearTimeout(Live.wait); for (const x of Live.subs.values()) x.start(); });
+  const direct = () => { if (Live.mux || Live.direct) return; Live.direct = true; for (const x of Live.subs.values()) x.start(); };
+  es.addEventListener('open', () => { clearTimeout(Live.wait); Live.wait = setTimeout(direct, 1500); });
+  es.addEventListener('error', () => { if (Live.mux) Live.mux = false; else direct(); });
+}
 const timers = {};
 const later = (name, ms, fn) => { clearTimeout(timers[name]); timers[name] = setTimeout(() => fn().catch(() => {}), ms); };
 document.addEventListener('visibilitychange', () => {
@@ -122,7 +164,8 @@ document.addEventListener('visibilitychange', () => {
   later('live', 50, async () => { await loadLive(); renderLive(); });
 });
 function connect() {
-  const es = new EventSource(`/api/events?token=${TOKEN}`);
+  const es = new EventSource(`/api/events?token=${TOKEN}&stream=${Live.id}`);
+  liveAttach(es);
   es.onopen = () => { S.connected = true; renderConn(); };
   es.onerror = () => { S.connected = false; renderConn(); };
   // A tab you can't see does the least it can: the running list (slower; queued messages still go
@@ -175,7 +218,7 @@ function renderWhenIdle() {
   render();
 }
 const activeTyping = () => { const a = document.activeElement; return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && a.value; };
-function renderConn() { const c = $('conn'); c.classList.toggle('on', S.connected); c.title = S.connected ? 'Live: updates as chats move' : 'Not connected to your Mac'; }
+function renderConn() { const c = $('conn'); c.classList.toggle('on', S.connected); c.title = S.connected ? 'Live: updates as chats move' : 'Not connected to your computer'; }
 
 /* ---------- derived data ---------- */
 let projBy = new Map(), chatBy = new Map(), liveBy = new Map();

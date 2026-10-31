@@ -41,10 +41,13 @@ function welcomeHtml() {
   const last = lastChat();
   const lastOk = last && allSessions().some(([s]) => s.id === last.sessionId);
   const away = w.away || { files: 0, reviews: [] };
+  // Chats you left being kept at it (ui/keepworking.js) that have ended, and how.
+  const kept = (away.kept || []).map(e => { const [s, p] = sessionById(e.id); return { ...e, s, p }; }).filter(e => e.s);
+  const keptIn = [...new Map(kept.filter(e => e.p && e.p.cwd).map(e => [e.p.cwd, e.p])).values()].slice(0, 3);
   // Resume my day: the chats from the last day you worked (not done), newest first.
   const dayOf = new Date(since).toDateString();
   const yday = w.morning ? allSessions().filter(([s]) => new Date(s.updated).toDateString() === dayOf && !isDoneChat(s) && !(last && s.id === last.sessionId) && ![...needs, ...replies].some(x => x.sessionId === s.id)).sort((a, b) => b[0].updated - a[0].updated).slice(0, 4) : [];
-  if (!replies.length && !needs.length && !working.length && !lastOk && !away.files && !away.reviews.length && !yday.length) return '';
+  if (!replies.length && !needs.length && !working.length && !lastOk && !away.files && !away.reviews.length && !yday.length && !kept.length) return '';
   const bits = [];
   if (away.files) bits.push(`<b>${away.files}</b> ${away.files === 1 ? 'file was changed' : 'files were changed'}`);
   if (away.reviews.length) {
@@ -61,6 +64,7 @@ function welcomeHtml() {
       <p class="eyebrow">${esc(voice(w.morning ? (new Date().getHours() < 12 ? 'Good morning' : 'Welcome back') : 'Welcome back'))} · away ${esc(dur(w.at - since))}</p>
       <p class="wb-h">${bits.length ? `While you were away, ${bits.join(', ').replace(/, ([^,]*)$/, ' and $1')}.` : 'Nothing changed while you were away.'}</p>
       ${chips ? `<div class="wb-chips">${chips}</div>` : ''}
+      ${kept.length ? `<p class="wb-sub">Kept at it while you were away:</p><div class="wb-chips">${kept.slice(-4).map(e => `<button class="wb-chip" data-welcome="continue" data-sid="${esc(e.s.id)}" title="${esc(`${e.nudges} check-in${e.nudges === 1 ? '' : 's'}${e.detail ? `. ${e.detail}` : ''}`)}">${esc(e.s.title || 'Untitled chat')} <small>${esc({ time: 'its time came', done: 'says it’s finished', nothing: 'ran out of things to do', trouble: 'stopped by trouble' }[e.why] || 'stopped')}</small></button>`).join('')}${keptIn.map(p => `<button class="wb-chip" data-welcome="changes" data-cwd="${esc(p.cwd)}">What changed in ${esc(p.name)}</button>`).join('')}</div>` : ''}
       ${yday.length ? `<p class="wb-sub">Also from ${new Date(since).toDateString() === new Date(Date.now() - 864e5).toDateString() ? 'yesterday' : esc(new Date(since).toLocaleDateString(undefined, { weekday: 'long' }))}:</p><div class="wb-chips">${yday.map(([s, p]) => `<button class="wb-chip" data-welcome="continue" data-sid="${esc(s.id)}" title="${esc(p.name)}">${esc(s.title || 'Untitled chat')}</button>`).join('')}</div>` : ''}
     </div>
     <div class="wb-act">
@@ -92,6 +96,7 @@ document.addEventListener('click', wrap(async e => {
   const what = b.dataset.welcome;
   if (what === 'dismiss') return dropWelcome();
   if (what === 'continue') { dropWelcome(); return ChatUI.open({ sessionId: b.dataset.sid }); }
+  if (what === 'changes') { dropWelcome(); S.worldTab = 'changes'; await go('folder', b.dataset.cwd); S.worldTab = 'changes'; return renderFolder(); }
   if (what === 'open') {
     const x = S.activity.find(y => keyOf(y) === b.dataset.k);
     dropWelcome();

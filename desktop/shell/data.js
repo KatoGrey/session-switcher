@@ -8,7 +8,8 @@ const os = require('os');
 const path = require('path');
 
 const FILES = ['accounts.json', 'history.json', 'chat-names.json', 'projects.json', 'banners.json', 'worlds.json', 'prompts.json',
-  'chat-prefs.json', 'openclaw-titles.json', 'pairs.json', 'devices.json', 'push.json', 'drafts.json', 'tasks.json', 'races.json', 'reopen.json'];
+  'chat-prefs.json', 'openclaw-titles.json', 'pairs.json', 'devices.json', 'push.json', 'drafts.json', 'tasks.json', 'races.json', 'reopen.json',
+  'routines.json', 'organize.json', 'lite.json', 'lite-usage.json', 'lite-waits.json', 'lite-alerts.json', 'gemini-chats.json', 'run.json', 'board.json', 'keep-working.json'];
 const DIRS = ['chat-extras', 'openclaw-messages', 'theme-studio'];
 
 // Folder copies it can find: the one that ran last (it leaves a note), and the usual places.

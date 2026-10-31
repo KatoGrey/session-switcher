@@ -164,7 +164,7 @@ async function signInFlow(planId) {
     const manual = `<div class="si-link"><input id="siManual" readonly value="${esc(r.manualUrl || r.url)}" aria-label="Link for another device"><button type="button" class="btn" data-m="copym">Copy</button></div>
           <div class="si-link"><input id="siCode" placeholder="Paste the code it shows" autocomplete="off" spellcheck="false" aria-label="Code"><button class="btn prime" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Checking…' : 'Finish'}</button></div>`;
     root.innerHTML = `<div class="modal-back"><form class="modal signin" id="siForm">${head}
-      ${r.auto ? `<p>Open this link <b>on this Mac</b>, in a browser signed in to <b>${esc(r.email || 'the right account')}</b> on claude.ai (if it’s signed in to another account, use a private window). Approve, and it finishes here by itself.</p>
+      ${r.auto ? `<p>Open this link <b>on this computer</b>, in a browser signed in to <b>${esc(r.email || 'the right account')}</b> on claude.ai (if it’s signed in to another account, use a private window). Approve, and it finishes here by itself.</p>
         <div class="si-link"><input id="siUrl" readonly value="${esc(r.url)}" aria-label="Sign-in link"><button type="button" class="btn" data-m="copy">Copy link</button><a class="btn prime" href="${esc(r.url)}" target="_blank" rel="noopener">Open</a></div>
         <p class="si-wait">${r.state === 'checking' ? 'Checking the account…' : '<span class="live-dot"></span> Waiting for you to approve in the browser…'}</p>
         <details class="si-alt"><summary>Signing in on another device, or it showed you a code?</summary>${manual}</details>`

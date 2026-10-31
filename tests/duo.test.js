@@ -73,6 +73,35 @@ test('duo: nothing new, nothing added', () => {
   assert.equal(catchUp({ to: 'codex', theirs: entries([reply(1, '')], 'claude') }), '');
 });
 
+test('duo: a multi-file edit shares every reported path and omits declined edits', () => {
+  const items = [
+    { kind: 'assistant', at: at(2), blocks: [
+      { type: 'tool', id: 'applied', name: 'Edit', meta: { path: 'save.lua', paths: ['save.lua', 'menu.lua', 'save.test.lua'] } },
+      { type: 'tool', id: 'declined', name: 'Write', meta: { path: 'unwanted.lua' } },
+      { type: 'tool', id: 'history-failed', name: 'Edit', meta: { path: 'missing.lua' }, result: { isError: true } },
+    ] },
+    { kind: 'tool_result', toolUseId: 'applied', result: { isError: false }, at: at(3) },
+    { kind: 'tool_result', toolUseId: 'declined', result: { isError: true }, at: at(3) },
+  ];
+  const block = catchUp({ to: 'claude', theirs: entries(items, 'codex') });
+  assert.match(block, /changed save\.lua, menu\.lua, save\.test\.lua/);
+  assert.doesNotMatch(block, /unwanted\.lua|missing\.lua/);
+});
+
+test('duo: a picture-only reply shares saved paths without sending image data or counting progress twice', () => {
+  const items = [
+    { kind: 'assistant', at: at(1), blocks: [{ type: 'image', id: 'picture', status: 'generating' }] },
+    { kind: 'assistant', at: at(2), blocks: [{ type: 'image', id: 'picture', status: 'done', path: 'art/menu.png', src: 'data:image/png;base64,PRIVATE_IMAGE_DATA' }] },
+    { kind: 'assistant', at: at(3), blocks: [{ type: 'image', id: 'picture', status: 'done', path: 'art/menu.png' }] },
+    { kind: 'assistant', at: at(4), blocks: [{ type: 'image', id: 'inline', status: 'done', src: 'data:image/png;base64,OTHER_PRIVATE_DATA' }] },
+    { kind: 'assistant', at: at(5), blocks: [{ type: 'image', id: 'failed', status: 'failed', path: 'art/failed.png' }] },
+  ];
+  const block = catchUp({ to: 'claude', theirs: entries(items, 'codex') });
+  assert.match(block, /made 2 pictures, saved at art\/menu\.png/);
+  assert.match(block, /1 without a reported save path/);
+  assert.doesNotMatch(block, /PRIVATE|base64|art\/failed\.png/);
+});
+
 test('duo: Claude is told once that it has a partner, and the first in Both knows one follows', () => {
   const intro = catchUp({ to: 'claude', theirs: [], intro: true });
   assert.match(intro, /working alongside Codex/);

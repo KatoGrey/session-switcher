@@ -158,7 +158,9 @@ async function buildPlan(btn) {
   const text = `Build it as planned above${t === card._to ? ` (${who}’s plan, with your own check)` : `, taking in ${to}’s check`}. Go ahead and make the changes.`;
   const send = t === 'both' ? { to: 'group', kinds: [card._who, card._to], account: S.acct } : t === C.provider ? {} : { to: 'partner', kind: t, account: S.acct };
   if (t === 'both') C.sentGroup = [card._who, card._to];
-  await api('/api/chat/send', { key: C.key, text, ...send });
+  const key0 = C.key;
+  await api('/api/chat/send', { key: key0, text, ...send });
+  if (C.key !== key0) return;   // you've moved to another chat since
   for (const k of t === 'both' ? [card._who, card._to] : [t]) if (k !== C.provider) ensureCompanion(k).catch(() => {});
   renderPlanFirst({ state: 'built', by: t === 'both' ? `${who} and ${to}` : PROV_NAME[t] });
 }

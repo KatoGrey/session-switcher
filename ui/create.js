@@ -8,10 +8,17 @@ const fillPrompt = (text, name) => String(text).replace(/\{(project|world)\}/gi,
 async function loadPrompts() { try { const j = await api('/api/prompts'); S.prompts = j.prompts || []; S.promptSets = j.sets || []; } catch { S.prompts = S.prompts || []; } }
 // The Codex prompt that makes a cover picture, if there is one.
 const coverPrompt = () => S.prompts.find(x => x.id === 'cover' || x.id === 'keyart') || null;
+// Who a prompt runs in, and whether it can just now.
+const promptProv = pr => (pr.provider === 'codex' || pr.provider === 'gemini' ? pr.provider : 'claude');
+function promptRuns(pr) {
+  const prov = promptProv(pr), a = current();
+  if (prov === 'codex') return { prov, hint: 'runs in Codex', ok: codexReady(), why: 'Sign in to Codex first' };
+  if (prov === 'gemini') return { prov, hint: 'runs in Gemini', ok: geminiReady(), why: 'Sign in to Gemini first (Setup → Gemini)' };
+  return { prov, hint: '', ok: canLaunch(a), why: a.lockMessage || `Sign in to ${a.name} first` };
+}
 function startWithPrompt(cwd, pr) {
   const p = S.projects.find(x => x.cwd === cwd);
-  const provider = pr.provider === 'codex' ? 'codex' : 'claude';
-  return ChatUI.open({ cwd, mode: 'new', provider, initialText: fillPrompt(pr.text, p ? p.name : '') });
+  return ChatUI.open({ cwd, mode: 'new', provider: promptProv(pr), initialText: fillPrompt(pr.text, p ? p.name : '') });
 }
 function openPromptEditor() {
   closeMenu();
@@ -30,10 +37,15 @@ function openPromptEditor() {
       if (act === 'import') return importPrompts();
       if (act === 'reset') { if (!(await appConfirm('Put back the starter prompts?\n\nYour own prompts will be replaced.', { ok: 'Put them back', danger: true }))) return; S.prompts = (await api('/api/prompts', { reset: true })).prompts; return renderPromptEditor(); }
       if (act === 'sets') {
-        return showMenu(b, (S.promptSets || []).map(st => ({ label: st.title, hint: `${plural(st.count, 'prompt')}, added to yours`, run: async () => { const n0 = S.prompts.length; S.prompts = (await api('/api/prompts', { addSet: st.id })).prompts; renderPromptEditor(); toast(S.prompts.length > n0 ? `Added ${plural(S.prompts.length - n0, 'prompt')} from ${st.title}.` : `You already have every prompt in ${st.title}.`, 3000); } })));
+        return showMenu(b, (S.promptSets || []).map(st => ({ label: st.title, hint: `${plural(st.count, 'prompt')}, added to yours`, run: async () => {
+          const n0 = S.prompts.length, had = new Set(S.prompts.map(p => p.id));
+          S.prompts = (await api('/api/prompts', { addSet: st.id })).prompts;
+          // What you're in the middle of editing stays: the new ones join the list under it.
+          if ($('promptDlg').dataset.dirty === '1') $('pdList').insertAdjacentHTML('beforeend', S.prompts.filter(p => !had.has(p.id)).map(promptRow).join('')); else renderPromptEditor();
+          toast(S.prompts.length > n0 ? `Added ${plural(S.prompts.length - n0, 'prompt')} from ${st.title}.` : `You already have every prompt in ${st.title}.`, 3000); } })));
       }
       if (act === 'save') {
-        const list = [...$('pdList').querySelectorAll('.pd-item')].map(el => ({ id: el.dataset.id, title: el.querySelector('.pd-t').value, text: el.querySelector('.pd-x').value, provider: el.querySelector('.pd-p').value === 'codex' ? 'codex' : undefined }));
+        const list = [...$('pdList').querySelectorAll('.pd-item')].map(el => ({ id: el.dataset.id, title: el.querySelector('.pd-t').value, text: el.querySelector('.pd-x').value, provider: ['codex', 'gemini'].includes(el.querySelector('.pd-p').value) ? el.querySelector('.pd-p').value : undefined }));
         S.prompts = (await api('/api/prompts', { prompts: list })).prompts;
         toast(`Saved ${plural(S.prompts.length, 'prompt')}.`, 2000);
         $('promptDlg').dataset.dirty = '';
@@ -56,7 +68,7 @@ function openPromptEditor() {
 }
 // Prompt sets to share: your prompts as a file, and prompts from someone else's file added to yours.
 function exportPrompts() {
-  const rows = [...$('pdList').querySelectorAll('.pd-item')].map(el => ({ title: el.querySelector('.pd-t').value.trim(), text: el.querySelector('.pd-x').value, provider: el.querySelector('.pd-p').value === 'codex' ? 'codex' : 'claude' })).filter(p => p.title && p.text.trim());
+  const rows = [...$('pdList').querySelectorAll('.pd-item')].map(el => ({ title: el.querySelector('.pd-t').value.trim(), text: el.querySelector('.pd-x').value, provider: promptProv({ provider: el.querySelector('.pd-p').value }) })).filter(p => p.title && p.text.trim());
   if (!rows.length) { toast('There are no prompts to export yet.'); return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify({ app: 'session-switcher', kind: 'prompts', prompts: rows }, null, 2)], { type: 'application/json' }));
@@ -86,7 +98,7 @@ function addPromptsFrom(textOfFile) {
   for (const p of list) {
     if (have.has(p.title.trim().toLowerCase())) { same++; continue; }
     have.add(p.title.trim().toLowerCase());
-    $('pdList').insertAdjacentHTML('beforeend', promptRow({ id: '', title: p.title.trim().slice(0, 80), text: p.text.slice(0, 20000), provider: p.provider === 'codex' ? 'codex' : 'claude' }));
+    $('pdList').insertAdjacentHTML('beforeend', promptRow({ id: '', title: p.title.trim().slice(0, 80), text: p.text.slice(0, 20000), provider: promptProv(p) }));
     added++;
   }
   if (added) $('promptDlg').dataset.dirty = '1';
@@ -100,7 +112,7 @@ async function closePromptEditor() {
 }
 function promptRow(pr) {
   return `<div class="pd-item" data-id="${esc(pr.id || '')}"><div class="pd-top"><input class="pd-t" value="${esc(pr.title)}" placeholder="Name, like “Balance pass”" maxlength="80" aria-label="Prompt name">
-    <select class="pd-p" aria-label="Runs in"><option value="claude" ${pr.provider === 'codex' ? '' : 'selected'}>Claude</option><option value="codex" ${pr.provider === 'codex' ? 'selected' : ''}>Codex</option></select>
+    <select class="pd-p" aria-label="Runs in"><option value="claude" ${promptProv(pr) === 'claude' ? 'selected' : ''}>Claude</option><option value="codex" ${pr.provider === 'codex' ? 'selected' : ''}>Codex</option>${(S.gemini && S.gemini.enabled) || pr.provider === 'gemini' ? `<option value="gemini" ${pr.provider === 'gemini' ? 'selected' : ''}>Gemini</option>` : ''}</select>
     <button class="icon" data-pd="remove" aria-label="Remove this prompt">✕</button></div>
     <textarea class="pd-x" rows="3" placeholder="What to ask. {project} and {date} fill in automatically." aria-label="Prompt text">${esc(pr.text)}</textarea></div>`;
 }
@@ -194,7 +206,7 @@ function npMode(mode, quiet) {
   if (!quiet) (mode === 'new' ? $('npName') : $('npExisting')).focus();
   npRefresh();
 }
-// Who the first chat runs as: any Claude account, Codex, or no chat yet.
+// Who the first chat runs as: any Claude account, Codex, Gemini, or no chat yet.
 function npRenderAs() {
   const cur = current();
   const opts = S.accounts.map(a => {
@@ -203,6 +215,7 @@ function npRenderAs() {
     return { v: a.id, ring: ringOf(a), name: a.name, sub: why, ok };
   });
   if (S.codex && S.codex.enabled) opts.push({ v: 'codex', ring: codexRing(S.codex.id), name: S.codex.name || 'Codex', sub: codexReady() ? (usageLine(S.codex.id, { short: true }) || (S.codex.kind === 'ollama' ? 'Ollama' : 'ChatGPT')) : 'Sign in to Codex first', ok: codexReady(), codex: true });
+  if (S.gemini && S.gemini.enabled) opts.push({ v: 'gemini', ring: 'var(--gemini)', name: 'Gemini', sub: geminiReady() ? 'Your Google AI plan' : 'Sign in to Gemini first', ok: geminiReady() });
   opts.push({ v: 'none', name: 'Don’t start a chat yet', sub: NP.mode === 'new' ? 'Just make the folder and open the project' : 'Just open the project', ok: true, none: true });
   const pick = (canLaunch(cur) && cur.id) || (opts.find(o => o.ok) || {}).v;
   $('npAs').innerHTML = opts.map(o => `<label class="np-opt ${o.ok ? '' : 'off'} ${o.codex ? 'codex' : ''}"><input type="radio" name="npAs" value="${esc(o.v)}" ${o.v === pick ? 'checked' : ''} ${o.ok ? '' : 'disabled'}>
@@ -242,8 +255,143 @@ async function npSubmit(useExisting) {
   toast(`${r.created ? 'Created' : 'Added'} ${name}.`, 2500);
   const initialText = pr ? fillPrompt(pr.text, name) : '';
   if (as === 'none') return go('folder', r.cwd);
-  if (as === 'codex') return ChatUI.open({ cwd: r.cwd, mode: 'new', provider: 'codex', initialText });
+  if (as === 'codex' || as === 'gemini') return ChatUI.open({ cwd: r.cwd, mode: 'new', provider: as, initialText });
   return ChatUI.open({ cwd: r.cwd, mode: 'new', accountId: as, initialText });
+}
+
+/* ---------- new chat: in any project, with any of them, from anywhere ---------- */
+const NC = { cwd: null, prov: 'claude', q: '', as: null, with: [], how: 'turns' };
+// Who you last started with in a project: it's who you probably want there again.
+const ncMemo = cwd => { try { return JSON.parse(store(`nc:${cwd}`) || 'null'); } catch { return null; } };
+function ncRecall() {
+  const m = NC.cwd && ncMemo(NC.cwd);
+  NC.prov = (m && m.prov) || store('nc-prov') || 'claude';
+  NC.as = (m && m.as) || null;
+  NC.with = m && Array.isArray(m.with) ? m.with.slice() : [];
+  NC.how = (m && m.how) || 'turns';
+}
+// Of the accounts that can start a chat, the one with the most left, when that's known for at least two.
+function ncRoom(opts) {
+  let best = null, known = 0;
+  for (const o of opts) {
+    if (!o.ok) continue;
+    const b = binding(usageOf(o.id)); if (!b) continue;
+    known++;
+    if (!best || b.left > best.left) best = { ...o, left: b.left };
+  }
+  return known >= 2 ? best : null;
+}
+const ncProjects = () => S.projects.filter(p => p.exists !== false && p.cwd !== cmdrSet().cwd).sort((a, b) => projLast(b) - projLast(a));
+const ncWho = () => [
+  { v: 'claude', name: 'Claude', on: S.accounts.some(canLaunch), why: 'Sign in to a Claude account first' },
+  ...(S.codex && S.codex.enabled ? [{ v: 'codex', name: 'Codex', on: codexReady(), why: S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first' }] : []),
+  ...(S.gemini && S.gemini.enabled ? [{ v: 'gemini', name: 'Gemini', on: geminiReady(), why: S.gemini.installed === false ? 'Install the Antigravity CLI first (Setup → Gemini)' : 'Sign in to Gemini first (Setup → Gemini)' }] : []),
+];
+// cwd: the project to start on (else the one you're in or on, else the one used last).
+function openNewChat({ cwd = null, text = '' } = {}) {
+  closeMenu(); closePalette();
+  if (!$('ncDlg')) {
+    document.body.insertAdjacentHTML('beforeend', `<dialog id="ncDlg" class="nc-dlg" aria-labelledby="ncTitle"><form id="ncForm" novalidate>
+      <div class="nc-head"><h3 id="ncTitle">New chat</h3><button type="button" class="icon" data-nc="close" aria-label="Close">✕</button></div>
+      <div><label class="nc-l" for="ncQ">Project</label>
+        <input type="search" id="ncQ" placeholder="Filter projects" autocomplete="off" spellcheck="false" role="combobox" aria-controls="ncList" aria-expanded="true" aria-autocomplete="list">
+        <ul class="nc-list" id="ncList" role="listbox" aria-label="Projects"></ul></div>
+      <div class="nc-who"><div><span class="nc-l" id="ncWhoL">With</span><div class="nc-seg" id="ncSeg" role="group" aria-labelledby="ncWhoL"></div></div>
+        <div class="nc-as" id="ncAsWrap" hidden><label class="nc-l" for="ncAs">As</label><select id="ncAs"></select></div></div>
+      <div class="nc-crew" id="ncCrew" hidden></div>
+      <div><label class="nc-l" for="ncText">First message <small>(optional; it waits in the box for you to send)</small></label><textarea id="ncText" rows="2"></textarea></div>
+      <div class="nc-foot"><button type="button" class="btn quiet" data-nc="project">New project…</button><span class="spacer"></span><button type="button" class="btn" data-nc="close">Cancel</button><button type="submit" class="btn prime" id="ncGo">Start chat</button></div>
+    </form></dialog>`);
+    const d = $('ncDlg');
+    d.addEventListener('click', wrap(async e => {
+      if (e.target === d) return d.close();
+      const b = e.target.closest('[data-nc]');
+      if (b) { d.close(); return b.dataset.nc === 'project' ? openNewProject() : undefined; }
+      const w = e.target.closest('[data-nc-who]'); if (w) { NC.prov = w.dataset.ncWho; NC.as = null; NC.with = NC.with.filter(k => k !== NC.prov); return ncRenderWho(); }
+      const cw = e.target.closest('input[data-nc-with]');
+      if (cw) { NC.with = NC.with.filter(k => k !== cw.dataset.ncWith); if (cw.checked) NC.with.push(cw.dataset.ncWith); return ncRenderCrew(); }
+      const hw = e.target.closest('[data-nc-how]'); if (hw) { NC.how = hw.dataset.ncHow; return ncRenderCrew(); }
+      const pr = e.target.closest('[data-nc-p]'); if (pr) { if (NC.cwd !== pr.dataset.ncP) { NC.cwd = pr.dataset.ncP; ncRecall(); ncRenderWho(); } ncRenderList(); return $('ncQ').focus(); }
+      return undefined;
+    }));
+    d.addEventListener('dblclick', e => { if (e.target.closest('[data-nc-p]')) wrap(ncStart)(); });
+    $('ncForm').addEventListener('submit', e => { e.preventDefault(); wrap(ncStart)(); });
+    $('ncQ').addEventListener('input', () => { NC.q = $('ncQ').value; const was = NC.cwd; ncRenderList(); if (NC.cwd !== was) { ncRecall(); ncRenderWho(); } });
+    $('ncQ').addEventListener('keydown', e => {
+      if (!['ArrowDown', 'ArrowUp'].includes(e.key)) return;
+      e.preventDefault();
+      const list = ncShown(), i = list.findIndex(p => p.cwd === NC.cwd);
+      const next = list[Math.max(0, Math.min(list.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
+      if (next) { NC.cwd = next.cwd; ncRecall(); ncRenderWho(); ncRenderList(); }
+    });
+    $('ncAs').addEventListener('change', () => { NC.as = $('ncAs').value; });
+  }
+  const list = ncProjects();
+  const here = cwd || (typeof paletteHere === 'function' ? paletteHere() : null);
+  NC.cwd = (list.find(p => p.cwd === here) || list[0] || {}).cwd || null;
+  NC.q = ''; $('ncQ').value = ''; $('ncText').value = text;
+  ncRecall();
+  ncRenderList(); ncRenderWho();
+  $('ncDlg').showModal();
+  $('ncQ').focus();
+}
+function ncShown() {
+  const q = NC.q.trim().toLowerCase();
+  return ncProjects().filter(p => !q || `${p.name} ${p.cwd}`.toLowerCase().includes(q));
+}
+function ncRenderList() {
+  const list = ncShown();
+  if (!list.some(p => p.cwd === NC.cwd)) NC.cwd = list[0] ? list[0].cwd : null;
+  $('ncList').innerHTML = list.length ? list.map((p, i) => `<li class="nc-p" id="ncp-${i}" role="option" data-nc-p="${esc(p.cwd)}" aria-selected="${p.cwd === NC.cwd}" title="${esc(p.cwd)}">${crestHtml(p, 22)}<b>${esc(p.name)}</b>${S.projects.filter(x => x.name === p.name).length > 1 && parentName(p.cwd) ? `<span class="nc-in">in ${esc(parentName(p.cwd))}</span>` : ''}<small>${esc(agoL(projLast(p)))}</small></li>`).join('') : `<li class="nc-none">${NC.q.trim() ? 'No project has that in its name.' : 'No projects yet: make one with New project.'}</li>`;
+  const sel = $('ncList').querySelector('[aria-selected="true"]');
+  if (sel) { $('ncQ').setAttribute('aria-activedescendant', sel.id); sel.scrollIntoView({ block: 'nearest' }); } else $('ncQ').removeAttribute('aria-activedescendant');
+  ncSync();
+}
+function ncRenderWho() {
+  const who = ncWho();
+  const pick = who.find(w => w.v === NC.prov && w.on) || who.find(w => w.on) || who[0];
+  NC.prov = pick.v;
+  $('ncSeg').innerHTML = who.map(w => `<button type="button" data-nc-who="${w.v}" aria-pressed="${w.v === NC.prov}" ${w.on ? '' : `disabled title="${esc(w.why)}"`}>${esc(w.name)}</button>`).join('');
+  // Which account, when there's a choice.
+  const opts = NC.prov === 'claude' ? S.accounts.map(a => ({ id: a.id, name: a.name, ok: canLaunch(a), label: `${a.name}${usageLine(a.id, { short: true }) ? ` · ${usageLine(a.id, { short: true })}` : ''}${a.signedIn ? '' : ' · not signed in'}` }))
+    : NC.prov === 'codex' ? codexAccts().map(x => ({ id: x.id, name: x.name, ok: !!x.signedIn, label: `${x.name || 'Codex'}${usageLine(x.id, { short: true }) ? ` · ${usageLine(x.id, { short: true })}` : ''}${x.signedIn ? '' : ' · not signed in'}` })) : [];
+  $('ncAsWrap').hidden = opts.length < 2;
+  const room = ncRoom(opts);
+  const had = NC.as === ':room' ? (room ? ':room' : null) : opts.some(o => o.id === NC.as && o.ok) ? NC.as : null;
+  const was = had || (NC.prov === 'claude' ? (canLaunch(current()) ? S.acct : (opts.find(o => o.ok) || {}).id) : S.codex && S.codex.id);
+  $('ncAs').innerHTML = `${room ? `<option value=":room" ${was === ':room' ? 'selected' : ''} title="Whichever has the most left when the chat starts">Most room: ${esc(room.name || 'Codex')} (${room.left}% left)</option>` : ''}${opts.map(o => `<option value="${esc(o.id)}" ${o.id === was ? 'selected' : ''} ${o.ok ? '' : 'disabled'}>${esc(o.label)}</option>`).join('')}`;
+  ncRenderCrew();
+  ncSync();
+}
+// Bring the others in from the start: they join with your first message, as Together does in a chat.
+function ncRenderCrew() {
+  const box = $('ncCrew'), others = ncWho().filter(w => w.v !== NC.prov && w.on);
+  NC.with = NC.with.filter(k => others.some(w => w.v === k));
+  box.hidden = !others.length;
+  box.innerHTML = `<span class="nc-l">Together with</span><div class="nc-crew-row">${others.map(w => `<label class="nc-check"><input type="checkbox" data-nc-with="${w.v}" ${NC.with.includes(w.v) ? 'checked' : ''}>${esc(w.name)}</label>`).join('')}${NC.with.length ? `<div class="seg nc-how" role="group" aria-label="How they work"><button type="button" class="${NC.how === 'turns' ? 'on' : ''}" data-nc-how="turns" aria-pressed="${NC.how === 'turns'}">Take turns</button><button type="button" class="${NC.how === 'parallel' ? 'on' : ''}" data-nc-how="parallel" aria-pressed="${NC.how === 'parallel'}">At the same time</button></div>` : ''}</div>`;
+  // At the same time, each needs its own part.
+  const names = [NC.prov, ...NC.with].map(k => PROV_NAME[k]);
+  $('ncText').placeholder = NC.with.length && NC.how === 'parallel' ? `Say who does what: “${names[0]}: the save code. ${names[1]}: the menu icons.”` : '';
+}
+function ncSync() { const who = ncWho().find(w => w.v === NC.prov); $('ncGo').disabled = !NC.cwd || !who || !who.on; }
+async function ncStart() {
+  if ($('ncGo').disabled) return;
+  const cwd = NC.cwd, prov = NC.prov, chosen = $('ncAsWrap').hidden ? null : $('ncAs').value, initialText = $('ncText').value;
+  // Most room: worked out now, whatever it was when the dialog opened.
+  const room = chosen === ':room' ? ncRoom(prov === 'claude' ? S.accounts.map(a => ({ id: a.id, ok: canLaunch(a) })) : codexAccts().map(x => ({ id: x.id, ok: !!x.signedIn }))) : null;
+  const as = chosen === ':room' ? (room && room.id) : chosen;
+  store('nc-prov', prov);
+  const crew = NC.with.slice(), how = NC.how;
+  store(`nc:${cwd}`, JSON.stringify({ prov, as: chosen, with: crew, how }));
+  $('ncDlg').close();
+  if (prov === 'codex' && as && S.codex && as !== S.codex.id) await setCodexActive(as);
+  const was = C.key;
+  await ChatUI.open({ cwd, mode: 'new', ...(prov === 'claude' ? (as && as !== S.acct ? { accountId: as } : {}) : { provider: prov }), initialText });
+  if (crew.length && ChatUI.isOpen() && C.key !== was) {
+    C.group = { kinds: [prov, ...crew], how };
+    store('together', JSON.stringify(C.group));
+    setTarget('both', false);
+  }
 }
 
 /* ---------- a copy of the app for someone else ---------- */
@@ -272,7 +420,7 @@ function promptMenu(anchor, cwd) {
   if (!S.prompts.length) return openPromptEditor();
   const a = current();
   showMenu(anchor, [
-    ...S.prompts.map(pr => ({ label: pr.title, hint: pr.provider === 'codex' ? 'runs in Codex' : '', disabled: pr.provider === 'codex' ? !codexReady() : !canLaunch(a), why: pr.provider === 'codex' ? 'Sign in to Codex first' : (a.lockMessage || `Sign in to ${a.name} first`), run: () => startWithPrompt(cwd, pr) })),
+    ...S.prompts.map(pr => { const r = promptRuns(pr); return { label: pr.title, hint: r.hint, disabled: !r.ok, why: r.why, run: () => startWithPrompt(cwd, pr) }; }),
     '-',
     { label: 'Edit prompts…', run: openPromptEditor },
   ]);

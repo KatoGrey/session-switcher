@@ -8,7 +8,7 @@ const normPath = p => String(p || '').replace(/\\/g, '/').replace(/^\.\//, '').t
 // Which reply last changed each file (from the "Changed N files" bars), so its diff can be fetched.
 function noteChanges(ev, src) {
   if (!C.changedBy) C.changedBy = new Map();
-  for (const f of ev.files) C.changedBy.set(normPath(f.path), { turn: ev.turn, src, path: f.path, add: f.add, del: f.del, status: f.status });
+  for (const f of ev.files) C.changedBy.set(normPath(f.path), { turn: ev.turn, src, key: keyFor(src), path: f.path, add: f.add, del: f.del, status: f.status });
 }
 function changeFor(p) {
   if (!C.changedBy) return null;
@@ -58,7 +58,7 @@ async function showPreview(p, kind, at = null) {
       const counts = ch.status === 'added' ? 'New file' : ch.status === 'deleted' ? 'Deleted' : ch.add !== null && ch.add !== undefined ? `<i class="d-add">+${ch.add}</i> <i class="d-del">−${ch.del}</i>` : 'Changed';
       box.innerHTML = `<section class="pv" aria-label="Changes to ${esc(name)}">${head(`${counts} · ${esc(PROV_NAME[provFor(ch.src)])}’s ${at ? '' : 'latest '}change`)}<div class="pv-diff" aria-busy="true"><p class="pv-note">Loading…</p></div></section>`;
       try {
-        const r = await api(`/api/chat/diff?key=${encodeURIComponent(keyFor(ch.src))}&turn=${ch.turn}&path=${encodeURIComponent(ch.path)}`);
+        const r = await api(`/api/chat/diff?key=${encodeURIComponent(ch.key || keyFor(ch.src))}&turn=${ch.turn}&path=${encodeURIComponent(ch.path)}`);
         if (Preview.path !== p) return;
         const d = box.querySelector('.pv-diff');
         Preview.src = ch.src;

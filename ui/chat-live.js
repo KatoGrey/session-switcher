@@ -2,22 +2,73 @@
 /* Find in this chat, live events, permission requests and questions, and the crew (the chat's assistant, its partner, and each one’s model). */
 
 /* ---------- find in this chat (Ctrl+F) ---------- */
-const Find = { hits: [], i: -1 };
+const Find = { hits: [], i: -1, looking: false, auto: false, watch: null, soon: null };
+// A long chat shows its latest part: there can be more to look through.
+const findMore = () => !$c('cEarlier').hidden && $c('cFindQ').value.trim().length >= 2;
 const canMark = typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined';
 function openFind(q) {
   const bar = $c('cFind'); bar.hidden = false;
   const inp = $c('cFindQ');
   if (q) inp.value = q;
   inp.focus(); inp.select();
+  // The chat's messages can still be arriving, and new ones come while it's open.
+  if (!Find.watch && typeof MutationObserver !== 'undefined') {
+    Find.watch = new MutationObserver(() => { clearTimeout(Find.soon); Find.soon = setTimeout(refreshFind, 200); });
+    Find.watch.observe($c('cFeed'), { childList: true, subtree: true, characterData: true });
+  }
   runFind();
 }
+// The feed changed: the matches are counted again, and your place stays where it is.
+function refreshFind() {
+  if ($c('cFind').hidden || Find.looking) return;
+  const had = Find.hits.length, i = Find.i, cur = i >= 0 ? Find.hits[i] : null, node = cur && cur.startContainer, at = cur && cur.startOffset;
+  collectFind();
+  const n = Find.hits.length;
+  // None before: go to the newest, as when you first looked. (From a search, it keeps looking further back.)
+  if (!n || !had || !cur) {
+    stepFind(1, true);
+    if (n) Find.auto = false;
+    else if (Find.auto && findMore()) findFurtherBack();
+    return;
+  }
+  const same = Find.hits.findIndex(r => r.startContainer === node && r.startOffset === at);
+  Find.i = same >= 0 ? same : Math.max(0, Math.min(n - 1, n - (had - i)));
+  if (canMark) CSS.highlights.set('find-cur', new Highlight(Find.hits[Find.i]));
+  $c('cFindN').textContent = `${Find.i + 1} of ${n}`;
+}
 function closeFind() {
-  $c('cFind').hidden = true; Find.hits = []; Find.i = -1;
+  $c('cFind').hidden = true; Find.hits = []; Find.i = -1; Find.auto = false;
+  clearTimeout(Find.soon);
+  if (Find.watch) { Find.watch.disconnect(); Find.watch = null; }
   if (canMark) { CSS.highlights.delete('find'); CSS.highlights.delete('find-cur'); }
 }
 function runFind() {
+  collectFind();
+  stepFind(1, true);
+}
+// What it's looking for may be further back than what's showing: earlier messages come in, a page at a time, until it turns up.
+async function findFurtherBack() {
+  if (Find.looking) return;
+  const input = $c('cFindQ'), q = input.value, gen = C.gen, had = Find.hits.length;
+  Find.looking = true;
+  try {
+    for (let pages = 0; pages < 80 && !$c('cEarlier').hidden; pages++) {
+      $c('cFindN').textContent = 'Looking further back…';
+      await loadEarlier();
+      if (gen !== C.gen || input.value !== q || $c('cFind').hidden) return;
+      collectFind();
+      // Older ones come first: the nearest of them, going back from where it was.
+      if (Find.hits.length > had) { Find.i = Find.hits.length - had; stepFind(-1); return; }
+    }
+    if (had) { Find.i = 0; stepFind(0); } else stepFind(1, true);
+  } catch (err) { $c('cFindN').textContent = `Couldn’t look further back: ${err.message}`; } finally { Find.looking = false; }
+}
+function collectFind() {
   const q = $c('cFindQ').value.trim().toLowerCase();
   Find.hits = []; Find.i = -1;
+  // A folded chapter's messages aren't on the page: a chapter with what you're looking for opens.
+  // (Four letters or more: a shorter search, on its way to a longer one, would open nearly all of them.)
+  if (q.length >= 4) for (const card of [...$c('cFeed').querySelectorAll(':scope > .chapter-fold')]) if (card._nodes.textContent.toLowerCase().includes(q)) openChapter(card);
   if (q.length >= 2) {
     const walk = document.createTreeWalker($c('cFeed'), NodeFilter.SHOW_TEXT, { acceptNode: n => (n.parentElement.closest('.turn-act, .turn-foot, .code-h, button.c-earlier, .c-welcome') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
     let n;
@@ -27,15 +78,19 @@ function runFind() {
     }
   }
   if (canMark) { CSS.highlights.delete('find-cur'); if (Find.hits.length) CSS.highlights.set('find', new Highlight(...Find.hits)); else CSS.highlights.delete('find'); }
-  stepFind(1, true);
 }
 function stepFind(d, fromStart) {
   const n = Find.hits.length;
-  $c('cFindN').textContent = !$c('cFindQ').value.trim() ? '' : n ? `${(fromStart ? n - 1 : (Find.i + d + n) % n) + 1} of ${n}` : 'No matches';
+  // Going back past the oldest found so far, in a chat with more to show: further back.
+  if (!fromStart && d < 0 && findMore() && (!n || Find.i === 0)) return findFurtherBack();
+  $c('cFindN').textContent = !$c('cFindQ').value.trim() ? '' : n ? `${(fromStart ? n - 1 : (Find.i + d + n) % n) + 1} of ${n}` : findMore() ? 'Enter looks further back' : 'No matches';
   if (!n) return;
   Find.i = fromStart ? n - 1 : (Find.i + d + n) % n;   // starts at the newest match
   const r = Find.hits[Find.i];
-  for (let el = r.startContainer.parentElement; el; el = el.parentElement) if (el.tagName === 'DETAILS' && !el.open) el.open = true;
+  for (let el = r.startContainer.parentElement; el; el = el.parentElement) {
+    if (el.tagName === 'DETAILS' && !el.open) el.open = true;
+    if (el.classList.contains('tools') && (el.classList.contains('folded') || !el.classList.contains('open'))) { el.classList.remove('folded'); el.classList.add('open'); el._opened = true; updateGroup(el); }   // the match is in a reply's folded steps
+  }
   if (canMark) CSS.highlights.set('find-cur', new Highlight(r));
   const box = r.getBoundingClientRect(), s = scroller(), sb = s.getBoundingClientRect();
   if (box.top < sb.top + 60 || box.bottom > sb.bottom - 60) s.scrollTop += box.top - sb.top - s.clientHeight / 2;
@@ -65,7 +120,14 @@ function flushLive() {
     if (!done) { p.innerHTML = '<div class="live-done"></div><div class="live-tail"></div>'; done = p.firstElementChild; done._len = 0; }
     const cut = stableCut(text);
     withStick(() => {
-      if (cut !== done._len) { done.innerHTML = md(text.slice(0, cut)); done._len = cut; }
+      if (cut !== done._len) {
+        // Only the new part is drawn, so what's on the page stays put (pictures, what you've selected).
+        // A list running on from the last paragraph has to join up with it: that's drawn whole.
+        const added = text.slice(done._len, cut);
+        if (cut > done._len && !/^\s*(?:\d+[.)]|[-*+])\s|^[ \t]/.test(added)) done.insertAdjacentHTML('beforeend', md(added));
+        else done.innerHTML = md(text.slice(0, cut));
+        done._len = cut;
+      }
       p.lastElementChild.innerHTML = md(text.slice(cut));
     });
   }
@@ -151,12 +213,18 @@ function handle(ev, src = 'main') {
   liveRender = true; curProv = provFor(src);
   try { handleEvent(ev, src); } finally { liveRender = false; curProv = null; }
 }
+// Is what's being replayed already in the feed, whole? Its deltas come one after another, so it's looked for once.
+function itemDone(id) {
+  if (!id) return false;
+  if (C.lastItem !== id) { C.lastItem = id; C.lastItemDone = !!$c('cFeed').querySelector(`[data-bid="${CSS.escape(id)}"]`); }
+  return C.lastItemDone;
+}
 function handleEvent(ev, src) {
   const feed = $c('cFeed');
   const comp = src === 'comp';
   switch (ev.kind) {
     case 'state': {
-      if (ev.state !== 'busy') feed.querySelectorAll(`.stuck-card[data-src="${src}"]`).forEach(x => x.remove());
+      if (ev.state !== 'busy') cardsOf('.stuck-card', src).forEach(x => x.remove());
       const was = comp ? C.comp.state : C.state;
       if (comp) { C.comp.state = ev.state; if (ev.state !== 'busy') C.comp.status = ''; renderCrew(); syncSend(); }
       else { setState(ev.state); if (ev.state !== 'busy') { $c('cStatus').textContent = ''; C.status = ''; } renderCrew(); }
@@ -190,21 +258,33 @@ function handleEvent(ev, src) {
     case 'stuck': renderStuck(ev, src); break;
     case 'changes': renderChanges(ev, src); break;
     case 'undone': renderUndone(ev, src); break;
+    case 'unsent': if (!comp) restoreUnsent(ev); break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
+    // A message that's already showing has been given its turn: a page of history won't show it again.
+    case 'user_turn': {
+      const d = feed.querySelector(`.umsg[data-sq="${CSS.escape(`${provFor(src)}:${ev.userSeq}`)}"]`);
+      if (!d || !ev.userBatch) break;
+      const batch = `${provFor(src)}:${ev.userBatch}`;
+      // (A page of history may have shown it while this was on its way.)
+      if (feed.querySelector(`.umsg[data-item][data-batch="${CSS.escape(batch)}"]:not([data-clipped])`)) d.remove();
+      else d.dataset.batch = batch;
+      break;
+    }
     // "Both": your message went to this one first; the other picks it up when it's done.
     case 'handoff':
       C.handoff = ev.state === 'waiting' ? ev.to : null;
       if (ev.state === 'waiting') markBoth(ev.to);
       if (ev.state === 'sent' && liveRender) { C.passedAt = Date.now(); setTimeout(renderRelay, 1400); }
       renderCrew(); break;
-    case 'stream_start': withStick(() => part(feed, ev.mid)); break;
+    case 'stream_start': if (!itemDone(ev.itemId)) withStick(() => part(feed, ev.mid)); break;
     case 'delta':
       if (liveRender) speedDone('reply');
       if (ev.thinking) { setStatus(src, 'Thinking…'); break; }
+      if (itemDone(ev.itemId)) break;   // a page of history already has this one, finished
       setStatus(src, comp ? 'Writing…' : '');
       part(feed, ev.mid);
       C.liveText[ev.mid] = (C.liveText[ev.mid] || '') + ev.text;
-      if (!C.liveTimer) C.liveTimer = setTimeout(flushLive, C.liveText[ev.mid].length > 8000 ? 250 : 90);
+      if (!C.liveTimer) { const n = C.liveText[ev.mid].length; C.liveTimer = setTimeout(flushLive, n > 60000 ? 900 : n > 8000 ? 250 : 90); }
       break;
     case 'assistant': {
       delete C.liveText[ev.mid];
@@ -237,7 +317,7 @@ function handleEvent(ev, src) {
       if (comp) {
         // The helper stopping doesn't end the Claude chat; your next message to Codex starts it again.
         C.comp.ended = true; C.comp.state = 'ended'; if (C.comp.es) C.comp.es.close();
-        for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src === 'comp') card.remove();
+        for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src === 'comp' && (!card._kind || card._kind === partnerProv())) card.remove();
         if (!ev.stopped) withStick(() => renderItem(feed, { kind: 'notice', level: 'info', text: `${PROV_NAME[partnerProv()]} stopped. Your next message to ${PROV_NAME[partnerProv()]} starts it again.` }));
         renderCrew(); syncSend();
         break;
@@ -274,7 +354,7 @@ function addPermission(p, src = 'main') {
   const name = PROV_NAME[provFor(src)];
   card.className = `perm ${provFor(src) === 'codex' ? 'codex' : ''}${liveRender ? ' arrive' : ''}`;
   card.dataset.req = `${src}:${p.requestId}`;
-  card._src = src;
+  card._src = src; card._kind = compKind(src);
   if (p.questions && p.questions.length) {
     card.classList.add('ask');
     card.innerHTML = `<p class="perm-h">${name} has <b>${p.questions.length === 1 ? 'a question' : `${p.questions.length} questions`}</b></p>
@@ -318,7 +398,7 @@ function clearPermissions() { $c('cPending').innerHTML = ''; }
 
 async function answer(card, decision) {
   const p = card._p;
-  const body = { key: keyFor(card._src), requestId: p.requestId, decision };
+  const body = { key: keyOfCard(card, card._src), requestId: p.requestId, decision };
   if (decision === 'deny' && !p.questions) {
     // First click asks what Claude should do instead; the second click (or Enter) sends the denial.
     if (!card._denyArmed) {
@@ -369,12 +449,13 @@ function ctxWarn(src) {
   const name = PROV_NAME[provFor(src)];
   withStick(() => $c('cFeed').insertAdjacentHTML('beforeend', `<div class="ctx-warn ${provFor(src)}" data-src="${src}" role="status">
     <p><b>${src === 'comp' ? `${name}’s side of this chat` : 'This chat'} is getting full</b> (${esc(ctxLine(src))}). ${name} will summarize the conversation by itself soon, maybe in the middle of a task. Summarizing now, between tasks, keeps what matters.</p>
-    <button type="button" class="btn" data-c="compact" data-src="${src}">Summarize now</button></div>`));
+    <button type="button" class="btn" data-c="compact" data-src="${src}"${src === 'comp' ? ` data-kind="${partnerProv()}"` : ''}>Summarize now</button></div>`));
   if (nearBottom()) toBottom(); else noteUnseen();
 }
-async function compactNow(src) {
-  const key = keyFor(src); if (!key) return;
-  const st = src === 'comp' ? C.comp && C.comp.state : C.state;
+async function compactNow(src, kind) {
+  const them = kind ? C.comps[kind] : src === 'comp' ? C.comp : null;
+  const key = them ? them.key : keyFor(src); if (!key) return;
+  const st = src === 'comp' ? them && them.state : C.state;
   if (st !== 'ready') { toast(`${PROV_NAME[provFor(src)]} is busy. Summarize once it’s done.`); return; }
   closePick();
   await api('/api/chat/compact', { key });
@@ -492,6 +573,7 @@ function closeTogether(refocus = false) {
 }
 function renderTogether() {
   const d = Tg.draft, ks = d.kinds, n = ks.length, plan = d.how === 'plan', at = d.how === 'parallel';
+  const kept = typeof keepOf === 'function' && C.key ? keepOf(C.key) : null;
   // Each one's part: in turn (first, second…), at once (all on their own part), or in a plan.
   const role = i => (at ? 'works on its own part, at the same time'
     : i === 0 ? (plan ? 'drafts the plan' : 'answers first')
@@ -511,9 +593,9 @@ function renderTogether() {
     <p class="mp-h">How</p>
     <div class="mp-eff tg-how" role="radiogroup" aria-label="How they work"><button type="button" role="radio" aria-checked="${d.how === 'turns'}" data-tghow="turns">Take turns</button><button type="button" role="radio" aria-checked="${at}" data-tghow="parallel">At the same time</button><button type="button" role="radio" aria-checked="${plan}" data-tghow="plan">Plan first</button></div>
     <p class="mp-note">${esc(note)}</p>
-    <div class="tg-act"><button type="button" class="btn prime sm" data-tgact="use" ${n < 2 ? 'disabled' : ''}>Write to ${n >= 2 ? esc(sayAnd(plan ? ks.slice(0, 2) : ks)) : 'them'}</button>${C.target === 'both' || C.target === 'plan' ? `<button type="button" class="btn quiet sm" data-tgact="off">Back to ${PROV_NAME[C.provider]} only</button>` : ''}</div>`;
+    <div class="tg-act"><button type="button" class="btn prime sm" data-tgact="use" ${n < 2 ? 'disabled' : ''}>Write to ${n >= 2 ? esc(sayAnd(plan ? ks.slice(0, 2) : ks)) : 'them'}</button><button type="button" class="btn quiet sm" data-tgact="keep">${kept ? `⟳ Working until ${esc(keepClock(kept.until))}` : '⟳ Keep them working…'}</button>${C.target === 'both' || C.target === 'plan' ? `<button type="button" class="btn quiet sm" data-tgact="off">Back to ${PROV_NAME[C.provider]} only</button>` : ''}</div>`;
 }
-// A click in the Together picker: who's in (in order), how, and Use or Off.
+// A click in the Together picker: who's in (in order), how, and Use, Keep working or Off.
 function togetherClick(t) {
   const d = Tg.draft; if (!d) return false;
   const up = t.closest('[data-tgup]');
@@ -525,6 +607,7 @@ function togetherClick(t) {
   const a = t.closest('[data-tgact]');
   if (!a) return false;
   if (a.dataset.tgact === 'off') { closeTogether(); setTarget('main'); return true; }
+  if (a.dataset.tgact === 'keep') { closeTogether(); openKeepDialog({ how: d.how === 'parallel' ? 'parallel' : 'turns' }); return true; }
   if (d.kinds.length < 2) return true;
   C.group = { kinds: d.kinds.slice(), how: d.how };
   store('together', JSON.stringify(C.group));
@@ -549,6 +632,12 @@ const PRESETS = {
     { id: 'balanced', name: 'Balanced', glyph: '◐', note: 'Everyday work', want: [/sol/], effort: 'medium' },
     { id: 'deep', name: 'Deep', glyph: '◆', note: 'Images, hard problems', want: ['@default'], effort: 'high' },
     { id: 'max', name: 'Max', glyph: '✦', note: 'Everything it has', want: ['@default'], effort: 'max' },
+  ],
+  gemini: [
+    { id: 'quick', name: 'Quick', glyph: '➤', note: 'Fast answers, quick lookups', want: [/flash-lite/, /flash/], effort: 'low' },
+    { id: 'balanced', name: 'Balanced', glyph: '◐', note: 'Everyday work', want: [/flash/, '@default'], effort: 'medium' },
+    { id: 'deep', name: 'Deep', glyph: '◆', note: 'Hard problems, big changes', want: [/pro.*medium/, /pro/, '@default'], effort: 'high' },
+    { id: 'max', name: 'Max', glyph: '✦', note: 'Deepest thinking', want: [/pro.*high/, /pro/, '@default'], effort: 'high' },
   ],
 };
 // The presets this chat's tool can actually do, each resolved to a model it offers and the
@@ -588,7 +677,8 @@ function closePick() {
 async function openPick(src) {
   if (!Pick.from) Pick.from = document.activeElement;
   Pick.src = src;
-  if (src === 'comp' && (!C.comp || C.comp.ended)) { renderPick(); try { await ensureCompanion(); } catch (err) { closePick(); throw err; } }
+  const ce = src === 'main' ? null : compEntry(src);
+  if (src !== 'main' && (!ce || ce.ended)) { renderPick(); try { await ensureCompanion(provFor(src)); } catch (err) { closePick(); throw err; } }
   renderPick();
   // The keyboard goes into the picker: to the choice in use.
   const box = $c('cPick');
@@ -597,11 +687,12 @@ async function openPick(src) {
 function renderPick() {
   const box = $c('cPick'); const src = Pick.src; if (!src) return;
   const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
-  // With the Codex helper available, one picker sets either: tabs at the top.
-  const tabs = duo() ? `<div class="mp-tabs" role="tablist">${['main', 'comp'].map(t => `<button type="button" role="tab" class="${provFor(t)}" aria-selected="${t === src}" data-picksrc="${t}">${PROV_NAME[provFor(t)]}<small>${esc(C.mi[t] ? `${modelLabel(C.mi[t])}${C.mi[t].effort ? ` · ${C.mi[t].effort}` : ''}` : t === 'comp' ? 'not started' : '…')}</small></button>`).join('')}</div>` : '';
+  // With partners available, one picker sets any crew member: tabs at the top.
+  const pickTabs = ['main', ...crewKinds()];
+  const tabs = duo() ? `<div class="mp-tabs" role="tablist">${pickTabs.map(t => `<button type="button" role="tab" class="${provFor(t)}" aria-selected="${t === src}" data-picksrc="${t}">${PROV_NAME[provFor(t)]}<small>${esc(C.mi[t] ? `${modelLabel(C.mi[t])}${C.mi[t].effort ? ` · ${C.mi[t].effort}` : ''}` : t !== 'main' ? 'not started' : '…')}</small></button>`).join('')}</div>` : '';
   const top = `<div class="mp-top"><span class="mp-grab" aria-hidden="true"></span>${tabs || `<p class="mp-title">${name}’s model</p>`}<button type="button" class="mp-done" data-pickdone>Done</button></div>`;
   const cx = C.ctx[src], cf = ctxFill(cx);
-  const busyNow = (src === 'comp' ? C.comp && C.comp.state : C.state) !== 'ready';
+  const busyNow = (src === 'main' ? C.state : compEntry(src) && compEntry(src).state) !== 'ready';
   const ctxRow = cx ? `<div class="mp-ctx"><p class="mp-h"><span class="mp-t">Context</span><span>${esc(ctxLine(src))}</span></p>
       <div class="mp-ctxbar ${ctxClass(cf)}" role="meter" aria-label="How full the context is" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(cf * 100)}"><i style="width:${Math.round(cf * 100)}%"></i></div>
       <div class="mp-ctxrow">${cx.parts && cx.parts.length ? `<p class="mp-ctxparts">${cx.parts.map(p => `${esc(p.name)} ${kTok(p.tokens)}`).join(' · ')}</p>` : '<p class="mp-ctxparts">Summarizing keeps the gist and frees room.</p>'}
@@ -736,12 +827,12 @@ function attachComp(info) {
   const kind = info.provider || partnerProv();
   const old = C.comps[kind];
   if (old && old.es) old.es.close();
-  const slot = { background: info.background || [], provider: kind, mi: info.models && info.models.length ? info : null, ctx: info.context || null, key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
+  const slot = { background: info.background || [], provider: kind, mi: info.models && info.models.length ? info : null, ctx: info.context || null, key: info.key, state: info.state, startedAt: info.startedAt, bufferFrom: info.bufferFrom || null, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
   C.comps[kind] = slot;
   // In view if it's the one you're working with (or the only one).
   if (!C.comp || C.comp.provider === kind || C.mate === kind || C.comp.ended) focusMate(kind);
   const key = info.key;
-  const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=0`);
+  const es = liveChat(key, 0);
   es.addEventListener('chat', e => { const c = C.comps[kind]; if (!c || c.key !== key) return; try { feedIn(JSON.parse(e.data), 'comp', kind); } catch (err) { console.error(err); } });
   es.addEventListener('replayed', () => { const c = C.comps[kind]; if (c && c.key === key) replayed(Merge.q[kind] ? kind : 'comp'); });
   es.onerror = () => { const c = C.comps[kind]; if (c && c.key === key && c.ended) es.close(); };
@@ -784,9 +875,9 @@ function disarmEsc(keepArm) { clearTimeout(escTimer); $c('cEscArm')?.remove(); i
 function renderStuck(ev, src) {
   if (C.watch) return;
   const feed = $c('cFeed'), name = PROV_NAME[provFor(src)];
-  feed.querySelectorAll(`.stuck-card[data-src="${src}"]`).forEach(x => x.remove());
+  cardsOf('.stuck-card', src).forEach(x => x.remove());
   const card = document.createElement('div');
-  card.className = `stuck-card${liveRender ? ' fresh' : ''}`; card.dataset.src = src; card.setAttribute('role', 'status');
+  card.className = `stuck-card${liveRender ? ' fresh' : ''}`; card.dataset.src = src; card._kind = compKind(src); card.setAttribute('role', 'status');
   card.innerHTML = `<p><b>${name} has been working for ${ev.quietMin || 10} minutes without a word.</b> A long command can be quiet; if it seems stuck, stop it and ask again.</p><div class="lm-b"><button type="button" class="btn" data-c="stuckstop">Stop ${name}</button><button type="button" class="btn quiet" data-c="stuckwait">Keep waiting</button></div>`;
   withStick(() => feed.appendChild(card));
 }

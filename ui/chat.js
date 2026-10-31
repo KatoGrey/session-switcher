@@ -25,13 +25,13 @@ function railItem(x) {
   if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
   const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;   // w: the one the status is about
   const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (w.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
-  const doing = w.phase === 'tool' && (w.detail || w.tool) ? `${VERB_NOW[w.tool] || 'Using'} ${w.detail || w.tool}` : w.phase === 'writing' ? 'Writing…' : w.phase === 'starting' ? 'Starting…' : 'Thinking…';
+  const doing = x.keep && !WORKING.has(w.phase) ? 'Keeps working' : w.phase === 'tool' && (w.detail || w.tool) ? `${VERB_NOW[w.tool] || 'Using'} ${w.detail || w.tool}` : w.phase === 'writing' ? 'Writing…' : w.phase === 'starting' ? 'Starting…' : 'Thinking…';
   let sub = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: doing, quiet: x.source === 'terminal' ? 'In a terminal, outside this app' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st];
   if (w !== x) sub = `${PROV_NAME[w.provider || 'claude']}: ${sub}`;
   else if (x.partner && (st === 'quiet' || st === 'reply')) sub += ` · with ${PROV_NAME[x.partner.provider || 'claude']}`;
   const pin = railPinned(x) ? '<span class="ri-pin" title="Pinned" aria-label="Pinned">★</span>' : '';
   const outside = x.source !== 'app' ? ` title="${x.source === 'terminal' ? 'Running in a terminal window, not in this app: click to watch it here' : 'Used in another app (like the desktop app) in the last few minutes'}"` : '';
-  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}${x.source !== 'app' ? ' outside' : ''}" aria-current="${isViewing(x)}"${outside}>${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${pin}${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}${x.source !== 'app' ? ' outside' : ''}${window.Split && Split.shows(x) ? ' beside' : ''}" aria-current="${isViewing(x)}"${outside}>${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${pin}${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
 }
 // The rail: chats you pinned (they stay, running or not), then the rest of what's open, each list in
 // the order you dragged it into. Chats it hasn't placed yet keep their places after those.
@@ -82,8 +82,11 @@ function renderRail() {
 function switchRail(step) {
   const list = railOpen(); if (!list.length) return;
   const i = list.findIndex(isViewing);
-  const next = list[(i + step + list.length) % list.length];
-  if (next && !isViewing(next)) openActivity(next);
+  // (A chat already showing beside this one is skipped: it's in view.)
+  for (let n = 1; n <= list.length; n++) {
+    const next = list[(i + step * n + list.length * n) % list.length];
+    if (next && !isViewing(next) && !(window.Split && Split.shows(next))) return openActivity(next);
+  }
 }
 // Where to go when the chat you're in is closed: the next open one down the list, else the one above.
 function railNeighbor(x) {
@@ -257,6 +260,21 @@ async function loadHistory(before) {
   const tmp = document.createElement('div');
   for (const r of rows) { curProv = r.prov; try { renderItem(tmp, r.it, false); } finally { curProv = null; } }
   const feed = $c('cFeed');
+  // A long turn can straddle where the live replay begins: what's already showing isn't shown twice. Blocks with ids of
+  // their own were left out as they were drawn; what's left may be the turn's earlier blocks. (The same message with
+  // different words stays: a reply's earlier blocks can be here and its later ones there.)
+  const shown = new Map([...feed.querySelectorAll('.part[data-mid]')].map(p => [p.dataset.mid, p]));
+  for (const p of tmp.querySelectorAll('.part[data-mid]')) {
+    const there = shown.get(p.dataset.mid);
+    if (!there) continue;
+    PARTS.set(p.dataset.mid, there);   // (the page's copy mustn't take over from the one being streamed into)
+    const empty = !p.querySelector('.final').children.length;
+    if (!empty && (p.textContent !== there.textContent || p.querySelectorAll('img').length !== there.querySelectorAll('img').length)) continue;
+    const turn = p.closest('.turn');
+    p.remove();
+    if (turn && !turn.querySelector('.part')) turn.remove();
+  }
+  for (const p of tmp.querySelectorAll('.part')) if (!p.querySelector('.final').children.length && !p.querySelector('.live').children.length && !p.querySelector('.live').textContent) { const turn = p.closest('.turn'); p.remove(); if (turn && !turn.querySelector('.part') && !turn.querySelector('.tools, .md')) turn.remove(); }
   if (before === undefined) { feed.prepend(...tmp.childNodes); feed.prepend($c('cEarlier')); speedDone('chat'); }
   else {
     const s = scroller(), oldH = s.scrollHeight;
@@ -269,6 +287,15 @@ async function loadHistory(before) {
   if (before === undefined) loadExtras(gen, until).catch(() => {}); else applyExtras();
   laterMarks();
   return h;
+}
+// "Show earlier messages": one page at a time, however many times it's clicked while it loads.
+async function loadEarlier() {
+  if (C.loadingEarlier) return;
+  const gen = C.gen, b = $c('cEarlier');
+  C.loadingEarlier = true; b.textContent = 'Loading…';
+  try { await loadHistory(C.historyStart); } finally {
+    if (gen === C.gen) { C.loadingEarlier = false; b.textContent = 'Show earlier messages'; }
+  }
 }
 // A partner's history, page by page, back to `since` (a time; -Infinity for all of it). Its turns
 // older than that wait for the next "Show earlier messages", so they always read in order.
@@ -303,15 +330,18 @@ function mergeHelper(rows, items, kind = partnerProv()) {
   // A partner's turns, each starting at your message; ones from a partner still running come live.
   // Codex keeps a turn's time to the second, so its turn counts from the end of that second (a turn
   // handed over within a second of the other's reply still comes after it).
+  // (That's only where it goes. Whether it's in at all goes by its real time and where the live part really begins: a
+  // chat that's been open a long time has let go of its earliest events, and what was before those comes from here.)
   const live = C.comps[kind];
-  const cutoff = live && live.startedAt ? Date.parse(live.startedAt) : Infinity;
+  const from = live && (live.bufferFrom || live.startedAt);
+  const cutoff = from ? Date.parse(from) : Infinity;
   const late = kind === 'codex' ? 999 : 0;
   const groups = [];
   for (const it of items) {
-    if (it.kind === 'user' || !groups.length) groups.push({ t: it.at ? Date.parse(it.at) + late : -Infinity, items: [] });
+    if (it.kind === 'user' || !groups.length) groups.push({ at: it.at ? Date.parse(it.at) : -Infinity, t: it.at ? Date.parse(it.at) + late : -Infinity, items: [] });
     groups[groups.length - 1].items.push(it);
   }
-  const keep = groups.filter(g => !(g.t >= cutoff));
+  const keep = groups.filter(g => !(g.at >= cutoff));
   const out = [];
   let gi = 0, last = -Infinity;
   for (const r of rows) {
@@ -326,7 +356,7 @@ function mergeHelper(rows, items, kind = partnerProv()) {
 function connect() {
   if (C.es) C.es.close();
   const key = C.key;
-  C.es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=${C.lastSeq}`);
+  C.es = liveChat(key, C.lastSeq);
   C.es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); C.info = { ...C.info, ...info }; C.sessionId = info.sessionId || C.sessionId; headerAccount(info.accountId, info.accountName); if (info.permissionMode) setMode(info.permissionMode); if (info.context) setCtx('main', info.context); } catch { /* ignore */ } });
   C.es.addEventListener('chat', e => { if (C.key !== key) return; try { feedIn(JSON.parse(e.data), 'main'); } catch (err) { console.error(err); } });
   C.es.addEventListener('replayed', () => { if (C.key === key) replayed('main'); });
@@ -347,14 +377,14 @@ function reset() {
   clearTimeout(C.liveTimer);
   for (const c of Object.values(C.comps)) if (c && c.es) c.es.close();
   // Each chat has its own message box: what you typed stays with the chat it was for (as a draft).
-  clearTimeout(draftTimer);
+  if (draftTimer) { clearTimeout(draftTimer); writeDraft(); }   // what you typed in the last moment too
   clearInterval(C.watchTimer);
-  dropAttachments();
+  parkAttachments();
   $c('cText').value = ''; C.attachments = []; C.files = []; C.converting = 0; renderAttachments(); grow();
   closeFind(); unseen = 0;
   C.gen = (C.gen || 0) + 1;   // anything still loading for the previous chat is ignored
   $c('chat').classList.remove('openclaw');
-  Object.assign(C, { group: null, sentGroup: null, background: [], comps: {}, crewKinds: [], focus: null, compHist: {}, compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
+  Object.assign(C, { loadingEarlier: false, group: null, sentGroup: null, background: [], comps: {}, crewKinds: [], focus: null, compHist: {}, compStarting: null, mate: null, watchPending: false, key: null, info: null, sessionId: null, lastSeq: 0, state: null, liveText: {}, liveTimer: null, historyStart: 0, historyCursor: null, watch: null, watchSig: '', model: '', provider: 'claude', comp: null, compThread: null, target: 'main', mi: { main: null, comp: null } });
   C.ctx = { main: null, comp: null }; C.ctxWarned = {}; C.handoff = null; C.status = ''; C.changedBy = new Map();
   closePreview();
   Review.loop = null;
@@ -393,7 +423,9 @@ function show() {
   document.body.classList.remove('nav-open');
   if (!$c('drawer').hidden) $c('drawer').hidden = true;
   renderRail();
+  if (typeof renderKeep === 'function') renderKeep();   // the line over the chat is this chat's
   if (opening) { growFrom(chat); if (typeof noteStep === 'function') noteStep(); }
+  if (window.Split && Split.restore) Split.restore();
 }
 
 async function begin(info, { mode = 'resume', sessionId = null, cwd = null, parent = null } = {}) {
@@ -459,7 +491,11 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
 }
 
 // (Not "open"/"close": as page-wide names those would replace the browser's window.open and window.close.)
+// Opening takes a moment, and the replies can come back in any order: the chat you clicked last is the
+// one that opens, and you're not moved away from what you've started in the meantime.
+let openSeq = 0;
 async function openChatView({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false, parent = null } = {}) {
+  const seq = ++openSeq;
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
   if (sessionId) speedMark('chat');
   const [known] = sessionId ? findSession(sessionId) : [null];
@@ -494,6 +530,7 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
   try {
     info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov, parent: mode === 'new' ? parent : null });
   } catch (err) {
+    if (seq !== openSeq) return undefined;
     if (['codex-signin', 'codex-missing', 'gemini-signin', 'gemini-missing'].includes(err.reason)) { toast(err.message, 9000); return undefined; }
     if (err.reason === 'running') {
       if (await window.appConfirm(`${err.message}\n\nOpen it here anyway, or watch it live without touching it?`, { ok: 'Open it here anyway', cancel: 'Watch it live' })) return openChatView({ sessionId, cwd, mode, force: true, accountId: a.id, provider, initialText, parent });
@@ -506,6 +543,7 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
     const label = ((info.modes || []).find(m => m.value === info.permissionMode) || {}).label || MODE_LABELS[info.permissionMode] || info.permissionMode;
     toast(`Opened in “${label}”, as you left it${mode === 'new' ? ' in this project' : ''}.`, 3500);
   }
+  if (seq !== openSeq) return undefined;   // you've gone to another chat since (it stays open, on the hub)
   await begin(info, { mode, sessionId, cwd, parent: mode === 'new' ? parent : null });
   // Started from a prompt: it waits in the message box so you can adjust it before sending.
   if (initialText) placeText(initialText, true);
@@ -513,19 +551,22 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
 }
 
 async function openKey(key, { initialText = '' } = {}) {
+  const seq = ++openSeq;
   const info = await api('/api/chat/attach', { key });
+  if (seq !== openSeq) return;
   await begin(info, { mode: info.sessionId ? 'resume' : 'new', sessionId: info.sessionId, cwd: info.cwd });
   if (initialText && !$c('cText').value.trim()) placeText(initialText, true);
 }
 
 // Read-only, live view of a chat running somewhere else (a terminal, the desktop app).
 async function watch({ sessionId, source = 'terminal' }) {
+  ++openSeq;
   reset();
   C.watch = { sessionId, source }; C.sessionId = sessionId;
   const [s, p] = findSession(sessionId);
   C.provider = s && ['codex', 'gemini', 'openclaw'].includes(s.provider) ? s.provider : 'claude';
   const oc = C.provider === 'openclaw';
-  if (oc) PROV_NAME.openclaw = s.agentName || 'OpenClaw';
+  if (oc) PROV_NAME.openclaw = String(s.agentName || 'OpenClaw').replace(/[<>&"']/g, '');   // it's shown as HTML
   $c('chat').classList.toggle('openclaw', oc);
   C.title = s ? s.title : 'Chat'; C.folder = p ? p.name : '';
   C.info = { cwd: p ? p.cwd : null, accountId: s && s.lastOpened ? s.lastOpened.account : null, accountName: s && s.lastOpened ? s.lastOpened.accountName : '' };
@@ -587,6 +628,7 @@ async function refreshWatch() {
 }
 
 function closeChatView(silent) {
+  ++openSeq; C.gen = (C.gen || 0) + 1;   // anything still opening or loading is for a chat you've left
   if (C.es) { C.es.close(); C.es = null; }
   for (const c of Object.values(C.comps)) if (c && c.es) { c.es.close(); c.es = null; }
   closePick();
@@ -632,7 +674,7 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === '\\' && !$c('chat').hidden) { e.preventDefault(); toggleFocus(); }
 });
 // The side panel is a pull-out drawer when the window, at its interface size, is 1320px or narrower.
-const ledgerDrawer = () => window.innerWidth / uiScale() <= 1320;
+const ledgerDrawer = () => PANE || window.innerWidth / uiScale() <= 1320 || $c('chat').classList.contains('split');
 function syncNarrow() { document.documentElement.classList.toggle('ui-narrow', uiScale() > 1 && ledgerDrawer()); }
 window.addEventListener('resize', syncNarrow);
 document.addEventListener('lookchange', syncNarrow);
@@ -676,7 +718,7 @@ document.addEventListener('DOMContentLoaded', () => {
   chat.addEventListener('click', wrap(async e => {
     const t = e.target;
     const pv = t.closest('[data-pv]');
-    if (pv) { const at = pv.dataset.turn ? { turn: +pv.dataset.turn, src: pv.dataset.src || 'main', path: pv.dataset.pv } : null; if (at) { const ev = (pv.closest('.chg') || {})._ev; const f = ev && ev.files.find(x => x.path === at.path); if (f) Object.assign(at, { add: f.add, del: f.del, status: f.status }); } return showPreview(pv.dataset.pv, pv.dataset.kind, at); }
+    if (pv) { const at = pv.dataset.turn ? { turn: +pv.dataset.turn, src: pv.dataset.src || 'main', path: pv.dataset.pv } : null; if (at) { const ev = (pv.closest('.chg') || {})._ev; const f = ev && ev.files.find(x => x.path === at.path); if (f) Object.assign(at, { add: f.add, del: f.del, status: f.status }); at.key = keyOfCard(pv.closest('.chg'), at.src); } return showPreview(pv.dataset.pv, pv.dataset.kind, at); }
     const po = t.closest('[data-pvopen]'); if (po) return openFile(po.dataset.pvopen);
     if (t.closest('[data-pvclose]')) return closePreview();
     const fl = t.closest('.flink[data-path], [data-file]');
@@ -686,6 +728,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const cp = t.closest('[data-copy]');
     if (cp) return copyText(cp.dataset.copy);
     const ri = t.closest('.ri');
+    // Ctrl+click: beside this chat, not instead of it.
+    if (ri && (e.ctrlKey || e.metaKey) && Split.can()) {
+      if (ri.dataset.navchat) return openBeside({ sessionId: ri.dataset.navchat });
+      const x0 = findActivity(ri.closest('li')?.dataset.k);
+      return x0 ? openBeside({ key: x0.key, sessionId: x0.sessionId, title: x0.title }) : undefined;
+    }
     if (ri && ri.dataset.navchat) {
       // A pinned chat that's closed: open it again, in this window (or watch it, if it's in a terminal).
       const id = ri.dataset.navchat;
@@ -703,7 +751,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const att = t.closest('.att:not(.file):not(.pending) img');
     if (att) { const list = [...$c('cAtt').querySelectorAll('.att:not(.file):not(.pending) img')].map((im, i) => ({ src: im.src, path: null, cap: `Picture ${i + 1} you’re sending`, noAttach: true })); return openGallery(att.src, null, list); }
     const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
-    if (t.closest('#cEarlier')) return loadHistory(C.historyStart);
+    if (t.closest('#cEarlier')) return loadEarlier();
     const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
     const rl = t.closest('[data-relay]'); if (rl) { if (rl.dataset.kind) focusMate(rl.dataset.kind); return setTarget(rl.dataset.relay); }
     const bp = t.closest('[data-build]');
@@ -722,7 +770,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const gi = t.closest('[data-giveimg]'); if (gi) return giveImage(gi.dataset.giveimg);
     const c = t.closest('[data-c]'); if (!c) return;
     switch (c.dataset.c) {
-      case 'back': if (SOLO) { window.close(); return undefined; } return closeChatView();
+      case 'back': if (PANE) return parent.splitFromPane(window, 'close'); if (SOLO) { window.close(); return undefined; } return closeChatView();
+      case 'split': return c.getAttribute('aria-expanded') === 'true' ? closeMenu() : splitMenu(c);
+      case 'paneclose': return parent.splitFromPane(window, 'close');
+      case 'paneswap': return parent.splitFromPane(window, 'swap');
       case 'rail': return chat.classList.toggle('show-rail');
       case 'ledger': {
         if (ledgerDrawer()) return chat.classList.toggle('show-ledger');
@@ -735,16 +786,24 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'prompts': return c.getAttribute('aria-expanded') === 'true' ? closeMenu() : promptsMenu(c);
       case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
       case 'stop': if (C.provider === 'openclaw') return; C.interruptedAt = Date.now(); return Promise.all(targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting')).map(x => api('/api/chat/interrupt', { key: x.key })));
-      case 'compact': return compactNow(c.dataset.src || 'main');
+      case 'compact': return compactNow(c.dataset.src || 'main', c.dataset.kind);
       case 'chgview': return viewChanges(c.closest('.chg'));
+      case 'allchg': return viewAllChanges();
+      // Its project's page; the chat carries on, and it's a click away in the sidebar.
+      case 'project': {
+        const cwd = C.info && C.info.cwd, p = cwd && S.projects.find(x => x.cwd.toLowerCase() === cwd.toLowerCase());
+        if (!p || SOLO) return undefined;
+        ChatUI.close();
+        return go('folder', p.cwd);
+      }
       case 'chgundo': return undoChanges(c.closest('.chg'));
       case 'review': return startReview(c.dataset.base || null, c.dataset.by || 'codex');
       case 'limitas': { const card = c.closest('.limit-card'); if (card && card._auto) { clearTimeout(card._auto); card._auto = 0; } return continueAs(c.dataset.acct); }
       case 'limitnoauto': { const card = c.closest('.limit-card'); if (card) { clearTimeout(card._auto); card._auto = 0; c.closest('.lm-auto').remove(); } return undefined; }
       case 'limithand': { noAutopilot(c); return handOver(c.dataset.to); }
       case 'stuckwait': return c.closest('.stuck-card').remove();
-      case 'stuckstop': { const card = c.closest('.stuck-card'); C.interruptedAt = Date.now(); card.remove(); return api('/api/chat/interrupt', { key: keyFor(card.dataset.src) }); }
-      case 'limitwait': case 'limitnowait': { const card = c.closest('.limit-card'); noAutopilot(c); return card && card._ev ? waitForReset(card._ev, card.dataset.src || 'main', c.dataset.c === 'limitnowait') : undefined; }
+      case 'stuckstop': { const card = c.closest('.stuck-card'); C.interruptedAt = Date.now(); card.remove(); return api('/api/chat/interrupt', { key: keyOfCard(card, card.dataset.src) }); }
+      case 'limitwait': case 'limitnowait': { const card = c.closest('.limit-card'); noAutopilot(c); return card && card._ev ? waitForReset(card._ev, card.dataset.src || 'main', c.dataset.c === 'limitnowait', keyOfCard(card, card.dataset.src || 'main')) : undefined; }
       case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
@@ -770,7 +829,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'restart': { const id = C.sessionId, accountId = C.info && C.info.accountId, provider = C.provider; return openChatView({ sessionId: id, mode: 'resume', accountId: provider === 'claude' ? accountId : null, provider }); }
       case 'fork': { const id = C.watch && C.watch.sessionId; return openChatView({ sessionId: id, mode: 'fork' }); }
       case 'takeover': { const id = C.watch && C.watch.sessionId; return openChatView({ sessionId: id, mode: 'resume' }); }
-      case 'more': return showMenu(c, C.watch && C.provider === 'openclaw' ? chatHeadItems() : C.watch ? [
+      case 'more': return showMenu(c, tidyChatMenu(c, C.watch && C.provider === 'openclaw' ? chatHeadItems() : C.watch ? [
         { glyph: '⧉', label: 'Open a copy here', hint: 'keeps the original', run: () => openChatView({ sessionId: C.watch.sessionId, mode: 'fork' }) },
         '-',
         ...chatHeadItems(),
@@ -780,13 +839,13 @@ document.addEventListener('DOMContentLoaded', () => {
         '-',
         { glyph: '➤', label: 'Move to a terminal', hint: 'same account', disabled: !C.sessionId, why: 'Send a message first', run: async () => {
           if (!(await window.appConfirm('Continue this chat in a terminal?\n\nIt stops here and resumes in a terminal window as the same account.', { ok: 'Move it' }))) return;
-          const key = C.key; closeChatView(); const r = await api('/api/chat/handoff', { key });
+          const key = C.key; closeChatView(); const r = await api('/api/chat/to-terminal', { key });
           toast(r.dryRun ? `Would open a ${r.how}:\n${r.script}` : `Continuing in a ${r.how}.`, 7000);
         } },
         { label: 'Copy terminal command', disabled: !C.sessionId, run: async () => { const r = await api('/api/command', { account: C.info.accountId, sessionId: C.sessionId }); return copyText(r.command, 'Copied the command.'); } },
         '-',
         stopItem(),
-      ]);
+      ]));
       default: return undefined;
     }
   }));
@@ -795,13 +854,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $c('cMode').addEventListener('change', wrap(async e => { await api('/api/chat/mode', { key: C.key, mode: e.target.value }); toast(`Mode: ${(e.target.selectedOptions[0] || {}).textContent || e.target.value}. Remembered for this chat and new ones in ${C.folder || 'this project'}.`, 3000); renderLedgerSoon(); }));
   $c('cCompose').addEventListener('submit', e => { e.preventDefault(); wrap(sendMessage)(); });
-  $c('cText').addEventListener('input', () => { grow(); Slash.moved = false; renderSlash(); saveDraft(); });
+  $c('cText').addEventListener('input', () => { recallReset(); grow(); Slash.moved = false; renderSlash(); saveDraft(); });
   $c('cText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $c('cText')) closeSlash(); }, 120));
   $c('cSlash').addEventListener('mousedown', e => { const li = e.target.closest('[data-si]'); if (!li) return; e.preventDefault(); pickSlash(+li.dataset.si); });
   $c('cPending').addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.classList.contains('why-t')) { e.preventDefault(); wrap(() => answer(e.target.closest('.perm'), 'deny'))(); }
   });
   $c('cText').addEventListener('keydown', e => {
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !Slash.open && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing && recallStep(e.key === 'ArrowUp' ? -1 : 1)) { e.preventDefault(); return; }
     if (Slash.open && !e.isComposing) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); Slash.moved = true; Slash.sel = (Slash.sel + (e.key === 'ArrowDown' ? 1 : -1) + Slash.items.length) % Slash.items.length; return renderSlash(); }
       if (e.key === 'Tab' || (e.key === 'Enter' && (Slash.moved || Slash.kind === 'file') && !e.shiftKey)) { e.preventDefault(); return pickSlash(Slash.sel); }
@@ -942,7 +1002,10 @@ function chatHeadItems() {
     ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; closeChatView(); popOutChat(sid); } }] : []),
     ...(C.info && C.info.cwd && !C.watch ? [{ glyph: '▶', label: 'Run the project', hint: 'its dev server or start script, with its output', run: () => openRun() }] : []),
     ...(C.key && !C.watch ? [{ glyph: '❦', label: 'Ask a side question', hint: '/btw · doesn’t derail this chat', run: () => openAside() }] : []),
+    // The same conversation on your other account, the one with more left, before it runs out.
+    ...(C.key && !C.watch && id && C.provider === 'claude' && !isCommander(id) ? roomyAccounts(C.info && C.info.accountId).slice(0, 3).map(x => ({ glyph: '⇄', label: `Carry on as ${x.a.name}`, hint: x.left !== null ? `the same conversation · ${x.left}% left` : 'the same conversation', disabled: C.state !== 'ready', why: 'Wait for the reply to finish', run: () => continueAs(x.a.id, { outOfUsage: false }) })) : []),
     ...(C.key && !C.watch && id && window.continueFresh ? [{ glyph: '⇢', label: 'Continue in a fresh chat…', hint: 'it writes a handoff; a new chat starts with it', disabled: C.state !== 'ready', why: C.state === 'ended' ? 'Start the chat again first' : 'Wait for the reply to finish', run: () => window.continueFresh() }] : []),
+    ...(C.key && !C.watch && id && !isCommander(id) && window.openKeepDialog ? [{ glyph: '⟳', label: keepOf(C.key) ? 'Keep working: change or turn off…' : 'Keep it working until…', hint: 'told to carry on when it goes quiet', disabled: C.state === 'ended', why: 'Start the chat again first', run: () => openKeepDialog() }] : []),
     ...(id && !C.watch ? [{ glyph: '✓', label: 'Mark done', hint: 'off the lists until it’s used again', run: () => { const sid = id; closeChatView(); return setChatDone(sid, true); } }] : []),
     { glyph: '◻', label: document.getElementById('chat').classList.contains('focus') ? 'Leave focus mode' : 'Focus mode', hint: 'just the conversation', keys: 'Ctrl \\', run: () => toggleFocus() },
     { glyph: '⌕', label: 'Find in this chat', keys: 'Ctrl F', run: () => openFind() },
@@ -956,9 +1019,34 @@ function chatHeadItems() {
     ...(id ? [{ label: 'Copy chat ID', run: () => copyOut(id) }] : []),
     ...(id && window.orgItems ? ['-', ...window.orgItems(id)] : []),
     { label: 'Browse this chat’s folder', run: () => openFile('.') },
-    ...(C.info && C.info.cwd ? [{ glyph: '§', label: 'Rules and tools…', hint: 'for Claude and Codex', run: () => openRules(C.info.cwd) }] : []),
+    ...(C.info && C.info.cwd ? [{ glyph: '§', label: 'Rules and tools…', hint: 'one set for all of them', run: () => openRules(C.info.cwd) }] : []),
     ...(!C.watch && C.state !== 'ended' ? ['-', stopItem()] : []),
   ];
+}
+// The ⋯ menu, short enough to see all of it: what's used most, the rest one click in. (Ctrl+K still finds them all;
+// Imperial and Rebel keep their long one.)
+function tidyChatMenu(anchor, all) {
+  if (sagaLook()) return all;
+  const rest = all.filter(x => x !== '-');
+  const take = re => { const got = rest.filter(x => re.test(x.label || '')); for (const x of got) rest.splice(rest.indexOf(x), 1); return got; };
+  let main = [];
+  const sub = (glyph, label, hint, list) => (list.length < 2 ? list : [{ glyph, label, hint, more: true, run: () => showMenu(anchor, [{ glyph: '‹', label: 'Back', run: () => showMenu(anchor, main) }, '-', ...list]) }]);
+  const id = C.sessionId || (C.watch && C.watch.sessionId);
+  const find = take(/^Find in this chat/), name = take(/^Rename chat/), pin = take(/^(Un)?pin to the sidebar/i), alerts = take(/^Alerts: /);
+  const keep = take(/^Keep (it working|working:)/), carry = take(/^Carry on as /), fresh = take(/^Continue in a fresh/), aside = take(/^Ask a side/), reviews = take(/^Have .+ review/), run = take(/^Run the project/);
+  const copy = take(/^Open a copy here/), win = take(/^Open in a new window/), focus = take(/focus mode$/i);
+  const org = take(/sub-session|group|the chat it came from|^Unlink|^Commander settings/i), save = take(/^(Export as Markdown|Copy the whole chat|Save as a web page)/);
+  const done = take(/^(Mark done|Not done)/), stop = take(/^Stop this chat/);
+  main = [
+    ...copy, ...find, ...name, ...pin, ...sub('●', 'Alerts', id ? ALERT_LEVELS[alertLevelOf(id)] : '', alerts),
+    '-',
+    ...keep, ...carry, ...fresh, ...aside, ...sub('◆', 'Review the changes', 'read-only', reviews), ...run,
+    '-',
+    ...win, ...focus, ...sub('↳', 'Groups and sub-sessions', '', org), ...sub('❧', 'Save or copy the chat', '', save), ...sub('⋯', 'More', 'summarize, its folder, rules, a terminal…', rest), ...done,
+    '-',
+    ...stop,
+  ];
+  return main;
 }
 function stopItem() {
   return { label: 'Stop this chat', danger: true, disabled: C.state === 'ended', run: async () => {
@@ -1008,6 +1096,7 @@ function chatContextItems(t, at) {
     const p = fl.dataset.path || fl.dataset.file;
     return [
       { glyph: '❧', label: 'Open', run: () => openFile(p) },
+      ...(/\.html?$/i.test(p) && !window.REMOTE && window.Split && Split.can() ? [{ glyph: '◫', label: 'See it beside the chat', run: async () => { const r = await api('/api/file/preview', { path: p, key: C.key, session: C.sessionId, cwd: C.info && C.info.cwd }); return openSiteBeside(r.url); } }] : []),
       { label: 'Show in folder', disabled: !!window.REMOTE, why: 'Only on the PC', run: () => api('/api/reveal', { path: p, key: C.key, session: C.sessionId }) },
       { label: 'Copy path', run: () => copyOut(p) },
       ...(!C.watch ? [{ label: 'Mention it in my message', run: () => placeText(`\`${p}\` `, false) }] : []),
@@ -1058,12 +1147,12 @@ function chatContextItems(t, at) {
       ...(src === 'comp' && C.comp && !C.comp.ended ? ['-', { label: `Stop ${PROV_NAME[partnerProv()]} in this chat`, hint: `your next message to ${PROV_NAME[partnerProv()]} starts it again`, danger: true, run: () => api('/api/chat/stop', { key: C.comp.key }) }] : []),
     ];
   }
-  if (t.closest('.c-head, #cFeed, .c-scroll')) return chatHeadItems();
+  if (t.closest('.c-head, #cFeed, .c-scroll')) return tidyChatMenu(Ctx.at, chatHeadItems());
   return undefined;
 }
 
 window.ChatUI = {
-  open: openChatView, openKey, watch, close: closeChatView, md, renderRail, refreshUsage: refreshChatUsage, isViewing, neighbor: railNeighbor,
+  open: openChatView, openKey, watch, close: closeChatView, md, mdIn, renderRail, refreshUsage: refreshChatUsage, isViewing, neighbor: railNeighbor,
   accountId: () => (!$c('chat').hidden && C.info ? C.info.accountId || null : null),
   showLedger: () => { const chat = $c('chat'); if (ledgerDrawer()) chat.classList.add('show-ledger'); else { chat.classList.remove('no-ledger'); try { localStorage.setItem('ledger', 'on'); } catch { /* fine */ } } renderLedgerSoon(); },
   sessionsChanged: () => { if (C.watch) refreshWatch(); if (!$c('chat').hidden) refreshCrumb(); },
@@ -1072,7 +1161,17 @@ window.ChatUI = {
   refreshFav: () => syncFav(),
   sessionId: () => C.sessionId || (C.watch && C.watch.sessionId) || null,
   contextItems: chatContextItems, modelName,
-  find: q => openFind(q), exportChat, jumpLatest,
+  // (From a search: it's in there somewhere, so it goes and looks.)
+  find: q => {
+    openFind(q); Find.auto = !Find.hits.length;
+    if (!Find.auto) return undefined;
+    if (findMore()) return findFurtherBack();
+    // Its messages may still be on their way: it doesn't say "No matches" until they've had a moment.
+    $c('cFindN').textContent = 'Looking…';
+    setTimeout(() => { if (Find.auto && !Find.looking && !Find.hits.length && !$c('cFind').hidden) stepFind(1, true); }, 2500);
+    return undefined;
+  },
+  exportChat, jumpLatest,
   // Ctrl+K: "Sonnet 5.5", "GPT-6-Luna"… for the chat you're in.
   modelItems: () => {
     if ($c('chat').hidden || C.watch) return [];

@@ -45,6 +45,7 @@ function palItems(q) {
   const add = (g, list) => { if (list.length) out.push({ g }, ...list); };
   const run = S.activity.filter(x => !x.parentKey).map(x => ({ glyph: NEEDS.has(statusOf(x)) || statusOf(x) === 'reply' ? '✦' : '◉', t: x.title || 'New chat', s: `${{ approve: 'needs your OK', question: 'has a question', 'terminal-wait': 'waiting in its terminal', reply: 'your turn', working: 'at work', quiet: 'open', ended: 'stopped' }[statusOf(x)]}${x.folder ? ` · ${x.folder}` : ''}`, run: () => openActivity(x), text: `${x.title} ${x.folder}` }));
   const acts = [
+    { glyph: '+', t: 'New chat', s: 'in any project, with any of them', run: () => openNewChat(), alias: 'start chat new claude codex gemini' },
     { glyph: '◈', t: 'Phone access', s: 'pair a phone, notifications', run: () => openSetupAt('st-phone'), alias: 'phone android iphone pair mobile notifications tailscale' },
     { glyph: '◈', t: 'Alerts and quiet hours', s: 'chimes, notifications, when to keep quiet', run: () => openSetupAt('st-alerts'), alias: 'alerts quiet hours notifications chime sound mute' },
     { glyph: '◐', t: 'Text and interface size', run: () => openSetup('look'), alias: 'text size zoom bigger smaller interface scale' },
@@ -59,7 +60,7 @@ function palItems(q) {
     ...(window.ChatUI && ChatUI.isOpen() && C.info && C.info.cwd ? [{ glyph: '▶', t: 'Run the project', s: 'its dev server or start script, with its output, beside the chat', run: () => openRun(), alias: 'run start dev server preview serve launch' }] : []),
     { glyph: '⑂', t: 'Split the work', s: 'two of them each take a part, in their own copies; keep both', run: () => openRaceDialog(paletteHere(), 'split'), alias: 'split divide parallel share both halves worktree' },
     { glyph: '⏳', t: 'Queue a task', s: 'starts as a new chat when an account has room, or at a time', run: () => openTaskDialog(paletteHere()), alias: 'queue later schedule task when limit resets' },
-    { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, shared by Claude and Codex', run: () => openRules(paletteHere()), alias: 'claude.md agents.md mcp servers tools rules instructions memory' },
+    { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, one set for all of them', run: () => openRules(paletteHere()), alias: 'claude.md agents.md mcp servers tools rules instructions memory' },
     { glyph: '◐', t: 'Appearance', s: 'themes, fonts, light or dark, text and interface size', run: () => openSetup('look'), alias: 'font fonts typeface' },
     { glyph: '?', t: 'Keyboard shortcuts', run: () => openShortcuts(), alias: 'keys hotkeys help' },
     ...(miniOK() && !window.REMOTE ? [{ glyph: '◰', t: 'Open the mini window', s: 'what needs you, floating over other apps', run: () => openMini(), alias: 'mini picture in picture float pip always on top small status' }] : []),
@@ -73,17 +74,22 @@ function palItems(q) {
     ...(S.codex && S.codex.enabled ? (S.codex.signedIn ? [{ glyph: '❖', t: 'Open chatgpt.com', s: 'regular ChatGPT', run: () => openWeb(S.codex.id) }, { glyph: '◈', t: 'Check Codex usage', run: () => refreshUsage(S.codex.id) }] : [{ glyph: '✥', t: 'Sign in to Codex with ChatGPT', run: codexSignIn }]) : []),
     { glyph: '✥', t: 'New project', s: 'make a folder and start a chat', run: () => openNewProject() },
     { glyph: '✥', t: 'Add an account', run: addAccount, alias: 'sign in login' },
+    { glyph: '❝', t: 'Message several chats…', s: 'the same message to each', run: () => openManyDialog(), alias: 'all everyone broadcast send crew sync' },
+    ...(window.ChatUI && ChatUI.isOpen() && typeof C !== 'undefined' && C.key && C.sessionId && !C.watch && !isCommander(C.sessionId) ? [{ glyph: '⟳', t: 'Keep this chat working until…', s: 'told to carry on when it goes quiet', run: () => openKeepDialog(), alias: 'overnight long job continue autopilot nudge until' }] : []),
+    { glyph: '■', t: 'Stop what every chat is doing', run: stopEverything, alias: 'stop all interrupt pause everything' },
+    { glyph: '⟳', t: 'Keep every open chat working until…', s: 'each told to carry on when it goes quiet', run: () => openKeepDialog({ keys: manyChats().map(x => x.key) }), alias: 'overnight all everyone long job autopilot nudge' },
     ...(window.REMOTE ? [] : [{ glyph: '↻', t: 'Restart Session Switcher', s: S.update ? 'a new version is ready' : 'your chats come back where they were', run: restartApp, alias: 'reboot relaunch reload update' }, { glyph: '⏻', t: 'Quit Session Switcher', run: quitApp, alias: 'exit close stop app' }]),
   ].map(x => ({ ...x, text: `${x.t} ${x.alias || ''}` }));
   const claudeNew = canLaunch(current()) ? S.projects.filter(p => p.exists).map(p => ({ glyph: '✦', t: `New Claude chat in ${p.name}`, s: `as ${current().name}`, run: () => ChatUI.open({ cwd: p.cwd, mode: 'new' }), text: `new chat claude ${p.name}` })) : [];
   const pinItems = S.projects.map(p => ({ glyph: '★', t: `${S.pins.has(p.cwd) ? 'Unpin' : 'Pin'} ${p.name}`, s: 'in the sidebar', run: () => togglePin(p.cwd), text: `pin unpin favorite ${p.name}` }));
-  const folders = S.projects.map(p => ({ glyph: glyphFor(p.name), t: p.name, s: `${plural(p.sessions.length, 'chat')}`, run: () => go('folder', p.cwd), text: `${p.name} ${p.cwd}` }));
+  const folders = S.projects.map(p => ({ glyph: glyphFor(p.name), t: p.name, s: `${plural(p.sessions.length, 'chat')}${S.projects.filter(x => x.name === p.name).length > 1 && parentName(p.cwd) ? ` · in ${parentName(p.cwd)}` : ''}`, run: () => go('folder', p.cwd), text: `${p.name} ${p.cwd}` }));
+  const boards = S.projects.filter(p => p.exists).map(p => ({ glyph: '▦', t: `Review pictures in ${p.name}`, s: 'keep or redo, folder by folder', run: () => openBoard(p.cwd), text: `review pictures images gallery board keep redo ${p.name}` }));
   const chats = allSessions().sort((x, y) => y[0].updated - x[0].updated).map(([s, p]) => ({ glyph: '❝', t: s.title, s: `${p.name} · ${agoL(s.updated)}`, run: () => (liveOf(s.id) ? ChatUI.open({ sessionId: s.id }) : isRunning(s.id) ? ChatUI.watch({ sessionId: s.id, source: 'terminal' }) : inApp() ? ChatUI.open({ sessionId: s.id }) : openDrawer(s.id)), text: `${s.title} ${p.name} ${s.firstPrompt || ''}` }));
   const cxNew = codexReady() ? S.projects.filter(p => p.exists).map(p => ({ glyph: '✥', t: `New Codex chat in ${p.name}`, s: 'Codex', run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: 'codex' }), text: `codex new ${p.name}` })) : [];
   // Prompts, in the project you're looking at first, then in every project.
   const here = S.view === 'folder' ? S.projects.find(p => p.cwd === S.folder) : null;
   const worldsFor = here ? [here, ...S.projects.filter(p => p !== here)] : S.projects;
-  const prompts = worldsFor.filter(p => p.exists).flatMap(p => S.prompts.map(pr => ({ glyph: '❡', t: `${pr.title} in ${p.name}`, s: pr.provider === 'codex' ? 'Codex' : 'prompt', run: () => startWithPrompt(p.cwd, pr), text: `${pr.title} ${p.name} prompt start` })));
+  const prompts = worldsFor.filter(p => p.exists).flatMap(p => S.prompts.map(pr => ({ glyph: '❡', t: `${pr.title} in ${p.name}`, s: PROV_NAME[pr.provider] && pr.provider !== 'claude' ? PROV_NAME[pr.provider] : 'prompt', run: () => startWithPrompt(p.cwd, pr), text: `${pr.title} ${p.name} prompt start` })));
   const docs = Object.values(S.worlds).flatMap(w => { const p = S.projects.find(x => x.cwd === w.cwd); return p ? w.docs.slice(0, 60).map(d => ({ glyph: '❧', t: d.name, s: `${p.name} · ${agoL(d.mtime)}`, run: () => Viewer.open({ path: d.path, cwd: p.cwd }), text: `${d.rel} ${p.name}` })) : []; });
   const models = window.ChatUI && ChatUI.modelItems ? ChatUI.modelItems() : [];
   // The chat you're in: find, export, pin.
@@ -108,6 +114,7 @@ function palItems(q) {
   add('Active now', rank(run).slice(0, 5));
   add('Chats', rank(chats).slice(0, 8));
   add('Projects', rank(folders).slice(0, 5));
+  add('Review pictures', rank(boards).slice(0, 3));
   add('Documents', rank(docs).slice(0, 5));
   add('Start with a prompt', rank(prompts).slice(0, 4));
   add('Actions', rank(acts).slice(0, 5));
@@ -167,17 +174,21 @@ async function runSearch(q) {
 }
 
 /* ---------- the file viewer: open what a chat links to ---------- */
+// Files that are only ever words: opening one can't run anything, whatever this computer does with it.
+const EDITABLE = /\.(md|markdown|mdx|txt|json|csv|tsv|log|ya?ml|toml|xml|ini|cfg|css|scss)$/i;
+const canEditor = f => !window.REMOTE && EDITABLE.test(f.name);
 const Viewer = (() => {
   const V = { ctx: {}, stack: [], cur: null, raw: false, list: null, idx: -1 };
   const dlg = () => $('viewer');
   function ensure() {
     if ($('viewer')) return;
-    document.body.insertAdjacentHTML('beforeend', `<dialog id="viewer" class="wide viewer" aria-labelledby="vTitle"><div class="v-wrap"><div class="v-head" id="vHead"></div><div class="v-body" id="vBody"></div></div></dialog>`);
+    document.body.insertAdjacentHTML('beforeend', `<dialog id="viewer" class="wide viewer" aria-labelledby="vTitle"><div class="v-wrap"><div class="v-head" id="vHead"></div><div class="v-body" id="vBody"></div><div class="v-find" id="vFind" hidden role="search"><label class="sr" for="vFindQ">Find in this file</label><input id="vFindQ" type="text" placeholder="Find in this file" autocomplete="off" spellcheck="false"><span class="count" id="vFindN" aria-live="polite"></span><button type="button" class="icon" data-vf="prev" aria-label="Previous match" title="Previous (Shift+Enter)">↑</button><button type="button" class="icon" data-vf="next" aria-label="Next match" title="Next (Enter)">↓</button><button type="button" class="icon" data-vf="close" aria-label="Close find" title="Close (Esc)">✕</button></div><div class="v-notes" id="vNotes" hidden></div><div class="v-pop" id="vPop" hidden></div></div></dialog>`);
     dlg().addEventListener('click', wrap(onClick));
-    dlg().addEventListener('close', () => { V.stack = []; V.list = null; });
+    dlg().addEventListener('close', () => { V.stack = []; V.list = null; DocNotes.shown(null); DocFind.shown(null); });
+    dlg().addEventListener('cancel', e => { DocNotes.onCancel(e); DocFind.onCancel(e); });
     // In a project's gallery, ← and → step through its pictures.
     dlg().addEventListener('keydown', e => {
-      if (!V.list || !V.cur || V.cur.kind !== 'image' || e.target.closest('input, textarea')) return;
+      if (!V.list || !V.cur || !(inGallery() || inDocs()) || e.target.closest('input, textarea')) return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); wrap(step)(e.key === 'ArrowRight' ? 1 : -1); }
     });
   }
@@ -214,11 +225,13 @@ const Viewer = (() => {
       </div>
       <div class="v-act">
         ${f.kind === 'text' && f.markdown ? `<div class="seg" role="group" aria-label="View"><button class="${V.raw ? '' : 'on'}" data-v="rendered" aria-pressed="${!V.raw}">Formatted</button><button class="${V.raw ? 'on' : ''}" data-v="raw" aria-pressed="${V.raw}">Markdown</button></div>` : ''}
-        ${f.kind === 'text' ? `<button class="btn prime sm" data-v="copy">Copy ${f.markdown ? 'markdown' : 'text'}</button>` : ''}
+        ${f.kind === 'text' ? `<button class="btn prime sm" data-v="copy">Copy ${f.markdown ? 'markdown' : 'text'}</button>${sagaLook() ? '' : '<button class="btn quiet sm" data-doc-note title="Select a passage first to note just that (N)">Add a note</button><button class="icon" data-doc-find aria-label="Find in this file" title="Find in this file (Ctrl+F)">⌕</button>'}` : ''}
+        ${f.kind === 'text' && !sagaLook() && canEditor(f) ? '<button class="btn quiet sm" data-v="editor" title="Open it in the program this computer uses for these files">Open in your editor</button>' : ''}
         ${f.kind === 'image' ? '<button class="btn prime sm" data-v="copyimg" title="Copy the picture, to paste anywhere">Copy picture</button><button class="btn quiet sm" data-v="big" title="Full screen, to zoom in">View larger</button>' : ''}
         ${inGallery() ? `<span class="v-step"><button class="icon" data-v="prev" aria-label="Previous picture" ${V.idx > 0 ? '' : 'disabled'}>‹</button><span class="count">${V.idx + 1} of ${V.list.length}</span><button class="icon" data-v="next" aria-label="Next picture" ${V.idx < V.list.length - 1 ? '' : 'disabled'}>›</button></span>
           ${isBanner() ? '<span class="tag gilt">Banner</span>' : '<button class="btn sm" data-v="banner">Use as banner</button>'}` : ''}
-        ${/\.html?$/i.test(f.name) && f.kind !== 'dir' && !window.REMOTE ? '<button class="btn prime sm" data-v="browser" title="Open this page in your web browser">Open in browser</button>' : ''}
+        ${inDocs() ? `<span class="v-step"><button class="icon" data-v="prev" aria-label="Previous document" title="Previous (←)" ${V.idx > 0 ? '' : 'disabled'}>‹</button><span class="count">${V.idx + 1} of ${V.list.length}</span><button class="icon" data-v="next" aria-label="Next document" title="Next (→)" ${V.idx < V.list.length - 1 ? '' : 'disabled'}>›</button></span>` : ''}
+        ${/\.html?$/i.test(f.name) && f.kind !== 'dir' && !window.REMOTE ? `<button class="btn prime sm" data-v="browser" title="Open this page in your web browser">Open in browser</button>${window.ChatUI && ChatUI.isOpen() && window.Split && Split.can() ? '<button class="btn sm" data-v="beside" title="See it beside the chat, here in this window">See it beside the chat</button>' : ''}` : ''}
         <button class="btn sm" data-v="work" aria-haspopup="menu" title="Start a chat in ${esc(f.kind === 'dir' ? f.path : f.dir)}">Work here ▾</button>
         <button class="btn sm" data-v="copypath">Copy path</button>
         <button class="btn quiet sm" data-v="reveal">${f.kind === 'dir' ? `Open in ${S.platform === 'darwin' ? 'Finder' : 'Explorer'}` : 'Show in folder'}</button>
@@ -232,10 +245,23 @@ const Viewer = (() => {
     else if (f.kind === 'audio') body = `<div class="v-media audio"><audio controls preload="metadata" src="${esc(mediaSrc(f.path))}"></audio></div>`;
     else if (f.kind === 'pdf') body = `<iframe class="v-pdf" title="${esc(f.name)}" src="${esc(mediaSrc(f.path))}"></iframe>`;
     else if (f.kind === 'text') {
-      body = (f.markdown && !V.raw ? `<article class="md v-md">${ChatUI.md(f.text)}</article>` : `<pre class="v-raw">${esc(f.text)}</pre>`) + (f.truncated ? '<p class="v-note">Only the first 2 MB are shown.</p>' : '');
+      // A note's top part (--- name: …, description: … ---) is for the program: folded away when it's formatted.
+      const top = f.markdown && !V.raw ? /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(f.text) : null;
+      const words = top ? f.text.slice(top[0].length) : f.text;
+      body = (f.markdown && !V.raw ? `<article class="md v-md">${top ? `<details class="v-front"><summary>About this file</summary><pre>${esc(top[1])}</pre></details>` : ''}${ChatUI.mdIn(words, { path: rel => joinPath(f.dir, rel), src: abs => fileUrl('image', abs, V.ctx) })}</article>` : `<pre class="v-raw">${esc(f.text)}</pre>`) + (f.truncated ? '<p class="v-note">Only the first 2 MB are shown.</p>' : '');
     } else body = `<p class="v-note">${esc(f.note || 'This file can’t be shown here.')}</p>`;
     $('vBody').innerHTML = body;
     $('vBody').scrollTop = 0;
+    // A long document's headings, a click away. (Imperial and Rebel: under Work here.)
+    if (headings().length >= 4 && !sagaLook()) $('vHead').querySelector('.v-act').insertAdjacentHTML('afterbegin', '<button class="btn quiet sm" data-v="contents" aria-haspopup="menu" title="Jump to a heading in this document">Contents</button>');
+    DocNotes.shown(f, V.ctx);
+    DocFind.shown(f);
+  }
+  const headings = () => [...$('vBody').querySelectorAll('.v-md h2, .v-md h3, .v-md h4')];   // (# is an h2 here)
+  const slugOf = text => String(text).toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s+/g, '-');
+  function contentsItems() {
+    const hs = headings(), top = Math.min(...hs.map(h => Number(h.tagName[1])));
+    return hs.map(h => ({ label: `${'\u00a0\u00a0\u00a0'.repeat(Number(h.tagName[1]) - top)}${h.textContent.trim().slice(0, 80)}`, run: () => h.scrollIntoView({ block: 'start' }) }));
   }
   function fileUrl(route, p, ctx) {
     const q = new URLSearchParams({ token: TOKEN, path: p });
@@ -251,6 +277,7 @@ const Viewer = (() => {
     V.cur = f; V.raw = false; render();
   }
   const inGallery = () => !!(V.list && V.cur && V.cur.kind === 'image' && V.idx >= 0 && !V.stack.length);
+  const inDocs = () => !!(V.list && V.cur && V.cur.kind === 'text' && V.list.length > 1 && V.idx >= 0 && !V.stack.length);
   const isBanner = () => { const w = V.ctx.cwd && S.worlds[V.ctx.cwd]; return !!(w && w.banner === V.list[V.idx]); };
   // provider: claude, codex or gemini for a new chat there; null for the project's page.
   const workIn = wrap(async (dir, provider) => {
@@ -275,8 +302,14 @@ const Viewer = (() => {
   }
   async function onClick(e) {
     const fl = e.target.closest('.flink[data-path]'); if (fl) { e.preventDefault(); return load(joinPath(V.cur.dir, fl.dataset.path)); }
+    const pic = e.target.closest('.v-md .md-pic[data-path]'); if (pic) { e.preventDefault(); return load(pic.dataset.path); }
     const a = e.target.closest('.v-md a[href]');
-    if (a && /^#/.test(a.getAttribute('href') || '')) { e.preventDefault(); return undefined; }
+    if (a && /^#/.test(a.getAttribute('href') || '')) {
+      e.preventDefault();
+      const want = decodeURIComponent(a.getAttribute('href').slice(1)).toLowerCase(), h = headings().find(x => slugOf(x.textContent) === want);
+      if (h) h.scrollIntoView({ block: 'start' });
+      return undefined;
+    }
     const b = e.target.closest('[data-v]'); if (!b) { if (e.target === dlg()) dlg().close(); return undefined; }
     const f = V.cur;
     switch (b.dataset.v) {
@@ -293,11 +326,14 @@ const Viewer = (() => {
         if (S.view === 'folder' && S.folder === V.ctx.cwd) renderFolder();
         return undefined;
       }
+      case 'contents': return showMenu(b, contentsItems());
       case 'rendered': V.raw = false; return render();
       case 'raw': V.raw = true; return render();
       case 'copy': return copyText(f.text, null).then(ok => { if (ok) { b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = `Copy ${f.markdown ? 'markdown' : 'text'}`; }, 1600); } });
       case 'copypath': return copyText(f.path, 'Copied the path.');
       case 'copyimg': return copyImage(f.src);
+      case 'editor': { const r = await api('/api/file/editor', { path: f.path, ...V.ctx }); if (r.dryRun) toast(`Would run: ${r.script}`); return undefined; }
+      case 'beside': { const r = await api('/api/file/preview', { path: f.path, ...V.ctx }); dlg().close(); return openSiteBeside(r.url); }
       case 'browser': { const r = await api('/api/file/browser', { path: f.path, ...V.ctx }); if (r.dryRun) toast(`Would run: ${r.script}`); return undefined; }
       // Work in this folder (or this file's): it joins your projects, and a chat starts there.
       case 'work': {
@@ -308,6 +344,9 @@ const Viewer = (() => {
           ...(S.gemini && S.gemini.enabled ? [{ label: 'New Gemini chat here', disabled: !geminiReady(), why: 'Finish setting up Gemini first', run: () => workIn(dir, 'gemini') }] : []),
           '-',
           { label: 'Open it as a project', hint: dir.split(/[\\/]/).filter(Boolean).pop() || dir, run: () => workIn(dir, null) },
+          // Imperial and Rebel keep their row of buttons as it was: these are here instead.
+          ...(sagaLook() && f.kind === 'text' ? ['-', ...(headings().length >= 4 ? [{ label: 'Contents', hint: 'jump to a heading', run: () => showMenu(b, contentsItems()) }] : []), { label: 'Add a note', hint: 'N', run: () => DocNotes.note() }, { label: 'Find in this file', hint: 'Ctrl+F', run: () => DocFind.open() },
+            ...(canEditor(f) ? [{ label: 'Open in your editor', run: async () => { const r = await api('/api/file/editor', { path: f.path, ...V.ctx }); if (r.dryRun) toast(`Would run: ${r.script}`); } }] : [])] : []),
         ]);
       }
       // Full screen, in the picture viewer (over everything, so this closes first).
@@ -316,5 +355,5 @@ const Viewer = (() => {
       default: return undefined;
     }
   }
-  return { open, joinPath };
+  return { open, joinPath, close: () => { if ($('viewer') && dlg().open) dlg().close(); } };
 })();

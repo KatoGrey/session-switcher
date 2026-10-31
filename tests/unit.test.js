@@ -110,6 +110,21 @@ test('file viewer: a network path never opens, and isn’t even looked up (that 
   assert.throws(() => files.locate(project, 'file://attacker.example/share/pic.png'), e => e.status === 403 || e.status === 404, 'a file:// link to a server either');
 });
 
+test('file viewer: a link written /C:/Users/… (Codex’s way) means C:\\Users\\…, not C:\\C:\\Users\\…', () => {
+  const zip = 'C:/Users/me/OneDrive/Documents/Rebirth World/site.zip';
+  for (const raw of [`/${zip}`, `</${zip}>`, `\\${zip.replace(/\//g, '\\')}`, `//${zip}`, `file:///${zip}`, `/${zip.replace(/ /g, '%20')}`, `/${zip.replace(':', '%3A')}`, `/${zip}#L12C3`, `/${zip}:12`]) {
+    assert.match(files.clean(raw, 'win32'), /^C:[\\/]Users[\\/]me[\\/]OneDrive[\\/]Documents[\\/]Rebirth World[\\/]site\.zip$/, raw);
+  }
+  assert.equal(files.clean('/C:/Users/me/a.md', 'darwin'), '/C:/Users/me/a.md', 'on a Mac it could be a real folder');
+  for (const kept of ['\\\\server\\share\\a.md', '//server/share/a.md', '\\\\?\\C:\\a.md', '/Users/me/a.md', 'src/a.md']) assert.equal(files.clean(kept, 'win32'), kept, kept);
+  if (process.platform !== 'win32') return;
+  assert.equal(files.resolve('D:\\chat', '/C:/Users/me/a.md'), 'C:\\Users\\me\\a.md');
+  // Written this way it's the same place, so the same rules apply: this is not a way round them.
+  const home = os.homedir().replace(/\\/g, '/');
+  assert.throws(() => files.readEntry('D:\\chat', `/${home}/.ssh/id_rsa`), e => e.status === 403, 'keys stay closed');
+  assert.throws(() => files.locate('D:\\chat', `/${home}/AppData/Roaming/x/Cookies`), e => e.status === 403, 'AppData stays closed');
+});
+
 /* ---------- phone pairing ---------- */
 const { createRemote } = require('../lib/remote');
 const remote = () => createRemote({ dataDir: tmp(), appDir: tmp(), version: 'test', getPrefs: () => ({}), handle: () => {} });
@@ -252,6 +267,130 @@ test('limits: running out becomes a notice and an offer to carry on; nearly out 
 
 /* ---------- rules and tools for both ---------- */
 const rules = require('../lib/rules');
+
+test('deleting a folder with read-only files in it, the way the installed app has to', { skip: process.platform !== 'win32' ? 'a Windows matter' : false }, () => {
+  require('../lib/electron-node');
+  const dir = tmp();
+  const f = put(dir, 'objects/ab/cd', 'x');
+  fs.chmodSync(f, 0o444);
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.equal(fs.existsSync(dir), false);
+  // What it's refused for other reasons is still refused, and a link's target isn't touched.
+  const target = tmp(), kept = put(target, 'keep.txt', 'keep');
+  fs.chmodSync(kept, 0o444);
+  const outer = tmp();
+  fs.symlinkSync(target, path.join(outer, 'link'), 'junction');
+  put(outer, 'ro.txt', 'x'); fs.chmodSync(path.join(outer, 'ro.txt'), 0o444);
+  assert.equal(fs.statSync(kept).mode & 0o200, 0, 'what a link points at stays read-only');
+  fs.chmodSync(kept, 0o666);
+  fs.rmSync(outer, { recursive: true, force: true });
+  assert.ok(fs.existsSync(kept), 'and it’s still there');
+});
+
+test('a Gemini chat in a terminal: its own program, its folder, its conversation', () => {
+  const sys = require('../lib/system');
+  const s = sys.agyLaunchScript('C:\\Users\\me\\AppData\\Local\\agy\\bin\\agy.exe', 'C:\\My Projects\\Rebirth', 'abc-123', 'Gemini - Lore book');
+  if (process.platform === 'win32') {
+    assert.match(s, /cd \/d "C:\\My Projects\\Rebirth"/);
+    assert.match(s, /agy\.exe"? --conversation abc-123/);
+    assert.match(sys.agyManualCommand('C:\\Program Files\\agy\\agy.exe', 'C:\\My Projects\\Rebirth', 'abc-123'), /^Set-Location 'C:\\My Projects\\Rebirth'; & 'C:\\Program Files\\agy\\agy\.exe' --conversation abc-123$/);
+  } else assert.match(s, /--conversation abc-123/);
+});
+
+test('search: Codex’s and Gemini’s chats are found too', () => {
+  const { searchOthers, mergeHits } = require('../lib/chatsearch');
+  const projects = [
+    { name: 'Rebirth', cwd: 'C:\\Rebirth', sessions: [
+      { id: 'c1', title: 'Portrait redo', firstPrompt: 'Redo all of our portraits', lastPrompt: 'The elf again', provider: 'codex', updated: 5 },
+      { id: 'g1', title: 'Lore book', firstPrompt: 'Write the lore', provider: 'gemini', updated: 4 },
+      { id: 'm1', title: 'Portrait notes', firstPrompt: 'Portrait', updated: 3 },
+    ] },
+    { name: 'Vampire', cwd: 'C:\\Vampire', sessions: [{ id: 'c2', title: 'Night scene', firstPrompt: 'portraits at night', provider: 'codex', updated: 9 }] },
+  ];
+  const ids = q => searchOthers(projects, q).map(h => h.id);
+  assert.deepEqual(ids('portrait').sort(), ['c1', 'c2'], 'not Claude’s own: those are found already');
+  assert.deepEqual(ids('lore'), ['g1']);
+  assert.deepEqual(ids('rebirth elf'), ['c1'], 'all the words, anywhere in what’s known of it');
+  assert.deepEqual(ids(''), []);
+  assert.deepEqual(ids('nothing like this'), []);
+  const hit = searchOthers(projects, 'elf')[0];
+  assert.equal(hit.folder, 'Rebirth');
+  assert.equal(hit.cwd, 'C:\\Rebirth');
+  assert.match(hit.snippet, /The elf again/);
+  assert.equal(searchOthers(projects, 'portrait redo')[0].inTitle, true);
+  // Mixed in with the others, those matching in their names first.
+  const merged = mergeHits([{ id: 'x', inTitle: false, count: 7 }, { id: 'y', inTitle: true, count: 1 }], [{ id: 'c1', inTitle: true, count: 3 }, { id: 'y', inTitle: true, count: 9 }], 3);
+  assert.deepEqual(merged.map(h => h.id), ['c1', 'y', 'x'], 'each once, and within the limit');
+  // In what they said, once it's been read.
+  const textOf = id => (id === 'c1' ? { full: 'We painted the elf with a silver lantern at dusk.' } : id === 'c2' ? { head: 'a start', tail: 'the very end of a silver thing' } : null);
+  assert.deepEqual(searchOthers(projects, 'lantern', textOf).map(h => h.id), ['c1']);
+  assert.match(searchOthers(projects, 'lantern', textOf)[0].snippet, /silver lantern at dusk/);
+  assert.deepEqual(searchOthers(projects, 'silver', textOf).map(h => h.id).sort(), ['c1', 'c2'], 'the end of a long one too');
+  assert.equal(searchOthers(projects, 'silver rebirth', textOf)[0].id, 'c1', 'words in its text and in its folder');
+  // A partner's words are found under the chat it belongs to.
+  const { underLeads, bothProgress } = require('../lib/chatsearch');
+  assert.deepEqual(underLeads([{ id: 'PARTNER-1', inTitle: true, count: 2 }, { id: 'other', inTitle: true, count: 1 }], new Map([['partner-1', 'lead-1']])), [{ id: 'lead-1', inTitle: false, count: 2 }, { id: 'other', inTitle: true, count: 1 }]);
+  assert.deepEqual(bothProgress({ done: 3, total: 4, ready: false }, { done: 2, total: 2, ready: true }), { done: 5, total: 6, ready: false });
+  assert.equal(bothProgress({ done: 1, total: 1, ready: true }, { done: 0, total: 0, ready: true }).ready, true);
+});
+
+test('self-check: a failure is itself, the same each night, once', () => {
+  const { readFailures } = require('../lib/selfcheck');
+  const out = [
+    '— logic and server checks',
+    '✔ fine (1.2ms)',
+    '✖ a test that fails (3.0122ms)',
+    '✖ failing tests:',
+    'test at tests\\x.test.js:1:1',
+    '✖ a test that fails (3.0122ms)',
+    '— chat',
+    '  ✔ fine',
+    '  ✖ a check  (some detail (with brackets))',
+    'not ok 3 - another way of saying it',
+  ].join('\r\n');
+  assert.deepEqual(readFailures(out), ['logic and server checks: a test that fails', 'chat: a check  (some detail (with brackets))', 'logic: another way of saying it']);
+  assert.deepEqual(readFailures('— logic and server checks\n✖ a test that fails (9.5ms)'), ['logic and server checks: a test that fails'], 'the same next time, however long it took');
+  assert.deepEqual(readFailures(''), []);
+});
+
+test('an .asar file in a project is a file, as it is outside the installed app', () => {
+  require('../lib/electron-node');
+  assert.equal(process.noAsar, true);
+  const dir = tmp(), f = put(dir, 'dist/app.asar', 'not really one');
+  assert.equal(fs.statSync(f).isFile(), true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('rules: Gemini’s own file for every project, and its tools', () => {
+  const dir = tmp();
+  const user = rules.rulesPaths({ claudeDir: path.join(dir, '.claude'), codexHome: path.join(dir, '.codex'), geminiHome: path.join(dir, '.gemini') });
+  assert.equal(user.gemini, path.join(dir, '.gemini', 'GEMINI.md'));
+  rules.writeRules(user, 'Be brief.', ['gemini']);
+  assert.equal(rules.readRules(user).gemini.text, 'Be brief.\n');
+  assert.equal(rules.readRules(rules.rulesPaths({ claudeDir: path.join(dir, '.claude'), codexHome: path.join(dir, '.codex') })).gemini, null, 'no folder of its own known, no file');
+  assert.equal(path.basename(rules.rulesPaths({ cwd: dir }).gemini), 'GEMINI.md', 'and a project’s, read but not written by Save');
+  // As `agy mcp add` writes them.
+  const file = path.join(dir, 'mcp_config.json');
+  assert.deepEqual(rules.geminiServers(file), [], 'none yet');
+  fs.writeFileSync(file, JSON.stringify({ mcpServers: { Studio: { command: 'cmd.exe', args: ['/c', 'x.bat'], disabled: false, env: { A: 'b' } }, Web: { serverUrl: 'https://x.example/mcp', headers: { Authorization: 'Bearer abc' }, disabled: true } } }));
+  const list = rules.geminiServers(file);
+  assert.deepEqual(list.map(x => [x.name, x.enabled]), [['Studio', true], ['Web', false]]);
+  assert.equal(rules.view(list[1].spec).url, 'https://x.example/mcp');
+  assert.deepEqual(rules.view(list[1].spec).headerNames, ['Authorization'], 'names, never values');
+  assert.equal(list[0].spec.disabled, undefined);
+  const rows = rules.merged([{ name: 'Studio', scope: 'user', spec: { command: 'x' } }], [], list);
+  assert.deepEqual(rows.map(r => [r.name, !!r.claude, !!r.codex, !!r.gemini]), [['Studio', true, false, true], ['Web', false, false, true]]);
+  // To Gemini: flags first, and -- keeps a command's own flags its own.
+  assert.deepEqual(rules.forGemini({ command: 'uvx', args: ['-y', 'blender-mcp'], env: { PORT: '9876' } }, 'Blender').args, ['mcp', 'add', '--env', 'PORT=9876', 'Blender', '--', 'uvx', '-y', 'blender-mcp']);
+  assert.deepEqual(rules.forGemini({ type: 'http', url: 'https://x.example/mcp', headers: { Authorization: 'Bearer abc' } }, 'Web').args, ['mcp', 'add', '--header', 'Authorization: Bearer abc', 'Web', 'https://x.example/mcp']);
+  assert.match(rules.forGemini({ command: 'node', args: ['repl.js'], env: { CODEX_HOME: 'C:\\x' } }, 'Own').why, /part of Codex/);
+  assert.match(rules.forGemini({ command: 'node', cwd: 'C:\\tools' }, 'There').why, /folder of its own/);
+  assert.match(rules.forGemini({ url: 'https://x.example/mcp', bearer_token_env_var: 'X' }, 'Tok').why, /setting Gemini can’t read/);
+  assert.match(rules.forGemini({ command: 'x' }, '-oops').why, /dash/);
+  // And from Gemini to the others.
+  assert.deepEqual(rules.forClaude(list[0].spec), { value: { type: 'stdio', command: 'cmd.exe', args: ['/c', 'x.bat'], env: { A: 'b' } } });
+  assert.deepEqual(rules.forCodex(list[0].spec), { value: { command: 'cmd.exe', args: ['/c', 'x.bat'], env: { A: 'b' } } });
+});
 
 test('rules: one text saved to CLAUDE.md and AGENTS.md; the two compared', () => {
   const dir = tmp();
@@ -894,4 +1033,44 @@ test('background work keeps a chat from being stopped for idling; it shows, and 
   assert.equal(idleStop(chat, now), true, 'done: idle as usual');
   chat.clients = new Set(['window']);
   assert.equal(idleStop(chat, now), false, 'someone looking: never');
+});
+
+/* ---------- each route once ---------- */
+test('server: no two routes share a name (the second would silently never run)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const names = [...src.matchAll(/case '(\/api\/[^']+)':/g)].map(m => m[1]);
+  assert.ok(names.length > 50);
+  assert.deepEqual(names.filter((x, i) => names.indexOf(x) !== i), []);
+});
+
+/* ---------- long chats stay listed ---------- */
+test('a long chat whose first words are out of reach stays listed; an empty small file doesn’t', () => {
+  const dir = tmp();
+  const write = (name, lines) => { const f = path.join(dir, name); fs.writeFileSync(f, `${lines.map(l => JSON.stringify(l)).join('\n')}\n`); return f; };
+  const entry = (text, i) => ({ type: 'user', uuid: `u${i}`, cwd: 'C:\\Projects\\Demo', timestamp: new Date(Date.UTC(2026, 9, 9, 10, i)).toISOString(), message: { role: 'user', content: [{ type: 'text', text }] } });
+  // A first message (a big paste or picture) too long to read in the part read of a file.
+  const big = write('big.jsonl', [entry('x'.repeat(600 * 1024), 0), ...Array.from({ length: 40 }, (_, i) => entry(`Later message ${i}`, i + 1))]);
+  const meta = readMeta(big, fs.statSync(big));
+  assert.ok(meta, 'it’s a real chat');
+  assert.equal(meta.id, 'big');
+  assert.equal(meta.autoTitle, 'Later message 39');
+  // A chat continued from a summary, with what you said further on than the part read.
+  const pad = { type: 'assistant', uuid: 'a', cwd: 'C:\\Projects\\Demo', message: { role: 'assistant', content: [{ type: 'text', text: 'y'.repeat(600 * 1024) }] } };
+  const cont = write('cont.jsonl', [entry('This session is being continued from a previous conversation that ran out of context.', 0), pad]);
+  const c = readMeta(cont, fs.statSync(cont));
+  assert.ok(c, 'it stays listed');
+  assert.equal(c.autoTitle, 'A long chat');
+  // Small, with nothing you said: an empty or stub file, as before.
+  const stub = write('stub.jsonl', [entry('This session is being continued from a previous conversation that ran out of context.', 0)]);
+  assert.equal(readMeta(stub, fs.statSync(stub)), null);
+});
+
+test('“carry on when it’s back” keeps a chat from being stopped as idle until then', () => {
+  const { idleStop } = require('../lib/chat');
+  const now = Date.now();
+  const chat = { state: 'ready', clients: new Set(), lastActivity: now - 2 * 3600e3, background: [] };
+  assert.equal(idleStop(chat, now), true);
+  chat.holdUntil = now + 3600e3;
+  assert.equal(idleStop(chat, now), false, 'waiting to carry on');
+  assert.equal(idleStop(chat, now + 2 * 3600e3), true, 'and idle as usual after');
 });

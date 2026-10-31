@@ -36,7 +36,7 @@ if (deskOn()) {
   // started the app waits for that), so the palette has them.
   const deskDo = what => {
     if (what === 'search') return openPalette('');
-    if (what === 'new-chat') return openPalette('claude chat in ');
+    if (what === 'new-chat') return openNewChat();
     if (what === 'task') return openTaskDialog(S.view === 'folder' ? S.folder : null);
     return undefined;
   };
