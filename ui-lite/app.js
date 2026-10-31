@@ -97,7 +97,8 @@ function sideProjects(all) {
   const byProj = new Map();
   for (const c of all) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
   const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
-  const mainsOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && !['waiting', 'finishing'].includes(boardStage(c)));
+  // (Quick keeps all its chats together: it's the place for odds and ends, whatever stage they're at.)
+  const mainsOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && (g.p.quick || !['waiting', 'finishing'].includes(boardStage(c))));
   const active = g => mainsOf(g).some(c => !famQuiet(c));
   const act = groups.filter(active).sort((a, b) => projectOrder(a.p, b.p));
   const quiet = groups.filter(g => !active(g) && (mainsOf(g).length || g.cs.every(c => parked(statusOf(c))))).sort((a, b) => projectOrder(a.p, b.p));
@@ -138,7 +139,7 @@ function sideProjects(all) {
   } else html += act.filter(g => !g.p.quick).map(projRow).join('');
   // Review and waiting stay reachable without filling the active project lists.
   for (const [stage, name] of [['finishing', 'Finishing'], ['waiting', 'Waiting']]) {
-    const list = all.filter(c => isTop(c) && !c.focus && boardStage(c) === stage).sort((a, b) => b.updated - a.updated);
+    const list = all.filter(c => isTop(c) && !c.focus && boardStage(c) === stage && !projOf(c).quick).sort((a, b) => b.updated - a.updated);
     if (!list.length) continue;
     const open = S.folded[stage] === false;
     html += `<button class="side-bucket side-bucket-btn" data-fold="${stage}" data-drop-stage="${stage}" aria-expanded="${open}">${name} <span class="n">${list.length}</span><span class="chev">${open ? '▾' : '▸'}</span></button>`;
