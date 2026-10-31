@@ -214,7 +214,25 @@ test('naming: waits until a chat has settled, one unreadable chat holds up nothi
     await g.run();
     assert.ok(asked.flat().includes('done'), 'after 3 replies it is');
     assert.equal(G().done.namedTurns, 3);
+    // And then it's left alone, however long the chat runs.
+    asked.length = 0;
+    for (let i = 0; i < 6; i++) g.replyFinished('done');
+    store.setGuess('done', { lastReplyAt: Date.now() - 3 * 60e3, keep: true });
+    await g.run();
+    assert.ok(!asked.flat().includes('done'), 'not renamed from its latest task later on');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('chat sizes: only a chat that really is small can be quick; a long one is ongoing', () => {
+  const { chatSizes, isSmallChat, isOngoingChat } = require('../lib/lite-tokens');
+  const day = (d, t) => [`2026-10-${d}`, [0, t, 0, 0]];
+  const files = { a: { sid: 'FIX', days: Object.fromEntries([day(30, 10e6)]) }, b: { sid: 'long', days: Object.fromEntries([day(10, 1e6), day(11, 1e6), day(12, 1e6), day(13, 1e6)]) }, c: { sid: 'big', days: Object.fromEntries([day(30, 536e6)]) }, d: { sid: 'mid', days: Object.fromEntries([day(28, 10e6), day(29, 10e6), day(30, 8e6)]) } };
+  const s = chatSizes({ files });
+  assert.ok(isSmallChat(s.get('fix')) && !isOngoingChat(s.get('fix')), 'a day and 10M: an odd job');
+  assert.ok(!isSmallChat(s.get('mid')) && !isOngoingChat(s.get('mid')), 'three days: not quick, not yet ongoing');
+  assert.ok(!isSmallChat(s.get('long')) && isOngoingChat(s.get('long')), 'four days: ongoing, however few tokens');
+  assert.ok(!isSmallChat(s.get('big')) && isOngoingChat(s.get('big')), '536M in a day: ongoing');
+  assert.ok(isSmallChat(undefined) && !isOngoingChat(undefined), 'not counted yet: the model’s call stands');
 });
 
 test('seen and guesses are kept in lite.json; yours still wins', async () => {

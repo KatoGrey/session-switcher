@@ -103,7 +103,7 @@ function sideProjects(all) {
   const byProj = new Map();
   for (const c of all) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
   const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
-  const mainsOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && !['waiting', 'finishing', 'quick'].includes(boardStage(c)));
+  const mainsOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && !['waiting', 'finishing'].includes(boardStage(c)) && !isQuick(c));
   const active = g => mainsOf(g).some(c => !famQuiet(c));
   const act = groups.filter(active).sort((a, b) => projectOrder(a.p, b.p));
   const quiet = groups.filter(g => !active(g) && (mainsOf(g).length || g.cs.every(c => parked(statusOf(c))))).sort((a, b) => projectOrder(a.p, b.p));

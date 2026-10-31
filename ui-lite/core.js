@@ -209,10 +209,12 @@ const activeTyping = () => { const a = document.activeElement; return a && (a.ta
 function renderConn() { const c = $('conn'); c.classList.toggle('on', S.connected); c.title = S.connected ? 'Live: updates as chats move' : 'Not connected to your Mac'; }
 
 /* ---------- derived data ---------- */
-let projBy = new Map(), chatBy = new Map(), liveBy = new Map();
+let projBy = new Map(), chatBy = new Map(), liveBy = new Map(), projMains = new Map();
 function index() {
   projBy = new Map(S.projects.map(p => [p.key, p]));
   chatBy = new Map(S.chats.map(c => [c.id, c]));
+  projMains = new Map();
+  for (const c of S.chats) if (!c.parent && !c.auto && !c.routineRun && !c.archived && !parked(statusOf(c))) projMains.set(c.project, (projMains.get(c.project) || 0) + 1);
   liveBy = new Map(S.live.filter(x => x.sessionId).map(x => [x.sessionId.toLowerCase(), x]));
 }
 const buckets = () => (S.lite ? S.lite.buckets : []);
@@ -223,7 +225,9 @@ const quietDays = () => (S.lite ? S.lite.quietDays : 4);
 const floor = () => (S.lite ? S.lite.plans.floor : 15);
 const statusOf = c => c.status;
 // Waiting keeps its underlying stage; only its place on the board changes.
-const boardStage = c => c.waiting && !parked(statusOf(c)) ? 'waiting' : c.quick && !parked(statusOf(c)) ? 'quick' : statusOf(c);
+// A guess never empties a project: its only chat stays with it (your own say still counts).
+const quickOk = c => c.quick && (!c.guessed || !c.guessed.quick || (projMains.get(c.project) || 0) > 1);
+const boardStage = c => c.waiting && !parked(statusOf(c)) ? 'waiting' : quickOk(c) && !parked(statusOf(c)) ? 'quick' : statusOf(c);
 // Quick: odds and ends (a bug fix, a small change, a question), not projects. They sit in one lane
 // across all projects instead of filling each project's board and Finishing.
 const isQuick = c => boardStage(c) === 'quick' && !c.focus;
