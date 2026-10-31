@@ -172,7 +172,7 @@ function palItems(q) {
     { t: 'Open the full app', run: () => { location.href = '/'; }, alias: 'tyler classic hub' },
   ].map(x => ({ ...x, kind: 'Go', text: `${x.t} ${x.alias || ''}` }));
   const chats = allChats().sort((a, b) => b.updated - a.updated).map(c => ({ kind: 'Chat', t: c.title, s: `${projOf(c).name} · ${statusById(statusOf(c)).name}${c.kind && c.kind !== 'feature' ? ` · ${kindById(c.kind).name}` : ''}${c.focus ? ' · Focus' : ''} · ${ago(c.updated)}`, run: () => openChat(c.id), text: `${c.title} ${projOf(c).name}`, boost: needs(c) ? 25 : running(c) ? 15 : 0 }));
-  const projs = S.projects.filter(p => !p.archived && (p.bucket || chatsOfProject(p.key).length)).map(p => ({ kind: 'Project', t: p.name, s: bucketName(p.bucket), run: () => go('project', { project: p.key }), text: `${p.name} ${p.folder || ''}` }));
+  const projs = S.projects.filter(p => !p.archived && chatsOfProject(p.key).length).map(p => ({ kind: 'Project', t: p.name, run: () => go('project', { project: p.key }), text: `${p.name} ${p.folder || ''}` }));
   const news = q ? S.projects.filter(p => p.cwd && p.exists && !p.archived && !p.loose).map(p => ({ kind: 'New chat', t: `New chat in ${p.name}`, run: () => go('newchat', { ncProject: p.key }), text: `new chat ${p.name}` })) : [];
   if (!q) return [...chats.filter(c => c.boost).slice(0, 6), ...acts.slice(0, 9), ...chats.filter(c => !c.boost).slice(0, 8)];
   return [...acts, ...projs, ...news, ...chats].map(x => ({ x, raw: score(x.text, q) })).filter(r => r.raw >= 0).map(r => ({ x: r.x, s: r.raw + (r.x.boost || 0) + (r.x.kind === 'Go' ? 4 : r.x.kind === 'Project' ? 3 : 0) })).sort((a, b) => b.s - a.s).slice(0, 40).map(r => r.x);

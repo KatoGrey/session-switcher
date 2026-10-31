@@ -41,7 +41,6 @@ function renderSide() {
   renderChip();
   if ($('brand').textContent !== L('Switcher')) $('brand').textContent = L('Switcher');
   if ($('q').placeholder !== L('Search chats')) $('q').placeholder = L('Search chats');
-  const b = buckets().find(x => x.id === S.bucket);
   const chats = allChats().filter(inBucket).sort((x, y) => y.updated - x.updated);
   const nNeed = S.live.filter(needsLive).length;
   // How many are working right now, beside Now (its lamp pulses while any are).
@@ -55,8 +54,7 @@ function renderSide() {
       ${nav('routines', IC.clock, 'Routines', (n => (n ? `<span class="badge">${n}</span>` : ''))(rtEventsOpen().filter(e => e.kind !== 'ran').length))}
       ${nav('bugs', IC.bug, 'Bugs', (n => (n ? `<span class="n">${n}</span>` : ''))(bugList().filter(c => statusOf(c) !== 'done').length))}
       ${nav('automation', IC.clock, 'Automation', (n => (n ? `<span class="n">${n}</span>` : ''))(automationList().filter(c => Date.now() - c.updated < 864e5).length))}
-    </div>
-    <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
+    </div>`;
   const waitSt = { id: 'waiting', name: 'Waiting on others', c: 'var(--muted)' };
   // Later isn't a folder: like quiet, it's one small "N later" row at the end that opens in place.
   const laterAll = chats.filter(c => isTop(c) && statusOf(c) === 'later');
@@ -100,8 +98,8 @@ function sideProjects(all) {
   // (Quick keeps all its chats together: it's the place for odds and ends, whatever stage they're at.)
   const mainsOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && (g.p.quick || !['waiting', 'finishing'].includes(boardStage(c))));
   const active = g => mainsOf(g).some(c => !famQuiet(c));
-  const act = groups.filter(active).sort((a, b) => projectOrder(a.p, b.p));
-  const quiet = groups.filter(g => !active(g) && (mainsOf(g).length || g.cs.every(c => parked(statusOf(c))))).sort((a, b) => projectOrder(a.p, b.p));
+  const act = groups.filter(g => active(g) && !g.p.quick).sort((a, b) => projectOrder(a.p, b.p));
+  const quiet = groups.filter(g => !g.p.quick && !active(g) && (mainsOf(g).length || g.cs.every(c => parked(statusOf(c))))).sort((a, b) => projectOrder(a.p, b.p));
   const projRow = g => {
     const mains = mainsOf(g), lead = projectMain(mains);
     const many = mains.length > 1, children = descOf(lead.id).filter(c => c.project === g.p.key);
@@ -128,21 +126,16 @@ function sideProjects(all) {
     const label = `${count} ${many ? 'main chats' : count === 1 ? 'subchat' : 'subchats'}`;
     return `<div class="group folder compact-proj" data-folded="${!open}"><div class="proj-row"><button class="nav-i proj-btn" data-project="${esc(g.p.key)}" ${many ? '' : `data-main-chat="${esc(lead.id)}"`} draggable="true" aria-current="${cur}" title="${esc(g.p.name)}: ${many ? `${mains.length} main chats` : esc(lead.title)}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span><span class="st-dot" style="background:${st.c}" title="${st.name}"></span>${nd ? '<span class="dot needs-dot" title="Needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}</button>${count ? `<button class="proj-chev" data-foldproj="${esc(g.p.key)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} ${label}" title="${label}"><span>${count}</span></button>` : ''}<button class="proj-options" data-projmenu="${esc(g.p.key)}" aria-label="${esc(g.p.name)} options" title="Project options">⋯</button></div><div class="folder-items">${inner}</div></div>`;
   };
-  // Quick is the top project, above the buckets.
-  const quickG = act.find(g => g.p.quick);
-  let html = quickG ? projRow(quickG) : '';
-  if (S.bucket === 'all') {
-    for (const b of [...buckets(), { id: null, name: 'Unsorted' }]) {
-      const gs = act.filter(g => (g.p.bucket || null) === b.id && !g.p.quick);
-      if (gs.length) html += `<div class="side-bucket">${esc(b.name)}</div>${gs.map(projRow).join('')}`;
-    }
-  } else html += act.filter(g => !g.p.quick).map(projRow).join('');
-  // Review and waiting stay reachable without filling the active project lists.
-  for (const [stage, name] of [['finishing', 'Finishing'], ['waiting', 'Waiting']]) {
-    const list = all.filter(c => isTop(c) && !c.focus && boardStage(c) === stage && !projOf(c).quick).sort((a, b) => b.updated - a.updated);
+  let html = act.map(projRow).join('');
+  // Then the categories, folded, one click to open: Quick (odds and ends), what's finishing, what's
+  // waiting. A folded one still says when something in it needs you or is working.
+  const inQuick = c => projOf(c).quick && !parked(statusOf(c));
+  for (const [stage, name] of [['quick', 'Quick'], ['finishing', 'Finishing'], ['waiting', 'Waiting']]) {
+    const list = all.filter(c => isTop(c) && !c.focus && (stage === 'quick' ? inQuick(c) : boardStage(c) === stage && !projOf(c).quick)).sort((a, b) => b.updated - a.updated);
     if (!list.length) continue;
     const open = S.folded[stage] === false;
-    html += `<button class="side-bucket side-bucket-btn" data-fold="${stage}" data-drop-stage="${stage}" aria-expanded="${open}">${name} <span class="n">${list.length}</span><span class="chev">${open ? '▾' : '▸'}</span></button>`;
+    const mark = open ? '' : list.some(needs) ? '<span class="dot needs-dot" title="Needs you"></span>' : list.some(running) ? '<span class="live-dot" title="Running"></span>' : '';
+    html += `<button class="side-bucket side-bucket-btn" data-fold="${stage}" ${stage === 'quick' ? 'data-drop-quick="1"' : `data-drop-stage="${stage}"`} aria-expanded="${open}">${name} <span class="n">${list.length}</span>${mark}<span class="chev">${open ? '▾' : '▸'}</span></button>`;
     if (open) html += `<div class="later-chats">${list.map(c => sideChat(c).replace('<span class="lbl">', `<span class="lbl" title="${esc(projOf(c).name || '')}">`) + sideFam(c)).join('')}</div>`;
   }
   // Later (the backlog) is a bucket of its own, after the others: folded, one click to open.
@@ -371,7 +364,6 @@ document.addEventListener('click', e => {
   if ((b = el('[data-pfold]'))) { const k = 'p-' + b.dataset.pfold; S.more[k] = !S.more[k]; return render(); }
   if ((b = el('[data-bfold]'))) { S.more['b-done'] = !S.more['b-done']; return render(); }
   if ((b = el('[data-pq]'))) { S.more['pq-' + b.dataset.pq] = !S.more['pq-' + b.dataset.pq]; return render(); }
-  if ((b = el('[data-pickbucket]'))) return pop(b, `${[['all', 'All buckets'], ...buckets().map(x => [x.id, x.name]), ['unsorted', 'Unsorted']].map(([id, n]) => `<button data-v="${esc(id)}" role="menuitemradio" aria-checked="${S.bucket === id}">${esc(n)}</button>`).join('')}`, v => { S.bucket = v; local.set('bucket', v); render(); });
   if ((b = el('#lookBtn'))) return lookMenu(b);
   if ((b = el('#muteBtn'))) return toggleSound();
   if ((b = el('[data-open]'))) { if (el('input') || el('a[href]') || (el('button') && !el('button').dataset.open)) return undefined; return b.dataset.open ? openChat(b.dataset.open) : toast('That chat hasn’t started yet.'); }
@@ -604,16 +596,16 @@ const nestTarget = t => {
 async function placeProject(key, targetKey, after = false) {
   const target = projBy.get(targetKey), moving = projBy.get(key);
   if (!target || !moving || key === targetKey || target.archived || moving.archived) return;
-  const keys = projectsIn(target.bucket).map(p => p.key).filter(k => k !== key);
+  const keys = projectsIn().map(p => p.key).filter(k => k !== key);
   keys.splice(keys.indexOf(targetKey) + Number(after), 0, key);
-  for (const [i, k] of keys.entries()) await api('/api/lite/project', { key: k, patch: { order: i + 1, ...(k === key ? { bucket: target.bucket || null } : {}) } });
+  for (const [i, k] of keys.entries()) await api('/api/lite/project', { key: k, patch: { order: i + 1 } });
   sfx('card'); await loadState(); render();
 }
 const projectDropTarget = t => {
   const p = t.closest('[data-project]') || t.closest('.proj-row')?.querySelector('[data-project]');
   return p && p.dataset.project !== drag.project && !projBy.get(p.dataset.project)?.archived ? p : null;
 };
-const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? projectDropTarget(t) || nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? projectDropTarget(t) || t.closest('[data-drop-bucket]') : null);
+const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? projectDropTarget(t) || nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus], [data-drop-quick]') : drag && drag.project ? projectDropTarget(t) || t.closest('[data-drop-bucket]') : null);
 const projectDropAfter = (e, z) => { const r = z.getBoundingClientRect(); return e.clientY > r.top + r.height / 2; };
 const clearDrop = () => document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot', 'drop-before', 'drop-after'));
 document.addEventListener('dragover', e => {
@@ -633,7 +625,7 @@ document.addEventListener('drop', e => {
   if (d.idea) { if (z.dataset.ideaDrop) { const over = e.target.closest('[data-idea]'); wrap(moveIdea)(d.idea, over && over.dataset.idea !== d.idea ? over.dataset.idea : null); } else wrap(startIdea)(d.idea); }
   else if (d.chats && z.dataset.project) wrap(async () => { await setChats(d.chats, z.dataset.project === '~quick' ? { quick: true } : { project: z.dataset.project, quick: false }, `Moved to ${projBy.get(z.dataset.project)?.name || 'project'}`); await loadState(); render(); })();
   else if (d.chats && z.dataset.chat) wrap(nestChats)(d.chats, z.dataset.chat);
-  else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : z.dataset.dropStage === 'waiting' ? { waiting: true } : { status: z.dataset.dropStage, waiting: false });
+  else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : z.dataset.dropQuick ? { quick: true, waiting: false } : z.dataset.dropStage === 'waiting' ? { waiting: true } : { status: z.dataset.dropStage, waiting: false, quick: false }).then(() => loadState()).then(render);
   else if (z.dataset.project) { if (z.dataset.project !== d.project) wrap(placeProject)(d.project, z.dataset.project, projectDropAfter(e, z)); }
   else wrap(setBucket)(d.project, z.dataset.dropBucket || null);
 });

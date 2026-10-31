@@ -243,8 +243,8 @@ const running = c => { const x = liveOf(c); return !!(x && x.working); };
 const isQuiet = c => S.now - c.updated > quietDays() * DAY && !needs(c) && !running(c) && !c.waiting && !c.focus;
 const visible = c => !c.archived && !c.desktopArchived && !c.auto && !c.routineRun && !(projOf(c).archived);
 const allChats = () => S.chats.filter(visible);
-// Quick spans the buckets: it shows whichever one you're looking at.
-const inBucket = c => S.bucket === 'all' || projOf(c).quick || (S.bucket === 'unsorted' ? !projOf(c).bucket : projOf(c).bucket === S.bucket);
+// One list of projects: buckets (kept in lite.json) no longer divide it.
+const inBucket = () => true;
 const live = cs => cs.filter(c => !parked(statusOf(c)) && !isQuiet(c));
 /* ---------- families: a chat and the sub-chats started from it ---------- */
 const low = x => String(x || '').toLowerCase();

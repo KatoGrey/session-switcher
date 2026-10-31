@@ -8,7 +8,7 @@
 function rowHtml(c, { showProject = false, showStage = false, depth = 0 } = {}) {
   const p = projOf(c), par = parentOn(c);
   const inParent = par && !depth ? ` · in “${esc(par.title.slice(0, 40))}”` : '';
-  const sub = showProject ? `${esc(p.name)}${p.bucket ? ` · ${esc(bucketName(p.bucket))}` : ''}${inParent}` : (c.waiting && c.note ? esc(c.note) : inParent.replace(/^ · /, ''));
+  const sub = showProject ? `${esc(p.name)}${inParent}` : (c.waiting && c.note ? esc(c.note) : inParent.replace(/^ · /, ''));
   const st = statusById(statusOf(c));
   // In a family, a sub-chat that belongs to another project says which.
   const ranTag = depth && par && par.project !== c.project ? `<span class="tag" title="Lives in ${esc(p.name)}">${esc(p.name)}</span>` : '';
@@ -50,28 +50,23 @@ function cardHtml(p) {
       <span class="meta">${nd ? '<span class="dot needs-dot"></span>' : ''}<span>${lv.length} active${w ? ` · ${w} waiting` : ''}</span></span></span></button>`;
 }
 const projectOrder = (a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || b.updated - a.updated || a.name.localeCompare(b.name);
-const projectsIn = b => S.projects.filter(p => !p.archived && !p.quick && (p.bucket || null) === (b || null)).sort(projectOrder);
+// Every project, in your order. (Quick isn't in the order: it's its own category at the bottom.)
+const projectsIn = () => S.projects.filter(p => !p.archived && !p.quick && chatsOfProject(p.key).length).sort(projectOrder);
 const hasChats = p => chatsOfProject(p.key).length > 0;
 function home() {
-  const groups = [...buckets().map(b => ({ id: b.id, name: b.name })), { id: null, name: 'Unsorted' }];
-  const sections = groups.map(b => {
-    const ps = projectsIn(b.id).filter(p => b.id !== null || hasChats(p));
-    if (b.id === null && !ps.length) return '';
-    const act = ps.filter(p => live(chatsOfProject(p.key)).length);
-    const quiet = ps.filter(p => !live(chatsOfProject(p.key)).length);
-    return `<section class="section" data-drop-bucket="${esc(b.id || '')}">
-      <div class="sec-h"><h2>${esc(b.name)}</h2><span class="n">${ps.length || ''}</span>${b.id === null ? '<span class="hint">Drag one onto a bucket, or right-click it</span>' : `<button class="hint" data-bstages="${esc(b.id)}" title="Whether chats in these projects are grouped by status in the sidebar">${bucketStages(b.id) ? 'By status' : 'Plain list'}</button>`}</div>
-      ${act.length ? `<div class="cards">${act.map(cardHtml).join('')}</div>` : ''}
-      ${!ps.length ? '<div class="dropzone">Drag projects here</div>' : ''}
-      ${quiet.length ? `<div class="quiet-line"><span class="why" title="No chat here has moved in ${quietDays()} days, or every chat is Done. A new chat or message brings it back up.">Quiet:</span>${quiet.map(p => `<button data-project="${esc(p.key)}" draggable="true" data-cur="p:${esc(p.key)}"><span class="thumb-xs" style="${artStyle(p)}"></span>${esc(p.name)}</button>`).join('')}</div>` : ''}
-    </section>`;
-  }).join('');
-  // Quick is the top project, above the buckets.
+  // One list of projects; Quick (odds and ends) comes last.
+  const ps = projectsIn();
+  const act = ps.filter(p => live(chatsOfProject(p.key)).length);
+  const quiet = ps.filter(p => !live(chatsOfProject(p.key)).length);
   const quickP = S.projects.find(p => p.quick && !p.archived && hasChats(p));
-  const quickTop = quickP ? `<section class="section"><div class="cards">${cardHtml(quickP)}</div></section>` : '';
-  const setup = !buckets().length ? '<p class="lead">No buckets yet. Buckets say what a project is for (a product, games, personal apps). They live in lite.json in your data folder.</p>' : '';
-  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${L('Projects')}</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>${setup}${quickTop}${sections}
-    <p class="hint-line">Drag projects before or after one another to reorder them, or onto a bucket to move them. Use the sidebar menu to move a project up or down; its page’s ⋯ menu has the other project settings.</p></div>`;
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${L('Projects')}</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>
+    <section class="section">
+      ${act.length ? `<div class="cards">${act.map(cardHtml).join('')}</div>` : ''}
+      ${!ps.length ? '<p class="empty-note">No projects yet.</p>' : ''}
+      ${quiet.length ? `<div class="quiet-line"><span class="why" title="No chat here has moved in ${quietDays()} days, or every chat is Done. A new chat or message brings it back up.">Quiet:</span>${quiet.map(p => `<button data-project="${esc(p.key)}" draggable="true">${esc(p.name)}</button>`).join('')}</div>` : ''}
+    </section>
+    ${quickP ? `<section class="section"><div class="sec-h"><h2>Quick</h2><span class="hint">Odds and ends</span></div><div class="cards">${cardHtml(quickP)}</div></section>` : ''}
+    <p class="hint-line">Drag projects before or after one another to reorder them. The sidebar menu moves a project up or down; its page’s ⋯ menu has the other project settings.</p></div>`;
 }
 
 // Chats matching the search: by name, project or first message, newest first.
@@ -144,7 +139,7 @@ function project() {
   return `<div class="wrap">
     <div class="page-h">
       <div class="proj-h">${BACK}<span class="art-s" style="${artStyle(p)}">${artInner(p)}</span>
-        <div style="min-width:0"><div class="crumb"><button data-go="home">${esc(bucketName(p.bucket))}</button><span>·</span><span class="mono">${esc((p.cwd || 'No folder').replace(/^\/Users\/[^/]+/, '~'))}${p.mono ? ` (${esc(p.name)} chats)` : ''}</span></div><h1>${esc(p.name)}</h1></div></div>
+        <div style="min-width:0"><div class="crumb"><button data-go="home">Projects</button><span>·</span><span class="mono">${esc((p.cwd || 'No folder').replace(/^\/Users\/[^/]+/, '~'))}${p.mono ? ` (${esc(p.name)} chats)` : ''}</span></div><h1>${esc(p.name)}</h1></div></div>
       <div style="display:flex;gap:6px">${p.cwd ? `<button class="btn prime" data-newchat="${esc(p.key)}">${L('New chat')} <kbd>c</kbd></button>` : ''}<button class="iconbtn" data-projmenu="${esc(p.key)}" aria-haspopup="menu" aria-label="Project options">${IC.dots}</button></div>
     </div>
     ${sections || '<p class="empty-note">No chats here yet.</p>'}
@@ -473,9 +468,9 @@ function rowMenu(anchor, id, at) {
 function projMenu(anchor, k, at) {
   const p = projBy.get(k); if (!p) return;
   const compact = !!anchor.closest('.side');
-  const peers = projectsIn(p.bucket), i = peers.findIndex(x => x.key === k);
+  const peers = projectsIn(), i = peers.findIndex(x => x.key === k);
   const moves = p.archived ? '' : `<hr><button data-v="up" ${i <= 0 ? 'disabled' : ''}>Move up</button><button data-v="down" ${i < 0 || i === peers.length - 1 ? 'disabled' : ''}>Move down</button>`;
-  const settings = `${p.cwd ? '<button data-v="img">Change picture…</button>' : ''}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`;
+  const settings = `${p.cwd ? '<button data-v="img">Change picture…</button>' : ''}<hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`;
   pop(anchor, `<div class="ph">${esc(p.name)}</div>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button>' : ''}${compact ? moves : settings}`,
     v => {
       if (v === 'up' && i > 0) return wrap(placeProject)(k, peers[i - 1].key);

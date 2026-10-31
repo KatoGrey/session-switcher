@@ -7,7 +7,7 @@ const CMD_CHIPS = ['Nudge anything stuck for 2+ days', 'Sort new chats by kind a
 
 // A live entry as a chat row: the chat it belongs to, when the list has it.
 const titleOf = x => { const c = x.sessionId && chatBy.get(x.sessionId); return (c && c.title) || x.title || 'New chat'; };
-const whereOf = x => { const c = x.sessionId && chatBy.get(x.sessionId); const p = c && projOf(c); return p ? `${p.name}${p.bucket ? ` · ${bucketName(p.bucket)}` : ''}` : x.folder || ''; };
+const whereOf = x => { const c = x.sessionId && chatBy.get(x.sessionId); const p = c && projOf(c); return p ? p.name : x.folder || ''; };
 const idOf = x => x.sessionId || x.key;
 
 // The end of a reply, for a card: Markdown links as their words, starting at a sentence (or at
@@ -241,7 +241,7 @@ function triageView() {
   return `<div class="triage">
     <div class="tr-top"><span>${TR.i + 1} of ${items.length}</span><span class="tr-bar"><i style="width:${Math.round(100 * (TR.handled) / (TR.handled + items.length))}%"></i></span><button class="linkish" data-go="now">Exit <kbd>esc</kbd></button></div>
     <div class="tr-card">
-      <div class="crumb">${proj ? `${esc(bucketName(proj.bucket))} › ${esc(proj.name)}` : esc(x.folder || '')}${x.accountName ? ` · ${esc(x.accountName)}` : ''}${x.finishedAt ? ` · ${ago(x.finishedAt)}` : ''}</div>
+      <div class="crumb">${proj ? esc(proj.name) : esc(x.folder || '')}${x.accountName ? ` · ${esc(x.accountName)}` : ''}${x.finishedAt ? ` · ${ago(x.finishedAt)}` : ''}</div>
       <h2 class="tr-title">${esc(titleOf(x))}</h2>
       ${body}
       ${TR.replying ? `<form class="box tr-box" id="trForm"><textarea ${MSG_ATTRS} id="trBox" rows="2" placeholder="Reply, then ↵ (it goes to the next one)"></textarea></form>` : ''}
