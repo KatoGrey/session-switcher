@@ -1257,3 +1257,8 @@ button.tk-heat-cell:hover, button.tk-heat-cell:focus-visible { outline: 2px soli
 .m-more[open] summary::after { content: "▾"; }
 .m-more summary:hover { background: var(--hover); }
 .pop button small { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: inherit; }
+/* The project picker. */
+.pp-q { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 30%, var(--pane)); color: var(--fg); font-size: 9px; font-weight: 600; flex: none; }
+.chip .pp-q { width: 16px; height: 16px; border-radius: 4px; font-size: 10px; }
+.chip small { color: var(--muted); font-size: 12px; }
+.pp-more, .pp-none { color: var(--muted); font-size: 11.5px; padding: 6px 10px 2px; margin: 0; }

@@ -310,7 +310,11 @@ document.addEventListener('click', e => {
   if ((b = el('[data-rmfile]'))) { COMP.files.splice(Number(b.dataset.rmfile), 1); return paintAttachments(); }
   if ((b = el('[data-zoom]'))) return showPicture(b.src, picsNear(b));
   if ((b = el('[data-stopchat]'))) { sfx('close'); return wrap(() => api('/api/chat/interrupt', { key: replyTarget().key || CV.key }))(); }
-  if ((b = el('[data-ncproject]'))) return pickProject(b, k => { NC.project = k; paintNewChat(); $('msgBox').focus(); });
+  if ((b = el('[data-ncproject]'))) return pickProject(b, k => {
+    // Quick runs in the folder of the project picked last (pick a project first to change it).
+    if (k === '__quick__') NC.quick = true; else { NC.quick = false; NC.project = k; }
+    local.set('ncQuick', NC.quick); paintNewChat(); $('msgBox').focus();
+  }, { quick: true });
   if ((b = el('[data-ncwho]'))) return accountMenu(b);
   if ((b = el('[data-triage]'))) return startTriage();
   if ((b = el('[data-tr]'))) { b.disabled = true; return wrap(triageAct)(b.dataset.tr); }

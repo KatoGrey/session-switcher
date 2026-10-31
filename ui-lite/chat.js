@@ -1446,7 +1446,8 @@ function settingsMenu(anchor) {
 /* ---------- New chat: the same input bar, centered ---------- */
 // Who a new chat runs as: an assistant and an account. "Use next" (the default) follows the
 // use-next order; you can also pick a particular account.
-const NC = { project: null, who: 'claude', account: null };
+// quick: the chat goes in Quick, running in the folder of the project last picked.
+const NC = { project: null, who: 'claude', account: null, quick: local.get('ncQuick', false) };
 function accountFor(who) {
   if (who === 'gemini') return 'gemini';
   if (who === 'ollama') { const o = plans().find(p => p.family === 'ollama' && !p.broken); return o ? o.id : null; }
@@ -1469,10 +1470,10 @@ function accountMenu(anchor) {
     paintNewChat(); $('msgBox')?.focus();
   });
 }
-const ncProjects = () => S.projects.filter(p => p.cwd && p.exists && !p.archived && !p.loose).sort((a, b) => (b.bucket ? 1 : 0) - (a.bucket ? 1 : 0) || b.updated - a.updated);
+const ncProjects = () => { const ps = projectsIn().filter(p => p.cwd && p.exists && !p.loose); return ps.length ? ps : S.projects.filter(p => p.cwd && p.exists && !p.archived && !p.loose && !tempFolder(p.cwd)).sort((a, b) => b.updated - a.updated); };
 function newChatView() {
   const ps = ncProjects();
-  if (!NC.project || !ps.some(p => p.key === NC.project)) NC.project = (ps[0] || {}).key || null;
+  if (!NC.project || !(projBy.get(NC.project) || {}).cwd) NC.project = (ps[0] || {}).key || null;
   return `<div class="newchat"><div class="nc-inner">
     <button class="iconbtn back" data-go="back" aria-label="Back">‹</button>
     <h1 class="nc-h">What should we work on?</h1>
@@ -1485,7 +1486,7 @@ function paintNewChat() {
   if (!$('ncChips')) return;
   const p = projBy.get(NC.project);
   const acc = accountFor(NC.who), plan = acc && planById(acc);
-  $('ncChips').innerHTML = `<button type="button" class="chip big" data-ncproject="1">${p ? `<span class="thumb-xs" style="${artStyle(p)};width:16px;height:16px;border-radius:4px"></span>${esc(p.name)}` : 'Pick a project'} ▾</button>
+  $('ncChips').innerHTML = `<button type="button" class="chip big" data-ncproject="1">${NC.quick ? `<span class="pp-q">Q</span>Quick${p ? ` <small>in ${esc(p.name)}</small>` : ''}` : p ? `<span class="thumb-xs" style="${artStyle(p)};width:16px;height:16px;border-radius:4px"></span>${esc(p.name)}` : 'Pick a project'} ▾</button>
     <button type="button" class="chip big" data-ncwho="1">${provName(NC.who)}${plan && NC.who !== 'ollama' ? ` · ${esc(plan.label)}` : ''}${plan && NC.who !== 'ollama' ? ` <small>${NC.account ? '' : 'use next · '}${typeof plan.left === 'number' ? `${plan.left}%` : ''}</small>` : ''} ▾</button>`;
   $('barTools').innerHTML = toolsHtml({ fresh: true });
   $('barHint').textContent = '';
@@ -1498,6 +1499,7 @@ async function startNewChat() {
   if (!text && !COMP.images.length) return box.focus();
   if (DRAW_RE.test(text)) return wrap(drawIntoMessage)(text);
   if (!p) return toast('Pick a project first.');
+  const quick = NC.quick;
   if (COMP.converting) return toast('One moment: a picture is still being prepared.');
   const prov = NC.who === 'ollama' ? 'codex' : NC.who;
   const perm = COMP.perm || permDefault(prov);
@@ -1527,7 +1529,8 @@ async function startNewChat() {
     });
     // Started from a project that shares its folder with others (Labs and Platform in one repo, say):
     // it belongs to the one you started it from, not to whichever its title suggests.
-    if (id && p.key !== p.cwd) api('/api/lite/chats', { ids: [id], patch: { project: p.key } }).then(() => loadState()).catch(() => {});
+    if (id && quick) api('/api/lite/chats', { ids: [id], patch: { quick: true } }).then(() => loadState()).catch(() => {});
+    else if (id && p.key !== p.cwd) api('/api/lite/chats', { ids: [id], patch: { project: p.key } }).then(() => loadState()).catch(() => {});
     if (mine()) { if (id) adoptChatId(id); CV.sending = false; if (CV.status === 'Starting') CV.status = ''; paintStatus(); paintBar(); }
   } catch (err) {
     toast(err.message);
@@ -1581,16 +1584,35 @@ function startAndSend(key, text, images = [], beforeSend = null) {
     });
   });
 }
-function pickProject(anchor, onPick, { personal = false } = {}) {
-  // By bucket, in the sidebar's order; each bucket's projects in their set order, then the busiest.
-  const bi = k => { const i = buckets().findIndex(b => b.id === k); return i < 0 ? 99 : i; };
-  const ord = p => (typeof p.order === 'number' ? p.order : 1e9);
-  const ps = ncProjects().sort((a, b) => bi(a.bucket) - bi(b.bucket) || ord(a) - ord(b) || b.updated - a.updated);
+// Folders that are someone's temporary workspace, not a project: Claude's scratch folders, temp
+// folders and worktrees. They stay findable by typing, never in the list.
+const tempFolder = cwd => /scratch-workspaces|[\\/]\.claude[\\/]worktrees[\\/]|[\\/]\.codex[\w-]*[\\/]worktrees[\\/]|^\/private\/|^\/tmp\/|^\/var\/folders\//.test(String(cwd || ''));
+// The project picker: your projects as the sidebar lists them (in your order); typing also finds every
+// other folder. Quick (odds and ends) on top where a chat can go there.
+function pickProject(anchor, onPick, { personal = false, quick = false } = {}) {
+  const usable = p => p.cwd && p.exists && !p.archived && !p.loose;
+  const listed = projectsIn().filter(usable);
+  const seen = new Set(listed.map(p => p.key)), names = new Set(listed.map(p => p.name.toLowerCase()));
+  // The rest, once each by name (the newest), temporary folders last.
+  const rest = [];
+  for (const p of S.projects.filter(p => usable(p) && !seen.has(p.key)).sort((a, b) => Number(tempFolder(a.cwd)) - Number(tempFolder(b.cwd)) || b.updated - a.updated)) {
+    const n = p.name.toLowerCase(); if (names.has(n)) continue; names.add(n); rest.push(p);
+  }
+  const where = p => String(p.cwd || '').replace(/^\/Users\/[^/]+/, '~');
+  const row = (p, extra = false) => `<button data-v="${esc(p.key)}" ${extra ? 'hidden data-extra="1"' : ''} title="${esc(where(p))}"><span class="thumb-xs" style="${artStyle(p)};width:14px;height:14px;border-radius:3px;flex:none"></span>${esc(p.name)}${extra ? `<small>${esc(where(p).split('/').slice(-2, -1)[0] || '')}</small>` : ''}</button>`;
   const own = personal && buckets().find(b => b.id === 'personal');
-  pop(anchor, `<div class="ph">Project</div><input class="pop-q" id="ppQ" placeholder="Type to filter" aria-label="Filter projects"><div id="ppList">${own ? `<button data-v="__own__"><b>${esc(own.name)}, as its own project</b><small>One line in ${esc(own.name)}</small></button>` : ''}${ps.map(p => `<button data-v="${esc(p.key)}">${esc(p.name)}<small>${esc(bucketName(p.bucket))}</small></button>`).join('')}</div>`, onPick);
+  pop(anchor, `<input class="pop-q" id="ppQ" placeholder="Type to find a project or folder" aria-label="Find a project">
+    <div id="ppList">${quick ? `<button data-v="__quick__"><span class="pp-q">Q</span>Quick<small>odds and ends</small></button><hr>` : ''}${own ? `<button data-v="__own__">${esc(own.name)}, as its own project</button>` : ''}${listed.map(p => row(p)).join('')}${rest.map(p => row(p, true)).join('')}<p class="pp-none" hidden>No project or folder matches.</p></div>
+    ${rest.length ? `<p class="pp-more">${rest.length} other folders: type to find one</p>` : ''}`, onPick);
   const q = $('ppQ'); if (!q) return;
   q.focus();
-  q.addEventListener('input', () => { const t = q.value.toLowerCase(); for (const b of $('ppList').querySelectorAll('button')) b.hidden = !b.textContent.toLowerCase().includes(t); });
+  q.addEventListener('input', () => {
+    const t = q.value.trim().toLowerCase();
+    let n = 0;
+    for (const b of $('ppList').querySelectorAll('button')) { const hit = t ? (b.textContent + ' ' + b.title).toLowerCase().includes(t) : !b.dataset.extra; b.hidden = !hit; if (hit) n++; }
+    $('ppList').querySelector('.pp-none').hidden = n > 0;
+    const hr = $('ppList').querySelector('hr'); if (hr) hr.hidden = !!t;
+  });
   q.addEventListener('keydown', e => { if (e.key === 'Enter') { const b = [...$('ppList').querySelectorAll('button')].find(x => !x.hidden); if (b) { e.preventDefault(); b.click(); } } });
 }
 // In a one-question ask, ↵ in Other sends what you typed.
