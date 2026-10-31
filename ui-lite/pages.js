@@ -434,12 +434,16 @@ async function setPushPref(k, v) {
 function rowMenu(anchor, id, at) {
   const c = chatBy.get(id); if (!c) return;
   const ids = S.sel.has(id) && S.sel.size > 1 ? [...S.sel] : [id];
-  pop(anchor, `<div class="ph">${ids.length > 1 ? `${ids.length} chats` : esc(c.title.slice(0, 60))}</div>
-    <button data-v="open">Open<kbd>↵</kbd></button><button data-v="full">Open in the full app</button><hr><div class="ph">Status</div>
-    ${STATUSES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && statusOf(c) === s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('')}
-    <div class="ph">Kind</div><div class="kind-seg">${KINDS.map(k => `<button data-v="k:${k.id}" role="menuitemradio" aria-checked="${ids.length === 1 && c.kind === k.id}">${k.name}</button>`).join('')}</div>
-    <hr><button data-v="routine">Make this a routine…</button><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}
-    <button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="quick" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).quick)}">Quick<small>odds and ends, not a project</small></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="rename">Rename…</button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
+  // What you change most, first and compact; the rarer things under More. Shortcuts are in the tooltips.
+  const every = k => ids.every(i => (chatBy.get(i) || {})[k]);
+  pop(anchor, `<div class="ph m-title">${ids.length > 1 ? `${ids.length} chats` : esc(c.title.slice(0, 60))}</div>
+    <div class="kind-seg m-chips" role="group" aria-label="Status">${STATUSES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && statusOf(c) === s.id}" title="${s.name} (${s.key})"><span class="dot" style="background:${s.c}"></span>${s.name}</button>`).join('')}</div>
+    <div class="kind-seg m-chips m-kinds" role="group" aria-label="Kind">${KINDS.map(k => `<button data-v="k:${k.id}" role="menuitemradio" aria-checked="${ids.length === 1 && c.kind === k.id}">${k.name}</button>`).join('')}</div>
+    <hr>
+    <div class="m-toggles"><button data-v="focus" role="menuitemcheckbox" aria-checked="${every('focus')}" title="Focus: pinned at the top (f)">★ Focus</button><button data-v="quick" role="menuitemcheckbox" aria-checked="${every('quick')}" title="Quick: odds and ends, not a project">Quick</button><button data-v="wait" role="menuitemcheckbox" aria-checked="${!!c.waiting}" title="${c.waiting ? `Waiting on ${esc(c.waitingOn || 'someone')}` : 'Waiting on someone (w)'}">Waiting</button></div>
+    <hr>
+    <button data-v="rename">Rename…</button><button data-v="proj">Move to project…<small>${esc(projOf(c).name)}</small></button><button data-v="arch" title="Archive (e)">Archive</button>
+    <details class="m-more"><summary>More</summary><button data-v="full">Open in the full app</button><button data-v="routine">Make this a routine…</button><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}</details>`, v => {
     if (v === 'open') return openChat(id);
     if (v === 'rename') return askRename(id);
     if (v === 'nest') return pickParent(anchor, ids);

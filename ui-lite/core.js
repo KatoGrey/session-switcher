@@ -390,6 +390,8 @@ function pop(anchor, html, onPick, at) {
   root.querySelector('.pop-back').addEventListener('contextmenu', e => { e.preventDefault(); closePop(); });
   el.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; closePop(); onPick(b.dataset.v); });
   el.querySelector('button')?.focus();
+  // A section that opens (More) keeps the menu on screen.
+  for (const d of el.querySelectorAll('details')) d.addEventListener('toggle', () => { const b = el.getBoundingClientRect(); if (b.bottom > innerHeight - 8) el.style.top = `${Math.max(16, innerHeight - 8 - b.height)}px`; });
 }
 // A plain yes/no before anything that can't be taken back (spending a manual reset, say).
 function confirmBox({ title, body, yes = 'Go ahead', no = 'Cancel' }) {

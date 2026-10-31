@@ -1240,3 +1240,20 @@ button.tk-heat-cell:hover, button.tk-heat-cell:focus-visible { outline: 2px soli
 .side-results .side-h { color: var(--muted); font-size: 12px; padding: 4px 8px; }
 .side-results .recent-row { padding: 10px 8px; border-radius: 8px; }
 .side-results .recent-row:active { background: var(--hover); }
+/* The chat menu: status and kind as chips, three toggles, the everyday actions, the rest under More. */
+.pop .m-title { color: var(--fg-2); font-weight: 500; font-size: 12.5px; padding-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pop .m-chips { padding: 0 6px 4px; gap: 4px; }
+.pop .m-chips button { gap: 6px; padding: 4px 9px; border: 1px solid var(--line); font-size: 12.5px; }
+.pop .m-chips button[aria-checked="true"] { background: var(--hover); border-color: var(--fg-2); font-weight: 500; }
+.pop .m-kinds button { color: var(--muted); padding: 2px 8px; font-size: 12px; border-color: transparent; }
+.pop .m-kinds button[aria-checked="true"] { color: var(--fg); border-color: var(--line-2); }
+.m-toggles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 2px 6px; }
+.pop .m-toggles button { justify-content: center; padding: 7px 4px; border: 1px solid var(--line); font-size: 12.5px; }
+.pop .m-toggles button[aria-checked="true"] { background: color-mix(in srgb, var(--accent) 12%, transparent); border-color: var(--accent); color: var(--fg); }
+.pop .m-toggles button[aria-checked="true"]::after { content: none; }
+.m-more summary { padding: 7px 10px; color: var(--muted); font-size: 12.5px; border-radius: 6px; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
+.m-more summary::-webkit-details-marker { display: none; }
+.m-more summary::after { content: "▸"; font-size: 10px; margin-left: auto; }
+.m-more[open] summary::after { content: "▾"; }
+.m-more summary:hover { background: var(--hover); }
+.pop button small { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: inherit; }
