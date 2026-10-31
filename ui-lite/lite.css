@@ -1240,3 +1240,6 @@ button.tk-heat-cell:hover, button.tk-heat-cell:focus-visible { outline: 2px soli
 .side-results .side-h { color: var(--muted); font-size: 12px; padding: 4px 8px; }
 .side-results .recent-row { padding: 10px 8px; border-radius: 8px; }
 .side-results .recent-row:active { background: var(--hover); }
+/* The Quick lane: each row says which project it belongs to. */
+.quick-lane .chat-i { flex-wrap: wrap; row-gap: 0; }
+.quick-lane .quick-proj { flex: 1 0 100%; order: 9; color: var(--muted); font-size: 11px; line-height: 1.2; padding-left: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

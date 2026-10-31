@@ -223,7 +223,10 @@ const quietDays = () => (S.lite ? S.lite.quietDays : 4);
 const floor = () => (S.lite ? S.lite.plans.floor : 15);
 const statusOf = c => c.status;
 // Waiting keeps its underlying stage; only its place on the board changes.
-const boardStage = c => c.waiting && !parked(statusOf(c)) ? 'waiting' : statusOf(c);
+const boardStage = c => c.waiting && !parked(statusOf(c)) ? 'waiting' : c.quick && !parked(statusOf(c)) ? 'quick' : statusOf(c);
+// Quick: odds and ends (a bug fix, a small change, a question), not projects. They sit in one lane
+// across all projects instead of filling each project's board and Finishing.
+const isQuick = c => boardStage(c) === 'quick' && !c.focus;
 const kindTag = c => (c.kind && c.kind !== 'feature' ? `<span class="tag kind-tag k-${c.kind}">${kindById(c.kind).name}</span>` : '');
 const focusStar = c => (c.focus ? '<span class="focus-star" title="Focus">★</span>' : '');
 const waitTag = c => (c.waiting ? `<span class="tag wait-tag">${esc(c.waitingOn || 'Waiting')}</span>` : '');
@@ -412,14 +415,14 @@ const changeWords = (ids, patch) => {
 };
 async function setChats(ids, patch, label) {
   // Undo puts back exactly what was there, guesses included (a guessed status goes back to a guess).
-  const prev = ids.map(id => { const c = chatBy.get(id) || {}, g = c.guessed || {}; return { id, patch: { ...('project' in patch ? { project: S.lite?.chats?.[id]?.project || null } : {}), status: g.status ? null : c.status, kind: g.kind ? null : c.kind || null, focus: !!c.focus, waiting: !!c.waiting, waitingOn: c.waitingOn || '', note: c.note || '', remindAt: c.remindAt || null } }; });
+  const prev = ids.map(id => { const c = chatBy.get(id) || {}, g = c.guessed || {}; return { id, patch: { ...('project' in patch ? { project: S.lite?.chats?.[id]?.project || null } : {}), ...('quick' in patch ? { quick: g.quick ? null : !!c.quick } : {}), status: g.status ? null : c.status, kind: g.kind ? null : c.kind || null, focus: !!c.focus, waiting: !!c.waiting, waitingOn: c.waitingOn || '', note: c.note || '', remindAt: c.remindAt || null } }; });
   await api('/api/lite/chats', { ids, patch });
   // Show it straight away; the server's own list follows.
   for (const id of ids) {
     const c = chatBy.get(id); if (!c) continue;
     for (const k of ['status', 'kind']) if (k in patch && patch[k]) { c[k] = patch[k]; c.guessed = { ...(c.guessed || {}), [k]: false }; }
     if ('project' in patch && patch.project) c.project = patch.project;
-    for (const k of ['focus', 'waiting']) if (k in patch) c[k] = !!patch[k];
+    for (const k of ['focus', 'waiting', 'quick']) if (k in patch) c[k] = !!patch[k];
     for (const k of ['waitingOn', 'note']) if (k in patch) c[k] = patch[k] || null;
   }
   S.sel.clear(); sfx('slide'); render();

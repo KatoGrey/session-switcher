@@ -121,7 +121,10 @@ function project() {
   const cs = chatsOfProject(p.key).sort((x, y) => y.updated - x.updated);
   const foc = cs.filter(c => c.focus && !parked(statusOf(c)));
   const focusSec = foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span></div><div class="rows">${foc.map(c => rowHtml(c, { showStage: true })).join('')}</div></section>` : '';
-  const sections = focusSec + [...statusesShown().filter(s => !parked(s.id)), { id: 'waiting', name: 'Waiting', c: 'var(--muted)' }, ...statusesShown().filter(s => parked(s.id))].map(s => {
+  // This project's quick chats, on its page too (the sidebar gathers them across projects).
+  const quickHere = cs.filter(c => isTop(c) && isQuick(c));
+  const quickSec = quickHere.length ? `<section class="section" data-drop-quick="1"><div class="sec-h"><h2>Quick</h2><span class="n">${quickHere.length}</span><span class="hint">Odds and ends</span></div><div class="rows">${famRowsHtml(quickHere)}</div></section>` : '';
+  const sections = focusSec + quickSec + [...statusesShown().filter(s => !parked(s.id)), { id: 'waiting', name: 'Waiting', c: 'var(--muted)' }, ...statusesShown().filter(s => parked(s.id))].map(s => {
     const all = cs.filter(c => isTop(c) && boardStage(c) === s.id && !(c.focus && !parked(statusOf(c))));
     if (!all.length) return '';
     const deferred = parked(s.id) || s.id === 'finishing' || s.id === 'waiting';
@@ -441,7 +444,7 @@ function rowMenu(anchor, id, at) {
     ${STATUSES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && statusOf(c) === s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('')}
     <div class="ph">Kind</div><div class="kind-seg">${KINDS.map(k => `<button data-v="k:${k.id}" role="menuitemradio" aria-checked="${ids.length === 1 && c.kind === k.id}">${k.name}</button>`).join('')}</div>
     <hr><button data-v="routine">Make this a routine…</button><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}
-    <button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="rename">Rename…</button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
+    <button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="quick" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).quick)}">Quick<small>odds and ends, not a project</small></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="rename">Rename…</button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
     if (v === 'open') return openChat(id);
     if (v === 'rename') return askRename(id);
     if (v === 'nest') return pickParent(anchor, ids);
@@ -451,6 +454,7 @@ function rowMenu(anchor, id, at) {
     if (v.startsWith('s:')) return wrap(setChats)(ids, { status: v.slice(2) });
     if (v.startsWith('k:')) return wrap(setChats)(ids, { kind: v.slice(2) });
     if (v === 'focus') return wrap(toggleFocus)(ids);
+    if (v === 'quick') { const on = !ids.every(i => (chatBy.get(i) || {}).quick); return wrap(setChats)(ids, { quick: on }, on ? 'Moved to Quick' : 'Out of Quick'); }
     if (v === 'wait') return askWaiting(ids);
     if (v === 'arch') return wrap(archiveChats)(ids);
     if (v === 'proj') return pickProject(anchor, k => wrap(async () => {

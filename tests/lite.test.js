@@ -167,11 +167,54 @@ test('lite.json: kind, status, Focus, Waiting with a reminder, buckets, archive 
 test('guesses: the model’s JSON is read even inside prose, and bad kinds or statuses are dropped', () => {
   const { parseGuesses, looksLikePrompt } = require('../lib/lite-guess');
   const g = parseGuesses('Sure! ```json\n[{"id":"a","kind":"bug","status":"building","title":"Fix discover spacing."},{"id":"b","kind":"epic","status":"later","title":"x"},{"id":"","kind":"bug"}]\n```');
-  assert.deepEqual(g, [{ id: 'a', kind: 'bug', status: 'building', title: 'Fix discover spacing' }, { id: 'b', kind: null, status: null, title: 'x' }]);
+  assert.deepEqual(g, [{ id: 'a', kind: 'bug', status: 'building', quick: null, title: 'Fix discover spacing' }, { id: 'b', kind: null, status: null, quick: null, title: 'x' }]);
+  assert.deepEqual(parseGuesses('[{"id":"a","size":"quick"},{"id":"b","size":"project"},{"id":"c","size":"huge"}]').map(x => x.quick), [true, false]);
   assert.deepEqual(parseGuesses('no json here'), []);
   assert.ok(looksLikePrompt('You are reviewer "astra-6". Read the file and…'));
   assert.ok(looksLikePrompt('Reply with just the word ready.'));
   assert.ok(!looksLikePrompt('Alchemy release retro'));
+});
+
+test('naming: waits until a chat has settled, one unreadable chat holds up nothing, and it looks again as work grows', async () => {
+  const { createGuesser } = require('../lib/lite-guess');
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lite-name-'));
+  try {
+    const st = lite.createLite({ dataDir: dir });
+    const store = { ...st, get: () => ({ ...st.get(), guessModel: 'fake' }) };
+    const row = id => ({ id, title: `${id} first words`, firstPrompt: 'hi', autoTitle: true, updated: Date.now() });
+    const rows = [row('gone'), row('done'), row('fresh'), row('busy'), row('yours')];
+    rows[4].autoTitle = false;
+    const asked = [];
+    const g = createGuesser({
+      store, chats: () => rows, working: () => new Set(['busy']),
+      context: async id => { if (id === 'gone') throw new Error('That chat can’t be read.'); return `about ${id}`; },
+      ask: async (m, text) => { const ids = rows.map(r => r.id).filter(id => text.includes(`id: ${id}\n`)); asked.push(ids); return { message: { content: JSON.stringify(ids.map(id => ({ id, kind: 'bug', status: 'building', size: 'quick', title: `Named ${id}` }))) } }; },
+    });
+    for (const id of ['gone', 'done', 'busy']) { g.replyFinished(id); store.setGuess(id, { lastReplyAt: Date.now() - 3 * 60e3, keep: true }); }
+    g.replyFinished('fresh');   // just finished: not settled yet
+    await g.run();
+    const G = () => st.get().guess;
+    assert.equal(G().done.title, 'Named done');
+    assert.equal(G().done.replyNamed, true);
+    assert.equal(G().done.quick, true, 'it was sized too');
+    assert.equal(G().done.namedTurns, 1);
+    assert.equal(G().gone.readFails, 1, 'the unreadable one is noted');
+    assert.ok(!G().fresh.replyNamed, 'a chat that just replied waits');
+    assert.ok(!G().busy.replyNamed, 'a chat still working waits');
+    // Unreadable three times: let be.
+    await g.run(); await g.run();
+    assert.equal(G().gone.replyNamed, true);
+    // Another reply isn't enough to rename; the third (once settled) is.
+    asked.length = 0;
+    g.replyFinished('done'); store.setGuess('done', { lastReplyAt: Date.now() - 3 * 60e3, keep: true });
+    await g.run();
+    assert.ok(!asked.flat().includes('done'), 'after 2 replies it isn’t asked about again');
+    g.replyFinished('done'); store.setGuess('done', { lastReplyAt: Date.now() - 3 * 60e3, keep: true });
+    await g.run();
+    assert.ok(asked.flat().includes('done'), 'after 3 replies it is');
+    assert.equal(G().done.namedTurns, 3);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('seen and guesses are kept in lite.json; yours still wins', async () => {
