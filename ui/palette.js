@@ -272,7 +272,14 @@ const Viewer = (() => {
   async function load(pathArg, { push = true } = {}) {
     const params = new URLSearchParams({ path: pathArg });
     for (const k of ['key', 'session', 'cwd']) if (V.ctx[k]) params.set(k, V.ctx[k]);
+    for (const n of V.near || []) params.append('near', n);
     const f = await api(`/api/file?${params}`);
+    // Named without saying where, and there's more than one: yours to say which.
+    if (f.kind === 'choices') {
+      $('vHead').innerHTML = `<div class="v-t"><p class="eyebrow">Which one?</p><h3 id="vTitle">${esc(String(f.path).split(/[\\/]/).filter(Boolean).pop() || f.path)}</h3></div><div class="v-act"><button class="icon" data-v="close" aria-label="Close">✕</button></div>`;
+      $('vBody').innerHTML = `<p class="v-note">The chat didn’t say where this is, and there’s more than one on this computer.</p><ul class="v-choices">${f.matches.map(m => `<li><button type="button" class="btn quiet sm" data-v="go" data-path="${esc(m)}">${esc(m)}</button></li>`).join('')}</ul>`;
+      return;
+    }
     if (push && V.cur) V.stack.push(V.cur.path);
     V.cur = f; V.raw = false; render();
   }
@@ -291,9 +298,9 @@ const Viewer = (() => {
     const j = V.idx + d; if (!V.list || j < 0 || j >= V.list.length) return;
     V.idx = j; await load(V.list[j], { push: false });
   }
-  async function open({ path: p, key = null, session = null, cwd = null, list = null }) {
+  async function open({ path: p, key = null, session = null, cwd = null, list = null, near = [] }) {
     ensure();
-    V.ctx = { key, session, cwd }; V.stack = []; V.cur = null;
+    V.ctx = { key, session, cwd }; V.stack = []; V.cur = null; V.near = near;
     V.list = list && list.length ? list : null; V.idx = V.list ? V.list.indexOf(p) : -1;
     $('vHead').innerHTML = ''; $('vBody').innerHTML = '<p class="loading">Opening…</p>';
     if (!dlg().open) dlg().showModal();

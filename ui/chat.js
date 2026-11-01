@@ -705,7 +705,21 @@ async function branchFrom(turn) {
   await openChatView({ sessionId: r.sessionId });
   toast(pick === 'rewind' ? `Branched, and the files are back as they were${kept ? ` (${kept} changed since were left as they are)` : ''}.` : 'Branched. The original chat is as it was.', 5000);
 }
-function openFile(p) { return Viewer.open({ path: p, key: C.key, session: C.sessionId || (C.watch && C.watch.sessionId), cwd: C.info && C.info.cwd }); }
+// The folders this chat has pointed to, nearest the link first: where a file it only names is likely to be.
+function foldersNear(el) {
+  const links = [...$c('cFeed').querySelectorAll('.flink[data-path]')];
+  const at = Math.max(0, links.indexOf(el));
+  const out = [];
+  for (const x of links.map((l, i) => [l, Math.abs(i - at)]).sort((a, b) => a[1] - b[1]).map(([l]) => l)) {
+    if (x === el) continue;
+    const p = x.dataset.path;
+    const dir = /\.\w{1,8}$/.test(p) ? (DRIVE_PATH.test(p) ? p.replace(/[\\/][^\\/]*$/, '') : null) : p.replace(/[\\/]+$/, '');
+    if (dir && !out.includes(dir)) out.push(dir);
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+function openFile(p, el = null) { return Viewer.open({ path: p, key: C.key, session: C.sessionId || (C.watch && C.watch.sessionId), cwd: C.info && C.info.cwd, near: el ? foldersNear(el) : [] }); }
 
 document.addEventListener('DOMContentLoaded', () => {
   const chat = $c('chat');
@@ -722,7 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const po = t.closest('[data-pvopen]'); if (po) return openFile(po.dataset.pvopen);
     if (t.closest('[data-pvclose]')) return closePreview();
     const fl = t.closest('.flink[data-path], [data-file]');
-    if (fl) { e.preventDefault(); return openFile(fl.dataset.path || fl.dataset.file); }
+    if (fl) { e.preventDefault(); return openFile(fl.dataset.path || fl.dataset.file, fl); }
     const rv = t.closest('[data-reveal]');
     if (rv) { const r = await api('/api/reveal', { path: rv.dataset.reveal, key: C.key, session: C.sessionId }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
     const cp = t.closest('[data-copy]');

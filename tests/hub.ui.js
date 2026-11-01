@@ -636,6 +636,38 @@ module.exports = [
     },
   },
   {
+    name: 'a link a chat only names',
+    // "x-deploy.zip, in Documents\My Site": a link that opens the right place, not one that goes nowhere.
+    async run(t) {
+      const urls = [];
+      const b = await t.open({ gemini: true, seen: (p, u) => { if (p === '/api/file') urls.push(u); } });
+      await sleep(600);
+      const judged = await b.eval(`const bs = String.fromCharCode(92); return {
+        folder: looksLikePath('Documents' + bs + 'Rebirth World Tempting'), slash: looksLikePath('OneDrive/My Site/'), name: looksLikePath('site-deploy.zip'), drive: looksLikePath('C:' + bs),
+        part: looksLikePath('-deploy.zip'), ext: looksLikePath('.zip'), scheme: looksLikePath('file:///'), words: looksLikePath('documents are nice'), cmd: looksLikePath('Documents/run --fast') }`);
+      t.check('a shortened folder of yours is a link, and so are a name and a drive', judged.folder && judged.slash && judged.name && judged.drive, judged);
+      t.check('part of a name, or file:/// by itself, isn’t', !judged.part && !judged.ext && !judged.scheme && !judged.words && !judged.cmd, judged);
+      await b.eval(`await ChatUI.open({ sessionId: S.projects.flatMap(p => p.sessions).find(c => /bard/.test(c.title)).id }); return 1`);
+      await sleep(900);
+      await b.eval(`const d = document.createElement('div'); d.id = 'nearTest'; d.innerHTML = inline('Upload \`site-deploy.zip\`, in \`Documents/Rebirth World Tempting\`.'); document.getElementById('cFeed').append(d); return 1`);
+      await b.eval(`document.querySelector('#nearTest .flink').click(); return 1`); await sleep(400);
+      const asked = new URL(urls.at(-1), 'http://x/').searchParams;
+      t.check('clicking the name says which folder the reply pointed to', asked.get('path') === 'site-deploy.zip' && asked.getAll('near')[0] === 'Documents/Rebirth World Tempting', [...asked]);
+      // More than one: yours to choose.
+      const chosen = await b.eval(`
+        const real = api;
+        api = async (u, ...rest) => { const q = new URL(String(u), location.href).searchParams; return String(u).startsWith('/api/file?') ? (q.get('path') === 'both.md' ? { kind: 'choices', path: 'both.md', matches: ['C:/a/both.md', 'C:/b/both.md'] } : { kind: 'text', path: q.get('path'), name: 'both.md', dir: 'C:/b', text: 'Chosen', lang: 'markdown', markdown: true }) : real(u, ...rest); };
+        await Viewer.open({ path: 'both.md' });
+        const offered = [...document.querySelectorAll('#vBody [data-v="go"]')].map(x => x.dataset.path), title = document.getElementById('vTitle').textContent;
+        document.querySelector('#vBody [data-v="go"][data-path="C:/b/both.md"]').click();
+        await new Promise(r => setTimeout(r, 300));
+        api = real;
+        return { offered, title, shown: document.getElementById('vBody').innerText };`);
+      t.check('two of that name: it offers both, by where they are', chosen.offered.join() === 'C:/a/both.md,C:/b/both.md' && chosen.title === 'both.md', chosen);
+      t.check('and opens the one you pick', /Chosen/.test(chosen.shown), chosen);
+    },
+  },
+  {
     name: 'lite: a held message comes back',
     async run(t) {
       const b = await t.open({ demo: false, path: 'lite' });
