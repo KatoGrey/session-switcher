@@ -192,7 +192,7 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
   let keepTries = 0, bothTries = 0, tsServing = false;
   const doneMarks = {};
   let runState = { running: false, cmd: 'npm run dev', custom: false, url: null, exit: null, lines: [] };
-  const rulesOut = () => ({ scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
+  const rulesOut = () => ({ gemini: { path: `${bard}\\GEMINI.md`, exists: false, text: '' }, scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
     let body = {}; try { body = JSON.parse(postData || '{}'); } catch { /* not JSON */ }
@@ -301,10 +301,10 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/files/list') return { body: { cwd: bard, files: ['README.md', 'PATCH-NOTES.md', 'scripts/bard/songs.lua', 'scripts/bard/encore.lua', 'scripts/party/rally.lua', 'data/balance/party.json', 'art/harvest-festival.png', 'docs/Song list.md'] } };
     if (p === '/api/rules' && method === 'GET') return { body: rulesOut() };
     if (p === '/api/rules') { for (const k of body.to || []) rules[k] = { ...rules[k], exists: true, text: body.text.endsWith('\n') ? body.text : `${body.text}\n` }; return { body: rulesOut() }; }
-    if (p === '/api/tools') return { body: { servers, codexError: null, codexOn: true } };
+    if (p === '/api/tools') return { body: { servers, codexError: null, codexOn: true, geminiOn: !!gemini } };
     if (p === '/api/tools/copy') {
-      servers = servers.map(r => (r.name !== body.name ? r : { ...r, [body.to]: { ...(r.claude || r.codex), scope: 'user', enabled: true } }));
-      return { body: { servers, codexError: null, codexOn: true, copied: body.name } };
+      servers = servers.map(r => (r.name !== body.name ? r : { ...r, [body.to]: { ...(r.claude || r.codex || r.gemini), scope: 'user', enabled: true } }));
+      return { body: { servers, codexError: null, codexOn: true, geminiOn: !!gemini, copied: body.name } };
     }
     if (p === '/api/chat/review') { return { body: { id: `rv${++reviews}`, what: 'your uncommitted changes', base: body.base || null } }; }
     // Restart, pretended: "now" says it's restarting; "idle" waits on one chat; "cancel" calls it off.
@@ -313,4 +313,4 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
   });
 }
 
-module.exports = { install, ID, projects, accounts, NOW };
+module.exports = { install, ID, projects, accounts, NOW, activityBody: async () => ({ list: activity, at: NOW }) };

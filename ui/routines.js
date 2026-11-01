@@ -5,7 +5,7 @@
 
 const Routines = (() => {
   const R = { list: [], templates: [], secrets: {}, loaded: false, hist: new Set(), editing: null };
-  const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto' };
+  const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Bypass permissions' };
   const CODEX_MODES = [['agent', 'Agent'], ['ask', 'Ask before acting'], ['read-only', 'Read only'], ['full', 'Full access']];
   const GEMINI_MODES = [['accept-edits', 'Edit files'], ['plan', 'Plan only'], ['full', 'Full access']];
   // Which assistant an account runs: Claude, Codex, or Gemini (one account, "gemini").
@@ -40,7 +40,7 @@ const Routines = (() => {
         <p class="f-meta">Chats that start by themselves: on a schedule, or when something new turns up in Slack or a command’s output. They run right here, so they show up under At work and Awaiting you like any chat.</p></div>
         <div class="f-act"><button class="btn" data-rt="template" aria-haspopup="menu" aria-expanded="false">From a template</button><button class="btn prime" data-rt="new">New routine</button></div></header>
         <div class="rt-list" id="rtList"></div>
-        <p class="note rt-foot">Routines only read Slack and your commands; they never post. Each run is told to write any reply as a draft, for you to send. A run that was due while the Mac slept or the app was closed happens once when it’s back. A run waits if its account’s five-hour window is nearly used up.</p>`;
+        <p class="note rt-foot">Routines only read Slack and your commands; they never post. Each run is told to write any reply as a draft, for you to send. A run that was due while this computer slept or the app was closed happens once when it’s back. A run waits if its account’s five-hour window is nearly used up.</p>`;
     }
     const empty = `<div class="rt-empty"><p class="empty-line">No routines yet. Start from one of these, or make your own with New routine.</p>
       <div class="rt-tpls">${R.templates.map(t => `<button class="rt-tpl" data-rt="use-template" data-tpl="${esc(t.id)}"><span class="rt-kind">${t.trigger.type === 'watch' ? (t.trigger.source.type === 'slack' ? 'Watches Slack' : 'Watches a command') : 'On a schedule'}</span><b>${esc(t.name)}</b><span>${esc(t.blurb)}</span></button>`).join('')}</div></div>`;
@@ -52,7 +52,8 @@ const Routines = (() => {
     if (!r.enabled) return 'Paused. Resume it to start running again.';
     if (r.trigger.type === 'schedule') {
       const at = r.state.retryAt && (!r.state.nextAt || r.state.retryAt < r.state.nextAt) ? r.state.retryAt : r.state.nextAt;
-      return at ? `Next run ${esc(when(new Date(at).toISOString()))} <span class="rt-in" data-until="${at}"></span>` : 'No next run is coming up.';
+      const stopNote = r.untilAt && r.untilAt > Date.now() ? ` · stops ${esc(when(new Date(r.untilAt).toISOString()))}` : '';
+      return at ? `Next run ${esc(when(new Date(at).toISOString()))} <span class="rt-in" data-until="${at}"></span>${stopNote}` : 'No next run is coming up.';
     }
     if (r.watchError) return `<span class="rt-bad">${esc(r.watchError)}</span>`;
     const q = r.queue ? ` ${plural(r.queue, 'new item')} waiting to run.` : '';
@@ -69,13 +70,15 @@ const Routines = (() => {
   function card(r) {
     const last = r.history[0];
     const acctName = (acctById(r.account) || {}).name || r.account;
-    const mode = r.provider === 'codex' ? (CODEX_MODES.find(m => m[0] === r.permissionMode) || [0, r.permissionMode])[1] : MODE_LABELS[r.permissionMode] || r.permissionMode;
+    const mode = r.provider === 'gemini' ? (GEMINI_MODES.find(m => m[0] === r.permissionMode) || [0, r.permissionMode])[1] : r.provider === 'codex' ? (CODEX_MODES.find(m => m[0] === r.permissionMode) || [0, r.permissionMode])[1] : MODE_LABELS[r.permissionMode] || r.permissionMode;
     const tag = !r.enabled ? '<span class="tag ghost">Paused</span>' : r.running ? '<span class="tag">Running</span>' : r.trigger.type === 'watch' ? (r.watchError ? '<span class="tag line">Can’t look</span>' : '<span class="tag gold">Watching</span>') : '<span class="tag gold">Scheduled</span>';
     const open = R.hist.has(r.id);
     const kind = r.trigger.type === 'watch' ? (r.trigger.source.type === 'slack' ? 'slack' : 'command') : 'clock';
-    return `<article class="rt-card ${r.enabled ? '' : 'off'} ${r.provider === 'codex' ? 'codex' : ''}" data-id="${esc(r.id)}">
+    const crewWho = r.chat && Array.isArray(r.chat.kinds) && r.chat.kinds.length > 1 ? r.chat.kinds.map(k => ({ claude: 'Claude', codex: 'Codex', gemini: 'Gemini' }[k] || k)).join(' + ') : 'Crew';
+    const crewNote = r.chat && r.chat.to ? `<span>${esc(crewWho)} · ${r.chat.to === 'parallel' ? 'at the same time' : 'in turns'}</span>` : '';
+    return `<article class="rt-card ${r.enabled ? '' : 'off'} ${r.provider === 'codex' ? 'codex' : r.provider === 'gemini' ? 'gemini' : ''}" data-id="${esc(r.id)}">
       <div class="rt-top"><span class="rt-ic rt-ic-${kind}" aria-hidden="true"></span><div class="rt-tt"><h3>${esc(r.name)}</h3><p class="rt-when">${esc(r.triggerText)}</p></div>${tag}</div>
-      <p class="rt-meta"><span title="${esc(r.cwd)}">${esc(folderOf(r.cwd))}</span><span><span class="ring" style="--ring:${ringById(r.account)}"></span>as ${esc(acctName)}</span><span>${esc(mode)}</span><span>${r.chat.mode === 'continue' ? 'Keeps one chat going' : 'A new chat each run'}</span><span>Waits above ${r.limit}% used</span></p>
+      <p class="rt-meta"><span title="${esc(r.cwd)}">${esc(folderOf(r.cwd))}</span><span><span class="ring" style="--ring:${ringById(r.account)}"></span>as ${esc(acctName)}</span><span>${esc(mode)}</span><span>${r.chat.mode === 'continue' ? 'Keeps one chat going' : 'A new chat each run'}</span>${crewNote}<span>Waits above ${r.limit}% used</span></p>
       <p class="rt-next">${nextLine(r)}</p>
       ${last ? `<div class="rt-last st-${esc(last.status)}"><span class="rt-dot" aria-hidden="true"></span><p><b>${esc(STATUS[last.status] || last.status)}</b> <span class="rt-ago" data-ago="${last.at}">${esc(agoL(last.at))}</span>. ${esc(last.line || '')}</p>${chatBtn(last)}</div>` : `<p class="rt-none">${r.trigger.type === 'watch' ? 'Nothing new has turned up yet.' : 'Hasn’t run yet.'}</p>`}
       <div class="rt-acts"><button class="btn sm ${r.enabled ? 'prime' : ''}" data-rt="run">${r.trigger.type === 'watch' ? 'Look now' : 'Run now'}</button>
@@ -171,7 +174,11 @@ const Routines = (() => {
         <textarea id="rtPrompt" class="pd-x" rows="6" placeholder="What to ask. {project} and {date} fill in automatically."></textarea>
         <div class="rt-two">
           <div><label class="np-f" for="rtChat"><span>Each run</span></label><select id="rtChat"></select></div>
+          <div><label class="np-f" for="rtTo"><span>Who answers</span></label><select id="rtTo"><option value="">Just this assistant</option><option value="turns">Crew · take turns</option><option value="parallel">Crew · at the same time</option></select></div>
+        </div>
+        <div class="rt-two">
           <div id="rtLimitBox"><label class="np-f" for="rtLimit"><span>Wait when the five-hour window is over</span></label><label class="rt-inl"><input id="rtLimit" type="number" min="50" max="100" value="90"> % used</label></div>
+          <div><label class="np-f" for="rtHours"><span>Stop after <small>(optional mission window)</small></span></label><label class="rt-inl"><input id="rtHours" type="number" min="0" max="168" step="0.5" placeholder="—" style="width:72px"> hours</label></div>
         </div>
         <div class="np-err" id="rtErr" role="alert" hidden></div>
         <div class="d-row"><button type="button" class="btn" data-rte="close">Cancel</button><button type="submit" class="btn prime" id="rtGo">Save routine</button></div>
@@ -229,6 +236,12 @@ const Routines = (() => {
   }
   function fillToken() {
     const box = $('rtToken'); if (!box) return;
+    if (S.platform && S.platform !== 'darwin') {
+      box.innerHTML = R.secrets.slack
+        ? '<p class="np-path"><b class="rt-ok">✓</b> A Slack token is set in <code>SWITCHER_SLACK_TOKEN</code>.</p>'
+        : '<p class="np-path">Set <code>SWITCHER_SLACK_TOKEN</code> to a Slack app’s bot token with <code>channels:history</code> (and <code>groups:history</code> for a private channel) before starting Session Switcher, and invite the app to the channel.</p>';
+      return;
+    }
     if (R.secrets.slack) { box.innerHTML = '<p class="np-path"><b class="rt-ok">✓</b> A Slack token is saved in this Mac’s Keychain. <button type="button" class="linkish" data-rte="token-remove">Remove it</button></p>'; return; }
     box.innerHTML = window.REMOTE ? '<p class="np-path rt-bad">Add the Slack token on the Mac itself (it’s kept in its Keychain).</p>'
       : `<label class="np-f" for="rtTok"><span>Slack token</span></label><div class="np-loc"><input id="rtTok" type="password" autocomplete="off" spellcheck="false" placeholder="xoxb-…"><button type="button" class="btn" data-rte="token">Save in Keychain</button></div>
@@ -270,6 +283,7 @@ const Routines = (() => {
     const d = dialog();
     const src = r || tpl || {};
     R.editing = r && r.id ? r.id : null;
+    R.kinds = src.chat && Array.isArray(src.chat.kinds) ? src.chat.kinds : null;
     $('rtTitle').textContent = R.editing ? `Edit ${r.name}` : tpl ? tpl.name : 'New routine';
     $('rtName').value = src.name || '';
     const t = src.trigger || { type: 'schedule', schedule: { kind: 'daily', time: '09:00' } };
@@ -284,6 +298,8 @@ const Routines = (() => {
     fillAccounts(src.account);
     fillModes(src.permissionMode);
     fillChats(src.chat ? (src.chat.mode === 'continue' ? (src.chat.sessionId ? `s:${src.chat.sessionId}` : 'continue') : 'new') : 'new');
+    $('rtTo').value = src.chat && ['turns', 'parallel', 'both', 'all'].includes(src.chat.to) ? (src.chat.to === 'parallel' ? 'parallel' : 'turns') : '';
+    $('rtHours').value = src.untilAt && src.untilAt > Date.now() ? String(Math.max(0.5, Math.round(((src.untilAt - Date.now()) / 3600e3) * 2) / 2)) : '';
     $('rtSaved').innerHTML = `<option value="">Use a saved prompt…</option>${S.prompts.map(p => `<option value="${esc(p.id)}">${esc(p.title)}</option>`).join('')}`;
     $('rtPrompt').value = src.prompt || ''; delete $('rtPrompt').dataset.from;
     $('rtLimit').value = src.limit || 90;
@@ -296,11 +312,14 @@ const Routines = (() => {
   async function submit() {
     const k = kind(), sk = $('rtSk').value;
     const chatSel = $('rtChat').value;
+    const chatTo = $('rtTo') ? $('rtTo').value || null : null;
+    const hrs = $('rtHours') && $('rtHours').value.trim() ? Number($('rtHours').value) : 0;
+    const untilAt = Number.isFinite(hrs) && hrs > 0 ? Math.round(Date.now() + hrs * 3600e3) : null;
     const body = {
       id: R.editing || undefined,
       name: $('rtName').value, cwd: $('rtCwd').value.trim(), account: $('rtAcct').value, permissionMode: $('rtMode').value,
-      prompt: $('rtPrompt').value, limit: Number($('rtLimit').value) || 90,
-      chat: chatSel.startsWith('s:') ? { mode: 'continue', sessionId: chatSel.slice(2) } : { mode: chatSel === 'continue' ? 'continue' : 'new' },
+      prompt: $('rtPrompt').value, limit: Number($('rtLimit').value) || 90, untilAt,
+      chat: { ...(chatSel.startsWith('s:') ? { mode: 'continue', sessionId: chatSel.slice(2) } : { mode: chatSel === 'continue' ? 'continue' : 'new' }), to: chatTo, ...(chatTo && R.kinds ? { kinds: R.kinds } : {}) },
       trigger: k === 'watch'
         ? { type: 'watch', source: { type: $('rtSrc').value, channel: $('rtChan').value, command: $('rtCommand').value, filter: $('rtFilter').value, every: Number($('rtWEvery').value) } }
         : { type: 'schedule', schedule: ['hours', 'minutes'].includes(sk) ? { kind: 'every', every: Number($('rtEvery').value), unit: sk } : sk === 'cron' ? { kind: 'cron', cron: $('rtCron').value } : { kind: sk, time: $('rtTime').value, ...(sk === 'weekly' ? { day: Number($('rtDay').value) } : {}) } },

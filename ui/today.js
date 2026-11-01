@@ -36,18 +36,18 @@ function todayHtml() {
   const start = Math.max(now - 864e5, Math.min(Math.floor((first === Infinity ? now : first) / hour) * hour, Math.floor((now - 3 * hour) / hour) * hour));
   const slots = Math.max(1, Math.ceil((now - start) / SLOT));
   const pct = t => Math.min(100, Math.max(0, ((t - start) / (now - start)) * 100));
-  if (!lanes.size) return `<section class="sec today" id="secToday">${secHead('The last day', 'Your day at a glance')}${emptyArt('today', 'Nothing in the last day. Your chats show up here as they work, hour by hour.')}</section>`;
+  if (!lanes.size) return `<section class="sec today${secFold('today')}" id="secToday" data-sec="today">${secHead('The last day', 'Your day at a glance', '', 'today')}${emptyArt('today', 'Nothing in the last day. Your chats show up here as they work, hour by hour.')}</section>`;
   // Each lane's busiest stretch in each quarter hour: how many messages, and which chat had most of them.
   const working = new Set(atWork().map(x => String(x.cwd || '').toLowerCase()));
   const byHour = new Map();
   let max = 1;
   const built = [...lanes.values()].map(l => {
-    const slot = Array.from({ length: slots }, () => ({ n: 0, claude: 0, codex: 0, by: new Map() }));
+    const slot = Array.from({ length: slots }, () => ({ n: 0, claude: 0, codex: 0, gemini: 0, by: new Map() }));
     let n = 0;
     for (const c of l.chats) for (const t of c.times) {
       if (t < start) continue;
       const i = Math.min(slots - 1, Math.floor((t - start) / SLOT)), b = slot[i];
-      b.n++; b[c.prov === 'codex' ? 'codex' : 'claude']++; b.by.set(c.s, (b.by.get(c.s) || 0) + 1); n++;
+      b.n++; b[c.prov === 'codex' || c.prov === 'gemini' ? c.prov : 'claude']++; b.by.set(c.s, (b.by.get(c.s) || 0) + 1); n++;
       const h = Math.floor(t / hour) * hour; byHour.set(h, (byHour.get(h) || 0) + 1);
     }
     for (const b of slot) if (b.n > max) max = b.n;
@@ -60,7 +60,7 @@ function todayHtml() {
       const top = [...b.by.entries()].sort((x, y) => y[1] - x[1])[0][0];
       const from = start + i * SLOT;
       const tip = `${timeLabel(from)}: ${b.n} message${b.n === 1 ? '' : 's'}${b.by.size > 1 ? ` in ${b.by.size} chats` : ''}, most in “${top.title}”`;
-      return `<button type="button" class="td-b ${b.codex > b.claude ? 'codex' : 'claude'}" style="left:${pct(from).toFixed(2)}%;width:${(pct(Math.min(now, from + SLOT)) - pct(from)).toFixed(3)}%;--v:${(0.3 + 0.7 * (b.n / max)).toFixed(2)}" data-today="${esc(top.id)}" title="${esc(tip)}" aria-label="${esc(tip)}"></button>`;
+      return `<button type="button" class="td-b ${b.gemini > b.claude && b.gemini > b.codex ? 'gemini' : b.codex > b.claude ? 'codex' : 'claude'}" style="left:${pct(from).toFixed(2)}%;width:${(pct(Math.min(now, from + SLOT)) - pct(from)).toFixed(3)}%;--v:${(0.3 + 0.7 * (b.n / max)).toFixed(2)}" data-today="${esc(top.id)}" title="${esc(tip)}" aria-label="${esc(tip)}"></button>`;
     }).join('');
     const live = working.has(l.p.cwd.toLowerCase());
     return `<div class="td-lane"><button type="button" class="td-name" data-view="folder" data-cwd="${esc(l.p.cwd)}" title="Open ${esc(l.p.name)}">${crestHtml(l.p, 20)}<span>${esc(l.p.name)}</span></button><div class="td-track">${bars}<span class="td-now${live ? ' on' : ''}" aria-hidden="true"></span></div></div>`;
@@ -71,14 +71,14 @@ function todayHtml() {
   for (let t = Math.ceil(start / hour) * hour; t <= now; t += step * hour) if (pct(t) < 90) ticks.push(`<span style="left:${pct(t).toFixed(2)}%">${esc(hourLabel(t))}</span>`);
   const busiest = [...byHour.entries()].sort((a, b) => b[1] - a[1])[0];
   const sum = [`${ids.size} chat${ids.size === 1 ? '' : 's'} in ${lanes.size} project${lanes.size === 1 ? '' : 's'}`, `${total} message${total === 1 ? '' : 's'}`, busiest && busiest[1] > 2 ? `busiest around ${hourLabel(busiest[0])}` : ''].filter(Boolean).join(' · ');
-  return `<section class="sec today" id="secToday">${secHead('The last day', 'Your day at a glance')}
+  return `<section class="sec today${secFold('today')}" id="secToday" data-sec="today">${secHead('The last day', 'Your day at a glance', '', 'today')}
     <p class="td-sum">${esc(sum)}${built.length > shown.length ? ` · and ${built.length - shown.length} more project${built.length - shown.length === 1 ? '' : 's'}` : ''}</p>
     <div class="td-grid"><div class="td-axis" aria-hidden="true"><span class="td-gap"></span><div class="td-ticks">${ticks.join('')}<span class="td-nowl" style="left:100%">now</span></div></div>${shown.map(lane).join('')}</div></section>`;
 }
 function renderToday() {
   const slot = $('todaySlot'); if (!slot) return;
   const h = todayHtml();
-  if (slot._h !== h) { slot.innerHTML = h; slot._h = h; }
+  if (slot._h !== h) { slot.innerHTML = h; slot._h = h; if (typeof renderJump === 'function') renderJump(); }
 }
 // A bar is a few pixels wide, so on a touch screen a tap anywhere on a project's row opens the bar
 // nearest the finger.

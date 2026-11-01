@@ -16,6 +16,7 @@ async function openDrawer(id, quiet) {
   catch (err) { if (seq === drawerSeq) d.innerHTML = `<div class="d-body"><p class="loading">${esc(err.message)}</p></div>`; return; }
   if (seq !== drawerSeq || S.drawerId !== id) return;
   const s = p.session, st = p.stats, a = current();
+  const prov = provOf(s), who = PROV_NAME[prov] || 'Claude', can = prov === 'codex' ? codexReady() : prov === 'gemini' ? geminiReady() : canLaunch(a);
   const scroller = d.querySelector('.d-body'); const keep = quiet && scroller ? scroller.scrollTop : null;
   const opened = s.lastOpened ? `Last opened from here as <b>${esc(s.lastOpened.accountName)}</b>, ${esc(agoL(s.lastOpened.at))}${s.lastOpened.mode === 'fork' ? ' (as a copy)' : s.lastOpened.mode === 'desktop' ? ' (in the desktop app)' : ''}.` : 'Not opened from Session Switcher yet.';
   const stat = (k, v) => (v ? `<div><dt>${k}</dt><dd title="${esc(v)}">${esc(v)}</dd></div>` : '');
@@ -28,25 +29,25 @@ async function openDrawer(id, quiet) {
       </div>
       <div class="d-actions">
         ${live ? `<button class="btn prime" data-chat="${esc(s.id)}">Return to this chat</button>` : p.running ? `<button class="btn prime" data-watch="${esc(s.id)}">Watch it live</button>` : `
-        <button class="btn ${inApp() ? 'prime' : ''}" data-chat="${esc(s.id)}" ${canLaunch(a) && s.folderExists ? '' : 'disabled'}>Open as ${esc(a.name)}</button>
-        <button class="btn ${inApp() ? '' : 'prime'}" data-open="${esc(s.id)}" ${canLaunch(a) && s.folderExists ? '' : 'disabled'}>Resume in a terminal</button>`}
+        <button class="btn ${inApp() ? 'prime' : ''}" data-chat="${esc(s.id)}" ${can && s.folderExists ? '' : 'disabled'}>${prov === 'claude' ? `Open as ${esc(a.name)}` : `Open in ${esc(who)}`}</button>
+        <button class="btn ${inApp() ? '' : 'prime'}" data-open="${esc(s.id)}" ${can && s.folderExists ? '' : 'disabled'}>Resume in a terminal</button>`}
         <button class="icon" data-more="${esc(s.id)}" aria-haspopup="menu" aria-expanded="false" aria-label="More actions">${ICON.more}</button>
       </div>
     </div>
     <div class="d-body">
       <dl class="d-stats">
-        ${stat('Messages', `${st.prompts} from you, ${st.replies} from Claude`)}
+        ${stat('Messages', `${st.prompts} from you, ${st.replies} from ${who}`)}
         ${stat('Tool calls', st.tools ? String(st.tools) : '')}
         ${stat('Started', st.first ? stamp(Date.parse(st.first)) : '')}
         ${stat('Last activity', stamp(s.updated))}
         ${stat('Branch', s.branch)}
         ${stat('Model', st.models.length ? (window.ChatUI && ChatUI.modelName ? ChatUI.modelName(st.models[st.models.length - 1]) : st.models[st.models.length - 1]) : '')}
-        ${stat('Claude Code', st.version)}
+        ${stat(prov === 'claude' ? 'Claude Code' : 'Version', st.version)}
         ${stat('Size', s.sizeKB >= 1024 ? `${(s.sizeKB / 1024).toFixed(1)} MB` : `${s.sizeKB} KB`)}
       </dl>
       <p class="d-opened">${opened}</p>
       <p class="d-h">Latest messages</p>
-      ${p.messages.length ? `<ol class="msgs">${p.messages.map(m => `<li class="msg ${m.role}"><span class="who">${m.role === 'you' ? 'You' : 'Claude'}${m.at ? `, ${esc(stamp(Date.parse(m.at)))}` : ''}</span>${m.role === 'you' ? esc(m.text) : `<div class="md">${ChatUI.md(m.text)}</div>`}</li>`).join('')}</ol>` : '<p class="loading">No messages to show.</p>'}
+      ${p.messages.length ? `<ol class="msgs">${p.messages.map(m => `<li class="msg ${m.role}"><span class="who">${m.role === 'you' ? 'You' : who}${m.at ? `, ${esc(stamp(Date.parse(m.at)))}` : ''}</span>${m.role === 'you' ? esc(m.text) : `<div class="md">${ChatUI.md(m.text)}</div>`}</li>`).join('')}</ol>` : '<p class="loading">No messages to show.</p>'}
     </div>`;
   const body = d.querySelector('.d-body');
   body.scrollTop = keep !== null ? keep : body.scrollHeight;
@@ -66,7 +67,7 @@ function showMenu(anchor, items) {
   items = items.filter((it, i, all) => it !== '-' || (i > 0 && i < all.length - 1 && all[i - 1] !== '-'));
   // Labels line up whether or not an item has an icon.
   const glyphs = items.some(it => it !== '-' && it.glyph);
-  m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${it.glyph || glyphs ? `<span class="m-g" aria-hidden="true">${esc(it.glyph || '')}</span>` : ''}<span class="m-l">${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</span>${it.keys ? `<kbd class="m-k">${esc(it.keys)}</kbd>` : ''}`}</button>`)).join('');
+  m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${it.glyph || glyphs ? `<span class="m-g" aria-hidden="true">${esc(it.glyph || '')}</span>` : ''}<span class="m-l">${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</span>${it.keys ? `<kbd class="m-k">${esc(it.keys)}</kbd>` : ''}${it.more ? '<span class="m-more" aria-hidden="true">›</span>' : ''}`}</button>`)).join('');
   menuReturn = document.activeElement;
   $('menuBack').hidden = false;
   m.hidden = false;
@@ -94,6 +95,12 @@ function placeAt(m, anchor, align = 'start') {
   left = Math.max(8, Math.min(W - w - 8, left));
   // Below if it fits, else above if it fits there, else wherever it fits best on screen (it scrolls).
   const below = r.bottom + h + 8 <= H, above = r.top - h - 6 >= 8;
+  // Too tall for either: beside its button if there's room, so pressing the button again closes it
+  // (over the button, that second press would land on whichever item is there).
+  if (!below && !above && anchor instanceof Element) {
+    if (r.right + 6 + w <= W - 8) left = r.right + 6;
+    else if (r.left - 6 - w >= 8) left = r.left - 6 - w;
+  }
   const up = !below && (above || r.top > H - r.bottom);
   const top = below ? r.bottom + 6 : above ? r.top - h - 6 : Math.max(8, H - h - 8);
   m.style.left = `${left / z}px`; m.style.top = `${top / z}px`;
@@ -166,6 +173,8 @@ function codexChatItems(s) {
     { label: 'Resume in a terminal', hint: 'codex resume', disabled: !ok || !!live, why: live ? 'It’s open in the chat window' : why, run: () => resume(s.id, 'resume') },
     { label: 'Open a copy in the chat window', hint: 'keeps the original', disabled: !ok, why, run: () => ChatUI.open({ sessionId: s.id, mode: 'fork' }) },
     { label: 'Resume a copy in a terminal', hint: 'codex fork', disabled: !ok, why, run: () => resume(s.id, 'fork') },
+    ...(canPopOut() ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side with this one', disabled: !ok && !live, why, run: () => popOutChat(s.id) }] : []),
+    ...(window.Split && Split.can() && ChatUI.isOpen() && !ChatUI.isViewing({ sessionId: s.id }) ? [{ glyph: '◫', label: 'Open beside this chat', hint: 'Ctrl+click in the side list', disabled: !ok && !live, why, run: () => openBeside({ sessionId: s.id }) }] : []),
     '-',
     { label: 'Show details and messages', run: () => openDrawer(s.id) },
     { label: 'Browse this chat’s folder', run: () => Viewer.open({ path: '.', session: s.id }) },
@@ -174,10 +183,28 @@ function codexChatItems(s) {
     doneItem(s.id),
   ];
 }
-function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', favItem(s.id), doneItem(s.id), ...orgItems(s.id)]); }
+function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', ...keepItem(s.id), favItem(s.id), ...orgItems(s.id)]); }
+// Gemini's: its own terminal, and no copies (Antigravity can't start one from an old conversation).
+function geminiChatItems(s) {
+  const ok = geminiReady(), why = 'Sign in to Gemini first (Setup → Gemini)';
+  const live = liveOf(s.id);
+  return [
+    live ? { label: 'Return to this chat', run: () => ChatUI.open({ sessionId: s.id }) } : { label: 'Open in the chat window', hint: 'Gemini', disabled: !ok, why, run: () => ChatUI.open({ sessionId: s.id }) },
+    { label: 'Resume in a terminal', hint: 'agy', disabled: !ok || !!live, why: live ? 'It’s open in the chat window' : why, run: () => resume(s.id, 'resume') },
+    ...(canPopOut() ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side with this one', disabled: !ok && !live, why, run: () => popOutChat(s.id) }] : []),
+    ...(window.Split && Split.can() && ChatUI.isOpen() && !ChatUI.isViewing({ sessionId: s.id }) ? [{ glyph: '◫', label: 'Open beside this chat', hint: 'Ctrl+click in the side list', disabled: !ok && !live, why, run: () => openBeside({ sessionId: s.id }) }] : []),
+    '-',
+    { label: 'Show details and messages', run: () => openDrawer(s.id) },
+    { label: 'Browse this chat’s folder', run: () => Viewer.open({ path: '.', session: s.id }) },
+    { label: 'Rename chat', run: () => renameChat(s.id) },
+    { label: 'Copy terminal command', run: () => copyCommand(s.id) },
+    doneItem(s.id),
+  ];
+}
 function chatItems(id) {
   const [s] = sessionById(id); if (!s) return [];
   if (isCodex(s)) return codexChatItems(s);
+  if (isGemini(s)) return geminiChatItems(s);
   if (isOpenClaw(s)) return [
     { glyph: '❝', label: 'Read it here', hint: 'it carries on in OpenClaw; you can write to it here', run: () => ChatUI.open({ sessionId: id }) },
     '-', 
@@ -187,6 +214,7 @@ function chatItems(id) {
       try { await api('/api/openclaw/archive', { id: s.id }); await loadSessions(); renderAll(); toast('Archived in OpenClaw.', 3000); }
       catch (err) { toast(`Couldn’t archive: ${err.message}`, 6000); }
     } },
+    doneItem(id),
   ];
   const a = current(); const ok = canLaunch(a);
   const why = !a.signedIn ? `Sign in to ${a.name} first` : (a.lockMessage || '');
@@ -201,6 +229,7 @@ function chatItems(id) {
     { label: 'Resume a copy in a terminal', hint: 'keeps the original', disabled: !ok, why, run: () => resume(id, 'fork') },
     { label: 'Open in the desktop app', run: () => resume(id, 'desktop') },
     ...(canPopOut() ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side with this one', disabled: !ok && !live, why, run: () => popOutChat(id) }] : []),
+    ...(window.Split && Split.can() && ChatUI.isOpen() && !ChatUI.isViewing({ sessionId: id }) ? [{ glyph: '◫', label: 'Open beside this chat', hint: 'Ctrl+click in the side list', disabled: !ok && !live, why, run: () => openBeside({ sessionId: id }) }] : []),
     '-',
     { label: 'Show details and messages', run: () => openDrawer(id) },
     { label: 'Browse this chat’s folder', run: () => Viewer.open({ path: '.', session: id }) },
@@ -210,7 +239,9 @@ function chatItems(id) {
     doneItem(id),
   ];
 }
-function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', favItem(id), doneItem(id), ...orgItems(id)]); }
+function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', ...keepItem(id), favItem(id), ...orgItems(id)]); }
+// A chat that's open can be kept working from its row too.
+const keepItem = id => { const live = liveOf(id), [s] = sessionById(id); if (!live || !live.key || !s || isCommander(id)) return []; return [{ glyph: '⟳', label: keepOf(live.key) ? 'Keep working: change or turn off…' : 'Keep it working until…', hint: 'told to carry on when it goes quiet', run: () => openKeepDialog({ key: live.key, title: s.title }) }]; };
 const doneItem = id => { const [s] = sessionById(id); const d = s && isDoneChat(s); return { glyph: d ? '↺' : '✓', label: d ? 'Not done' : 'Mark done', hint: d ? 'back on the lists' : 'off the lists until it’s used again', run: () => setChatDone(id, !d) }; };
 const favItem = id => ({ glyph: isFav(id) ? '☆' : '★', label: isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => toggleFav(id) });
 
@@ -289,6 +320,7 @@ async function resume(id, mode = 'resume', force = false) {
       !(await appConfirm('This chat changed in the last few minutes, so it may still be open somewhere, like the desktop app. Opening it twice can mix up its history.\n\nResume anyway?', { ok: 'Resume anyway' }))) return;
   try {
     if (isCodex(s)) { const r = await api('/api/open', { provider: 'codex', sessionId: id, mode }); return reportLaunch(r, mode === 'fork' ? 'Opening a copy in Codex' : 'Resuming in Codex'); }
+    if (isGemini(s)) { const r = await api('/api/open', { provider: 'gemini', sessionId: id }); return reportLaunch(r, 'Resuming in Gemini'); }
     const r = await api('/api/open', { account: a.id, sessionId: id, mode, force });
     reportLaunch(r, mode === 'desktop' ? 'Opening in the desktop app' : mode === 'fork' ? `Opening a copy as ${a.name}` : `Resuming as ${a.name}`);
   } catch (err) {
@@ -305,7 +337,8 @@ async function renameChat(id) {
 }
 async function copyCommand(id) {
   const r = await api('/api/command', { account: S.acct, sessionId: id });
-  return copyText(r.command, `Copied a PowerShell command that resumes this chat${isCodex(sessionById(id)[0]) ? ' in Codex' : ''}.`);
+  const [s] = sessionById(id);
+  return copyText(r.command, `Copied a ${S.platform === 'win32' ? 'PowerShell ' : 'terminal '}command that resumes this chat${isCodex(s) ? ' in Codex' : isGemini(s) ? ' in Gemini' : ''}.`);
 }
 async function accountAction(act, id) {
   if (codexAcct(id)) { if (act === 'usage') return refreshUsage(id); if (act === 'web') return openWeb(id); return undefined; }

@@ -33,7 +33,7 @@ function renderBar() {
   chip.innerHTML = `<span class="ac-ring">${miniDial(a.id, 30)}</span>
     <span class="ac-who"><small>${inChat ? 'This chat runs as' : 'New chats open as'}</small><b>${esc(a.name)}</b></span>
     ${d ? `<span class="ac-sep" aria-hidden="true"></span>${cell('5-hour window', d.fiveHour)}${cell('This week', d.week)}`
-      : a.gemini ? '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Plan</small><b>Google AI</b><i>limits shown in Antigravity</i></span>'
+      : a.gemini ? `<span class="ac-sep" aria-hidden="true"></span>${geminiQuotaCell()}`
       : a.signedIn ? `<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Usage</small><b>${u && (u.error || (u.data && !u.checking)) ? 'Unavailable' : 'Checking…'}</b></span>` : '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Account</small><b>Not signed in</b></span>'}`;
   chip.insertAdjacentHTML('beforeend', '<span class="ac-caret" aria-hidden="true">▾</span>');
   chip.title = `${inChat ? 'This chat runs as' : 'New chats open as'} ${a.name}${a.email ? ` (${a.email})` : ''}. ${usageLine(a.id) || ''} Click to see all your accounts.`;
@@ -45,7 +45,108 @@ function updateTitle() {
 }
 
 /* ---------- nav ---------- */
+// Ryan's space saga themes keep the sidebar and hub as he made them; every other theme has the compact
+// ones (ui/hub.css).
+const sagaLook = () => Look.theme().family === 'saga';
+// When a project was last used: its newest chat, or when it was added.
+const projLast = p => Math.max((p.sessions[0] && p.sessions[0].updated) || 0, p.updated || 0);
+const parentName = cwd => String(cwd || '').split(/[\\/]+/).filter(Boolean).slice(-2, -1)[0] || '';
 function renderNav() {
+  const html = sagaLook() ? navSagaHtml() : navHtml();
+  // Only when something would look different (it's asked for several times a second while chats work).
+  if ($('nav')._h === html) return;
+  $('nav')._h = html;
+  const focused = document.activeElement && $('nav').contains(document.activeElement) ? document.activeElement : null;
+  const d = focused ? focused.dataset : {};
+  const keep = focused && (d.cwd ? `[data-cwd="${CSS.escape(d.cwd)}"][data-view="${d.view || ''}"]` : d.view ? `[data-view="${d.view}"]` : d.navchat ? `[data-navchat="${CSS.escape(d.navchat)}"]` : d.navopen ? `[data-navopen="${CSS.escape(d.navopen)}"]` : d.navprov ? `[data-navprov="${d.navprov}"]` : d.fold ? `[data-fold="${d.fold}"]` : d.group ? `[data-group="${CSS.escape(d.group)}"]` : d.cmdr ? '[data-cmdr]' : focused.id ? `#${focused.id}` : null);
+  const caret = focused && focused.id === 'navQ' ? focused.selectionStart : null;
+  $('nav').innerHTML = html;
+  const el = keep && $('nav').querySelector(keep);
+  if (el) { el.focus({ preventScroll: true }); if (caret !== null) el.setSelectionRange(caret, caret); }
+}
+// What's open and what's pinned, in the order the chat window's side list has them. (At the very start
+// the chat window's script may not have loaded yet: then what's open, in the order it came.)
+const navLists = () => (typeof railRows === 'function' ? railRows() : { pinned: [], active: S.activity.filter(x => !x.parentKey) });
+// One open chat's state: a dot, and the same in words (so it isn't said by color alone).
+function chatState(x) {
+  const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;
+  const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (w.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
+  const word = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: x.leftover ? 'Finishing' : w.source === 'terminal' ? 'Working in a terminal' : x.keep && !WORKING.has(x.phase) ? 'Keeps working' : 'Working', quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st] || '';
+  return { st, dot, word: w !== x ? `${PROV_TITLE[w.provider || 'claude']}: ${word}` : word };
+}
+function navHtml() {
+  const A = awaiting().length, W = atWork().length;
+  const total = S.projects.reduce((n, p) => n + p.sessions.length, 0);
+  const { pinned: closedPins, active: open } = navLists();
+  const active = open.filter(x => !isCommander(x.sessionId));
+  const viewing = window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId ? lowId(ChatUI.sessionId()) : null;
+  const provWord = c => ({ codex: ' · Codex', gemini: ' · Gemini', openclaw: ' · OpenClaw' })[provOf(c)] || '';
+  const fold = (id, label, count, cls = '') => `<button class="nav-h prov ${cls} fold" data-fold="${id}" aria-expanded="${!S.navFold.has(id)}"><span class="pmark" aria-hidden="true"></span>${esc(label)}<span class="count">${count}</span><span class="fold-c" aria-hidden="true">▾</span></button>`;
+  const provCls = c => (provOf(c) === 'claude' ? '' : provOf(c));
+  // Open now: what each is doing, in words, one click from opening.
+  const activeHtml = active.length ? `${fold('open', voice('Active now'), active.length, 'open')}
+    ${S.navFold.has('open') ? '' : active.map(x => { const s = chatState(x), p = projectOf(x); return `<button class="nav-i nav-chat ${x.provider && x.provider !== 'claude' ? x.provider : ''}" data-navopen="${esc(keyOf(x))}" title="${esc(x.title || 'New chat')}${x.folder ? ` · ${esc(x.folder)}` : ''}" aria-current="${!!(viewing && lowId(x.sessionId) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t"><span class="nc-t">${esc(x.title || 'New chat')}</span><small>${esc(s.word)}${x.folder ? ` · ${esc(x.folder)}` : ''}</small></span><span class="${s.dot} nav-dot" aria-hidden="true"></span></button>`; }).join('')}` : '';
+  // Pinned: projects, and chats that aren't open just now (open ones are in the list above).
+  const pinnedP = [...S.pins].map(cwd => S.projects.find(p => p.cwd === cwd)).filter(Boolean);
+  const pinnedC = closedPins.map(x => sessionById(x.sessionId)).filter(([c]) => c);
+  const pinnedHtml = pinnedP.length || pinnedC.length ? `${fold('pinned', 'Pinned', pinnedP.length + pinnedC.length, 'pinned')}
+    ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd && !S.prov}" title="${esc(p.cwd)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
+      + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat one ${provCls(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(viewing && lowId(c.id) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t"><span class="nc-t">${esc(c.title)}</span><span class="sr"> in ${esc(p.name)}${provWord(c)}</span></span></button>`).join('')}` : '';
+  // Recent: the latest chats that aren't listed above; every one on the Recent chats page.
+  const listed = new Set([...active.flatMap(x => [x.sessionId, x.startedAs]), ...pinnedC.map(([c]) => c.id)].filter(Boolean).map(lowId));
+  const recentC = allSessions().filter(([c, p]) => p.cwd !== cmdrSet().cwd && !listed.has(lowId(c.id))).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6);
+  const recentHtml = total ? `${fold('recent', voice('Recent'), recentC.length, 'recent')}
+    ${S.navFold.has('recent') ? '' : recentC.map(([c, p]) => `<button class="nav-i nav-chat ${provCls(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(viewing && lowId(c.id) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)} · ${esc(agoL(c.updated))}${provWord(c)}</small></span></button>`).join('')
+      + `<button class="nav-i nav-more" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">${esc(voice('All recent chats'))}</span><span class="count">${total}</span></button>`}` : '';
+  return `
+    <button type="button" class="nav-i nav-newchat" data-newchat><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New chat</span></button>
+    <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">${esc(voice('The hub'))}</span>${A ? `<span class="tag gilt">${A}<span class="sr"> awaiting you</span></span>` : W ? `<span class="tag">${W}<span class="sr"> at work</span></span>` : ''}</button>
+    ${navCommanderHtml()}
+    ${routinesNav()}
+    ${activeHtml}
+    ${pinnedHtml}
+    ${recentHtml}
+    ${navGroupsHtml()}
+    ${navFamiliesHtml()}
+    ${navProjectsHtml()}
+    <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p>`;
+}
+// Projects: one list, whichever assistant their chats are with. The ones in use lately, then the rest
+// a click away, with a box to filter them. A row of buttons narrows it to one assistant's chats.
+function navProjectsHtml() {
+  const all = S.projects.filter(p => p.cwd !== cmdrSet().cwd);
+  const n = { claude: 0, codex: 0, gemini: 0, openclaw: 0 };
+  for (const p of all) for (const c of p.sessions) n[provOf(c)]++;
+  const kinds = Object.keys(n).filter(k => n[k]);
+  const f = kinds.includes(S.navProv) ? S.navProv : 'all';
+  const inKind = p => (f === 'all' ? p.sessions.length : p.sessions.filter(c => provOf(c) === f).length);
+  const sorted = keepOrder('nav-projects', [...all].sort((a, b) => projLast(b) - projLast(a)), p => [p.cwd.toLowerCase()]);
+  const q = S.navQ.trim().toLowerCase();
+  const wide = S.navFold.has('projects-all') || !!q;
+  const matches = sorted.filter(p => (f === 'all' || inKind(p)) && (!q || `${p.name} ${p.cwd}`.toLowerCase().includes(q)));
+  let rows = matches;
+  if (!wide) {
+    const live = p => p.exists !== false && !S.pins.has(p.cwd);
+    const lately = matches.filter(p => live(p) && Date.now() - projLast(p) < 14 * 864e5);
+    const pick = new Set((lately.length >= 5 ? lately : [...lately, ...[...matches].sort((a, b) => projLast(b) - projLast(a)).filter(p => live(p) && !lately.includes(p))]).slice(0, Math.max(5, Math.min(8, lately.length))));
+    rows = matches.filter(p => pick.has(p));
+  }
+  const here = rows.filter(p => p.exists !== false), gone = rows.filter(p => p.exists === false);
+  const twin = name => all.filter(x => x.name === name).length > 1;
+  const row = p => {
+    const live = p.sessions.some(c => isRunning(c.id) || liveOf(c.id));
+    const count = inKind(p);
+    return `<button class="nav-i nav-proj ${f === 'all' ? '' : f}" data-view="folder" data-cwd="${esc(p.cwd)}"${f === 'all' ? '' : ` data-prov="${f}"`} aria-current="${S.view === 'folder' && S.folder === p.cwd}" title="${esc(p.cwd)}${p.exists === false ? ' (this folder no longer exists)' : ''}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${esc(p.name)}${twin(p.name) && parentName(p.cwd) ? `<small>in ${esc(parentName(p.cwd))}</small>` : ''}</span>${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}${hasChats(p) ? `<span class="count">${count}<span class="sr"> chat${count === 1 ? '' : 's'}</span></span>` : '<span class="tag ghost">New</span>'}</button>`;
+  };
+  const seg = kinds.length > 1 ? `<div class="nav-seg" role="group" aria-label="Show the projects with chats from">${[['all', 'All'], ...kinds.map(k => [k, { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', openclaw: 'OpenClaw' }[k]])].map(([v, l]) => `<button type="button" class="${v}" data-navprov="${v}" aria-pressed="${f === v}">${l}</button>`).join('')}</div>` : '';
+  const head = `<div class="nav-hrow">${`<button class="nav-h prov projects fold" data-fold="projects" aria-expanded="${!S.navFold.has('projects')}"><span class="pmark" aria-hidden="true"></span>${esc(voice('Your projects'))}<span class="count">${all.length}</span><span class="fold-c" aria-hidden="true">▾</span></button>`}<button class="nav-add" data-view="newproject" title="New project" aria-label="New project">+</button></div>`;
+  if (S.navFold.has('projects')) return head;
+  const box = wide && all.length > 8 ? `<label class="nav-q"><span class="sr">Filter projects</span><input type="search" id="navQ" placeholder="Filter projects" autocomplete="off" spellcheck="false" value="${esc(S.navQ)}"></label>` : '';
+  const hidden = matches.length - rows.length;
+  const more = q ? '' : hidden || wide ? `<button class="nav-i nav-more" data-fold="projects-all" aria-expanded="${wide}"><span class="glyph" aria-hidden="true">${wide ? '−' : '+'}</span><span class="ni-t">${wide ? 'Fewer projects' : `All ${matches.length} projects`}</span></button>` : '';
+  return `${head}${seg}${box}${here.map(row).join('')}${gone.length ? `<p class="nav-sub-h">Folders no longer there</p>${gone.map(row).join('')}` : ''}${!rows.length ? `<p class="nav-empty">${q ? 'No project has that in its name.' : 'No projects yet.'}</p>` : ''}${more}`;
+}
+function navSagaHtml() {
   const a = current();
   const A = awaiting().length, W = atWork().length;
   const total = S.projects.reduce((n, p) => n + p.sessions.length, 0);
@@ -70,6 +171,12 @@ function renderNav() {
   const pinnedHtml = pinnedP.length || pinnedC.length ? `${fold('pinned', 'Pinned', pinnedP.length + pinnedC.length, 'pinned')}
     ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd && !S.prov}"><span class="glyph" aria-hidden="true">★</span><span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
       + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${provOf(c) === 'claude' ? '' : provOf(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : isOpenClaw(c) ? ' · OpenClaw' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
+  // Recent: your latest chats, any assistant, a click away (every one on the Recent chats page).
+  const provName = c => ({ codex: ' · Codex', gemini: ' · Gemini', openclaw: ' · OpenClaw' })[provOf(c)] || '';
+  const recentC = allSessions().filter(([, p]) => p.cwd !== cmdrSet().cwd).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6);
+  const recentHtml = recentC.length ? `${fold('recent', 'Recent', recentC.length, 'recent')}
+    ${S.navFold.has('recent') ? '' : recentC.map(([c, p]) => `<button class="nav-i nav-chat ${provOf(c) === 'claude' ? '' : provOf(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)} · ${esc(agoL(c.updated))}${provName(c)}</small></span>${chatDot(c.id)}</button>`).join('')
+      + `<button class="nav-i nav-more" data-view="recent"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">All recent chats</span><span class="count">${total}</span></button>`}` : '';
   const nClaude = claude.reduce((n, x) => n + x.list.length, 0), nCodex = codexF.reduce((n, x) => n + x.list.length, 0), nOc = ocF.reduce((n, x) => n + x.list.length, 0), nGem = gemF.reduce((n, x) => n + x.list.length, 0);
   const showGemini = S.gemini && S.gemini.enabled;
   const showCodex = S.codex && S.codex.enabled;
@@ -90,6 +197,7 @@ function renderNav() {
     <button class="nav-i nav-new" data-view="newproject"><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New project</span></button>
     ${fresh.length ? `<div class="nav-h prov fresh"><span class="pmark" aria-hidden="true"></span>No chats yet<span class="count">${fresh.length}</span></div>${fresh.map(p => `<button class="nav-i" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${esc(p.name)}</span><span class="tag ghost">New</span></button>`).join('')}` : ''}
     ${pinnedHtml}
+    ${recentHtml}
     ${navGroupsHtml()}
     ${navFamiliesHtml()}
     ${fold('claude', 'Claude Code', nClaude, 'claude')}
@@ -101,13 +209,7 @@ function renderNav() {
     ${ocF.length ? `${fold('openclaw', 'OpenClaw', nOc, 'openclaw')}
     ${S.navFold.has('openclaw') ? '' : ocF.map(x => item(x, 'openclaw')).join('')}` : ''}
     <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p>`;
-  // Only when something would look different (it's asked for several times a second while chats work).
-  if ($('nav')._h === html) return;
-  $('nav')._h = html;
-  const focused = document.activeElement && $('nav').contains(document.activeElement) ? document.activeElement : null;
-  const keep = focused && (focused.dataset.cwd ? `[data-cwd="${CSS.escape(focused.dataset.cwd)}"][data-view="${focused.dataset.view || ''}"]` : focused.dataset.view ? `[data-view="${focused.dataset.view}"]` : focused.dataset.navchat ? `[data-navchat="${CSS.escape(focused.dataset.navchat)}"]` : focused.dataset.fold ? `[data-fold="${focused.dataset.fold}"]` : focused.dataset.group ? `[data-group="${CSS.escape(focused.dataset.group)}"]` : focused.dataset.cmdr ? '[data-cmdr]' : focused.id ? `#${focused.id}` : null);
-  $('nav').innerHTML = html;
-  if (keep) $('nav').querySelector(keep)?.focus({ preventScroll: true });
+  return html;
 }
 
 // Routines (ui/routines.js): chats that start on their own.
@@ -135,19 +237,19 @@ function heroHtml() {
   } else if (W) { h = voice(W === 1 ? '{n} chat at work.' : '{n} chats at work.', { n: nword(W) }); em = voice('Nothing needs you yet.'); }
   else { h = voice('All quiet.'); em = Q ? (Q === 1 ? 'One chat is open and ready.' : `${nword(Q)} chats are open and ready.`) : voice('Pick up any chat below.'); }
 
-  let say = '';
+  let say = '', warn = !a || !a.signedIn;
   if (a) {
     say = a.signedIn ? `New chats open as <b>${esc(a.name)}</b>${a.plan ? ` (${esc(a.plan)})` : ''}. ` : `<b>${esc(a.name)}</b> isn’t signed in yet. `;
     const u = usageOf(a.id), d = u && u.data && u.data.available ? u.data : null;
     if (d) {
       const fl = leftOf(d.fiveHour), wl = leftOf(d.week);
-      if (fl === 0) say += `It has reached its five-hour limit, which resets <b>${esc(when(d.fiveHour.resetsAt))}</b>.`;
-      else if (wl === 0) say += `It has reached its weekly limit, which resets <b>${esc(when(d.week.resetsAt))}</b>.`;
+      if (fl === 0) { warn = true; say += `It has reached its five-hour limit, which resets <b>${esc(when(d.fiveHour.resetsAt))}</b>.`; }
+      else if (wl === 0) { warn = true; say += `It has reached its weekly limit, which resets <b>${esc(when(d.week.resetsAt))}</b>.`; }
       else if (fl !== null) {
         say += `It has <b>${fl}%</b> of its five-hour window left${d.fiveHour.resetsAt ? ` (resets ${esc(when(d.fiveHour.resetsAt))})` : ''}${wl !== null ? ` and <b>${wl}%</b> of the week` : ''}.`;
         const pf = paceOf(d.fiveHour, SPAN.fiveHour), pw = paceOf(d.week, SPAN.week);
         const run = [pf && pf.runsOut ? ['five-hour window', pf.runsOut] : null, pw && pw.runsOut ? ['week', pw.runsOut] : null].filter(Boolean).sort((x, y) => x[1] - y[1])[0];
-        if (run) say += ` At this pace the ${run[0]} runs out around <b>${esc(when(new Date(run[1]).toISOString()))}</b>.`;
+        if (run) { warn = true; say += ` At this pace the ${run[0]} runs out around <b>${esc(when(new Date(run[1]).toISOString()))}</b>.`; }
       }
     } else if (a.signedIn && u && (u.error || (u.data && !u.checking))) say += 'Its usage isn’t available right now.';
     else if (a.signedIn) say += 'Checking its usage…';
@@ -160,6 +262,7 @@ function heroHtml() {
   if (better) acts.push(`<button class="btn" data-hero="switch" data-acct="${esc(better.a.id)}">Work as ${esc(better.a.name)}</button>`);
   if (cmdrReady() && (A.length || W)) acts.push('<button class="btn" data-cmdr="open" title="Ask the Commander to look over your chats">Ask the Commander</button>');
   if (!first && latest && canLaunch(a)) acts.push(`<button class="btn" data-hero="latest" data-sid="${esc(latest[0].id)}" title="${esc(latest[0].title)}">Continue “${esc(latest[0].title.length > 34 ? `${latest[0].title.slice(0, 33)}…` : latest[0].title)}”</button>`);
+  if (!sagaLook()) acts.push('<button class="btn quiet" data-act="task-new">Queue a task</button>');
   const today = new Date();
   return `<section class="hero" aria-label="Right now">
     <svg class="hero-sigil" aria-hidden="true"><use href="#sigil"/></svg>${heroArt({ N, R, W, Q })}
@@ -167,7 +270,7 @@ function heroHtml() {
       <div>
         <p class="eyebrow">${voice('@where') !== '@where' ? `${esc(voice('@where'))} · ` : ''}${esc(today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · <span data-clock>${esc(clock(today))}</span></p>
         <h1>${esc(h)}<em>${esc(em)}</em></h1>
-        ${say ? `<p>${say}</p>` : ''}
+        ${say ? `<p class="hero-say${warn ? ' warn' : ''}">${say}</p>` : ''}
         ${acts.length ? `<div class="hero-act">${acts.join('')}</div>` : ''}
       </div>
       ${a ? `<div class="stamp">${esc(voice('Working as'))}<b>${esc(a.name)}</b>${a.plan ? esc(a.plan) : ''}</div>` : ''}
@@ -491,8 +594,9 @@ function workCard(x) {
   const w = x.partner && ownStatus(x) !== 'working' && ownStatus(x.partner) === 'working' ? x.partner : x;
   const who = w !== x ? `${PROV_NAME[w.provider || 'claude']}: ` : '';
   const behind = !WORKING.has(w.phase) && w.background && w.background.length ? w.background : null;
-  const label = who + (behind ? 'Working in the background' : w.phase === 'starting' ? 'Starting' : w.phase === 'thinking' ? 'Thinking' : w.phase === 'writing' ? 'Writing' : w.source === 'terminal' ? 'Working in a terminal' : 'Working');
-  const since = behind ? w.backgroundSince || w.finishedAt : w.turnStartedAt || w.lastEventAt;
+  const between = x.keep && !WORKING.has(w.phase) && !behind;   // being kept at it, and between check-ins
+  const label = who + (between ? `Keeps working until ${keepClock(x.keep.until)}` : behind ? 'Working in the background' : w.phase === 'starting' ? 'Starting' : w.phase === 'thinking' ? 'Thinking' : w.phase === 'writing' ? 'Writing' : w.source === 'terminal' ? 'Working in a terminal' : 'Working');
+  const since = between ? w.finishedAt : behind ? w.backgroundSince || w.finishedAt : w.turnStartedAt || w.lastEventAt;
   const step = behind ? `<div class="o-step"><span class="v">Running</span><code>${esc(behind.join(' · '))}</code></div>`
     : w.phase === 'tool' && (w.tool || w.detail) ? `<div class="o-step"><span class="v">${esc(VERB_NOW[w.tool] || 'Using')}</span><code>${esc(w.detail || w.tool || '')}</code></div>` : '';
   const said = plainMd(lastLine(w.lastText));
@@ -586,6 +690,57 @@ function dialShell(a, u, cur, blocked, locked, detail) {
   </article>`;
 }
 
+// Accounts, compact: each one's windows at a glance, with everything else (its dial, sign-in, what used
+// it) a click away on the same card.
+function acctWin(label, long, w) {
+  if (!w) return '';
+  const l = leftOf(w), reset = w.resetsAt ? `resets ${when(w.resetsAt)}` : '';
+  return `<div class="aw ${hot(l) ? 'hot' : ''}"><div class="aw-top"><span class="aw-n">${esc(label)}</span><span class="aw-v">${l}% left</span></div><div class="aw-bar" role="img" aria-label="${esc(long)}: ${l}% left${reset ? `, ${esc(reset)}` : ''}"><i style="width:${Math.max(0, Math.min(100, l))}%"></i></div>${reset ? `<div class="aw-r">${esc(reset)}</div>` : ''}</div>`;
+}
+function acctWins(id, none) {
+  const u = usageOf(id), d = u && u.data && u.data.available ? u.data : null;
+  if (d && (d.fiveHour || d.week)) return `<div class="aw-wins">${acctWin('5 hours', 'Five-hour window', d.fiveHour)}${acctWin('This week', 'This week', d.week)}</div>`;
+  return `<p class="aw-none">${esc(none || (u && u.error) || (u && u.data && !u.data.available ? 'No plan limits to show (an API key, say).' : 'Checking usage…'))}</p>`;
+}
+function acctCard({ key, id, name, sub, on, tag = '', blocked, action = '', body, more, cardAttr = '' }) {
+  const open = S.acctOpen.has(key), panel = `acd-${hash(key)}`;
+  return `<article class="acct${on ? ' current' : ''}${blocked ? ' blocked' : ''}" ${cardAttr} style="--ring:${ringById(id)}">
+    <div class="ac-head">
+      <span class="ac-dial" aria-hidden="true">${miniDial(id, 36)}</span>
+      <div class="ac-name"><h3>${esc(name)}${tag}</h3><p title="${esc(sub)}">${esc(sub)}</p></div>
+      <div class="ac-do">${action}<button type="button" class="icon ac-more" data-acct-open="${esc(key)}" aria-expanded="${open}" aria-controls="${panel}" aria-label="${open ? 'Hide' : 'Show'} the details for ${esc(name)}" title="${open ? 'Hide the details' : 'Details: the dial, sign-in and what used it'}">${ICON.caret}</button></div>
+    </div>
+    ${body}
+    <div class="ac-detail" id="${panel}" ${open ? '' : 'hidden'}>${open ? more() : ''}</div>
+  </article>`;
+}
+function claudeAcct(a) {
+  const u = usageOf(a.id), on = a.id === S.acct, locked = !!(a.pinnedOrg || a.expectEmail), blocked = locked && !a.lock.ok;
+  const sub = !a.signedIn ? 'Not signed in' : blocked ? (a.lockMessage || 'Blocked') : [a.plan, a.email].filter(Boolean).join(' · ') || 'Signed in';
+  const action = !a.signedIn || blocked ? `<button class="btn sm prime" data-act="${a.expectEmail && !a.lock.ok ? 'signin-direct' : 'signin'}" data-acct="${esc(a.id)}">Sign in</button>` : on ? '' : `<button class="btn sm" data-act="use" data-acct="${esc(a.id)}" aria-label="Work as ${esc(a.name)}" title="New chats open as ${esc(a.name)}">Use this</button>`;
+  return acctCard({ key: a.id, id: a.id, name: a.name, sub, on, blocked, action, tag: on ? `<span class="tag">${esc(voice('Working as'))}</span>` : '', cardAttr: `data-acct-card="${esc(a.id)}"`, body: acctWins(a.id, a.signedIn ? null : 'Sign in to see its usage and reset times.'), more: () => dialCard(a) });
+}
+// What a second Codex account couldn't share with the main one, by name; the details are in its title.
+function codexLinkTrouble(c) {
+  const errs = (c.links && c.links.errors) || [];
+  if (!errs.length) return '';
+  const names = [...new Set(errs.map(e => String(e).split(':')[0]))].slice(0, 4).join(', ');
+  return `<ul class="aw-out"><li title="${esc(errs.join('\n'))}">Not shared with your main Codex: ${esc(names)}${errs.length > 4 ? ' and more' : ''}</li></ul>`;
+}
+function codexAcctCard(c) {
+  const ollama = c.kind === 'ollama', on = codexAccts().length > 1 && S.codex && S.codex.id === c.id, da = `data-acct="${esc(c.id)}"`;
+  const sub = c.installed === false ? 'Not installed' : !c.signedIn ? 'Not signed in' : [c.plan, c.email].filter(Boolean).join(' · ') || 'Signed in';
+  const action = c.installed === false ? '<button class="btn sm prime" data-act="codex-install">Install Codex</button>'
+    : !c.signedIn ? `<button class="btn sm prime" data-act="${ollama ? 'codex-check' : 'codex-signin'}" ${da}>${ollama ? 'Check again' : 'Sign in with ChatGPT'}</button>`
+    : `<button class="btn sm" data-act="codex-new" ${da} aria-haspopup="menu" aria-expanded="false">New ${ollama ? 'Ollama' : 'Codex'} chat</button>`;
+  return acctCard({ key: `cx:${c.id}`, id: c.id, name: c.name || 'Codex', sub, on, action, tag: on ? '<span class="tag gold">new Codex chats</span>' : '', body: `${acctWins(c.id, ollama ? 'Through Ollama, on this computer.' : c.signedIn ? null : 'Sign in to see its usage and reset times.')}${codexLinkTrouble(c)}`, more: () => codexCard(c) });
+}
+function geminiAcct() {
+  const L = geminiLimits(), ready = geminiReady();
+  const body = ready && L.length ? `<ul class="aw-out">${L.map(l => `<li>${esc(geminiOut(l))}</li>`).join('')}</ul>` : `<p class="aw-none">${ready ? 'No model has run out of quota.' : 'Finish setting it up in Setup.'}</p>`;
+  const action = ready ? '' : '<button class="btn sm prime" data-act="gemini-setup">Set it up</button>';
+  return acctCard({ key: 'gemini', id: 'gemini', name: 'Gemini', sub: geminiStatus(), action, body, more: () => `<p class="dc-msg">Antigravity can’t say how much of your plan is left, only when a model runs out and when it’s back, so that’s what shows here.</p><div class="dc-act"><button class="btn sm" data-act="gemini-check">Check the sign-in</button><button class="btn quiet sm" data-act="gemini-setup">Gemini in Setup</button></div>` });
+}
 // What used this account's last five hours, chat by chat (counted while the app runs).
 function usedBy(id) {
   const list = ((S.spent || {})[id] || []).filter(x => x.five > 0);
@@ -728,19 +883,20 @@ function codexMenu(anchor) {
 }
 
 function rowHtml(s, folderName, hit) {
-  const a = current(); const cx = isCodex(s), oc = isOpenClaw(s);
-  const ok = oc || (cx ? codexReady() : canLaunch(a));
-  const why = cx ? (S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first') : !a.signedIn ? `Sign in to ${a.name} first` : !a.lock.ok ? (a.lockMessage || 'Not on its locked account') : '';
+  const a = current(); const cx = isCodex(s), oc = isOpenClaw(s), gm = isGemini(s);
+  const ok = oc || (cx ? codexReady() : gm ? geminiReady() : canLaunch(a));
+  const why = gm ? 'Sign in to Gemini first (Setup → Gemini)' : cx ? (S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first') : !a.signedIn ? `Sign in to ${a.name} first` : !a.lock.ok ? (a.lockMessage || 'Not on its locked account') : '';
   const sub = oc ? s.preview || '' : s.lastPrompt ? `You last asked: ${s.lastPrompt}` : (s.title !== s.firstPrompt ? `Started with: ${s.firstPrompt}` : '');
   const live = liveOf(s.id);
   const run = !live && isRunning(s.id);
   const ocLive = oc && s.status === 'running' && !live;
   const flags = (isFav(s.id) ? '<span class="r-fav" title="Pinned to the sidebar">★</span>' : '') + (s.desktop && s.desktop.archived ? '<span class="tag ghost" title="Archived in the Claude desktop app">Archived</span>' : '') + (parentOfChat(s.id) ? '<span class="tag ghost" title="Started from another chat">Sub-session</span>' : '') + (cx ? '<span class="tag codex">Codex</span>' : '')
     + (s.partner ? `<span class="tag line pair" title="${PROV_NAME[s.partner.provider]} works in this chat too">with ${PROV_NAME[s.partner.provider]}</span>` : '')
+    + (live && window.keepTag ? keepTag(s.id) : '')
     + (oc ? `<span class="tag openclaw" title="An OpenClaw agent’s session, readable and writable here">OpenClaw · ${esc(s.agentName || 'Agent')}</span>` : '')
-    + (live ? `<span class="tag line">In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}</span>`
+    + (live ? `<span class="tag line" title="Open in this window${!cx ? ` as ${esc(live.accountName)}` : ''}">${sagaLook() ? `In the window${!cx && live.accountId !== a.id ? ` as ${esc(live.accountName)}` : ''}` : 'Open'}</span>`
     : ocLive ? '<span class="tag line" title="This session is active in OpenClaw right now">Live now</span>'
-    : run ? '<span class="tag violet">In a terminal</span>' : (s.active ? '<span class="tag ghost">Just updated</span>' : ''));
+    : run ? '<span class="tag violet">In a terminal</span>' : (s.active && sagaLook() ? '<span class="tag ghost">Just updated</span>' : ''));
   const primary = oc ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Read this session here; it carries on in OpenClaw">Read</button>`
     : live ? `<button class="btn sm" data-chat="${esc(s.id)}" title="Go back to this chat">Return</button>`
     : run ? `<button class="btn sm" data-watch="${esc(s.id)}" title="Read it live here while it runs in its terminal">Watch</button>`
@@ -750,7 +906,7 @@ function rowHtml(s, folderName, hit) {
   return `<li class="row ${S.drawerId === s.id ? 'current' : ''}" data-row="${esc(s.id)}" draggable="true">
     <div class="r-when"><span class="r-ago">${esc(ago(s.updated))}</span><span class="r-date">${esc(stamp(s.updated))}</span>${opened}</div>
     <div class="r-what">
-      <button class="r-title" data-preview="${esc(s.id)}" title="Details and latest messages">${hit ? highlight(s.title, S.q) : esc(s.title)}</button>${flags ? `<span class="r-flags">${flags}</span>` : ''}
+      <div class="r-top"><button class="r-title" data-preview="${esc(s.id)}" title="${esc(s.title)}. Details and latest messages">${hit ? highlight(s.title, S.q) : esc(s.title)}</button>${flags ? `<span class="r-flags">${flags}</span>` : ''}</div>
       ${hit && hit.snippet ? `<p class="r-snip">${highlight(hit.snippet, S.q)}</p>` : (sub ? `<p class="r-sub">${esc(sub)}</p>` : '')}
       ${folderName ? `<span class="r-chip">${esc(folderName)}</span>` : ''}
     </div>
@@ -758,8 +914,51 @@ function rowHtml(s, folderName, hit) {
   </li>`;
 }
 
-function secHead(eyebrow, title, extra = '') {
-  return `<div class="sec-h"><p class="eyebrow">${esc(voice('✦'))} ${esc(voice(eyebrow))}</p><h2>${esc(voice(title))}</h2>${extra ? `<div class="sec-x">${extra}</div>` : ''}</div>`;
+// fold: the name it's folded away by (a click on its title), and its count shows beside the title.
+function secHead(eyebrow, title, extra = '', fold = null) {
+  const h = fold && !sagaLook()
+    ? `<h2 id="h-${fold}"><button type="button" class="sec-fold" data-secfold="${fold}" aria-expanded="${!S.hubFold.has(fold)}"><span class="sf-c" aria-hidden="true">${ICON.caret}</span><span>${esc(voice(title))}</span><span class="sec-n" id="n-${fold}" hidden></span></button></h2>`
+    : `<h2>${esc(voice(title))}</h2>`;
+  return `<div class="sec-h"><p class="eyebrow">${esc(voice('✦'))} ${esc(voice(eyebrow))}</p>${h}${extra ? `<div class="sec-x">${extra}</div>` : ''}</div>`;
+}
+const secFold = id => (S.hubFold.has(id) && !sagaLook() ? ' folded' : '');
+function toggleSec(id, open = S.hubFold.has(id)) {
+  if (open) S.hubFold.delete(id); else S.hubFold.add(id);
+  store('hubFold', JSON.stringify([...S.hubFold]));
+  const sec = document.querySelector(`.sec[data-sec="${CSS.escape(id)}"]`);
+  if (sec) sec.classList.toggle('folded', !open);
+  document.querySelector(`[data-secfold="${CSS.escape(id)}"]`)?.setAttribute('aria-expanded', String(open));
+}
+const setSecCount = (id, n) => { const el = $(`n-${id}`); if (!el) return; el.hidden = !n; el.textContent = n ? String(n) : ''; };
+// The bar under the hero: every section with something in it, a click away, however long the page is.
+function renderJump() {
+  const box = $('hubJump'); if (!box) return;
+  const chip = (id, label, n) => { const el = $(id); return el && !el.hidden ? `<button type="button" class="hj" data-jump="${id}"><span>${esc(voice(label))}</span>${n ? `<span class="count">${n}</span>` : ''}</button>` : ''; };
+  const nProjects = S.projects.filter(p => p.cwd !== cmdrSet().cwd).length;
+  const h = [chip('secAwait', 'Awaiting you', awaiting().length), chip('secWork', atWork().length ? 'At work' : 'Open chats', atWork().length || quietOpen().length), chip('secQueue', 'Queued', (S.tasks || []).length), chip('secRaces', 'Races', (S.races || []).length), chip('secGroups', 'Your groups', S.org.groups.length), chip('secRecent', 'Recent chats'), chip('secAccounts', 'Accounts and usage'), chip('secWorlds', 'Your projects', nProjects), chip('secToday', 'Your day at a glance')].join('');
+  if (box._h === h) return;
+  box.innerHTML = h; box._h = h;
+  watchJump();
+}
+// Lights the section you're looking at, in the bar.
+let jumpSpy = null;
+function watchJump() {
+  if (jumpSpy) { jumpSpy.disconnect(); jumpSpy = null; }
+  const secs = [...document.querySelectorAll('#page .sec')];
+  if (!$('hubJump') || !window.IntersectionObserver || !secs.length) return;
+  const inView = new Set();
+  jumpSpy = new IntersectionObserver(es => {
+    for (const e of es) { if (e.isIntersecting) inView.add(e.target.id); else inView.delete(e.target.id); }
+    const at = secs.find(x => inView.has(x.id));
+    for (const b of document.querySelectorAll('#hubJump [data-jump]')) { const on = !!at && b.dataset.jump === at.id; if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); }
+  }, { rootMargin: '-130px 0px -60% 0px' });
+  for (const x of secs) jumpSpy.observe(x);
+}
+function jumpTo(id) {
+  const sec = $(id); if (!sec) return;
+  if (sec.classList.contains('folded')) toggleSec(sec.dataset.sec, true);
+  sec.scrollIntoView({ behavior: motionOk() ? 'smooth' : 'auto', block: 'start' });
+  sec.querySelector('h2 button, h2')?.focus({ preventScroll: true });
 }
 
 // The chats that were open in the app window when it last closed: reopen them in one click.
@@ -769,7 +968,7 @@ function reopenHtml() {
   const n = list.length;
   return `<section class="reopen" aria-label="Chats from last time"><span class="glyph" aria-hidden="true">↻</span><div class="ro-in">
     <p><b>Pick up where you left off.</b> When Session Switcher closed, ${n === 1 ? 'this chat was' : `these ${n} chats were`} open in its window:</p>
-    <ul>${list.slice(0, 8).map(c => `<li>${esc(c.title || 'A chat')}<small>${esc([c.folder, c.provider === 'codex' ? 'Codex' : c.accountName].filter(Boolean).join(' · '))}</small></li>`).join('')}${n > 8 ? `<li><small>and ${n - 8} more</small></li>` : ''}</ul>
+    <ul>${list.slice(0, 8).map(c => `<li>${esc(c.title || 'A chat')}<small>${esc([c.folder, { codex: 'Codex', gemini: 'Gemini' }[c.provider] || c.accountName].filter(Boolean).join(' · '))}</small></li>`).join('')}${n > 8 ? `<li><small>and ${n - 8} more</small></li>` : ''}</ul>
     <div class="ro-b"><button class="btn prime" data-act="reopen">Reopen ${n === 1 ? 'it' : 'them'}</button><button class="btn quiet" data-act="reopen-no">Not now</button></div></div></section>`;
 }
 async function reopenChats(yes) {
@@ -791,51 +990,56 @@ function watchHero() {
   heroSeen.observe(el);
 }
 function renderHub() {
-  const better = headroomPick();
+  const better = headroomPick(), saga = sagaLook();
   const recent = allSessions().slice(0, 1);
-  $('page').innerHTML = `
-    <div id="welcomeSlot"></div>
-    <div id="heroSlot">${heroHtml()}</div>
-    <div id="reopenSlot">${reopenHtml()}</div>
-    <div id="guardSlot">${guardHtml()}</div>
-    <section class="sec" id="secAwait">
-      ${secHead('Your move', 'Awaiting you')}
+  const sections = {
+    await: `<section class="sec${secFold('await')}" id="secAwait" data-sec="await">
+      ${secHead('Your move', 'Awaiting you', '', 'await')}
       <div class="summons-grid" id="awaitList"></div>
-    </section>
-    <section class="sec" id="secWork">
-      ${secHead('Right now', 'At work', '<button class="btn sm" data-act="task-new">Queue a task</button>')}
+    </section>`,
+    work: `<section class="sec${secFold('work')}" id="secWork" data-sec="work">
+      ${secHead('Right now', 'At work', saga ? '<button class="btn sm" data-act="task-new">Queue a task</button>' : '', 'work')}
       <div class="board" id="board"></div>
       <div class="quietrow" id="quietList"></div>
-    </section>
-    <div id="todaySlot"></div>
-    <section class="sec" id="secRaces" hidden>
-      ${secHead('Head to head', 'Races')}
+    </section>`,
+    today: '<div id="todaySlot"></div>',
+    races: `<section class="sec${secFold('races')}" id="secRaces" data-sec="races" hidden>
+      ${secHead('Head to head', 'Races', '', 'races')}
       <ul class="races" id="raceList"></ul>
-    </section>
-    <section class="sec" id="secQueue" hidden>
-      ${secHead('Coming up', 'Queued')}
+    </section>`,
+    queue: `<section class="sec${secFold('queue')}" id="secQueue" data-sec="queue" hidden>
+      ${secHead('Coming up', 'Queued', '', 'queue')}
       <ul class="queue" id="queueList"></ul>
-    </section>
-    <section class="sec" id="secGroups" ${S.org.groups.length ? '' : 'hidden'}>
-      ${secHead('Together', 'Your groups', '<button class="btn quiet sm" data-gact="new">New group</button>')}
+    </section>`,
+    groups: `<section class="sec${secFold('groups')}" id="secGroups" data-sec="groups" ${S.org.groups.length ? '' : 'hidden'}>
+      ${secHead('Together', 'Your groups', '<button class="btn quiet sm" data-gact="new">New group</button>', 'groups')}
       <div class="gcards" id="gcards"></div>
-    </section>
-    <section class="sec" id="secWorlds">${secHead('By folder', 'Your projects', '<button class="btn sm" data-act="project-new">New project</button>')}<div class="atlas ${S.atlasEntered ? '' : 'enter'}" id="atlas"></div></section>
-    <section class="sec">
-      ${secHead('Pick up where you left off', 'Recent chats', `<button class="btn quiet sm" data-view="recent">All recent chats</button>`)}
+    </section>`,
+    worlds: `<section class="sec${secFold('projects')}" id="secWorlds" data-sec="projects">${secHead('By folder', 'Your projects', '<button class="btn sm" data-act="project-new">New project</button>', 'projects')}<div class="atlas ${S.atlasEntered ? '' : 'enter'}" id="atlas"></div>${saga ? '' : '<div class="proj-all" id="projAll"></div>'}</section>`,
+    recent: `<section class="sec${secFold('recent')}" id="secRecent" data-sec="recent">
+      ${secHead('Pick up where you left off', 'Recent chats', `<button class="btn quiet sm" data-view="recent">All recent chats</button>`, 'recent')}
       ${recent.length ? '<ul class="rows" id="recentList"></ul>' : emptyArt('chats', 'No chats yet. Start one with <button class="linkish" data-act="project-new">New project</button>, or open a folder in Claude Code once and its chats appear here.')}
-    </section>
-    <section class="sec" id="secAccounts">
-      ${secHead('Your plans', 'Accounts and usage', `<button class="btn quiet sm" data-act="usage-all">Check all</button>`)}
+    </section>`,
+    accounts: `<section class="sec${secFold('accounts')}" id="secAccounts" data-sec="accounts">
+      ${secHead('Your plans', 'Accounts and usage', `${saga ? '' : '<button class="btn quiet sm" data-act="add">Add an account</button>'}<button class="btn quiet sm" data-act="usage-all">Check all</button>`, 'accounts')}
       ${better ? `<div class="headroom"><span><b>${esc(better.a.name)}</b> has the most room right now: ${better.r}% left. ${esc(current().name)} has ${binding(usageOf(current().id)).left}%.</span><button class="btn sm" data-act="use" data-acct="${esc(better.a.id)}">Work as ${esc(better.a.name)}</button></div>` : ''}
-      <div class="dials" id="dials"></div>
-    </section>
-    ${S.dryRun ? '<p class="note">Preview mode: terminal buttons show what would run instead of opening one.</p>' : ''}`;
+      <div class="${saga ? 'dials' : 'accts'}" id="dials"></div>
+    </section>`,
+  };
+  const slots = '<div id="welcomeSlot"></div>';
+  const hero = '<div id="heroSlot">' + heroHtml() + '</div>';
+  const notes = `<div id="reopenSlot">${reopenHtml()}</div><div id="guardSlot">${guardHtml()}</div><div id="clashSlot"></div><div id="backSlot"></div>`;
+  const dry = S.dryRun ? '<p class="note">Preview mode: terminal buttons show what would run instead of opening one.</p>' : '';
+  // Most used first: what needs you, what's moving, then where to pick up, your plans and your projects.
+  $('page').innerHTML = saga
+    ? `${slots}${hero}${notes}${sections.await}${sections.work}${sections.today}${sections.races}${sections.queue}${sections.groups}${sections.worlds}${sections.recent}${sections.accounts}${dry}`
+    : `${hero}<nav class="hub-jump" id="hubJump" aria-label="On this page"></nav>${slots}${notes}${sections.await}${sections.work}${sections.queue}${sections.races}${sections.groups}<div class="hub-cw"><div class="hub-cols">${sections.recent}${sections.accounts}</div></div>${sections.worlds}${sections.today}${dry}`;
   renderHubLists();
   renderLive(true);
   watchHero();
   if (!dialsDrawn && !renderHub.timer) renderHub.timer = setTimeout(() => { dialsDrawn = true; }, 2600);
   renderQueue(); renderRaces();
+  renderJump();
 }
 // Recent chats and the index, patched in place when transcripts change.
 function renderHubLists() {
@@ -844,6 +1048,7 @@ function renderHubLists() {
   const atlas = $('atlas');
   if (atlas) {
     patch(atlas, atlasItems(), x => (x.add ? '+new' : x.p.cwd), x => (x.add ? newProjectTile(x.i) : worldCard(x.p, x.i)));
+    renderProjAll();
     // The projects rise in, once, the first time the atlas scrolls into view. (Any part of it:
     // on a phone the single column is many screens tall, so a share of it can never be visible.)
     if (!S.atlasEntered && !atlas._io) {
@@ -884,7 +1089,41 @@ function ensureWorlds() {
     for (let i = 0; i < want.length; i += 3) await Promise.all(want.slice(i, i + 3).map(c => loadWorld(c).catch(() => null)));
   })().finally(() => { worldsLoading = null; if (S.view === 'hub' && $('atlas')) patch($('atlas'), atlasItems(), x => (x.add ? '+new' : x.p.cwd), x => (x.add ? newProjectTile(x.i) : worldCard(x.p, x.i))); });
 }
-const atlasItems = () => { const list = S.projects.filter(p => p.cwd !== cmdrSet().cwd); return [...list.map((p, i) => ({ p, i })), { add: true, i: list.length }]; };
+const HUB_TILES = 6;
+// The tiles on the hub: the projects in use most lately (every project is listed under them).
+const tileProjects = () => S.projects.filter(p => p.cwd !== cmdrSet().cwd && p.exists !== false).sort((a, b) => projLast(b) - projLast(a)).slice(0, HUB_TILES);
+const atlasItems = () => {
+  if (!sagaLook()) return tileProjects().map((p, i) => ({ p, i }));
+  const list = S.projects.filter(p => p.cwd !== cmdrSet().cwd);
+  return [...list.map((p, i) => ({ p, i })), { add: true, i: list.length }];
+};
+// Every project, as a list you can filter: the tiles above are the ones in use most lately.
+function projRow(p) {
+  const n = p.sessions.length, resumable = p.sessions.find(x => !isOpenClaw(x)), last = projLast(p);
+  return `<li class="pa-row${p.exists === false ? ' gone' : ''}" data-cwd="${esc(p.cwd)}">
+    <button class="pa-open" data-view="folder" data-cwd="${esc(p.cwd)}" title="Open ${esc(p.name)}">${crestHtml(p, 22)}<span class="pa-t"><span class="pa-n">${esc(p.name)}</span><span class="pa-p">${esc(p.cwd)}${p.exists === false ? ' (this folder no longer exists)' : ''}</span></span></button>
+    <span class="pa-s">${esc(plural(n, 'chat'))}${last ? ` · ${esc(agoL(last))}` : ''}</span>
+    <span class="pa-go">${resumable && p.exists ? `<button class="btn quiet sm" data-continue="${esc(resumable.id)}" title="${esc(resumable.title)}">Continue</button>` : ''}<button class="btn quiet sm" data-act="world-new" data-cwd="${esc(p.cwd)}" aria-haspopup="menu" aria-expanded="false" ${p.exists ? '' : 'disabled'}>New chat</button></span>
+  </li>`;
+}
+function renderProjAll() {
+  const box = $('projAll'); if (!box) return;
+  const all = S.projects.filter(p => p.cwd !== cmdrSet().cwd).sort((a, b) => projLast(b) - projLast(a));
+  const open = S.hubFold.has('projects-all');
+  const rest = all.length - tileProjects().length;
+  if (rest <= 0) { box.innerHTML = ''; box._h = ''; return; }
+  const head = `<button type="button" class="btn quiet sm pa-toggle" data-proj-all aria-expanded="${open}" aria-controls="projList">${open ? 'Fewer projects' : `All ${all.length} projects`}</button>${open ? `<label class="pa-q"><span class="sr">Filter projects</span><input type="search" id="projQ" placeholder="Filter projects" autocomplete="off" spellcheck="false"></label>` : ''}`;
+  if (box._h !== head) {
+    box._h = head; box.innerHTML = `<div class="pa-top">${head}</div>${open ? '<ul class="pa-list" id="projList"></ul>' : ''}`;
+    if (open) $('projQ').value = S.projQ;
+  }
+  if (!open) return;
+  const q = S.projQ.trim().toLowerCase();
+  const hit = all.filter(p => !q || `${p.name} ${p.cwd}`.toLowerCase().includes(q));
+  // Folders that are gone last: their chats can still be read.
+  const list = [...hit.filter(p => p.exists !== false), ...hit.filter(p => p.exists === false)];
+  patch($('projList'), list, p => p.cwd, projRow, '<li class="pa-none">No project has that in its name.</li>');
+}
 function newProjectTile(i) {
   return `<button class="world world-new" data-act="project-new" style="--i:${Math.min(i, 12)}"><span class="wn-plus" aria-hidden="true"></span><b>New project</b><span>Make a folder and start a chat in it, as any of your accounts.</span></button>`;
 }
@@ -929,7 +1168,7 @@ function worldCard(p, i) {
   const bits = [chatsToday ? plural(chatsToday, 'chat') : '', w && w.today.docs ? plural(w.today.docs, 'doc') : '', w && w.today.images ? plural(w.today.images, 'image') : ''].filter(Boolean);
   return `<article class="world ${live ? 'is-live' : ''}" style="--i:${Math.min(i, 12)}">
     <button class="w-art" data-world="${esc(p.cwd)}" aria-label="Open ${esc(p.name)}">${worldArt(p, w)}<span class="w-shade" aria-hidden="true"></span>
-      <span class="w-title">${crestHtml(p, 30)}<span class="w-name">${esc(p.name)}</span>${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}</span></button>
+      <span class="w-title">${crestHtml(p, 30)}<span class="w-name">${esc(p.name)}</span>${!sagaLook() && parentName(p.cwd) && S.projects.filter(x => x.name === p.name).length > 1 ? `<small class="w-in">in ${esc(parentName(p.cwd))}</small>` : ''}${live ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}</span></button>
     <div class="w-body">
       <p class="w-today ${bits.length ? 'on' : ''}">${bits.length ? `<span class="glyph" aria-hidden="true">✦</span>Today: ${esc(bits.join(', '))}` : hasChats(p) ? 'Quiet today' : 'New project'}</p>
       ${latest ? `<p class="w-last"><button class="linkish" data-preview="${esc(latest.id)}" title="${esc(latest.title)}">${esc(latest.title)}</button><span>${esc(agoL(latest.updated))}</span></p>` : `<p class="w-last quiet">No chats yet${p.added && p.updated ? `. Added ${esc(agoL(p.updated))}` : ''}.</p>`}
@@ -949,7 +1188,7 @@ function worldNewItems(cwd) {
     { label: `New Claude chat`, hint: `as ${a.name}`, disabled: !canLaunch(a), why: a.lockMessage || 'Sign in first', run: () => ChatUI.open({ cwd, mode: 'new' }) },
     ...(S.codex && S.codex.enabled ? [{ label: 'New Codex chat', hint: 'ChatGPT', disabled: !codexReady(), why: 'Sign in to Codex first', run: () => ChatUI.open({ cwd, mode: 'new', provider: 'codex' }) }] : []),
     '-',
-    ...S.prompts.slice(0, 10).map(pr => ({ label: `Start with: ${pr.title}`, hint: pr.provider === 'codex' ? 'runs in Codex' : '', disabled: pr.provider === 'codex' ? !codexReady() : !canLaunch(a), run: () => startWithPrompt(cwd, pr) })),
+    ...S.prompts.slice(0, 10).map(pr => ({ label: `Start with: ${pr.title}`, hint: promptRuns(pr).hint, disabled: !promptRuns(pr).ok, run: () => startWithPrompt(cwd, pr) })),
     { label: 'Edit prompts…', run: openPromptEditor },
   ];
 }

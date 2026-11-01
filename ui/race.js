@@ -21,10 +21,10 @@ function raceCard(r) {
     return `<div class="racer ${who}"><p class="rc-h"><span class="crew-dot" aria-hidden="true"></span><b>${name}</b><span class="rc-st ${racerState(x).replace(/\W+/g, '-')}">${esc(racerState(x))}</span></p>
       ${r.split ? `<p class="rc-part" title="${esc(r.split[who])}">${esc(r.split[who].split('\n')[0].slice(0, 160))}</p>` : ''}
       <p class="rc-f">${f === null || f === undefined ? '…' : f.length ? `${f.length} file${f.length === 1 ? '' : 's'} changed <i class="d-add">+${add}</i> <i class="d-del">−${del}</i>` : 'No changes yet'}</p>
-      <p class="rc-b">${x.key ? `<button class="btn quiet sm" data-act="race-open" data-key="${esc(x.key)}">Open chat</button>` : x.sessionId ? `<button class="btn quiet sm" data-act="race-open" data-sid="${esc(x.sessionId)}" title="Starts it again where it left off">Open chat</button>` : ''}${f && f.length ? `<button class="btn quiet sm" data-act="race-diff" data-id="${esc(r.id)}" data-who="${who}">See changes</button>` : ''}</p>
+      <p class="rc-b">${x.key ? `<button class="btn quiet sm" data-act="race-open" data-key="${esc(x.key)}">Open chat</button>` : x.sessionId ? `<button class="btn quiet sm" data-act="race-open" data-sid="${esc(x.sessionId)}" data-who="${who}" title="Starts it again where it left off">Open chat</button>` : ''}${f && f.length ? `<button class="btn quiet sm" data-act="race-diff" data-id="${esc(r.id)}" data-who="${who}">See changes</button>` : ''}</p>
       <button class="btn${f && f.length && !r.split ? ' gilt' : ''} sm" data-act="race-keep" data-id="${esc(r.id)}" data-who="${who}" ${f && f.length ? '' : 'disabled'}>Keep ${name}’s</button></div>`;
   };
-  return `<li class="race">${head}<div class="race-cols">${racersOf(r).map(col).join('')}</div>${r.judge ? `<p class="race-j"><span class="glyph" aria-hidden="true">⚖</span><b>Judge</b> ${esc(racerState(r.judge))}${r.judge.key ? ` <button class="btn quiet sm" data-act="race-open" data-key="${esc(r.judge.key)}">Read its verdict</button>` : r.judge.sessionId ? ` <button class="btn quiet sm" data-act="race-open" data-sid="${esc(r.judge.sessionId)}">Read its verdict</button>` : ''}</p>` : ''}<p class="race-b">${both(r) ? `${r.judge ? '' : `<button class="btn quiet sm" data-act="race-judge" data-id="${esc(r.id)}" title="A chat that can only look compares both and says which to keep">Ask a judge</button>`}<button class="btn quiet sm" data-act="race-files" data-id="${esc(r.id)}">Pick files…</button>` : ''}<button class="btn quiet sm" data-act="race-discard" data-id="${esc(r.id)}">Discard both</button>${r.split ? `<button class="btn gilt sm" data-act="race-both" data-id="${esc(r.id)}" ${racersOf(r).some(([w]) => (r.racers[w] || {}).files && r.racers[w].files.length) ? '' : 'disabled'}>Keep both</button>` : ''}</p></li>`;
+  return `<li class="race">${head}<div class="race-cols">${racersOf(r).map(col).join('')}</div>${r.judge ? `<p class="race-j"><span class="glyph" aria-hidden="true">⚖</span><b>Judge</b> ${esc(racerState(r.judge))}${r.judge.key ? ` <button class="btn quiet sm" data-act="race-open" data-key="${esc(r.judge.key)}">Read its verdict</button>` : r.judge.sessionId ? ` <button class="btn quiet sm" data-act="race-open" data-sid="${esc(r.judge.sessionId)}" data-who="${esc(r.judge.provider || 'claude')}">Read its verdict</button>` : ''}</p>` : ''}<p class="race-b">${both(r) ? `${r.judge ? '' : `<button class="btn quiet sm" data-act="race-judge" data-id="${esc(r.id)}" title="A chat that can only look compares both and says which to keep">Ask a judge</button>`}<button class="btn quiet sm" data-act="race-files" data-id="${esc(r.id)}">Pick files…</button>` : ''}<button class="btn quiet sm" data-act="race-discard" data-id="${esc(r.id)}">Discard both</button>${r.split ? `<button class="btn gilt sm" data-act="race-both" data-id="${esc(r.id)}" ${racersOf(r).some(([w]) => (r.racers[w] || {}).files && r.racers[w].files.length) ? '' : 'disabled'}>Keep both</button>` : ''}</p></li>`;
 }
 function renderRaces() {
   const sec = $('secRaces'), list = $('raceList');
@@ -32,6 +32,7 @@ function renderRaces() {
   const races = S.races || [];
   sec.hidden = !races.length;
   list.innerHTML = races.map(raceCard).join('');
+  setSecCount('races', races.length); renderJump();
 }
 
 function raceDialog() {
@@ -43,7 +44,7 @@ function raceDialog() {
       <div class="rc-mode seg" role="radiogroup" aria-label="How they work"><label><input type="radio" name="rcMode" value="race" checked> Race: the same task</label><label><input type="radio" name="rcMode" value="split"> Split the work</label></div>
       <p class="rd-intro">Both take the same task, each in its own copy of the project (your uncommitted work included; ignored files like node_modules aren’t copied). Your project isn’t touched until you keep one. Needs a git project.</p>
       <div class="tk-grid"><label>Project<select id="rcProject"></select></label><label>Who<select id="rcWho"></select></label><label id="rcAcctWrap">Claude’s account<select id="rcAcct"></select></label></div>
-      <label class="tk-prompt">The task<select id="rcFrom"><option value="">Start from a saved prompt…</option></select><textarea id="rcText" rows="7" placeholder="Fix the save-file bug on Steam Deck, and add a test that shows it’s fixed."></textarea></label>
+      <label class="tk-prompt">The task<select id="rcFrom" aria-label="Start from a saved prompt"><option value="">Start from a saved prompt…</option></select><textarea id="rcText" rows="7" aria-label="The task" placeholder="Fix the save-file bug on Steam Deck, and add a test that shows it’s fixed."></textarea></label>
       <div class="rc-parts" hidden><label class="tk-prompt"><span id="rcPartA">Claude’s part</span><textarea id="rcClaude" rows="3" placeholder="The save code: find why it fails on Steam Deck and fix it."></textarea></label><label class="tk-prompt"><span id="rcPartB">Codex’s part</span><textarea id="rcCodex" rows="3" placeholder="A test that shows the bug, in tests/save.test.js."></textarea></label></div>
       <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-rc="close">Cancel</button><button type="submit" class="btn prime">Start the race</button></div>
     </div></form></dialog>`);
@@ -92,7 +93,7 @@ function raceWho() {
   const [a, b] = ($('rcWho').value || 'claude+codex').split('+');
   $('rcTitle').textContent = split ? `Split the work: ${RACE_NAME[a]} and ${RACE_NAME[b]}` : `Race ${RACE_NAME[a]} and ${RACE_NAME[b]}`;
   $('rcPartA').textContent = `${RACE_NAME[a]}’s part`; $('rcPartB').textContent = `${RACE_NAME[b]}’s part`;
-  $('rcAcctWrap').hidden = a !== 'claude';
+  $('rcAcctWrap').hidden = ![a, b].includes('claude');
 }
 function openRaceDialog(cwd = null, mode = 'race', who = null) {
   const pairs = racePairs();
@@ -114,7 +115,7 @@ function openRaceDialog(cwd = null, mode = 'race', who = null) {
 async function raceAction(act, b) {
   if (act === 'race-new') return openRaceDialog(b.dataset.cwd || null);
   if (act === 'split-new') return openRaceDialog(b.dataset.cwd || null, 'split');
-  if (act === 'race-open') return b.dataset.key ? ChatUI.openKey(b.dataset.key) : ChatUI.open({ sessionId: b.dataset.sid });
+  if (act === 'race-open') return b.dataset.key ? ChatUI.openKey(b.dataset.key) : ChatUI.open({ sessionId: b.dataset.sid, provider: b.dataset.who || null });
   const r = (S.races || []).find(x => x.id === b.dataset.id); if (!r) return undefined;
   const name = RACE_NAME[b.dataset.who] || 'its';
   if (act === 'race-diff') return viewRaceChanges(r, b.dataset.who);
@@ -160,7 +161,7 @@ async function raceAction(act, b) {
 async function pickRaceFiles(r) {
   const files = {}, all = new Map();
   for (const [w] of racersOf(r)) for (const f of (r.racers[w] || {}).files || []) { (files[w] || (files[w] = [])).push(f); const k = f.path.toLowerCase(); all.set(k, [...(all.get(k) || []), w]); }
-  const row = (w, f) => { const shared = all.get(f.path.toLowerCase()).length > 1; return `<label class="pf-row"><input type="${shared ? 'radio' : 'checkbox'}" name="${shared ? `pf-${esc(f.path)}` : ''}" data-who="${w}" data-path="${esc(f.path)}"><span class="pf-p">${esc(f.path)}</span><span class="pf-n"><i class="d-add">+${f.add || 0}</i> <i class="d-del">−${f.del || 0}</i>${shared ? ' · both changed it' : ''}</span></label>`; };
+  const row = (w, f) => { const shared = all.get(f.path.toLowerCase()).length > 1; return `<label class="pf-row"><input type="${shared ? 'radio' : 'checkbox'}" name="${shared ? `pf-${esc(f.path.toLowerCase())}` : ''}" data-who="${w}" data-path="${esc(f.path)}"><span class="pf-p">${esc(f.path)}</span><span class="pf-n"><i class="d-add">+${f.add || 0}</i> <i class="d-del">−${f.del || 0}</i>${shared ? ' · both changed it' : ''}</span></label>`; };
   const d = document.createElement('dialog');
   d.className = 'wide pick-files';
   d.innerHTML = `<form method="dialog"><div class="setup-head"><h3>Pick files to keep</h3><button type="button" class="icon" data-pf="x" aria-label="Close">✕</button></div>

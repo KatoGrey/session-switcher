@@ -55,13 +55,16 @@ function keys(wc) {
 
 function createDesk({ show, send, tray, window, settings, saveSettings, log = () => {} }) {
   const st = { needs: 0, working: 0, list: [], badge: null };
-  let awake = null;
+  let awake = null, toldAwake = false;
   const opt = () => ({ ...DEFAULTS, ...(settings() || {}) });
 
   // While a chat works, the PC doesn't go to sleep (the screen still may).
   function keepAwake() {
     const want = opt().keepAwake && st.working > 0;
-    if (want && awake === null) { awake = powerSaveBlocker.start('prevent-app-suspension'); log('Keeping the PC awake while chats work.'); }
+    if (want && awake === null) {
+      awake = powerSaveBlocker.start('prevent-app-suspension');
+      if (!toldAwake) { toldAwake = true; log('Keeping the PC awake while chats work.'); } // once: it comes and goes with every reply
+    }
     if (!want && awake !== null) { powerSaveBlocker.stop(awake); awake = null; }
   }
   // What's waiting, from the page.

@@ -41,12 +41,12 @@ function treeOrder(ids) {
 function navChatHtml(id, depth = 0) {
   const [c, p] = sessionById(id); if (!c) return '';
   const cur = !!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && lowId(ChatUI.sessionId()) === lowId(c.id));
-  return `<button class="nav-i nav-chat ${isCodex(c) ? 'codex' : ''} ${depth ? 'nav-sub' : ''}" style="--depth:${depth}" data-navchat="${esc(c.id)}" draggable="true" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${cur}"><span class="glyph" aria-hidden="true">${depth ? '↳' : '❝'}</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : ''}</small></span>${moodDot(c.id)}</button>`;
+  return `<button class="nav-i nav-chat ${isCodex(c) ? 'codex' : isGemini(c) ? 'gemini' : ''} ${depth ? 'nav-sub' : ''}" style="--depth:${depth}" data-navchat="${esc(c.id)}" draggable="true" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${cur}"><span class="glyph" aria-hidden="true">${depth ? '↳' : '❝'}</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : ''}</small></span>${moodDot(c.id)}</button>`;
 }
 function navGroupsHtml() {
   const G = S.org.groups || [];
-  const head = `<div class="nav-h prov groups"><span class="pmark" aria-hidden="true"></span>Groups<button class="nav-add" data-gact="new" title="New group" aria-label="New group">+</button></div>`;
-  if (!G.length) return `${head}<p class="nav-empty">Right-click a chat and choose “Move to group”, or drag it onto a group.</p>`;
+  const head = `<div class="nav-h prov groups"><span class="pmark" aria-hidden="true"></span>Groups<button class="nav-add" data-gact="new" title="New group. Right-click a chat and choose “Move to group”, or drag it onto one." aria-label="New group">+</button></div>`;
+  if (!G.length) return sagaLook() ? `${head}<p class="nav-empty">Right-click a chat and choose “Move to group”, or drag it onto a group.</p>` : head;
   return head + G.map(g => {
     const n = g.chats.filter(id => sessionById(id)[0]).length;
     return `<button class="nav-g" data-group="${esc(g.id)}" draggable="true" aria-expanded="${!g.collapsed}" title="${esc(g.name)}: ${esc(countsWords(groupCounts(g)))}"><span class="fold-c" aria-hidden="true">▾</span><span class="ni-t">${esc(g.name)}</span>${countsHtml(groupCounts(g))}<span class="count">${n}</span></button>
@@ -96,6 +96,7 @@ function moveToGroupItems(id) {
     ...(cur ? [{ label: `Take out of ${cur.name}`, run: () => orgDo({ action: 'move', chat: id, id: null }) }] : []),
   ];
 }
+const groupOpenKeys = g => g.chats.map(id => { const x = actOf(id); return x && x.source === 'app' && !x.parentKey ? x.key : null; }).filter(Boolean);
 function groupItems(gid) {
   const g = S.org.groups.find(x => x.id === gid); if (!g) return [];
   const i = S.org.groups.indexOf(g);
@@ -105,6 +106,9 @@ function groupItems(gid) {
     { label: 'Move up', disabled: i === 0, run: () => orgDo({ action: 'reorder', id: g.id, step: -1 }) },
     { label: 'Move down', disabled: i === S.org.groups.length - 1, run: () => orgDo({ action: 'reorder', id: g.id, step: 1 }) },
     { glyph: '+', label: 'New group…', run: () => newGroup() },
+    '-',
+    { glyph: '❝', label: 'Message its open chats…', disabled: !groupOpenKeys(g).length, why: 'None of its chats are open', run: () => openManyDialog({ keys: groupOpenKeys(g), title: `Message ${g.name}` }) },
+    { glyph: '⟳', label: 'Keep its open chats working until…', disabled: !groupOpenKeys(g).length, why: 'None of its chats are open', run: () => openKeepDialog({ keys: groupOpenKeys(g), title: `The open chats in ${g.name}` }) },
     '-',
     { label: 'Remove the group', hint: 'its chats stay', danger: true, run: async () => { if (!(await appConfirm(`Remove the group “${g.name}”?\n\nIts chats aren’t touched; they just aren’t grouped any more.`, { ok: 'Remove group', danger: true }))) return; await orgDo({ action: 'remove', id: g.id }); } },
   ];
@@ -127,11 +131,26 @@ async function startSubSession(id, withBrief) {
     try { last = (await api(`/api/chat/last-reply?${new URLSearchParams({ id: s.id })}`)).text || ''; } catch (err) { toast(`Couldn’t read its last reply (${err.message}); the brief starts without it.`, 6000); }
     text = briefText(s, last);
   }
-  const prov = isCodex(s) ? 'codex' : 'claude';
+  const prov = isCodex(s) ? 'codex' : isGemini(s) ? 'gemini' : 'claude';
   const live = liveOf(s.id);
   const acct = prov === 'claude' ? [live && live.accountId, s.lastOpened && s.lastOpened.account].find(x => x && S.accounts.some(a => a.id === x && canLaunch(a))) : null;
   return ChatUI.open({ cwd: p.cwd, mode: 'new', provider: prov, accountId: acct || null, parent: s.id, initialText: text });
 }
+// Continue in a fresh chat: the open chat writes a handoff (goal, what's done, where it stands, next
+// steps), and a new chat in the same folder, linked to it, opens with that handoff in its message box,
+// to read, change and send. For a chat that's grown long or slow.
+async function continueFresh() {
+  if (!C.key || !C.sessionId) { toast('Send a message first.'); return; }
+  const id = C.sessionId, prov = C.provider, name = PROV_NAME[prov] || 'It', title = C.title || 'this chat';
+  const cwd = C.info && C.info.cwd, acct = prov === 'claude' && C.info ? C.info.accountId || null : null;
+  toast(`Asking ${name} for a handoff… The new chat opens with it when it’s ready.`, 9000);
+  let r;
+  try { r = await api('/api/chat/handoff', { key: C.key }); } catch (err) { toast(`Couldn’t get a handoff: ${err.message}`, 8000); return; }
+  const text = `Continuing from “${title}”, an earlier chat in this folder. Its handoff:\n\n${r.text}\n\nPick up from the next steps.`;
+  await ChatUI.open({ cwd, mode: 'new', provider: prov, accountId: acct, parent: id, initialText: text });
+  toast('The handoff is in the message box: read it, change anything, then send.', 7000);
+}
+window.continueFresh = continueFresh;
 function subItems(id) {
   const par = parentOfChat(id), [ps] = par ? sessionById(par) : [null];
   return [

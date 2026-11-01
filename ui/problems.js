@@ -59,7 +59,8 @@ document.addEventListener('click', wrap(async e => {
   if (what === 'fix') {
     const d = Problems.data, x = d && d.problems.find(y => y.id === b.dataset.id); if (!x) return undefined;
     if ($('setup').open) $('setup').close();
-    return ChatUI.open({ cwd: d.appDir, mode: 'new', initialText: `Session Switcher (this folder) hit a problem. Find the cause and fix it, then run the tests (node tests/run.js).\n\nWhere: ${x.where}${x.count > 1 ? ` (${x.count} times)` : ''}\nWhat: ${x.message}\n${x.stack ? `\nStack:\n${x.stack}\n` : ''}${d.log ? `\nThe end of switcher.log:\n${d.log}` : ''}` });
+    if (!S.projects.some(p => p.cwd.toLowerCase() === String(d.appDir).toLowerCase())) { await api('/api/project/create', { existing: d.appDir }); await loadSessions(); renderNav(); }
+    return ChatUI.open({ cwd: d.appDir, mode: 'new', initialText: `Session Switcher (this folder) hit a problem. Find the cause and fix it, then run the tests (node tests/run.js).${S.shell ? ' This is the installed copy, so a change here lasts until its next update.' : ''}\n\nWhere: ${x.where}${x.count > 1 ? ` (${x.count} times)` : ''}\nWhat: ${x.message}\n${x.stack ? `\nStack:\n${x.stack}\n` : ''}${d.log ? `\nThe end of switcher.log:\n${d.log}` : ''}` });
   }
   return undefined;
 }));

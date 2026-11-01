@@ -11,8 +11,12 @@ const TIPS = [
   { id: 'chat', when: () => window.ChatUI && ChatUI.isOpen() && !C.watch, text: 'Tip: /btw asks a quick question beside the chat, and a reply’s ⋯ has Do this later and Branch from here.' },
   { id: 'pics', when: () => !!document.querySelector('#cFeed .pics, #cFeed .md-pic'), text: 'Tip: click a picture to see every picture in this chat; ← → steps through them.' },
   { id: 'duo', when: () => window.ChatUI && ChatUI.isOpen() && typeof duo === 'function' && duo(), text: 'Tip: Both sends your message to each in turn; Plan has one draft a plan and the other check it before anything changes.' },
+  { id: 'keep', when: () => window.ChatUI && ChatUI.isOpen() && !C.watch && C.sessionId && S.activity.some(x => x.parentKey === C.key), text: 'Tip: leaving a long job running? This chat’s ⋯ has Keep it working until…: they’re told to carry on when they go quiet.' },
   { id: 'project', when: () => S.view === 'folder', text: 'Tip: a project’s ⋯ has Rules and tools, Queue a task, Race and Split, and its chats that are done wait at the bottom.' },
   { id: 'palette', when: () => { const p = document.getElementById('palette'); return !!p && !p.hidden; }, text: 'Tip: Ctrl+K understands plain words: try “codex chat in <a project> to make the icons”.' },
+  { id: 'board', when: () => !!document.getElementById('bdRoot'), text: 'Tip: on the picture board, K keeps the picture you’re on and R marks it to redo; Send the redo list hands them to a chat.' },
+  { id: 'split', when: () => window.ChatUI && ChatUI.isOpen() && window.Split && Split.can() && !Split.panes.length, text: 'Tip: the ◫ at the top of a chat puts another chat beside it, in the same window.' },
+  { id: 'docnotes', when: () => { const v = document.getElementById('viewer'); return !!v && v.open && !!document.querySelector('#vBody .v-md, #vBody .v-raw'); }, text: 'Tip: select a passage and press N to add a note on it; Send to a chat hands all your notes over at once.' },
 ];
 const tipsOn = () => store('tips') !== 'off';
 const tipsSeen = () => { try { return JSON.parse(store('tips-seen') || '{}') || {}; } catch { return {}; } };

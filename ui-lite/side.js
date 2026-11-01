@@ -60,7 +60,7 @@ function paintSide() {
 
 function sideListen(key) {
   if (SD.es) SD.es.close();
-  const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}`);
+  const es = liveChat(key);
   SD.es = es;
   es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); SD.sessionId = info.sessionId || SD.sessionId; SD.busy = ['busy', 'waiting', 'starting'].includes(info.state); } catch { /* fine */ } paintSide(); });
   es.addEventListener('chat', e => {
@@ -97,7 +97,7 @@ async function sendSide() {
     }
     // It stopped since (an idle chat is stopped after a while): picked up again first.
     if (!SD.key) {
-      const info = await api('/api/chat/open', { sessionId: SD.sessionId, mode: 'resume', ...(SD.provider === 'codex' ? { provider: 'codex' } : {}) });
+      const info = await api('/api/chat/open', { sessionId: SD.sessionId, mode: 'resume', ...(SD.provider && SD.provider !== 'claude' ? { provider: SD.provider } : {}) });
       SD.key = info.key; SD.items = []; sideListen(info.key);
       for (let i = 0; i < 60 && SD.key && !SD.items.length && SD.busy; i++) await new Promise(r => setTimeout(r, 250));
     }

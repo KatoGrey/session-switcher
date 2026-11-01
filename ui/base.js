@@ -5,6 +5,8 @@ const TOKEN = window.TOKEN;
 // A chat popped out into its own window (?chat=<id>&solo=1): just that chat, side by side with the rest.
 const PAGE_ARGS = new URLSearchParams(location.search);
 const SOLO = PAGE_ARGS.get('solo') === '1';
+// One side of a split view (ui/split.js): such a chat, in a frame beside the main one.
+const PANE = PAGE_ARGS.get('pane') === '1';
 const canPopOut = () => !window.REMOTE && !window.Android && !SOLO;
 function popOutChat(id) {
   if (!id) { toast('Send a message first.'); return; }
@@ -33,6 +35,11 @@ const savePins = () => store('pins', JSON.stringify([...S.pins]));
 // Favorite chats (pinned to the top of the sidebar), and sidebar sections you've folded away.
 try { S.favs = new Set(JSON.parse(store('favChats') || '[]')); } catch { S.favs = new Set(); }
 try { S.navFold = new Set(JSON.parse(store('navFold') || '[]')); } catch { S.navFold = new Set(); }
+// Sections of the hub you've folded away, which account cards are open, and which assistant's chats
+// the sidebar's project list counts.
+try { S.hubFold = new Set(JSON.parse(store('hubFold') || '[]')); } catch { S.hubFold = new Set(); }
+try { S.acctOpen = new Set(JSON.parse(store('acctOpen') || '[]')); } catch { S.acctOpen = new Set(); }
+S.navProv = store('navProv') || 'all'; S.navQ = ''; S.projQ = '';
 function togglePin(cwd) {
   const on = !S.pins.has(cwd);
   if (on) S.pins.add(cwd); else S.pins.delete(cwd);
@@ -61,6 +68,8 @@ document.addEventListener('keydown', e => {
   if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;   // the text's own undo
   if (Undo.run && Date.now() <= Undo.until) { e.preventDefault(); wrap(takeBackLast)(); }
 });
+// Said to a screen reader, without taking focus or showing anything.
+function announce(text) { const el = $('hubLive'); if (el) el.textContent = text; }
 function toggleFav(id) {
   const k = String(id).toLowerCase(), on = !S.favs.has(k);
   if (on) S.favs.add(k); else S.favs.delete(k);
@@ -88,6 +97,53 @@ async function api(p, body) {
   if (r.status === 403 && (j.reason === 'stale' || !j.error)) { location.reload(); throw new Error('Reloading…'); }
   if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { reason: j.reason, status: r.status });
   return j;
+}
+
+/* ---------- one live connection per window ---------- */
+// A browser keeps at most six connections open to one address, across all its windows, and a stream
+// holds one all the time it's open. So a window's chats all come over its one connection (lib/streams.js).
+// A ChatStream looks like an EventSource for one chat. If the app on the other end is an older copy, or
+// the connection can't be made, each opens its own after all, as they used to.
+const Live = { id: `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`, mux: false, direct: false, n: 0, subs: new Map() };
+class ChatStream {
+  constructor(key, after = 0) {
+    Object.assign(this, { key, last: Number(after) || 0, sub: `s${++Live.n}`, on: {}, onerror: null, closed: false, own: null });
+    Live.subs.set(this.sub, this);
+    this.start();
+  }
+  addEventListener(name, fn) { (this.on[name] = this.on[name] || []).push(fn); if (this.own) this.own.addEventListener(name, fn); }
+  fire(name, data) { for (const fn of this.on[name] || []) fn({ data }); }
+  start() {
+    if (this.closed || this.own) return;
+    if (Live.mux) { api('/api/chat/watch', { stream: Live.id, sub: this.sub, key: this.key, after: this.last }).catch(err => { if (!err.offline && err.status !== 409 && this.onerror) this.onerror(err); }); return; }
+    if (!Live.direct) return;   // once the window's connection has said which
+    this.own = new EventSource(`/api/chat/events?key=${encodeURIComponent(this.key)}&token=${TOKEN}&after=${this.last}`);
+    for (const [name, fns] of Object.entries(this.on)) for (const fn of fns) this.own.addEventListener(name, fn);
+    this.own.onerror = e => { if (this.onerror) this.onerror(e); };
+  }
+  close() {
+    if (this.closed) return;
+    this.closed = true; Live.subs.delete(this.sub);
+    if (this.own) this.own.close();
+    else if (Live.mux) api('/api/chat/unwatch', { stream: Live.id, sub: this.sub }).catch(() => {});
+  }
+}
+const liveChat = (key, after) => new ChatStream(key, after);
+function liveAttach(es) {
+  const route = (name, e) => {
+    const nl = e.data.indexOf('\n'), [sub, seq] = e.data.slice(0, nl).split(' '), x = Live.subs.get(sub);
+    if (!x) return;
+    if (Number(seq)) x.last = Number(seq);
+    x.fire(name, e.data.slice(nl + 1));
+  };
+  es.addEventListener('c', e => route('chat', e));
+  es.addEventListener('ch', e => route('hello', e));
+  es.addEventListener('cr', e => route('replayed', e));
+  // Connected, or back after a drop: every chat asks again, from where it had got to.
+  es.addEventListener('mux', () => { Live.mux = true; Live.direct = false; clearTimeout(Live.wait); for (const x of Live.subs.values()) x.start(); });
+  const direct = () => { if (Live.mux || Live.direct) return; Live.direct = true; for (const x of Live.subs.values()) x.start(); };
+  es.addEventListener('open', () => { clearTimeout(Live.wait); Live.wait = setTimeout(direct, 1500); });
+  es.addEventListener('error', () => { if (Live.mux) Live.mux = false; else direct(); });
 }
 
 let toastTimer;
@@ -219,6 +275,17 @@ const isCodex = s => !!(s && s.provider === 'codex');
 // Gemini (Google's Antigravity CLI): its own chats, in their projects with the rest.
 const isGemini = s => !!(s && s.provider === 'gemini');
 const geminiReady = () => !!(S.gemini && S.gemini.enabled && S.gemini.signedIn);
+// Gemini's account line: set up or not, and which models ran out of quota and when they come back.
+// (Antigravity can't say how much is left, only that a model ran out, so that's what shows.)
+const geminiStatus = () => { const g = S.gemini || {}; return !g.enabled ? 'Turned off in Setup' : g.installed === false ? 'Antigravity CLI not installed' : g.checked && !g.signedIn ? 'Not signed in' : !g.checked ? 'Checking…' : `Google AI plan${g.models ? ` · ${g.models} models` : ''}`; };
+const geminiLimits = () => (S.gemini && S.gemini.limits) || [];
+const geminiOut = l => `${l.label} ran out${l.resetsAt ? `, back ${when(l.resetsAt)}` : ''}`;
+function geminiQuotaCell() {
+  const L = geminiLimits();
+  if (!geminiReady()) return `<span class="ac-win"><small>Account</small><b>${esc(geminiStatus())}</b></span>`;
+  if (!L.length) return '<span class="ac-win"><small>Quota</small><b>Not run out</b><i>Google AI plan</i></span>';
+  return `<span class="ac-win hot"><small>Out of quota</small><b>${esc(L[0].label)}${L.length > 1 ? ` +${L.length - 1}` : ''}</b>${L[0].resetsAt ? `<i>resets ${esc(when(L[0].resetsAt))}</i>` : '<i>reset time not given</i>'}</span>`;
+}
 // An OpenClaw agent's session (a Discord channel, a cron run…): listed with the rest, read-only here.
 const isOpenClaw = s => !!(s && s.provider === 'openclaw');
 const provOf = s => (isCodex(s) ? 'codex' : isGemini(s) ? 'gemini' : isOpenClaw(s) ? 'openclaw' : 'claude');
@@ -257,7 +324,21 @@ async function setChatDone(id, done, quiet = false) {
   offerUndo(done ? 'Done. It’s off the lists; find it under Done in its project, and it comes back if it’s used again.' : 'Back on the lists.', () => setChatDone(id, !done, true));
 }
 function allSessions() { const all = []; for (const p of S.projects) for (const s of p.sessions) all.push([s, p]); return all; }
-function sessionById(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
+// A chat by its id: from an index built once per list (the sidebar and Today ask for one chat after
+// another), checked to still be where it was; else, as before, by looking through every project.
+let byId = { of: null, map: null };
+function sessionById(id) {
+  const want = String(id || '').toLowerCase();
+  if (byId.of !== S.projects) {
+    const map = new Map();
+    for (const p of S.projects) for (const s of p.sessions.concat(p.done || [])) { const k = String(s.id).toLowerCase(); if (!map.has(k)) map.set(k, [s, p]); }
+    byId = { of: S.projects, map };
+  }
+  const hit = byId.map.get(want);
+  if (hit && S.projects.includes(hit[1]) && (hit[1].sessions.includes(hit[0]) || (hit[1].done || []).includes(hit[0]))) return hit;
+  for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; }
+  return [null, null];
+}
 const lastLine = t => { const parts = String(t || '').trim().split(/\n\s*\n/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean); return parts.length ? parts[parts.length - 1] : ''; };
 // Markdown as plain text for a one-line preview: emphasis, code marks, headings and links go; an
 // asterisk that's part of the words (A*, 2*3) stays.
@@ -370,6 +451,8 @@ function ownStatus(x) {
   // Its reply is done, but work it started runs on in the background: at work until that's back.
   if (x.background && x.background.length && x.phase !== 'ended') return 'working';
   if (x.phase === 'ended') return 'ended';
+  // Being kept at it: between check-ins, nothing's waiting on you.
+  if (x.keep) return 'working';
   if (x.finishedAt && (x.source === 'app' || x.lastText) && !isSeen(x)) return 'reply';
   return 'quiet';
 }
@@ -408,7 +491,7 @@ function wantsTo(p) {
 }
 function whereOf(x) {
   const as = x.accountId ? `<span class="ring" style="--ring:${ringById(x.accountId)}"></span>as ${esc(x.accountName || '')}` : '';
-  const place = x.source === 'terminal' ? 'in a terminal' : x.source === 'elsewhere' ? 'in another app' : '';
+  const place = x.leftover ? 'finishing from before the restart' : x.source === 'terminal' ? 'in a terminal' : x.source === 'elsewhere' ? 'in another app' : '';
   return [x.folder ? esc(x.folder) : '', place, as].filter(Boolean).join(', ');
 }
 function sparkSvg(spark) {
@@ -461,6 +544,7 @@ function closeOff(x) {
 function openActivity(x) {
   if (!x) return;
   markSeen(x); if (x.partner) markSeen(x.partner);
+  if (window.Split && Split.shows(x)) return splitFocus({ key: x.key, sessionId: x.sessionId });   // it's beside you already
   // A partner opens inside the chat it works in.
   if (x.source === 'app' && x.parentKey) return ChatUI.openKey(x.parentKey);
   if (x.source === 'app') return ChatUI.openKey(x.key);
@@ -483,6 +567,11 @@ async function loadSessions(pre) {
   S.projects = j.projects; S.root = j.root; S.running = j.running || {}; S.live = j.live || {};
   S.doneMarks = j.doneMarks || {};
   sortDone();
+  // A pin, or the page you were on, from when its folder was written another way (C:/x for C:\\x) still finds its project.
+  const sameDir = x => String(x).replace(/\//g, '\\').toLowerCase();
+  const found = x => S.projects.some(p => p.cwd === x) ? null : S.projects.find(p => sameDir(p.cwd) === sameDir(x));
+  for (const pin of [...S.pins]) { const p = found(pin); if (p) { S.pins.delete(pin); S.pins.add(p.cwd); savePins(); } }
+  if (S.view === 'folder' && S.folder && found(S.folder)) S.folder = found(S.folder).cwd;
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
 async function loadActivity(pre) { const j = pre || await api('/api/activity'); Boot.raw.activity = j; S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }

@@ -438,8 +438,18 @@ test('read-only guard: Latitude read tools and plain read commands pass; writes 
   assert.ok(sh('gh pr list --repo latitudegames/latitude --search "head:community-qa/" --json number,title'));
   assert.ok(sh('gh pr list --json number | jq length'));
   assert.ok(sh('node /x/bin/switcher-glm.js --cd /y "Read #community-qa; don\'t post; report $ costs"'));
+  assert.ok(sh('node "C:\\Users\\me\\My Project\\bin\\switcher-glm.js" --cd . "Read issues" 2>nul'));
+  assert.ok(sh('git branch --show-current'));
+  assert.ok(sh('git branch -a --list "feat/*"'));
   assert.ok(!sh('gh pr edit 1 --add-label preview')); assert.ok(!sh('gh pr list; gh pr merge 1')); assert.ok(!sh('curl -X POST https://slack.com'));
   assert.ok(!sh('echo hi > /tmp/x')); assert.ok(!sh('node x.js $(cat secret)'));
+  assert.ok(!sh('git status | head > /tmp/x'), 'redirect after an allowed pipe is still blocked');
+  assert.ok(!sh('git log --format="$(touch /tmp/x)"'), 'command substitution inside double quotes is blocked');
+  assert.ok(!sh('git branch -D feature'), 'destructive git branch flags are blocked');
+  assert.ok(!sh('git branch new-branch'), 'creating a branch is blocked');
+  assert.ok(!sh('git branch --create-reflog new-branch'), 'branch creation with flags is blocked');
+  assert.ok(!sh('git branch --edit-description'), 'editing branch description is blocked');
+  assert.ok(!sh('git diff --output=/tmp/x'), 'git diff --output file write is blocked');
   assert.ok(!check('Write', { file_path: '/tmp/x' }).ok); assert.ok(!check('mcp__slack__slack_post_message', {}).ok);
   assert.ok(check('Read', { file_path: '/tmp/x' }).ok);
 });
@@ -559,4 +569,22 @@ test('pipeline: chats in a repo that isn’t on GitHub show without a pull reque
   const v = await p.view([chat], []);
   assert.deepEqual(v.items.map(i => [i.chat, i.stage, i.repo, i.pr]), [['c1', 'working', null, null]]);
   assert.deepEqual([v.errors, logs], [[], []], 'no gh call, so no gh errors');
+});
+
+test('ui-lite readability & accessibility: no text under 11px, opaque muted placeholders, and named routine controls', () => {
+  for (const file of ['lite.css', 'themes-pro.css']) {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'ui-lite', file), 'utf8');
+    const pxSizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map(m => Number(m[1]));
+    const shortSizes = [...css.matchAll(/font:\s*(?:[a-z0-9]+\s+)*([\d.]+)px\b/gi)].map(m => Number(m[1]));
+    for (const s of [...pxSizes, ...shortSizes]) {
+      assert.ok(s >= 11, `${file} has font size ${s}px (< 11px)`);
+    }
+  }
+  const liteCss = fs.readFileSync(path.join(__dirname, '..', 'ui-lite', 'lite.css'), 'utf8');
+  assert.match(liteCss, /input::placeholder,\s*textarea::placeholder\s*\{\s*color:\s*var\(--muted\);\s*opacity:\s*1;\s*\}/);
+  const rtSrc = fs.readFileSync(path.join(__dirname, '..', 'ui-lite', 'routines.js'), 'utf8');
+  for (const name of ['kind', 'time', 'every', 'cron', 'command', 'srcEvery', 'filter', 'channel', 'account', 'model', 'perm', 'chatTo', 'stopHours', 'escPrompt', 'notify']) {
+    const re = new RegExp(`name="${name}"[^>]*aria-label="[^"]+"`);
+    assert.match(rtSrc, re, `routineEditorView control "${name}" has an aria-label`);
+  }
 });

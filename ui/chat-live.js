@@ -2,22 +2,73 @@
 /* Find in this chat, live events, permission requests and questions, and the crew (the chat's assistant, its partner, and each one’s model). */
 
 /* ---------- find in this chat (Ctrl+F) ---------- */
-const Find = { hits: [], i: -1 };
+const Find = { hits: [], i: -1, looking: false, auto: false, watch: null, soon: null };
+// A long chat shows its latest part: there can be more to look through.
+const findMore = () => !$c('cEarlier').hidden && $c('cFindQ').value.trim().length >= 2;
 const canMark = typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined';
 function openFind(q) {
   const bar = $c('cFind'); bar.hidden = false;
   const inp = $c('cFindQ');
   if (q) inp.value = q;
   inp.focus(); inp.select();
+  // The chat's messages can still be arriving, and new ones come while it's open.
+  if (!Find.watch && typeof MutationObserver !== 'undefined') {
+    Find.watch = new MutationObserver(() => { clearTimeout(Find.soon); Find.soon = setTimeout(refreshFind, 200); });
+    Find.watch.observe($c('cFeed'), { childList: true, subtree: true, characterData: true });
+  }
   runFind();
 }
+// The feed changed: the matches are counted again, and your place stays where it is.
+function refreshFind() {
+  if ($c('cFind').hidden || Find.looking) return;
+  const had = Find.hits.length, i = Find.i, cur = i >= 0 ? Find.hits[i] : null, node = cur && cur.startContainer, at = cur && cur.startOffset;
+  collectFind();
+  const n = Find.hits.length;
+  // None before: go to the newest, as when you first looked. (From a search, it keeps looking further back.)
+  if (!n || !had || !cur) {
+    stepFind(1, true);
+    if (n) Find.auto = false;
+    else if (Find.auto && findMore()) findFurtherBack();
+    return;
+  }
+  const same = Find.hits.findIndex(r => r.startContainer === node && r.startOffset === at);
+  Find.i = same >= 0 ? same : Math.max(0, Math.min(n - 1, n - (had - i)));
+  if (canMark) CSS.highlights.set('find-cur', new Highlight(Find.hits[Find.i]));
+  $c('cFindN').textContent = `${Find.i + 1} of ${n}`;
+}
 function closeFind() {
-  $c('cFind').hidden = true; Find.hits = []; Find.i = -1;
+  $c('cFind').hidden = true; Find.hits = []; Find.i = -1; Find.auto = false;
+  clearTimeout(Find.soon);
+  if (Find.watch) { Find.watch.disconnect(); Find.watch = null; }
   if (canMark) { CSS.highlights.delete('find'); CSS.highlights.delete('find-cur'); }
 }
 function runFind() {
+  collectFind();
+  stepFind(1, true);
+}
+// What it's looking for may be further back than what's showing: earlier messages come in, a page at a time, until it turns up.
+async function findFurtherBack() {
+  if (Find.looking) return;
+  const input = $c('cFindQ'), q = input.value, gen = C.gen, had = Find.hits.length;
+  Find.looking = true;
+  try {
+    for (let pages = 0; pages < 80 && !$c('cEarlier').hidden; pages++) {
+      $c('cFindN').textContent = 'Looking further back…';
+      await loadEarlier();
+      if (gen !== C.gen || input.value !== q || $c('cFind').hidden) return;
+      collectFind();
+      // Older ones come first: the nearest of them, going back from where it was.
+      if (Find.hits.length > had) { Find.i = Find.hits.length - had; stepFind(-1); return; }
+    }
+    if (had) { Find.i = 0; stepFind(0); } else stepFind(1, true);
+  } catch (err) { $c('cFindN').textContent = `Couldn’t look further back: ${err.message}`; } finally { Find.looking = false; }
+}
+function collectFind() {
   const q = $c('cFindQ').value.trim().toLowerCase();
   Find.hits = []; Find.i = -1;
+  // A folded chapter's messages aren't on the page: a chapter with what you're looking for opens.
+  // (Four letters or more: a shorter search, on its way to a longer one, would open nearly all of them.)
+  if (q.length >= 4) for (const card of [...$c('cFeed').querySelectorAll(':scope > .chapter-fold')]) if (card._nodes.textContent.toLowerCase().includes(q)) openChapter(card);
   if (q.length >= 2) {
     const walk = document.createTreeWalker($c('cFeed'), NodeFilter.SHOW_TEXT, { acceptNode: n => (n.parentElement.closest('.turn-act, .turn-foot, .code-h, button.c-earlier, .c-welcome') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
     let n;
@@ -27,15 +78,19 @@ function runFind() {
     }
   }
   if (canMark) { CSS.highlights.delete('find-cur'); if (Find.hits.length) CSS.highlights.set('find', new Highlight(...Find.hits)); else CSS.highlights.delete('find'); }
-  stepFind(1, true);
 }
 function stepFind(d, fromStart) {
   const n = Find.hits.length;
-  $c('cFindN').textContent = !$c('cFindQ').value.trim() ? '' : n ? `${(fromStart ? n - 1 : (Find.i + d + n) % n) + 1} of ${n}` : 'No matches';
+  // Going back past the oldest found so far, in a chat with more to show: further back.
+  if (!fromStart && d < 0 && findMore() && (!n || Find.i === 0)) return findFurtherBack();
+  $c('cFindN').textContent = !$c('cFindQ').value.trim() ? '' : n ? `${(fromStart ? n - 1 : (Find.i + d + n) % n) + 1} of ${n}` : findMore() ? 'Enter looks further back' : 'No matches';
   if (!n) return;
   Find.i = fromStart ? n - 1 : (Find.i + d + n) % n;   // starts at the newest match
   const r = Find.hits[Find.i];
-  for (let el = r.startContainer.parentElement; el; el = el.parentElement) if (el.tagName === 'DETAILS' && !el.open) el.open = true;
+  for (let el = r.startContainer.parentElement; el; el = el.parentElement) {
+    if (el.tagName === 'DETAILS' && !el.open) el.open = true;
+    if (el.classList.contains('tools') && (el.classList.contains('folded') || !el.classList.contains('open'))) { el.classList.remove('folded'); el.classList.add('open'); el._opened = true; updateGroup(el); }   // the match is in a reply's folded steps
+  }
   if (canMark) CSS.highlights.set('find-cur', new Highlight(r));
   const box = r.getBoundingClientRect(), s = scroller(), sb = s.getBoundingClientRect();
   if (box.top < sb.top + 60 || box.bottom > sb.bottom - 60) s.scrollTop += box.top - sb.top - s.clientHeight / 2;
@@ -57,13 +112,22 @@ function stableCut(text) {
 function flushLive() {
   C.liveTimer = null;
   for (const [mid, text] of Object.entries(C.liveText)) {
-    const p = $c('cFeed').querySelector(`.part[data-mid="${CSS.escape(mid)}"] .live`);
+    // The part from the map (no search through the whole feed on every flush), else by a search.
+    const feed = $c('cFeed'), known = PARTS.get(mid);
+    const p = known && feed.contains(known) ? known.querySelector('.live') : feed.querySelector(`.part[data-mid="${CSS.escape(mid)}"] .live`);
     if (!p) continue;
     let done = p.firstElementChild && p.firstElementChild.classList.contains('live-done') ? p.firstElementChild : null;
     if (!done) { p.innerHTML = '<div class="live-done"></div><div class="live-tail"></div>'; done = p.firstElementChild; done._len = 0; }
     const cut = stableCut(text);
     withStick(() => {
-      if (cut !== done._len) { done.innerHTML = md(text.slice(0, cut)); done._len = cut; }
+      if (cut !== done._len) {
+        // Only the new part is drawn, so what's on the page stays put (pictures, what you've selected).
+        // A list running on from the last paragraph has to join up with it: that's drawn whole.
+        const added = text.slice(done._len, cut);
+        if (cut > done._len && !/^\s*(?:\d+[.)]|[-*+])\s|^[ \t]/.test(added)) done.insertAdjacentHTML('beforeend', md(added));
+        else done.innerHTML = md(text.slice(0, cut));
+        done._len = cut;
+      }
       p.lastElementChild.innerHTML = md(text.slice(cut));
     });
   }
@@ -80,7 +144,7 @@ function relaySide(src) {
   const done = st === 'ready' && C.justDone && C.justDone.src === src && Date.now() < C.justDone.until;
   const bgNow = st === 'ready' && ((src === 'comp' ? C.comp && C.comp.background : C.background) || []).length;
   const word = upNext ? 'Up next' : st === 'busy' && status ? status : done ? 'Done' : bgNow ? 'In the background' : RELAY_WORD[st] || 'Ready';
-  const on = C.target === 'both' || (src === 'comp' ? C.target === 'comp' && C.focus === prov : C.target === src);
+  const on = groupNow().includes(prov) || (src === 'comp' ? C.target === 'comp' && C.focus === prov : C.target === src);
   return `<button type="button" class="cr-side ${prov}${st === 'busy' || st === 'starting' ? ' busy' : ''}${st === 'waiting' ? ' waiting' : ''}${upNext ? ' next' : ''}${done ? ' done' : ''}${on ? ' on' : ''}" data-relay="${src}"${src === 'comp' ? ` data-kind="${prov}"` : ''} aria-pressed="${on}" title="Write to ${PROV_NAME[prov]}"><span class="cr-dot" aria-hidden="true"></span><b>${PROV_NAME[prov]}</b><span class="cr-w">${esc(word)}</span></button>`;
 }
 function renderRelay() {
@@ -133,7 +197,8 @@ function syncSend() {
   $c('chat').classList.toggle('to-both', C.target === 'both' && duo());
   // While either of them is writing, a band of light runs along the top of the message box (Codex's
   // color when only Codex is).
-  const writing = [C.state === 'busy' && C.provider, C.comp && !C.comp.ended && C.comp.state === 'busy' && partnerProv()].filter(Boolean);
+  // (Each of the others counts, not only the one in view: with three, any of them may be writing.)
+  const writing = [...new Set([C.state === 'busy' && C.provider, C.comp && !C.comp.ended && C.comp.state === 'busy' && partnerProv(), ...Object.entries(C.comps || {}).filter(([, c]) => c && !c.ended && c.state === 'busy').map(([k]) => k)].filter(Boolean))];
   $c('chat').classList.toggle('is-working', writing.length > 0);
   $c('chat').classList.toggle('codex-working', writing.length > 0 && writing.every(p => p === 'codex'));
 }
@@ -148,12 +213,18 @@ function handle(ev, src = 'main') {
   liveRender = true; curProv = provFor(src);
   try { handleEvent(ev, src); } finally { liveRender = false; curProv = null; }
 }
+// Is what's being replayed already in the feed, whole? Its deltas come one after another, so it's looked for once.
+function itemDone(id) {
+  if (!id) return false;
+  if (C.lastItem !== id) { C.lastItem = id; C.lastItemDone = !!$c('cFeed').querySelector(`[data-bid="${CSS.escape(id)}"]`); }
+  return C.lastItemDone;
+}
 function handleEvent(ev, src) {
   const feed = $c('cFeed');
   const comp = src === 'comp';
   switch (ev.kind) {
     case 'state': {
-      if (ev.state !== 'busy') feed.querySelectorAll(`.stuck-card[data-src="${src}"]`).forEach(x => x.remove());
+      if (ev.state !== 'busy') cardsOf('.stuck-card', src).forEach(x => x.remove());
       const was = comp ? C.comp.state : C.state;
       if (comp) { C.comp.state = ev.state; if (ev.state !== 'busy') C.comp.status = ''; renderCrew(); syncSend(); }
       else { setState(ev.state); if (ev.state !== 'busy') { $c('cStatus').textContent = ''; C.status = ''; } renderCrew(); }
@@ -164,7 +235,7 @@ function handleEvent(ev, src) {
       C.mi[src] = ev;
       if (!comp) { C.model = modelLabel(ev); $c('cModel').textContent = C.model; }
       renderCrew(); renderLedgerSoon();
-      if (Pick.src === src && !$c('cPick').hidden) renderPick();
+      if (pickShows(src)) renderPick();
       break;
     }
     case 'init':
@@ -187,21 +258,33 @@ function handleEvent(ev, src) {
     case 'stuck': renderStuck(ev, src); break;
     case 'changes': renderChanges(ev, src); break;
     case 'undone': renderUndone(ev, src); break;
+    case 'unsent': if (!comp) restoreUnsent(ev); break;
     case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
+    // A message that's already showing has been given its turn: a page of history won't show it again.
+    case 'user_turn': {
+      const d = feed.querySelector(`.umsg[data-sq="${CSS.escape(`${provFor(src)}:${ev.userSeq}`)}"]`);
+      if (!d || !ev.userBatch) break;
+      const batch = `${provFor(src)}:${ev.userBatch}`;
+      // (A page of history may have shown it while this was on its way.)
+      if (feed.querySelector(`.umsg[data-item][data-batch="${CSS.escape(batch)}"]:not([data-clipped])`)) d.remove();
+      else d.dataset.batch = batch;
+      break;
+    }
     // "Both": your message went to this one first; the other picks it up when it's done.
     case 'handoff':
       C.handoff = ev.state === 'waiting' ? ev.to : null;
       if (ev.state === 'waiting') markBoth(ev.to);
       if (ev.state === 'sent' && liveRender) { C.passedAt = Date.now(); setTimeout(renderRelay, 1400); }
       renderCrew(); break;
-    case 'stream_start': withStick(() => part(feed, ev.mid)); break;
+    case 'stream_start': if (!itemDone(ev.itemId)) withStick(() => part(feed, ev.mid)); break;
     case 'delta':
       if (liveRender) speedDone('reply');
       if (ev.thinking) { setStatus(src, 'Thinking…'); break; }
+      if (itemDone(ev.itemId)) break;   // a page of history already has this one, finished
       setStatus(src, comp ? 'Writing…' : '');
       part(feed, ev.mid);
       C.liveText[ev.mid] = (C.liveText[ev.mid] || '') + ev.text;
-      if (!C.liveTimer) C.liveTimer = setTimeout(flushLive, C.liveText[ev.mid].length > 8000 ? 250 : 90);
+      if (!C.liveTimer) { const n = C.liveText[ev.mid].length; C.liveTimer = setTimeout(flushLive, n > 60000 ? 900 : n > 8000 ? 250 : 90); }
       break;
     case 'assistant': {
       delete C.liveText[ev.mid];
@@ -234,7 +317,7 @@ function handleEvent(ev, src) {
       if (comp) {
         // The helper stopping doesn't end the Claude chat; your next message to Codex starts it again.
         C.comp.ended = true; C.comp.state = 'ended'; if (C.comp.es) C.comp.es.close();
-        for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src === 'comp') card.remove();
+        for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src === 'comp' && (!card._kind || card._kind === partnerProv())) card.remove();
         if (!ev.stopped) withStick(() => renderItem(feed, { kind: 'notice', level: 'info', text: `${PROV_NAME[partnerProv()]} stopped. Your next message to ${PROV_NAME[partnerProv()]} starts it again.` }));
         renderCrew(); syncSend();
         break;
@@ -242,7 +325,7 @@ function handleEvent(ev, src) {
       setState('ended');
       // The Codex helper may still be running and waiting on you; keep its cards.
       for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src !== 'comp') card.remove();
-      const tool = C.provider === 'codex' ? 'Codex' : 'Claude Code';
+      const tool = { codex: 'Codex', gemini: 'Gemini' }[C.provider] || 'Claude Code';
       const why = ev.stopped ? 'This chat was stopped.' : ev.code ? `${tool} stopped unexpectedly.` : `${tool} finished and closed this chat.`;
       withStick(() => feed.insertAdjacentHTML('beforeend', `<div class="ended"><p><b>${why}</b> Your conversation is saved; start it again to keep going.</p>${ev.detail ? `<pre class="t-out err">${esc(ev.detail)}</pre>` : ''}<button type="button" class="btn prime" data-c="restart">Start again</button></div>`));
       toBottom();
@@ -271,7 +354,7 @@ function addPermission(p, src = 'main') {
   const name = PROV_NAME[provFor(src)];
   card.className = `perm ${provFor(src) === 'codex' ? 'codex' : ''}${liveRender ? ' arrive' : ''}`;
   card.dataset.req = `${src}:${p.requestId}`;
-  card._src = src;
+  card._src = src; card._kind = compKind(src);
   if (p.questions && p.questions.length) {
     card.classList.add('ask');
     card.innerHTML = `<p class="perm-h">${name} has <b>${p.questions.length === 1 ? 'a question' : `${p.questions.length} questions`}</b></p>
@@ -315,7 +398,7 @@ function clearPermissions() { $c('cPending').innerHTML = ''; }
 
 async function answer(card, decision) {
   const p = card._p;
-  const body = { key: keyFor(card._src), requestId: p.requestId, decision };
+  const body = { key: keyOfCard(card, card._src), requestId: p.requestId, decision };
   if (decision === 'deny' && !p.questions) {
     // First click asks what Claude should do instead; the second click (or Enter) sends the denial.
     if (!card._denyArmed) {
@@ -355,7 +438,7 @@ function ctxLine(src) {
 function setCtx(src, c) {
   C.ctx[src] = c;
   renderCrewSoon(); renderLedgerSoon();
-  if (Pick.src === src && !$c('cPick').hidden) renderPick();
+  if (pickShows(src)) renderPick();
   if (ctxFill(c) >= 0.85) ctxWarn(src);
   else $c('cFeed').querySelectorAll(`.ctx-warn[data-src="${src}"]`).forEach(x => x.remove());
 }
@@ -365,13 +448,14 @@ function ctxWarn(src) {
   C.ctxWarned[src] = true;
   const name = PROV_NAME[provFor(src)];
   withStick(() => $c('cFeed').insertAdjacentHTML('beforeend', `<div class="ctx-warn ${provFor(src)}" data-src="${src}" role="status">
-    <p><b>${src === 'comp' ? 'Codex’s side of this chat' : 'This chat'} is getting full</b> (${esc(ctxLine(src))}). ${name} will summarize the conversation by itself soon, maybe in the middle of a task. Summarizing now, between tasks, keeps what matters.</p>
-    <button type="button" class="btn" data-c="compact" data-src="${src}">Summarize now</button></div>`));
+    <p><b>${src === 'comp' ? `${name}’s side of this chat` : 'This chat'} is getting full</b> (${esc(ctxLine(src))}). ${name} will summarize the conversation by itself soon, maybe in the middle of a task. Summarizing now, between tasks, keeps what matters.</p>
+    <button type="button" class="btn" data-c="compact" data-src="${src}"${src === 'comp' ? ` data-kind="${partnerProv()}"` : ''}>Summarize now</button></div>`));
   if (nearBottom()) toBottom(); else noteUnseen();
 }
-async function compactNow(src) {
-  const key = keyFor(src); if (!key) return;
-  const st = src === 'comp' ? C.comp && C.comp.state : C.state;
+async function compactNow(src, kind) {
+  const them = kind ? C.comps[kind] : src === 'comp' ? C.comp : null;
+  const key = them ? them.key : keyFor(src); if (!key) return;
+  const st = src === 'comp' ? them && them.state : C.state;
   if (st !== 'ready') { toast(`${PROV_NAME[provFor(src)]} is busy. Summarize once it’s done.`); return; }
   closePick();
   await api('/api/chat/compact', { key });
@@ -390,7 +474,7 @@ function crewPill(src) {
   const status = src === 'comp' ? C.comp && C.comp.status : '';
   const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : '');
   const label = mi ? `${modelLabel(mi)}${mi.effort ? ` ${cap(mi.effort)}` : ''}` : src === 'comp' && st === 'off' ? '' : '…';
-  const on = duo() ? (src === 'comp' ? (C.target === 'comp' && C.focus === prov) || C.target === 'both' : C.target === src || C.target === 'both') : true;
+  const on = duo() ? (src === 'comp' ? (C.target === 'comp' && C.focus === prov) : C.target === src) || groupNow().includes(prov) : true;
   const bgList = (src === 'comp' ? C.comp && C.comp.background : C.background) || [];
   const sub = st === 'waiting' ? 'needs your OK' : src === 'comp' && C.handoff === prov ? 'up next…' : busy && status ? status : st === 'ready' && bgList.length ? 'working in the background' : label;
   const mode = src === 'comp' ? compModeLabel() : '';
@@ -422,12 +506,18 @@ async function setCompMode(mode) {
 }
 function renderCrew() {
   const box = $c('cCrew'); if (!box) return;
-  if (C.watch || !C.key) { box.innerHTML = ''; return; }
+  if (C.watch || !C.key) { box.innerHTML = ''; box._h = ''; return; }
   const two = duo();
-  const both = C.target === 'both';
-  const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
   const many = crewKinds().length > 1;
-  box.innerHTML = crewPill('main') + (two ? crewKinds().map(k => withComp(k, () => crewPill('comp'))).join('') + (C.target !== 'main' || Object.values(C.comps).some(c => c && !c.ended) ? `<button type="button" class="crew both${both ? ' on' : ''}" data-crew="both" aria-pressed="${both}" title="${both ? `Back to writing to ${lead} only` : many ? `All: ${lead} answers, then ${crewKinds().map(k => PROV_NAME[k]).join(', then ')}, each building on what came before. Uses room on every account.` : `Both: ${lead} answers, then ${mate} picks it up and builds on that. Uses room on both accounts, about twice a single reply.`}"><span class="crew-n">${many ? 'All' : 'Both'}</span></button>` : '') + `<button type="button" class="crew both plan${C.target === 'plan' ? ' on' : ''}" data-crew="plan" aria-pressed="${C.target === 'plan'}" title="Plan first: ${lead} drafts a plan, ${mate} checks it, then you pick who builds it"><span class="crew-n">Plan</span></button>` : '');
+  // Together: one button for working as a group (who, in what order, and how), always in the row.
+  const tg = C.target === 'both' || C.target === 'plan', ks = groupKinds(), plan = C.target === 'plan', at = tg && !plan && groupHow() === 'parallel';
+  const who = plan ? ks.slice(0, 2) : ks;
+  const word = plan ? 'Plan first' : at ? 'At once' : 'Together';
+  const together = `<button type="button" class="crew both together${tg ? ' on' : ''}" data-crew="together" aria-haspopup="dialog" aria-expanded="${!!$c('cTogether') && !$c('cTogether').hidden}" title="${tg ? `${at ? 'At the same time' : word}: ${who.map(k => PROV_NAME[k]).join(at ? ' and ' : ', then ')}. Click to change who, or to write to one again.` : 'Work together: pick which of them take your next message, and whether they take turns, work at the same time or plan first'}"><span class="crew-n">${word}</span>${tg ? `<span class="crew-m">${esc(who.map(k => PROV_NAME[k]).join(at ? ' + ' : ' → '))}</span>` : ''}<span class="crew-caret" aria-hidden="true">▾</span></button>`;
+  // Drawn only when something in it changed: while a reply streams this runs several times a second,
+  // and redrawing the same pills would also drop a tooltip or hover under the pointer.
+  const crewHtml = crewPill('main') + (two ? crewKinds().map(k => withComp(k, () => crewPill('comp'))).join('') + together : '');
+  if (box._h !== crewHtml) { box.innerHTML = crewHtml; box._h = crewHtml; }
   box.classList.toggle('duo', two);
   renderRelay();
   $c('cHint').innerHTML = `Enter sends · Shift+Enter new line · / prompts · <b>/model</b>${two ? ` · ${crewKinds().map(k => `<b>@${k}</b>`).join(', ')} or <b>@${many ? 'all' : 'both'}</b> · <b>Ctrl+.</b> switches` : ''} · Esc twice stops`;
@@ -436,15 +526,94 @@ function renderCrew() {
 function setTarget(t, focus = true) {
   if (!C.focus) C.focus = partnerProv();   // the one of the others in view
   C.target = duo() && (t === 'comp' || t === 'both' || t === 'plan') ? t : 'main';
-  const lead = PROV_NAME[C.provider], mate = PROV_NAME[partnerProv()];
-  const others = crewKinds().map(k => PROV_NAME[k]), all = others.length > 1 ? `${others.slice(0, -1).join(', ')} and ${others[others.length - 1]}` : mate;
-  const name = C.target === 'both' ? `${lead} and ${all}` : C.target === 'plan' ? `${lead} and ${mate}` : PROV_NAME[provFor(C.target)];
+  const mate = PROV_NAME[partnerProv()];
+  const ks = groupKinds(), A = PROV_NAME[ks[0]], B = PROV_NAME[ks[1]];
+  const name = C.target === 'both' ? sayAnd(ks) : C.target === 'plan' ? `${A} and ${B}` : PROV_NAME[provFor(C.target)];
   $c('cText').placeholder = C.target === 'comp' ? ({ Codex: 'Ask Codex… an image, a quick test, a second opinion', Gemini: 'Ask Gemini… a draft, a picture read, a second opinion' }[mate] || 'Ask Claude… a plan, a review, a second opinion')
-    : C.target === 'both' ? (others.length > 1 ? `Write to all: ${lead} answers, then ${all} in turn, each building on the last…` : `Write to ${lead} and ${mate}: ${lead} answers, then ${mate} builds on it…`)
-    : C.target === 'plan' ? `Plan first: what should be done? ${lead} drafts a plan, ${mate} checks it, then you pick who builds…` : `Write to ${name}…`;
+    : C.target === 'both' && groupHow() === 'parallel' ? `At the same time: say who does what, like “${A}: the code. ${B}: the images.”…`
+    : C.target === 'both' ? `Write to ${name}: ${A} answers, then ${ks.slice(1).map(k => PROV_NAME[k]).join(', then ')}, each building on the last…`
+    : C.target === 'plan' ? `Plan first: what should be done? ${A} drafts a plan, ${B} checks it, then you pick who builds…` : `Write to ${name}…`;
   $c('cText').setAttribute('aria-label', `Message ${name}`);
   renderCrew(); syncSend(); closePick();
   if (focus) $c('cText').focus();
+}
+
+/* ---------- Together: which of them take your next message, in what order, and how ---------- */
+// "Claude", "Claude and Codex", "Claude, Codex and Gemini".
+const sayAnd = ks => (ks.length > 1 ? `${ks.slice(0, -1).map(k => PROV_NAME[k]).join(', ')} and ${PROV_NAME[ks[ks.length - 1]]}` : PROV_NAME[ks[0]] || '');
+// Everyone who can be in it: this chat's own assistant, then the others that are set up.
+const togetherAll = () => [C.provider, ...crewKinds()];
+// The ones your next message goes to as a group (none when it's to one of them).
+const groupNow = () => (C.target === 'plan' ? groupKinds().slice(0, 2) : C.target === 'both' ? groupKinds() : []);
+// The last group you picked (any chat), so the next one starts from it.
+const savedGroup = () => { try { return JSON.parse(store('together') || 'null'); } catch { return null; } };
+// The ones picked, in the order they answer: everyone, the chat's own first, until you choose.
+function groupKinds() {
+  const all = togetherAll(), g = ((C.group || savedGroup() || {}).kinds || []).filter(k => all.includes(k));
+  return g.length >= 2 ? g : all;
+}
+// How the group works: take turns, at the same time (parallel) or plan first.
+const HOWS = ['turns', 'parallel', 'plan'];
+const groupHow = () => { const h = (C.group || savedGroup() || {}).how; return HOWS.includes(h) ? h : 'turns'; };
+const Tg = { draft: null };
+function openTogether() {
+  if (!$c('cTogether')) return;
+  closePick();
+  Tg.draft = { kinds: groupKinds().slice(), how: C.target === 'plan' ? 'plan' : groupHow() };
+  renderTogether();
+  $c('cTogether').hidden = false;
+  renderCrew();
+  $c('cTogether').querySelector('[data-tg]')?.focus();
+}
+function closeTogether(refocus = false) {
+  const p = $c('cTogether'); if (!p || p.hidden) return false;
+  p.hidden = true; renderCrew();
+  if (refocus) $c('[data-crew="together"]')?.focus();
+  return true;
+}
+function renderTogether() {
+  const d = Tg.draft, ks = d.kinds, n = ks.length, plan = d.how === 'plan', at = d.how === 'parallel';
+  const kept = typeof keepOf === 'function' && C.key ? keepOf(C.key) : null;
+  // Each one's part: in turn (first, second…), at once (all on their own part), or in a plan.
+  const role = i => (at ? 'works on its own part, at the same time'
+    : i === 0 ? (plan ? 'drafts the plan' : 'answers first')
+      : plan ? (i === 1 ? 'checks the plan' : 'sits out a plan (only two take part)')
+        : `answers ${['', 'second', 'third'][i] || 'next'}, building on ${i === 1 ? PROV_NAME[ks[0]] : 'the ones before'}`);
+  const row = k => {
+    const i = ks.indexOf(k), on = i >= 0;
+    return `<button type="button" role="checkbox" aria-checked="${on}" class="tg-row ${k}" data-tg="${k}" ${on ? `data-n="${at ? '✓' : i + 1}"` : ''}>
+      <b>${PROV_NAME[k]}${k === C.provider ? ' <span class="tg-own">this chat’s own</span>' : ''}</b><small>${on ? role(i) : 'not in this one'}</small>${on && i > 0 && !at ? `<span class="tg-up" data-tgup="${k}" role="button" tabindex="0" title="Answer earlier" aria-label="Move ${PROV_NAME[k]} earlier">↑</span>` : ''}</button>`;
+  };
+  const note = n < 2 ? 'Tick at least two.'
+    : plan ? `${PROV_NAME[ks[0]]} drafts a plan (no changes yet), ${PROV_NAME[ks[1]]} checks it, then you pick who builds it.`
+      : at ? `${sayAnd(ks)} all start on your message at once, each on its own part. Say who does what, like “${PROV_NAME[ks[0]]}: the save code. ${PROV_NAME[ks[1]]}: the menu icons.” They’re told not to edit each other’s files. Uses room on each one’s account.`
+        : `${sayAnd(ks)} take your message in turn: each sees the answers before theirs and builds on them, and they never edit files at the same time. Uses room on each one’s account.`;
+  $c('cTogether').innerHTML = `<p class="mp-h">Who works together${at ? '' : ' <i class="tg-hint">· in the order you tick them</i>'}</p>
+    <div class="tg-list">${togetherAll().map(row).join('')}</div>
+    <p class="mp-h">How</p>
+    <div class="mp-eff tg-how" role="radiogroup" aria-label="How they work"><button type="button" role="radio" aria-checked="${d.how === 'turns'}" data-tghow="turns">Take turns</button><button type="button" role="radio" aria-checked="${at}" data-tghow="parallel">At the same time</button><button type="button" role="radio" aria-checked="${plan}" data-tghow="plan">Plan first</button></div>
+    <p class="mp-note">${esc(note)}</p>
+    <div class="tg-act"><button type="button" class="btn prime sm" data-tgact="use" ${n < 2 ? 'disabled' : ''}>Write to ${n >= 2 ? esc(sayAnd(plan ? ks.slice(0, 2) : ks)) : 'them'}</button><button type="button" class="btn quiet sm" data-tgact="keep">${kept ? `⟳ Working until ${esc(keepClock(kept.until))}` : '⟳ Keep them working…'}</button>${C.target === 'both' || C.target === 'plan' ? `<button type="button" class="btn quiet sm" data-tgact="off">Back to ${PROV_NAME[C.provider]} only</button>` : ''}</div>`;
+}
+// A click in the Together picker: who's in (in order), how, and Use, Keep working or Off.
+function togetherClick(t) {
+  const d = Tg.draft; if (!d) return false;
+  const up = t.closest('[data-tgup]');
+  if (up) { const i = d.kinds.indexOf(up.dataset.tgup); if (i > 0) [d.kinds[i - 1], d.kinds[i]] = [d.kinds[i], d.kinds[i - 1]]; renderTogether(); $c('cTogether').querySelector(`[data-tg="${up.dataset.tgup}"]`)?.focus(); return true; }
+  const r = t.closest('[data-tg]');
+  if (r) { const k = r.dataset.tg, i = d.kinds.indexOf(k); if (i >= 0) d.kinds.splice(i, 1); else d.kinds.push(k); renderTogether(); $c('cTogether').querySelector(`[data-tg="${k}"]`)?.focus(); return true; }
+  const h = t.closest('[data-tghow]');
+  if (h) { d.how = h.dataset.tghow; renderTogether(); return true; }
+  const a = t.closest('[data-tgact]');
+  if (!a) return false;
+  if (a.dataset.tgact === 'off') { closeTogether(); setTarget('main'); return true; }
+  if (a.dataset.tgact === 'keep') { closeTogether(); openKeepDialog({ how: d.how === 'parallel' ? 'parallel' : 'turns' }); return true; }
+  if (d.kinds.length < 2) return true;
+  C.group = { kinds: d.kinds.slice(), how: d.how };
+  store('together', JSON.stringify(C.group));
+  closeTogether();
+  setTarget(d.how === 'plan' ? 'plan' : 'both');
+  return true;
 }
 
 // The model picker: quick picks (a model and an effort in one tap), every model the chat's tool
@@ -463,6 +632,12 @@ const PRESETS = {
     { id: 'balanced', name: 'Balanced', glyph: '◐', note: 'Everyday work', want: [/sol/], effort: 'medium' },
     { id: 'deep', name: 'Deep', glyph: '◆', note: 'Images, hard problems', want: ['@default'], effort: 'high' },
     { id: 'max', name: 'Max', glyph: '✦', note: 'Everything it has', want: ['@default'], effort: 'max' },
+  ],
+  gemini: [
+    { id: 'quick', name: 'Quick', glyph: '➤', note: 'Fast answers, quick lookups', want: [/flash-lite/, /flash/], effort: 'low' },
+    { id: 'balanced', name: 'Balanced', glyph: '◐', note: 'Everyday work', want: [/flash/, '@default'], effort: 'medium' },
+    { id: 'deep', name: 'Deep', glyph: '◆', note: 'Hard problems, big changes', want: [/pro.*medium/, /pro/, '@default'], effort: 'high' },
+    { id: 'max', name: 'Max', glyph: '✦', note: 'Deepest thinking', want: [/pro.*high/, /pro/, '@default'], effort: 'high' },
   ],
 };
 // The presets this chat's tool can actually do, each resolved to a model it offers and the
@@ -489,6 +664,8 @@ function presetsFor(src) {
   return out;
 }
 const isPhone = () => matchMedia('(max-width: 760px)').matches;
+// News from one of the crew only redraws the picker if it's that one's page that's open.
+const pickShows = src => Pick.src === src && !$c('cPick').hidden && (src !== 'comp' || !C.focus || partnerProv() === C.focus);
 function closePick() {
   const b = $c('cPick');
   if (b && !b.hidden) {
@@ -511,8 +688,9 @@ async function openPick(src) {
 function renderPick() {
   const box = $c('cPick'); const src = Pick.src; if (!src) return;
   const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
-  // With the Codex helper available, one picker sets either: tabs at the top.
-  const tabs = duo() ? `<div class="mp-tabs" role="tablist">${['main', 'comp'].map(t => `<button type="button" role="tab" class="${provFor(t)}" aria-selected="${t === src}" data-picksrc="${t}">${PROV_NAME[provFor(t)]}<small>${esc(C.mi[t] ? `${modelLabel(C.mi[t])}${C.mi[t].effort ? ` · ${C.mi[t].effort}` : ''}` : t === 'comp' ? 'not started' : '…')}</small></button>`).join('')}</div>` : '';
+  // With partners available, one picker sets any crew member: tabs at the top.
+  const pickTab = (prov, on, tmi, tabSrc, kind) => `<button type="button" role="tab" class="${prov}" aria-selected="${on}" data-picksrc="${tabSrc}"${kind ? ` data-kind="${kind}"` : ''}>${PROV_NAME[prov]}<small>${esc(tmi ? `${modelLabel(tmi)}${tmi.effort ? ` · ${tmi.effort}` : ''}` : kind ? 'not started' : '…')}</small></button>`;
+  const tabs = duo() ? `<div class="mp-tabs" role="tablist">${pickTab(C.provider, src === 'main', C.mi.main, 'main')}${crewKinds().map(k => pickTab(k, src === 'comp' && partnerProv() === k, withComp(k, () => C.mi.comp), 'comp', k)).join('')}</div>` : '';
   const top = `<div class="mp-top"><span class="mp-grab" aria-hidden="true"></span>${tabs || `<p class="mp-title">${name}’s model</p>`}<button type="button" class="mp-done" data-pickdone>Done</button></div>`;
   const cx = C.ctx[src], cf = ctxFill(cx);
   const busyNow = (src === 'comp' ? C.comp && C.comp.state : C.state) !== 'ready';
@@ -650,12 +828,12 @@ function attachComp(info) {
   const kind = info.provider || partnerProv();
   const old = C.comps[kind];
   if (old && old.es) old.es.close();
-  const slot = { background: info.background || [], provider: kind, mi: info.models && info.models.length ? info : null, ctx: info.context || null, key: info.key, state: info.state, startedAt: info.startedAt, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
+  const slot = { background: info.background || [], provider: kind, mi: info.models && info.models.length ? info : null, ctx: info.context || null, key: info.key, state: info.state, startedAt: info.startedAt, bufferFrom: info.bufferFrom || null, sessionId: info.sessionId, lastSeq: 0, status: '', es: null, ended: info.state === 'ended', mode: info.permissionMode || null, modes: info.modes || null, accountId: info.accountId || null };
   C.comps[kind] = slot;
   // In view if it's the one you're working with (or the only one).
   if (!C.comp || C.comp.provider === kind || C.mate === kind || C.comp.ended) focusMate(kind);
   const key = info.key;
-  const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}&after=0`);
+  const es = liveChat(key, 0);
   es.addEventListener('chat', e => { const c = C.comps[kind]; if (!c || c.key !== key) return; try { feedIn(JSON.parse(e.data), 'comp', kind); } catch (err) { console.error(err); } });
   es.addEventListener('replayed', () => { const c = C.comps[kind]; if (c && c.key === key) replayed(Merge.q[kind] ? kind : 'comp'); });
   es.onerror = () => { const c = C.comps[kind]; if (c && c.key === key && c.ended) es.close(); };
@@ -698,9 +876,9 @@ function disarmEsc(keepArm) { clearTimeout(escTimer); $c('cEscArm')?.remove(); i
 function renderStuck(ev, src) {
   if (C.watch) return;
   const feed = $c('cFeed'), name = PROV_NAME[provFor(src)];
-  feed.querySelectorAll(`.stuck-card[data-src="${src}"]`).forEach(x => x.remove());
+  cardsOf('.stuck-card', src).forEach(x => x.remove());
   const card = document.createElement('div');
-  card.className = `stuck-card${liveRender ? ' fresh' : ''}`; card.dataset.src = src; card.setAttribute('role', 'status');
+  card.className = `stuck-card${liveRender ? ' fresh' : ''}`; card.dataset.src = src; card._kind = compKind(src); card.setAttribute('role', 'status');
   card.innerHTML = `<p><b>${name} has been working for ${ev.quietMin || 10} minutes without a word.</b> A long command can be quiet; if it seems stuck, stop it and ask again.</p><div class="lm-b"><button type="button" class="btn" data-c="stuckstop">Stop ${name}</button><button type="button" class="btn quiet" data-c="stuckwait">Keep waiting</button></div>`;
   withStick(() => feed.appendChild(card));
 }

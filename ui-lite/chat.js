@@ -72,7 +72,19 @@ function embedHtml(url) {
 }
 const isMedia = ref => VID_EXT.test(ref) || AUD_EXT.test(ref);
 const mediaHtml = (ref, session) => (/^https?:/i.test(ref) && musicEmbed(ref) ? embedHtml(ref) : AUD_EXT.test(ref) ? audioHtml(ref, session) : videoHtml(ref, session));
+// The same message always draws the same: redrawing the chat doesn't work each one out again.
+const mdKept = new Map();
 function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' ? CV.id : null } = {}) {
+  const k = `${session}\u0000${src}`;
+  let h = mdKept.get(k);
+  if (h === undefined) {
+    h = mdDraw(src, { session });
+    mdKept.set(k, h);
+    if (mdKept.size > 400) mdKept.delete(mdKept.keys().next().value);
+  }
+  return h;
+}
+function mdDraw(src, { session = typeof CV !== 'undefined' && S.view === 'chat' ? CV.id : null } = {}) {
   const blocks = [];
   let pics = [], vids = [];
   const pic = ref => { if (isMedia(ref) || (/^https?:/i.test(ref) && musicEmbed(ref))) return vid(ref); const u = picSrc(ref, session); if (u && !pics.includes(u) && pics.length < 8) pics.push(u); };
@@ -92,7 +104,7 @@ function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' 
   const inline = x => {
     const held = [], hold = h => `\u0001${held.push(h.replace(/\u0001(\d+)\u0001/g, (m, i) => held[Number(i)] || m)) - 1}\u0001`;
     // A Markdown image shows where it's written.
-    x = String(x).replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (m, alt, ref) => { if (isMedia(ref)) { const v = mediaHtml(ref, session); return v ? `\u0002${held.push(v) - 1}\u0002` : alt; } const u = picSrc(ref, session); return u ? `\u0002${held.push(`<img class="md-img" src="${esc(u)}" alt="${esc(alt)}" data-zoom="1" onerror="this.remove()">`) - 1}\u0002` : alt; });
+    x = String(x).replace(/!\[([^\]\n]*)\]\((?:<([^>\n]+)>|([^)\s]+))\)/g, (m, alt, a, b) => { const ref = a || b; if (isMedia(ref)) { const v = mediaHtml(ref, session); return v ? `\u0002${held.push(v) - 1}\u0002` : alt; } const u = picSrc(ref, session); return u ? `\u0002${held.push(`<img class="md-img" src="${esc(u)}" alt="${esc(alt)}" data-zoom="1" onerror="this.remove()">`) - 1}\u0002` : alt; });
     return esc(x)
       .replace(/\u0002(\d+)\u0002/g, (m, i) => hold(held[Number(i)]))
       .replace(/`([^`\n]+)`/g, (m, c) => ((IMG_EXT.test(c.trim()) || isMedia(c.trim())) && typeof looksLikePath === 'function' && looksLikePath(c.trim()) ? pic(c.trim()) : null, hold(`<code${typeof looksLikePath === 'function' && looksLikePath(c) ? ' class="vpath" title="Open beside the chat"' : ''}>${c}</code>`)))
@@ -107,7 +119,9 @@ function mdHtml(src, { session = typeof CV !== 'undefined' && S.view === 'chat' 
           return hold(`<a href="#" class="vlink" data-viewfile="${esc(file)}">${label}</a>`);
         } catch { return m; }
       })
-      // A link to a file (a relative path, ~/…, /Users/…) opens it beside the chat.
+      // A link to a file (a relative path, ~/…, /Users/…) opens it beside the chat. So does one in
+      // <angle brackets> (the text is escaped by now) or with a drive: C:\…, /C:/…, spaces allowed.
+      .replace(/\[([^\]\n]+)\]\((?:&lt;((?:(?!&gt;)[^\n])+)&gt;|([\\/]*[A-Za-z]:[\\/](?:[^()\n]|\([^()\n]*\))*?))\)/g, (m, label, a, d) => { const href = a || d; if (/^https?:/i.test(href)) return m; if (IMG_EXT.test(href) || isMedia(href)) pic(href.replace(/&amp;/g, '&')); return hold(`<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`); })
       .replace(/\[([^\]\n]+)\]\(((?:~|\.{0,2}\/|[\w@-])[^\s)]*?)\)/g, (m, label, href) => (/^[a-z]+:/i.test(href) ? m : ((IMG_EXT.test(href) || isMedia(href)) && pic(href), hold(`<a href="#" class="vlink" data-viewfile="${href}">${label}</a>`))))
       // A bare address is a link too (without the full stop or bracket that ends its sentence).
       .replace(/\bhttps?:\/\/[^\s<>"')\]]+/g, u => { const t = u.replace(/(&quot;|&#39;|[.,;:!?*_])+$/, ''); if (IMG_EXT.test(t) || isMedia(t) || musicEmbed(t)) pic(t.replace(/&amp;/g, '&')); return hold(`<a href="${t}" target="_blank" rel="noopener noreferrer">${t}</a>`) + u.slice(t.length); })
@@ -237,7 +251,7 @@ function externalChatNotice() {
 }
 async function openChatView(id, { key = null, provider = null, keepRead = false } = {}) {
   const seq = ++openSeq;
-  if (CV.id && String(CV.id) !== String(id)) cacheChat();
+  if (CV.id && String(CV.id) !== String(id)) { cacheChat(); parkAttachments(CV.id); }
   if (CV.es) { CV.es.close(); CV.es = null; }
   // When it catches up on a chat you're reading higher up in, you stay where you were; otherwise it opens at the end.
   const readAt = keepRead ? CV.readAt : null;
@@ -245,6 +259,7 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
   CV.to = toFor(id); partnerReset();
   CV.progressAt = 0; CV.lastStep = null;
   resetComposer();
+  restoreAttachments(id);
   const hit = !keepRead && CHAT_CACHE.get(String(id));
   if (hit) { CV.items = hit.items.slice(); CV.cursor = hit.cursor; CV.loading = false; }
   const c = chatBy.get(id);
@@ -260,7 +275,7 @@ async function openChatView(id, { key = null, provider = null, keepRead = false 
     if (CV.key) { const info = await api('/api/chat/attach', { key: CV.key }); if (seq !== openSeq) return; CV.info = info; until = info.bufferFrom || info.startedAt || null; CV.provider = info.provider; }
     const q = new URLSearchParams({ id, lite: '1' });
     if (until) q.set('until', until);
-    if (CV.provider === 'codex') q.set('provider', 'codex');
+    if (['codex', 'gemini'].includes(CV.provider)) q.set('provider', CV.provider);
     const h = await api(`/api/chat/history?${q}`);
     if (seq !== openSeq) return;
     let items = h.items || [];
@@ -283,7 +298,7 @@ async function loadEarlier() {
   if (!CV.cursor || loadEarlier.busy) return;
   const id = CV.id, seq = openSeq;
   const q = new URLSearchParams({ id, cursor: CV.cursor, lite: '1' });
-  if (CV.provider === 'codex') q.set('provider', 'codex');
+  if (['codex', 'gemini'].includes(CV.provider)) q.set('provider', CV.provider);
   loadEarlier.busy = true;
   let h; try { h = await api(`/api/chat/history?${q}`); } finally { loadEarlier.busy = false; }
   // You've moved to another chat since: these belong to the one you left.
@@ -297,7 +312,7 @@ async function loadEarlier() {
 
 function listen(key, { paint = false } = {}) {
   if (CV.es) CV.es.close();
-  const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}`);
+  const es = liveChat(key);
   CV.es = es; CV.lastEventAt = Date.now();
   // On connecting, the stream first replays this run so far (its steps, the "working" line, the
   // reply). That's taken in without painting and shown once at the end ("replayed"); before, opening
@@ -372,13 +387,61 @@ function onEvent(ev) {
       else CV.items.push(ev);
       CV.live = ''; CV.thinking = ''; CV.startedAt = CV.startedAt || evAt(ev); appendItem(ev); break;
     }
-    case 'delta': if (!ev.thinking) { CV.live += ev.text || ''; CV.status = 'Writing'; CV.thinking = ''; } else { CV.status = 'Thinking'; if (ev.text) CV.thinking = ((CV.thinking || '') + ev.text).slice(-600); } paintLive(); paintStatus(); break;
+    case 'delta': if (!ev.thinking) { CV.live += ev.text || ''; CV.status = 'Writing'; CV.thinking = ''; } else { CV.status = 'Thinking'; if (ev.text) CV.thinking = ((CV.thinking || '') + ev.text).slice(-600); } paintLiveSoon(); break;
     case 'assistant': { CV.live = ''; const last = CV.items[CV.items.length - 1]; if (last && last.kind === 'assistant' && last.mid === ev.mid) last.blocks = mergeBlocks(last.blocks, ev.blocks); else CV.items.push({ ...ev, blocks: [...(ev.blocks || [])] }); paintFeed(); const tool = (ev.blocks || []).filter(b => b.type === 'tool').pop(); if (tool) CV.status = `${tool.name}${tool.summary ? ` · ${tool.summary}` : ''}`; paintStatus(); break; }
     case 'handoff': if (ev.state === 'sent') { const n = { kind: 'notice', level: 'info', text: `${NAME_OF[ev.to] || partnerName()} picks it up now.` }; CV.items.push(n); appendItem(n); } break;
     case 'tool_start': CV.status = `Using ${ev.name}`; CV.thinking = ''; paintStatus(); break;
     case 'notice': CV.items.push(ev); appendItem(ev); break;
     case 'permission': CV.pending.set(ev.requestId, ev); paintPending(); break;
     case 'permission_cancel': case 'permission_done': CV.pending.delete(ev.requestId); paintPending(); break;
+    case 'unsent': {
+      const chatKey = CV.key, chatId = CV.id;
+      const uid = `${chatKey || chatId}:${ev.seq}`;
+      const seen = local.get('unsent-seen', []);
+      if (Array.isArray(seen) && seen.includes(uid)) break;
+      const markUnsentSeen = () => {
+        const curSeen = local.get('unsent-seen', []);
+        const list = Array.isArray(curSeen) ? curSeen : [];
+        if (!list.includes(uid)) local.set('unsent-seen', [...list, uid].slice(-30));
+      };
+      const imgSig = list => (list || []).filter(x => !x || !x.kind || x.kind === 'image').map(x => `${(x && x.mediaType) || ''}:${(x && x.data) || ''}`).join('|');
+      const putHeld = () => {
+        if ((chatKey && CV.key !== chatKey) || (chatId && CV.id !== chatId)) return;
+        markUnsentSeen();
+        const box = $('msgBox');
+        if (box) {
+          box.value = String(ev.text || '');
+          if (CV.id) DRAFTS.set(CV.id, box.value);
+          autosize(box);
+        }
+        for (const im of COMP.images) if (im.url) URL.revokeObjectURL(im.url);
+        COMP.images = (ev.images || []).filter(im => im && im.data).map(im => ({ mediaType: im.mediaType, data: im.data, url: `data:${im.mediaType};base64,${im.data}`, name: 'picture' }));
+        COMP.files = [];
+        paintAttachments();
+        const req = ev.request || {};
+        if (req.to === 'group') { CV.to = req.how === 'parallel' ? 'parallel' : 'both'; if (CV.id) setTo(CV.id, CV.to); paintBar(); }
+        else if (req.to === 'other') { CV.to = req.kind ? `partner:${req.kind}` : 'partner'; if (CV.id) setTo(CV.id, CV.to); paintBar(); }
+        else if (req.to === 'me') { CV.to = 'chat'; if (CV.id) setTo(CV.id, CV.to); paintBar(); }
+      };
+      const box = $('msgBox');
+      const cur = box ? box.value.trim() : '';
+      const reqToLite = r => {
+        if (!r || !r.to) return CV.to || 'chat';
+        if (r.to === 'group') return r.how === 'parallel' ? 'parallel' : 'both';
+        if (r.to === 'other') return r.kind ? `partner:${r.kind}` : 'partner';
+        if (r.to === 'me') return 'chat';
+        return CV.to || 'chat';
+      };
+      const hasAnyDraft = Boolean(cur || COMP.images.length || COMP.files.length);
+      const sameAsHeld = cur === String(ev.text || '').trim() && imgSig(COMP.images) === imgSig(ev.images) && !COMP.files.length && (CV.to || 'chat') === reqToLite(ev.request);
+      if (hasAnyDraft && !sameAsHeld) {
+        toast(`${ev.reason ? `${ev.reason} ` : ''}Held message saved (tap Undo to put it in the box).`, putHeld);
+        break;
+      }
+      putHeld();
+      toast(`${ev.reason ? `${ev.reason} ` : ''}Your message is back in the box.`);
+      break;
+    }
     case 'result': CV.busy = false; CV.status = ''; CV.startedAt = 0; CV.live = ''; CV.thinking = ''; setTimeout(sendQueued, 300); markSeen(CV.id); if (!ev.ok && (ev.errors || []).length) { const n = { kind: 'notice', level: 'warning', text: ev.errors.join(' ') }; const last = CV.items[CV.items.length - 1]; if (last?.kind !== 'notice' || last.text !== n.text) { CV.items.push(n); appendItem(n); } } paintLive(); paintStatus(); paintBar(); break;
     default: break;
   }
@@ -388,11 +451,13 @@ function onEvent(ev) {
 function itemHtml(it) {
   if (it.kind === 'user') {
     const text = ownWords(it.text);
+    const keptTo = /^From Session Switcher: keep working until ([^(]+?) \(/.exec(text);
+    if (keptTo) return `<div class="notice info" title="${esc(text)}">⟳ Told to carry on, until ${esc(keptTo[1])}</div>`;
     const cmdr = /^From Commander:\s*/.test(text);
-    const pics = (it.images || []).map(i => i.src).concat((Array.isArray(it.imgRaw) ? it.imgRaw : []).filter(b => b && b.type === 'image' && b.source && b.source.data).map(b => `data:${b.source.media_type};base64,${b.source.data}`)).filter(src => /^data:image\/(png|jpeg|gif|webp);base64,/.test(src));
+    const pics = (it.images || []).map(i => i.src).concat((Array.isArray(it.imgRaw) ? it.imgRaw : []).filter(b => b && b.type === 'image' && b.source && b.source.data).map(b => `data:${b.source.media_type};base64,${b.source.data}`)).filter(src => /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(src));
     const shown = text.replace(/^From Commander:\s*/, '').split('\n').filter(l => !/^Attached file: `[^`]+`/.test(l.trim()));
     const attached = text.split('\n').map(l => /^Attached file: `([^`]+)`/.exec(l.trim())).filter(Boolean).map(m => m[1]);
-    const files = attached.map(f => f.split('/').pop());
+    const files = attached.map(f => f.split(/[\\/]/).pop());
     const clips = attached.filter(isMedia).map(f => mediaHtml(f, CV.id)).join('');
     return `<div class="msg-you${cmdr ? ' from-cmdr' : ''}">${pics.length ? `<div class="msg-pics">${pics.map(src => `<img src="${src}" alt="" data-zoom="1">`).join('')}</div>` : ''}${cmdr ? '<span class="tag">from Commander</span> ' : ''}${linkText(shown.join('\n').trim())}${files.length ? `<div class="msg-files">${files.map(f => `<span class="tag">${esc(f)}</span>`).join('')}</div>` : ''}${clips}</div>`;
   }
@@ -433,7 +498,9 @@ function feedSegments() {
       continue;
     }
     flushTools();
-    segs.push(itemHtml(it));
+    const h = itemHtml(it);
+    if (h && h.includes('Told to carry on, until') && segs[segs.length - 1] === h) continue;
+    segs.push(h);
   }
   flushTools();
   return segs;
@@ -685,7 +752,10 @@ function paintFeed() {
   }
 }
 function appendItem() { paintFeed(); }
-function paintLive() { const el = $('liveText'); if (!el || CV.replaying) return; const pl = typeof PARTNER !== 'undefined' ? PARTNER.live : ''; el.innerHTML = (CV.live ? mdHtml(CV.live) : '') + (pl ? `<div class="from-partner"><span class="who">${esc(partnerName())}</span>${mdHtml(pl)}</div>` : ''); el.hidden = !CV.live && !pl; if (CV.readAt == null) $('feed').scrollTop = $('feed').scrollHeight; }
+// A reply streams in many pieces a second: what's come so far is drawn a few times a second.
+let liveSoon = 0;
+function paintLiveSoon() { if (!liveSoon) liveSoon = setTimeout(() => { liveSoon = 0; paintLive(); paintStatus(); }, 110); }
+function paintLive() { const el = $('liveText'); if (!el || CV.replaying) return; const pl = typeof PARTNER !== 'undefined' ? PARTNER.live : ''; el.innerHTML = (CV.live ? mdDraw(CV.live) : '') + (pl ? `<div class="from-partner"><span class="who">${esc(partnerName())}</span>${mdDraw(pl)}</div>` : ''); el.hidden = !CV.live && !pl; if (CV.readAt == null) $('feed').scrollTop = $('feed').scrollHeight; }
 // How long it's been working, to the second (the page's own clock, not the list's).
 const workedFor = t => { const s = Math.max(0, Math.floor((Date.now() - t) / 1000)); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m ${String(s % 60).padStart(2, '0')}s` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 // The line under the conversation while it works: what it's doing, the end of its thinking when the
@@ -768,6 +838,18 @@ document.addEventListener('input', e => {
   saveDrafts();
 });
 function restoreDraft() { const d = CV.id && DRAFTS.get(String(CV.id)); const box = $('msgBox'); if (d && box && !box.value) { box.value = d; autosize(box); } }
+const PARKED_ATT = new Map();
+function parkAttachments(id) {
+  if (!id || (!COMP.images.length && !COMP.files.length)) return;
+  PARKED_ATT.set(String(id), { images: COMP.images.slice(), files: COMP.files.slice() });
+  COMP.images = []; COMP.files = [];
+}
+function restoreAttachments(id) {
+  const p = id && PARKED_ATT.get(String(id));
+  if (!p) return;
+  PARKED_ATT.delete(String(id));
+  COMP.images = [...p.images, ...COMP.images]; COMP.files = [...p.files, ...COMP.files];
+}
 function resetComposer() { for (const i of COMP.images) if (i.url) URL.revokeObjectURL(i.url); Object.assign(COMP, { images: [], files: [], converting: 0, model: null, effort: null, perm: null, fast: null }); }
 function composerHtml({ fresh = false } = {}) {
   return `<form class="box" id="composer" autocomplete="off">
@@ -808,7 +890,7 @@ function replyTarget() {
   if (!kind) return { key: CV.key, info: CV.info, busy: CV.busy };
   return [...PARTNERS.values()].find(p => p.prov === kind) || { key: null, info: null, busy: false };
 }
-const replyBusy = () => CV.to === 'both' ? CV.busy || PARTNER.busy : replyTarget().busy;
+const replyBusy = () => ['both', 'parallel'].includes(CV.to) ? CV.busy || PARTNER.busy : replyTarget().busy;
 let switchingChat = null;
 
 // Start only the processes needed for the selection. No message is sent by changing a control.
@@ -836,7 +918,8 @@ async function ensureReply(p) {
 async function changeReply(p, changes = {}, fromSend = false) {
   if (switchingChat || (CV.sending && !fromSend)) return toast('One moment: the chat is connecting.');
   const id = CV.id, seq = openSeq;
-  const keepBoth = CV.to === 'both' && p === provNow() && ['model', 'effort', 'fast'].some(k => k in changes);
+  const crewTo = ['both', 'parallel'].includes(CV.to) ? CV.to : null;
+  const keepBoth = !!crewTo && p === provNow() && ['model', 'effort', 'fast'].some(k => k in changes);
   switchingChat = id;
   toast('Connecting…');
   try {
@@ -898,16 +981,16 @@ async function changeReply(p, changes = {}, fromSend = false) {
     if (S.view !== 'chat' || CV.id !== id || openSeq !== seq) return;
     if (info.key === CV.key) CV.info = info;
     else if (PARTNERS.has(info.key)) PARTNERS.get(info.key).info = info;
-    CV.to = keepBoth ? 'both' : p === provNow() ? 'chat' : `partner:${p}`;
+    CV.to = keepBoth ? crewTo : p === provNow() ? 'chat' : `partner:${p}`;
     setTo(id, CV.to); paintBar();
-    toast(keepBoth ? `${toName('both')} will answer your next message.` : `${p === 'codex' ? 'Codex' : provName(p)}${info.accountName ? ` · ${info.accountName}` : ''} answers your next message here.`);
+    toast(keepBoth ? `${toName(crewTo)} will answer your next message.` : `${p === 'codex' ? 'Codex' : provName(p)}${info.accountName ? ` · ${info.accountName}` : ''} answers your next message here.`);
   } finally { switchingChat = null; paintBar(); }
 }
 // Account selection belongs to the Bridge. Apply it when a message is about to start, and fall
 // back automatically when the current plan is exhausted. Changing a plan never submits a prompt.
 async function applyReplyPlan() {
   const id = CV.id, seq = openSeq, to = CV.to;
-  const kinds = to === 'both' ? [provNow(), ...crewKindsLite()] : [replyProv()];
+  const kinds = ['both', 'parallel'].includes(to) ? [provNow(), ...crewKindsLite()] : [replyProv()];
   for (const p of kinds) {
     if (!['claude', 'codex'].includes(p)) continue;
     const family = p === 'claude' ? 'claude' : 'chatgpt', next = useNext(family);
@@ -939,7 +1022,7 @@ function toolsHtml({ fresh }) {
   const sendLabel = fresh ? 'Start' : busy ? delivery === 'steer' ? 'Steer now' : 'Queue' : 'Send';
   const sendHint = `${sendLabel}${TOUCH() ? '' : ' (Enter)'}${busy && !TOUCH() ? ` · ${sendShortcut()} to steer` : ''}`;
   return `<button type="button" class="iconbtn att-btn" data-attach="1" aria-label="Add images or files" title="Add images or files (or paste, or drop)">+</button>
-    <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'both' ? ` + ${esc(partnerName())}` : ''}${prov === 'codex' && ((info && info.fast) || (!info && COMP.fast)) ? ' ⚡' : ''}<span>▾</span></button>
+    <button type="button" class="model${!fresh && CV.to && CV.to !== 'chat' ? ' to-on' : ''}" data-barmodel="1" aria-haspopup="menu" title="Model, and who answers">${esc((model ? modelLabel(prov, model) : md0 && md0.defaultModel ? md0.defaultModel : 'Model'))}${!fresh && CV.to === 'parallel' ? ` ⇉ ${esc(toName('both'))}` : !fresh && CV.to === 'both' ? ` + ${esc(crewKindsLite().length > 1 ? 'All' : partnerName())}` : ''}${prov === 'codex' && ((info && info.fast) || (!info && COMP.fast)) ? ' ⚡' : ''}<span>▾</span></button>
     ${prov !== 'gemini' || effortsFor(prov).length ? `<button type="button" class="model" data-bareffort="1" aria-haspopup="menu" title="Effort">${esc(effort ? cap(effort) : md0 && md0.defaultEffort ? cap(md0.defaultEffort) : 'Auto effort')}<span>▾</span></button>` : ''}
     <span class="bar-hint" id="barHint"></span>
     <button type="button" class="iconbtn gear" data-chatsettings="1" aria-label="Conversation settings" title="Conversation settings">${IC.gear}</button>
@@ -1106,11 +1189,11 @@ function editQueued(i, action) {
   else sendQueued();
 }
 function sendQueued() { return sendBackgroundQueues(); }
-// A queued message keeps the recipient it had when written. With Both selected, live steering
-// goes to the assistant currently working; the shared conversation carries it to the next one.
+// A queued message keeps the recipient it had when written. With Both (or At once) selected, live
+// steering goes to the assistant currently working; the shared conversation carries it to the next one.
 function queueTarget(route = {}) {
   if (route.to === 'partner') return [...PARTNERS.values()].find(p => p.prov === route.kind) || { key: null, busy: false };
-  if (route.to === 'both' || route.to === 'all') {
+  if (route.to === 'both' || route.to === 'all' || route.to === 'group') {
     if (!CV.busy) { const p = [...PARTNERS.values()].find(p => p.busy && (route.to === 'both' ? !route.kind || p.prov === route.kind : !route.kinds?.length || route.kinds.includes(p.prov))); if (p) return p; }
   }
   return { key: CV.key, busy: CV.busy };
@@ -1214,9 +1297,9 @@ async function sendInChat({ queued = null, delivery = 'queue' } = {}) {
       // with the gear), and on the model you picked if you did.
       // Claude picks up on the use-next Claude plan (else the account it last ran as); Codex on its own.
       const c = chatBy.get(id);
-      const claudeAcct = provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
+      const claudeAcct = !['codex', 'gemini'].includes(provider) ? accountFor('claude') || (c && c.accountId) || null : null;
       // An Ollama chat goes back to the Ollama account (its thread isn't OpenAI's).
-      const info = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(inRepo ? { inRepo: true } : {}), ...(provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: perm, ...(model ? { model } : {}), ...(fast != null ? { fast: !!fast } : {}) });
+      const info = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(inRepo ? { inRepo: true } : {}), ...(provider === 'gemini' ? { provider: 'gemini' } : provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), ...(perm ? { permissionMode: perm } : {}), ...(model ? { model } : {}), ...(fast != null ? { fast: !!fast } : {}) });
       key = info.key;
       if (here()) {
         CV.key = key; CV.info = info;
@@ -1236,8 +1319,8 @@ async function sendInChat({ queued = null, delivery = 'queue' } = {}) {
       // It stopped since Lite last looked (idle for a while, or the app restarted): started again, then sent.
       if (!(err.status === 409 || err.status === 404) || !/stopped|isn.t running|not running/i.test(err.message)) throw err;
       const c = chatBy.get(id);
-      const claudeAcct = provider !== 'codex' ? accountFor('claude') || (c && c.accountId) || null : null;
-      const info = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(inRepo ? { inRepo: true } : {}), ...(provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), permissionMode: perm, ...(model ? { model } : {}), ...(fast != null ? { fast: !!fast } : {}) });
+      const claudeAcct = !['codex', 'gemini'].includes(provider) ? accountFor('claude') || (c && c.accountId) || null : null;
+      const info = await api('/api/chat/open', { sessionId: id, mode: 'resume', ...(inRepo ? { inRepo: true } : {}), ...(provider === 'gemini' ? { provider: 'gemini' } : provider === 'codex' ? { provider: 'codex', ...(c && c.ollama && c.accountId ? { account: c.accountId } : {}) } : {}), ...(claudeAcct ? { account: claudeAcct } : {}), ...(perm ? { permissionMode: perm } : {}), ...(model ? { model } : {}), ...(fast != null ? { fast: !!fast } : {}) });
       key = info.key;
       if (here()) { CV.key = key; CV.info = info; listen(key); }
       await waitReadyFor(key);
@@ -1332,12 +1415,12 @@ function modelMenu(anchor) {
     return `<div class="ph">${provName(p)}${sub ? ` · ${esc(sub)}` : ''}${here && defaultReplyModel(p) ? ` · default ${esc(modelLabel(p, defaultReplyModel(p)))}` : ''}</div>${main.map(m => item(p, m)).join('')}${more.length ? `<details class="pop-more"><summary>More ${provName(p)} models</summary>${more.map(m => item(p, m)).join('')}</details>` : ''}`;
   };
   const order = [prov, ...PROVS.map(x => x[0]).filter(p => p !== prov)];
-  // Who answers in this chat: it, its partner (the other assistant, in this same chat), or both in turn.
+  // Who answers in this chat: it, its partner (the other assistant, in this same chat), all in turn, or all at once.
   const crew = crewKindsLite();
   const duoOk = inChat && prov !== 'ollama' && crew.length > 0;
   const to = CV.to === 'partner' ? `partner:${partnerProv()}` : CV.to || 'chat';
   const allName = crew.length > 1 ? 'All' : 'Both';
-  const who = duoOk ? `<div class="ph">Who answers</div><div class="who-seg">${[['chat', selfName()], ...crew.map(k => [`partner:${k}`, NAME_OF[k]]), ['both', allName]].map(([v, l]) => `<button class="mm who-opt" data-v="to|${v}" role="menuitemradio" aria-checked="${to === v}" title="${v === 'both' ? `${selfName()} answers, then ${crew.map(k => NAME_OF[k]).join(', then ')} picks it up` : v !== 'chat' ? `${l} answers in this chat, caught up on it first` : 'This chat, as usual'}">${esc(l)}</button>`).join('')}</div><hr>` : '';
+  const who = duoOk ? `<div class="ph">Who answers</div><div class="who-seg">${[['chat', selfName()], ...crew.map(k => [`partner:${k}`, NAME_OF[k]]), ['both', allName], ['parallel', 'At once']].map(([v, l]) => `<button class="mm who-opt" data-v="to|${v}" role="menuitemradio" aria-checked="${to === v}" title="${v === 'parallel' ? `Everyone (${[selfName(), ...crew.map(k => NAME_OF[k])].join(', ')}) works on your message at the same time` : v === 'both' ? `${selfName()} answers, then ${crew.map(k => NAME_OF[k]).join(', then ')} picks it up` : v !== 'chat' ? `${l} answers in this chat, caught up on it first` : 'This chat, as usual'}">${esc(l)}</button>`).join('')}</div><hr>` : '';
   // Fast (Codex): its priority tier, about twice as quick, using more of the plan.
   const codexHere = inChat ? prov === 'codex' : (typeof NC !== 'undefined' && NC.who === 'codex');
   const fastOn = running ? !!info.fast : !!COMP.fast;
@@ -1350,7 +1433,7 @@ function modelMenu(anchor) {
       COMP.fast = on; paintBar(); if (S.view === 'newchat') paintNewChat(); toast(on ? 'Fast: on for this chat when it starts.' : 'Fast is off.'); return undefined;
     }
     if (p === 'to') {
-      if (v !== 'both') return wrap(changeReply)(v === 'chat' ? provNow() : toKind(v));
+      if (v !== 'both' && v !== 'parallel') return wrap(changeReply)(v === 'chat' ? provNow() : toKind(v));
       CV.to = v; setTo(CV.id, v); paintBar(); return undefined;
     }
     if (inChat) {
@@ -1505,7 +1588,7 @@ async function startNewChat() {
   sfx('slide');
   go('chat', { draft: true }, { push: false });
   try {
-    const info = await api('/api/chat/open', { mode: 'new', cwd: p.cwd, provider: prov, ...(account ? { account } : {}), permissionMode: perm, ...(model ? { model } : {}), ...(prov === 'codex' && COMP.fast ? { fast: true } : {}) });
+    const info = await api('/api/chat/open', { mode: 'new', cwd: p.cwd, provider: prov, ...(account ? { account } : {}), ...(perm ? { permissionMode: perm } : {}), ...(model ? { model } : {}), ...(prov === 'codex' && COMP.fast ? { fast: true } : {}) });
     if (mine()) { CV.key = info.key; CV.info = { ...info, cwd: info.cwd || p.cwd }; listen(info.key); }
     const id = await startAndSend(info.key, text, images, async () => {
       if (effort) await api('/api/chat/model', { key: info.key, effort }).catch(() => {});
@@ -1548,7 +1631,7 @@ function adoptChatId(id) {
 // Waits for a new chat to be ready, sends its first message, and returns its id once it has one.
 function startAndSend(key, text, images = [], beforeSend = null) {
   return new Promise((resolve, reject) => {
-    const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}`);
+    const es = liveChat(key);
     let state = 'starting', id = null, sent = false;
     const finish = (err, v) => { clearTimeout(timer); es.close(); if (err) reject(err); else resolve(v); };
     const timer = setTimeout(() => finish(null, id), 60e3);
@@ -1627,7 +1710,7 @@ document.addEventListener('pointerover', e => {
     prefetching = id;
     try {
       const c = chatBy.get(id);
-      const q = new URLSearchParams({ id, lite: '1', ...(c && c.provider === 'codex' ? { provider: 'codex' } : {}) });
+      const q = new URLSearchParams({ id, lite: '1', ...(c && c.provider && c.provider !== 'claude' ? { provider: c.provider } : {}) });
       const h = await api(`/api/chat/history?${q}`);
       if (id !== CV.id) { CHAT_CACHE.delete(id); CHAT_CACHE.set(id, { items: h.items || [], cursor: h.cursor || null, at: Date.now() }); while (CHAT_CACHE.size > 12) CHAT_CACHE.delete(CHAT_CACHE.keys().next().value); }
     } catch { /* it loads when opened */ } finally { prefetching = null; }

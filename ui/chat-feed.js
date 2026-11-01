@@ -25,17 +25,39 @@ const duo = () => !C.watch && ['claude', 'codex', 'gemini'].includes(C.provider)
 const otherMates = () => ['claude', 'codex', 'gemini'].filter(k => k !== C.provider && k !== partnerProv() && kindReady(k));
 const provFor = src => (src === 'comp' ? partnerProv() : C.provider);
 const keyFor = src => (src === 'comp' ? C.comp && C.comp.key : C.key);
+// With three in a chat, 'comp' means whichever partner is in view at the moment. A card or bar belongs
+// to the one it came from, whoever's in view by the time you click it, so it notes which.
+const compKind = src => (src === 'comp' ? partnerProv() : null);
+const keyOfCard = (el, src) => (el && el._kind ? (C.comps[el._kind] || {}).key : keyFor(src));
+const cardsOf = (sel, src) => [...$c('cFeed').querySelectorAll(`${sel}[data-src="${src}"]`)].filter(x => !x._kind || x._kind === compKind(src));
 const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Skip all checks', dontAsk: 'Never ask', 'accept-edits': 'Edit files', full: 'Full access' };
 const STATE_LABELS = { starting: 'Starting', ready: 'Ready', busy: 'Working', waiting: 'Needs your OK', ended: 'Stopped', watching: 'Watching live', readonly: 'Read-only' };
 const ARTIFACT_RE = /https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+/g;
-const FILE_EXT = 'md|markdown|mdx|txt|json|jsonl|csv|tsv|log|html?|css|js|mjs|cjs|ts|tsx|jsx|py|ya?ml|toml|xml|sh|ps1|bat|cmd|lua|luau|cs|java|go|rs|sql|ini|png|jpe?g|gif|webp|svg|mp4|m4v|webm|mov|mkv|mp3|wav|ogg|m4a|flac|pdf';
+const FILE_EXT = 'md|markdown|mdx|txt|json|jsonl|csv|tsv|log|html?|css|js|mjs|cjs|ts|tsx|jsx|py|ya?ml|toml|xml|sh|ps1|bat|cmd|lua|luau|cs|java|go|rs|sql|ini|png|jpe?g|gif|webp|svg|mp4|m4v|webm|mov|mkv|mp3|wav|ogg|m4a|flac|pdf|zip|7z|rar|gz|tgz';
 const PATHY = new RegExp(`^(?:[A-Za-z]:[\\\\/]|\\.{1,2}[\\\\/]|~[\\\\/]|/)?[^\\s<>"|?*]*?(?:\\.(?:${FILE_EXT})|[\\\\/])$`, 'i');
-const BARE = /(^|[\s(“"'[])((?:[A-Za-z]:[\\/]|\.{1,2}[\\/]|~[\\/]|\/)?[\w.-]+(?:[\\/][\w.-]+)*\.(?:md|markdown|txt|json|jsonl|csv|log|html|ya?ml|toml|png|jpe?g|webp|svg|mp4|webm|mov|mp3|wav|pdf))(?=$|[\s),.;:!?”"'\]])/gi;
+const BARE_EXT = 'md|markdown|txt|json|jsonl|csv|log|html|ya?ml|toml|png|jpe?g|webp|svg|mp4|webm|mov|mp3|wav|pdf|zip|7z|rar|gz|tgz';
+const BARE = new RegExp(`(^|[\\s(“"'[])((?:[A-Za-z]:[\\\\/]|\\.{1,2}[\\\\/]|~[\\\\/]|/)?[\\w.-]+(?:[\\\\/][\\w.-]+)*\\.(?:${BARE_EXT}))(?=$|[\\s),.;:!?”"'\\]])`, 'gi');
+// The same with a drive, where folder names can have spaces (C:\Users\me\My Site\plan.md). The file's
+// own name can't, or the words after any path would run into it.
+// A word of a folder's name: not a file name itself ("C:\\a.md to b.md" is two), not a marked-up bit of text.
+const BARE_WORD = `(?![^\\s\\\\/]*\\.(?:${BARE_EXT})\\s)[^\\s\\\\/:*?"<>|\\u0000,;]+`;
+const BARE_DRIVE = new RegExp(`(^|[\\s(“"'[])([\\\\/]?[A-Za-z]:[\\\\/](?:${BARE_WORD}(?: ${BARE_WORD})*[\\\\/])*[\\w.-]+\\.(?:${BARE_EXT}))(?=$|[\\s),.;:!?”"'\\]])`, 'gi');
+// A Markdown link's target: <anything>, a path with a drive (spaces and "(x86)" allowed), or no spaces.
+const DRIVE_TARGET = '[\\\\/]*[A-Za-z]:[\\\\/](?:[^()"\\n]|\\([^()"\\n]*\\))*?';
+const MD_TARGET = `(?:<([^>\\n]+)>|(${DRIVE_TARGET})|([^)\\s]+))`;
+const MD_LINK = new RegExp(`\\[([^\\]\\n]+)\\]\\(${MD_TARGET}\\)`, 'g');
+const MD_PICTURE = new RegExp(`!\\[([^\\]\\n]*)\\]\\(${MD_TARGET}(?:\\s+"[^"\\n]*")?\\)`, 'g');
+const DRIVE_PATH = /^[\\/]*[A-Za-z]:[\\/]/;
+// C:\… as the app shows and copies it, however it was linked (Codex writes /C:/…; file:///C:/… too).
+const localPath = p => String(p).replace(/^(?:file:)?[\\/]*(?=[A-Za-z]:[\\/])/i, '');
 
 /* ---------- markdown (safe: everything is escaped first) ---------- */
 function link(url, inner) { return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${inner}</a>`; }
-function fileLink(p, inner) { return `<a class="flink" href="#" data-path="${esc(p)}" title="Open ${esc(p)}">${inner}</a>`; }
-const looksLikePath = c => c.length < 400 && !/\s/.test(c.replace(/^[A-Za-z]:\\[^\\]*/, '')) && PATHY.test(c) && !/^https?:/i.test(c) && /[\w]/.test(c);
+function fileLink(p, inner) { const lp = localPath(p); return `<a class="flink" href="#" data-path="${esc(lp)}" title="Open ${esc(lp)}">${inner}</a>`; }
+// In `code`: a path with a drive can't be anything else, even with spaces or no extension (a folder),
+// unless it's a command (C:\tools\run.exe --fast). Anything else needs a known ending, and no spaces.
+const looksLikePath = c => c.length < 400 && !/^https?:/i.test(c) && /[\w]/.test(c)
+  && (DRIVE_PATH.test(c) ? !/[\n<>"|?*]| --?\w|\.(?:exe|cmd|bat|com|ps1)\s/i.test(c) && (!/\s/.test(c) || /\.\w{1,8}$|[\\/]$/.test(c)) : !/\s/.test(c) && PATHY.test(c));
 function emphasis(t) {
   return t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
     .replace(/(^|[^*\w])\*([^*\n]+)\*(?![\w*])/g, '$1<em>$2</em>').replace(/(^|[^_\w])_([^_\n]+)_(?![\w_])/g, '$1<em>$2</em>')
@@ -45,26 +67,33 @@ function inline(s) {
   const slots = [];
   const keep = h => `\u0000${slots.push(h) - 1}\u0000`;
   let t = String(s);
-  t = t.replace(/`([^`\n]+)`/g, (_, c) => keep(looksLikePath(c.trim()) ? `<code class="flink" data-path="${esc(c.trim())}" role="link" tabindex="0" title="Open ${esc(c.trim())}">${esc(c)}</code>` : `<code>${esc(c)}</code>`));
-  t = t.replace(/!\[([^\]\n]*)\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+"[^"\n]*")?\)/g, (_, alt, a, b) => keep(mdPicture(a || b, alt)));
-  t = t.replace(/\[([^\]\n]+)\]\((?:<([^>\n]+)>|([^)\s]+))\)/g, (_, txt, a, b) => {
-    const url = a || b;
+  t = t.replace(/`([^`\n]+)`/g, (_, c) => { const lp = localPath(c.trim()); return keep(looksLikePath(c.trim()) ? `<code class="flink" data-path="${esc(lp)}" role="link" tabindex="0" title="Open ${esc(lp)}">${esc(c)}</code>` : `<code>${esc(c)}</code>`); });
+  t = t.replace(MD_PICTURE, (_, alt, a, d, b) => keep(mdPicture(a || d || b, alt)));
+  t = t.replace(MD_LINK, (_, txt, a, d, b) => {
+    const url = a || d || b;
     if (/^https?:\/\//i.test(url)) return keep(link(url, emphasis(esc(txt))));
+    // A link to a heading: a link in the document viewer; just words in a chat, where there's nothing to go to.
+    if (/^#[^\s]+$/.test(url)) return keep(`<a class="hash" href="${esc(url)}">${emphasis(esc(txt))}</a>`);
     if (/^(mailto:|#|javascript:|data:)/i.test(url)) return keep(emphasis(esc(txt)));
     return keep(fileLink(url, emphasis(esc(txt))));
   });
   t = t.replace(/https?:\/\/[^\s<>()"'`]+[^\s<>()"'`.,;:!?]/g, url => keep(link(url, esc(url))));
+  t = t.replace(BARE_DRIVE, (_, pre, p) => `${pre}${keep(fileLink(p, esc(p)))}`);
   t = t.replace(BARE, (_, pre, p) => `${pre}${keep(fileLink(p, esc(p)))}`);
   t = emphasis(esc(t));
   return t.replace(/\u0000(\d+)\u0000/g, (_, n) => slots[+n]);
 }
 // A picture written into a reply as ![alt](path). One on the web can't load inside the app (it only
 // shows what's on this PC), so it's a link to open in the browser.
-function mdPicture(url, alt) {
+let mdPicturesFrom = null;   // the document viewer's: where a picture in the document is, and its address
+function mdIn(src, picturesFrom) { mdPicturesFrom = picturesFrom; try { return md(src); } finally { mdPicturesFrom = null; } }
+function mdPicture(raw, alt) {
+  let url = localPath(raw);
   const label = alt || base(url);
   if (/^https?:\/\//i.test(url)) return link(url, `<span class="md-weblink">▣ ${esc(label || 'Picture')}</span>`);
   if (/^(data:|javascript:|#)/i.test(url) || !/\.(png|jpe?g|gif|webp|bmp)$/i.test(url)) return fileLink(url, esc(label));
-  const src = imageUrl(url);
+  if (mdPicturesFrom) url = mdPicturesFrom.path(url);
+  const src = mdPicturesFrom ? mdPicturesFrom.src(url) : imageUrl(url);
   return `<span class="mdimg"><button type="button" class="thumb md-pic" data-full="${esc(src)}" data-path="${esc(url)}" data-cap="${esc(label)}"><img src="${esc(src)}" alt="${esc(label)}" loading="lazy" decoding="async" onerror="this.closest('.mdimg').classList.add('gone')"></button>${alt ? `<span class="mdimg-cap">${esc(alt)}</span>` : ''}</span>`;
 }
 function plain(s) {
@@ -222,8 +251,8 @@ function ledgerResult(view, result) {
 function ledgerText(text) {
   const s = String(text || '');
   for (const u of s.match(ARTIFACT_RE) || []) if (!L.arts.has(u)) L.arts.set(u, artTitles[u] || 'Artifact');
-  for (const m of s.matchAll(/\[([^\]\n]+)\]\((?:<([^>\n]+)>|([^)\s]+))\)/g)) { const u = m[2] || m[3]; if (!/^(https?:|mailto:|#|javascript:|data:)/i.test(u)) { L.links.delete(u); L.links.set(u, m[1]); } }
-  for (const m of s.matchAll(/`([^`\n]+)`/g)) { const c = m[1].trim(); if (looksLikePath(c) && !L.links.has(c)) L.links.set(c, c); }
+  for (const m of s.matchAll(MD_LINK)) { const u = localPath(m[2] || m[3] || m[4]); if (!/^(https?:|mailto:|#|javascript:|data:)/i.test(u)) { L.links.delete(u); L.links.set(u, m[1]); } }
+  for (const m of s.matchAll(/`([^`\n]+)`/g)) { const c = localPath(m[1].trim()); if (looksLikePath(c) && !L.links.has(c)) L.links.set(c, c); }
   renderLedgerSoon();
 }
 function renderLedgerSoon() { if (!ledgerTimer) ledgerTimer = setTimeout(renderLedger, 180); }
@@ -253,7 +282,7 @@ function renderLedger() {
   const links = [...L.links.entries()].reverse().slice(0, 30);
   if (links.length) html += sec('Files it pointed to', links.length, `<ul class="lg-list">${links.map(([p, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${/[\\/]$/.test(p) ? '❖' : '✧'}</span><span class="lg-t"><button class="linkish" data-file="${esc(p)}" title="${esc(p)}">${esc(t === p ? base(p) : t)}</button></span></li>`).join('')}</ul>`);
   const files = [...L.files.entries()].reverse().slice(0, 40);
-  if (files.length) html += sec('Files changed', files.length, `<ul class="lg-list">${files.map(([p, f]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${f.verb === 'wrote' ? '✥' : '◈'}</span><span class="lg-t"><button class="linkish" data-pv="${esc(p)}" data-kind="file" title="See what changed in ${esc(p)}">${esc(base(p))}</button></span><span class="lg-m">${f.verb}${f.n > 1 ? ` ×${f.n}` : ''}</span></li>`).join('')}</ul>`);
+  if (files.length) html += sec('Files changed', files.length, `<ul class="lg-list">${files.map(([p, f]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">${f.verb === 'wrote' ? '✥' : '◈'}</span><span class="lg-t"><button class="linkish" data-pv="${esc(p)}" data-kind="file" title="See what changed in ${esc(p)}">${esc(base(p))}</button></span><span class="lg-m">${f.verb}${f.n > 1 ? ` ×${f.n}` : ''}</span></li>`).join('')}</ul>${C.key ? '<button type="button" class="linkish lg-all" data-c="allchg">See everything it changed</button>' : ''}`);
   // The crew plan: each one's own task list, side by side with its owner (they used to overwrite each
   // other). With one assistant it's simply its tasks.
   const step = t => `<li class="lg-i ${t.status === 'completed' ? 'done' : t.status === 'in_progress' ? 'doing' : ''}"><span class="glyph" aria-hidden="true">${t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '▸' : '○'}</span><span class="lg-t" title="${esc(t.subject)}">${esc(t.subject)}</span></li>`;
@@ -419,6 +448,9 @@ function updateGroup(g) {
 /* ---------- feed rendering ---------- */
 // True while a live event is being drawn, so only new messages fade in (not history).
 let liveRender = false;
+// liveRender is also on while a chat's run so far is replayed (opening it, a reload). Something that
+// acts by itself goes by this as well, or it would act again on something that happened hours ago.
+const justNow = ev => !ev.at || Date.now() - Date.parse(ev.at) < 30000;
 // Which of the two is being drawn (Claude, or the Codex helper), so each reply sits under its own name.
 let curProv = null;
 const provNow = () => curProv || C.provider;
@@ -477,10 +509,17 @@ function genImage(b, develop) {
   const acts = b.path ? `<div class="gen-act">${give}<button type="button" class="btn quiet sm" data-file="${esc(b.path)}">Open</button><button type="button" class="btn quiet sm" data-reveal="${esc(b.path)}">Show in folder</button><button type="button" class="btn quiet sm" data-copy="${esc(b.path)}">Copy path</button></div>` : '';
   return `<figure class="gen ${b.status || ''} ${develop && src ? 'develop' : ''}" data-gid="${esc(b.id || '')}"><div class="gen-frame">${frame}</div><p class="gen-gone">This picture can’t be shown here; it may have moved or been deleted.</p>${b.prompt ? `<figcaption>${esc(b.prompt)}</figcaption>` : ''}${acts}</figure>`;
 }
+// A block with an id of its own shows once, whichever got here first: a page of history or the live replay.
+function blockThere(p, id, sel = `[data-bid="${CSS.escape(id)}"]`) {
+  const feed = $c('cFeed'), turn = p.closest('.turn'), root = turn && turn.parentElement;
+  return feed.querySelector(sel) || (root && root !== feed ? root.querySelector(sel) : null);
+}
 function addBlock(p, b, live) {
   const fin = p.querySelector('.final');
   if (b.type === 'image') {
     const old = b.id ? $c('cFeed').querySelector(`.gen[data-gid="${CSS.escape(b.id)}"]`) : null;
+    // Replayed from before it finished: a picture that's already there stays.
+    if (old && old.querySelector('img') && (b.status === 'generating' || (!b.src && !b.path))) return;
     // A picture that finishes while you watch develops in place.
     const develop = liveRender && !!(old && !old.querySelector('img'));
     if (old) old.outerHTML = genImage(b, develop); else fin.insertAdjacentHTML('beforeend', genImage(b, liveRender));
@@ -489,6 +528,10 @@ function addBlock(p, b, live) {
     return;
   }
   if (b.type === 'tool') {
+    if (b.id) {
+      const had = blockThere(p, b.id, `.tool[data-tool-id="${CSS.escape(b.id)}"]`);
+      if (had) { if (b.result && had.querySelector('.t-st:not(.ok):not(.err)')) setToolResult(had.parentElement, b.id, b.result); return; }
+    }
     let g = fin.lastElementChild;
     if (!g || !g.classList.contains('tools')) {
       g = document.createElement('div');
@@ -506,13 +549,18 @@ function addBlock(p, b, live) {
     return;
   }
   if (b.type === 'thinking') {
-    fin.insertAdjacentHTML('beforeend', `<details class="think"><summary>Thinking</summary><div class="think-t">${plain(b.text)}</div></details>`);
+    const had = b.id && blockThere(p, b.id);
+    if (had) { had.querySelector('.think-t').innerHTML = plain(b.text); return; }
+    fin.insertAdjacentHTML('beforeend', `<details class="think"${b.id ? ` data-bid="${esc(b.id)}"` : ''}><summary>Thinking</summary><div class="think-t">${plain(b.text)}</div></details>`);
     return;
   }
+  const had = b.id && blockThere(p, b.id);
+  if (had) { if (RAW.get(had) !== b.text) { had.innerHTML = md(b.text); RAW.set(had, b.text); } return; }
   ledgerText(b.text);
   const cards = artifactCards(b.text, null, p.closest('.turn'));
   const div = document.createElement('div');
   div.className = 'md';
+  if (b.id) div.dataset.bid = b.id;
   div.innerHTML = md(b.text);
   RAW.set(div, b.text);
   fin.appendChild(div);
@@ -530,6 +578,13 @@ function renderItem(root, it, live) {
     const toPartner = provNow() !== C.provider;
     const sh = splitShared(it.text);
     const oc = splitOther(sh.own); sh.own = oc.own;
+    // "Keep it working": a small line, not your words; a crew's all get the same one, shown once.
+    const keptTo = /^From Session Switcher: keep working until ([^(]+?) \(/.exec(sh.own);
+    if (keptTo) {
+      const near = [...root.children].slice(-30).filter(x => x._checkin === sh.own);
+      if (!near.length) { const n = document.createElement('div'); n.className = `cnotice checkin${liveRender ? ' fresh' : ''}`; n.setAttribute('role', 'note'); n.title = sh.own; n._checkin = sh.own; n.innerHTML = `<span class="ck-g" aria-hidden="true">⟳</span><span>Told to carry on, until ${esc(keptTo[1])}</span>`; root.appendChild(n); }
+      return;
+    }
     // "Both": your message, passed on once the first one answered it. A hand-over, not your words again.
     if (toPartner && (it.relay || /sent the message below to both of you/.test(sh.context))) { root.insertAdjacentHTML('beforeend', handoverHtml(provNow(), sh)); return; }
     // A nudge from the Commander arrives as "From Commander: …"; it's marked, not shown as yours.
@@ -538,6 +593,23 @@ function renderItem(root, it, live) {
     d.className = `${liveRender ? 'umsg fresh' : 'umsg'}${toPartner ? ` to-partner to-${provNow()}` : ''}${cmdr ? ' from-cmdr' : ''}`;
     // "Attached file: `path` (info)" lines become players and file cards.
     const at = it.at ? Date.parse(it.at) : Date.now();
+    // A page of history and the live replay can both hold the message that started a long turn. They're matched by ids
+    // alone, never by their words: a message shown twice is better than one that's hidden. History has an id for each
+    // message; the sends that started a turn share a batch with its first message there (queued ones can be one message
+    // in history). History's copy is the one to keep: it sits above the turn's earlier blocks, where the message belongs.
+    const isHistory = !!it.itemId, batch = it.userBatch ? `${provNow()}:${it.userBatch}` : null;
+    const among = sel => [...root.querySelectorAll(sel), ...(root === $c('cFeed') ? [] : $c('cFeed').querySelectorAll(sel))];
+    if (isHistory && among(`.umsg[data-item="${CSS.escape(`${provNow()}:${it.itemId}`)}"]`).length) return;
+    if (batch) {
+      const same = among(`.umsg[data-batch="${CSS.escape(batch)}"]`);
+      // (Clipped in history, it can't speak for what was queued with it: the live ones stay.)
+      if (!isHistory && same.some(x => x.dataset.item && !x.dataset.clipped)) return;
+      if (isHistory && !it.truncated) for (const x of same) if (!x.dataset.item) x.remove();
+      d.dataset.batch = batch;
+      if (it.truncated) d.dataset.clipped = '1';
+    }
+    if (isHistory) d.dataset.item = `${provNow()}:${it.itemId}`;
+    if (it.seq) d.dataset.sq = `${provNow()}:${it.seq}`;
     if (joinBoth(root, toPartner, sh.own, at)) return;
     const files = [];
     const text = sh.own.split('\n').filter(l => { const m = l.trim().match(ATTACH_LINE); if (m) files.push([m[1], m[2] || '']); return !m; }).join('\n').trim();
@@ -583,7 +655,7 @@ function jumpLatest() { const s = scroller(); s.scrollTo({ top: s.scrollHeight, 
 /* ---------- export to Markdown ---------- */
 function chatMarkdown() {
   const out = [`# ${C.title || 'Chat'}`, '', `_${[C.folder, C.model, new Date().toLocaleString()].filter(Boolean).join(' · ')}_`, ''];
-  for (const el of $c('cFeed').children) {
+  for (const el of feedItems()) {
     if (el.classList.contains('umsg')) out.push(`**You${el.classList.contains('to-partner') ? ` → ${PROV_NAME[partnerProv()]}` : ''}:**`, '', RAW.get(el) || el.innerText.trim(), '');
     else if (el.classList.contains('turn')) {
       const text = turnMarkdown(el);
@@ -624,7 +696,7 @@ function pageHtml(markdown) {
 }
 function chatPage() {
   const parts = [];
-  for (const el of $c('cFeed').children) {
+  for (const el of feedItems()) {
     if (el.classList.contains('umsg')) {
       const to = el.classList.contains('to-both') ? ` → ${PROV_NAME[C.provider]} & ${PROV_NAME[partnerProv()]}` : el.classList.contains('to-partner') ? ` → ${PROV_NAME[partnerProv()]}` : '';
       const text = RAW.get(el) || el.innerText.trim();

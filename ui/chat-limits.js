@@ -27,15 +27,16 @@ function renderLimit(ev, src = 'main') {
   if (C.watch) return;
   const prov = provFor(src), other = prov === 'claude' ? 'codex' : 'claude';
   const feed = $c('cFeed');
-  feed.querySelectorAll(`.limit-card[data-src="${src}"]`).forEach(x => x.remove());   // only the latest one for each
+  cardsOf('.limit-card', src).forEach(x => x.remove());   // only the latest one for each
   const me = src === 'main' && C.info && C.info.accountId;
   const acct = me && S.accounts.find(a => a.id === me);
   const others = prov === 'claude' && src === 'main' ? roomyAccounts(me).slice(0, 2) : [];
   const canHand = other === 'codex' ? codexOK() : (duo() || C.provider === 'claude');
-  const auto = liveRender && src === 'main' && prov === 'claude' && others.length && (!S.prefs || S.prefs.autoSwitch !== false) ? others[0] : null;
+  const auto = liveRender && justNow(ev) && src === 'main' && prov === 'claude' && others.length && (!S.prefs || S.prefs.autoSwitch !== false) ? others[0] : null;
   const card = document.createElement('div');
   card.className = `limit-card${liveRender ? ' fresh' : ''}`;
   card.dataset.src = src;
+  card._kind = compKind(src);
   card._ev = ev;
   const who = prov === 'claude' ? (acct ? acct.name : 'Claude’s account') : 'Codex';
   card.innerHTML = `<p class="lm-h"><b>${esc(who)} is out of its ${LIMIT_NAMES[ev.which] || 'usage'} limit.</b>${ev.resetsAt ? ` It’s back at ${esc(backAt(ev.resetsAt))}.` : ''}</p>
@@ -58,7 +59,7 @@ function noAutopilot(el) {
 }
 // The PC has "carry on when it's back" set for one of them (or not any more).
 function renderResumeAt(ev, src) {
-  const card = $c('cFeed').querySelector(`.limit-card[data-src="${src}"]`); if (!card) return;
+  const card = cardsOf('.limit-card', src)[0]; if (!card) return;
   const note = card.querySelector('.lm-wait'), btn = card.querySelector('[data-c="limitwait"]');
   if (ev.at) { note.hidden = false; note.innerHTML = `${esc(PROV_NAME[provFor(src)])} carries on by itself at ${esc(backAt(ev.at).replace(/ \(.*\)$/, ''))}. <button type="button" class="linkish" data-c="limitnowait">Don’t</button>`; if (btn) btn.hidden = true; }
   else { note.hidden = true; if (btn) btn.hidden = false; }
@@ -70,12 +71,12 @@ function lastToClaude() {
   return u ? (RAW.get(u) || '').trim() : '';
 }
 // The same conversation on another account: this chat stops, then resumes as that one, with your
-// last message back in the box to send again.
-async function continueAs(accountId) {
+// last message back in the box to send again (when it ran out; asked for from the menu, nothing was lost).
+async function continueAs(accountId, { outOfUsage = true } = {}) {
   const id = C.sessionId; if (!id) { toast('Send a message first.'); return; }
   const a = S.accounts.find(x => x.id === accountId); if (!a) return;
-  const last = lastToClaude();
-  await api('/api/chat/stop', { key: C.key }).catch(() => {});
+  const last = outOfUsage ? lastToClaude() : '';
+  await api('/api/chat/stop', { key: C.key, switching: true }).catch(() => {});
   await openChatView({ sessionId: id, mode: 'resume', accountId, provider: 'claude' });
   if (!ChatUI.isOpen() || C.sessionId !== id) return;
   if (last) putInBox(last);
@@ -88,9 +89,9 @@ function handOver(to) {
 }
 // Carry on by itself when the limit resets: the PC keeps the time (server.js resumeAt), so it happens
 // whether or not this window is open.
-async function waitForReset(ev, src = 'main', cancel = false) {
+async function waitForReset(ev, src = 'main', cancel = false, key = keyFor(src)) {
   if (!cancel && !(Date.parse(ev.resetsAt) - Date.now() > -60000)) { toast('It should be back already: try sending again.'); return; }
-  await api('/api/chat/resume-at', { key: keyFor(src), at: ev.resetsAt, ...(cancel ? { cancel: true } : {}) });
+  await api('/api/chat/resume-at', { key, at: ev.resetsAt, ...(cancel ? { cancel: true } : {}) });
 }
 
 // A new chat about to open as an account that's out: offer the one with the most room.

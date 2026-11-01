@@ -1,7 +1,7 @@
 {
   "name": "session-switcher",
   "productName": "Session Switcher",
-  "version": "6.5.2",
+  "version": "6.6.1",
   "description": "Every Claude Code and Codex chat on this computer, in one place, as whichever account you choose.",
   "author": "KatoGrey",
   "license": "UNLICENSED",
@@ -45,13 +45,19 @@
           "crest.webp",
           "lib/**",
           "ui/**",
+          "ui-lite/**",
+          "bin/**",
           "fonts/**",
           "sounds/**",
           "docs/whats-new.md",
           "art/**",
           "!art/src/**",
           "tests/**",
-          "macos/icon.icns"
+          "macos/icon.icns",
+          "README.md",
+          "Claude Switcher.vbs",
+          "Session Switcher.command",
+          "Start Claude Switcher.bat"
         ]
       },
       {

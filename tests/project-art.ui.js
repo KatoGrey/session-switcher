@@ -24,7 +24,9 @@ module.exports = [
       await demo.install(b); await b.eval('location.reload(); return 1'); await sleep(3000);
       await b.eval(`await go('folder', ${JSON.stringify(cwd)}); return 1`);
       await sleep(600); // The project-to-page view transition must finish before a real click.
-      await b.clickOn('[data-project-crest]'); await sleep(300);
+      // (In its ⋯ now, except in Imperial and Rebel, where it's still on the page.)
+      await b.clickOn('[data-act="world-more"]'); await sleep(200);
+      await b.eval(`[...document.querySelectorAll('#menu button')].find(x => /Project crest/.test(x.textContent)).click(); return 1`); await sleep(300);
       t.check('the project has a crest dialog with an editable image brief', await b.eval(`return !!document.getElementById('crestDlg')?.open && !!document.getElementById('crestDirection') && !document.querySelector('[data-crest-make]').disabled`));
       await t.shot(b, 'dialog');
       await b.clickOn('.crest-option'); await sleep(300);

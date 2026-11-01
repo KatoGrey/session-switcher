@@ -42,7 +42,7 @@ async function askAside(q) {
     const r = await Aside.starting;
     if (gen !== Aside.gen) { api('/api/chat/aside-end', { key: r.key }).catch(() => {}); return; }   // closed meanwhile
     Aside.key = r.key; Aside.seq = 0;
-    const es = Aside.es = new EventSource(`/api/chat/events?key=${encodeURIComponent(r.key)}&token=${TOKEN}&after=0`);
+    const es = Aside.es = liveChat(r.key, 0);
     es.addEventListener('chat', e => {
       if (Aside.es !== es) return;
       try {

@@ -73,7 +73,17 @@ The panel at the top left of the sidebar shows which account new chats open as. 
 
 ## The hub
 
-The hub is the main screen. Its sections, from the top:
+The hub is the main screen. The sidebar beside it has, from the top:
+
+- **The hub**, **Commander** and **Routines**.
+- **Active now:** each open chat, with what it's doing in words. A click opens it.
+- **Pinned** and **Recent:** the chats you've pinned, and your six latest with their project and how long ago. **All recent chats** is at the foot.
+- **Groups** and **Sub-sessions**, when you have them.
+- **Your projects:** one list, newest first, with buttons for All, Claude, Codex and Gemini and a box to filter it. Folders that no longer exist are folded away at the end.
+
+Each list folds, and stays how you left it. On the page, under the headline, a row of links jumps to each section that has something in it, with its count; each section's heading folds it. Imperial and Rebel keep their own sidebar and page. **New chat** in the top bar (or `N`, anywhere) starts a chat in any project, with any of them: it remembers who you last started with in each project, shows how much each account has left, and **Most room** picks whichever has the most left when it starts. **Together with** brings the others in from the start, taking turns or at the same time, with your first message.
+
+Its sections, from the top:
 
 - **The headline:** a live sentence about right now, such as "Three chats await you. One needs your OK and two have replied." It also says how much of your current account's usage is left, and when it resets.
 - **Awaiting you:** every chat where the next move is yours.
@@ -97,8 +107,10 @@ The hub is the main screen. Its sections, from the top:
     - per-model weekly limits and extra usage, when your plan has them
     - a warning if, at the current pace, a window runs out before it resets
   - When another account has much more room, the hub suggests switching.
-- **Your projects:** every folder you work in, as a card with its banner (see below), plus **New project**.
-- **Recent chats:** the latest chats from every folder.
+- **Your projects:** the folders you've used lately, as cards with their banners (see below), plus **New project**. **All projects** lists the rest, with a filter.
+- **Recent chats:** the latest chats from every folder, beside the accounts.
+- **Pictures you asked to redo are back:** when a picture you've marked redo on the picture board has been made again, a line says how many, with **Review them**.
+- **Two chats were changing the same file at once:** if the replies of two open chats, whichever assistants they are, overlapped and both changed the same file in the last 45 minutes, a card says which file and which chats, because the later edit may have undone the earlier one. (One after the other is fine: the second reads what the first left.) **Side by side** opens the two together, **Hide** sets it aside until it happens again. A chat it concerns has a ⚠ in its header, with the same choices and **Have this chat read them again**, which puts a sentence in the message box for you to send. Nothing is sent by itself.
 
 The top bar is visible everywhere:
 
@@ -138,16 +150,25 @@ Every folder you've worked in is a project. The hub shows them all under **Your 
 - **Today:** how many chats, documents and pictures changed in that project today.
 - **Continue** reopens its latest chat. **New chat** starts a Claude or Codex chat there, plain or from a prompt.
 
-Click a banner and it opens into the project's own page, with three tabs:
+Click a banner and it opens into the project's own page. At the top: the chats open in that project and what each is doing, any file two of them have both changed, and where it stands in git: its branch, what's to push or pull, and its last commit. **N files not committed** opens the list, with the latest commits, **See the changes**, and **Have a chat look through these and commit them**, which puts that in a new chat's message box. (Only reading: it doesn't take git's locks, so it can't get in a chat's way.) Then the tabs:
 
 - **Chats:** every chat in that project, with All / Claude Code / Codex filters when it has both.
 - **Documents:** every markdown file in the folder, like notes, reviews, plans and release notes.
   - They're grouped into Today, This week and Earlier.
-  - Type in **Filter documents** to narrow them down.
-  - Click one to read it formatted, or to copy its markdown.
-- **Gallery:** every picture in the folder, newest first.
-  - Click one to view it full size. `←` and `→` step through the rest.
-  - **Use as banner** makes it the project's banner, from the gallery or from the full-size view. **Use the automatic banner** undoes that.
+  - Type in **Filter documents** to narrow them down. **Look inside every file** then finds those words in the project's files of words, with the lines they're on; a file opens with them found.
+  - Click one to read it formatted, or to copy its markdown. `Ctrl+F` finds in it, and **Open in your editor** opens a file of words in the program this computer uses for them.
+  - **Notes on a document:** select a passage (or nothing, for the whole file) and press **Add a note** or `N`, and say what should change. The passage stays marked, and the notes stay with the file until you **Send to a chat**: one open in the project, one of its latest or a new one, each note with its passage, in the message box for you to read and send. A document with notes says so in the list.
+- **Memory:** what Claude has noted for itself about this project, which it reads at the start of each chat, in plain words and by what it's about, with a filter. Click one to read it. **Forget** takes a wrong one out of what Claude reads; it's set aside, and can be brought back.
+- **Changes:** what each reply changed, in every chat here, newest first by day, partners' work too, whether the chat's open or not, with **See the changes** for each. It's how to see what happened while you were away. (To undo one, open its chat.)
+- **Gallery:** the picture board, for going through what an agent drew. (In Imperial and Rebel the gallery stays as it was, with **Review by folder** to get here.)
+  - **The folders** are down the side, the ones changed last first, each with its count and how far you've got. It reads them as you open them, so a project with 20,000 pictures opens straight away. **Newest** shows the newest 300 wherever they are, **To redo** and **Kept** what you've marked in any folder.
+  - **The pictures** are small copies made on the page and kept in the browser, so a folder of big files scrolls. **Size** changes them, and **All**, **To review**, **Keep** and **Redo** filter them. **Find a picture by name** looks in every folder. New pictures appear as they're made.
+  - **Keep or redo:** the ✓ and ↻ on a picture, or `K` and `R` on the one you're on (arrow keys move, `U` takes a mark back). **Review N one by one** goes through them at full size: `K` keeps it and moves on, `R` marks it and asks what should change, `Enter` moves on, and everything the viewer does is there too (zoom, **Copy picture**, **Save**).
+  - **Compare** (`C`) puts it beside another version: the same name in another folder, or with `-v2` or `(2)` on the end.
+  - **Send the redo list** puts the list, with your notes, in a chat's message box: one open in the project, one of its latest or a new Codex, Claude or Gemini chat. When a picture is made again it comes back by itself as **Made again**, to review again, showing what you'd asked for.
+  - **⋯** has **Keep the ones still to review**, **Take back the marks shown here**, **Copy what's showing as one picture** (a sheet with their names, to paste anywhere), **Put copies of what's kept in a folder** (`Kept pictures/<date>` in the project, to share them; the originals stay, nothing is overwritten), **Ask a chat to make pictures here** and **Look for new pictures**.
+  - **Use as this project's banner:** the ⚑ on a picture, or its right-click menu. **⋯ → Use the automatic banner** undoes that.
+  - Marks are kept on the PC (`board.json`).
   - No pictures yet? With Codex signed in, **Make a cover image with Codex** starts a chat that makes one.
 
 Build and dependency folders like `node_modules` are skipped, so big projects stay quick. Your user folder isn't treated as a project: only its top level is shown, and it never gets a banner by itself.
@@ -176,7 +197,7 @@ There are four ways to use a prompt:
 - **Prompts** under the message box lists them all.
 - **`Ctrl+K`:** type a prompt and a project, like "readme website".
 
-To change them, choose **Edit prompts…** from any of those menus. You can rename, rewrite, add or remove prompts, and choose whether each runs in Claude or Codex.
+To change them, choose **Edit prompts…** from any of those menus. You can rename, rewrite, add or remove prompts, and choose whether each runs in Claude, Codex or Gemini.
 
 - **Add a starter set** adds a ready-made set to yours. **Interactive fiction and games** has a balance pass, playtest and review, patch notes, new NPC, new story start, lore check, faction reputation tiers and key art.
 - **Restore the starter prompts** puts the originals back.
@@ -202,7 +223,7 @@ Routines are chats that start on their own. Open **Routines** in the sidebar, th
 - Before each run it checks the account's usage. If the five-hour window is more used than the routine allows (90% unless you change it), or the week is used up, it waits until the window resets and says so in the history.
 - Routines never post anywhere. Slack is only read, and every run is told to write any reply as a draft for you to send. Keep routines on **Ask before acting** if a chat has tools that could send messages.
 - Routines are kept in `routines.json`. Other code can make one through `POST /api/routines`.
-**Project crests:** choose **Project crest…** on a project page or in its right-click menu. Pick an existing picture, or edit the art direction under **Make a crest with Codex** and choose **Review prompt in Codex**. The prompt waits in the chat for you to send it. When Codex saves that image, it becomes the project's crest across the sidebar, project cards and chat header; existing artwork and the wide banner stay intact. Choosing **Use automatic crest** restores automatic selection. Named crests, emblems and logos in the project are recognised, including small icons. Generation needs image tools in your Codex session.
+**Project crests:** choose **Project crest…** in a project page's **⋯** menu (on the page itself in Imperial and Rebel) or its right-click menu. Pick an existing picture, or edit the art direction under **Make a crest with Codex** and choose **Review prompt in Codex**. The prompt waits in the chat for you to send it. When Codex saves that image, it becomes the project's crest across the sidebar, project cards and chat header; existing artwork and the wide banner stay intact. Choosing **Use automatic crest** restores automatic selection. Named crests, emblems and logos in the project are recognised, including small icons. Generation needs image tools in your Codex session.
 
 ## Handing it to someone else
 
@@ -223,7 +244,7 @@ Sign-ins never live in the app's folder. Each Claude account signs in through it
 
 ## The chat window
 
-Click **Open** on any chat, or **New chat** in a folder. The chat runs in Session Switcher's own window, as the account you picked.
+Click **Open** on any chat, or **New chat** in a folder. The chat runs in Session Switcher's own window, as the account you picked. The project's name above the chat's title goes to the project's page.
 
 - **Active now (left):** every open chat, for one-click switching: working, waiting for you, or ready for your next message. `Alt+↑` and `Alt+↓` move between them.
   - **Drag** a chat up or down to put the list in your order (or `Alt+Shift+↑` / `Alt+Shift+↓` for the chat you're in). The order is remembered.
@@ -258,7 +279,7 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
 - **The ledger (right):** what this chat produced:
   - artifacts
   - files it pointed to
-  - files it changed
+  - files it changed, with **See everything it changed**: all of it in one place, its partners' work too, as those files stand now
   - its task list
   - the commands it ran
   - the account's usage
@@ -267,7 +288,9 @@ Click **Open** on any chat, or **New chat** in a folder. The chat runs in Sessio
   - The selector in the header sets what Claude may do without asking.
   - **Stop**, or **Esc twice**, interrupts Claude. The first Esc only shows "Esc again stops Claude" under the message box, so a stray key never cuts a reply short. You can type while it works to queue your next message.
   - **Idle chats:** a chat nobody has open, whose reply finished half an hour ago, is stopped to free its process (its conversation is kept, and it starts again with your next message). Not while Claude has work running in the background (a build, tests, a helper): the header says **Working in the background**, the hub keeps it under **At work**, and Claude carries on with the result when it's done. A restart or update waits for that work too, or says it would end it.
-  - **Open in a new window** (in **⋯** and the chat's right-click menu) puts a chat in a window of its own, so two chats can sit side by side.
+  - **Side by side:** the ◫ in the header, **Open beside this chat** in a chat's right-click menu, or `Ctrl`+click in the list puts another chat beside this one in the same window, the whole chat with its own message box. A window at least 1,900 wide has room for two beside it. Drag the divider, or use the arrow keys on it. It stays while you go back to the hub.
+  - **Your site beside the chat:** **See it beside the chat** on a `.html` file (nothing to start: its folder is served on this computer, only to this window), in **Run the project**, or **Open beside this chat** on a `localhost` link, keeps the site you're building in view: with its address, **Reload**, and a **Phone** width. It reloads when a reply changes something. Only addresses on this computer open there.
+  - **Open in a new window** (in **⋯** and the chat's right-click menu) puts a chat in a window of its own.
   - **Save as a web page** makes one `.html` file of the conversation, formatted and readable anywhere, with nothing else needed.
   - **⋯** holds everything the chat's right-click menu has, plus **Move to a terminal** (continues the chat in a terminal as the same account) and **Stop this chat**, which asks first only if Claude is in the middle of a reply.
   - The **Claude** and **Codex** pills open the model picker. It works from the keyboard too: the arrows move, Enter picks, Esc closes.
@@ -278,7 +301,17 @@ Behind the scenes this is Claude Code itself, run in its official streaming mode
 
 Chats running in a terminal, or recently used in the desktop app, also appear on the hub. Click one to **watch it live**: you can read along as it works, but you reply in its own window. Its menus offer **Watch it live** first, since opening it in two places at once can mix up its history.
 
-**Open a copy here** branches the chat so you can continue it in the app without touching the original.
+**Open a copy here** branches the chat so you can continue it in the app without touching the original. It asks first: a copy is a second chat with the same history, working alongside the first (in the same files), and it's named “(copy)” everywhere so it can't be mistaken for the original.
+
+**Finishing from before the restart:** if Session Switcher was closed without stopping its chats (an installer run by hand, a crash, Task Manager), they carry on by themselves. The app finds those that were open in its window, shows each as *finishing from before the restart* (read along live; no copy needed), and once one has finished what it was doing (its conversation and its helpers' files quiet for a minute and a half), it stops it and opens that same chat here again, where it was.
+
+### Another account, the same conversation
+
+**Carry on as…**, in a chat's **⋯** menu, moves a Claude chat to your other account, the one with more left, as the same conversation: it stops here and resumes as that one. It lists your signed-in accounts that have room, with how much, once its reply has finished.
+
+### Names
+
+A chat goes by its first words until it has a name, and a first message is rarely one. After a chat's first reply, Claude's smallest model gives it a short name (one small question, with no tools and nothing kept), so your lists say what each is about. A name you've given a chat is never changed. Setup → Preferences turns this off, and **Name them** there does the same for your older chats, the latest forty at a time.
 
 ### Done, and tidying up
 
@@ -330,6 +363,7 @@ What's different from Claude and Codex, because of what the Antigravity CLI allo
 - **Pictures:** one you attach or paste is saved to a temp folder and Gemini reads it from there (it's told where), so it can describe, compare or work from it.
 - **Stop** ends the reply; your next message carries on with the same conversation.
 - **In the crew:** Gemini can join a Claude or Codex chat (or have them join its own), race or split the work with either, take queued tasks, and run routines. The Commander reads and nudges Gemini chats, and side chats, sub-sessions and renaming work for them too. See [Claude, Codex and Gemini in one chat](#claude-codex-and-gemini-in-one-chat).
+- **Rules and tools:** in a project it reads `AGENTS.md` (and a `GEMINI.md`, if there is one), so what you save in **Rules and tools** reaches it. For every project it has its own `~/.gemini/GEMINI.md`, and its tools show beside the others'.
 - **Its usage isn't shown here:** Antigravity's `/usage` shows your plan's limits.
 
 ## OpenClaw agents
@@ -350,15 +384,20 @@ If [OpenClaw](https://openclaw.ai) is installed, its agents' sessions (Discord c
 Claude, Codex and Gemini work in the same chat, any way round: bring Codex into a Claude chat (to make images for a project while Claude does the main work, say), Gemini too (for a draft or a second opinion), or Claude into a Codex chat. One window, one conversation, all of them reading each other.
 
 - **The crew, under the message box:** a pill for the chat's own assistant and one for each other assistant you've set up. Each shows its model and effort, and a live dot while it works (crimson for Claude, blue for Codex, violet for Gemini).
-  - Click a pill, or press `Ctrl+.` (it steps through them, then All), to choose who your next message goes to. The box takes that one's color. One that isn't in the chat yet joins with your first message to it, caught up on everything so far.
+  - Click a pill, or press `Ctrl+.` (it steps through them, then Together), to choose who your next message goes to. The box takes that one's color. One that isn't in the chat yet joins with your first message to it, caught up on everything so far.
   - Or start a message with `@codex`, `@gemini` or `@claude` to send just that one message.
-  - The partner's pill shows what it may do (Codex's **Agent**, **Read only**…), changed from its menu, and how much room its account has left once that's low. **Both** says it uses room on both accounts.
+  - The partner's pill shows what it may do (Codex's **Agent**, **Read only**…), changed from its menu, and how much room its account has left once that's low.
 - **One feed:** the partner's replies appear in the same conversation, under its own name and color. Messages you sent it are tagged **to Codex** (or **to Claude**). Pictures Codex makes appear as it makes them.
 - **They read each other:** before each message one of them gets, the app catches it up on what it hasn't seen: what the other one said and did (which files it changed, how many commands it ran), and what you said to the other. In the feed that's a small fold-out ("Codex was caught up on 3 messages"), not text you wrote. So you can ask Claude for a plan, switch to Codex and say "do the second part", and Codex knows what that is.
   - The app works this out on the PC from the two conversations themselves, from the moment each one last caught up, so it's the same in every window and on your phone, and survives a reload or a restart. Nothing is told twice; a long stretch keeps the newest messages and says how many earlier ones it left out.
   - Files you undo from a reply are mentioned to that one with your next message, and to the other one too (it may have built on them).
-- **All three: in turn.** With more than one partner the pill reads **All** (or `@all`): the chat's own assistant answers first, then each of the others in turn, each knowing what the ones before it said. The relay under the title shows each one and who's up next.
-- **Both: they take turns.** The **Both** pill (or `@both`) sends your message to the chat's own assistant first. When it has answered, the other one picks the same message up, already knowing that answer, and builds on it (checks it, adds what it missed, does its part) instead of starting over. Your message reads "to Claude, then Codex", the second one's pill says **up next** while it waits, and the feed marks where it **takes it from here**. They never edit files at the same time. Stopping the first one skips the hand-over.
+- **Together: pick who, in what order.** The **Together ▾** button at the end of the crew opens a short list of everyone: tick the ones who should take your next message (two or all three, and the chat's own assistant can sit out, say Gemini then Codex in a Claude chat). They answer in the order you tick them; **↑** moves one earlier. Then choose how:
+  - **Take turns:** the first one answers; then the next picks the same message up, already knowing the answers before it, and builds on them (checks, adds what's missing, does its part) instead of starting over. Your message reads "to Gemini, then Codex", the next one's pill says **up next** while it waits, and the feed marks where it **takes it from here**. They never edit files at the same time. Stopping the one answering skips the rest. Each one uses room on its own account.
+  - **At the same time:** all of them start on your message at once, each on its own part, so Claude can write the code while Codex makes the images. Say who does what ("Claude: the save system. Codex: the menu icons."); each is told the others are working in parallel, to do only its part and not to edit their files. Your message reads "to Claude & Codex · at the same time", and afterwards each one hears what the others did.
+  - **Plan first:** the first one drafts a plan (no changes yet), the second checks it, and a card asks who builds it: either one, or both in turn.
+  - **Write to …** sends to them; their pills light, and the button says who and in what order. Clicking one pill writes to just that one again (or **Back to Claude only**). The last group you picked is where the list starts next time.
+  - `@all` sends one message to everyone in turn, and `/plan` plans first with the group you picked.
+- **Leave them to it:** **Keep it working until…**, in the chat's **⋯** menu, keeps a whole crew going until a time you choose, each told to carry on when it's quiet and caught up on the others. See [Keep it working](#keep-it-working-until-a-time-you-choose).
 - **New chats start in Auto (Claude) and Full access (Codex)** unless a chat or project remembers another mode; change it in Setup → **New Claude chats start in** / **New Codex chats start in**.
 - **The partner follows the chat's mode:** what you let Claude do without asking carries over to Codex (Auto or Bypass is Codex's Full access, Accept edits is Agent, Plan is Read only), when the partner starts and whenever you change it, so Codex doesn't ask about every step. Ask before acting leaves Codex's own choice alone.
 - **Review big changes by itself:** with Setup → Codex → **Review big changes by itself** on, after Claude changes forty lines or more in one reply, Codex reviews them and the findings come back as a card.
@@ -378,10 +417,10 @@ Claude, Codex and Gemini work in the same chat, any way round: bring Codex into 
 
 ## Rules and tools
 
-One set of rules for both assistants. Claude Code reads `CLAUDE.md` and Codex reads `AGENTS.md`, so **Rules and tools** writes the rules once and **Save to both** saves both files. Open it from a project's right-click menu, a chat's **⋯**, Setup, or `Ctrl+K`:
+One set of rules for all of them. In a project, Claude Code reads `CLAUDE.md`, and Codex and Gemini both read `AGENTS.md`, so **Rules and tools** writes the rules once and **Save to both** saves both files. Open it from a project's right-click menu, a chat's **⋯**, Setup, or `Ctrl+K`:
 
-- **Rules:** for this project, or for **Every project** (`CLAUDE.md` in your Claude folder and `AGENTS.md` in your Codex folder). If the two files differ, it says so and you pick which to start from.
-- **Tools:** each assistant's MCP servers side by side. A server only one of them has can be added to the other in one click (**Add to Codex**, **Add to Claude**).
+- **Rules:** for this project, or for **Every project** (`CLAUDE.md` in your Claude folder, `AGENTS.md` in your Codex folder and, with Gemini on, `GEMINI.md` in `~/.gemini`: **Save to all three**). If the files differ, it says so and you pick which to start from. A project's own `GEMINI.md` is read by Gemini on top of `AGENTS.md`, so it's left alone, and the dialog says it's there.
+- **Tools:** each assistant's MCP servers side by side. A server one of them has can be added to the others in one click (**Add to Codex**, **Add to Claude**, **Add to Gemini**).
 
 ## Queued tasks
 
@@ -392,6 +431,24 @@ One set of rules for both assistants. Claude Code reads `CLAUDE.md` and Codex re
 - **Start now** and **Cancel** are on its card under **Queued**. A started task goes to **At work** like any chat.
 
 Queued tasks start only while Session Switcher is running.
+
+## Keep it working until a time you choose
+
+For the long job you leave running. An assistant finishes a turn and stops, and without you nothing happens until morning. **Keep it working until…**, in a chat's **⋯** menu (or `Ctrl+K`, or **Keep them working…** in the **Together** list), has it told to carry on once it's been quiet for a few minutes, until the time you pick. You can add what it should carry on with, said each time. In a chat with a crew, each is told by itself when it's quiet, so one on a long job doesn't hold up the others (or, if they're taking turns, they go round once they've all finished). Each is caught up on what the others have said and done, so they read each other's work without being asked.
+
+- It leaves alone anything that's working, or needs you: a permission or a question stays with you.
+- **Out of usage,** a Claude chat carries on as your account with the most room (Setup's **Carry on when an account runs out** turns that off). With none, it waits for the limit to reset, then carries on. In a crew, the others keep going meanwhile.
+- **One that's finished** (it says so), or got nothing done for two check-ins running, is left alone, until someone else gets something done or you write.
+- **One that hangs,** saying nothing at all for 40 minutes in the middle of a reply, is stopped and told to carry on, up to three times.
+- **It stops** at the time, when nobody has anything left to do, and when you press **Stop**.
+- A line over the chat says when it stops and what it's doing, with **Change** and **Turn off**. Its row in the lists says **Until 3:30**.
+- A chat that stopped opens again when its next check-in is due, and it carries on after a restart. It runs while Session Switcher is running, and keeps the PC from sleeping meanwhile (the desktop app, unless you've turned that off).
+- In the morning, the welcome-back card on the hub says how each one ended.
+- **Several at once:** `Ctrl+K` has **Keep every open chat working until…**, and a group's menu has it for its open chats.
+
+Each check-in is a message like any other, so it uses a little of that account's usage. The messages start "From Session Switcher", so an assistant can tell them from you.
+
+The Commander can do this too, if you ask it to ("keep the tavern chat going until morning"), and it can see which chats are being kept at it.
 
 ## Race Claude and Codex
 
@@ -601,11 +658,16 @@ It stays light on the PC: working in another app with Session Switcher beside it
 | Keys | What it does |
 |---|---|
 | `Ctrl+K` (or `/` outside a chat) | Jump to any chat, project, document, prompt or action (in a chat, its own actions too), or search inside every message |
+| `N` | New chat, in any project |
+| `Alt+1` … `Alt+9` | Open one of your open chats |
 | `/` in the message box | Pick a saved prompt |
 | `←` / `→` | Step through a project's pictures in the full-size view |
+| `K` · `R` · `U` · `N` · `C` | On a picture: keep it, redo it, take the mark back, add a note, compare it with the same name in another folder |
+| `N` · `Ctrl+F` | Reading a file: add a note, find in it |
 | `Alt+↑` / `Alt+↓` | Switch between open chats in the chat window |
 | `Alt+Shift+↑` / `Alt+Shift+↓` | Move the chat you're in up or down that list |
 | `Enter` | Send. Use `Shift+Enter` for a new line |
+| `↑` / `↓` | In an empty message box: your earlier messages in this chat |
 | `Esc` | Close what's open. While Claude or Codex is replying, press it twice to stop |
 | `Ctrl+F` | Find in this chat |
 | `End` | Jump to the latest message |
@@ -624,12 +686,13 @@ Menus get out of the way: a click anywhere else closes the menu (without also pr
 - **A chat** (in a list, on a hub card, or pinned in the sidebar): open it, close it (an open chat), open a copy, resume in a terminal, rename, pin to the sidebar, copy its ID or terminal command, show its transcript.
 - **A project** (its card, or its name in the sidebar): open it, pin it, continue the latest chat, start a new Claude or Codex chat, start with a prompt, show it in Explorer, browse its files, copy its path.
 - **An account card:** sign-in checks, usage, rename, sign out.
+- **A picture on the board:** open it, keep or redo it, add a note, copy it or its path, show it in its folder, use it as the banner.
 - **Inside a chat:**
   - **A reply:** copy it (as text or Markdown), quote it in your message, or hand it to Codex or Claude. Its own **Copy** button copies the Markdown.
   - **Your message:** copy it, quote it, or **Edit and send again**.
   - **Selected text:** copy, quote, ask the other assistant about it, find it in this chat, or search every chat for it.
   - **Code:** copy it, as Markdown too, or put it in your message.
-  - **A picture:** view full size, copy it, give it to Claude, show it in its folder, or use it as the project's banner.
+  - **A picture:** view full size, copy it, give it to Claude, show it in its folder, or use it as the project's banner. In the viewer, **Review on the board** goes to its folder on the project's picture board.
   - **A file name:** open it, show it in its folder, copy its path, or mention it in your message.
   - **A step** (a command, an edit): show its details, copy the command or its output.
   - **The Claude or Codex pill:** quick picks and the model picker.
@@ -649,6 +712,7 @@ Groups are for chats you're juggling together, Claude and Codex alike.
 - **Fill it:** right-click any chat and choose **Move to group…**, or drag a chat (from the sidebar, a list or the hub) onto a group.
 - **Tidy it:** right-click a group (or its **⋯** on the hub) to rename it, move it up or down, collapse it, or remove it. Removing a group never touches its chats. Drag one group onto another to put it in that place.
 - **See how it's doing:** each group shows how many of its chats are awaiting you (gold) and at work. The hub's **Your groups** lists every group with its chats.
+- **Message its open chats:** the same message to each, from the group's menu. A project's menu has the same for the chats open in it, and `Ctrl+K` has **Message several chats** for any you tick, and **Stop what every chat is doing**.
 
 ### Sub-sessions
 
@@ -657,6 +721,7 @@ A sub-session is a new chat in the same folder, linked to the chat it came from.
 - Right-click a chat (or open its **⋯** menu) and choose **Start a sub-session**. It runs as the same assistant and, for Claude, the same account.
 - **Start a sub-session with a brief** fills the new chat's message box with a blank for its task, plus the first chat's latest reply as context. Type over the blank and send.
 - Sub-sessions sit under their parent in the sidebar (inside its group, or under **Sub-sessions**) and join the parent's group.
+- **Continue in a fresh chat** (the chat window's **⋯** menu), for a chat that's grown long or slow: the chat writes a handoff (the goal, what's done, where it stands, decisions, the files that matter, next steps and what to watch out for), and a new chat opens as a sub-session with that handoff in its message box. Read it, change anything, and send. The request and the handoff stay in the old chat too.
 - In a sub-session, the line above the title shows its group and the chat it came from; click that to go back. A chat with sub-sessions shows how many, and clicking that lists them.
 
 ### The Commander
@@ -689,7 +754,7 @@ A second, calmer way into the same app, at `http://127.0.0.1:4777/lite` (on a pa
 - **Also:** Bugs (bug chats by stage: Working, PR, Preview, Merged; needs GitHub's `gh`), Routines, Automation (runs started by routines and scripts), Images (Codex's pictures), Clean up (disk space in worktrees), Alerts (phone notifications) and a Hackathon board.
 - **Background checks only where Lite is used:** from the first time Lite is opened on this computer, it reads each plan's usage once an hour, and every ten minutes asks a local Ollama model (if there is one) to sort chats and checks pull requests of chats you marked Waiting. Before that, none of it runs.
 - **Start idle weeks for me** (in Lite's look menu, off unless you turn it on): a plan whose week hasn't started gets one tiny message ("Reply with just: ok") to start it, at most once every six hours.
-- **On Windows:** Clean up's sizes read 0 (it uses `du`), Lite's own sign-in and model list need `sh` on the PATH (Git for Windows has it), and a Slack routine's token comes from the `SWITCHER_SLACK_TOKEN` variable instead of the Keychain.
+- **On Windows:** a Slack routine's token comes from the `SWITCHER_SLACK_TOKEN` variable instead of the Keychain.
 - Its settings are kept in `lite.json` (and `lite-usage.json`) in the app's data folder.
 
 ## Pinned and favorites
@@ -706,7 +771,7 @@ A second, calmer way into the same app, at `http://127.0.0.1:4777/lite` (on a pa
 - **Code** is colored by language, in your theme's colors.
 - **Times:** hover a reply to see when it came.
 - **Export:** right-click the chat, or use `Ctrl+K`, to save it as a Markdown file.
-- **From a search:** opening a chat from **Search every chat** opens Find on the words you searched for.
+- **From a search:** opening a chat from **Search every chat** opens Find on the words you searched for, and goes further back through a long chat until it finds them. (In **Find**, `Enter` does the same: past the oldest match, earlier messages come in.) Search looks inside Codex's and Gemini's chats too: the first search starts reading them in the background (it says how far it's got), and from then on only what's new. The Commander can search the same way.
 
 Press `?` anywhere (outside a text box) for the full list of keyboard shortcuts.
 
@@ -744,7 +809,7 @@ Press `?` anywhere (outside a text box) for the full list of keyboard shortcuts.
 ## Keeping itself good
 
 - **Problems:** anything that goes wrong on the page (on the PC or a phone) or in the PC's server is noted, the same one counted rather than repeated. Setup → **Problems and speed** lists them with **Ask Claude to fix this**, which opens a chat in the app's own folder with the error and the end of `switcher.log`.
-- **Nightly self-check:** at half past three in the morning, when nothing is working, the app runs its own tests and the look checks at low priority. If something failed, a card on the hub says so. **Run the self-check now** is in Setup; **Check itself every night** turns it off.
+- **Nightly self-check:** at half past three in the morning, when nothing is working, the app runs its own tests and the look checks at low priority. If something failed, a card on the hub says so. **Run the self-check now** is in Setup; **Check itself every night** turns it off. In the desktop app it checks the installed copy, skipping the few tests that need a developer's copy. The look checks compare within one version: the first night after an update keeps that version's look as the one to compare with, and a real change is reported once, then kept as the new look (the old picture stays beside it as `.was.png`).
 - **Look checks:** `node tests/run.js "look checks"` takes a picture of every theme, light and dark, on the hub and in a chat, and compares it with the last time (kept in `%LOCALAPPDATA%\SessionSwitcher\looks`; `LOOKS_RESET=1` keeps new ones). It only looks, it never changes a theme.
 - **Speed:** how long the hub, a chat and a reply's first word take on this device, this week against last, in Setup → Problems and speed.
 
@@ -859,6 +924,8 @@ Session Switcher never edits your chat files.
 - The tests start their own copy of the app on a free port with a throwaway data folder, so they never touch the Session Switcher you're using.
 - `node tests/run.js chat menus` runs only the named browser checks; `SHOTS=folder` also saves screenshots.
 - **Claude and Codex together** (`tests/duo.test.js`, `tests/pairs.test.js`): what each one is told it missed, Both taking turns, one process per conversation, resuming after a restart, starting over when a conversation is gone, with stand-in chats.
+- **Every button, on the real server** (`node tests/press-everything.js`, by hand on Windows, about half an hour): presses everything the app shows, and what each press opens, in a pretend computer with its own home folder and a stand-in Claude, Codex and Gemini, and lists script errors, what the server refused, and buttons that did nothing. The demo world answers for the server, so it can't show a route that's missing; this can. `tests/workspace.test.js` also checks that every address the page asks for exists and can be reached.
+- **The way the installed app runs them** (by hand on Windows): the installed app runs on Electron's own Node, which isn't quite plain Node, so a thing can pass one and fail the other. Set `ELECTRON_RUN_AS_NODE=1` and run `"%LOCALAPPDATA%\Programs\session-switcher\Session Switcher.exe" tests\run.js`, which is what its nightly self-check does. Without that variable the program starts the app instead.
 - **For real, by hand** (`node tests/real-duo.js`, not part of `npm test`): drives real Claude and Codex through the app, with your own sign-ins and a little of their usage (one-line replies, Claude on Haiku). Codex joins a Claude chat and reads it, Claude reads Codex back, Both takes turns, a restart picks up where it was, a Codex chat brings Claude in, a lost conversation starts over, and the window shows it all in one feed. It uses scratch projects in the temp folder and cleans up after itself, archiving its Codex conversations through Codex. `REAL_DUO_LOG=1` also prints the app's log.
 
 GitHub runs the same tests on Windows and on a Mac for every push and pull request.

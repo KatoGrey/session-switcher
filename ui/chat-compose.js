@@ -5,7 +5,7 @@
 const sizeText = n => (n >= 1024 * 1024 * 1024 ? `${(n / 1024 / 1024 / 1024).toFixed(1)} GB` : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const kindOf = f => (/^video\//.test(f.type) || VIDEO_RE.test(f.name) ? 'video' : /^audio\//.test(f.type) || AUDIO_RE.test(f.name) ? 'audio' : /pdf$/.test(f.type) || /\.pdf$/i.test(f.name) ? 'PDF' : 'file');
 function renderAttachments() {
-  const imgs = C.attachments.map((a, i) => `<span class="att"><img src="${a.url ? esc(a.url) : `data:${esc(a.mediaType)};base64,${a.data}`}" alt=""><button type="button" data-rm="${i}" aria-label="Remove image">✕</button></span>`);
+  const imgs = C.attachments.map((a, i) => `<span class="att"><img src="${a.url ? esc(a.url) : `data:${esc(a.mediaType)};base64,${a.data}`}" alt="" title="Click to see it full size"><button type="button" data-rm="${i}" aria-label="Remove image">✕</button></span>`);
   if (C.converting) imgs.push(`<span class="att pending" title="Preparing ${C.converting === 1 ? 'a picture' : `${C.converting} pictures`}"><span class="gen-spin" aria-hidden="true"></span></span>`);
   const files = (C.files || []).map((f, i) => `<span class="att file ${f.error ? 'err' : f.rel ? 'done' : 'up'}" data-fid="${i}" title="${esc(f.error || f.rel || 'Uploading…')}">
       <span class="af-ico" aria-hidden="true">${esc(fileGlyph(f.name))}</span><span class="af-t"><b>${esc(f.name)}</b><small>${esc(f.error ? 'Couldn’t attach' : f.rel ? `${f.kind}, ${sizeText(f.size)}` : `Uploading ${Math.round((f.progress || 0) * 100)}%`)}</small></span>
@@ -67,7 +67,22 @@ function fileProgress(item) {
   const sm = el.querySelector('small'); if (sm) sm.textContent = `Uploading ${pct}%`;
   return undefined;
 }
-const dropAttachments = () => { for (const a of C.attachments || []) if (a.url) URL.revokeObjectURL(a.url); for (const f of C.files || []) if (f.xhr && !f.rel && !f.error) f.xhr.abort(); };
+// Each chat keeps its own pictures and files, like its text, while you look at another.
+const Parked = new Map();
+function parkAttachments() {
+  const k = draftKey(), files = (C.files || []).filter(f => !f.error);
+  if (!k || (!(C.attachments || []).length && !files.length)) return dropAttachments();
+  Parked.delete(k); Parked.set(k, { attachments: C.attachments || [], files });
+  if (Parked.size > 12) { const [old] = Parked.keys(); const was = Parked.get(old); Parked.delete(old); dropAttachments(was); }
+  return undefined;
+}
+function unparkAttachments() {
+  const k = draftKey(), p = k && Parked.get(k);
+  if (!p) return;
+  Parked.delete(k);
+  C.attachments = [...p.attachments, ...(C.attachments || [])]; C.files = [...p.files, ...(C.files || [])]; renderAttachments();
+}
+const dropAttachments = (box = C) => { for (const a of box.attachments || []) if (a.url) URL.revokeObjectURL(a.url); for (const f of box.files || []) if (f.xhr && !f.rel && !f.error) f.xhr.abort(); };
 // Uploads a file into the project’s attachments folder, with progress.
 function uploadFile(f) {
   if (!C.key) { toast('Start the chat first, then attach files.'); return; }
@@ -117,17 +132,143 @@ function placeText(text, replace) {
   else { ta.setSelectionRange(ta.value.length, ta.value.length); ta.scrollTop = ta.scrollHeight; }
 }
 const insertPrompt = (pr, replace) => placeText(fillPrompt(pr.text, C.folder), replace);
+// ↑ in an empty box brings back what you last sent here, ↑ again the one before, ↓ forward again; typing
+// keeps it as yours to change. As in a terminal.
+const Recall = { i: -1, list: [], text: '' };
+const recallReset = () => { Recall.i = -1; };
+function recallStep(d) {
+  const ta = $c('cText');
+  if (Recall.i < 0) {
+    if (d > 0 || ta.value) return false;
+    Recall.list = [...$c('cFeed').querySelectorAll('.umsg')].map(el => RAW.get(el) || '').filter(s => s.trim()).reverse();
+    if (!Recall.list.length) return false;
+  } else if (ta.value !== Recall.text) { recallReset(); return false; }
+  const j = Recall.i + (d < 0 ? 1 : -1);
+  if (j >= Recall.list.length) return true;
+  Recall.i = j;
+  Recall.text = j < 0 ? '' : Recall.list[j];
+  ta.value = Recall.text;
+  grow();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  return true;
+}
+// A message that couldn't go out (it was waiting on a reply that was stopped, say), handed back whole by
+// the PC: in the box again, with its pictures and who it was for. If you've started a newer draft in the
+// meantime, a restore card and toast let you put the held message back without losing or retargeting the newer draft.
+function restoreUnsent(ev) {
+  const chatKey = C.key, chatGen = C.gen;
+  const id = `${chatKey}:${ev.seq}`;
+  const isSeen = () => {
+    try { return (JSON.parse(store('unsent-seen') || '[]') || []).includes(id); } catch { return false; }
+  };
+  if (isSeen()) return;
+  const markSeen = () => {
+    let seen = [];
+    try { seen = JSON.parse(store('unsent-seen') || '[]') || []; } catch { seen = []; }
+    if (!seen.includes(id)) store('unsent-seen', JSON.stringify([...seen, id].slice(-30)));
+  };
+  const imgSig = list => (list || []).map(x => `${(x && x.mediaType) || ''}:${(x && x.data) || ''}`).join('|');
+  const curRouteSig = (t = C.target || 'main', f = C.focus || C.mate || null, g = C.group) => {
+    if (t === 'both' && g && Array.isArray(g.kinds)) return `group:${g.how || 'turns'}:${g.kinds.join(',')}`;
+    if (t === 'plan' && g && Array.isArray(g.kinds)) return `plan:${g.kinds.join(',')}`;
+    if (t === 'comp') return `other:${f || ''}`;
+    return 'me';
+  };
+  const reqRouteSig = r => {
+    if (!r || !r.to) return curRouteSig();
+    if (r.to === 'group' && Array.isArray(r.kinds) && r.kinds.length >= 2) return `group:${r.how || 'turns'}:${r.kinds.join(',')}`;
+    if (r.to === 'plan' && r.by && r.kind) return `plan:${r.by},${r.kind}`;
+    if (r.to === 'other') return `other:${r.kind || C.focus || C.mate || ''}`;
+    if (r.to === 'me') return 'me';
+    return curRouteSig();
+  };
+  const applyTarget = r => {
+    if (!r) return;
+    if (r.to === 'group' && Array.isArray(r.kinds) && r.kinds.length >= 2) { C.group = { kinds: r.kinds.slice(), how: r.how || 'turns' }; setTarget('both', false); }
+    else if (r.to === 'plan' && r.by && r.kind) { C.group = { kinds: [r.by, r.kind], how: 'plan' }; setTarget('plan', false); }
+    else if (r.to === 'other') { if (r.kind && typeof focusMate === 'function') focusMate(r.kind); setTarget('comp', false); }
+    else if (r.to === 'me') setTarget('main', false);
+  };
+  const dropCard = (seenToo = false) => {
+    if (seenToo) markSeen();
+    const el = document.getElementById('cUnsentCard');
+    if (el) el.remove();
+  };
+  const putHeld = () => {
+    if (C.gen !== chatGen || C.key !== chatKey) return;
+    markSeen();
+    const ta = $c('cText');
+    const newer = (ta && ta.value.trim()) || (C.attachments && C.attachments.length) || (C.files && C.files.length)
+      ? { text: ta ? ta.value : '', attachments: (C.attachments || []).slice(), files: (C.files || []).slice(), target: C.target || 'main', focus: C.focus || null, group: C.group ? { kinds: (C.group.kinds || []).slice(), how: C.group.how } : null }
+      : null;
+    if (String(ev.text || '').trim()) placeText(String(ev.text), true);
+    else if (ta) { ta.value = ''; grow(); }
+    C.attachments = [];
+    C.files = [];
+    for (const im of ev.images || []) if (im && im.data) C.attachments.push({ mediaType: im.mediaType, data: im.data });
+    renderAttachments();
+    applyTarget(ev.request || {});
+    dropCard(false);
+    const newerDiffers = newer && (newer.text.trim() !== String(ev.text || '').trim() || imgSig(newer.attachments) !== imgSig(ev.images) || (newer.files && newer.files.length > 0) || curRouteSig(newer.target, newer.focus, newer.group) !== reqRouteSig(ev.request));
+    if (newerDiffers) {
+      toast('Held message restored.', 10000, {
+        label: 'Back to newer draft',
+        run: () => {
+          if (C.gen !== chatGen || C.key !== chatKey) return;
+          if (String(newer.text || '').trim()) placeText(newer.text, true);
+          else if ($c('cText')) { $c('cText').value = ''; grow(); }
+          C.attachments = newer.attachments;
+          C.files = newer.files;
+          renderAttachments();
+          if (newer.group) C.group = newer.group;
+          if (newer.focus && typeof focusMate === 'function') focusMate(newer.focus);
+          setTarget(newer.target || 'main', false);
+        },
+      });
+    }
+  };
+  const cur = $c('cText') ? $c('cText').value.trim() : '';
+  const hasAnyDraft = Boolean(cur || (C.attachments && C.attachments.length) || (C.files && C.files.length));
+  const sameAsHeld = cur === String(ev.text || '').trim() && imgSig(C.attachments) === imgSig(ev.images) && !(C.files && C.files.length) && curRouteSig() === reqRouteSig(ev.request);
+  const hasNewer = hasAnyDraft && !sameAsHeld;
+  if (hasNewer) {
+    dropCard(false);
+    const att = $c('cAtt');
+    if (att && att.parentElement) {
+      const card = document.createElement('div');
+      card.id = 'cUnsentCard';
+      card.dataset.gen = String(chatGen);
+      card.className = 'c-bar';
+      card.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line,rgba(128,128,128,.2));font-size:12px';
+      const snip = String(ev.text || '').trim().replace(/\s+/g, ' ').slice(0, 70);
+      card.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>Held message saved:</b> ${esc(snip || 'attached pictures')}</span>` +
+        `<button type="button" class="btn sm" data-unsent-put="1">Put in box</button>` +
+        `<button type="button" class="btn sm ghost" data-unsent-drop="1" aria-label="Dismiss">✕</button>`;
+      card.querySelector('[data-unsent-put]').onclick = putHeld;
+      card.querySelector('[data-unsent-drop]').onclick = () => dropCard(true);
+      att.parentElement.insertBefore(card, att);
+    }
+    toast(`${ev.reason ? `${ev.reason} ` : ''}Your held message was saved.`, 10000, { label: 'Put it in the box', run: putHeld });
+    return;
+  }
+  putHeld();
+  toast(`${ev.reason ? `${ev.reason} ` : ''}Your message is back in the box.`, 8000);
+}
 function promptsMenu(anchor) {
   if (!S.prompts.length) return openPromptEditor();
   return showMenu(anchor, [
-    ...S.prompts.map(pr => ({ label: pr.title, hint: pr.provider === 'codex' && C.provider !== 'codex' ? 'written for Codex' : '', run: () => insertPrompt(pr) })),
+    ...S.prompts.map(pr => ({ label: pr.title, hint: (pr.provider === 'codex' || pr.provider === 'gemini') && C.provider !== pr.provider ? `written for ${PROV_NAME[pr.provider]}` : '', run: () => insertPrompt(pr) })),
     '-',
     { label: 'Edit prompts…', run: openPromptEditor },
   ]);
 }
 const Slash = { open: false, items: [], sel: 0, moved: false, dismissed: null, kind: 'prompt', at: null };
 const slashQuery = () => { const v = $c('cText').value; return /^\/[^\n]{0,40}$/.test(v) ? v.slice(1).trim().toLowerCase() : null; };
-function closeSlash() { Slash.open = false; Slash.moved = false; Slash.kind = 'prompt'; Slash.at = null; $c('cSlash').hidden = true; }
+function closeSlash() {
+  Slash.open = false; Slash.moved = false; Slash.kind = 'prompt'; Slash.at = null; $c('cSlash').hidden = true;
+  const uc = document.getElementById('cUnsentCard');
+  if (uc && uc.dataset.gen && uc.dataset.gen !== String(C.gen)) uc.remove();
+}
 function renderSlash() {
   // "@" and a few letters: the project's files (unless it's @codex, @claude or @both).
   const men = mentionAt();
@@ -158,7 +299,7 @@ function mentionAt() {
   if (C.watch || ta.selectionStart !== ta.selectionEnd) return null;
   const before = ta.value.slice(0, ta.selectionStart);
   const m = before.match(/(^|[\s(“"'[])@([^\s@"]{0,80})$/);
-  if (!m || /^(codex|claude|both)$/i.test(m[2])) return null;
+  if (!m || /^(codex|claude|gemini|both|all)$/i.test(m[2])) return null;
   return { q: m[2], start: before.length - m[2].length - 1, end: before.length };
 }
 function mentionFiles() {
@@ -199,7 +340,7 @@ async function renderMention(men) {
   Object.assign(Slash, { kind: 'file', items, at: men, open: true, sel: Math.min(Slash.sel, items.length - 1) });
   const box = $c('cSlash'); box.hidden = false;
   const firstChat = items.findIndex(x => typeof x !== 'string');
-  box.innerHTML = `<p class="cs-h">${firstChat === 0 ? 'Your other chats' : `Files in ${esc(C.folder || 'this project')}`}</p><ul>${items.map((f, i) => typeof f !== 'string' ? `${i === firstChat && i ? '<li class="cs-sep" role="presentation">Your other chats</li>' : ''}<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}" class="cs-chat"><b>${esc(f.title)}</b><span class="cs-x">${esc(f.folder || '')}${f.provider === 'codex' ? ' · Codex' : ''} · brings its latest messages in</span></li>` : `<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}"><b>${esc(f.split('/').pop())}</b><span class="cs-x">${esc(f)}</span></li>`).join('')}</ul>
+  box.innerHTML = `<p class="cs-h">${firstChat === 0 ? 'Your other chats' : `Files in ${esc(C.folder || 'this project')}`}</p><ul>${items.map((f, i) => typeof f !== 'string' ? `${i === firstChat && i ? '<li class="cs-sep" role="presentation">Your other chats</li>' : ''}<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}" class="cs-chat"><b>${esc(f.title)}</b><span class="cs-x">${esc(f.folder || '')}${f.provider === 'codex' ? ' · Codex' : f.provider === 'gemini' ? ' · Gemini' : ''} · brings its latest messages in</span></li>` : `<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}"><b>${esc(f.split('/').pop())}</b><span class="cs-x">${esc(f)}</span></li>`).join('')}</ul>
     <p class="cs-f"><kbd class="kbd">Tab</kbd> or <kbd class="kbd">Enter</kbd> puts it in · <kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> choose · <kbd class="kbd">Esc</kbd> closes</p>`;
   return undefined;
 }
@@ -244,26 +385,29 @@ function welcome(cwd) {
   const p = cwd && S.projects.find(x => x.cwd === cwd);
   const w = cwd && S.worlds[cwd];
   const art = w && w.banner ? `<img src="${esc(imageSrc(w.banner, cwd))}" alt="" onerror="this.closest('.c-welcome')?.classList.remove('has-art'); this.parentElement.remove()">` : '';   // a banner that won't load leaves the plain welcome
-  const chips = S.prompts.filter(pr => C.provider === 'codex' || pr.provider !== 'codex').slice(0, 8)
+  const chips = S.prompts.filter(pr => (pr.provider !== 'codex' && pr.provider !== 'gemini') || C.provider === pr.provider).slice(0, 8)
     .map(pr => `<button type="button" class="chip" data-c="chip" data-pid="${esc(pr.id)}">${esc(pr.title)}</button>`).join('');
   $c('cFeed').insertAdjacentHTML('beforeend', `<div class="c-welcome ${art ? 'has-art' : ''}">${art ? `<div class="cw-art">${art}</div>` : ''}
-      <div class="cw-in"><p class="cw-k">A new ${C.provider === 'codex' ? 'Codex' : 'Claude'} chat in</p><h2>${esc(p ? p.name : C.folder || 'this folder')}</h2>
+      <div class="cw-in"><p class="cw-k">A new ${PROV_NAME[C.provider] || 'Claude'} chat in</p><h2>${esc(p ? p.name : C.folder || 'this folder')}</h2>
       ${chips ? `<p class="cw-h">Start from a prompt, or just write. Type <kbd class="kbd">/</kbd> to search them.</p><div class="chips">${chips}</div>` : ''}</div></div>`);
 }
 // What you were typing stays with each chat, even if you switch away or close the window.
 const draftKey = () => (C.sessionId ? `draft:${C.sessionId}` : C.info && C.info.cwd ? `draft:new:${C.provider}:${C.info.cwd}` : null);
 let draftTimer = null;
-function saveDraft() {
-  clearTimeout(draftTimer);
-  draftTimer = setTimeout(() => {
+function writeDraft() {
+    draftTimer = null;
     const k = draftKey(); if (!k) return;
     const v = $c('cText').value, at = Date.now();
     try { if (v.trim()) { localStorage.setItem(k, v); localStorage.setItem(`${k}:at`, String(at)); } else { localStorage.removeItem(k); localStorage.removeItem(`${k}:at`); } } catch { /* full or private */ }
     // The PC keeps it too, for your other devices.
     if (C.sessionId) api('/api/draft', { id: C.sessionId, text: v, at }).catch(() => {});
-  }, 400);
+}
+function saveDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(writeDraft, 400);
 }
 function restoreDraft() {
+  unparkAttachments();
   const k = draftKey(); if (!k || $c('cText').value) return;
   let mine = 0;
   try { const v = localStorage.getItem(k); if (v) { $c('cText').value = v; grow(); } mine = Number(localStorage.getItem(`${k}:at`)) || 0; } catch { /* none */ }
@@ -276,7 +420,7 @@ function restoreDraft() {
     toast('Picked up what you were writing on your other device.', 3500);
   }).catch(() => {});
 }
-function clearDraft() { clearTimeout(draftTimer); const k = draftKey(); if (C.sessionId) api('/api/draft', { id: C.sessionId, text: '', at: Date.now() }).catch(() => {}); try { if (k) { localStorage.removeItem(k); localStorage.removeItem(`${k}:at`); } if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
+function clearDraft() { clearTimeout(draftTimer); draftTimer = null; const k = draftKey(); if (C.sessionId) api('/api/draft', { id: C.sessionId, text: '', at: Date.now() }).catch(() => {}); try { if (k) { localStorage.removeItem(k); localStorage.removeItem(`${k}:at`); } if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
 
 async function sendMessage() {
   // An OpenClaw session: the message becomes a follow-up turn in that session (through
@@ -309,10 +453,20 @@ async function sendMessage() {
   let text = typed;
   if (!text.trim() && !C.attachments.length && !(C.files || []).length) return;
   if (C.converting) { toast('Still preparing your pictures; send again in a moment.'); return; }
-  const key0 = C.key, sentImgs = C.attachments.slice(), sentFiles = (C.files || []).filter(f => f.rel);
+  const key0 = C.key, draft0 = draftKey(), id0 = C.sessionId, sentImgs = C.attachments.slice(), sentFiles = (C.files || []).filter(f => f.rel);
   // Clears only what was sent, and only in the same chat: anything typed meanwhile stays.
   const clear = () => {
-    if (C.key !== key0) return;
+    if (C.key !== key0) {
+      // You've moved to another chat since: what was sent mustn't come back as that chat's draft.
+      try { if (localStorage.getItem(draft0) === typed) { localStorage.removeItem(draft0); localStorage.removeItem(`${draft0}:at`); if (id0) api('/api/draft', { id: id0, text: '', at: Date.now() }).catch(() => {}); } } catch { /* fine */ }
+      const p = Parked.get(draft0);
+      if (p) {
+        for (const a of sentImgs) if (a.url) URL.revokeObjectURL(a.url);
+        p.attachments = p.attachments.filter(a => !sentImgs.includes(a)); p.files = p.files.filter(f => !sentFiles.includes(f));
+        if (!p.attachments.length && !p.files.length) Parked.delete(draft0);
+      }
+      return;
+    }
     if ($c('cText').value === typed) { $c('cText').value = ''; clearDraft(); }
     for (const a of sentImgs) if (a.url) URL.revokeObjectURL(a.url);
     C.attachments = C.attachments.filter(a => !sentImgs.includes(a));
@@ -342,15 +496,22 @@ async function sendMessage() {
     if (!all && w !== C.provider && kindReady(w)) focusMate(w);
     target = all ? 'both' : w === C.provider ? 'main' : 'comp'; text = text.slice(at[0].length);
   }
-  if (target !== 'comp' && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
+  // Together: the ones you picked, in order ("@all" is everyone, this once); plan first takes two.
+  const group = target === 'both' ? (at ? togetherAll() : groupKinds()) : target === 'plan' ? groupKinds().slice(0, 2) : null;
+  if ((group ? group.includes(C.provider) : target !== 'comp') && C.state === 'ended') { toast('This chat has stopped. Click “Start again” first.'); return; }
   // Writing to one while the other is mid-reply: both would work at once, maybe on the same files.
   let after = false;
   if (duo() && target !== 'both' && target !== 'plan') {
-    const otherState = target === 'main' ? (C.comp && !C.comp.ended ? C.comp.state : null) : C.state;
-    if (otherState === 'busy' || otherState === 'waiting') {
-      const other = PROV_NAME[target === 'main' ? partnerProv() : C.provider], to = PROV_NAME[target === 'main' ? C.provider : partnerProv()];
-      const pick = await appChoice(`${other} is still working.\n\nSend it to ${to} when ${other} is done, so they don't edit the same files at once, or send it now and let both work?`,
-        [{ v: 'after', label: `When ${other} is done`, kind: 'prime' }, { v: 'now', label: 'Send now' }, { v: '', label: 'Cancel', kind: 'quiet' }]);
+    // Every other one in the chat that's mid-reply (with three, not only the one in view).
+    const me = target === 'main' ? C.provider : partnerProv();
+    const states = new Map([[C.provider, C.state]]);
+    for (const [k, c] of Object.entries(C.comps || {})) if (c && !c.ended) states.set(k, c.state);
+    if (C.comp && !C.comp.ended && !states.has(partnerProv())) states.set(partnerProv(), C.comp.state);
+    const busy = [...states].filter(([k, st]) => k !== me && (st === 'busy' || st === 'waiting')).map(([k]) => k);
+    if (busy.length) {
+      const other = busy.map(k => PROV_NAME[k]).join(' and '), is = busy.length > 1 ? 'are' : 'is', to = PROV_NAME[me];
+      const pick = await appChoice(`${other} ${is} still working.\n\nSend it to ${to} when ${busy.length > 1 ? 'they’re' : `${other} is`} done, so they don't edit the same files at once, or send it now and let ${busy.length > 1 ? 'them all' : 'both'} work?`,
+        [{ v: 'after', label: `When ${other} ${is} done`, kind: 'prime' }, { v: 'now', label: 'Send now' }, { v: '', label: 'Cancel', kind: 'quiet' }]);
       if (!pick) return;
       after = pick === 'after';
     }
@@ -365,7 +526,12 @@ async function sendMessage() {
     if (lost.length) { toast(`“${lost[0]}” isn’t linked any more. Type @ and pick it again, so its messages come along.`, 6000); return; }
     speedMark('reply');
     let r;
-    try { r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...(target === 'main' ? {} : { to: target === 'both' && crewKinds().length > 1 ? 'all' : target === 'both' || target === 'plan' ? target : 'partner', account: S.acct, kind: partnerProv(), ...(target === 'both' ? { kinds: crewKinds() } : {}) }), ...(after ? { after: true } : {}) }); } catch (err) {
+    // In turn, or (picked in Together) all at the same time.
+    const how = target === 'both' && !at && groupHow() === 'parallel' ? 'parallel' : 'turns';
+    const to = target === 'main' ? {} : target === 'both' ? { to: 'group', kinds: group, how, account: S.acct }
+      : target === 'plan' ? { to: 'plan', by: group[0], kind: group[1], account: S.acct } : { to: 'partner', account: S.acct, kind: partnerProv() };
+    C.sentGroup = group; C.sentHow = target === 'both' ? how : null;
+    try { r = await api('/api/chat/send', { key: C.key, text, images, ...(refs.length ? { refs } : {}), ...to, ...(after ? { after: true } : {}) }); } catch (err) {
       // No connection (the phone left the Wi-Fi): a plain message waits here and goes when it's back.
       if (!err.offline || images.length || target !== 'main' || !C.key) throw err;
       outboxAdd({ key: C.key, sessionId: C.sessionId, title: C.info && C.info.title, text });
@@ -373,8 +539,9 @@ async function sendMessage() {
       return;
     }
     clear();
+    if (C.key !== key0) return;   // you've moved to another chat: its partners are its own
     // Follow the partner's replies here (it may only just have started).
-    if (target === 'both') for (const k of crewKinds()) ensureCompanion(k).catch(() => {});
+    if (group) for (const k of group) { if (k !== C.provider) ensureCompanion(k).catch(() => {}); }
     else if (target !== 'main' && !(C.comp && !C.comp.ended && (!r || !r.key || C.comp.key === r.key))) ensureCompanion().catch(() => {});
   } finally { $c('cSend').disabled = false; $c('cText').focus(); }
 }

@@ -436,6 +436,8 @@
     for (const [k, v] of [['--f-body', f.body], ['--f-display', f.display], ['--f-caps', f.caps], ['--f-label', f.label], ['--f-mono', f.mono]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
     root.classList.toggle('look-liga', !!o.liga);
     if (t.family) root.dataset.family = t.family; else delete root.dataset.family;
+    // The hub's compact layout (ui/hub.css). Ryan's space saga themes keep their own, as he made them.
+    root.classList.toggle('hub2', t.family !== 'saga');
     if (t.sky) root.dataset.sky = t.sky; else delete root.dataset.sky;
     if (t.art) root.dataset.art = t.art; else delete root.dataset.art;
     emblem(t);

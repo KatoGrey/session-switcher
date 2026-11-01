@@ -18,10 +18,26 @@ const READ = {
   preview: ['check-health', 'get-info'],
 };
 const SHELL_OK = [
-  /^\s*node\s+\S*bin\/switcher-glm\.js\b/,
+  /^\s*node\s+(?:"[^"]*bin[\\/]switcher-glm\.js"|'[^']*bin[\\/]switcher-glm\.js'|\S*bin[\\/]switcher-glm\.js)(?=\s|$)/,
   /^\s*gh\s+(pr\s+(list|view|checks|diff)|search\s+(prs|issues)|issue\s+(list|view))\b/,
   /^\s*(git\s+(log|show|diff|status|grep|branch)|rg|grep|ls|cat|head|tail|wc|date)\b/,
 ];
+
+function isReadOnlyGitBranch(cmd) {
+  const rest = cmd.replace(/2>&1|2>(?:\/dev\/null|nul\b)/gi, '').replace(/\|\s*(head|tail|wc|grep|jq)\b[^|;&`$><\n]*/g, '').replace(/^\s*git\s+branch\b/, '').trim();
+  if (!rest) return true;
+  const tokens = rest.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+  let listMode = false, expectVal = false;
+  for (const tok of tokens) {
+    if (tok === '-l' || tok === '--list') { listMode = true; expectVal = false; continue; }
+    if (/^--(?:contains|no-contains|merged|no-merged|points-at|sort|format)$/.test(tok)) { expectVal = true; continue; }
+    if (/^-(?:[arv]+|-all|-remotes|-verbose|-show-current|-no-color|-color(?:=\S+)?|-no-column|-column(?:=\S+)?|-no-abbrev|-abbrev(?:=\d+)?|-(?:sort|format|points-at|contains|no-contains|merged|no-merged)=\S+)$/.test(tok)) { expectVal = false; continue; }
+    if ( tok.startsWith('-') ) return false;
+    if (expectVal) { expectVal = false; continue; }
+    if (!listMode) return false;
+  }
+  return true;
+}
 
 // Is this call allowed? Pure, for tests: { ok } or { ok: false, why }.
 function check(tool, input) {
@@ -33,8 +49,13 @@ function check(tool, input) {
   }
   if (tool === 'Bash') {
     const cmd = String(i.command || '');
-    // One command at a time, no redirection into files, no chaining into something else.
-    if (/[;&|`$><]|\n/.test(cmd.replace(/\|\s*(head|tail|wc|grep|jq)\b[^|;&]*/g, '').replace(/2>&1|2>\/dev\/null/g, '').replace(/"[^"]*"|'[^']*'/g, '""'))) return { ok: false, why: 'This run is read-only: run one plain read command at a time (no ;, &&, redirects or substitutions).' };
+    const noSingle = cmd.replace(/'[^']*'/g, "''");
+    // One command at a time, no redirection into files, no chaining or command substitutions (including inside double quotes).
+    if (/\$\(|`/.test(noSingle) || /[;&|`$><]|\n/.test(noSingle.replace(/"[^"]*"/g, '""').replace(/2>&1|2>(?:\/dev\/null|nul\b)/gi, '').replace(/\|\s*(head|tail|wc|grep|jq)\b[^|;&`$><\n]*/g, ''))) {
+      return { ok: false, why: 'This run is read-only: run one plain read command at a time (no ;, &&, redirects or substitutions).' };
+    }
+    if (/^\s*git\s+branch\b/.test(cmd) && !isReadOnlyGitBranch(cmd)) return { ok: false, why: 'This run is read-only: creating, modifying or deleting branches isn’t allowed here.' };
+    if (/^\s*git\s+(?:log|show|diff)\b/.test(cmd) && /\s--output(?:=|\s)/.test(cmd)) return { ok: false, why: 'This run is read-only: --output file writes aren’t allowed here.' };
     if (SHELL_OK.some(re => re.test(cmd))) return { ok: true };
     return { ok: false, why: 'This run is read-only: that shell command isn’t allowed here (gh pr list/view, git log/show, grep and switcher-glm are).' };
   }

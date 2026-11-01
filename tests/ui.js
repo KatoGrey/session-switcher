@@ -99,14 +99,20 @@ module.exports = [
       await b.eval(`window.dispatchEvent(new Event('blur')); return 1`);
       t.check('leaving the window closes it', !(await st()).open);
       await b.eval(`window.scrollTo(0, 0); return 1`); await sleep(300);
+      const other = '#recentList [data-more]';
       await b.clickOn('#livepill'); await sleep(250);
-      await b.clickOn('#seal'); await sleep(300);
-      t.check('one click switches to another menu', await b.eval(`return ${menuOpen} && document.getElementById('seal').getAttribute('aria-expanded') === 'true' && document.getElementById('livepill').getAttribute('aria-expanded') === 'false'`));
+      await b.clickOn(other); await sleep(300);
+      t.check('one click switches to another menu', await b.eval(`return ${menuOpen} && document.querySelector(${JSON.stringify(other)}).getAttribute('aria-expanded') === 'true' && document.getElementById('livepill').getAttribute('aria-expanded') === 'false'`));
       await b.esc();
-      t.check('focus returns to its button', await b.eval(`return !${menuOpen} && document.activeElement.id === 'seal'`));
-      await b.clickOn('#seal'); await sleep(250);
-      await b.clickOn('#seal'); await sleep(250);
+      t.check('focus returns to its button', await b.eval(`return !${menuOpen} && document.activeElement === document.querySelector(${JSON.stringify(other)})`));
+      await b.clickOn(other); await sleep(250);
+      // (This one's too tall to go above or below its button, in the middle of the window.)
+      t.check('a tall menu doesn’t cover its button', await b.eval(`const q = document.querySelector(${JSON.stringify(other)}).getBoundingClientRect(), at = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return at.id === 'menuBack'`));
+      const pressed = () => b.eval(`return document.getElementById('toast').innerText`);
+      const toastsBefore = await pressed();
+      await b.clickOn(other); await sleep(250);
       t.check('its button again closes it', !(await st()).open);
+      t.check('and presses nothing in the menu', !(await b.eval(`return !!document.querySelector('dialog[open]')`)) && (await pressed()) === toastsBefore);
     },
   },
   {
@@ -132,7 +138,7 @@ module.exports = [
 
       await b.clickOn('[data-c="more"]'); await sleep(300);
       const items = await b.eval(`return [...document.querySelectorAll('#menu .m-l')].map(x => x.textContent)`);
-      t.check('⋯ has the terminal hand-off and Stop', items.some(x => /Move to a terminal/.test(x)) && items.some(x => /Stop this chat/.test(x)), items);
+      t.check('⋯ has Stop, and the terminal hand-off one click in', items.some(x => /Stop this chat/.test(x)) && await b.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => /^More/.test(x.querySelector('.m-l').textContent)).click(); await new Promise(r => setTimeout(r, 100)); const has = /Move to a terminal/.test(document.getElementById('menu').textContent); [...document.querySelectorAll('#menu [role=menuitem]')].find(x => /Back/.test(x.textContent)).click(); await new Promise(r => setTimeout(r, 100)); return has`), items);
       await b.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => /Stop this chat/.test(x.textContent)).click(); return 1`); await sleep(300);
       t.check('Stop asks while a reply is coming', await b.eval(`return ${confirmOpen} && /Stop this chat/.test(document.getElementById('cfQ').textContent)`));
       await b.esc();
@@ -196,7 +202,7 @@ module.exports = [
       await t.shot(b2, 'warning');
       await b2.clickOn('[data-crew="main"]'); await sleep(300); await b2.esc();
       await b2.clickOn('[data-c="more"]'); await sleep(300);
-      t.check('the ⋯ menu can summarize too', /Summarize the conversation now/.test(await b2.eval(`return document.getElementById('menu').textContent`)));
+      t.check('the ⋯ menu can summarize too', /Summarize the conversation now/.test(await b2.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => /^More/.test(x.querySelector('.m-l').textContent)).click(); await new Promise(r => setTimeout(r, 100)); return document.getElementById('menu').textContent`)));
       await b2.esc();
       await b2.eval(`openPalette('summarize'); return 1`); await sleep(500);
       t.check('and so can Ctrl+K', /summarize the conversation now/i.test(await b2.eval(`return document.getElementById('palette').textContent`)));
@@ -263,7 +269,7 @@ module.exports = [
       await t.shot(b, 'clean');
 
       await b.clickOn('[data-c="more"]'); await sleep(300);
-      t.check('the ⋯ menu offers a review', /Have Codex review the changes/.test(await b.eval(`return document.getElementById('menu').textContent`)));
+      t.check('the ⋯ menu offers a review', /Have Codex review the changes/.test(await b.eval(`const it = [...document.querySelectorAll('#menu [role=menuitem]')].find(x => /^Review the changes/.test(x.querySelector('.m-l').textContent)); if (it) { it.click(); await new Promise(r => setTimeout(r, 100)); } return document.getElementById('menu').textContent`)));
       await b.esc();
       await b.eval(`openPalette('review'); return 1`); await sleep(500);
       t.check('and so does Ctrl+K', /Have Codex review this chat’s changes/.test(await b.eval(`return document.getElementById('palette').textContent`)));
@@ -300,14 +306,17 @@ module.exports = [
       s = sends().at(-1);
       t.check('@claude sends just that one to Claude', s && s.key === 'k-bard' && !s.to && s.text === 'what do you think?', s);
 
-      // Both: they take turns. One message; Claude answers, then Codex picks it up and builds on it.
-      await b.clickOn('[data-crew="both"]'); await sleep(300);
-      const tgt = await b.eval(`return { target: C.target, ph: document.getElementById('cText').placeholder, on: [...document.querySelectorAll('.crew.on')].map(x => x.dataset.crew).join() }`);
-      t.check('“Both”: Claude answers, then Codex builds on it', tgt.target === 'both' && /Claude answers, then Codex builds on it/.test(tgt.ph) && tgt.on === 'main,comp,both', tgt);
+      // Together: they take turns. One message; Claude answers, then Codex picks it up and builds on it.
+      await b.clickOn('[data-crew="together"]'); await sleep(300);
+      const pick = await b.eval(`const p = document.getElementById('cTogether'); return { open: !p.hidden, rows: [...p.querySelectorAll('[data-tg]')].map(x => x.dataset.tg + (x.getAttribute('aria-checked') === 'true' ? x.dataset.n : '-')).join() }`);
+      t.check('Together opens a picker with each of them ticked, in order', pick.open && pick.rows === 'claude1,codex2', pick);
+      await b.clickOn('#cTogether [data-tgact="use"]'); await sleep(300);
+      const tgt = await b.eval(`return { target: C.target, ph: document.getElementById('cText').placeholder, on: [...document.querySelectorAll('.crew.on')].map(x => x.dataset.crew).join(), closed: document.getElementById('cTogether').hidden }`);
+      t.check('Together: Claude answers, then Codex builds on it', tgt.target === 'both' && /Claude answers, then Codex, each building on the last/.test(tgt.ph) && tgt.on === 'main,comp,together' && tgt.closed, tgt);
       const n0 = sends().length;
       await type('Plan the 1.4 release together.');
       const both = sends().slice(n0);
-      t.check('one message, sent once for them to take turns', both.length === 1 && both[0].to === 'both' && both[0].key === 'k-bard' && both[0].text === 'Plan the 1.4 release together.', both);
+      t.check('one message, sent once for them to take turns', both.length === 1 && both[0].to === 'group' && JSON.stringify(both[0].kinds) === '["claude","codex"]' && both[0].key === 'k-bard' && both[0].text === 'Plan the 1.4 release together.', both);
       await b.eval(`handle({ kind: 'user', text: 'Plan the 1.4 release together.', at: new Date().toISOString(), seq: 301 }); handle({ kind: 'handoff', to: 'codex', state: 'waiting', seq: 302 }); return 1`); await sleep(300);
       const wait = await b.eval(`const u = [...document.querySelectorAll('.umsg')].pop(); return { tag: u.querySelector('.to-tag')?.textContent, next: document.querySelector('[data-crew="comp"] .crew-m')?.textContent }`);
       t.check('it says Claude first, then Codex, and Codex is up next', wait.tag === 'to Claude, then Codex' && /up next/.test(wait.next || ''), wait);
@@ -352,7 +361,7 @@ module.exports = [
       await push(now.slice().reverse());
       t.check('a chat that drops out for a moment comes back to its place', JSON.stringify(await rail()) === JSON.stringify(before), await rail());
 
-      const nav = () => b.eval(`return [...document.querySelectorAll('.nav-i[data-prov="claude"]')].map(x => x.dataset.cwd)`);
+      const nav = () => b.eval(`return [...document.querySelectorAll('.nav-proj')].map(x => x.dataset.cwd)`);
       await b.eval(`ChatUI.close ? ChatUI.close() : null; go('hub'); return 1`).catch(() => {}); await sleep(800);
       const n0 = await nav();
       await b.eval(`S.projects = S.projects.slice().reverse(); renderNav(); return 1`); await sleep(200);
@@ -623,7 +632,7 @@ module.exports = [
       const b = await t.open();
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
       await b.clickOn('[data-c="more"]'); await sleep(300);
-      t.check('the chat’s ⋯ menu can save it as a web page', /Save as a web page/.test(await b.eval(`return document.getElementById('menu').textContent`)));
+      t.check('the chat’s ⋯ menu can save it as a web page', /Save as a web page/.test(await b.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => /^Save or copy/.test(x.querySelector('.m-l').textContent)).click(); await new Promise(r => setTimeout(r, 100)); return document.getElementById('menu').textContent`)));
       await b.esc();
       const page = await b.eval(`window._blobs = []; URL.createObjectURL = x => { _blobs.push(x); return 'blob:test'; }; savePage(); return await _blobs[0].text()`);
       t.check('it’s a page of its own', /^<!doctype html>/.test(page) && /<title>Balance pass on the bard’s songs<\/title>/.test(page) && /<style>/.test(page));
@@ -720,7 +729,7 @@ module.exports = [
       await t.shot(b, 'first');
       await b.clickOn('[data-tour="next"]'); await sleep(400);
       s = await step();
-      t.check('Next moves on (to the account)', s && s.title === 'Your accounts' && await near('#seal', s.spot), s);
+      t.check('Next moves on (to the account)', s && s.title === 'Your accounts' && await near('#usechip', s.spot), s);
       await t.shot(b, 'accounts');
       await b.key('ArrowRight', 'ArrowRight', 39); await sleep(400);
       t.check('→ moves on too', (await step()).title === 'Your projects');
@@ -913,13 +922,190 @@ module.exports = [
     },
   },
   {
+    name: 'file links',
+    // A link to a folder anywhere on the computer (a site you built, on another drive) opens, and you
+    // can start working there: a chat in it, Explorer, or its page in your browser.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`window._calls = []; const orig = api;
+        api = async (u, body) => {
+          if (/^\\/api\\/file\\?/.test(u)) {
+            const p = new URLSearchParams(u.split('?')[1]).get('path');
+            if (/index\\.html$/.test(p)) return { kind: 'text', lang: 'html', markdown: false, text: '<h1>My site</h1>', path: p, name: 'index.html', dir: 'D:\\\\Sites\\\\my-site', size: 16, mtime: Date.now() };
+            return { kind: 'dir', path: p, name: 'my-site', dir: 'D:\\\\Sites', entries: [{ name: 'index.html', dir: false, size: 16, mtime: Date.now() }], mtime: Date.now() };
+          }
+          if (u === '/api/project/create' || u === '/api/file/browser') { _calls.push([u, body]); return u === '/api/project/create' ? { cwd: body.existing, name: 'my-site', created: false } : { ok: true }; }
+          return orig(u, body);
+        };
+        ChatUI.open = o => { _calls.push(['open', o]); };
+        Viewer.open({ path: 'D:\\\\Sites\\\\my-site' }); return 1`); await sleep(700);
+      const judged = await b.eval(`return [looksLikePath('C:\\\\x\\\\run.exe /c notes.txt'), looksLikePath('C:\\\\Program Files\\\\my app\\\\notes.txt'), looksLikePath('C:\\\\x\\\\run.exe')]`);
+      t.check('a command isn’t a path; a path with spaces is', judged[0] === false && judged[1] === true && judged[2] === true, judged);
+      const head = await b.eval(`return [...document.querySelectorAll('#vHead .v-act button')].map(x => x.textContent.trim())`);
+      t.check('a folder on another drive opens, with Work here and Open in Explorer', head.includes('Work here ▾') && head.includes('Open in Explorer'), head);
+      await b.clickOn('#vHead [data-v="work"]'); await sleep(300);
+      const items = await b.eval(`return [...document.querySelectorAll('#menu [role="menuitem"]')].map(x => x.querySelector('.m-l')?.firstChild?.textContent.trim())`);
+      t.check('Work here offers a new chat there, or opening it as a project', items.includes('New Claude chat here') && items.includes('Open it as a project'), items);
+      await t.shot(b, 'work-here');
+      await b.eval(`[...document.querySelectorAll('#menu [role="menuitem"]')].find(x => /New Claude chat here/.test(x.textContent)).click(); return 1`); await sleep(600);
+      let calls = await b.eval(`return _calls`);
+      t.check('a new chat there adds the folder as a project, then starts in it', calls.some(([u, body]) => u === '/api/project/create' && body.existing === 'D:\\Sites\\my-site') && calls.some(([u, o]) => u === 'open' && o.cwd === 'D:\\Sites\\my-site' && o.mode === 'new'), calls);
+      await b.eval(`Viewer.open({ path: 'D:\\\\Sites\\\\my-site\\\\index.html' }); return 1`); await sleep(700);
+      await b.clickOn('#vHead [data-v="browser"]'); await sleep(300);
+      calls = await b.eval(`return _calls`);
+      t.check('a web page opens in the browser', calls.some(([u, body]) => u === '/api/file/browser' && body.path === 'D:\\Sites\\my-site\\index.html'), calls);
+      await b.eval(`Viewer.close && Viewer.close(); return 1`);
+      // Paths as agents really write them: Codex's /C:/…, folders with spaces, a zip, a folder.
+      const links = await b.eval(`const pathOf = s => { const d = document.createElement('div'); d.innerHTML = inline(s); return [...d.querySelectorAll('.flink')].map(x => x.dataset.path); };
+        return {
+          codex: pathOf('[site.zip](</C:/Users/me/Rebirth World/site.zip>)'),
+          unbracketed: pathOf('[site.zip](C:\\\\Users\\\\me\\\\Rebirth World\\\\site.zip)'),
+          x86: pathOf('[tool](C:\\\\Program Files (x86)\\\\Tool\\\\readme.md)'),
+          tick: pathOf('\`C:\\\\Users\\\\me\\\\Rebirth World\\\\site.zip\`'),
+          folder: pathOf('\`D:\\\\Sites\\\\my-site\`'),
+          command: pathOf('\`C:\\\\tools\\\\run.exe --fast\`'),
+          sentence: pathOf('C:\\\\foo and then some words.md'),
+          marked: (() => { const d = document.createElement('div'); d.innerHTML = inline('Run it from C:\\\\repo with \`npm test\`, the output goes to out/result.json.'); return { paths: [...d.querySelectorAll('.flink')].map(x => x.dataset.path), code: d.querySelector('code')?.textContent }; })(),
+          twoFiles: pathOf('Copied C:\\\\proj\\\\a.md to backup\\\\a.md'),
+          bare: pathOf('Saved to C:\\\\Users\\\\me\\\\Rebirth World\\\\plan.md, as asked.'),
+          relative: pathOf('See docs/plan.md and \`src/app.js\`.'),
+          web: pathOf('[site](https://example.com/a.zip)'),
+          fileUrl: pathOf('[a](file:///C:/Users/me/a.md)'),
+        }`);
+      t.check('Codex’s /C:/… link opens the path without the slash', links.codex[0] === 'C:/Users/me/Rebirth World/site.zip', links.codex);
+      t.check('a link with spaces and no <brackets> is still a link', links.unbracketed[0] === 'C:\\Users\\me\\Rebirth World\\site.zip', links.unbracketed);
+      t.check('and “(x86)” doesn’t end it early', links.x86[0] === 'C:\\Program Files (x86)\\Tool\\readme.md', links.x86);
+      t.check('a path in code with spaces is a link, and a zip', links.tick[0] === 'C:\\Users\\me\\Rebirth World\\site.zip', links.tick);
+      t.check('a folder in code is a link', links.folder[0] === 'D:\\Sites\\my-site', links.folder);
+      t.check('a command isn’t', links.command.length === 0, links.command);
+      t.check('the words after a path don’t run into it', !links.sentence.some(p => /^C:/.test(p)), links.sentence);
+      t.check('nor does code further along the sentence', links.marked.code === 'npm test' && !links.marked.paths.some(p => /^C:/.test(p)) && links.marked.paths.includes('out/result.json'), links.marked);
+      t.check('and two files in a sentence are two links', links.twoFiles.join() === 'C:\\proj\\a.md,backup\\a.md', links.twoFiles);
+      t.check('a bare path with spaces in its folders is one link', links.bare.length === 1 && links.bare[0] === 'C:\\Users\\me\\Rebirth World\\plan.md', links.bare);
+      t.check('relative ones work as before', links.relative.join() === 'docs/plan.md,src/app.js', links.relative);
+      t.check('web links stay web links', links.web.length === 0, links.web);
+      t.check('a file:/// link shows a plain path', links.fileUrl[0] === 'C:/Users/me/a.md', links.fileUrl);
+    },
+  },
+  {
+    name: 'audit fixes',
+    // From the audit: things that only go wrong once a chat has been reopened, or has three in it.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      // With Gemini and Codex both in the chat, a card acts for the one it came from, whoever's in view.
+      const cards = await b.eval(`const realApi = api, sent = [];
+        api = async (u, body) => { if (/^\\/api\\/chat\\/(undo|answer|permission|interrupt|resume-at|respond)/.test(u)) { sent.push([u, body && body.key]); return { restored: [], skipped: [] }; } return realApi(u, body); };
+        window.appConfirm = async () => true;
+        C.comps = { gemini: { key: 'key-gemini', provider: 'gemini', state: 'waiting' }, codex: { key: 'key-codex', provider: 'codex', state: 'busy' } };
+        C.crewKinds = ['codex', 'gemini'];
+        focusMate('codex');
+        withComp('gemini', () => addPermission({ requestId: 'g1', toolName: 'Bash', view: { summary: 'x', detail: 'x', detailKind: 'command' } }, 'comp'));
+        const card = document.querySelector('[data-req="comp:g1"]');
+        await answer(card, 'allow');
+        const bar = document.createElement('div'); bar.dataset.src = 'comp';
+        withComp('gemini', () => { bar._kind = compKind('comp'); });
+        bar._ev = { turn: 2, files: [{ path: 'a.js', status: 'modified', add: 1, del: 0 }] };
+        await undoChanges(bar);
+        withComp('gemini', () => renderStuck({ quietMin: 10 }, 'comp'));
+        withComp('codex', () => renderStuck({ quietMin: 10 }, 'comp'));
+        const stuck = document.querySelectorAll('.stuck-card').length;
+        const inView = C.comp.provider;
+        document.querySelectorAll('.stuck-card').forEach(x => x.remove());
+        api = realApi;
+        return { sent, stuck, inView }`);
+      t.check('Allow on Gemini’s card goes to Gemini, with Codex in view', cards.inView === 'codex' && cards.sent[0] && cards.sent[0][1] === 'key-gemini', cards);
+      t.check('Undo under Gemini’s reply undoes Gemini’s, not Codex’s turn of that number', cards.sent.some(([u, k]) => /undo/.test(u) && k === 'key-gemini') && !cards.sent.some(([, k]) => k === 'key-codex'), cards);
+      t.check('and each partner’s “stuck” card stays its own', cards.stuck === 2, cards);
+      // Opening a chat replays what's happened in it: that mustn't act again.
+      const limit = await b.eval(`const was = S.accounts, roomy = roomyAccounts;
+        roomyAccounts = () => [{ a: { id: 'other', name: 'Other account' }, left: 80 }];
+        const out = {};
+        const make = (at) => { liveRender = true; try { renderLimit({ kind: 'limit', which: 'five_hour', at }, 'main'); } finally { liveRender = false; } const c = document.querySelector('.limit-card[data-src="main"]'); const armed = !!(c && c._auto); if (c) { clearTimeout(c._auto); c._auto = 0; } const r = armed; c && c.remove(); return r; };
+        out.old = make(new Date(Date.now() - 3 * 3600e3).toISOString());
+        out.fresh = make(new Date().toISOString());
+        roomyAccounts = roomy;
+        return out`);
+      t.check('a limit reached hours ago doesn’t switch accounts by itself on opening the chat', limit.old === false, limit);
+      t.check('one reached just now still does', limit.fresh === true, limit);
+      // Each chat keeps its own pictures and last keystrokes while you look at another.
+      // (The demo's server answers every open with one chat: here each comes back as itself.)
+      const asItself = `const openReal = api; const itself = async (u, body) => { const r = await openReal(u, body); return u === '/api/chat/open' ? { ...r, sessionId: body.sessionId, key: 'k-' + body.sessionId.slice(0, 8) } : r; };`;
+      const draft = await b.eval(`${asItself} api = itself;
+        const k = draftKey(); localStorage.removeItem(k);
+        C.attachments = [{ mediaType: 'image/png', data: 'AAAA', url: null }];
+        const box = document.getElementById('cText'); box.value = 'typed just now'; saveDraft();
+        const id = C.sessionId;
+        await openChatView({ sessionId: ${JSON.stringify(demo.ID['s-brawl'])} }); await new Promise(r => setTimeout(r, 900));
+        const away = { pics: C.attachments.length, text: box.value };
+        const saved = localStorage.getItem(k);
+        await openChatView({ sessionId: id }); await new Promise(r => setTimeout(r, 900));
+        const back = { pics: C.attachments.length, text: box.value };
+        C.attachments = []; box.value = ''; localStorage.removeItem(k); renderAttachments();
+        api = openReal;
+        return { away, saved, back }`);
+      t.check('text typed the moment before switching is kept', draft.saved === 'typed just now', draft);
+      t.check('the other chat has its own empty box', draft.away.pics === 0 && draft.away.text !== 'typed just now', draft);
+      t.check('and coming back, the picture and the text are there', draft.back.pics === 1 && draft.back.text === 'typed just now', draft);
+      // The chat you clicked last is the one that opens.
+      const race = await b.eval(`${asItself} let release;
+        api = (u, body) => { if (u === '/api/chat/open' && !release) return new Promise(r => { release = () => r(itself(u, body)); }); return itself(u, body); };
+        const first = openChatView({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} });
+        await new Promise(r => setTimeout(r, 50));
+        await openChatView({ sessionId: ${JSON.stringify(demo.ID['s-brawl'])} });
+        const now = C.key;
+        release(); await first; await new Promise(r => setTimeout(r, 300));
+        api = openReal;
+        return { now, after: C.key, want: 'k-' + ${JSON.stringify(demo.ID['s-brawl'])}.slice(0, 8) }`);
+      t.check('an older click answering late doesn’t pull you away', race.now === race.want && race.after === race.want, race);
+      // Show earlier: once, however often it's clicked; a folded chapter still goes in a saved copy.
+      const early = await b.eval(`const real = loadHistory; let calls = 0;
+        loadHistory = async () => { calls++; await new Promise(r => setTimeout(r, 120)); return null; };
+        const e = document.getElementById('cEarlier'); e.hidden = false;
+        e.click(); e.click(); e.click();
+        const during = e.textContent;
+        await new Promise(r => setTimeout(r, 300));
+        loadHistory = real;
+        const after = e.textContent; e.hidden = true;
+        return { calls, during, after }`);
+      t.check('Show earlier loads one page however many clicks', early.calls === 1 && early.during === 'Loading…' && early.after === 'Show earlier messages', early);
+      const fold = await b.eval(`const feed = document.getElementById('cFeed');
+        const msg = document.createElement('div'); msg.className = 'umsg'; msg.textContent = 'tucked away in an old chapter';
+        const card = document.createElement('div'); card.className = 'chapter-fold'; card._nodes = document.createDocumentFragment(); card._nodes.appendChild(msg);
+        feed.prepend(card);
+        const md = chatMarkdown(), page = chatPage();
+        document.getElementById('cFindQ').value = 'tucked';
+        runFind();
+        const opened = !document.querySelector('.chapter-fold') || !feed.contains(card);
+        closeFind(); msg.remove(); card.remove();
+        return { inMd: /tucked away/.test(md), inPage: /tucked away/.test(page), opened }`);
+      t.check('saving a chat includes its folded chapters', fold.inMd && fold.inPage, fold);
+      t.check('and searching opens a folded chapter with a match', fold.opened, fold);
+      // A reply streaming in draws only what's new, so pictures and selections stay put.
+      const stream = await b.eval(`const part = document.createElement('div'); part.className = 'part'; part.dataset.mid = 'stream-1'; part.innerHTML = '<div class="live"></div>';
+        const feed = document.getElementById('cFeed'); feed.appendChild(part);
+        const show = t => { C.liveText = { 'stream-1': t }; flushLive(); return part.querySelector('.live-done'); };
+        const done = show('First paragraph.\\n\\n');
+        const firstP = done.firstElementChild;
+        show('First paragraph.\\n\\nSecond paragraph.\\n\\n');
+        const kept = done.firstElementChild === firstP;
+        show('First paragraph.\\n\\nSecond paragraph.\\n\\n1. one\\n\\n');
+        const whole = show('First paragraph.\\n\\nSecond paragraph.\\n\\n1. one\\n\\n2. two\\n\\n');
+        const items = whole.querySelectorAll('ol').length, text = whole.textContent;
+        C.liveText = {}; part.remove();
+        return { kept, items, text }`);
+      t.check('a finished paragraph stays the same on the page as more comes in', stream.kept, stream);
+      t.check('and a numbered list running on stays one list', stream.items === 1 && /Second paragraph/.test(stream.text), stream);
+    },
+  },
+  {
     name: 'openclaw',
     // OpenClaw agents' sessions: listed with the rest, read here, never started or written to.
     async run(t) {
       const calls = [];
       const b = await t.open({ openclaw: true, seen: (p, u) => calls.push([p, u]) });
-      const nav = await b.eval(`const h = document.querySelector('.nav-h.openclaw'); return h && h.textContent.replace(/\\s+/g, ' ').trim()`);
-      t.check('the sidebar has an OpenClaw group', nav && /^OpenClaw ?2/.test(nav), nav);
+      const nav = await b.eval(`const h = document.querySelector('[data-navprov="openclaw"]'); return h && h.textContent.replace(/\\s+/g, ' ').trim()`);
+      t.check('the sidebar can show just the projects with OpenClaw sessions', nav === 'OpenClaw', nav);
       await b.eval(`go('folder', ${JSON.stringify('C:\\Projects\\Starfall Tavern')}); return 1`); await sleep(900);
       const row = await b.eval(`const r = document.querySelector('[data-row="agent:main:discord:channel:42"]'); return r && { tag: r.querySelector('.tag.openclaw')?.textContent, btn: r.querySelector('[data-chat]')?.textContent, sub: r.querySelector('.r-sub')?.textContent }`);
       t.check('its session sits in the project, tagged with the agent', row && row.tag === 'OpenClaw · Nova' && row.btn === 'Read' && row.sub === 'Stored session', row);
@@ -952,9 +1138,15 @@ module.exports = [
     async run(t) {
       const dir = process.env.LOOKS || path.join(process.env.LOCALAPPDATA || require('os').homedir(), 'SessionSwitcher', 'looks');
       fs.mkdirSync(dir, { recursive: true });
+      // Compared within one version of the app: a new version is meant to look different, so its first
+      // run keeps a fresh set to compare with (an update used to read as a failure every night after).
+      const version = (fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8').match(/APP_VERSION = '([^']+)'/) || [])[1] || '?';
+      const verFile = path.join(dir, 'version.txt');
+      const fresh = !!process.env.LOOKS_RESET || (fs.existsSync(verFile) ? fs.readFileSync(verFile, 'utf8').trim() : '') !== version;
       const b = await t.open();
-      // Still pictures: no motion, the same clock.
-      const still = `document.documentElement.classList.add('low-power'); document.body.classList.add('low-power'); for (const el of document.querySelectorAll('[data-clock]')) el.textContent = '9:00 AM'; for (const a of document.getAnimations()) { try { a.finish(); } catch {} } return 1`;
+      // Still pictures: no motion, the same clock and date. ("Saturday, October 31" can wrap where "Friday, October 30"
+      // didn't, and it moved the whole page: a false alarm most mornings.)
+      const still = `document.documentElement.classList.add('low-power'); document.body.classList.add('low-power'); for (const el of document.querySelectorAll('[data-clock]')) el.textContent = '9:00 AM'; for (const el of document.querySelectorAll('.hero .eyebrow')) el.innerHTML = el.innerHTML.replace(/[A-Z][a-z]+day, [A-Z][a-z]+ [0-9]+/, 'Monday, June 1'); for (const a of document.getAnimations()) { try { a.finish(); } catch {} } return 1`;
       const themes = await b.eval(`return Look.THEMES.filter(x => x.family !== 'custom').map(x => x.id)`);
       const changed = [];
       let kept = 0;
@@ -966,7 +1158,7 @@ module.exports = [
             await b.eval(still); await sleep(150);
             const now = await b.shotData();
             const file = path.join(dir, `${where}-${theme}-${mode}.png`);
-            if (process.env.LOOKS_RESET || !fs.existsSync(file)) { fs.writeFileSync(file, Buffer.from(now, 'base64')); kept++; continue; }
+            if (fresh || !fs.existsSync(file)) { fs.writeFileSync(file, Buffer.from(now, 'base64')); kept++; continue; }
             const was = fs.readFileSync(file).toString('base64');
             // Compared in the page: both drawn small, the share of spots that differ clearly.
             const diff = await b.eval(`const load = s => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/png;base64,' + s; });
@@ -975,11 +1167,14 @@ module.exports = [
               const a = px(x), z = px(y); let n = 0;
               for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - z[i]) + Math.abs(a[i + 1] - z[i + 1]) + Math.abs(a[i + 2] - z[i + 2]) > 60) n++;
               return n / (w * h)`);
-            if (diff > 0.03) { changed.push(`${where} ${theme} ${mode}: ${(diff * 100).toFixed(1)}% looks different`); fs.writeFileSync(file.replace(/\.png$/, '.now.png'), Buffer.from(now, 'base64')); }
+            // A change is said once: the old look is kept beside it (.was.png), and the new one is what's
+            // compared with next time.
+            if (diff > 0.03) { changed.push(`${where} ${theme} ${mode}: ${(diff * 100).toFixed(1)}% looks different`); fs.copyFileSync(file, file.replace(/\.png$/, '.was.png')); fs.writeFileSync(file, Buffer.from(now, 'base64')); }
           }
         }
       }
-      if (kept) console.log(`  · kept ${kept} new baseline picture${kept === 1 ? '' : 's'} in ${dir}`);
+      fs.writeFileSync(verFile, version);
+      if (kept) console.log(`  · kept ${kept} new baseline picture${kept === 1 ? '' : 's'} in ${dir}${fresh ? ` (for ${version})` : ''}`);
       t.check('every theme looks as it did last time', !changed.length, changed.join('; '));
       await b.eval(`Look.reset(); return 1`);
     },
@@ -1138,7 +1333,7 @@ module.exports = [
       t.check('a chat can alert only when it needs you, or not at all', al.played.join() === 'needs', al);
       t.check('quiet hours hush alerts, overnight too', al.night && al.morning && !al.day, al);
       const used = await b.eval(`ChatUI.close(); S.spent = { studio: [{ sessionId: ${JSON.stringify(demo.ID['s-bard'])}, title: '', provider: 'claude', five: 7500, week: 9000 }, { sessionId: 'x', title: 'Old chat', provider: 'claude', five: 2500, week: 3000 }] };
-        renderLive(true); await new Promise(r => setTimeout(r, 300));
+        S.acctOpen.add('studio'); renderLive(true); await new Promise(r => setTimeout(r, 300));
         const p = document.querySelector('.dc-used'); return p && p.textContent.replace(/\\s+/g, ' ').trim()`);
       t.check('each account says which chats used most of its last five hours', /Used most, last 5 hours/.test(used) && /Balance pass on the bard’s songs 75%/.test(used) && /Old chat 25%/.test(used), used);
       // The mini window, with a frame standing in for the floating one (that needs a click and a screen).
@@ -1207,7 +1402,7 @@ module.exports = [
       await b.eval(`handle({ kind: 'state', state: 'ready', seq: 900 }); return 1`);
       const pf = await b.eval(`const real = window.api, calls = []; window.api = async (p, body) => { calls.push([p, body]); return { ok: true }; };
         setTarget('plan', false);
-        const placeholder = document.getElementById('cText').placeholder, pill = !!document.querySelector('[data-crew="plan"][aria-pressed="true"]');
+        const placeholder = document.getElementById('cText').placeholder, pill = document.querySelector('[data-crew="together"].on .crew-n')?.textContent === 'Plan first';
         document.getElementById('cText').value = 'Add a save system.'; await sendMessage();
         const sent = calls.find(c => c[0] === '/api/chat/send');
         handle({ kind: 'planfirst', state: 'drafting', who: 'claude', to: 'codex', ask: 'Add a save system.', seq: 901 });
@@ -1215,14 +1410,14 @@ module.exports = [
         handle({ kind: 'planfirst', state: 'checking', who: 'claude', to: 'codex', seq: 902 });
         handle({ kind: 'planfirst', state: 'ready', checked: true, seq: 903 });
         const ready = document.querySelector('.planfirst').textContent, last = document.getElementById('cFeed').lastElementChild.classList.contains('planfirst');
-        await buildPlan(document.querySelector('[data-build="comp"]'));
+        await buildPlan(document.querySelector('[data-build="codex"]'));
         const build = calls.filter(c => c[0] === '/api/chat/send').pop();
         const after = document.querySelector('.planfirst').textContent;
         window.api = real; setTarget('main', false);
         return { placeholder, pill, sent: sent && sent[1], drafting, ready, last, build: build && build[1], after }`);
-      t.check('Plan first is a choice under the message box', pf.pill && /Plan first/.test(pf.placeholder) && pf.sent && pf.sent.to === 'plan' && pf.sent.text === 'Add a save system.', pf);
+      t.check('Plan first is a choice under the message box', pf.pill && /Plan first/.test(pf.placeholder) && pf.sent && pf.sent.to === 'plan' && pf.sent.by === 'claude' && pf.sent.kind === 'codex' && pf.sent.text === 'Add a save system.', pf);
       t.check('one card follows it: drafting, then who builds it, under the plan', /Claude is drafting a plan; Codex checks it next/.test(pf.drafting) && /checked by Codex\. Who builds it\?/.test(pf.ready) && pf.last, pf);
-      t.check('picking a builder sends it the go-ahead', pf.build && pf.build.to === 'partner' && /Build it as planned above/.test(pf.build.text) && /Codex is building it/.test(pf.after), pf);
+      t.check('picking a builder sends it the go-ahead', pf.build && pf.build.to === 'partner' && pf.build.kind === 'codex' && /Build it as planned above/.test(pf.build.text) && /Codex is building it/.test(pf.after), pf);
       // Reviews both ways: a dual review card shows who found each finding, and fixes go to the writer.
       const rv = await b.eval(`handle({ kind: 'review', id: 'dual1', by: 'both', what: 'your uncommitted changes', state: 'done', overall: 'Both found one problem.', findings: [{ title: 'Off by one', by: 'both', file: 'a.js', start: 10 }, { title: 'Typo', by: 'claude' }], seq: 950 });
         handle({ kind: 'review', id: 'cl1', by: 'claude', what: 'the last commit', state: 'done', overall: 'One thing.', findings: [{ title: 'Missing check' }], seq: 951 });
@@ -1297,7 +1492,7 @@ module.exports = [
     async run(t) {
       const b = await t.open();
       const id = demo.ID['s-brawl'];
-      const inNav = () => b.eval(`return [...document.querySelectorAll('.nav-i, .r-row, .row')].some(x => /Tavern brawl/.test(x.textContent) && !x.closest('.done-chats'))`);
+      const inNav = () => b.eval(`return [...document.querySelectorAll('.nav-i:not([data-navopen]), .r-row, .row')].some(x => /Tavern brawl/.test(x.textContent) && !x.closest('.done-chats'))`);
       t.check('a chat is on the lists to begin with', await inNav());
       await b.eval(`setChatDone(${JSON.stringify(id)}, true); return 1`); await sleep(600);
       t.check('marked done, it leaves the lists', !(await inNav()));
@@ -1683,9 +1878,18 @@ module.exports = [
       const calls = [];
       const b = await t.open({ gemini: true, seen: (p, u, body) => calls.push([p, body]) });
       await sleep(600);
-      const nav = await b.eval(`const h = document.querySelector('.nav-h.gemini'); return h && { text: h.textContent.replace(/\\s+/g, ' ').trim(), items: [...document.querySelectorAll('.nav-i.gemini')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
-      t.check('Gemini has its own group in the side list, with its project', !!nav && /Gemini/.test(nav.text) && nav.items.some(x => /Starfall Tavern/.test(x)), nav);
-      await b.clickOn('.nav-i.gemini'); await sleep(900);
+      const nav = await b.eval(`const h = document.querySelector('[data-navprov="gemini"]'); if (!h) return null; const text = h.textContent.trim(); h.click(); await new Promise(r => setTimeout(r, 200)); return { text, on: document.querySelector('[data-navprov="gemini"]').getAttribute('aria-pressed'), items: [...document.querySelectorAll('.nav-proj.gemini[data-view="folder"]')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()) }`);
+      t.check('the side list can show just the projects with Gemini chats', !!nav && nav.text === 'Gemini' && nav.on === 'true' && nav.items.some(x => /Starfall Tavern/.test(x)), nav);
+      // The top bar's accounts list has Gemini too: signed in, and any model out of quota with its reset.
+      await b.clickOn('#usechip'); await sleep(300);
+      const pop = await b.eval(`const r = document.querySelector('#acctPop .ap-row.gemini'); return r && r.textContent.replace(/\\s+/g, ' ').trim()`);
+      t.check('the accounts list in the top bar shows the Gemini account', !!pop && /Gemini/.test(pop) && /Google AI plan · 4 models/.test(pop) && /No model out of quota/.test(pop), pop);
+      await b.eval(`S.gemini = { ...S.gemini, limits: [{ model: 'gemini-4-argon-medium', label: 'Gemini 4 Argon (Medium)', at: Date.now(), resetsAt: new Date(Date.now() + 2 * 3600e3).toISOString(), text: 'quota' }] }; closeAcctPop(); openAcctPop(); return 1`); await sleep(200);
+      const out = await b.eval(`return document.querySelector('#acctPop .ap-row.gemini .ap-bars').textContent`);
+      t.check('a model out of quota shows there, with when it comes back', /Gemini 4 Argon \(Medium\) ran out, back /.test(out), out);
+      await t.shot(b, 'accounts');
+      await b.esc(); await sleep(200);
+      await b.clickOn('.nav-proj.gemini[data-view="folder"]'); await sleep(900);   // the project (a Gemini chat in Recent is a .nav-i.gemini too)
       const page = await b.eval(`return { eyebrow: document.querySelector('.wp-in .eyebrow')?.textContent, btn: !!document.querySelector('[data-act="newgemini"]'), rows: [...document.querySelectorAll('#wbList .rows > li')].length }`);
       t.check('its project page lists the Gemini chats, with a New Gemini chat button', /Gemini chats in this project/.test(page.eyebrow || '') && page.btn && page.rows === 1, page);
       await t.shot(b, 'project');
@@ -1695,15 +1899,23 @@ module.exports = [
       t.check('a Gemini chat opens with its history, under Gemini’s name and color', chat.gem && chat.who === 'Gemini' && /Before the roads had names/.test(chat.text || ''), chat);
       t.check('with Gemini’s own modes: Plan only, Edit files, Full access', JSON.stringify(chat.modes) === JSON.stringify(['Plan only', 'Edit files', 'Full access']) && chat.mode === 'accept-edits', chat);
       t.check('it asked for the history as Gemini’s', calls.some(([p]) => p === '/api/chat/history'));
+      const chip = await b.eval(`renderBar(); return document.getElementById('usechip').textContent.replace(/\\s+/g, ' ').trim()`);
+      t.check('the top bar says the chat runs as Gemini, with its quota', /This chat runs as ?Gemini/.test(chip) && /Quota|Out of quota/.test(chip), chip);
       await t.shot(b, 'chat');
+      const small = await b.eval(`const ta = document.getElementById('cText'); ta.value = 'ask @gemini'; ta.setSelectionRange(11, 11); const m1 = mentionAt();
+        ta.value = 'ask @all'; ta.setSelectionRange(8, 8); const m2 = mentionAt(); ta.value = 'ask @song'; ta.setSelectionRange(9, 9); const m3 = mentionAt(); ta.value = '';
+        handle({ kind: 'ended', code: 1, seq: 9001 }); const ended = [...document.querySelectorAll('#cFeed .ended')].pop()?.textContent || '';
+        return { m1, m2, m3: !!m3, ended }`);
+      t.check('@gemini and @all are names, not a file search (@song still is)', small.m1 === null && small.m2 === null && small.m3, small);
+      t.check('a Gemini chat that stops says Gemini, not Claude Code', /Gemini stopped unexpectedly/.test(small.ended), small);
       // A new Gemini chat from the project page.
       await b.eval(`ChatUI.close(); go('folder', S.projects.find(p => p.name === 'Starfall Tavern').cwd); return 1`); await sleep(900);
       await b.clickOn('[data-act="newgemini"]'); await sleep(1200);
       t.check('New Gemini chat opens a Gemini chat in that project', calls.some(([p, body]) => p === '/api/chat/open' && body.provider === 'gemini' && body.mode === 'new' && /Starfall Tavern/.test(body.cwd || '')));
-      // All three in one chat: a Claude chat shows a pill for Codex and one for Gemini, and All.
+      // All three in one chat: a Claude chat shows a pill for Codex and one for Gemini, and Together.
       await b.eval(`ChatUI.close(); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
-      const pills = await b.eval(`return { kinds: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), all: document.querySelector('[data-crew="both"] .crew-n')?.textContent, hint: document.getElementById('cHint').textContent }`);
-      t.check('a Claude chat has a pill for Codex and one for Gemini, and All', JSON.stringify(pills.kinds) === '["codex","gemini"]' && pills.all === 'All' && /@codex/.test(pills.hint) && /@gemini/.test(pills.hint) && /@all/.test(pills.hint), pills);
+      const pills = await b.eval(`return { kinds: [...document.querySelectorAll('[data-crew="comp"]')].map(x => x.dataset.kind), all: document.querySelector('[data-crew="together"] .crew-n')?.textContent, hint: document.getElementById('cHint').textContent }`);
+      t.check('a Claude chat has a pill for Codex and one for Gemini, and Together', JSON.stringify(pills.kinds) === '["codex","gemini"]' && pills.all === 'Together' && /@codex/.test(pills.hint) && /@gemini/.test(pills.hint) && /@all/.test(pills.hint), pills);
       await b.clickOn('[data-crew="comp"][data-kind="gemini"]'); await sleep(400);
       const picked = await b.eval(`return { target: C.target, mate: partnerProv(), on: [...document.querySelectorAll('[data-crew="comp"].on')].map(x => x.dataset.kind), ph: document.getElementById('cText').placeholder }`);
       t.check('clicking Gemini’s pill writes to Gemini (only its pill lit)', picked.target === 'comp' && picked.mate === 'gemini' && JSON.stringify(picked.on) === '["gemini"]' && /Gemini/.test(picked.ph), picked);
@@ -1715,7 +1927,47 @@ module.exports = [
       await sendText('@codex check the rhyme scheme');
       t.check('“@codex …” goes to Codex, from the same chat', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'partner' && body.kind === 'codex' && /rhyme scheme/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
       await sendText('@all one verse each');
-      t.check('“@all …” goes round: Claude, then Codex and Gemini', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'all' && JSON.stringify(body.kinds) === '["codex","gemini"]' && /one verse each/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      t.check('“@all …” goes round: Claude, then Codex and Gemini', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'group' && JSON.stringify(body.kinds) === '["claude","codex","gemini"]' && /one verse each/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      // Together, picked: Gemini then Codex, Claude sitting out; then plan first with that pair.
+      await b.clickOn('[data-crew="together"]'); await sleep(300);
+      const rows0 = await b.eval(`return [...document.querySelectorAll('#cTogether [data-tg]')].map(x => x.dataset.tg + (x.getAttribute('aria-checked') === 'true' ? x.dataset.n : '-')).join()`);
+      t.check('the picker starts with all three, in order', rows0 === 'claude1,codex2,gemini3', rows0);
+      await b.clickOn('#cTogether [data-tg="claude"]'); await sleep(150);
+      await b.clickOn('#cTogether [data-tgup="gemini"]'); await sleep(150);
+      const rows1 = await b.eval(`const p = document.getElementById('cTogether'); return { rows: [...p.querySelectorAll('[data-tg]')].map(x => x.dataset.tg + (x.getAttribute('aria-checked') === 'true' ? x.dataset.n : '-')).join(), use: p.querySelector('[data-tgact="use"]').textContent }`);
+      t.check('untick Claude and move Gemini up: Gemini first, then Codex', rows1.rows === 'claude-,codex2,gemini1' && rows1.use === 'Write to Gemini and Codex', rows1);
+      await t.shot(b, 'together');
+      await b.clickOn('#cTogether [data-tgact="use"]'); await sleep(300);
+      const lit = await b.eval(`return { target: C.target, on: [...document.querySelectorAll('.crew.on')].map(x => x.dataset.kind || x.dataset.crew).join(), label: document.querySelector('[data-crew="together"] .crew-m')?.textContent }`);
+      t.check('Gemini’s and Codex’s pills light, Claude’s doesn’t, and Together says the order', lit.target === 'both' && lit.on === 'codex,gemini,together' && lit.label === 'Gemini → Codex', lit);
+      await sendText('sketch the menu screen');
+      t.check('the message goes to Gemini, then Codex', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'group' && JSON.stringify(body.kinds) === '["gemini","codex"]' && /sketch the menu/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      await b.clickOn('[data-crew="together"]'); await sleep(300);
+      await b.clickOn('#cTogether [data-tghow="plan"]'); await sleep(150);
+      await b.clickOn('#cTogether [data-tgact="use"]'); await sleep(300);
+      await sendText('add a save system');
+      t.check('plan first with them: Gemini drafts, Codex checks', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'plan' && body.by === 'gemini' && body.kind === 'codex' && /save system/.test(body.text)), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      // At the same time: both start on it at once, each on its own part.
+      await b.clickOn('[data-crew="together"]'); await sleep(300);
+      await b.clickOn('#cTogether [data-tghow="parallel"]'); await sleep(150);
+      const par = await b.eval(`const p = document.getElementById('cTogether'); return { rows: [...p.querySelectorAll('[data-tg]')].map(x => x.dataset.tg + (x.dataset.n || '-')).join(), note: p.querySelector('.mp-note').textContent, up: p.querySelectorAll('[data-tgup]').length }`);
+      t.check('At the same time: each ticked one works on its own part, no order to set', par.rows === 'claude-,codex✓,gemini✓' && /all start on your message at once/.test(par.note) && par.up === 0, par);
+      await t.shot(b, 'at-once');
+      await b.clickOn('#cTogether [data-tgact="use"]'); await sleep(300);
+      const atb = await b.eval(`return { n: document.querySelector('[data-crew="together"] .crew-n').textContent, m: document.querySelector('[data-crew="together"] .crew-m').textContent, ph: document.getElementById('cText').placeholder }`);
+      t.check('the button says At once, and the box says to split the work', atb.n === 'At once' && atb.m === 'Gemini + Codex' && /say who does what/.test(atb.ph), atb);
+      await sendText('Gemini: the lore text. Codex: the menu icons.');
+      t.check('it goes to both at once', calls.some(([p, body]) => p === '/api/chat/send' && body.to === 'group' && body.how === 'parallel' && JSON.stringify(body.kinds) === '["gemini","codex"]'), calls.filter(([p]) => p === '/api/chat/send').map(([, x]) => x));
+      await b.clickOn('[data-crew="together"]'); await sleep(300);
+      await b.clickOn('#cTogether [data-tgact="off"]'); await sleep(300);
+      t.check('Back to Claude only ends it', await b.eval(`return C.target === 'main' && document.getElementById('cTogether').hidden`));
+      // By keyboard: Enter on ↑ moves that one earlier (it doesn't tick its row off); Escape closes.
+      await b.eval(`C.group = { kinds: ['claude', 'codex', 'gemini'], how: 'turns' }; openTogether(); document.querySelector('#cTogether [data-tgup="gemini"]').focus(); return 1`); await sleep(150);
+      await b.key('Enter', 'Enter', 13); await sleep(150);
+      const kb = await b.eval(`return [...document.querySelectorAll('#cTogether [data-tg]')].map(x => x.dataset.tg + (x.dataset.n || '-')).join()`);
+      t.check('Enter on ↑ moves it earlier, by keyboard', kb === 'claude1,codex3,gemini2', kb);
+      await b.esc(); await sleep(150);
+      t.check('and Escape closes the list', await b.eval(`return document.getElementById('cTogether').hidden`));
       const kept = await b.eval(`return Object.keys(C.comps).filter(k => C.comps[k] && !C.comps[k].ended)`);
       t.check('both partners stay in the chat (neither pushed the other out)', kept.includes('gemini') && kept.includes('codex'), kept);
       // Plain words in Ctrl+K.
@@ -1727,6 +1979,95 @@ module.exports = [
       t.check('Setup → Gemini says it’s signed in, with Gemini 4 Argon, and what the modes mean', /Use Gemini too/.test(setup) && /Signed in/.test(setup) && /Gemini 4 Argon/.test(setup) && /Edit files/.test(setup), setup.slice(0, 300));
       await b.eval(`document.getElementById('st-gemini').scrollIntoView(); return 1`); await sleep(200);
       await t.shot(b, 'setup');
+      // Updating Codex and Gemini from Setup, like Claude Code; a Codex that's behind says so.
+      const up = await b.eval(`const real = api; window._upd = [];
+        api = async (u, body) => { if (u === '/api/tools/versions') return { codex: { version: '0.155.1', latest: '0.163.0', newer: true }, gemini: { version: '1.3.5' } };
+          if (u === '/api/codex/update' || u === '/api/gemini/update') { _upd.push(u); return { ok: true, how: 'terminal window', running: u === '/api/codex/update' ? 2 : 0 }; } return real(u, body); };
+        await loadToolVersions();
+        const acts = [...document.querySelectorAll('.app-actions button')].map(x => x.textContent.trim());
+        const line = document.getElementById('cxVer')?.textContent.replace(/\\s+/g, ' ').trim();
+        document.querySelector('#cxVer [data-fix="update-codex"]').click(); await new Promise(r => setTimeout(r, 200));
+        const toast1 = document.getElementById('toast').textContent;
+        document.querySelector('.app-actions [data-fix="update-gemini"]').click(); await new Promise(r => setTimeout(r, 200));
+        api = real;
+        return { acts, line, toast1, calls: _upd }`);
+      t.check('Setup has Update Codex and Update Gemini beside Update Claude Code', up.acts.includes('Update Claude Code') && up.acts.includes('Update Codex') && up.acts.includes('Update Gemini'), up.acts);
+      t.check('a Codex that’s behind says which version is out, with Update Codex', /Codex 0\.155\.1 here; 0\.163\.0 is out/.test(up.line || ''), up.line);
+      t.check('Update Codex runs the update, and says to stop running Codex chats if it can’t', JSON.stringify(up.calls) === '["/api/codex/update","/api/gemini/update"]' && /2 Codex chats are running here/.test(up.toast1), up);
+    },
+  },
+  {
+    name: 'recent and fresh',
+    // The sidebar's Recent: the latest chats themselves, a click away. And a long chat carried on in a
+    // fresh one, from its handoff.
+    async run(t) {
+      const b = await t.open(); await sleep(500);
+      const side = await b.eval(`const h = document.querySelector('.nav-h.recent'); const rows = [...document.querySelectorAll('.nav-h.recent ~ .nav-chat')].slice(0, 6);
+        const lists = navLists(), listed = new Set([...lists.active.flatMap(x => [x.sessionId, x.startedAs]), ...lists.pinned.map(x => x.sessionId)].filter(Boolean).map(x => x.toLowerCase()));
+        const want = allSessions().filter(([s, p]) => p.cwd !== cmdrSet().cwd && !listed.has(s.id.toLowerCase())).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6).map(([s]) => s.id);
+        return { head: h && h.textContent.replace(/\\s+/g, ' ').trim(), ids: rows.map(r => r.dataset.navchat), want, more: !!document.querySelector('.nav-more[data-view="recent"]'), sub: rows[0] && rows[0].querySelector('small').textContent }`);
+      t.check('the sidebar has Recent: the latest chats not listed above it, newest first', !!side.head && /Recent/.test(side.head) && JSON.stringify(side.ids) === JSON.stringify(side.want) && side.ids.length > 0, side);
+      t.check('each says its project and how long ago', / · /.test(side.sub || ''), side.sub);
+      await b.clickOn('.nav-more[data-view="recent"]'); await sleep(500);
+      t.check('All recent chats opens the Recent chats page', await b.eval(`return S.view === 'recent'`));
+      await b.clickOn('.nav-h.recent'); await sleep(200);
+      t.check('Recent folds away like the other sections', await b.eval(`return !document.querySelector('.nav-h.recent ~ .nav-chat[data-navchat="${side.ids[0]}"]') || !!document.querySelector('.nav-h.recent[aria-expanded="false"]')`));
+      await b.clickOn('.nav-h.recent'); await sleep(200);
+      await t.shot(b, 'recent');
+      // Continue in a fresh chat: a handoff from this one, then a new linked chat with it in the box.
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2200);
+      const r = await b.eval(`const real = api, opened = []; window._asked = [];
+        api = async (u, body) => { if (u === '/api/chat/handoff') { _asked.push(body); return { text: '**Goal** Balance the bard.\\n\\n**Next steps** 1. Retest the songs.' }; } return real(u, body); };
+        const realOpen = ChatUI.open; ChatUI.open = o => { opened.push(o); return Promise.resolve(); };
+        const item = chatHeadItems().find(x => x && x.label === 'Continue in a fresh chat…');
+        await continueFresh();
+        api = real; ChatUI.open = realOpen;
+        return { item: !!item, disabled: item && item.disabled, asked: _asked, opened, key: C.key, id: C.sessionId }`);
+      t.check('the chat’s ⋯ menu has Continue in a fresh chat…', r.item, r);
+      t.check('it asks this chat for its handoff', r.asked.length === 1 && r.asked[0].key === r.key, r.asked);
+      const o = r.opened[0] || {};
+      t.check('then opens a new chat in the same folder, linked to this one, with the handoff in its box', o.mode === 'new' && o.parent === r.id && /Starfall Tavern/.test(o.cwd || '') && /Its handoff:/.test(o.initialText || '') && /Retest the songs/.test(o.initialText || ''), o);
+      // A chat left running from before a restart: said so, and no copy offered (it opens here by itself).
+      const lo = await b.eval(`ChatUI.close(); const id = ${JSON.stringify(demo.ID['s-brawl'])};
+        const where = whereOf({ leftover: true, source: 'terminal', folder: 'Rebirth' });
+        S.activity = [...S.activity.filter(x => x.sessionId !== id), { source: 'terminal', leftover: true, key: null, sessionId: id, title: 'Tavern brawl encounter design', folder: 'Starfall Tavern', phase: 'idle', state: 'ready', pids: [122184] }];
+        await watch({ sessionId: id, source: 'terminal' }); await new Promise(r => setTimeout(r, 300));
+        const w = document.getElementById('cWatch');
+        return { where, text: w.textContent.replace(/\\s+/g, ' ').trim(), copy: !!w.querySelector('[data-c="fork"]') }`);
+      t.check('a chat left running from before the restart says so on its card', lo.where === 'Rebirth, finishing from before the restart', lo.where);
+      t.check('and reading it says it opens here by itself, with no copy to make', /Finishing from before the restart/.test(lo.text) && /opens here again by itself/.test(lo.text) && !lo.copy, lo);
+      // Making a copy asks first; saying no makes nothing.
+      const fork = await b.eval(`ChatUI.close(); const real = window.appConfirm, realApi = api, asked = [], opened = [];
+        window.appConfirm = async text => { asked.push(text); return false; };
+        api = async (u, body) => { if (u === '/api/chat/open') opened.push(body); return realApi(u, body); };
+        await openChatView({ sessionId: ${JSON.stringify(demo.ID['s-bard'])}, mode: 'fork' });
+        window.appConfirm = real; api = realApi;
+        return { asked, opened: opened.length, open: ChatUI.isOpen() }`);
+      t.check('making a copy asks first, saying what a copy is', fork.asked.length === 1 && /Make a copy of “Balance pass on the bard’s songs”/.test(fork.asked[0]) && /second chat/.test(fork.asked[0]), fork.asked);
+      t.check('and Cancel makes no copy', fork.opened === 0 && !fork.open, fork);
+    },
+  },
+  {
+    name: 'hidden window',
+    // Minimized or in the tray: updates still reach the title (and the tray), but the hub and the
+    // side list aren't redrawn for each one; they're drawn once when it's back, with what changed.
+    async run(t) {
+      const b = await t.open(); await sleep(400);
+      const r = await b.eval(`let nav = 0, live = 0; const rn = renderNav, rl = renderLive;
+        renderNav = (...a) => { nav++; return rn(...a); }; renderLive = (...a) => { live++; return rl(...a); };
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+        const before = document.title;
+        S.activity = S.activity.map(x => ({ ...x, status: 'perm', phase: 'perm' }));
+        for (let i = 0; i < 5; i++) renderLiveSoon();
+        const hidden = { nav, live, title: document.title, changed: document.title !== before };
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+        document.dispatchEvent(new Event('visibilitychange'));
+        const back = { nav, live };
+        renderNav = rn; renderLive = rl; delete document.hidden;
+        return { hidden, back }`);
+      t.check('while hidden, nothing is redrawn for each update', r.hidden.nav === 0 && r.hidden.live === 0, r);
+      t.check('but the title still says what waits', /^\(\d+\) Session Switcher$/.test(r.hidden.title), r);
+      t.check('back in view, it’s drawn once', r.back.nav === 1 && r.back.live === 1, r);
     },
   },
   {
@@ -1855,6 +2196,32 @@ module.exports = [
       await b.key('ArrowRight', 'ArrowRight', 39); await sleep(200);
       x = await v();
       t.check('the arrow keys step to the next picture', x.n !== first && x.cap === 'A screenshot', x);
+      // A tall screenshot and a very wide one fit the screen whole, not cropped or bigger than it.
+      const fits = await b.eval(`const pic = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.fillStyle = '#556b2f'; g.fillRect(0, 0, w, h); return c.toDataURL('image/png'); };
+        const out = [];
+        for (const [w, h] of [[900, 3200], [5200, 1100]]) {
+          openGallery(pic(w, h)); const l = document.getElementById('cLight'), img = l.querySelector('.lb-stage img');
+          await new Promise(r => { if (img.complete && img.naturalWidth) r(); else img.onload = r; }); await new Promise(r => setTimeout(r, 120));
+          const s = l.querySelector('.lb-stage').getBoundingClientRect(), r = img.getBoundingClientRect();
+          out.push({ w, h, inside: r.top >= s.top - 1 && r.bottom <= s.bottom + 1 && r.left >= s.left - 1 && r.right <= s.right + 1, ratio: Math.abs(r.width / r.height - w / h) < 0.02, img: [Math.round(r.width), Math.round(r.height)], stage: [Math.round(s.width), Math.round(s.height)] });
+        }
+        return out`);
+      t.check('a tall picture and a wide one open fitted to the screen, whole and in proportion', fits.every(f => f.inside && f.ratio), fits);
+      // Zoom: the wheel zooms in about the pointer, the readout says how far, 0 fits it again.
+      const z = await b.eval(`const l = document.getElementById('cLight'), st = l.querySelector('.lb-stage'), z = () => l.querySelector('.lb-z').textContent;
+        const before = z(), r = st.getBoundingClientRect();
+        for (let i = 0; i < 4; i++) st.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true }));
+        const zoomed = { cls: l.classList.contains('zoomed'), z: z(), w: l.querySelector('.lb-stage img').getBoundingClientRect().width };
+        l.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }));
+        return { before, zoomed, after: z(), fitAgain: !l.classList.contains('zoomed'), copy: !!l.querySelector('[data-lb="copy"]'), save: !!l.querySelector('[data-lb="save"]') }`);
+      t.check('the wheel zooms in past the fitted size, and says by how much', /^Fit · \d+%$/.test(z.before) && z.zoomed.cls && /^\d+%$/.test(z.zoomed.z) && parseInt(z.zoomed.z, 10) > parseInt(z.before.replace(/\D+/g, ''), 10), z);
+      t.check('0 fits it to the screen again', z.fitAgain && /^Fit/.test(z.after), z);
+      t.check('it can be copied (to paste anywhere) and saved', z.copy && z.save, z);
+      const saved = await b.eval(`let got = null; const orig = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () { got = { name: this.download, data: this.href.slice(0, 14) }; };
+        try { document.querySelector('#cLight [data-lb="save"]').click(); await new Promise(r => setTimeout(r, 50)); } finally { HTMLAnchorElement.prototype.click = orig; }
+        return got`);
+      t.check('Save offers it as a picture file', saved && /\.png$/.test(saved.name) && saved.data === 'data:image/png', saved);
+      await t.shot(b, 'viewer-tall');
       await b.esc(); await sleep(200);
       t.check('Escape closes it', !(await v()).open);
       t.check('nothing spills sideways', await b.eval(`return document.scrollingElement.scrollWidth <= innerWidth + 1`));
@@ -1986,10 +2353,13 @@ module.exports = [
       await b.eval(`document.querySelector('.td-b').click(); return 1`); await sleep(1500);
       t.check('clicking a bar opens the chat that was busiest then', await b.eval(`return ChatUI.isOpen()`));
       await b.eval(`ChatUI.close(); return 1`); await sleep(600);
-      // Empty spots get a picture.
-      const e = await b.eval(`S.activity = []; renderLive(true); await new Promise(r => setTimeout(r, 300)); return { await: !!document.querySelector('#awaitList .empty-art[data-kind="await"] svg'), work: !!document.querySelector('#board .empty-art[data-kind="work"] svg'), text: (document.querySelector('#awaitList .empty-line') || {}).textContent || '' }`);
-      t.check('nothing waiting, nothing working: a small picture and the usual words', e.await && e.work && /Nothing is waiting on you/.test(e.text), e);
-      const pic = await b.eval(`Look.set({ theme: 'isekai' }); Look.theme().empty = { await: 'isekai-dark' }; renderLive(true); await new Promise(r => setTimeout(r, 300)); const img = document.querySelector('#awaitList .empty-art.painted img'); const ok = img && img.getAttribute('src') === '/art/isekai-dark.webp'; delete Look.theme().empty; return !!ok`);
+      // Nothing waiting, nothing working: those sections step aside, and the header says so.
+      const e = await b.eval(`S.activity = []; renderLive(true); await new Promise(r => setTimeout(r, 300)); return { await: document.getElementById('secAwait').hidden, work: document.getElementById('secWork').hidden, hero: document.querySelector('.hero h1').textContent, chips: [...document.querySelectorAll('#hubJump .hj')].map(x => x.dataset.jump) }`);
+      t.check('nothing waiting, nothing working: those sections step aside', e.await && e.work && /All quiet/.test(e.hero) && !e.chips.includes('secAwait') && !e.chips.includes('secWork'), e);
+      // Imperial and Rebel keep theirs: an empty spot with a small picture and the usual words.
+      const saga = await b.eval(`Look.set({ theme: 'imperial' }); await new Promise(r => setTimeout(r, 400)); return { await: !!document.querySelector('#awaitList .empty-art[data-kind="await"] svg'), work: !!document.querySelector('#board .empty-art[data-kind="work"] svg'), text: (document.querySelector('#awaitList .empty-line') || {}).textContent, seal: !!document.getElementById('seal'), jump: !!document.getElementById('hubJump') }`);
+      t.check('Imperial keeps its sidebar seal and its empty spots', saga.await && saga.work && /Nothing is waiting on you/.test(saga.text) && saga.seal && !saga.jump, saga);
+      const pic = await b.eval(`Look.set({ theme: 'isekai' }); Look.theme().empty = { await: 'isekai-dark' }; const d = document.createElement('div'); d.innerHTML = emptyArt('await', 'x'); const img = d.querySelector('.empty-art.painted img'); const ok = img && img.getAttribute('src') === '/art/isekai-dark.webp'; delete Look.theme().empty; return ok`);
       t.check('a theme that brings its own painting for an empty spot shows it', pic);
       await b.eval(`Look.reset(); return 1`);
     },
@@ -2086,8 +2456,14 @@ module.exports = [
       t.check('welcome back includes an unread reply from the second assistant', /1 reply came in/.test(partnerWelcome.text) && partnerWelcome.chip, partnerWelcome);
       const questionWelcome = await b.eval(`const previous = S.activity; try { S.activity = [{ key: 'welcome-question', title: 'A question', phase: 'waiting', pending: [{ question: true }] }, { key: 'welcome-terminal', title: 'Terminal', phase: 'waiting-terminal' }]; const el = document.createElement('div'); el.innerHTML = welcomeHtml(); return el.textContent; } finally { S.activity = previous; }`);
       t.check('questions and terminal waits ask for attention, not an approval', /2 need your attention/.test(questionWelcome) && !/your OK/.test(questionWelcome), questionWelcome);
-      t.check('a quick look away doesn’t bring it back', await b.eval(`dropWelcome(); localStorage.setItem('seen-at', String(Date.now() - 60e3)); checkAway(); await new Promise(r => setTimeout(r, 300)); return !document.querySelector('.welcome')`));
-      await b.eval(`localStorage.setItem('seen-at', String(Date.now() - 3 * 3600e3)); checkAway(); return 1`); await sleep(400);
+      // (Its fade can take a while on a slow machine: waited for, up to two seconds.)
+      t.check('a quick look away doesn’t bring it back', await b.eval(`dropWelcome(); localStorage.setItem('seen-at', String(Date.now() - 60e3)); checkAway(); for (let i = 0; i < 20 && document.querySelector('.welcome'); i++) await new Promise(r => setTimeout(r, 100)); return !document.querySelector('.welcome')`));
+      // Away again while a card is still fading out: the new card stays (the fade used to clear it too).
+      const again = await b.eval(`localStorage.setItem('seen-at', String(Date.now() - 3 * 3600e3)); checkAway(); await new Promise(r => setTimeout(r, 50));
+        dropWelcome(); localStorage.setItem('seen-at', String(Date.now() - 3 * 3600e3)); checkAway(); await new Promise(r => setTimeout(r, 700));
+        return !!document.querySelector('[data-welcome="continue"]')`);
+      t.check('back again while the last card fades out: the new one stays', again);
+      await b.eval(`dropWelcome(); localStorage.setItem('seen-at', String(Date.now() - 3 * 3600e3)); checkAway(); return 1`); await sleep(900);
       await b.eval(`document.querySelector('[data-welcome="continue"]').click(); return 1`); await sleep(1500);
       t.check('“Back to …” opens that chat, and the card goes', await b.eval(`return ChatUI.isOpen() && !document.querySelector('.welcome')`));
       // The map: a long chat gets one; each of your messages has a mark.

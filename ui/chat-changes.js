@@ -6,6 +6,7 @@
 // In a reply's bar each file name opens that reply's change to it in the preview.
 const fileLine = (f, ev, src) => `${ev ? `<button type="button" class="chg-fn" data-pv="${esc(f.path)}" data-kind="file" data-turn="${ev.turn}" data-src="${src}" title="See what changed in ${esc(f.path)}">${esc(base(f.path))}</button>` : esc(base(f.path))}${f.status === 'added' ? ' <small>new</small>' : f.status === 'deleted' ? ' <small>deleted</small>' : f.add !== null ? ` <small><i class="d-add">+${f.add}</i> <i class="d-del">−${f.del}</i></small>` : ''}`;
 
+const TEXT_ONLY = 'This project isn’t in git, so the app keeps its own copies of its text files, to show and undo changes to them. Pictures and big files aren’t covered.';
 // The files a reply's own edits changed; others changed meanwhile (by its partner, or you) are listed
 // apart and left out of its Undo.
 const ownFiles = ev => ev.files.filter(f => !f.meanwhile);
@@ -23,13 +24,15 @@ function clashWith(ev, src) {
 function changesBar(ev, src, clash = []) {
   const own = ownFiles(ev), mw = ev.files.length - own.length;
   const n = own.length + (ev.more || 0);
+  const shared = own.filter(f => f.shared).length, canUndo = n - shared > 0;
   const other = PROV_NAME[src === 'comp' ? C.provider : partnerProv()];
   return `<div class="chg" data-src="${src}" data-turn="${ev.turn}">
-    <span class="chg-h">${n ? `Changed ${n} file${n === 1 ? '' : 's'}` : 'No file changes of its own'}</span>
+    <span class="chg-h">${n ? `Changed ${n} file${n === 1 ? '' : 's'}` : 'No file changes of its own'}${ev.scope === 'text' ? ` <small class="chg-scope" title="${esc(TEXT_ONLY)}">text files</small>` : ''}</span>
     ${n ? `<span class="chg-f">${own.slice(0, 4).map(f => fileLine(f, ev, src)).join(' · ')}${n > 4 ? ` · and ${n - 4} more` : ''}</span>` : ''}
     ${clash.length ? `<span class="chg-clash" role="note">${esc(other)} also edited ${esc(clash.slice(0, 3).map(base).join(', '))}${clash.length > 3 ? ` and ${clash.length - 3} more` : ''} at the same time. Check ${clash.length === 1 ? 'it' : 'them'} before building on either.</span>` : ''}
     ${mw ? `<span class="chg-mw">${mw} more changed meanwhile${duo() ? ` (by ${esc(other)} or you)` : ''}; not part of this reply’s Undo.</span>` : ''}
-    <span class="chg-b">${n ? `<button type="button" class="ta" data-c="chgview">See the changes</button><button type="button" class="ta" data-c="chgundo" title="Puts these files back as they were before this reply">Undo</button>` : ''}</span></div>`;
+    ${shared ? `<span class="chg-mw">${canUndo ? `${shared === 1 ? 'One was' : `${shared} were`} changed` : 'Changed'} while another reply was working in this folder, so there’s no telling which did ${shared === 1 ? 'it' : 'what'}. See the changes${canUndo ? '; Undo leaves those alone' : ' to check them; Undo isn’t offered, as it could undo the other’s work'}.</span>` : ''}
+    <span class="chg-b">${n ? `<button type="button" class="ta" data-c="chgview">See the changes</button>${canUndo ? '<button type="button" class="ta" data-c="chgundo" title="Puts these files back as they were before this reply">Undo</button>' : ''}` : ''}</span></div>`;
 }
 function renderChanges(ev, src) {
   noteChanges(ev, src);
@@ -38,14 +41,15 @@ function renderChanges(ev, src) {
   if (!turn || turn.querySelector(`.chg[data-turn="${ev.turn}"][data-src="${src}"]`)) return;
   withStick(() => turn.insertAdjacentHTML('beforeend', changesBar(ev, src, clashWith(ev, src))));
   const bar = turn.lastElementChild;
-  bar._ev = ev;
+  bar._ev = ev; bar._kind = compKind(src);
   picsFromChanges(turn, ev);
+  if (liveRender && justNow(ev) && typeof siteChanged === 'function') siteChanged();
   autoReview(ev, src);
 }
 // Review big changes by itself (Setup → Codex): after Claude changes 40 lines or more in one reply,
 // Codex reviews them; the findings come back as a card, as when you ask.
 function autoReview(ev, src) {
-  if (!liveRender || src === 'comp' || provFor(src) !== 'claude' || !S.prefs.autoReview || !reviewAvailable()) return;
+  if (!liveRender || !justNow(ev) || src === 'comp' || provFor(src) !== 'claude' || !S.prefs.autoReview || !reviewAvailable()) return;
   if (Review.loop || C.handoff || C.state === 'ended') return;   // already reviewing, or Codex is about to take its turn
   const lines = ownFiles(ev).reduce((n, f) => n + (f.add || 0) + (f.del || 0), 0);
   const once = `${C.key}:${ev.turn}`;
@@ -61,7 +65,7 @@ function autoReview(ev, src) {
 async function loadExtras(gen, until) {
   C.extras = [];
   const ask = (id, src, upTo) => (id ? api(`/api/chat/extras?${new URLSearchParams({ id, ...(upTo ? { until: upTo } : {}) })}`).then(r => (r.extras || []).map(ev => ({ ev, src })), () => []) : Promise.resolve([]));
-  const compUntil = C.comp && C.comp.info ? C.comp.info.bufferFrom || C.comp.info.startedAt : null;
+  const compUntil = C.comp ? C.comp.bufferFrom || C.comp.startedAt || null : null;
   const [mine, theirs] = await Promise.all([ask(C.sessionId, 'main', until), ask(C.compThread, 'comp', compUntil)]);
   if (gen !== C.gen) return;
   C.extras = mine.concat(theirs).sort((a, b) => String(a.ev.at).localeCompare(String(b.ev.at)));
@@ -82,7 +86,7 @@ function applyExtras() {
       if (feed.querySelector(`.chg[data-turn="${ev.turn}"][data-src="${src}"]`)) continue;
       noteChanges(ev, src);
       target.insertAdjacentHTML('beforeend', changesBar(ev, src));
-      target.lastElementChild._ev = ev;
+      target.lastElementChild._ev = ev; target.lastElementChild._kind = compKind(src);
       picsFromChanges(target, ev);
     } else if (ev.kind === 'undone') renderUndone(ev, src);
     else if (ev.kind === 'review' && src === 'main') {
@@ -93,7 +97,7 @@ function applyExtras() {
   }
 }
 function renderUndone(ev, src) {
-  const bar = $c('cFeed').querySelector(`.chg[data-turn="${ev.turn}"][data-src="${src}"]`);
+  const bar = cardsOf(`.chg[data-turn="${ev.turn}"]`, src)[0];
   const r = ev.restored.length, kept = ev.skipped.filter(x => x.why === 'changed since');
   if (bar) {
     bar.classList.add('undone');
@@ -105,10 +109,10 @@ function renderUndone(ev, src) {
 
 async function undoChanges(bar, force = false) {
   const ev = bar && bar._ev; if (!ev) return;
-  const src = bar.dataset.src, key = keyFor(src), name = PROV_NAME[provFor(src)];
-  const own = ownFiles(ev), n = own.length;
+  const src = bar.dataset.src, key = keyOfCard(bar, src), name = PROV_NAME[bar._kind || provFor(src)];
+  const own = ownFiles(ev).filter(f => !f.shared), n = own.length;
   if (!n) return;
-  if (!force && !(await window.appConfirm(`Undo the changes from this reply?\n\nPuts ${n === 1 ? base(own[0].path) : `these ${n} files`} back as they were before ${name} replied. A file that’s changed since is left as it is.`, { ok: 'Undo them' }))) return;
+  if (!force && !(await window.appConfirm(`Undo the changes from this reply?\n\nPuts ${n === 1 ? base(own[0].path) : `these ${n} files`} back as they were before ${name} replied. A file that’s changed since is left as it is.${ev.scope === 'text' ? ' Pictures and big files aren’t covered here.' : ''}`, { ok: 'Undo them' }))) return;
   const r = await api('/api/chat/undo', { key, turn: ev.turn, force });
   const kept = r.skipped.filter(x => x.why === 'changed since');
   if (!force && kept.length) {
@@ -121,15 +125,16 @@ async function undoChanges(bar, force = false) {
 // The changes, file by file, in a dialog. (diffUrl and title: for a race's copy instead of a reply.)
 async function viewChanges(bar, diffUrl = null, title = null) {
   const ev = bar && bar._ev; if (!ev) return;
-  const key = diffUrl ? null : keyFor(bar.dataset.src);
+  const key = diffUrl ? null : keyOfCard(bar, bar.dataset.src);
   let d = $c('chgDlg');
   if (!d) {
     document.body.insertAdjacentHTML('beforeend', `<dialog id="chgDlg" class="wide chg-dlg" aria-labelledby="chgTitle"><div class="setup-head"><h3 id="chgTitle">Changes</h3><button class="icon" data-chgclose aria-label="Close">✕</button></div><div class="chg-body" id="chgBody"></div></dialog>`);
     d = $c('chgDlg');
     d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-chgclose]')) d.close(); });
   }
-  $c('chgTitle').textContent = `${title || `What ${PROV_NAME[provFor(bar.dataset.src)]} changed`} (${ev.files.length} file${ev.files.length === 1 ? '' : 's'})`;
-  $c('chgBody').innerHTML = ev.files.slice(0, 40).map((f, i) => `<section class="chg-file"><p class="chg-fh"><b>${esc(f.path)}</b> ${f.status === 'added' ? '<small>new file</small>' : f.status === 'deleted' ? '<small>deleted</small>' : ''}</p><pre class="chg-diff" data-i="${i}">Loading…</pre></section>`).join('')
+  $c('chgTitle').textContent = `${title || `What ${PROV_NAME[bar._kind || provFor(bar.dataset.src)]} changed`} (${ev.files.length} file${ev.files.length === 1 ? '' : 's'})`;
+  const adds = ev.files.reduce((n, f) => n + (f.add || 0), 0), dels = ev.files.reduce((n, f) => n + (f.del || 0), 0);
+  $c('chgBody').innerHTML = (ev.files.length > 1 && (adds || dels) ? `<p class="rd-intro"><i class="d-add">+${adds}</i> <i class="d-del">−${dels}</i> lines</p>` : '') + ev.files.slice(0, 40).map((f, i) => `<section class="chg-file"><p class="chg-fh"><b>${esc(f.path)}</b> ${f.status === 'added' ? '<small>new file</small>' : f.status === 'deleted' ? '<small>deleted</small>' : ''}</p><pre class="chg-diff" data-i="${i}">Loading…</pre></section>`).join('')
     + (ev.files.length > 40 ? `<p class="rd-intro">And ${ev.files.length - 40} more.</p>` : '');
   d.showModal();
   for (const [i, f] of ev.files.slice(0, 40).entries()) {
@@ -140,6 +145,13 @@ async function viewChanges(bar, diffUrl = null, title = null) {
     } catch (err) { pre.textContent = err.message; }
     if (!d.open) return;
   }
+}
+// Everything this chat and its partners have changed, as those files stand now.
+async function viewAllChanges() {
+  const key = C.key; if (!key) return undefined;
+  const r = await api(`/api/chat/so-far?key=${encodeURIComponent(key)}`);
+  if (!r.files.length) return toast('Nothing it changed is any different now.', 4000);
+  return viewChanges({ _ev: { files: r.files }, dataset: {} }, `/api/chat/so-far-diff?key=${encodeURIComponent(key)}`, r.scope === 'text' ? 'Everything this chat has changed, in text files' : 'Everything this chat has changed');
 }
 // A unified diff with its added and removed lines marked (the file headers left out).
 function diffHtml(text) {

@@ -22,10 +22,11 @@ function findBrowser() {
 
 async function launch({ width = 1440, height = 900, mobile = false, scale = null } = {}) {
   if (typeof WebSocket === 'undefined') throw new Error('The tests need Node.js 22 or newer (for its built-in WebSocket).');
-  const port = 9300 + Math.floor(Math.random() * 600);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-browser-'));
   const proc = spawn(findBrowser(), [
-    '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${dir}`, `--window-size=${width},${height}`,
+    // Port 0: the browser takes a free one and says which in its profile. (A port picked here could already be another
+    // browser's when tests run side by side, and this test would quietly drive that one's page.)
+    '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}`, `--window-size=${width},${height}`,
     '--no-first-run', '--no-default-browser-check', '--disable-gpu',
     // Keep the page "visible": extensions and sync pages in a fresh profile would push it into the
     // background, where timers, animation frames and resize observers slow down or stop.
@@ -33,9 +34,11 @@ async function launch({ width = 1440, height = 900, mobile = false, scale = null
     '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling',
     'about:blank',
   ], { stdio: 'ignore' });
-  let ws;
-  for (let i = 0; i < 75 && !ws; i++) {
+  let ws, port = null;
+  for (let i = 0; i < 150 && !ws; i++) {   // up to 30 s: a busy PC starts a browser slowly
     try {
+      if (!port) port = Number(fs.readFileSync(path.join(dir, 'DevToolsActivePort'), 'utf8').split('\n')[0]) || null;
+      if (!port) throw new Error('not yet');
       const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
       const pg = list.find(x => x.type === 'page');
       if (pg) ws = new WebSocket(pg.webSocketDebuggerUrl);

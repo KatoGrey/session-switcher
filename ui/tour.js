@@ -4,10 +4,10 @@
 
 const TOUR = [
   { at: '#heroSlot', title: 'Every chat, in one place', text: 'All the Claude Code and Codex chats on this computer. What needs you comes first; what’s working is under At work, and you can queue tasks for later there.' },
-  { at: '#seal', title: 'Your accounts', text: 'New chats open as this account: click it to switch. The top bar shows how much of its plan is left, and if one runs out mid-chat, the chat offers another.' },
-  { at: '#nav', title: 'Your projects', text: 'Each project, with its chats. Right-click anything (a chat, a project, a card) for what you can do with it, like pinning it here or setting its rules for Claude and Codex.' },
+  { at: () => (sagaLook() ? '#seal' : '#usechip'), title: 'Your accounts', text: 'New chats open as this account: click it to switch. The top bar shows how much of its plan is left, and if one runs out mid-chat, the chat offers another.' },
+  { at: '#nav', title: 'Your projects', text: 'Each project, with its chats. Right-click anything (a chat, a project, a card) for what you can do with it, like pinning it here or setting the rules they all follow.' },
   { at: '#seek', title: 'Jump anywhere', text: 'Ctrl+K finds any chat, project, prompt or action, and searches inside every message.' },
-  { at: null, title: 'Claude and Codex, together', text: 'In a chat, they share the conversation: write to Claude, Codex or Both, and each catches up on what the other said. Codex can review Claude’s changes, any reply can be undone, and ? lists every shortcut.' },
+  { at: null, title: 'Claude, Codex and Gemini, together', text: 'In a chat, they share the conversation: write to one of them or several, and each catches up on what the others said. One can review another’s changes, any reply can be undone, and ? lists every shortcut.' },
 ];
 const Tour = { i: 0 };
 
@@ -42,7 +42,7 @@ function showTourStep(i) {
   $('tourX').textContent = step.text;
   $('tour').querySelector('[data-tour="back"]').hidden = Tour.i === 0;
   $('tour').querySelector('[data-tour="next"]').textContent = Tour.i === TOUR.length - 1 ? 'Done' : 'Next';
-  const el = step.at && document.querySelector(step.at);
+  const el = step.at && document.querySelector(typeof step.at === 'function' ? step.at() : step.at);
   const spot = $('tourSpot'), card = $('tourCard');
   const r = el && el.offsetParent ? el.getBoundingClientRect() : null;
   if (!r || !r.width) {

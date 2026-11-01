@@ -60,8 +60,11 @@ function needsRow(x) {
 function runRow(x) {
   // mcp__Claude_Browser__browser_batch reads better as "Claude Browser: browser batch".
   const tool = String(x.tool || 'Working').replace(/^mcp__([^_]+(?:_[^_]+)*)__(.+)$/, (m, a, b) => `${a.replace(/_/g, ' ')}: ${b.replace(/_/g, ' ')}`);
-  const step = x.phase === 'tool' ? `${tool}${x.detail ? ` · ${x.detail}` : ''}` : x.phase === 'writing' ? 'Writing' : x.phase === 'starting' ? 'Starting' : 'Thinking';
-  return `<div class="row" role="button" tabindex="-1" data-open="${esc(x.sessionId || '')}" data-cur="r:${esc(idOf(x))}"><span class="live-dot"></span><span class="t"><b>${esc(titleOf(x))}</b><small>${esc(step)} · ${esc(whereOf(x))}${x.accountName ? ` · <span class="acct">${esc(x.accountName)}</span>` : ''}</small></span><span class="side-tags"></span><span class="when">${x.turnStartedAt ? since(x.turnStartedAt) : ''}</span><span></span></div>`;
+  const keptIdle = x.keep && x.state !== 'busy' && x.state !== 'starting';
+  const step = keptIdle ? (x.keep.state === 'out' ? 'Waiting for usage' : 'Keeping it working')
+    : x.phase === 'tool' ? `${tool}${x.detail ? ` · ${x.detail}` : ''}` : x.phase === 'writing' ? 'Writing' : x.phase === 'starting' ? 'Starting' : 'Thinking';
+  const keepTag = x.keep && x.keep.until ? `<span class="tag">Until ${esc(new Date(x.keep.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>` : '';
+  return `<div class="row" role="button" tabindex="-1" data-open="${esc(x.sessionId || '')}" data-cur="r:${esc(idOf(x))}"><span class="live-dot"></span><span class="t"><b>${esc(titleOf(x))}</b><small>${esc(step)} · ${esc(whereOf(x))}${x.accountName ? ` · <span class="acct">${esc(x.accountName)}</span>` : ''}</small></span><span class="side-tags">${keepTag}</span><span class="when">${x.turnStartedAt ? since(x.turnStartedAt) : ''}</span><span></span></div>`;
 }
 
 function waitRow(c) {
@@ -75,6 +78,7 @@ function waitRow(c) {
 
 function routineRunsOn(r) {
   // Routines that follow the order take the use-next plan of their family when they run.
+  if (r.provider === 'gemini' || r.account === 'gemini') return 'Gemini';
   const fam = r.provider === 'codex' ? 'chatgpt' : 'claude';
   const pinned = planById(r.account);
   if (pinned && pinned.family === 'ollama') return 'Ollama';
@@ -158,7 +162,7 @@ function cmdListen(key) {
   if (S.cmd.es && S.cmd.key === key) return;
   if (S.cmd.es) S.cmd.es.close();
   S.cmd.key = key; S.cmd.events = [];
-  const es = new EventSource(`/api/chat/events?key=${encodeURIComponent(key)}&token=${TOKEN}`);
+  const es = liveChat(key);
   S.cmd.es = es;
   S.cmd.chatState = 'starting';
   es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); S.cmd.sessionId = info.sessionId || S.cmd.sessionId; S.cmd.chatState = info.state; } catch { /* fine */ } renderCommander(); });

@@ -31,6 +31,22 @@ async function startServer(dataDir, { home = null, preload = null } = {}) {
   return { call, stop, base };
 }
 
+test('a home folder written with a Windows short name doesn’t bring the server down', { skip: process.platform !== 'win32' }, async t => {
+  const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const long = path.join(dir, 'a home with a long name'), dataDir = path.join(dir, 'data'), projects = path.join(long, '.claude', 'projects', 'work');
+  fs.mkdirSync(projects, { recursive: true }); fs.mkdirSync(dataDir);
+  fs.writeFileSync(path.join(dataDir, 'accounts.json'), JSON.stringify({ claudeCommand: path.join(dir, 'no-claude-here') }));
+  const short = require('child_process').execFileSync('cmd', ['/d', '/s', '/c', `for %I in ("${long}") do @echo %~sI`], { encoding: 'utf8', windowsVerbatimArguments: true, windowsHide: true }).trim();
+  if (!short || short.toLowerCase() === long.toLowerCase()) { t.skip('this drive has no short names'); return; }
+  const s = await startServer(dataDir, { home: short });
+  try {
+    fs.writeFileSync(path.join(projects, 'aaaaaaaa-1111-4222-8333-444444444445.jsonl'), `${JSON.stringify({ type: 'user', cwd: dir, timestamp: new Date().toISOString(), message: { content: 'A new chat' } })}\n`);
+    await new Promise(r => setTimeout(r, 1500));
+    assert.equal((await s.call('/api/state')).status, 200);
+  } finally { await s.stop(); }
+});
+
 test('reopen: last time’s open chats are offered once, and set aside when answered', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
   fs.writeFileSync(path.join(dataDir, 'open-chats.json'), JSON.stringify({ at: Date.now(), chats: [
@@ -60,6 +76,117 @@ test('reopen: “Not now” sets them aside without opening anything', async () 
     const r = await s.call('/api/reopen', { action: 'dismiss' });
     assert.deepEqual(r.json, { reopened: [], failed: [] });
     assert.deepEqual((await s.call('/api/state')).json.reopen, []);
+  } finally { await s.stop(); }
+});
+
+test('reopen: restarting with no open chats preserves older offers instead of starting them', async () => {
+  for (const emptySavedList of [false, true]) {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-restart-empty-'));
+    const home = path.join(dataDir, 'home'); fs.mkdirSync(home);
+    const old = { sessionId: '00000000-1111-4222-8333-555555555555', provider: 'claude', accountId: 'main', title: 'An older offer' };
+    fs.writeFileSync(path.join(dataDir, 'reopen.json'), JSON.stringify({ at: Date.now() - 3600000, chats: [old] }));
+    fs.writeFileSync(path.join(dataDir, 'restart.json'), JSON.stringify({ at: Date.now() }));
+    if (emptySavedList) fs.writeFileSync(path.join(dataDir, 'open-chats.json'), JSON.stringify({ at: Date.now(), chats: [] }));
+    const s = await startServer(dataDir, { home });
+    try {
+      const state = await s.call('/api/state');
+      assert.deepEqual(state.json.reopen.map(c => c.title), ['An older offer'], emptySavedList ? 'an explicitly empty open list stays empty' : 'a missing open list does not imply reopening every offer');
+      assert.equal(Object.keys((await s.call('/api/chat/live')).json.live).length, 0);
+    } finally { await s.stop(); }
+  }
+});
+
+test('Codex routing: default new chats, queued tasks and sign-in actions use the active account', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-codex-routing-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const home = path.join(dir, 'home'), cwd = path.join(dir, 'work'), projects = path.join(home, '.claude', 'projects', 'work');
+  fs.mkdirSync(projects, { recursive: true }); fs.mkdirSync(cwd);
+  fs.writeFileSync(path.join(projects, 'aaaaaaaa-1111-4222-8333-444444444444.jsonl'), JSON.stringify({ type: 'user', cwd, timestamp: new Date().toISOString(), message: { content: 'A routing test project' } }) + '\n');
+  // (no Claude Code to start: its sign-in check, writing in the pretend home, could still be going as the folder's removed)
+  fs.writeFileSync(path.join(dir, 'accounts.json'), JSON.stringify({ claudeCommand: path.join(dir, 'no-claude-here'), codexActive: 'codex-second', codexAccounts: [{ id: 'codex-second', name: 'Second' }] }));
+  const calls = path.join(dir, 'calls.jsonl'), preload = path.join(dir, 'fake-codex.cjs');
+  fs.writeFileSync(preload, `
+const fs = require('fs'), cx = require(${JSON.stringify(path.join(APP, 'lib/codex.js'))});
+const { LiveChat } = require(${JSON.stringify(path.join(APP, 'lib/chat.js'))});
+require(${JSON.stringify(path.join(APP, 'lib/snapshots.js'))}).warm = () => {};   // (Git in the background could outlive this short test, and hold its folder)
+const note = (method, id) => fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify({method, id}) + '\\n');
+class TestChat extends LiveChat {
+  start() { this.provider = 'codex'; this.sessionId = require('crypto').randomUUID(); this.setState('ready'); }
+  async beforeTurn() {}   // (it changes no files, and this is about which account it runs as, not its snapshots)
+  send(text, images) { this.emit({kind:'user', text, images}); this.emit({kind:'result', ok:true}); }
+  stop() { this.end(0); return this.exited; }
+}
+cx.createCodex = ({account, chats, getConfig}) => {
+  const state = () => ({id:account.id, name:account.name, provider:'codex', enabled:true, checked:true, installed:true, signedIn:true});
+  return { ACCOUNT:account, publicState:state, refreshAccount:async()=>state(), refreshUsage:async()=>{},
+    list:async()=>[], cached:()=>[], known:()=>null, models:async()=>[], stop:()=>{}, config:getConfig,
+    login:async()=>{note('login',account.id); return {accountId:account.id};},
+    cancelLogin:async()=>note('cancel',account.id), logout:async()=>note('logout',account.id),
+    open:opts=>{note('open',account.id); return chats.open({...opts, account, Chat:TestChat});}
+  };
+};`);
+  const s = await startServer(dir, { home, preload });
+  try {
+    assert.equal((await s.call('/api/codex/login', {})).json.accountId, 'codex-second');
+    assert.equal((await s.call('/api/codex/login', { account: 'codex' })).json.accountId, 'codex');
+    assert.equal((await s.call('/api/codex/login-cancel', {})).status, 200);
+    assert.equal((await s.call('/api/codex/logout', {})).status, 200);
+    const first = await s.call('/api/chat/open', { mode: 'new', provider: 'codex', cwd });
+    assert.equal(first.status, 200, JSON.stringify(first.json));
+    assert.equal(first.json.accountId, 'codex-second');
+    // A chat that's running opens as itself, even before the lists have heard of it.
+    for (const asked of [{}, { provider: 'codex' }, { provider: 'claude', account: 'main' }]) {
+      const again = await s.call('/api/chat/open', { sessionId: first.json.sessionId, mode: 'resume', ...asked });
+      assert.equal(again.status, 200, JSON.stringify(again.json));
+      assert.equal(again.json.key, first.json.key);
+      assert.equal(again.json.attached, true);
+    }
+    const main = await s.call('/api/chat/open', { mode: 'new', provider: 'codex', cwd, account: 'codex' });
+    assert.equal(main.json.accountId, 'codex');
+    const queued = await s.call('/api/tasks', { action: 'add', task: { cwd, provider: 'codex', prompt: 'A safe fake task', when: 'now' } });
+    assert.equal(queued.status, 200);
+    let finished;
+    for (let i = 0; i < 40; i++) {
+      finished = (await s.call('/api/tasks')).json.tasks.find(x => x.id === queued.json.task.id);
+      if (finished && finished.state !== 'queued') break;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    assert.equal(finished.state, 'started', JSON.stringify(finished));
+    const seen = fs.readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
+    assert.deepEqual(seen.filter(x => x.method === 'open').map(x => x.id), ['codex-second', 'codex', 'codex-second']);
+    assert.deepEqual(seen.filter(x => ['cancel', 'logout'].includes(x.method)).map(x => x.id), ['codex-second', 'codex-second']);
+  } finally { await s.stop(); }
+});
+
+test('chat window: a partner opened twice at once opens inside its lead both times', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const home = path.join(dir, 'home'), cwd = path.join(dir, 'work'), preload = path.join(dir, 'fake-codex.cjs');
+  fs.mkdirSync(home); fs.mkdirSync(cwd);
+  const lead = 'aaaaaaaa-1111-4222-8333-000000000001', partner = 'aaaaaaaa-1111-4222-8333-000000000002';
+  fs.writeFileSync(path.join(dir, 'accounts.json'), JSON.stringify({ claudeCommand: path.join(dir, 'no-claude-here') }));
+  fs.writeFileSync(path.join(dir, 'chat-prefs.json'), JSON.stringify({ chats: { [lead]: { companion: partner }, [partner]: { parent: lead } } }));
+  fs.writeFileSync(preload, `
+const cx = require(${JSON.stringify(path.join(APP, 'lib/codex.js'))});
+const { LiveChat } = require(${JSON.stringify(path.join(APP, 'lib/chat.js'))});
+require(${JSON.stringify(path.join(APP, 'lib/snapshots.js'))}).warm = () => {};   // (Git in the background could outlive this short test, and hold its folder)
+cx.createCodex = ({account, chats, getConfig}) => {
+  const state = () => ({id:account.id, name:account.name, provider:'codex', enabled:true, checked:false, installed:true, signedIn:true});
+  return { ACCOUNT:account, publicState:state, refreshUsage:async()=>{}, list:async()=>[], cached:()=>[], models:async()=>[], stop:()=>{}, config:getConfig, hasLoadedThread:async()=>false,
+    refreshAccount:()=>new Promise(r => setTimeout(() => r(state()), 300)),   // (long enough for both opens to arrive while the first waits)
+    known:id=>[${JSON.stringify(lead)},${JSON.stringify(partner)}].includes(id) ? {id, cwd:${JSON.stringify(cwd)}} : null,
+    open:opts=>chats.open({...opts, account, Chat:class extends LiveChat {
+      start() { this.provider = 'codex'; this.sessionId = opts.threadId; this.setState('ready'); }
+      stop() { this.end(0); return this.exited; }
+    }})
+  };
+};`);
+  const s = await startServer(dir, { home, preload });
+  try {
+    const alone = await s.call('/api/chat/open', { sessionId: partner, provider: 'codex', alone: true });
+    assert.equal(alone.json.sessionId, partner, JSON.stringify(alone.json));
+    const both = await Promise.all([1, 2].map(() => s.call('/api/chat/open', { sessionId: partner, provider: 'codex' })));
+    assert.deepEqual(both.map(x => x.json.sessionId), [lead, lead]);
   } finally { await s.stop(); }
 });
 
@@ -99,6 +226,24 @@ test('rules: saved to CLAUDE.md and AGENTS.md for every project (in a throwaway 
     assert.equal(fs.readFileSync(path.join(home, '.codex', 'AGENTS.md'), 'utf8'), '# Mine\n\nBe brief.\n');
     assert.equal((await s.call('/api/rules', { text: 'x', to: [] })).status, 400, 'nowhere to save');
     assert.equal((await s.call('/api/rules?cwd=C%3A%5CNot%5CA%5CProject')).status, 404, 'only known projects');
+  } finally { await s.stop(); }
+});
+
+test('updates: Codex to the newest from npm and Gemini by its own updater, each in a terminal; versions for Setup', async () => {
+  const s = await startServer(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
+  try {
+    const v = await s.call('/api/tools/versions');
+    assert.equal(v.status, 200);
+    assert.ok('codex' in v.json && 'gemini' in v.json, 'says what it knows (null for one that’s off)');
+    const cx = await s.call('/api/codex/update', {});
+    assert.equal(cx.status, 200); assert.equal(cx.json.dryRun, true); assert.equal(cx.json.running, 0);
+    if (cx.json.script) assert.match(cx.json.script, /npm install -g @openai\/codex@latest/);
+    const gm = await s.call('/api/gemini/update', {});
+    assert.equal(gm.status, 200); assert.equal(gm.json.dryRun, true);
+    if (gm.json.script) assert.match(gm.json.script, /" update/);
+    // Continue in a fresh chat asks a running chat; one that isn't says so.
+    const h = await s.call('/api/chat/handoff', { key: 'not-a-chat' });
+    assert.equal(h.status, 404); assert.match(h.json.error, /isn’t running any more/);
   } finally { await s.stop(); }
 });
 
@@ -170,7 +315,9 @@ test('races: one can’t start without Codex, and nothing is left behind', async
   } finally { await s.stop(); }
 });
 
-test('restart: a new copy takes over (same port, new process, same build), the old one exits, and the old page is told to reload', async () => {
+// (Not under the desktop app's own Node, as the nightly self-check runs: there the desktop app starts the
+// new copy itself, so a copy on its own never restarts that way.)
+test('restart: a new copy takes over (same port, new process, same build), the old one exits, and the old page is told to reload', { skip: process.versions.electron ? 'the desktop app restarts itself' : false }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
   const s = await startServer(dir);
   let next = null;

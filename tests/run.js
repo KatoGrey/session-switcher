@@ -19,6 +19,7 @@ const path = require('path');
 // browsers make their throwaway folders in it (TEMP and TMP on Windows, TMPDIR on a Mac, all read by
 // os.tmpdir() each time), and it's deleted at the end, passed or failed or stopped with Ctrl+C. So
 // nothing piles up in the real temp folder, and nothing outside this one is touched.
+require('../lib/electron-node');   // (its own clean-up, run from the installed app's Node, has links and Git's read-only files in it)
 const RUN_TMP = path.join(os.tmpdir(), `ss-run-${process.pid}-${Date.now().toString(36)}`);
 fs.mkdirSync(RUN_TMP, { recursive: true });
 const TMP_ENV = { TEMP: RUN_TMP, TMP: RUN_TMP, TMPDIR: RUN_TMP };
@@ -37,7 +38,7 @@ process.on('SIGINT', () => { for (const x of running) try { x.close ? x.close() 
 
 const { launch, sleep } = require('./browser');
 const demo = require('./demo');
-const suites = [...require('./ui'), ...require('./project-art.ui'), ...require('./theme-studio.ui')];
+const suites = [...require('./ui'), ...require('./hub.ui'), ...require('./project-art.ui'), ...require('./theme-studio.ui')];
 
 const APP = path.join(__dirname, '..');
 const only = process.argv.slice(2);
@@ -49,13 +50,14 @@ const freePort = () => new Promise((res, rej) => { const s = net.createServer();
 
 async function main() {
   let failed = 0;
+  const allFails = [];
   if (!only.length) {
     console.log('— logic and server checks');
     const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).map(f => path.join(__dirname, f));
     // On GitHub the failures are also written as annotations (from a TAP copy of the results), each
     // with its error and where it happened, readable on the run's page without signing in.
     const tap = process.env.GITHUB_ACTIONS ? path.join(RUN_TMP, `ss-tap-${process.pid}.txt`) : null;
-    const runLogic = () => spawnSync(process.execPath, ['--test', '--test-timeout=180000', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP, env: { ...process.env, ...TMP_ENV }, timeout: 15 * 60000 });   // a stuck run ends (and fails) rather than holding everything
+    const runLogic = () => spawnSync(process.execPath, [...(process.versions.electron ? ['--require', path.join(__dirname, '..', 'lib', 'electron-node.js')] : []), '--test', '--test-timeout=180000', '--test-reporter=spec', '--test-reporter-destination=stdout', ...(tap ? ['--test-reporter=tap', `--test-reporter-destination=${tap}`] : []), ...files], { stdio: 'inherit', cwd: APP, env: { ...process.env, ...TMP_ENV }, timeout: 15 * 60000 });   // a stuck run ends (and fails) rather than holding everything
     const failures = () => {
       let text = ''; try { text = fs.readFileSync(tap, 'utf8'); } catch { return []; }
       const out = [];
@@ -83,7 +85,7 @@ async function main() {
       r = runLogic();
       if (r.status === 0) for (const f of first) console.log(`::warning title=logic tests (passed the second time)::${f.replace(/%/g, '%25')}`);
     }
-    if (tap && r.status !== 0) for (const f of failures()) console.log(`::error title=logic tests::${f.replace(/%/g, '%25')}`);
+    if (tap && r.status !== 0) for (const f of failures()) { allFails.push(`logic: ${f.split(' — ')[0]}`); console.log(`::error title=logic tests::${f.replace(/%/g, '%25')}`); }
     if (r.status !== 0) failed++;
   }
 
@@ -127,6 +129,9 @@ async function main() {
           browsers.push(b); running.add(b);
           if (useDemo) await demo.install(b, demoOpts);
           await b.nav(base + at, 3000);
+          // A busy PC can take longer than that: wait (up to 30 s more) for the page to finish loading,
+          // so a check never runs before the page's own scripts have.
+          for (let i = 0; i < 60; i++) { try { if (await b.eval(`return document.readyState === 'complete'`)) break; } catch { /* not yet */ } await sleep(500); }
           return b;
         },
         async shot(b, name) { if (SHOTS) await b.shot(path.join(SHOTS, `${suite.name.replace(/\W+/g, '-')}-${name}.png`)); },
@@ -150,9 +155,16 @@ async function main() {
       if (!fails.length && attempt > 1) console.log('  (passed the second time)');
       failed += fails.length;
       // On GitHub, each failed check is also an annotation, readable on the run's page without signing in.
-      if (process.env.GITHUB_ACTIONS) for (const f of fails) console.log(`::error title=${suite.name.replace(/[\r\n:,]/g, ' ')}::${f.replace(/%/g, '%25').replace(/\r?\n/g, '%0A').slice(0, 900)}`);
+      if (process.env.GITHUB_ACTIONS) for (const f of fails) { allFails.push(`${suite.name}: ${f}`); console.log(`::error title=${suite.name.replace(/[\r\n:,]/g, ' ')}::${f.replace(/%/g, '%25').replace(/\r?\n/g, '%0A').slice(0, 900)}`); }
       break;
     }
+  }
+
+  // GitHub keeps only a step's first 10 errors, so the whole list goes in notices, which it counts apart (10 again).
+  for (let i = 0, part = 1; i < allFails.length && part <= 10; part++) {
+    let text = '';
+    while (i < allFails.length && text.length < 3000) text += `${allFails[i++].replace(/\s+/g, ' ').slice(0, 300)}\n`;
+    console.log(`::notice title=All ${allFails.length} failures (part ${part})::${text.replace(/%/g, '%25').replace(/\n/g, '%0A')}`);
   }
 
   // Stop this test copy of the app (only it: it's the process started above).

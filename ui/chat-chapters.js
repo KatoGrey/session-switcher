@@ -73,6 +73,13 @@ function chapters() {
   });
 }
 
+// The feed as it reads, with folded chapters' messages in their places (saving and copying the chat).
+function feedItems() {
+  const out = [];
+  for (const el of $c('cFeed').children) { if (el._nodes) out.push(...el._nodes.children); else out.push(el); }
+  return out;
+}
+
 function foldChapter(c, n) {
   const card = document.createElement('div');
   card.className = 'chapter-fold';
