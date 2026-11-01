@@ -10,6 +10,9 @@ const { createKeeperClient } = require('../lib/keeper');
 
 const APP = path.join(__dirname, '..');
 const wait = ms => new Promise(r => setTimeout(r, ms));
+// The keeper's socket lives in the temp folder, and a socket's path can't be longer than about 104
+// characters on a Mac. The full run's own temp folder (tests/run.js) is too deep for it, so then /tmp.
+if (process.platform !== 'win32' && path.join(os.tmpdir(), 'switcher-keeper-000', 'k-000000000000.sock').length > 100) process.env.TMPDIR = '/tmp';
 // A stand-in for Claude Code: a numbered line every 50 ms, and each line it's sent comes back as "echo …".
 const FAKE = 'let n=0;setInterval(()=>console.log(JSON.stringify({n:++n})),50);process.stdin.setEncoding("utf8");let b="";process.stdin.on("data",d=>{b+=d;let i;while((i=b.indexOf("\\n"))>=0){console.log("echo "+b.slice(0,i));b=b.slice(i+1);}});process.stdin.on("end",()=>process.exit(0));';
 
