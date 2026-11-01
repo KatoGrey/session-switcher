@@ -422,6 +422,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   .side { border-right: 0; }
   .main { position: fixed; inset: 0; z-index: 10; transform: translateX(100%); transition: transform .22s ease; padding-top: env(safe-area-inset-top, 0px); }
   body.in-main .main { transform: none; }
+  body.no-slide .main { transition: none; }
   .back { display: inline-grid; }
   .wrap { padding: 16px 16px 96px; gap: 22px; }
   .chat-h, .composer { padding-left: 16px; padding-right: 16px; }
