@@ -1091,8 +1091,8 @@ function resumeAt(chat, at, cancel = false) {
     chat.holdUntil = 0;
     chat.emit({ kind: 'resumeat', at: null });
     if (chat.state === 'ended') return;
-    if (chat.state !== 'ready') return chat.emit(notice('info', 'Your usage is back.'));
-    pairs.send(chat, 'Your usage is back. Please carry on where you left off.').catch(err => chat.emit(notice('warning', `Couldn’t carry on: ${err.message}`)));
+    if (chat.state !== 'ready') return chat.emit(chatLib.notice('info', 'Your usage is back.'));
+    pairs.send(chat, 'Your usage is back. Please carry on where you left off.').catch(err => chat.emit(chatLib.notice('warning', `Couldn’t carry on: ${err.message}`)));
   }, Math.max(5000, ms)));
   chat.emit({ kind: 'resumeat', at });
   return { ok: true, at };

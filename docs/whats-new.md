@@ -1,4 +1,10 @@
-# Chats that keep working while you sleep, a board for your pictures, chats side by side, and a hub that's easier to get around
+# Codex's and Gemini's models can be chosen again
+
+- **A partner's model picker opens.** In 6.6.0, pressing Codex's or Gemini's name a second time, or a partner's tab in the picker, said "compEntry is not defined" and showed no models. Each assistant in a chat now has its own working tab, under its own name; the tabs of the others all said the chat's own assistant.
+- **A held message comes back in Switcher Lite.** A message interrupted while waiting its turn hit an error instead of returning to the box, with its pictures.
+- **Carry on when it's back** says "Your usage is back" if the chat's busy when the time comes; that hit an error too.
+
+## Earlier in 6.6.0: chats that keep working while you sleep, a board for your pictures, chats side by side, and a hub that's easier to get around
 
 **Leaving it to work**
 
@@ -58,7 +64,7 @@
 - **The nightly self-check stops crying wolf.** A longer date ("Saturday, October 31") could wrap to a second line and read as a theme that "looks different". A test failing every night was a new problem every night, because its time was part of its name; now it's one. A new version starts with an empty list of problems: what's been fixed goes, and what hasn't comes back. It's also been run the way the installed app runs it, which is how the cleaning-up bug was found.
 - **Fixed:** **Mark done** and **Run the project** answered "Not found": neither had ever reached the PC. Pictures in a document, like `![map](../art/map.png)`, came up broken, and links to a heading did nothing. **Ask Claude to fix this** always failed in the installed app; **Make a copy to share** from the installed app left out how to start it; **Pick another port** for phone access had nowhere to pick one. A new chat reopened right away, before the lists had heard of it, said it wasn't found. A long menu could open over its own **⋯**, so pressing **⋯** again pressed whatever was there; it now opens beside it. **Mark done** showed twice in a chat's menu, and a partner's chat opened twice at once could come up outside the chat it belongs to. A Codex chat's menu now has **Open in a new window** and **Open beside this chat** too.
 
-## Also in this version: file links that open, chats that come back
+## Also in 6.6.0: file links that open, chats that come back
 
 - **File links open.** Codex links a file as `/C:/Users/…`, and the app read that as `C:\C:\Users\…`, a place that doesn't exist. Now it opens the file. Paths with spaces in their folders (`C:\Users\me\My Site\plan.md`), folders and zips are links too, in Lite as well.
 - **Chats on a 1M model come back.** With `opus[1m]` in Claude's settings, a chat couldn't start again after a restart or an update: the app refused the brackets in the name. Choosing such a model in a chat failed the same way.
@@ -75,7 +81,7 @@
 - **Find and saving reach everything:** searching opens a folded chapter or a reply's folded steps with a match, and Export and Save as a page include folded chapters. **Show earlier** can't load a page twice, and the chat you clicked last is the one that opens.
 - **Lighter:** a reply streaming in only draws what's new, and Lite draws a few times a second rather than on every word. The chat list is sent to each window at most every 10 seconds while chats write (added or removed chats at once), Gemini's list reads only the start of each file, and finished chats are let go of memory.
 
-## Also in this version: the Commander's tools, no more surprise copies, chats that pick up where they were
+## Also in 6.6.0: the Commander's tools, no more surprise copies, chats that pick up where they were
 
 - **The Commander works in the desktop app.** Its tools (list, read and nudge your chats, answer them, start sub-sessions, set up routines) never connected there: they were started with the desktop app's own program in the wrong way, which opened a second copy of the app instead, and it closed at once. They connect now.
 - **Chats left running by an update or a crash pick up where they were.** If Session Switcher is closed without stopping its chats (an installer run by hand, a crash, Task Manager), they carry on by themselves with no way to reach them, and the app then thought they were open somewhere else: it wouldn't open them, only copy them. Now it finds them, shows them as **finishing from before the restart** (read along live), and once each has finished what it was doing, it stops it and opens that same chat here again.

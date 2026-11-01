@@ -294,9 +294,10 @@ function onEvent(ev) {
           if (CV.id) DRAFTS.set(CV.id, box.value);
           autosize(box);
         }
-        ATT.length = 0;
-        for (const im of ev.images || []) if (im && im.data) ATT.push({ kind: 'image', mediaType: im.mediaType, data: im.data, src: `data:${im.mediaType};base64,${im.data}` });
-        paintAttach();
+        for (const im of COMP.images) if (im.url) URL.revokeObjectURL(im.url);
+        COMP.images = (ev.images || []).filter(im => im && im.data).map(im => ({ mediaType: im.mediaType, data: im.data, url: `data:${im.mediaType};base64,${im.data}`, name: 'picture' }));
+        COMP.files = [];
+        paintAttachments();
         const req = ev.request || {};
         if (req.to === 'group') { CV.to = req.how === 'parallel' ? 'parallel' : 'both'; if (CV.id) setTo(CV.id, CV.to); paintBar(); }
         else if (req.to === 'other') { CV.to = req.kind ? `partner:${req.kind}` : 'partner'; if (CV.id) setTo(CV.id, CV.to); paintBar(); }
@@ -311,8 +312,8 @@ function onEvent(ev) {
         if (r.to === 'me') return 'chat';
         return CV.to || 'chat';
       };
-      const hasAnyDraft = Boolean(cur || ATT.length > 0);
-      const sameAsHeld = cur === String(ev.text || '').trim() && imgSig(ATT) === imgSig(ev.images) && !ATT.some(a => a && a.kind === 'file') && (CV.to || 'chat') === reqToLite(ev.request);
+      const hasAnyDraft = Boolean(cur || COMP.images.length || COMP.files.length);
+      const sameAsHeld = cur === String(ev.text || '').trim() && imgSig(COMP.images) === imgSig(ev.images) && !COMP.files.length && (CV.to || 'chat') === reqToLite(ev.request);
       if (hasAnyDraft && !sameAsHeld) {
         toast(`${ev.reason ? `${ev.reason} ` : ''}Held message saved (tap Undo to put it in the box).`, putHeld);
         break;

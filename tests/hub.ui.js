@@ -636,6 +636,61 @@ module.exports = [
     },
   },
   {
+    name: 'lite: a held message comes back',
+    async run(t) {
+      const b = await t.open({ demo: false, path: 'lite' });
+      await sleep(800);
+      const back = await b.eval(`
+        if (!document.getElementById('msgBox')) { const el = document.createElement('div'); el.innerHTML = composerHtml(); document.body.append(el); }
+        onEvent({ kind: 'unsent', seq: 901, text: 'The held words', images: [{ mediaType: 'image/png', data: 'iVBORw0KGgo=' }], request: { to: 'me' } });
+        return { text: document.getElementById('msgBox').value, pictures: COMP.images.length, shown: document.querySelectorAll('#attStrip img').length }`);
+      t.check('its words and pictures are back in the box', back.text === 'The held words' && back.pictures === 1 && back.shown === 1, back);
+      const newer = await b.eval(`
+        const box = document.getElementById('msgBox'); box.value = 'Something newer';
+        onEvent({ kind: 'unsent', seq: 902, text: 'Older words', images: [], request: { to: 'me' } });
+        await new Promise(r => setTimeout(r, 100));
+        return { text: box.value, pictures: COMP.images.length, said: /Held message saved/.test(document.body.innerText) }`);
+      t.check('what you’ve written since isn’t overwritten; it offers the held one', newer.text === 'Something newer' && newer.pictures === 1 && newer.said, newer);
+    },
+  },
+  {
+    name: 'a partner’s model picker',
+    // Every assistant in a chat has its own page in the picker, with its own models.
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ gemini: true, seen: (p, u, body) => calls.push([p, body]) });
+      await sleep(600);
+      await b.eval(`await ChatUI.open({ sessionId: S.projects.flatMap(p => p.sessions).find(c => /bard/.test(c.title)).id }); return 1`);
+      await sleep(900);
+      const now = () => b.eval(`const p = document.getElementById('cPick'), tab = p.querySelector('[role="tab"][aria-selected="true"]');
+        return { open: !p.hidden, tabs: [...p.querySelectorAll('[role="tab"]')].map(x => x.firstChild.textContent), on: tab && tab.firstChild.textContent, models: [...p.querySelectorAll('[data-model]')].length, asking: !!p.querySelector('.mp-load'), toast: document.getElementById('toast').innerText, mate: C.mate, target: C.target }`);
+      await b.clickOn('[data-crew="main"]'); await sleep(400);
+      let s = await now();
+      t.check('the chat’s own picker has a tab for each of them, by name', s.open && s.on === 'Claude' && s.tabs.join() === 'Claude,Codex,Gemini', s);
+      await b.esc(); await sleep(200);
+      await b.clickOn('[data-crew="comp"][data-kind="codex"]'); await sleep(300);
+      s = await now();
+      t.check('one press on Codex’s name writes to it', !s.open && s.target === 'comp' && s.mate === 'codex', s);
+      await b.clickOn('[data-crew="comp"][data-kind="codex"]'); await sleep(600);
+      s = await now();
+      t.check('a second opens its models', s.open && s.on === 'Codex' && s.models > 0 && !s.asking && !/not defined/.test(s.toast), s);
+      await b.clickOn('#cPick [role="tab"][data-kind="gemini"]'); await sleep(600);
+      s = await now();
+      t.check('its tab goes to Gemini’s models', s.open && s.on === 'Gemini' && s.mate === 'gemini' && s.models > 0 && !s.asking && !/not defined/.test(s.toast), s);
+      t.check('and what you’re writing goes with it', await b.eval(`return C.target === 'comp' && /Gemini/.test(document.getElementById('cText').getAttribute('aria-label'))`));
+      const started = calls.filter(([p]) => p === '/api/chat/companion').map(([, x]) => x.kind);
+      t.check('Gemini was brought in to ask', started.includes('gemini'), started);
+      calls.length = 0;
+      await b.clickOn('#cPick [data-model]'); await sleep(400);
+      const asked = calls.filter(([p]) => p === '/api/chat/model').at(-1);
+      t.check('choosing a model tells that assistant', !!asked && asked[1].key === (await b.eval(`return C.comps.gemini.key`)), asked);
+      // News from another of the crew doesn't turn the page you're on.
+      await b.eval(`withComp('codex', () => setCtx('comp', { used: 10, max: 100 })); return 1`); await sleep(200);
+      s = await now();
+      t.check('news from another of them leaves the page alone', s.open && s.on === 'Gemini', s);
+    },
+  },
+  {
     name: 'unsent message',
     // A message held for a reply that was stopped comes back whole, and doesn't overwrite what you've written since.
     async run(t) {

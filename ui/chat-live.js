@@ -235,7 +235,7 @@ function handleEvent(ev, src) {
       C.mi[src] = ev;
       if (!comp) { C.model = modelLabel(ev); $c('cModel').textContent = C.model; }
       renderCrew(); renderLedgerSoon();
-      if (Pick.src === src && !$c('cPick').hidden) renderPick();
+      if (pickShows(src)) renderPick();
       break;
     }
     case 'init':
@@ -438,7 +438,7 @@ function ctxLine(src) {
 function setCtx(src, c) {
   C.ctx[src] = c;
   renderCrewSoon(); renderLedgerSoon();
-  if (Pick.src === src && !$c('cPick').hidden) renderPick();
+  if (pickShows(src)) renderPick();
   if (ctxFill(c) >= 0.85) ctxWarn(src);
   else $c('cFeed').querySelectorAll(`.ctx-warn[data-src="${src}"]`).forEach(x => x.remove());
 }
@@ -664,6 +664,8 @@ function presetsFor(src) {
   return out;
 }
 const isPhone = () => matchMedia('(max-width: 760px)').matches;
+// News from one of the crew only redraws the picker if it's that one's page that's open.
+const pickShows = src => Pick.src === src && !$c('cPick').hidden && (src !== 'comp' || !C.focus || partnerProv() === C.focus);
 function closePick() {
   const b = $c('cPick');
   if (b && !b.hidden) {
@@ -677,8 +679,7 @@ function closePick() {
 async function openPick(src) {
   if (!Pick.from) Pick.from = document.activeElement;
   Pick.src = src;
-  const ce = src === 'main' ? null : compEntry(src);
-  if (src !== 'main' && (!ce || ce.ended)) { renderPick(); try { await ensureCompanion(provFor(src)); } catch (err) { closePick(); throw err; } }
+  if (src === 'comp' && (!C.comp || C.comp.ended)) { renderPick(); try { await ensureCompanion(); } catch (err) { closePick(); throw err; } }
   renderPick();
   // The keyboard goes into the picker: to the choice in use.
   const box = $c('cPick');
@@ -688,11 +689,11 @@ function renderPick() {
   const box = $c('cPick'); const src = Pick.src; if (!src) return;
   const mi = C.mi[src]; const name = PROV_NAME[provFor(src)];
   // With partners available, one picker sets any crew member: tabs at the top.
-  const pickTabs = ['main', ...crewKinds()];
-  const tabs = duo() ? `<div class="mp-tabs" role="tablist">${pickTabs.map(t => `<button type="button" role="tab" class="${provFor(t)}" aria-selected="${t === src}" data-picksrc="${t}">${PROV_NAME[provFor(t)]}<small>${esc(C.mi[t] ? `${modelLabel(C.mi[t])}${C.mi[t].effort ? ` · ${C.mi[t].effort}` : ''}` : t !== 'main' ? 'not started' : '…')}</small></button>`).join('')}</div>` : '';
+  const pickTab = (prov, on, tmi, tabSrc, kind) => `<button type="button" role="tab" class="${prov}" aria-selected="${on}" data-picksrc="${tabSrc}"${kind ? ` data-kind="${kind}"` : ''}>${PROV_NAME[prov]}<small>${esc(tmi ? `${modelLabel(tmi)}${tmi.effort ? ` · ${tmi.effort}` : ''}` : kind ? 'not started' : '…')}</small></button>`;
+  const tabs = duo() ? `<div class="mp-tabs" role="tablist">${pickTab(C.provider, src === 'main', C.mi.main, 'main')}${crewKinds().map(k => pickTab(k, src === 'comp' && partnerProv() === k, withComp(k, () => C.mi.comp), 'comp', k)).join('')}</div>` : '';
   const top = `<div class="mp-top"><span class="mp-grab" aria-hidden="true"></span>${tabs || `<p class="mp-title">${name}’s model</p>`}<button type="button" class="mp-done" data-pickdone>Done</button></div>`;
   const cx = C.ctx[src], cf = ctxFill(cx);
-  const busyNow = (src === 'main' ? C.state : compEntry(src) && compEntry(src).state) !== 'ready';
+  const busyNow = (src === 'comp' ? C.comp && C.comp.state : C.state) !== 'ready';
   const ctxRow = cx ? `<div class="mp-ctx"><p class="mp-h"><span class="mp-t">Context</span><span>${esc(ctxLine(src))}</span></p>
       <div class="mp-ctxbar ${ctxClass(cf)}" role="meter" aria-label="How full the context is" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(cf * 100)}"><i style="width:${Math.round(cf * 100)}%"></i></div>
       <div class="mp-ctxrow">${cx.parts && cx.parts.length ? `<p class="mp-ctxparts">${cx.parts.map(p => `${esc(p.name)} ${kTok(p.tokens)}`).join(' · ')}</p>` : '<p class="mp-ctxparts">Summarizing keeps the gist and frees room.</p>'}

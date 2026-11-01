@@ -762,7 +762,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const pm = t.closest('#cPick [data-model]'); if (pm) return pickModel(Pick.src, { model: pm.dataset.model });
     const pp = t.closest('#cPick [data-preset]');
     if (pp) { const p = presetsFor(Pick.src).find(x => x.id === pp.dataset.preset); if (p) return pickModel(Pick.src, { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }); return undefined; }
-    const ps = t.closest('#cPick [data-picksrc]'); if (ps) return openPick(ps.dataset.picksrc);
+    const ps = t.closest('#cPick [data-picksrc]');
+    if (ps) {
+      // Another of the crew's tab puts that one in view, as its pill does.
+      if (ps.dataset.kind && ps.dataset.kind !== C.mate) {
+        const from = Pick.from;
+        focusMate(ps.dataset.kind);
+        if (C.target === 'comp') setTarget('comp', false); else renderCrew();
+        Pick.from = from;
+      }
+      return openPick(ps.dataset.picksrc);
+    }
     if (t.closest('#cPick [data-pickdone]')) return closePick();
     const pe = t.closest('#cPick [data-effort]'); if (pe) return pickModel(Pick.src, { effort: pe.dataset.effort });
     const ts = t.closest('.tg-sum');

@@ -57,6 +57,14 @@ test('workspace: every address the page asks for is there, and can be reached', 
   assert.deepEqual([...new Set(missing)], []);
 });
 
+// A name nothing defines only shows when its button is pressed ("compEntry is not defined").
+test('workspace: every name the app’s code uses is defined somewhere', t => {
+  const r = require('child_process').spawnSync(process.execPath, ['--expose-internals', path.join(__dirname, 'fixtures', 'page-names.js')], { encoding: 'utf8', windowsHide: true, timeout: 60000 });
+  let found = null; try { found = JSON.parse(r.stdout); } catch { /* this Node won't lend its parser */ }
+  if (!found || found.unavailable) { t.skip('no parser here'); return; }
+  assert.deepEqual(found.missing, {});
+});
+
 test('workspace: a project’s words and notes come from the real routes', async () => {
   const s = await startServer(), world = tmp('ss-ws-find-');
   try {
