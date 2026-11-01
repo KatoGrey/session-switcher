@@ -49,7 +49,7 @@ const { branchSession } = require('./lib/branch');
 const runnerLib = require('./lib/runner');
 const { ownText } = require('./lib/shared');
 
-const APP_VERSION = '6.6.1';
+const APP_VERSION = '6.6.2';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
 // Installed as a desktop app (desktop/main.js): the app starts and stops this server, and does restarts.
 const SHELL = process.env.SWITCHER_SHELL === 'electron' && typeof process.send === 'function' ? 'electron' : null;
@@ -899,7 +899,7 @@ function openChat(c, body) {
 }
 // Chats here are read in a window that shows pictures (Switcher Lite, the chat window); they're told so,
 // or they assume they can't and send links instead.
-const SHOWS_PICTURES = 'This conversation is shown in Session Switcher, which displays Markdown images inline. To show the user a picture or screenshot, write ![short description](/absolute/path/to/file.png) with the absolute path of a local image file (png, jpg, gif, webp, svg). Use this whenever a picture would help instead of only linking to it. Videos work the same way: ![short description](/absolute/path/to/clip.mp4) (mp4, mov, webm or m4v, or an https address ending in one) plays in the chat with a Download button. Sound works too (mp3, wav, m4a, ogg, flac, aac, opus), and a link to Spotify, YouTube, Apple Music or SoundCloud shows that service’s player, so you can share music to listen to.';
+const SHOWS_PICTURES = 'This conversation is shown in Session Switcher, which displays Markdown images inline. To show the user a picture or screenshot, write ![short description](/absolute/path/to/file.png) with the absolute path of a local image file (png, jpg, gif, webp, svg). Use this whenever a picture would help instead of only linking to it. Videos work the same way: ![short description](/absolute/path/to/clip.mp4) (mp4, mov, webm or m4v, or an https address ending in one) plays in the chat with a Download button. Sound works too (mp3, wav, m4a, ogg, flac, aac, opus), and a link to Spotify, YouTube, Apple Music or SoundCloud shows that service’s player, so you can share music to listen to.\n\nWhen you point the user to a file or folder on this computer, link it with its full absolute path, written as [name](<full path>), with the angle brackets, so spaces are fine: Session Switcher opens it. Do this every time you tell them where something is, and don\'t give only a file name or a shortened folder like Documents\\My Site: find the full path first.';
 // Passed as a file: spawnClaude only takes plain flags, ids and paths as arguments (no spaces), so a
 // sentence as --append-system-prompt would stop every chat from starting.
 // It lives in the temp folder, which Windows' cleanup (Storage Sense, Disk Cleanup) may empty while the
@@ -1781,8 +1781,16 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, { byAccount: out });
   }
   if (route === 'GET /api/file') {
-    const q = Object.fromEntries(url.searchParams);
-    return send(res, 200, filesLib.readEntry(fileBase(q), q.path));
+    const q = Object.fromEntries(url.searchParams), base = fileBase(q);
+    try { return send(res, 200, filesLib.readEntry(base, q.path)); }
+    catch (err) {
+      // Named, but not where it's looked for: one found elsewhere opens; several, you choose.
+      if (err.status !== 404) throw err;
+      const found = await filesLib.findNear(base, q.path, { near: url.searchParams.getAll('near') });
+      if (!found.length) throw err;
+      if (found.length === 1) return send(res, 200, filesLib.readEntry(base, found[0]));
+      return send(res, 200, { kind: 'choices', path: q.path, matches: found });
+    }
   }
   // Lite's side viewer: the same, plus the chat's own scratchpad (where Claude Code keeps its
   // screenshots and notes: <temp>/claude-<uid>/<project>/<this session's id>/…).
@@ -1791,7 +1799,14 @@ async function handleApi(req, res, url, remote = false) {
     const abs = path.resolve(String(q.path || ''));
     const id = String(q.session || '').toLowerCase();
     const scratch = /^[0-9a-f-]{36}$/.test(id) ? abs.match(new RegExp(`^(/private/tmp|/tmp)/claude-\\d+/[^/]+/${id}/`, 'i')) : null;
-    return send(res, 200, filesLib.readEntry(scratch ? scratch[0] : fileBase(q), q.path));
+    const base = scratch ? scratch[0] : fileBase(q);
+    try { return send(res, 200, filesLib.readEntry(base, q.path)); }
+    catch (err) {
+      if (err.status !== 404) throw err;
+      const found = await filesLib.findNear(base, q.path);
+      if (found.length !== 1) throw err;   // (its side viewer shows one file; it doesn't ask which)
+      return send(res, 200, filesLib.readEntry(base, found[0]));
+    }
   }
   // A chat's (or project's) files, for @ mentions in the message box.
   if (route === 'GET /api/files/list') {

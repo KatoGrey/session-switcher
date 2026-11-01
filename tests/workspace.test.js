@@ -65,6 +65,24 @@ test('workspace: every name the app’s code uses is defined somewhere', t => {
   assert.deepEqual(found.missing, {});
 });
 
+test('workspace: a file a chat only names opens from where it really is, or asks which', async () => {
+  const s = await startServer(), world = tmp('ss-ws-find-');
+  try {
+    put(world, 'docs/deep/plan.md', '# The plan\n');
+    put(world, 'a/both.md', 'a'); put(world, 'b/both.md', 'b');
+    const cwd = (await s.call('/api/project/create', { existing: world })).json.cwd;
+    const one = await s.call(`/api/file?${new URLSearchParams({ cwd, path: 'plan.md' })}`);
+    assert.equal(one.status, 200, JSON.stringify(one.json));
+    assert.equal(one.json.path, path.join(world, 'docs', 'deep', 'plan.md'));
+    const two = await s.call(`/api/file?${new URLSearchParams({ cwd, path: 'both.md' })}`);
+    assert.equal(two.json.kind, 'choices');
+    assert.equal(two.json.matches.length, 2);
+    const pointed = new URLSearchParams({ cwd, path: 'both.md' }); pointed.append('near', path.join(world, 'b'));
+    assert.equal((await s.call(`/api/file?${pointed}`)).json.path, path.join(world, 'b', 'both.md'), 'the folder the chat pointed to settles it');
+    assert.equal((await s.call(`/api/file?${new URLSearchParams({ cwd, path: 'not-anywhere-at-all.md' })}`)).status, 404);
+  } finally { await s.stop(); }
+});
+
 test('workspace: a project’s words and notes come from the real routes', async () => {
   const s = await startServer(), world = tmp('ss-ws-find-');
   try {

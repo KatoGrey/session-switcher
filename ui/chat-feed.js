@@ -56,8 +56,12 @@ function link(url, inner) { return `<a href="${esc(url)}" target="_blank" rel="n
 function fileLink(p, inner) { const lp = localPath(p); return `<a class="flink" href="#" data-path="${esc(lp)}" title="Open ${esc(lp)}">${inner}</a>`; }
 // In `code`: a path with a drive can't be anything else, even with spaces or no extension (a folder),
 // unless it's a command (C:\tools\run.exe --fast). Anything else needs a known ending, and no spaces.
-const looksLikePath = c => c.length < 400 && !/^https?:/i.test(c) && /[\w]/.test(c)
-  && (DRIVE_PATH.test(c) ? !/[\n<>"|?*]| --?\w|\.(?:exe|cmd|bat|com|ps1)\s/i.test(c) && (!/\s/.test(c) || /\.\w{1,8}$|[\\/]$/.test(c)) : !/\s/.test(c) && PATHY.test(c));
+// So does a folder of yours, however it's shortened (Documents\My Site). Part of a name isn't a path
+// (-deploy.zip, .zip), nor is file:/// by itself.
+const USER_FOLDER = /^(?:documents|desktop|downloads|pictures|videos|music|onedrive)[\\/]/i;
+const looksLikePath = c => c.length < 400 && !/^https?:/i.test(c) && /[\w]/.test(c) && !/^-|^\.\w+$|^file:\/*$/i.test(c)
+  && (DRIVE_PATH.test(c) ? !/[\n<>"|?*]| --?\w|\.(?:exe|cmd|bat|com|ps1)\s/i.test(c) && (!/\s/.test(c) || /\.\w{1,8}$|[\\/]$/.test(c))
+    : USER_FOLDER.test(c) ? !/[\n<>"|?*]| --?\w/.test(c) : !/\s/.test(c) && PATHY.test(c));
 function emphasis(t) {
   return t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
     .replace(/(^|[^*\w])\*([^*\n]+)\*(?![\w*])/g, '$1<em>$2</em>').replace(/(^|[^_\w])_([^_\n]+)_(?![\w_])/g, '$1<em>$2</em>')

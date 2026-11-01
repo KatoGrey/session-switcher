@@ -110,6 +110,8 @@ function viewerBody() {
       : `<iframe class="vw-frame" src="${esc(src)}" title="${esc(baseName(VW.target))}"></iframe>`;
   }
   if (d.kind === 'dir') return `<div class="vw-pad"><div class="vw-files">${(d.entries || []).map(e => `<button class="vw-file" data-viewfile="${esc(`${(d.path || VW.target).replace(/[\\/]$/, '')}/${e.name}`)}"><b>${esc(e.name)}${e.dir ? '/' : ''}</b></button>`).join('')}</div></div>`;
+  // Named but not where it was looked for, and found in more than one place: you pick.
+  if (d.kind === 'choices') return `<div class="vw-pad"><p class="hint-line">More than one ${esc(baseName(d.path || VW.target))} turned up:</p><div class="vw-files">${(d.matches || []).map(m => `<button class="vw-file" data-viewfile="${esc(m)}"><b>${esc(baseName(m))}</b><small>${esc(m)}</small></button>`).join('')}</div></div>`;
   if (d.kind === 'binary') return `<p class="empty-note vw-pad">${esc(d.note || 'This file can’t be shown here.')}</p>`;
   if (d.kind === 'text') {
     if (d.lang === 'html' && !d.truncated && !VW.source) {

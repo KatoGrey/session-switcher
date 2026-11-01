@@ -1,5 +1,6 @@
-# Codex's and Gemini's models can be chosen again
+# Links to files and folders go to the right place, and Codex's and Gemini's models can be chosen again
 
+- **A chat's links go where they should.** Claude is now told to link every file and folder by its full path. And when a chat only names one ("site-deploy.zip, in Documents\My Site"), clicking it finds it: in the folders that chat pointed to, in the chat's own folder however deep, then in Documents, Desktop and Downloads, OneDrive's included. If there are several, it asks which. It used to look only in the chat's folder and say there was no such file.
 - **A partner's model picker opens.** In 6.6.0, pressing Codex's or Gemini's name a second time, or a partner's tab in the picker, said "compEntry is not defined" and showed no models. Each assistant in a chat now has its own working tab, under its own name; the tabs of the others all said the chat's own assistant.
 - **A held message comes back in Switcher Lite.** A message interrupted while waiting its turn hit an error instead of returning to the box, with its pictures.
 - **Carry on when it's back** says "Your usage is back" if the chat's busy when the time comes; that hit an error too.
