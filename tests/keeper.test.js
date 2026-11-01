@@ -102,3 +102,31 @@ test('keeper: a Switcher on another protocol version retires it, and its chats e
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+test('keeper: a line too long to hold is skipped, the chat hears how it began and its size, and the keeper carries on', { skip: process.platform === 'win32' }, async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kt-'));
+  // The keeper starts with this environment: a 64 KB limit stands in for the real one.
+  const was = process.env.SWITCHER_KEEPER_LINE_MAX;
+  process.env.SWITCHER_KEEPER_LINE_MAX = String(64 * 1024);
+  const a = createKeeperClient({ dataDir, appDir: APP });
+  const hello = await a.ready().finally(() => { if (was === undefined) delete process.env.SWITCHER_KEEPER_LINE_MAX; else process.env.SWITCHER_KEEPER_LINE_MAX = was; });
+  assert.ok(hello, 'a keeper starts and answers');
+  try {
+    // A stand-in for an answer full of pictures: one line far over the limit, between two ordinary ones.
+    const say = 'for (const [id, result] of [[1, "first"], [2, "x".repeat(300 * 1024)], [3, "after"]]) console.log(JSON.stringify({ id, result }));';
+    const pr = a.spawnKept({ file: process.execPath, args: ['-e', say], env: process.env, cwd: dataDir });
+    const seen = [], skipped = [];
+    pr.onLine(s => seen.push(JSON.parse(s).id), (head, size) => skipped.push({ head, size }));
+    await Promise.race([new Promise(r => pr.on('exit', r)), wait(5000)]);
+    assert.deepStrictEqual(seen, [1, 3], 'the lines around it arrive, in order');
+    assert.strictEqual(skipped.length, 1, 'the chat hears of the skipped line');
+    assert.match(skipped[0].head, /^\{"id":2,/, 'with how it began (which answer it was)');
+    assert.ok(skipped[0].size > 300 * 1024, 'and its size');
+    process.kill(hello.pid, 0);   // throws if the keeper has gone
+    assert.ok(a.usable(), 'the keeper is still there');
+    a.pause();
+  } finally {
+    try { process.kill(hello.pid, 'SIGTERM'); } catch { /* gone */ }
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
