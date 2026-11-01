@@ -130,3 +130,19 @@ test('keeper: a line too long to hold is skipped, the chat hears how it began an
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+test('keeper: a chat carried over a restart keeps talking, with its replay measured again', () => {
+  const { LiveChat } = require('../lib/chat');
+  const make = () => new LiveChat({ cfg: {}, account: { id: 'acct', name: 'Main' }, cwd: os.tmpdir() });
+  const a = make();
+  a.emit({ kind: 'user', text: 'hello' });
+  a.emit({ kind: 'notice', level: 'info', text: 'working on it' });
+  const snap = a.snapshot();
+  assert.ok(!('replaySizes' in snap), 'weak maps aren’t written into the saved state');
+  const b = make();
+  b.restoreFrom(snap, null);
+  assert.ok(b.replaySizes instanceof WeakMap, 'the restored chat has its own weak map, not {}');
+  assert.strictEqual(b.replayBytes, a.replayBytes, 'the events carried over are measured again');
+  b.emit({ kind: 'notice', level: 'info', text: 'after the restart' });
+  assert.strictEqual(b.buffer.length, 3, 'and new events join them');
+});
