@@ -243,8 +243,16 @@ function go(view, extra = {}, { push = true } = {}) {
   if (view === 'images') loadGallery().then(() => { render(); if (extra.genOpen) $('genPrompt')?.focus(); }).catch(err => toast(err.message));
   if (view === 'alerts') loadPush().then(render).catch(err => toast(err.message));
 }
+// A swipe from the screen's edge: iOS slides the pages itself, and Lite's own slide on top of it made
+// the two take turns, frame by frame (the chat flashing back as you left it). Then Lite doesn't slide.
+let edgeAt = 0;
+document.addEventListener('touchstart', e => { const x = e.touches[0]?.clientX; if (x != null && (x < 28 || x > innerWidth - 28) && !e.target.closest?.('button, a, input, textarea')) edgeAt = Date.now(); }, { passive: true, capture: true });
 addEventListener('popstate', e => {
   const st = e.state || { view: 'now' };
+  if (e.hasUAVisualTransition || Date.now() - edgeAt < 1500) {
+    document.body.classList.add('no-slide');
+    requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('no-slide')));
+  }
   S.hist = Math.max(0, (S.hist || 0) - 1);
   if (st.view === 'chat' && st.chat) go('chat', { chat: st.chat }, { push: false });
   else go(st.view || 'now', { project: st.project }, { push: false });
