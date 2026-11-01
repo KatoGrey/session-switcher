@@ -137,6 +137,9 @@ test('keeper: a chat carried over a restart keeps talking, with its replay measu
   const a = make();
   a.emit({ kind: 'user', text: 'hello' });
   a.emit({ kind: 'notice', level: 'info', text: 'working on it' });
+  // Mid-reply, change tracking holds a promise, other chats, and the snapshot from before the reply.
+  const peer = make();
+  Object.assign(a.snap, { preparing: Promise.resolve(), knownPeers: new Set([peer]), pending: { before: { top: '/work', shadow: false }, at: 'now', peers: new Set([peer]) } });
   const snap = a.snapshot();
   assert.ok(!('replaySizes' in snap), 'weak maps aren’t written into the saved state');
   const b = make();
@@ -145,4 +148,20 @@ test('keeper: a chat carried over a restart keeps talking, with its replay measu
   assert.strictEqual(b.replayBytes, a.replayBytes, 'the events carried over are measured again');
   b.emit({ kind: 'notice', level: 'info', text: 'after the restart' });
   assert.strictEqual(b.buffer.length, 3, 'and new events join them');
+  assert.deepStrictEqual(b.snap.pending, { before: { top: '/work', shadow: false }, at: 'now' }, 'the snapshot from before the reply comes along, without the other chats');
+  assert.ok(!b.snap.preparing && !b.snap.knownPeers, 'promises and other chats stay behind (they’d come back as {})');
+  b.markSharedWith([peer]);
+  assert.ok(b.snap.knownPeers.has(peer), 'and sharing work with another chat still works');
+});
+
+test('keeper: a Codex chat carried over from a copy before 6.6 still sends what you write', async () => {
+  const { CodexChat } = require('../lib/codex');
+  const calls = [];
+  const srv = { listeners: new Set(), initialized: true, request: method => { calls.push(method); return Promise.resolve(method === 'turn/start' ? { turn: { id: 't1' } } : {}); } };
+  const chat = new CodexChat({ cfg: {}, account: { id: 'cx', name: 'Codex', provider: 'codex' }, cwd: os.tmpdir(), codex: { server: () => srv } });
+  // Saved by an older copy: its thread was going, but the saved state doesn't say so (no threadReady).
+  chat.restoreFrom({ key: chat.key, sessionId: 'thread-1', state: 'ready', buffer: [], queue: [] });
+  chat.send('carry on');
+  await wait(50);
+  assert.ok(calls.includes('turn/start'), 'the message goes to Codex instead of waiting for ever');
 });
