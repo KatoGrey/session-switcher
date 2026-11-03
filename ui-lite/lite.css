@@ -1264,3 +1264,28 @@ button.tk-heat-cell:hover, button.tk-heat-cell:focus-visible { outline: 2px soli
 .chip small { color: var(--muted); font-size: 12px; }
 .pp-more, .pp-none { color: var(--muted); font-size: 11.5px; padding: 6px 10px 2px; margin: 0; }
 button.linkish, .crumb button, .sec-h button.hint, details.step summary, .rt-esc summary, .si-alt summary, .notice-long summary, .md-html summary { min-height: 24px; min-width: 24px; display: inline-flex; align-items: center; }
+/* Search inside chats (pages.js deepHtml). */
+.deep { margin-top: 18px; display: flex; flex-direction: column; gap: 2px; }
+.deep-h { display: flex; align-items: baseline; gap: 8px; color: var(--muted); font-size: 12px; padding: 4px 8px; }
+.deep-h .hint { font-size: 11px; }
+.deep-row .t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.deep-row .snip { color: var(--fg-2); font-size: 12.5px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+.deep-row mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--fg); border-radius: 2px; padding: 0 1px; }
+/* Keep it working, and a file shared with another chat (chat.js). */
+.keep-chip, .clash-chip { cursor: pointer; }
+.clash-chip { border-color: color-mix(in srgb, var(--hazard, #d9a400) 50%, var(--line)); }
+.pop .clash-chat small { max-width: none; flex: none; }
+.keep-chip { color: var(--accent); }
+.clash-chip { color: var(--hazard, #d9a400); }
+.clash-file { padding: 6px 10px 2px; color: var(--fg-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 340px; }
+.pop-note { color: var(--muted); font-size: 12px; padding: 6px 10px 2px; margin: 0; max-width: 340px; }
+.keep-modal { display: flex; flex-direction: column; gap: 10px; max-width: 440px; }
+.keep-modal .hint-line { margin: 0; }
+.keep-picks { gap: 6px; flex-wrap: wrap; }
+.keep-picks button { padding: 5px 10px; border: 1px solid var(--line); border-radius: 7px; font-size: 13px; }
+.keep-picks button:hover { border-color: var(--fg-2); }
+.keep-picks button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--fg); }
+.keep-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--fg-2); }
+.keep-row span { width: 110px; flex: none; }
+.keep-row .field { flex: 1; min-width: 0; }
+.keep-err { color: var(--st-bug); font-size: 13px; margin: 0; }

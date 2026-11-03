@@ -36,6 +36,7 @@ const keyOfLive = x => x.sessionId || x.key;
 // Looking at a chat counts as reading it: no sound or notification for the one on screen.
 const viewing = x => S.view === 'chat' && CV.id && x.sessionId && x.sessionId.toLowerCase() === String(CV.id).toLowerCase() && document.hasFocus() && !document.hidden;
 function onLiveChange(before, after) {
+  if (S.view === 'chat' && typeof paintHead === 'function') paintHead();
   if (!S.loaded || !before) { updateBadge(); return; }
   const was = new Map(before.map(x => [keyOfLive(x), x]));
   let need = null, reply = null;

@@ -1249,12 +1249,17 @@ const keepWorking = require('./lib/keepworking').createKeepWorking({
     await round.handedOver;   // the whole round: who actually got it is known once that's settled
     return round.delivered;
   },
-  // Nobody's there to press "Continue as": out of usage, the same conversation goes to the account with the most room.
+  // Nobody's there to press "Continue as": out of usage, the same conversation goes to the next plan in
+  // Lite's use-next order (the one that resets soonest), else the account with the most room.
   moveAccount: async lead => {
     const c = config();
     if (c.prefs.autoSwitch === false || (lead.provider || 'claude') !== 'claude') return null;
-    const ctx = queueContext();
-    const { account } = tasksLib.readyAccount({ state: 'queued', provider: 'claude', accountId: 'auto', when: 'now' }, { ...ctx, accounts: ctx.accounts.filter(a => a.id !== lead.account.id) });
+    const nextId = liteRoutes.useNextIds('claude').find(id => id !== lead.account.id && c.accounts.some(a => a.id === id));
+    let account = nextId ? c.accounts.find(a => a.id === nextId) : null;
+    if (!account) {
+      const ctx = queueContext();
+      ({ account } = tasksLib.readyAccount({ state: 'queued', provider: 'claude', accountId: 'auto', when: 'now' }, { ...ctx, accounts: ctx.accounts.filter(a => a.id !== lead.account.id) }));
+    }
     if (!account) return null;
     const { sessionId } = lead;
     for (const p of pairs.crewOf(lead)) { try { await p.stop(); } catch { /* already gone */ } }

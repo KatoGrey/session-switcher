@@ -75,11 +75,44 @@ function searchMatches(q, { archived = false } = {}) {
   const pool = archived ? S.chats.filter(c => !c.auto && !c.routineRun) : allChats();
   return pool.filter(c => c.title.toLowerCase().includes(q) || projOf(c).name.toLowerCase().includes(q) || (c.firstPrompt || '').toLowerCase().includes(q)).sort((a, b) => recentAt(b) - recentAt(a));
 }
+// Words inside chats, for all three assistants, from the server's index (names match at once, above
+// it). Asked a moment after you stop typing; while Codex's and Gemini's chats are still being read
+// it asks again until they're done.
+const SR = { q: '', hits: null, progress: null, seq: 0, timer: 0 };
+function deepSearch(q) {
+  clearTimeout(SR.timer);
+  if (q.length < 3) { Object.assign(SR, { q: '', hits: null, progress: null }); return; }
+  if (SR.q === q && SR.hits && (!SR.progress || SR.progress.ready)) return;
+  SR.timer = setTimeout(async () => {
+    const seq = ++SR.seq;
+    try {
+      const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
+      if (seq !== SR.seq || S.q !== q) return;
+      Object.assign(SR, { q, hits: r.hits || [], progress: r.progress || null });
+      if (r.progress && !r.progress.ready) SR.timer = setTimeout(() => { if (S.q === q) deepSearch(q); }, 1500);
+    } catch { if (seq === SR.seq) Object.assign(SR, { q, hits: [], progress: null }); }
+    const box = $('deepBox'); if (box) box.outerHTML = deepHtml();
+  }, 300);
+}
+function deepHtml() {
+  const q = String(S.q || '');
+  if (q.length < 3) return '<div id="deepBox"></div>';
+  const reading = SR.progress && !SR.progress.ready ? `<span class="hint">reading chats${SR.progress.total ? ` · ${Math.round(100 * SR.progress.done / SR.progress.total)}%` : ''}</span>` : '';
+  const head = `<div class="side-h deep-h">Inside chats ${reading}</div>`;
+  if (!SR.hits || SR.q !== q) return `<div class="group deep" id="deepBox">${head}<p class="hint-line">Looking…</p></div>`;
+  const named = new Set(searchMatches(q, { archived: true }).map(c => c.id));
+  const terms = q.split(/\s+/).filter(Boolean).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const mark = s => (terms.length ? esc(s).replace(new RegExp(`(${terms.map(t => esc(t)).join('|')})`, 'gi'), '<mark>$1</mark>') : esc(s));
+  const rows = SR.hits.map(h => ({ h, c: chatBy.get(h.id) || S.chats.find(x => String(x.id).toLowerCase() === String(h.id).toLowerCase()) })).filter(x => x.c && !named.has(x.c.id)).slice(0, 40);
+  return `<div class="group deep" id="deepBox">${head}${rows.map(({ h, c }) => `<button class="row recent-row deep-row" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" title="${esc(c.title)}">
+    <span class="t"><b>${esc(c.title)}</b><small>${esc(projOf(c).name)} · ${c.provider === 'codex' ? 'Codex' : c.provider === 'gemini' ? 'Gemini' : 'Claude'}${h.count > 1 ? ` · ${h.count} matches` : ''}</small>${h.snippet ? `<span class="snip">${mark(h.snippet)}</span>` : ''}</span>
+    <span class="when">${ago(recentAt(c))}</span><span aria-hidden="true">›</span></button>`).join('') || '<p class="hint-line">Nothing more inside chats.</p>'}</div>`;
+}
 // On a phone the search filters the sidebar as you type (going to a page of results took the box,
 // and the keyboard, away after every letter). Archived chats are found too, dimmed.
 function sideSearchHtml() {
   const list = searchMatches(S.q, { archived: true }).slice(0, 60);
-  return `<div class="group side-results"><div class="side-h">${list.length ? `${list.length === 60 ? '60+' : list.length} match${list.length === 1 ? '' : 'es'}` : 'Nothing matches'}</div>${list.map(recentRow).join('')}</div>`;
+  return `<div class="group side-results"><div class="side-h">${list.length ? `${list.length === 60 ? '60+' : list.length} match${list.length === 1 ? '' : 'es'}` : 'Nothing matches'}</div>${list.map(recentRow).join('')}</div>${deepHtml()}`;
 }
 function listView(kind) {
   const all = allChats();
@@ -90,7 +123,7 @@ function listView(kind) {
   } else { list = recentChats().slice(0, 60); title = L('Recents'); }
   return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${esc(title)}</h1></div></div>
     ${kind === 'recent' ? '<p class="hint-line">Across all projects, including archived chats. Last opened or updated.</p>' : ''}
-    <div class="rows">${list.map(c => kind === 'recent' ? recentRow(c) : rowHtml(c, { showProject: true, showStage: true })).join('') || '<p class="empty-note">Nothing here.</p>'}</div>${selHint()}</div>`;
+    <div class="rows">${list.map(c => kind === 'recent' ? recentRow(c) : rowHtml(c, { showProject: true, showStage: true })).join('') || (kind === 'search' ? '<p class="empty-note">No names match.</p>' : '<p class="empty-note">Nothing here.</p>')}</div>${kind === 'search' ? deepHtml() : ''}${selHint()}</div>`;
 }
 
 const recentAt = c => Math.max(c.updated || 0, S.seen[c.id] || 0);

@@ -308,6 +308,8 @@ document.addEventListener('click', e => {
   if ((b = el('[data-fam]'))) { e.stopPropagation(); toggleFam(b.dataset.fam); sfx('card'); return render(); }
   if ((b = el('[data-pipe-refresh]'))) { e.stopPropagation(); return loadPipeline(true); }
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
+  if ((b = el('[data-keep]'))) return keepDialog();
+  if ((b = el('[data-clash]'))) return clashMenu(b);
   if ((b = el('[data-renamechat]'))) return editTitleInline();
   if ((b = el('[data-barmodel]'))) return modelMenu(b);
   if ((b = el('[data-bareffort]'))) return effortMenu(b);
@@ -548,7 +550,7 @@ function showPicture(src, list = []) {
   addEventListener('keydown', onKey, true);
   paint();
 }
-$('q').addEventListener('input', e => { S.q = e.target.value.trim(); if (small()) { $('sideScroll').scrollTop = 0; return renderSide(); } if (S.q) { if (S.view !== 'search') go('search', {}, { push: false }); else render(); } else if (S.view === 'search') go('now', {}, { push: false }); });
+$('q').addEventListener('input', e => { S.q = e.target.value.trim(); deepSearch(S.q); if (small()) { $('sideScroll').scrollTop = 0; return renderSide(); } if (S.q) { if (S.view !== 'search') go('search', {}, { push: false }); else render(); } else if (S.view === 'search') go('now', {}, { push: false }); });
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter') { const r = document.querySelector(small() ? '#sideScroll [data-cur]' : '#main [data-cur]'); if (r) { e.preventDefault(); r.click(); } } if (e.key === 'ArrowDown') { e.preventDefault(); e.target.blur(); setCur(0); } });
 
 async function sendQuick(key) {

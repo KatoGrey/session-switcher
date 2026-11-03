@@ -609,6 +609,7 @@ function chatHead() {
       <div class="ch-name"><div class="crumb${p && c && p.name.trim().toLowerCase() === chatTitle().trim().toLowerCase() ? ' same' : ''}">${p ? `<button data-project="${esc(p.key)}">${esc(p.name)}</button>` : ''}</div>${c ? `<button class="ttl" id="chatTitle" data-renamechat="1" title="Rename">${esc(chatTitle())}</button>` : `<span class="ttl" id="chatTitle">${esc(chatTitle())}</span>`}</div>
       <div class="ch-tools">${st ? `<button class="stage" data-rowmenu="${esc(c.id)}" aria-haspopup="menu" title="Status, kind, Focus (s)">${c.focus ? '<span class="focus-star">★</span>' : `<span class="dot" style="background:${st.c}"></span>`}${st.name}</button>${kindTag(c)}${waitTag(c)}` : ''}
       ${(n => (n ? `<button class="iconbtn pics-btn" data-chatpics="1" aria-haspopup="menu" title="Pictures in this chat">${IC.image}<span>${n}</span></button>` : ''))(chatPictures().length)}
+      ${keepChip()}${clashChip()}
       ${headLinks()}
       ${c ? '<button class="iconbtn side-btn" data-sidechat="1" title="Side chat: ask or try something beside this chat, without derailing it">Side chat</button>' : ''}
       ${typeof chatFiles === 'function' && chatFiles().length ? `<button class="iconbtn files-btn" data-viewfiles="1" title="Files this chat read or changed (opens beside the chat)">Files</button>` : ''}</div>
@@ -1368,8 +1369,9 @@ const waitReadyFor = key => new Promise((res, reject) => {
 
 function chatMenu(anchor) {
   const c = chatBy.get(CV.id);
-  pop(anchor, `${c ? '<button data-v="rename">Rename…</button>' : ''}<button data-v="settings">Conversation settings…</button><button data-v="full">Open in the full app<small>diffs, files, history</small></button>${c ? `<hr><button data-v="routine">Make this a routine…</button><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}<button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="arch">Archive<kbd>e</kbd></button>` : ''}${CV.key ? '<hr><button data-v="stop">Stop it running here</button>' : ''}`, v => {
+  pop(anchor, `${c ? '<button data-v="rename">Rename…</button>' : ''}<button data-v="settings">Conversation settings…</button><button data-v="keep">Keep it working until…</button><button data-v="full">Open in the full app<small>diffs, files, history</small></button>${c ? `<hr><button data-v="routine">Make this a routine…</button><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}<button data-v="wait">Waiting on…<kbd>w</kbd></button><button data-v="arch">Archive<kbd>e</kbd></button>` : ''}${CV.key ? '<hr><button data-v="stop">Stop it running here</button>' : ''}`, v => {
     if (v === 'settings') return settingsMenu(anchor);
+    if (v === 'keep') return keepDialog();
     if (v === 'rename') return editTitleInline();
     if (v === 'nest') return pickParent(anchor, [c.id]);
     if (v === 'routine') return routineFromChat(c);
@@ -1380,6 +1382,63 @@ function chatMenu(anchor) {
     if (v === 'stop') return wrap(async () => { await api('/api/chat/stop', { key: CV.key }); toast('Stopped. It stays in the list; send a message to pick it up again.'); })();
     return undefined;
   });
+}
+/* ---------- Keep it working, and two chats on one file ---------- */
+// This chat's entry in the live list (the server sends what it's kept at, and files it shares).
+const liveOfChat = () => (CV.key && (S.live || []).find(x => x.key === CV.key)) || (CV.id ? liveBy.get(String(CV.id).toLowerCase()) : null) || null;
+const clockAt = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const dayClock = t => (new Date(t).toDateString() === new Date().toDateString() ? clockAt(t) : `${new Date(t).toLocaleDateString([], { weekday: 'short' })} ${clockAt(t)}`);
+function keepChip() {
+  const k = (liveOfChat() || {}).keep; if (!k) return '';
+  const out = k.state === 'out' && k.backAt;
+  const tip = out ? `Out of usage: carries on at ${clockAt(k.backAt)}, until ${dayClock(k.until)}` : `Kept working until ${dayClock(k.until)}`;
+  return `<button class="hlink keep-chip" data-keep="1" title="${esc(tip)}${k.nudges ? ` · told to carry on ${k.nudges}×` : ''}">⟳ ${esc(out ? `at ${clockAt(k.backAt)}` : dayClock(k.until))}</button>`;
+}
+function clashChip() {
+  const o = (liveOfChat() || {}).overlaps || []; if (!o.length) return '';
+  return `<button class="hlink clash-chip" data-clash="1" aria-haspopup="menu" title="Another chat changed ${o.length === 1 ? 'a file' : `${o.length} files`} this one changed, at the same time">⚠ ${o.length === 1 ? 'Shared file' : `${o.length} shared files`}</button>`;
+}
+function clashMenu(anchor) {
+  const o = (liveOfChat() || {}).overlaps || [];
+  const name = y => { const c = y.sessionId && chatBy.get(y.sessionId); return c ? c.title : provName(y.provider || 'claude'); };
+  pop(anchor, `<div class="ph">Changed here and in another chat at once</div>${o.map(r => `<div class="clash-file mono" title="${esc(r.file)}">${esc(r.rel)}</div>${r.others.filter(y => y.sessionId).map(y => `<button class="clash-chat" data-v="${esc(y.sessionId)}">${esc(name(y).slice(0, 60))}<small>${ago(r.at)} ago</small></button>`).join('')}`).join('')}<p class="pop-note">Each works from what it last read, so one may have undone the other's change.</p>`, v => openChat(v));
+}
+const localInput = t => { const d = new Date(t - new Date(t).getTimezoneOffset() * 6e4); return d.toISOString().slice(0, 16); };
+function keepDialog() {
+  const k = (liveOfChat() || {}).keep;
+  const morning = (() => { const d = new Date(); if (d.getHours() >= 8) d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); return d.getTime(); })();
+  const picks = [['2 hours', Date.now() + 2 * 36e5], ['4 hours', Date.now() + 4 * 36e5], ['8 hours', Date.now() + 8 * 36e5], [`8:00 ${new Date(morning).toDateString() === new Date().toDateString() ? 'today' : 'tomorrow'}`, morning]];
+  const start = k ? k.until : picks[2][1];
+  const root = $('modalRoot');
+  root.innerHTML = `<div class="modal-back"><form class="modal keep-modal" id="keepForm"><h3>Keep it working</h3>
+    <p class="hint-line">When it goes quiet, it's told to carry on. Anything waiting on you is left alone. Out of usage, it moves to your next plan or waits for the reset.</p>
+    <div class="kind-seg m-chips keep-picks" role="group" aria-label="Until">${picks.map(([l, t], i) => `<button type="button" data-kp="${i}">${esc(l)}</button>`).join('')}</div>
+    <label class="keep-row"><span>Until</span><input type="datetime-local" name="until" class="field" value="${localInput(start)}"></label>
+    <label class="keep-row"><span>Check in after</span><select name="quiet" class="field">${[5, 15, 30].map(m => `<option value="${m}"${(k ? k.quietMinutes : 5) === m ? ' selected' : ''}>${m} quiet minutes</option>`).join('')}</select></label>
+    <textarea name="note" class="field" rows="2" placeholder="What to do next (optional)" aria-label="What to do next">${esc(k ? k.note || '' : '')}</textarea>
+    <p class="keep-err" hidden></p>
+    <div class="acts">${k ? '<button class="btn" type="button" data-m="off">Stop</button>' : ''}<button class="btn" type="button" data-m="no">Cancel</button><button class="btn prime" type="submit">${k ? 'Update' : 'Keep it working'}</button></div></form></div>`;
+  const f = root.querySelector('#keepForm'), err = root.querySelector('.keep-err');
+  const fail = e => { err.textContent = e.message || String(e); err.hidden = false; };
+  root.querySelector('[data-m="no"]').onclick = () => { root.innerHTML = ''; };
+  const markPick = () => { const v = f.until.value; root.querySelectorAll('[data-kp]').forEach(b => b.setAttribute('aria-pressed', String(localInput(picks[+b.dataset.kp][1]) === v))); };
+  root.querySelectorAll('[data-kp]').forEach(b => { b.onclick = () => { f.until.value = localInput(picks[+b.dataset.kp][1]); markPick(); }; });
+  f.until.addEventListener('input', markPick); markPick();
+  const off = root.querySelector('[data-m="off"]');
+  if (off) off.onclick = async () => { try { await api('/api/chat/keep', { key: CV.key, action: 'off' }); root.innerHTML = ''; toast('It won’t be told to carry on any more.'); await loadLive(); paintHead(); } catch (e) { fail(e); } };
+  f.onsubmit = async e => {
+    e.preventDefault(); err.hidden = true;
+    const until = new Date(f.until.value).getTime();
+    if (!(until > Date.now() + 60e3)) return fail(new Error('Pick a time later than now.'));
+    try {
+      if (!CV.key) await ensureReply(provNow());
+      const how = CV.to === 'both' ? 'turns' : 'parallel';
+      await api('/api/chat/keep', { key: CV.key, until, quiet: Number(f.quiet.value), note: f.note.value.trim(), how });
+      root.innerHTML = '';
+      toast(`Kept working until ${dayClock(until)}`);
+      await loadLive(); paintHead();
+    } catch (x) { fail(x); }
+  };
 }
 // One list of every model you have, grouped by who runs it. In New chat, picking one also picks
 // the plan (your use-next Claude or ChatGPT plan, or Ollama). In a chat, the same provider's models
