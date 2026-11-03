@@ -103,6 +103,7 @@ function navHtml() {
     <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">${esc(voice('The hub'))}</span>${A ? `<span class="tag gilt">${A}<span class="sr"> awaiting you</span></span>` : W ? `<span class="tag">${W}<span class="sr"> at work</span></span>` : ''}</button>
     ${navCommanderHtml()}
     ${routinesNav()}
+    ${aideNav()}
     ${activeHtml}
     ${pinnedHtml}
     ${recentHtml}
@@ -935,7 +936,7 @@ function renderJump() {
   const box = $('hubJump'); if (!box) return;
   const chip = (id, label, n) => { const el = $(id); return el && !el.hidden ? `<button type="button" class="hj" data-jump="${id}"><span>${esc(voice(label))}</span>${n ? `<span class="count">${n}</span>` : ''}</button>` : ''; };
   const nProjects = S.projects.filter(p => p.cwd !== cmdrSet().cwd).length;
-  const h = [chip('secAwait', 'Awaiting you', awaiting().length), chip('secWork', atWork().length ? 'At work' : 'Open chats', atWork().length || quietOpen().length), chip('secQueue', 'Queued', (S.tasks || []).length), chip('secRaces', 'Races', (S.races || []).length), chip('secGroups', 'Your groups', S.org.groups.length), chip('secRecent', 'Recent chats'), chip('secAccounts', 'Accounts and usage'), chip('secWorlds', 'Your projects', nProjects), chip('secToday', 'Your day at a glance')].join('');
+  const h = [chip('secAwait', 'Awaiting you', awaiting().length), chip('secWork', atWork().length ? 'At work' : 'Open chats', atWork().length || quietOpen().length), chip('secQueue', 'Queued', (S.tasks || []).length), chip('secRaces', 'Races', (S.races || []).length), chip('secGroups', 'Your groups', S.org.groups.length), chip('secRecent', 'Recent chats'), chip('secAccounts', 'Accounts and usage'), chip('secCompanion', 'Companion'), chip('secWorlds', 'Your projects', nProjects), chip('secToday', 'Your day at a glance')].join('');
   if (box._h === h) return;
   box.innerHTML = h; box._h = h;
   watchJump();
@@ -1033,8 +1034,9 @@ function renderHub() {
   // Most used first: what needs you, what's moving, then where to pick up, your plans and your projects.
   $('page').innerHTML = saga
     ? `${slots}${hero}${notes}${sections.await}${sections.work}${sections.today}${sections.races}${sections.queue}${sections.groups}${sections.worlds}${sections.recent}${sections.accounts}${dry}`
-    : `${hero}<nav class="hub-jump" id="hubJump" aria-label="On this page"></nav>${slots}${notes}${sections.await}${sections.work}${sections.queue}${sections.races}${sections.groups}<div class="hub-cw"><div class="hub-cols">${sections.recent}${sections.accounts}</div></div>${sections.worlds}${sections.today}${dry}`;
+    : `${hero}<nav class="hub-jump" id="hubJump" aria-label="On this page"></nav>${slots}${notes}${sections.await}${sections.work}${sections.queue}${sections.races}${sections.groups}<div class="hub-cw"><div class="hub-cols">${sections.recent}${sections.accounts}</div></div>${aideHubSection()}${sections.worlds}${sections.today}${dry}`;
   renderHubLists();
+  renderAideHub();
   renderLive(true);
   watchHero();
   if (!dialsDrawn && !renderHub.timer) renderHub.timer = setTimeout(() => { dialsDrawn = true; }, 2600);

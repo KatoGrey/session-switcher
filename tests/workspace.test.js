@@ -65,6 +65,89 @@ test('workspace: every name the app’s code uses is defined somewhere', t => {
   assert.deepEqual(found.missing, {});
 });
 
+test('workspace: Companion on the real server: filed by game, out of your lists, and limited', { skip: process.platform !== 'win32' || !!process.versions.electron ? 'its launchers are Windows .cmd files, and it’s not for the installed app’s self-check' : false }, async () => {
+  const { build } = require('./fake-world');
+  const w = await build();
+  try {
+    const token = (await (await fetch(w.base)).text()).match(/TOKEN = '([a-f0-9]+)'/)[1];
+    const call = async (p, body) => { const r = await fetch(w.base + p.slice(1), { method: body ? 'POST' : 'GET', headers: { 'x-switcher-token': token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, json: await r.json().catch(() => null) }; };
+    const until = async (what, fn, ms = 20000) => { const t0 = Date.now(); for (;;) { const v = await fn(); if (v) return v; assert.ok(Date.now() - t0 < ms, `timed out: ${what}`); await new Promise(r => setTimeout(r, 150)); } };
+    assert.equal((await call('/api/aide')).json.on, false, 'off until it’s turned on');
+    assert.equal((await call('/api/aide/settings', { on: true })).json.on, true);
+    const game = { title: 'yysls', process: 'wwm', path: 'C:\\Steam\\steamapps\\common\\Where Winds Meet\\wwm.exe', fullscreen: true };
+    const open = await call('/api/aide/open', { app: game });
+    assert.equal(open.status, 200, JSON.stringify(open.json));
+    assert.deepEqual(open.json.group, { key: 'where-winds-meet', name: 'Where Winds Meet' });
+    const key = open.json.key;
+    await until('ready', async () => (await call('/api/chat/attach', { key })).json.state === 'ready');
+    const started = (await call('/api/chat/attach', { key })).json;
+    assert.deepEqual([open.json.who, started.model, started.effort], ['claude:opus', 'opus', 'medium'], 'Opus to begin with, at medium effort for a quick answer');
+    const listed = (await call('/api/aide')).json.assistants;
+    assert.deepEqual(listed.map(a => a.provider), ['claude', 'codex', 'gemini']);
+    assert.deepEqual(listed[0].models.filter(m => m.top).map(m => m.value), ['opus', 'fable'], 'Claude’s models, Opus and Fable first');
+    const notebook = await call('/api/aide/notes?group=where-winds-meet');
+    assert.equal(notebook.json.text, '');
+    const saved = await call('/api/aide/notes', { group: 'where-winds-meet', text: 'Sword build. No story spoilers.', version: notebook.json.version });
+    assert.equal(saved.status, 200);
+    assert.equal((await call('/api/aide/notes', { group: 'where-winds-meet', text: 'stale window', version: 0 })).status, 409);
+    assert.equal((await call('/api/aide/notes?group=missing')).status, 404);
+    assert.equal((await call('/api/chat/send', { key, text: 'Where do I go?' })).status, 200);
+    await until('its id', async () => (await call('/api/chat/attach', { key })).json.sessionId);
+    const id = (await call('/api/chat/attach', { key })).json.sessionId;
+    const history = await until('the question reaches its real transcript', async () => {
+      const r = await call(`/api/chat/history?id=${encodeURIComponent(id)}`);
+      return r.status === 200 && r.json.items && r.json.items.find(i => i.kind === 'user' && /Where do I go/.test(i.text || ''));
+    });
+    assert.match(history.text, /Sword build\. No story spoilers\./, 'notes accompany the question on the real send route');
+    assert.match(history.text, /<\/companion-notes>\s+Where do I go\?/);
+    await until('answered', async () => (await call('/api/chat/attach', { key })).json.state === 'ready');
+    assert.equal((await call('/api/chat/send', { key, text: 'And after that?' })).status, 200);
+    const next = await until('the next question', async () => { const r = await call(`/api/chat/history?id=${encodeURIComponent(id)}`); return r.status === 200 && r.json.items && r.json.items.find(i => i.kind === 'user' && /And after that/.test(i.text || '')); });
+    assert.doesNotMatch(next.text, /companion-notes/, 'the notes aren’t sent again with every question');
+    // Filed under the game; nowhere else.
+    const view = await until('it’s listed', async () => { const v = (await call('/api/aide')).json; return v.groups.find(g => g.key === 'where-winds-meet' && g.chats.some(c => c.id === id)) ? v : null; });
+    assert.equal(view.groups[0].name, 'Where Winds Meet');
+    assert.ok(!(await call('/api/activity')).json.list.some(x => x.key === key), 'not in what’s at work on the hub');
+    assert.ok(!(await call('/api/sessions')).json.projects.some(p => /companion$/i.test(p.cwd)), 'not among your projects');
+    // No way to bring in a partner, who wouldn't be limited.
+    assert.equal((await call('/api/chat/send', { key, to: 'partner', kind: 'codex', text: 'x' })).status, 400);
+    assert.equal((await call('/api/chat/companion', { key, kind: 'codex' })).status, 400);
+    assert.equal((await call('/api/chat/send', { key, to: 'group', how: 'parallel', kinds: ['claude', 'codex'], text: 'x' })).status, 400);
+    // The next question in the same game carries on; elsewhere, General; a new one when asked for.
+    assert.equal((await call('/api/aide/open', { app: game })).json.key, key);
+    assert.equal((await call('/api/aide/open', { app: game, sessionId: 'missing' })).status, 404, 'a missing selected question never creates an unrelated new one');
+    const browser = await call('/api/aide/open', { app: { process: 'chrome', path: 'C:\\Chrome\\chrome.exe', fullscreen: true } });
+    assert.equal(browser.json.group.key, 'general');
+    assert.notEqual(browser.json.key, key);
+    const fresh = await call('/api/aide/open', { app: game, fresh: true, who: 'claude:fable' });
+    assert.notEqual(fresh.json.key, key);
+    assert.equal(fresh.json.group.key, 'where-winds-meet');
+    assert.deepEqual([fresh.json.who, fresh.json.model], ['claude:fable', 'fable'], 'the model chosen is the one it starts on');
+    await until('the models Claude Code has', async () => (await call('/api/aide')).json.assistants[0].models.some(m => m.note === 'Complex work'));
+    const gone = await call('/api/aide/open', { app: game, fresh: true, who: 'claude:opus-9-not-listed' });
+    assert.equal(gone.json.model, null, 'one it no longer lists: its usual model instead');
+    // Stopped, and asked again: the same conversation.
+    await call('/api/chat/stop', { key });
+    await until('stopped', async () => { const r = await call('/api/chat/attach', { key }); return r.status !== 200 || r.json.state === 'ended'; });
+    const back = await call('/api/aide/open', { app: game, sessionId: id });
+    assert.equal(back.status, 200, JSON.stringify(back.json));
+    assert.equal(back.json.sessionId.toLowerCase(), id.toLowerCase());
+    // Renamed, moved, taken off.
+    assert.equal((await call('/api/aide/rename', { group: 'general', name: 'x' })).status, 400);
+    assert.ok((await call('/api/aide/rename', { group: 'where-winds-meet', name: 'WWM' })).json.groups.some(g => g.name === 'WWM'));
+    assert.ok(!(await call('/api/aide/forget', { id })).json.groups.some(g => g.chats.some(c => c.id === id)));
+  } finally { await w.done(); }
+});
+
+test('workspace: what the page draws as it starts is loaded before it starts', () => {
+  // A script after events.js can arrive after the first draw: the sidebar then fails on a name it hasn't got yet,
+  // and in a window with nothing else in it (a popped-out chat, Companion) the page never finishes starting.
+  const html = fs.readFileSync(path.join(APP, 'index.html'), 'utf8');
+  const at = name => html.indexOf(`src="/ui/${name}.js"`);
+  assert.ok(at('events') > 0);
+  assert.ok(at('aide') > 0 && at('aide') < at('events'), 'Companion, which the sidebar and startup call');
+});
+
 test('workspace: a file a chat only names opens from where it really is, or asks which', async () => {
   const s = await startServer(), world = tmp('ss-ws-find-');
   try {

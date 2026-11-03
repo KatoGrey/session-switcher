@@ -1,4 +1,19 @@
-# Links to files and folders go to the right place, and Codex's and Gemini's models can be chosen again
+# Companion: ask anything, over anything, with your own subscriptions
+
+**A quick helper for your own questions, over a game or anything else.** Turn it on in **Setup → Companion**.
+
+- **Alt + Q brings up a small, flat panel from anywhere.** Ask, read the answer, and **Esc** puts you straight back in your game. It's usually answering within a few seconds, because its chats carry none of your settings or tools. (On a Mac it's Control + Q.)
+- **Alt + Shift + Q does the same with a picture of your screen,** so you can just ask "what is this?" **Look at screen** in the box does it too. It sees your screen only then, and you see the picture before it's sent.
+- **Capture just what matters.** The arrow beside **Look at screen → Choose a region** lets you select an area on a frozen screen. Confirm with **Enter** or cancel with **Esc**. You review the crop before sending it.
+- **Filed by game, with earlier questions close by.** Click the game name in the panel to find and reopen earlier conversations. Returning tomorrow keeps the conversation; **+** starts a new one. Each chat keeps its own unfinished message and pictures.
+- **Notes that follow you across assistants.** Save your build, progress and spoiler preferences in **Game notes**, or your general preferences in **Personal notes**. They go with a conversation's first question, and again whenever you change them, whichever assistant answers. You can inspect, edit or clear them from the panel or Companion's page.
+- **A place of its own in the app.** A **Companion** page with your games and General down the side and the whole chat beside them, and a short section on the hub. It's the same conversation in the box and on the page, so you can move between them.
+- **Move it, size it, pin it.** Drag its top to move it, drag its edges to resize it, and the pin keeps an answer on screen with clicks going through to your game. **Panel background** in Setup controls transparency; the panel starts solid.
+- **Every model, by name, in one click.** The model button opens Claude's Opus and Fable, Codex's newest GPT-6 models and Gemini's, with Sonnet, Haiku and the rest under **More models**, and the effort below. Another of the same assistant's models carries on the same conversation. It starts on Opus at medium effort, remembers what you choose, and Claude uses whichever account has the most left.
+- **It can only look things up.** It can search the web and read what you show it. It can't touch your files, run anything or use your tools. A game in true fullscreen may not show the box: borderless windowed works.
+- **The keys can be changed,** by pressing the ones you want. If another program has one, Setup says so and offers others.
+
+## Earlier in 6.6.1 and 6.6.2: links to files and folders go to the right place, and Codex's and Gemini's models can be chosen again
 
 - **A chat's links go where they should.** Claude is now told to link every file and folder by its full path. And when a chat only names one ("site-deploy.zip, in Documents\My Site"), clicking it finds it: in the folders that chat pointed to, in the chat's own folder however deep, then in Documents, Desktop and Downloads, OneDrive's included. If there are several, it asks which. It used to look only in the chat's folder and say there was no such file.
 - **A partner's model picker opens.** In 6.6.0, pressing Codex's or Gemini's name a second time, or a partner's tab in the picker, said "compEntry is not defined" and showed no models. Each assistant in a chat now has its own working tab, under its own name; the tabs of the others all said the chat's own assistant.

@@ -87,6 +87,6 @@ const out = {
   'ui-lite': group([...js('ui-lite'), 'ui-lite/index.html'], BROWSER),
 };
 // The server's and the desktop app's own code: each file is a module with its own names.
-for (const f of ['server.js', ...js('lib'), ...js('bin'), 'desktop/main.js', ...js('desktop/shell')]) out[f] = group([f], /preload\.js$/.test(f) ? new Set([...NODE, ...BROWSER]) : NODE);   // (a preload runs in the page)
+for (const f of ['server.js', ...js('lib'), ...js('bin'), 'desktop/main.js', ...js('desktop/shell')]) out[f] = group([f], /aide-region-ui\.js$/.test(f) ? BROWSER : /preload\.js$/.test(f) ? new Set([...NODE, ...BROWSER]) : NODE);   // (the region selector is a renderer; a preload runs in the page)
 for (const k of Object.keys(out)) if (!Object.keys(out[k]).length) delete out[k];
 console.log(JSON.stringify({ missing: out }));

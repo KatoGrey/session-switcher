@@ -282,6 +282,7 @@ function connectLive() {
     sessTimer = setTimeout(wrap(async () => {
       await loadSessions(); renderNav();
       if (window.ChatUI && ChatUI.sessionsChanged) ChatUI.sessionsChanged();
+      if (aideOn()) loadAide().then(aideRefresh).catch(() => {});   // a chat there may have just been named
       if (S.view === 'search') return;
       if (S.view === 'hub') { if ($('recentList') || !S.projects.length) renderHubLists(); else renderHub(); renderLive(); } else renderPage();
       if (S.drawerId) openDrawer(S.drawerId, true);
@@ -300,6 +301,7 @@ function connectLive() {
   es.addEventListener('organize', e => { try { S.org = orgShape(JSON.parse(e.data)); } catch { return; } renderNav(); renderLive(); if (window.ChatUI && ChatUI.refreshCrumb) ChatUI.refreshCrumb(); });
   es.addEventListener('restart', e => { try { S.restart = JSON.parse(e.data) || {}; } catch { return; } if (S.restart.restarting) restarting(S.pid); else { renderRestartBar(); if (S.restart.error) toast(S.restart.error, 9000); } });
   es.addEventListener('update', e => { try { S.update = !!JSON.parse(e.data).ready; } catch { return; } renderBar(); });
+  es.addEventListener('aide', wrap(async () => { await loadAide(); aideRefresh(); }));
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
@@ -639,6 +641,7 @@ wrap(async () => {
   if (!SOLO && !PAGE_ARGS.get('chat')) await bootFromCache();   // drawn at once from last time
   await Promise.all([reload(), loadPrompts()]); speedNote('hub', performance.now()); connectLive(); watchActivity(); checkAway(); loadWhatsNew(); if (!window.REMOTE) loadSelfCheckCard();
   if (S.firstRun && !window.REMOTE && !store('getting-started') && !SOLO) setTimeout(() => openSetup(), 600); loadHealth(false).catch(() => {}); loadTasks().catch(() => {}); loadRaces().catch(() => {});
+  await aideBoot();
   // A popped-out window opens straight into its chat.
   if (PAGE_ARGS.get('chat')) await ChatUI.open({ sessionId: PAGE_ARGS.get('chat') });
   else if (PAGE_ARGS.get('key')) await ChatUI.openKey(PAGE_ARGS.get('key')).catch(() => {});   // from a notification

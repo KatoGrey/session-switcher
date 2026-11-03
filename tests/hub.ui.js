@@ -46,6 +46,7 @@ const TEXT_AUDIT = `
 `;
 
 module.exports = [
+  ...require('./companion.ui'),
   {
     name: 'find looks further back',
     // A long chat shows its latest part. What you're looking for may be older than that.
@@ -633,6 +634,181 @@ module.exports = [
       t.check('in a narrow window, the frame steps aside', await b.eval(`return !document.getElementById('chat').classList.contains('split') && document.getElementById('cSplit').hidden`));
       await b.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }); await sleep(400);
       t.check('and comes back with the room', await b.eval(`return document.getElementById('chat').classList.contains('split')`));
+    },
+  },
+  {
+    name: 'companion: off until it’s turned on',
+    async run(t) {
+      const b = await t.open({});
+      await sleep(600);
+      const off = await b.eval(`return { nav: !!document.querySelector('[data-view="aide"]'), sec: !!document.getElementById('secCompanion'), jump: [...document.querySelectorAll('#hubJump [data-jump]')].some(x => x.dataset.jump === 'secCompanion') }`);
+      t.check('nothing in the sidebar or on the hub', !off.nav && !off.sec && !off.jump, off);
+    },
+  },
+  {
+    name: 'companion: its place in the app',
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ aide: true, desktopStub: {}, seen: (p, u, body) => calls.push([p, body]) });
+      await sleep(700);
+      const hub = await b.eval(`return { nav: !!document.querySelector('.nav-i[data-view="aide"]'), cards: [...document.querySelectorAll('#aideHub .ai-card b')].map(x => x.textContent), jump: [...document.querySelectorAll('#hubJump [data-jump]')].some(x => x.dataset.jump === 'secCompanion') }`);
+      t.check('in the sidebar, with a section on the hub, by game', hub.nav && hub.jump && hub.cards[0] === 'Where Winds Meet' && hub.cards.includes('General'), hub);
+      await b.clickOn('.nav-i[data-view="aide"]'); await sleep(500);
+      const page = await b.eval(`return { groups: [...document.querySelectorAll('.ai-gn')].map(x => x.textContent), rows: document.querySelectorAll('.ai-row').length, keys: document.getElementById('aideEmpty').innerText, foot: document.getElementById('aideFoot').innerText, current: document.querySelector('.nav-i[data-view="aide"]').getAttribute('aria-current') }`);
+      t.check('its page lists your games and General', page.groups.join() === 'Where Winds Meet,Elden Ring,General' && page.rows === 6, page);
+      t.check('and says how to bring it up', /Alt/.test(page.keys) && /only when you ask/.test(page.keys) && page.current === 'true', page);
+      // Finding, folding.
+      await b.eval(`const q = document.getElementById('aideQ'); q.value = 'kaifeng'; q.dispatchEvent(new Event('input', { bubbles: true })); return 1`); await sleep(120);
+      t.check('a chat can be found by its words', await b.eval(`return document.querySelectorAll('.ai-row').length === 1 && /Kaifeng/.test(document.querySelector('.ai-row').textContent)`));
+      await b.eval(`const q = document.getElementById('aideQ'); q.value = ''; q.dispatchEvent(new Event('input', { bubbles: true })); return 1`); await sleep(80);
+      await b.clickOn('[data-aide-fold="elden-ring"]'); await sleep(100);
+      t.check('a group folds', await b.eval(`return document.querySelectorAll('.ai-row').length === 5 && document.querySelector('[data-aide-fold="elden-ring"]').getAttribute('aria-expanded') === 'false'`));
+      // A chat opens beside the list, in a frame of the real chat window.
+      await b.clickOn('[data-aide-open="aide-1"]');
+      for (let i = 0; i < 150 && !calls.some(([p]) => p === '/api/chat/open'); i++) await sleep(200);
+      await sleep(600);
+      const opened = await b.eval(`const f = document.querySelector('.ai-frame'), d = f && f.contentDocument; return { frame: !!f, hidden: f && f.hidden, empty: !!document.getElementById('aideEmpty'), current: document.querySelector('[data-aide-open="aide-1"]').getAttribute('aria-current'), box: d && d.getElementById('cText').placeholder, pane: d && d.body.classList.contains('aide-pane'), rail: d && getComputedStyle(d.querySelector('#chat .rail')).display, ledger: d && getComputedStyle(d.querySelector('#chat .ledger')).display }`);
+      t.check('a chat opens beside the list', opened.frame && !opened.hidden && !opened.empty && opened.current === 'true' && opened.pane, opened);
+      t.check('only the conversation', opened.rail === 'none' && opened.ledger === 'none' && opened.box === 'Ask anything…', opened);
+      t.check('and it’s the chat you picked', calls.some(([p, x]) => p === '/api/chat/open' && x.sessionId === 'aide-1'), calls.filter(([p]) => p === '/api/chat/open'));
+      await b.send('Emulation.setDeviceMetricsOverride', { width: 560, height: 800, deviceScaleFactor: 1, mobile: false }); await sleep(150);
+      t.check('a narrow window gives the conversation its own view', await b.eval(`const side = document.querySelector('.ai-side'), bar = document.querySelector('.ai-backbar'), frame = document.querySelector('.ai-frame'); return getComputedStyle(side).display === 'none' && getComputedStyle(bar).display !== 'none' && frame.getBoundingClientRect().width > 400`));
+      await b.eval(`document.querySelector('.ai-frame').contentDocument.getElementById('cText').value = 'Keep this thought'; return 1`);
+      await b.clickOn('[data-aide="list"]'); await sleep(100);
+      t.check('back returns to the list and keeps the draft in its chat', await b.eval(`return getComputedStyle(document.querySelector('.ai-side')).display !== 'none' && document.activeElement.id === 'aideQ' && document.querySelector('.ai-frame').contentDocument.getElementById('cText').value === 'Keep this thought'`));
+      await b.clickOn('[data-aide-open="aide-1"]'); await sleep(400);
+      await b.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }); await sleep(150);
+      calls.length = 0;
+      await b.eval(`document.getElementById('aideNew').click(); document.getElementById('aideNew').click(); return 1`); await sleep(500);
+      t.check('a new question stays with the selected game', calls.some(([p, x]) => p === '/api/aide/open' && x.fresh === true && x.group === 'where-winds-meet'), calls);
+      t.check('clicking twice while it opens makes only one new chat', calls.filter(([p]) => p === '/api/aide/open').length === 1, calls);
+    },
+  },
+  {
+    name: 'companion: setup',
+    async run(t) {
+      const b = await t.open({ aide: true, desktopStub: {} });
+      await sleep(700);
+      await b.eval(`openSetup(); await new Promise(r => setTimeout(r, 900)); return 1`);
+      const box = await b.eval(`const x = document.getElementById('aideBox'); return { on: x.querySelector('[data-aideset="on"]').checked, text: x.innerText, caps: [...x.querySelectorAll('[data-aide-cap]')].map(c => c.innerText.replace(/\\s+/g, '')) }`);
+      t.check('a Companion group in Setup, with its two keys', box.on && box.caps[0] === 'Alt+Q' && box.caps[1] === 'Alt+Shift+Q', box);
+      t.check('it says plainly what it can and can’t do', /can’t touch your files/.test(box.text) && /only when you press/.test(box.text), box.text);
+      const first = await b.eval(`const s = document.querySelector('[data-aideset="who"]'); return { chosen: s.selectedOptions[0].textContent, groups: [...s.querySelectorAll('optgroup')].map(g => g.label), codex: [...s.querySelectorAll('optgroup')][1].querySelectorAll('option').length }`);
+      t.check('the default names the actual model: Opus, out of every model each assistant has', first.chosen === 'Opus 5.5' && first.groups.join() === 'Claude,Codex,Gemini' && first.codex === 4, first);
+      await b.eval(`const x = document.getElementById('aideAlpha'); x.value = '73'; x.dispatchEvent(new Event('input', { bubbles: true })); return 1`);
+      t.check('opacity shows its value while adjusting', await b.eval(`return document.getElementById('aideAlphaValue').textContent === '73%'`));
+      // Changing a key: press the combination you want.
+      await b.eval(`document.querySelector('[data-aide-cap="aideKey"]').click(); return 1`); await sleep(100);
+      t.check('it waits for the keys', await b.eval(`return /Press the keys/.test(document.querySelector('[data-aide-cap="aideKey"]').innerText)`));
+      const press = (key, code, extra = '') => b.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '${key}', code: '${code}', bubbles: true, cancelable: true${extra} })); await new Promise(r => setTimeout(r, 150)); return 1`);
+      await press('x', 'KeyX');
+      t.check('a letter alone isn’t taken from everything you type', await b.eval(`return !window.__set.some(p => p.aideKey) && /Press the keys/.test(document.querySelector('[data-aide-cap="aideKey"]').innerText)`));
+      await press('x', 'KeyX', ', altKey: true');
+      t.check('Alt + X is', await b.eval(`return window.__set.at(-1).aideKey === 'Alt+X' && document.querySelector('[data-aide-cap="aideKey"]').innerText.replace(/\\s+/g, '') === 'Alt+X'`), await b.eval(`return window.__set`));
+      await b.eval(`document.querySelector('[data-aide-cap="aideKey"]').click(); return 1`); await sleep(80);
+      await press('q', 'KeyQ', ', altKey: true, shiftKey: true');
+      t.check('it can’t be the same as the other key', await b.eval(`return window.__set.at(-1).aideKey === 'Alt+X'`));
+      await b.esc();
+    },
+  },
+  {
+    name: 'companion: a key another program has',
+    async run(t) {
+      const b = await t.open({ aide: true, desktopStub: { aideOk: false, taken: ['Alt+Q'] } });
+      await sleep(700);
+      await b.eval(`await go('aide'); return 1`); await sleep(400);
+      t.check('its page says so, instead of a key that does nothing', await b.eval(`return /Another program has Alt \\+ Q/.test(document.getElementById('aideFoot').innerText)`));
+      await b.eval(`openSetup(); await new Promise(r => setTimeout(r, 900)); return 1`);
+      const line = await b.eval(`const l = document.querySelector('#aideBox .ai-busyline'); return l && { text: l.innerText, keys: [...l.querySelectorAll('[data-aide-spare]')].map(x => x.dataset.key) }`);
+      t.check('Setup explains and offers others', !!line && /won’t bring Companion up/.test(line.text) && line.keys.includes('Alt+X'), line);
+      await b.eval(`document.querySelector('[data-aide-spare][data-key="Alt+X"]').click(); await new Promise(r => setTimeout(r, 300)); return 1`);
+      t.check('one click takes one', await b.eval(`return window.__set.at(-1).aideKey === 'Alt+X' && !document.querySelector('#aideBox .ai-busyline')`));
+    },
+  },
+  {
+    name: 'companion: the panel',
+    async run(t) {
+      const calls = [];
+      const b = await t.open({ aide: true, desktopStub: {}, noHistory: true, path: '?solo=1&aide=1', width: 760, height: 560, seen: (p, u, body) => calls.push([p, body]) });
+      for (let i = 0; i < 150; i++) { if (await b.eval(`return !!window.aideBooted`)) break; await sleep(200); }
+      const asked = w => b.eval(`return window.__asked.filter(x => x[0] === '${w}').length`);
+      t.check('it tells the app it’s ready', (await asked('ready')) === 1, await b.eval(`return { asked: window.__asked, booted: window.aideBooted, panel: document.body.className, aide: typeof S.aide }`));
+      const look = await b.eval(`const v = n => getComputedStyle(document.querySelector(n)); return { page: getComputedStyle(document.body).backgroundColor, panel: v('#chat .c-main').backgroundColor, bar: v('.bar').display, rail: v('#chat .rail').display, head: v('.c-head').display, order: [...document.querySelector('#chat .c-main').children].map(x => [x.className.split(' ')[0], getComputedStyle(x).order]) }`);
+      const opacity = await b.eval(`const sample = () => { const c = document.createElement('canvas'), x = c.getContext('2d'); x.fillStyle = getComputedStyle(document.querySelector('#chat .c-main')).backgroundColor; x.fillRect(0, 0, 1, 1); return x.getImageData(0, 0, 1, 1).data[3]; }; const solid = sample(); S.aide.alpha = 72; aideAlpha(); const translucent = sample(); S.aide.alpha = 100; aideAlpha(); return { solid, translucent };`);
+      t.check('solid by default, with transparency still available', look.page === 'rgba(0, 0, 0, 0)' && opacity.solid === 255 && opacity.translucent > 170 && opacity.translucent < 200, opacity);
+      t.check('only the box and the answer', look.bar === 'none' && look.rail === 'none' && look.head === 'none', look);
+      t.check('the box above the answer, so it stays put as an answer grows', Number(look.order.find(x => x[0] === 'c-dock')[1]) < Number(look.order.find(x => x[0] === 'c-scroll')[1]), look.order);
+      const pick = await b.eval(`const m = document.getElementById('aoModel'); return { name: document.getElementById('aoMName').textContent, label: m.getAttribute('aria-label'), open: m.getAttribute('aria-expanded'), list: document.getElementById('aoModels').hidden }`);
+      t.check('one model button, naming the model that answers, Opus to begin with', pick.name === 'Opus 5.5' && /^Who answers: Claude, Opus 5\.5/.test(pick.label) && pick.open === 'false' && pick.list, pick);
+      // The key, with a game in front: typing straight away, even before its chat is open.
+      await b.eval(`const t = document.getElementById('cText'); window.__show({ app: { title: 'yysls', process: 'wwm', path: 'C:/Steam/steamapps/common/Where Winds Meet/wwm.exe', fullscreen: true }, moved: false }); t.value = 'where do I go?'; t.dispatchEvent(new Event('input', { bubbles: true })); t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return 1`);
+      await sleep(900);
+      const sent = calls.filter(([p]) => p === '/api/chat/send');
+      t.check('what’s typed before its chat is open still goes, once', sent.length === 1 && sent[0][1].text === 'where do I go?' && sent[0][1].key === 'k-aide', sent);
+      const opened = calls.find(([p]) => p === '/api/aide/open');
+      t.check('it says what was in front', !!opened && /steamapps/.test(opened[1].app.path), opened);
+      t.check('and it’s filed under the game', await b.eval(`return document.getElementById('aoName').textContent === 'Where Winds Meet' && /W/.test(document.getElementById('aoTile').textContent)`));
+      t.check('its box says what to do, not who to write to', await b.eval(`return document.getElementById('cText').placeholder === 'Ask anything…'`));
+      // Who answers.
+      t.check('no partners here: they could do more than a Companion chat', await b.eval(`return !duo() && !document.querySelector('[data-c="relay"]') && getComputedStyle(document.getElementById('cCrew')).display === 'none'`));
+      calls.length = 0;
+      const sized = await asked('size');
+      await b.clickOn('#aoModel'); await sleep(200);
+      const tray = await b.eval(`const box = document.getElementById('aoModels'); return { open: !box.hidden, rows: [...box.querySelectorAll('.ao-mrow')].map(r => [r.querySelector('.ao-mprov').textContent, [...r.querySelectorAll('.ao-chip')].map(c => c.textContent)]), pressed: [...box.querySelectorAll('[aria-pressed="true"]')].map(c => c.textContent), focus: document.activeElement.textContent, more: !!box.querySelector('[data-ao="more-models"]') }`);
+      t.check('every assistant’s models by their real names, the ones used most first', tray.open && JSON.stringify(tray.rows.slice(0, 3)) === JSON.stringify([['Claude', ['Opus 5.5', 'Fable 5.1']], ['Codex', ['GPT-6.1-Sol', 'GPT-6-Astra', 'GPT-6-Sol']], ['Gemini', ['Gemini 4 Argon (Medium)', 'Gemini 4 Argon (High)', 'Gemini 4 Argon (Low)']]]) && tray.more, tray);
+      t.check('the one answering is marked with its effort, and the keyboard starts there', tray.pressed.join() === 'Opus 5.5,Medium' && tray.focus === 'Opus 5.5', tray);
+      t.check('the panel grows to show them', (await asked('size')) > sized);
+      await b.clickOn('[data-ao="more-models"]'); await sleep(120);
+      const more = await b.eval(`return document.querySelector('#aoModels .ao-mrow').textContent`);
+      t.check('More has the rest: Sonnet, Haiku and earlier ones', /Sonnet 5\.5/.test(more) && /Haiku 5\.5/.test(more) && /Opus 4\.8/.test(more), more);
+      await b.clickOn('[data-ao-model="fable"]'); await sleep(350);
+      const same = { model: calls.filter(([p]) => p === '/api/chat/model'), open: calls.filter(([p]) => p === '/api/aide/open'), name: await b.eval(`return document.getElementById('aoMName').textContent`), list: await b.eval(`return document.getElementById('aoModels').hidden`) };
+      t.check('another of Claude’s carries on the same conversation, on that model', same.model.length === 1 && same.model[0][1].model === 'fable' && same.model[0][1].key === 'k-aide' && !same.open.length && same.name === 'Fable 5.1' && same.list, same);
+      t.check('and it’s remembered for next time', calls.some(([p, x]) => p === '/api/aide/settings' && x.who === 'claude:fable'));
+      calls.length = 0;
+      await b.clickOn('#aoModel'); await sleep(120);
+      await b.clickOn('[data-ao-effort="high"]'); await sleep(300);
+      t.check('effort is one click too', calls.some(([p, x]) => p === '/api/chat/model' && x.effort === 'high') && await b.eval(`return document.getElementById('aoMEff').textContent === 'High'`));
+      await b.clickOn('#aoModel'); await sleep(100);
+      await b.esc(); await sleep(100);
+      t.check('Esc closes the list first, back to the box, and the panel stays', await b.eval(`return document.getElementById('aoModels').hidden && document.activeElement.id === 'cText'`) && (await asked('hide')) === 0);
+      calls.length = 0;
+      await b.clickOn('#aoModel'); await sleep(120);
+      await b.clickOn('[data-ao-model="gpt-6-astra"]'); await sleep(500);
+      const switched = calls.find(([p]) => p === '/api/aide/open');
+      t.check('another assistant opens its own chat in the same group', !!switched && switched[1].who === 'codex:gpt-6-astra' && switched[1].group === 'where-winds-meet', switched);
+      t.check('and that’s remembered', calls.some(([p, x]) => p === '/api/aide/settings' && x.who === 'codex:gpt-6-astra'));
+      t.check('the button names the new model', await b.eval(`return C.provider === 'codex' && document.getElementById('aoMName').textContent === 'GPT-6-Astra' && document.getElementById('aoMDot').classList.contains('codex')`));
+      const unavailable = await b.eval(`const a = S.aide.assistants.find(x => x.provider === 'codex'); a.ok = false; renderAidePick(); const r = { name: document.getElementById('aoMName').textContent, disabled: document.getElementById('aoModel').disabled }; aideOpenModels(); r.rows = [...document.querySelectorAll('#aoModels .ao-mprov')].map(x => x.textContent); aideCloseModels(); a.ok = true; renderAidePick(); return r`);
+      t.check('if that assistant signs out, the button says to choose, and it isn’t offered', unavailable.name === 'Choose a model' && !unavailable.disabled && !unavailable.rows.includes('Codex') && unavailable.rows.includes('Claude'), unavailable);
+      await b.send('Emulation.setDeviceMetricsOverride', { width: 440, height: 560, deviceScaleFactor: 1, mobile: false }); await sleep(100);
+      t.check('the model and screenshot controls fit the narrowest panel', await b.eval(`const rect = id => document.getElementById(id).getBoundingClientRect(), m = rect('aoModel'), l = rect('aoLook'), s = rect('cSend'); return m.width > 60 && m.right < s.left && l.right <= m.left && s.right <= innerWidth - 10`));
+      t.check('and so do the models', await b.eval(`aideOpenModels(); const box = document.getElementById('aoModels'), r = box.getBoundingClientRect(), ok = box.scrollWidth <= box.clientWidth + 1 && r.right <= innerWidth - 10 && [...box.querySelectorAll('.ao-chip')].every(c => c.getBoundingClientRect().right <= r.right + 1); aideCloseModels(); return ok`));
+      await b.send('Emulation.setDeviceMetricsOverride', { width: 760, height: 560, deviceScaleFactor: 1, mobile: false }); await sleep(100);
+      // A picture of the screen.
+      await b.clickOn('#aoLook'); await sleep(200);
+      t.check('Look at screen attaches a picture you can see first', await b.eval(`return C.attachments.length === 1 && document.querySelectorAll('#cAtt img').length === 1`));
+      await b.eval(`window.__lookAnswer = { mediaType: 'image/jpeg', data: 'x', black: true }; return 1`);
+      await b.clickOn('#aoLook'); await sleep(200);
+      const black = await b.eval(`return { n: C.attachments.length, toast: document.getElementById('toast').innerText }`);
+      t.check('a black one isn’t sent, and it says why', black.n === 1 && /borderless/.test(black.toast), black);
+      await b.eval(`window.__shot({ mediaType: 'image/png', data: 'iVBORw0KGgo=' }); return 1`); await sleep(100);
+      t.check('the key’s picture arrives too', await b.eval(`return C.attachments.length === 2`));
+      // The height follows what's in it.
+      const heights = await b.eval(`const before = window.__asked.filter(x => x[0] === 'size').at(-1)[1]; handle({ kind: 'user', text: 'A question', at: new Date().toISOString() }, 'main'); handle({ kind: 'assistant', mid: 'a1', blocks: [{ type: 'text', text: 'One line.\\n\\nTwo.\\n\\nThree.\\n\\nFour.' }], at: new Date().toISOString() }, 'main'); await new Promise(r => setTimeout(r, 300)); return [before, window.__asked.filter(x => x[0] === 'size').at(-1)[1], document.body.classList.contains('ao-empty')]`);
+      t.check('it grows with the answer', heights[1] > heights[0] + 60 && !heights[2], heights);
+      // Pinned.
+      await b.eval(`window.__pinned(true); await new Promise(r => setTimeout(r, 100)); return 1`);
+      const pin = await b.eval(`return { dock: getComputedStyle(document.querySelector('.c-dock')).display, hint: document.getElementById('aoPinHint').innerText, acts: getComputedStyle(document.querySelector('.ao-acts')).display }`);
+      t.check('pinned: only the answer, and how to bring it back', pin.dock === 'none' && pin.acts === 'none' && /Alt \+ Q/.test(pin.hint), pin);
+      await b.eval(`window.__pinned(false); return 1`);
+      // Moved: the way back to the middle appears.
+      t.check('the way back to the middle shows only once it’s been moved', await b.eval(`const before = document.getElementById('aoCenter').hidden; window.__moved(true); const after = document.getElementById('aoCenter').hidden; return before && !after`));
+      // Esc puts it away, and leaves what's being written.
+      await b.eval(`document.getElementById('cText').value = 'half a thought'; document.getElementById('cText').focus(); return 1`);
+      await b.esc(); await sleep(120);
+      t.check('Esc puts it away, without stopping anything', (await asked('hide')) === 1 && !calls.some(([p]) => /interrupt|stop/.test(p)));
+      t.check('and what you’d written is still there', await b.eval(`return document.getElementById('cText').value === 'half a thought'`));
     },
   },
   {

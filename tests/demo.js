@@ -161,7 +161,22 @@ const sse = events => events.map(([ev, data, id]) => `${id ? `id: ${id}\n` : ''}
 // Options: state (the chat's state), seen(path, url, body) for every API call, context (how
 // full the chat is), events (more chat events sent after it connects), extras (kept changes and reviews), openclaw (OpenClaw sessions in the list), noHistory (the history
 // isn't there yet, as for a brand-new chat).
-async function install(b, { live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false, gemini = false, crew = false } = {}) {
+// Companion, as it would look with a few games in it (aide: true), or turned off.
+// Every model each assistant offers, shaped for the picker the way the server does (lib/aide.js).
+const aideLib = require('../lib/aide');
+const AIDE_RAW = { claude: claudeModels, codex: [{ value: 'gpt-6.1-sol', label: 'GPT-6.1-Sol', description: 'Latest workhorse model for coding and everyday work.', isDefault: true, efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] }, ...codexModels.map(m => ({ ...m, isDefault: false }))], gemini: GEM_MODELS };
+const AIDE_ASSISTANTS = () => aideLib.PROVIDERS.map(p => ({ provider: p, name: aideLib.PROV_NAME[p], ok: true, models: aideLib.modelsFor(p, AIDE_RAW[p]) }));
+// A Companion chat, as it says which model it's on.
+function aideChatModel(provider, model) {
+  const ms = AIDE_RAW[provider], m = ms.find(x => x.value === model) || ms.find(x => x.isDefault) || ms.find(x => x.value === 'opus') || ms[0];
+  return { model: m.value, resolvedModel: m.resolved || m.value, replyModel: null, models: ms, effort: provider === 'gemini' ? null : 'medium', efforts: provider === 'gemini' ? [] : ['low', 'medium', 'high', 'xhigh', 'max'] };
+}
+const AIDE_GROUPS = () => [
+  { key: 'where-winds-meet', name: 'Where Winds Meet', updated: NOW - 12 * 60e3, chats: [{ id: 'aide-1', title: 'Best early-game inner way for a sword build', provider: 'claude', updated: NOW - 12 * 60e3 }, { id: 'aide-2', title: 'Where to find the Kaifeng merchant', provider: 'claude', updated: NOW - 3 * 3600e3 }, { id: 'aide-3', title: 'What does this boss’s red ring mean?', provider: 'gemini', updated: NOW - 26 * 3600e3 }] },
+  { key: 'elden-ring', name: 'Elden Ring', updated: NOW - 2 * 864e5, chats: [{ id: 'aide-4', title: 'Where do I go after Liurnia?', provider: 'claude', updated: NOW - 2 * 864e5 }] },
+  { key: 'general', name: 'General', updated: NOW - 4 * 3600e3, chats: [{ id: 'aide-5', title: 'Convert 5 km to miles', provider: 'claude', updated: NOW - 4 * 3600e3 }, { id: 'aide-6', title: 'What does this error mean?', provider: 'codex', updated: NOW - 3 * 864e5 }] },
+];
+async function install(b, { aide = false, desktopStub = null, live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false, gemini = false, crew = false } = {}) {
   // Windows Firewall, as a fresh PC has it: nothing let in, the Wi-Fi set as public.
   let firewall = { known: true, program: 'C:\\Program Files\\nodejs\\node.exe', port: 4788, firewallOn: true, allowed: false, blocked: true, network: 'Public' };
   const info = { ...chatInfo, ...(context ? { context } : {}), ...(crew ? { crew: CREW, mate: 'codex' } : {}) };
@@ -193,6 +208,11 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
   const doneMarks = {};
   let runState = { running: false, cmd: 'npm run dev', custom: false, url: null, exit: null, lines: [] };
   const rulesOut = () => ({ gemini: { path: `${bard}\\GEMINI.md`, exists: false, text: '' }, scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
+  if (desktopStub) await b.send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__asked = []; window.__set = []; window.__keys = ${JSON.stringify(desktopStub)}; window.desktop = { platform: 'win32', status() {}, onOpen() {}, onDo() {}, onUpdate() {}, update: async () => null, checkUpdates: async () => null, settings: async () => ({ aideKey: 'Alt+Q', aideLookKey: 'Alt+Shift+Q', aideOn: true, aideOk: true, aideLookOk: true, hotkey: 'CommandOrControl+Shift+Space', version: 'test', ...window.__keys }), set: async p => { window.__set.push(p); Object.assign(window.__keys, p); const busy = (window.__keys.taken || []).includes(p.aideKey); if (p.aideKey && !busy) window.__keys.aideOk = true; return { ...window.__keys, aideOk: !busy && window.__keys.aideOk !== false }; }, aide: { onShow(f) { window.__show = f; }, onShot(f) { window.__shot = f; }, onHidden() {}, onPinned(f) { window.__pinned = f; }, onMoved(f) { window.__moved = f; }, ask: async (w, v) => { window.__asked.push([w, v]); return w === 'look' ? (window.__lookAnswer || { mediaType: 'image/png', data: 'iVBORw0KGgo=' }) : null; } } };` });
+  const aideState = { on: !!aide, who: 'claude:opus', alpha: 100 };
+  const aideNotes = new Map(), aideOpened = new Map();
+  let aideNewId = 0;
+  const aideData = () => ({ ...aideState, assistants: AIDE_ASSISTANTS(), groups: (aide === 'empty' ? [{ key: 'general', name: 'General', chats: [], updated: 0 }] : AIDE_GROUPS()).map(g => ({ ...g, hasNotes: !!(aideNotes.get(g.key) || {}).text })) });
   await b.intercept('*/api/*', async (url, method, postData) => {
     const u = new URL(url), q = u.searchParams, p = u.pathname;
     let body = {}; try { body = JSON.parse(postData || '{}'); } catch { /* not JSON */ }
@@ -232,7 +252,32 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/events') return { type: 'text/event-stream', body: 'retry: 600000\n\n' };
     if (p === '/api/chat/open' && gemini && (body.provider === 'gemini' || body.sessionId === GEM_ID)) return { body: { ...info, key: 'k-gem', provider: 'gemini', accountId: 'gemini', accountName: 'Gemini', sessionId: body.sessionId || null, permissionMode: 'accept-edits', modes: [{ value: 'plan', label: 'Plan only' }, { value: 'accept-edits', label: 'Edit files' }, { value: 'full', label: 'Full access' }], model: 'gemini-4-argon-medium', resolvedModel: 'gemini-4-argon-medium', models: GEM_MODELS, effort: null, efforts: [], companionKey: null, companionThread: null, title: body.sessionId ? 'The tavern’s lore book' : 'New Gemini chat', context: null } };
     if (p === '/api/chat/open') return { body: info };
+    if (p === '/api/chat/attach' && String(body.key).startsWith('k-aide')) return { body: { ...info, key: 'k-aide', sessionId: 'aide-1', title: 'A question', folder: 'companion', ...(aideOpened.get(body.key) || {}), attached: true, companionKey: null, companionThread: null, crew: null, mate: null } };
     if (p === '/api/chat/attach') return { body: compInfo };
+    if (p === '/api/aide') return { body: aideData() };
+    if (p === '/api/aide/settings') { Object.assign(aideState, body); return { body: aideData() }; }
+    if (p === '/api/aide/open') {
+      const found = body.sessionId && AIDE_GROUPS().find(g => g.chats.some(c => c.id === body.sessionId));
+      const chat = found && found.chats.find(c => c.id === body.sessionId);
+      if (body.sessionId && !chat) return { status: 404, body: { error: 'That conversation is no longer available.' } };
+      const group = found || AIDE_GROUPS().find(g => g.key === body.group) || (body.app && /steamapps/.test(body.app.path || '') ? AIDE_GROUPS()[0] : AIDE_GROUPS().find(g => g.key === 'general'));
+      const asked = aideLib.whoOf(body.who || aideState.who), provider = chat ? chat.provider : asked.provider;
+      // Each assistant's chat in the group is its own.
+      const own = provider === 'claude' ? '' : `-${provider}`;
+      const key = body.sessionId ? `k-aide-${body.sessionId}` : body.fresh ? `k-aide-new-${++aideNewId}` : `k-aide${own}`;
+      const on = aideChatModel(provider, chat ? null : asked.model);
+      const r = { ...info, ...on, key, sessionId: body.sessionId || (body.fresh ? `aide-new-${aideNewId}` : `aide-1${own}`), title: chat ? chat.title : 'A question', provider, folder: 'companion', group: { key: group.key, name: group.name }, who: `${provider}:${on.model}` };
+      aideOpened.set(key, r); return { body: r };
+    }
+    if (p === '/api/aide/notes') {
+      const group = body.group || q.get('group') || 'general', before = aideNotes.get(group) || { text: '', version: 0 };
+      if (method === 'POST') {
+        if (body.version !== before.version) return { status: 409, body: { error: 'These notes changed in another window. Load the saved version before saving again.' } };
+        aideNotes.set(group, { text: body.text, version: before.version + 1 });
+      }
+      return { body: { group, ...(aideNotes.get(group) || before), limit: 6000 } };
+    }
+    if (p === '/api/aide/rename' || p === '/api/aide/move' || p === '/api/aide/forget') return { body: aideData() };
     // extras: what the PC kept from the chat's earlier runs (changes, undos, reviews).
     if (p === '/api/chat/extras') return { body: { extras: extras && q.get('id') === ID['s-bard'] ? extras : [] } };
     if (p === '/api/chat/history' && noHistory) return { status: 404, body: { error: 'That chat wasn’t found. It may have been deleted; refresh the list.' } };
@@ -257,11 +302,16 @@ async function install(b, { live = true, state = 'ready', seen = null, context =
     if (p === '/api/chat/events' && q.get('key') === 'k-gem') return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse([['hello', { key: 'k-gem', provider: 'gemini', state: 'ready' }], ['chat', { kind: 'state', state: 'ready', seq: 1 }, 1], ['replayed', {}]]) };
     if (p === '/api/chat/events') {
       const comp = (q.get('key') || '').includes('cx');
-      const evs = [['hello', comp ? compInfo : info]];
+      const evs = [['hello', aideOpened.get(q.get('key')) || (comp ? compInfo : info)]];
       if (live && !comp) evs.push(['chat', { kind: 'state', state, seq: 1 }, 1]);
       if (live && !comp) events.forEach((ev, i) => evs.push(['chat', { ...ev, seq: i + 2 }, i + 2]));
       evs.push(['replayed', {}]);   // as the real server does, after its replay
       return { type: 'text/event-stream', body: 'retry: 600000\n\n' + sse(evs) };
+    }
+    if (p === '/api/chat/model' && String(body.key).startsWith('k-aide')) {
+      const was = aideOpened.get(body.key) || { ...info, ...aideChatModel('claude', 'opus'), key: body.key };
+      const next = { ...was, ...(body.model ? aideChatModel(was.provider || 'claude', body.model) : {}), effort: body.effort || was.effort };
+      aideOpened.set(body.key, next); return { body: next };
     }
     if (p === '/api/chat/model') return { body: { ...info } };
     if (p === '/api/chat/diff') return { body: { diff: `diff --git a/${q.get('path')} b/${q.get('path')}\nindex 1..2 100644\n--- a/${q.get('path')}\n+++ b/${q.get('path')}\n@@ -12,3 +12,3 @@ function rally(party)\n   local bonus = 0.15\n-  rally.stacks = true\n+  rally.stacks = false  -- one Rally per party\n   return bonus\n` } };

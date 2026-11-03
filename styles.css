@@ -1924,6 +1924,7 @@ body.chat-open #toast{bottom:calc(var(--dock-h, 150px) + 14px)}
 @media (max-width:640px){.setup-toc{background:rgb(var(--c-1a161d));flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.setup-toc a{flex:none}}
 .setup-toc a{font:500 12px var(--f-label);letter-spacing:.06em;color:var(--ash);text-decoration:none;padding:5px 10px;border:1px solid var(--seam);border-radius:999px}
 .setup-toc a:hover{color:var(--parch);border-color:var(--ash-2)}
+[id^="st-"]{scroll-margin-top:96px}   /* a section's title lands below the chips, even with two rows of them */
 .btn.danger{border-color:rgb(var(--c-cf8274) / .55);color:var(--ember-soft)}
 .btn.danger:hover:not(:disabled){background:rgb(var(--c-8c3a34) / .25);border-color:var(--ember)}
 

@@ -415,6 +415,22 @@ Claude, Codex and Gemini work in the same chat, any way round: bring Codex into 
 - **Approvals:** each one's approval cards are in its own color and say who's asking ("Codex wants to…"). Esc stops whichever one you're writing to.
 - Each partner uses its own sign-in and usage (Codex: your Codex account; Gemini: your Google account; Claude: the account you're working as) and shows in the ledger as **With Codex** or **With Gemini**. **Close** or **Stop this chat** stops all of them.
 
+## Companion
+
+A quick helper for your own questions, over a game or anything else, using the subscriptions you've already connected. It's off until you turn it on in **Setup → Companion**, where its keys can be changed.
+
+- **Alt + Q** (Control + Q on a Mac) brings up a small, flat panel over whatever you're doing, in the installed app. Ask, read the answer, and **Esc** puts you straight back. **Alt + Shift + Q** does the same with a picture of your screen attached, and so does **Look at screen** in the panel. It sees your screen only then.
+- **Choose part of the screen.** The arrow beside **Look at screen → Choose a region** lets you drag around an item, error or setting on a frozen picture of the current display. **Enter** confirms the selection; **Esc** cancels. Only the crop is attached, and you review it before sending.
+- **Filed by game.** What you ask in a game goes under that game, found from where it's installed or, failing that, from what has the whole screen. Everything else goes in General. Returning later carries on the conversation, including the next day; **+** starts a new one.
+- **Recent questions.** Click the game name in the panel to search and reopen earlier conversations, with this game's questions first. Each conversation keeps its own draft and pictures.
+- **Game notes.** Beside **Recent questions**, save your build, progress, platform or spoiler preferences. General has **Personal notes**. They go with a conversation's first question, and again whenever you change them, to whichever assistant you use in that group, and can be inspected beside the question they went with. They're also editable on Companion's page. Nothing is remembered automatically; edit or clear the notes whenever you want.
+- **Every model, by name.** The model button beside **Look at screen** opens every model of each assistant you're signed in to: Claude's Opus and Fable, Codex's newest GPT-6 models and Gemini's first, with Sonnet, Haiku and the rest under **More models**, and the effort under them. Another of the same assistant's models carries on the same conversation; another assistant opens its own chat in the same group, with what you've written. It starts on Opus at medium effort, and remembers what you choose.
+- **Move it, size it, pin it.** Drag its top to move it (it snaps to the edges and remembers each screen), drag its edges to resize it, and the pin keeps the answer on screen with clicks going through to your game.
+- **Its page and hub section** show the same chats, with your games and General down the side and the whole chat beside them.
+- **What it can do.** Claude's chats here can search the web and read what you show them, and nothing else: no files, no commands, no tools or settings of yours. Codex's run read-only and Gemini's in plan mode. It has no partners, which could do more.
+
+If another program already has its key, Setup says so and offers others, and Companion takes the key by itself if that program lets go. A game in true fullscreen may not show the box, or may capture as black: borderless windowed works.
+
 ## Rules and tools
 
 One set of rules for all of them. In a project, Claude Code reads `CLAUDE.md`, and Codex and Gemini both read `AGENTS.md`, so **Rules and tools** writes the rules once and **Save to both** saves both files. Open it from a project's right-click menu, a chat's **⋯**, Setup, or `Ctrl+K`:
