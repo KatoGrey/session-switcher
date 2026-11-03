@@ -6,7 +6,7 @@ const SHORTCUTS = [
   ['Anywhere', [['⌘K', 'Find a chat, project or action'], ['c', 'New chat'], ['/', 'Search chats'], ['g n', 'Now'], ['g p', 'Projects'], ['g h', 'Hackathon'], ['g b', 'Bugs'], ['g o', 'Routines'], ['g r', 'Recents'], ['g u', 'Automation'], ['g i', 'Images'], ['g l', 'Alerts'], ['g a', 'Archived'], ['g c', 'Clean up'], ['[ / ] or ⌥↑ / ⌥↓', 'Previous / next chat in the sidebar (⌥ works while typing)'], ['n or ⌥⇧↓', 'Next chat that needs you'], ['m', 'Sounds on / off'], ['z', 'Undo the last move or archive'], ['?', 'This list'], ['esc', 'Back, or clear the selection']]],
   ['Needs you', [['t', 'Triage: one at a time, the next opens by itself'], ['a / d', 'Allow / deny'], ['r', 'Reply'], ['e', 'Done'], ['o', 'Open the chat']]],
   ['On a list', [['j / k', 'Next / previous'], ['↵ or o', 'Open'], ['x', 'Select (⇧-click and ⌘-click too)'], ['1–4', 'Status: Exploring, Building, Finishing, Done'], ['→ / ←', 'Open / fold a chat’s sub-chats'], ['f', 'Focus on / off'], ['w', 'Waiting on…'], ['s', 'Status, kind and more'], ['e', 'Archive (on Archived: bring back)'], ['a / d', 'Allow / deny (Needs you)'], ['r', 'Reply without opening']]],
-  ['In a chat', [['↵', 'Send'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['esc', 'Back to where you were']]],
+  ['In a chat', [['↵', 'Send using your follow-up setting'], ['⌘↵ / Ctrl+Enter', 'Steer the current work now'], ['⌘⇧↵ / Ctrl+Shift+Enter', 'Queue after the current reply'], ['⇧↵', 'New line'], ['⌘.', 'Stop'], ['a / d', 'Allow / deny a request'], ['e e', 'Archive it (press twice)'], ['esc', 'Back to where you were']]],
 ];
 
 /* ---------- the cursor ---------- */
@@ -30,6 +30,7 @@ function keepCur() {
 const idsAt = el => { const id = el && (el.dataset.chat || el.dataset.open); return S.sel.size && id && S.sel.has(id) ? [...S.sel] : S.sel.size && !id ? [...S.sel] : id ? [id] : []; };
 
 let chord = null, chordTimer = null;
+const archiveArmed = { id: null, at: 0 };
 const GO = { n: 'now', p: 'home', h: 'hack', b: 'bugs', o: 'routines', r: 'recent', u: 'automation', i: 'images', l: 'alerts', a: 'archived', c: 'cleanup' };
 // Rifling: the sidebar's chats in order, and the ones that need you.
 function stepChat(dir) {
@@ -98,7 +99,17 @@ function onKey(e) {
     // A one-question ask: its number picks that answer.
     if (p && p.questions && quickQ(p) && /^[1-9]$/.test(e.key)) { const o = p.questions[0].options[Number(e.key) - 1]; if (o) { e.preventDefault(); return answerInChat(p.requestId, 'allow', { [p.questions[0].question]: o.label }); } }
     if (e.key === 's') { const b = document.querySelector('.chat-h .stage'); if (b) { e.preventDefault(); b.click(); } }
-    if (e.key === 'e' && CV.id && chatBy.get(CV.id)) { e.preventDefault(); return wrap(archiveChats)([CV.id]).then(() => go('back')); }
+    // e archives the chat you're in only when pressed twice: one stray e (typing or dictation that
+    // missed the box) archived a chat that was still working, and it vanished from the lists.
+    if (e.key === 'e' && CV.id && chatBy.get(CV.id)) {
+      e.preventDefault();
+      if (archiveArmed.id !== CV.id || Date.now() - archiveArmed.at > 3000) {
+        archiveArmed.id = CV.id; archiveArmed.at = Date.now();
+        return toast(`Press e again to archive this chat${running(chatBy.get(CV.id)) ? ' (it’s still working)' : ''}.`);
+      }
+      archiveArmed.id = null;
+      return wrap(archiveChats)([CV.id]).then(() => go('back'));
+    }
     if (e.key === 'w' && CV.id && chatBy.get(CV.id)) { e.preventDefault(); return askWaiting([CV.id]); }
     if (e.key === 'f' && CV.id && chatBy.get(CV.id)) { e.preventDefault(); return wrap(toggleFocus)([CV.id]); }
     return undefined;
@@ -130,7 +141,8 @@ function onKey(e) {
 }
 document.addEventListener('keydown', onKey);
 async function answerInChat(requestId, decision, answers) {
-  try { await api('/api/chat/permission', { key: CV.key, requestId, decision, ...(answers ? { answers } : {}) }); sfx(decision === 'deny' ? 'shove' : 'chip'); }
+  const p = CV.pending.get(requestId); if (!p) return;
+  try { await api('/api/chat/permission', { key: p.key || CV.key, requestId: p.originalRequestId || requestId, decision, ...(answers ? { answers } : {}) }); sfx(decision === 'deny' ? 'shove' : 'chip'); }
   catch (err) { toast(err.message); }
 }
 
@@ -146,7 +158,7 @@ function score(text, q) {
 function palItems(q) {
   const acts = [
     { t: L('Now'), s: 'g n', run: () => go('now') }, { t: L('Projects'), s: 'g p', run: () => go('home') }, { t: 'Hackathon', s: 'g h', run: () => go('hack') }, { t: 'Bugs', s: 'g b', run: () => go('bugs') }, { t: 'Routines', s: 'g o', run: () => go('routines'), alias: 'automation schedule checker cron' }, { t: 'New routine', run: () => newRoutine('check'), alias: 'automation schedule checker' },
-    { t: L('Recents'), s: 'g r', run: () => go('recent') }, { t: 'Images', s: 'g i', run: () => go('images'), alias: 'pictures gallery gpt image' }, { t: 'Archived', s: 'g a', run: () => go('archived') },
+    { t: L('Recents'), s: 'g r', run: () => go('recent') }, { t: 'Images', s: 'g i', run: () => go('images'), alias: 'pictures gallery gpt image' }, { t: 'Tokens', run: () => go('tokens'), alias: 'usage tokens spent per day month projects flex' }, { t: 'Archived', s: 'g a', run: () => go('archived') },
     { t: 'Clean up', s: 'g c · free space, worktrees', run: () => go('cleanup'), alias: 'disk space node_modules worktree' }, { t: 'Phone alerts', run: () => go('alerts'), alias: 'push notifications iphone' },
     { t: L('New chat'), s: 'c', run: () => go('newchat'), alias: 'start' },
     ...(S.view === 'chat' && chatBy.get(CV.id) ? [{ t: 'Rename this chat', s: 'or click its title', run: () => editTitleInline(), alias: 'title name' }] : []),
@@ -160,7 +172,7 @@ function palItems(q) {
     { t: 'Open the full app', run: () => { location.href = '/'; }, alias: 'tyler classic hub' },
   ].map(x => ({ ...x, kind: 'Go', text: `${x.t} ${x.alias || ''}` }));
   const chats = allChats().sort((a, b) => b.updated - a.updated).map(c => ({ kind: 'Chat', t: c.title, s: `${projOf(c).name} · ${statusById(statusOf(c)).name}${c.kind && c.kind !== 'feature' ? ` · ${kindById(c.kind).name}` : ''}${c.focus ? ' · Focus' : ''} · ${ago(c.updated)}`, run: () => openChat(c.id), text: `${c.title} ${projOf(c).name}`, boost: needs(c) ? 25 : running(c) ? 15 : 0 }));
-  const projs = S.projects.filter(p => !p.archived && (p.bucket || chatsOfProject(p.key).length)).map(p => ({ kind: 'Project', t: p.name, s: bucketName(p.bucket), run: () => go('project', { project: p.key }), text: `${p.name} ${p.folder || ''}` }));
+  const projs = S.projects.filter(p => !p.archived && chatsOfProject(p.key).length).map(p => ({ kind: 'Project', t: p.name, run: () => go('project', { project: p.key }), text: `${p.name} ${p.folder || ''}` }));
   const news = q ? S.projects.filter(p => p.cwd && p.exists && !p.archived && !p.loose).map(p => ({ kind: 'New chat', t: `New chat in ${p.name}`, run: () => go('newchat', { ncProject: p.key }), text: `new chat ${p.name}` })) : [];
   if (!q) return [...chats.filter(c => c.boost).slice(0, 6), ...acts.slice(0, 9), ...chats.filter(c => !c.boost).slice(0, 8)];
   return [...acts, ...projs, ...news, ...chats].map(x => ({ x, raw: score(x.text, q) })).filter(r => r.raw >= 0).map(r => ({ x: r.x, s: r.raw + (r.x.boost || 0) + (r.x.kind === 'Go' ? 4 : r.x.kind === 'Project' ? 3 : 0) })).sort((a, b) => b.s - a.s).slice(0, 40).map(r => r.x);

@@ -7,7 +7,7 @@ const CMD_CHIPS = ['Nudge anything stuck for 2+ days', 'Sort new chats by kind a
 
 // A live entry as a chat row: the chat it belongs to, when the list has it.
 const titleOf = x => { const c = x.sessionId && chatBy.get(x.sessionId); return (c && c.title) || x.title || 'New chat'; };
-const whereOf = x => { const c = x.sessionId && chatBy.get(x.sessionId); const p = c && projOf(c); return p ? `${p.name}${p.bucket ? ` · ${bucketName(p.bucket)}` : ''}` : x.folder || ''; };
+const whereOf = x => { const c = x.sessionId && chatBy.get(x.sessionId); const p = c && projOf(c); return p ? p.name : x.folder || ''; };
 const idOf = x => x.sessionId || x.key;
 
 // The end of a reply, for a card: Markdown links as their words, starting at a sentence (or at
@@ -113,12 +113,14 @@ function now() {
     <div class="page-h"><div class="proj-h" style="align-items:flex-start"><button class="iconbtn back" data-go="side" aria-label="Back">‹</button><div><h1>${L('Now')}</h1><p class="lead" id="nowLead">${leadHtml()}</p></div></div></div>
     ${commanderHtml()}
     <div id="nowLive" class="section-stack">${nowLiveHtml()}</div>
+    ${recentSection()}
     ${eventsSection()}
     ${foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span><span class="hint">Your top few; <kbd>f</kbd> on any chat</span></div><div class="rows">${foc.map(c => rowHtml(c, { showProject: true, showStage: true })).join('')}</div></section>` : ''}
     <section class="section"><div class="sec-h"><h2>Waiting on others</h2><span class="n">${waiting.length}</span><span class="hint">Checks their PRs every ten minutes; reminds you after two days</span></div>
       <div class="rows">${waiting.map(waitRow).join('') || '<p class="empty-note">Nothing is waiting on anyone. Press <kbd>w</kbd> on a chat to say who it’s waiting on.</p>'}</div></section>
     <section class="section"><div class="sec-h"><h2>Coming up</h2><label class="hint follow"><input type="checkbox" data-follow="1" ${S.lite.routinesFollow ? 'checked' : ''}> Follow the use-next order</label><button class="hint" data-go="routines" style="margin-left:12px">Routines ›</button></div>
       <div class="rows">${ups.map(r => `<div class="row"><span class="dot" style="background:var(--st-final)"></span><span class="t"><b>${esc(r.name)}</b><small>${esc(r.when)} · runs on ${esc(routineRunsOn(r))}${r.last ? ` · last: ${esc(r.last.line)}` : ''}</small></span><span class="side-tags">${r.running ? '<span class="live-dot"></span>' : ''}</span><span class="when">${r.nextAt ? esc(inWords(r.nextAt)) : r.when ? 'watching' : ''}</span><span></span></div>`).join('') || '<p class="empty-note">No routines yet.</p>'}</div></section>
+    <section class="section" id="tokBox">${tokensBoxHtml()}</section>
     <section class="section" id="planBox">${plansBoxHtml()}</section>
   </div>`;
 }
@@ -243,7 +245,7 @@ function triageView() {
   return `<div class="triage">
     <div class="tr-top"><span>${TR.i + 1} of ${items.length}</span><span class="tr-bar"><i style="width:${Math.round(100 * (TR.handled) / (TR.handled + items.length))}%"></i></span><button class="linkish" data-go="now">Exit <kbd>esc</kbd></button></div>
     <div class="tr-card">
-      <div class="crumb">${proj ? `${esc(bucketName(proj.bucket))} › ${esc(proj.name)}` : esc(x.folder || '')}${x.accountName ? ` · ${esc(x.accountName)}` : ''}${x.finishedAt ? ` · ${ago(x.finishedAt)}` : ''}</div>
+      <div class="crumb">${proj ? esc(proj.name) : esc(x.folder || '')}${x.accountName ? ` · ${esc(x.accountName)}` : ''}${x.finishedAt ? ` · ${ago(x.finishedAt)}` : ''}</div>
       <h2 class="tr-title">${esc(titleOf(x))}</h2>
       ${body}
       ${TR.replying ? `<form class="box tr-box" id="trForm"><textarea ${MSG_ATTRS} id="trBox" rows="2" placeholder="Reply, then ↵ (it goes to the next one)"></textarea></form>` : ''}

@@ -16,6 +16,7 @@ openclaw-messages/
 pairs.json
 lite.json
 lite-usage.json
+lite-tokens.json
 push.json
 lite-thumbs/
 devices.json
@@ -38,6 +39,11 @@ gemini-chats.json
 run.json
 switcher.log
 switcher.log.old
+# The keeper (lib/keeper.js) and the hand-over between copies
+keeper-token
+keeper.log
+app-token
+handover.json
 *.corrupt-*
 *.tmp
 *.bak

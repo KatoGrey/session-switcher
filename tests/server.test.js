@@ -172,7 +172,7 @@ const { LiveChat } = require(${JSON.stringify(path.join(APP, 'lib/chat.js'))});
 require(${JSON.stringify(path.join(APP, 'lib/snapshots.js'))}).warm = () => {};   // (Git in the background could outlive this short test, and hold its folder)
 cx.createCodex = ({account, chats, getConfig}) => {
   const state = () => ({id:account.id, name:account.name, provider:'codex', enabled:true, checked:false, installed:true, signedIn:true});
-  return { ACCOUNT:account, publicState:state, refreshUsage:async()=>{}, list:async()=>[], cached:()=>[], models:async()=>[], stop:()=>{}, config:getConfig,
+  return { ACCOUNT:account, publicState:state, refreshUsage:async()=>{}, list:async()=>[], cached:()=>[], models:async()=>[], stop:()=>{}, config:getConfig, hasLoadedThread:async()=>false,
     refreshAccount:()=>new Promise(r => setTimeout(() => r(state()), 300)),   // (long enough for both opens to arrive while the first waits)
     known:id=>[${JSON.stringify(lead)},${JSON.stringify(partner)}].includes(id) ? {id, cwd:${JSON.stringify(cwd)}} : null,
     open:opts=>chats.open({...opts, account, Chat:class extends LiveChat {

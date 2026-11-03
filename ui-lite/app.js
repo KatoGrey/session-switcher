@@ -2,7 +2,7 @@
 /* The sidebar (pages, bucket switcher, status labels with quiet folding), routing (with real browser
    history, so back and forward work), redraws, and every click and drag on the page. */
 
-const VIEWS = ['triage', 'now', 'home', 'hack', 'bugs', 'automation', 'routines', 'routine', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
+const VIEWS = ['triage', 'now', 'tokens', 'home', 'hack', 'bugs', 'automation', 'routines', 'routine', 'recent', 'project', 'search', 'side', 'chat', 'newchat', 'archived', 'cleanup', 'images', 'alerts'];
 const small = () => matchMedia('(max-width: 760px)').matches;
 
 // A chat's pull request, as one small icon: draft, open, checks failing, changes asked for,
@@ -39,9 +39,8 @@ function sideFam(t, depth = 1) {
 function renderSide() {
   famMemo = null;
   renderChip();
-  $('brand').textContent = L('Switcher');
-  $('q').placeholder = L('Search chats');
-  const b = buckets().find(x => x.id === S.bucket);
+  if ($('brand').textContent !== L('Switcher')) $('brand').textContent = L('Switcher');
+  if ($('q').placeholder !== L('Search chats')) $('q').placeholder = L('Search chats');
   const chats = allChats().filter(inBucket).sort((x, y) => y.updated - x.updated);
   const nNeed = S.live.filter(needsLive).length;
   // How many are working right now, beside Now (its lamp pulses while any are).
@@ -55,23 +54,23 @@ function renderSide() {
       ${nav('routines', IC.clock, 'Routines', (n => (n ? `<span class="badge">${n}</span>` : ''))(rtEventsOpen().filter(e => e.kind !== 'ran').length))}
       ${nav('bugs', IC.bug, 'Bugs', (n => (n ? `<span class="n">${n}</span>` : ''))(bugList().filter(c => statusOf(c) !== 'done').length))}
       ${nav('automation', IC.clock, 'Automation', (n => (n ? `<span class="n">${n}</span>` : ''))(automationList().filter(c => Date.now() - c.updated < 864e5).length))}
-    </div>
-    <button class="bucket-pick" data-pickbucket="1" aria-haspopup="menu"><span class="lbl">${esc(S.bucket === 'all' ? 'All buckets' : S.bucket === 'unsorted' ? 'Unsorted' : b ? b.name : 'All buckets')}</span><span style="color:var(--muted)">▾</span></button>`;
-  const focusSt = { id: 'focus', name: 'Focus', c: 'var(--st-priority)' };
+    </div>`;
   const waitSt = { id: 'waiting', name: 'Waiting on others', c: 'var(--muted)' };
   // Later isn't a folder: like quiet, it's one small "N later" row at the end that opens in place.
   const laterAll = chats.filter(c => isTop(c) && statusOf(c) === 'later');
   const laterOpen = !!S.more['side-later'];
   const laterRow = laterAll.length ? `<div class="group">${laterOpen ? `<div class="quiet-chats">${laterAll.map(c => sideChat(c) + sideFam(c)).join('')}</div>` : ''}<button class="nav-i chat-i quiet-toggle" data-side-later="*" aria-expanded="${laterOpen}"><span class="lbl">${laterOpen ? 'Hide later' : `${laterAll.length} later`}</span></button></div>` : '';
-  const folders = [focusSt, ...STATUSES.filter(x => !parked(x.id)), waitSt, ...STATUSES.filter(x => x.id === 'done')].map(st => {
-    const all = chats.filter(c => (st.id === 'focus' ? c.focus && !parked(statusOf(c)) : st.id === 'waiting' ? isTop(c) && c.waiting && !c.focus && !parked(statusOf(c)) : isTop(c) && statusOf(c) === st.id && !(c.focus && !parked(st.id)) && !(c.waiting && !parked(st.id))));
+  const focused = chats.filter(c => c.focus);
+  const focusSection = `<div class="group" data-drop-focus="1"><div class="side-h">Focus</div>${focused.length ? focused.map(c => sideChat(c)).join('') : '<div class="empty-note">Star a chat or drop it here.</div>'}</div>`;
+  const folders = [...statusesShown().filter(x => !parked(x.id)), waitSt, ...STATUSES.filter(x => x.id === 'done')].map(st => {
+    const all = chats.filter(c => (st.id === 'waiting' ? isTop(c) && c.waiting && !c.focus && !parked(statusOf(c)) : isTop(c) && statusOf(c) === st.id && !(c.focus && !parked(st.id)) && !(c.waiting && !parked(st.id))));
     const act = st.id === 'later' ? all : all.filter(c => !famQuiet(c)), quiet = st.id === 'later' ? [] : all.filter(famQuiet);
     const open = all.length && !S.folded[st.id];
     const showQuiet = S.more[st.id];
     const shown = act.slice(0, S.more['all-' + st.id] ? 400 : 12);
     return `<div class="group folder ${act.length ? '' : 'empty'}" data-folded="${!open}">
-      <button class="nav-i folder-btn" data-fold="${st.id}" ${st.id === 'focus' ? 'data-drop-focus="1"' : `data-drop-stage="${st.id}"`} aria-expanded="${!!open}"><span class="ic"><span class="label-dot" style="background:${st.c}"></span></span><span class="lbl">${st.name}</span><span class="n">${act.length || ''}</span></button>
-      <div class="folder-items">${shown.map(c => sideChat(c) + (st.id === 'focus' ? '' : sideFam(c))).join('')}${act.length > shown.length ? `<button class="nav-i chat-i quiet-toggle" data-more-all="${st.id}"><span class="lbl">${act.length - shown.length} more</span></button>` : ''}${quiet.length ? (showQuiet ? `<div class="quiet-chats">${quiet.slice(0, 60).map(sideChat).join('')}</div>` : '') + `<button class="nav-i chat-i quiet-toggle" data-more-st="${st.id}"><span class="lbl">${showQuiet ? 'Hide quiet' : `${quiet.length} quiet`}</span></button>` : ''}</div>
+      <button class="nav-i folder-btn" data-fold="${st.id}" data-drop-stage="${st.id}" aria-expanded="${!!open}"><span class="ic"><span class="label-dot" style="background:${st.c}"></span></span><span class="lbl">${st.name}</span><span class="n">${act.length || ''}</span></button>
+      <div class="folder-items">${shown.map(c => sideChat(c) + sideFam(c)).join('')}${act.length > shown.length ? `<button class="nav-i chat-i quiet-toggle" data-more-all="${st.id}"><span class="lbl">${act.length - shown.length} more</span></button>` : ''}${quiet.length ? (showQuiet ? `<div class="quiet-chats">${quiet.slice(0, 60).map(sideChat).join('')}</div>` : '') + `<button class="nav-i chat-i quiet-toggle" data-more-st="${st.id}"><span class="lbl">${showQuiet ? 'Hide quiet' : `${quiet.length} quiet`}</span></button>` : ''}</div>
     </div>`;
   });
   // The backlog line goes just before Done.
@@ -79,103 +78,66 @@ function renderSide() {
   const nArch = S.chats.filter(c => c.archived).length + S.projects.filter(p => p.archived).length;
   const mode = S.sideMode || 'projects';
   const modeSeg = `<span class="side-seg" role="group" aria-label="Sidebar shows"><button data-sidemode="projects" aria-pressed="${mode === 'projects'}">Projects</button><button data-sidemode="stages" aria-pressed="${mode === 'stages'}">Status</button></span>`;
-  swapHtml($('sideScroll'), top + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders.join('') : sideProjects(chats)}</div>`
-    + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`);
+  if (small() && S.q) swapHtml($('sideScroll'), sideSearchHtml(), morph);
+  else swapHtml($('sideScroll'), top + focusSection + `<div class="group"><div class="side-h side-h-row">${modeSeg}</div>${mode === 'stages' ? folders.join('') : sideProjects(chats)}</div>`
+    + `<div class="group">${nav('recent', IC.history, L('Recents'))}${nav('images', IC.image, 'Images')}${nav('archived', IC.box, 'Archived', nArch ? `<span class="n">${nArch}</span>` : '')}${nav('cleanup', IC.broom, 'Clean up')}</div>`, morph);
 }
 
-// Open bugs, together above the projects (their own group, whatever project they're in), under
-// their stage: Exploring, Working, Finish line.
-const WAIT_LABEL = { id: 'waiting', name: 'Waiting on others', c: 'var(--muted)' };
-function sideBugs(chats, key = 'all') {
-  if (typeof loadPipeline === 'function') loadPipeline();
-  const open = chats.filter(c => isBug(c) && isTop(c) && bugStage(c) !== 'done');
-  if (!open.length) return '';
-  const fk = 'p:__bugs:' + key, folded = !!S.folded[fk];
-  // Up to five per stage, so every stage shows; "N more" opens them all.
-  const per = S.more['all-bugs-' + key] ? 400 : 5;
-  let n = 0, inner = '';
-  const groups = [...BUG_STAGES.filter(x => x.id !== 'done'), WAIT_LABEL].map(st => [st, open.filter(c => (st === WAIT_LABEL ? c.waiting : !c.waiting && bugStage(c) === st.id))]).filter(([, l]) => l.length);
-  for (const [st, list] of groups) {
-    const take = list.slice(0, per); n += take.length;
-    // One stage only: no label over it.
-    inner += `${groups.length === 1 ? '' : `<div class="side-stage"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>`}${take.map(c => sideChat(c)).join('')}`;
-  }
-  if (open.length > n) inner += `<button class="nav-i chat-i quiet-toggle" data-more-all="bugs-${esc(key)}"><span class="lbl">${open.length - n} more</span></button>`;
-  const nd = open.some(needs), rn = open.some(running);
-  return `<div class="group folder" data-folded="${folded}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-go="bugs"><span class="ic">${IC.bug}</span><span class="lbl">Bugs</span>${!folded ? '' : nd ? '<span class="dot needs-dot" title="A bug needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}<span class="n">${open.length}</span></button><button class="proj-chev" data-foldproj="__bugs:${esc(key)}" aria-expanded="${!folded}" aria-label="${folded ? 'Show' : 'Hide'} bugs" title="${folded ? 'Show' : 'Hide'} bugs"></button></div><div class="folder-items">${inner}</div></div>`;
-}
-
-// The sidebar by project (the default): each project with its chats, Focus first. In buckets where
-// status matters (Latitude…), chats sit under small status labels; elsewhere it's a plain recent
-// list. Quiet projects fold to one line at the end.
+// Each project starts as one row. Its name opens a sole main chat or the project list; the count reveals
+// other main chats, or the children of a single main chat. Full status groups live on its page.
 S.sideMode = local.get('sideMode', 'projects');
 const bucketStages = id => { const b = buckets().find(x => x.id === id); return !b || b.stages !== false; };
+function projectMain(mains) {
+  return [...mains].sort((a, b) => Number(!!b.focus) - Number(!!a.focus) || b.updated - a.updated)[0];
+}
 function sideProjects(all) {
   if (typeof loadPipeline === 'function') loadPipeline();
-  const chats = all.filter(c => !isBug(c));
-  const bugsIn = bid => all.filter(c => isBug(c) && (projOf(c).bucket || null) === bid);
   const byProj = new Map();
-  for (const c of chats) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
+  for (const c of all) { const k = c.project; if (!byProj.has(k)) byProj.set(k, []); byProj.get(k).push(c); }
   const groups = [...byProj].map(([k, cs]) => ({ p: projBy.get(k) || { key: k, name: 'Unknown' }, cs })).filter(g => !g.p.archived);
-  const activeOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && !famQuiet(c));
-  const hot = g => g.cs.some(c => needs(c) || running(c)) ? 1 : 0;
-  const ord = g => (typeof g.p.order === 'number' ? g.p.order : 1e9);
-  const act = groups.filter(g => activeOf(g).length).sort((a, b) => ord(a) - ord(b) || hot(b) - hot(a) || Math.max(...b.cs.map(c => c.updated)) - Math.max(...a.cs.map(c => c.updated)));
-  const quiet = groups.filter(g => !activeOf(g).length);
+  // (Quick keeps all its chats together: it's the place for odds and ends, whatever stage they're at.)
+  const mainsOf = g => g.cs.filter(c => isTop(c) && !parked(statusOf(c)) && (g.p.quick || !['waiting', 'finishing'].includes(boardStage(c))));
+  const active = g => mainsOf(g).some(c => !famQuiet(c));
+  const act = groups.filter(g => active(g) && !g.p.quick).sort((a, b) => projectOrder(a.p, b.p));
+  const quiet = groups.filter(g => !g.p.quick && !active(g) && (mainsOf(g).length || g.cs.every(c => parked(statusOf(c))))).sort((a, b) => projectOrder(a.p, b.p));
   const projRow = g => {
-    const lv = activeOf(g), q = g.cs.filter(c => isTop(c) && famQuiet(c) && !parked(statusOf(c)));
-    // Projects in buckets without stages (Games, Apps…) start folded to one line; Latitude's open.
-    const stageless = !bucketStages(g.p.bucket);
-    const open = stageless ? S.folded['p:' + g.p.key] === false : !S.folded['p:' + g.p.key];
+    const mains = mainsOf(g), lead = projectMain(mains);
+    const many = mains.length > 1, children = descOf(lead.id).filter(c => c.project === g.p.key);
+    const count = many ? mains.length : children.length;
+    const open = S.folded['p:' + g.p.key] === false;
     const nd = g.cs.some(needs), rn = g.cs.some(running);
     let inner = '';
     if (open) {
-      const limit = S.more['pall:' + g.p.key] ? 200 : 8;
-      const foc = lv.filter(c => c.focus), rest = lv.filter(c => !c.focus && !c.waiting), waits = lv.filter(c => !c.focus && c.waiting);
-      let n = foc.length;
-      inner = foc.map(c => sideChatDot(c) + sideFam(c)).join('');
-      if (bucketStages(g.p.bucket)) {
-        const shown = [];
-        for (const st of STATUSES.filter(x => !parked(x.id))) {
-          const list = rest.filter(c => statusOf(c) === st.id); if (!list.length || n >= limit) continue;
-          const take = list.slice(0, limit - n); n += take.length; shown.push([st, take]);
+      if (many) {
+        const lv = mains.filter(c => !famQuiet(c) || c === lead).sort((a, b) => Number(b === lead) - Number(a === lead) || Number(!!b.focus) - Number(!!a.focus) || b.updated - a.updated);
+        const q = mains.filter(c => famQuiet(c) && c !== lead);
+        const limit = S.more['pall:' + g.p.key] ? lv.length : 8;
+        inner = lv.slice(0, limit).map(c => sideChatDot(c) + sideFam(c)).join('');
+        if (lv.length > 8) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}" aria-expanded="${lv.length <= limit}"><span class="lbl">${lv.length > limit ? `${lv.length - limit} more` : 'Show fewer'}</span></button>`;
+        if (q.length) {
+          const qo = !!S.more['pq:' + g.p.key];
+          if (qo) inner += `<div class="quiet-chats">${q.map(c => sideChatDot(c) + sideFam(c)).join('')}</div>`;
+          inner += `<button class="nav-i chat-i quiet-toggle" data-side-quiet="${esc(g.p.key)}" aria-expanded="${qo}"><span class="lbl">${qo ? 'Hide quiet' : `${q.length} quiet`}</span></button>`;
         }
-        // Only one stage on show (and nothing waiting): its label says nothing, so it's left out.
-        const one = shown.length === 1 && !waits.length;
-        for (const [st, take] of shown) inner += `${one ? '' : `<div class="side-stage" data-drop-stage="${st.id}"><span class="label-dot" style="background:${st.c}"></span>${st.name}</div>`}${take.map(c => sideChat(c) + sideFam(c)).join('')}`;
-      } else { const take = rest.slice(0, Math.max(0, limit - n)); n += take.length; inner += take.map(c => sideChatDot(c) + sideFam(c)).join(''); }
-      // Waiting on someone else: out of the way at the end, whatever its status.
-      if (waits.length) inner += `<div class="side-stage"><span class="label-dot" style="background:${WAIT_LABEL.c}"></span>${WAIT_LABEL.name}</div>${waits.map(c => sideChatDot(c) + sideFam(c)).join('')}`;
-      // "N more" and "N quiet" open in place and close again.
-      if (lv.length > 8) inner += `<button class="nav-i chat-i quiet-toggle" data-more-proj="${esc(g.p.key)}" aria-expanded="${lv.length <= limit}"><span class="lbl">${lv.length > limit ? `${lv.length - limit} more` : 'Show fewer'}</span></button>`;
-      if (q.length) {
-        const qo = !!S.more['pq:' + g.p.key];
-        if (qo) inner += `<div class="quiet-chats">${q.map(c => sideChatDot(c) + sideFam(c)).join('')}</div>`;
-        inner += `<button class="nav-i chat-i quiet-toggle" data-side-quiet="${esc(g.p.key)}" aria-expanded="${qo}"><span class="lbl">${qo ? 'Hide quiet' : `${q.length} quiet`}</span></button>`;
-      }
+      } else inner = kidsOf(lead.id).filter(c => c.project === g.p.key).map(c => sideChatDot(c) + sideFam(c)).join('');
     }
-    // The name opens the project; the chevron beside it folds its chats away.
-    const here = S.view === 'project' && S.project === g.p.key;
-    // Games, Apps, Personal: one line per project saying where it's at. The line opens its latest
-    // chat; a project with a few open chats has a count that shows them.
-    if (stageless) {
-      const lead = [...lv].sort((x, y) => y.updated - x.updated)[0];
-      const st = statusById(statusOf(lead));
-      const cur = S.view === 'chat' && g.cs.some(c => low(c.id) === low(CV.id));
-      const many = lv.length > 1;
-      return `<div class="group folder flat-proj" data-folded="${!(open && many)}"><div class="proj-row"><button class="nav-i chat-i flat-btn" data-chat="${esc(lead.id)}" aria-current="${cur}" title="${esc(g.p.name)}: ${esc(lead.title)}"><span class="st-dot" style="background:${st.c}"></span><span class="lbl">${esc(g.p.name)}</span><span class="flat-st">${st.name}</span>${nd ? '<span class="dot needs-dot"></span>' : rn ? '<span class="live-dot"></span>' : ''}</button>${many ? `<button class="proj-chev flat-n" data-foldproj="${esc(g.p.key)}" data-stageless="1" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} its ${lv.length} chats" title="${lv.length} open chats">${lv.length}</button>` : ''}</div>${many ? `<div class="folder-items">${inner}</div>` : ''}</div>`;
-    }
-    return `<div class="group folder" data-folded="${!open}"><div class="proj-row"><button class="nav-i folder-btn proj-btn" data-project="${esc(g.p.key)}" draggable="true" aria-current="${here}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span>${open ? '' : nd ? '<span class="dot needs-dot" title="Something in here needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}<span class="n">${lv.length || ''}</span></button><button class="proj-chev" data-foldproj="${esc(g.p.key)}" ${stageless ? 'data-stageless="1"' : ''} aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} chats" title="${open ? 'Hide' : 'Show'} chats"></button></div><div class="folder-items">${inner}</div></div>`;
+    const cur = S.view === 'project' && S.project === g.p.key || S.view === 'chat' && g.cs.some(c => low(c.id) === low(CV.id));
+    const st = statusById(statusOf(lead));
+    const label = `${count} ${many ? 'main chats' : count === 1 ? 'subchat' : 'subchats'}`;
+    return `<div class="group folder compact-proj" data-folded="${!open}"><div class="proj-row"><button class="nav-i proj-btn" data-project="${esc(g.p.key)}" ${many ? '' : `data-main-chat="${esc(lead.id)}"`} draggable="true" aria-current="${cur}" title="${esc(g.p.name)}: ${many ? `${mains.length} main chats` : esc(lead.title)}"><span class="thumb-xs" style="${artStyle(g.p)}"></span><span class="lbl">${esc(g.p.name)}</span><span class="st-dot" style="background:${st.c}" title="${st.name}"></span>${nd ? '<span class="dot needs-dot" title="Needs you"></span>' : rn ? '<span class="live-dot" title="Working"></span>' : ''}</button>${count ? `<button class="proj-chev" data-foldproj="${esc(g.p.key)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} ${esc(g.p.name)} ${label}" title="${label}"><span>${count}</span></button>` : ''}<button class="proj-options" data-projmenu="${esc(g.p.key)}" aria-label="${esc(g.p.name)} options" title="Project options">⋯</button></div><div class="folder-items">${inner}</div></div>`;
   };
-  // With every bucket showing, projects sit under their bucket's name.
-  let html = '';
-  if (S.bucket === 'all') {
-    for (const b of [...buckets(), { id: null, name: 'Unsorted' }]) {
-      const gs = act.filter(g => (g.p.bucket || null) === b.id);
-      const bugs = sideBugs(bugsIn(b.id), b.id || 'unsorted');
-      if (gs.length || bugs) html += `<div class="side-bucket">${esc(b.name)}</div>${bugs}${gs.map(projRow).join('')}`;
-    }
-  } else html = sideBugs(all.filter(isBug), S.bucket) + act.map(projRow).join('');
+  let html = act.map(projRow).join('');
+  // Then the categories, folded, one click to open: Quick (odds and ends), what's finishing, what's
+  // waiting. A folded one still says when something in it needs you or is working.
+  const inQuick = c => projOf(c).quick && !parked(statusOf(c));
+  for (const [stage, name] of [['quick', 'Quick'], ['finishing', 'Finishing'], ['waiting', 'Waiting']]) {
+    const list = all.filter(c => isTop(c) && !c.focus && (stage === 'quick' ? inQuick(c) : boardStage(c) === stage && !projOf(c).quick)).sort((a, b) => b.updated - a.updated);
+    if (!list.length) continue;
+    const open = S.folded[stage] === false;
+    const mark = open ? '' : list.some(needs) ? '<span class="dot needs-dot" title="Needs you"></span>' : list.some(running) ? '<span class="live-dot" title="Running"></span>' : '';
+    html += `<button class="side-bucket side-bucket-btn" data-fold="${stage}" ${stage === 'quick' ? 'data-drop-quick="1"' : `data-drop-stage="${stage}"`} aria-expanded="${open}">${name} <span class="n">${list.length}</span>${mark}<span class="chev">${open ? '▾' : '▸'}</span></button>`;
+    if (open) html += `<div class="later-chats">${list.map(c => sideChat(c).replace('<span class="lbl">', `<span class="lbl" title="${esc(projOf(c).name || '')}">`) + sideFam(c)).join('')}</div>`;
+  }
   // Later (the backlog) is a bucket of its own, after the others: folded, one click to open.
   const later = all.filter(c => isTop(c) && statusOf(c) === 'later').sort((x, y) => y.updated - x.updated);
   if (later.length) {
@@ -183,7 +145,7 @@ function sideProjects(all) {
     html += `<button class="side-bucket side-bucket-btn" data-side-later="*" aria-expanded="${lo}">Later <span class="n">${later.length}</span><span class="chev">${lo ? '▾' : '▸'}</span></button>`;
     if (lo) html += `<div class="later-chats">${later.map(c => sideChat(c).replace('<span class="lbl">', `<span class="lbl" title="${esc(projOf(c).name || '')}">`) + sideFam(c)).join('')}</div>`;
   }
-  if (quiet.length) html += S.more.quietProj ? `<div class="side-bucket">Quiet</div>${quiet.map(g => `<button class="nav-i chat-i" data-project="${esc(g.p.key)}"><span class="lbl">${esc(g.p.name)}</span></button>`).join('')}<button class="nav-i chat-i quiet-toggle" data-quietproj="1"><span class="lbl">Hide quiet</span></button>` : `<button class="nav-i quiet-toggle" data-quietproj="1"><span class="lbl">${quiet.length} quiet project${quiet.length === 1 ? '' : 's'}</span></button>`;
+  if (quiet.length) html += S.more.quietProj ? `<div class="side-bucket">Quiet</div>${quiet.map(g => `<button class="nav-i chat-i" draggable="true" data-project="${esc(g.p.key)}"><span class="lbl">${esc(g.p.name)}</span></button>`).join('')}<button class="nav-i chat-i quiet-toggle" data-quietproj="1"><span class="lbl">Hide quiet</span></button>` : `<button class="nav-i quiet-toggle" data-quietproj="1"><span class="lbl">${quiet.length} quiet project${quiet.length === 1 ? '' : 's'}</span></button>`;
   return html || '<p class="side-empty">No chats here yet.</p>';
 }
 // In a project without status labels (and for Focus chats), each chat carries its status as a small dot.
@@ -193,7 +155,7 @@ function sideChatDot(c) {
   return sideChat(c).replace('<span class="lbl">', `<span class="st-dot" style="background:${st.c}" title="${st.name}"></span><span class="lbl">`);
 }
 
-const VIEW_FN = { triage: () => triageView(), now: () => now(), home: () => home(), hack: () => hackView(), bugs: () => bugsView(), automation: () => automationView(), routines: () => routinesView(), routine: () => routineEditorView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
+const VIEW_FN = { triage: () => triageView(), now: () => now(), tokens: () => tokensView(), home: () => home(), hack: () => hackView(), bugs: () => bugsView(), automation: () => automationView(), routines: () => routinesView(), routine: () => routineEditorView(), recent: () => listView('recent'), search: () => listView('search'), project: () => project(), archived: () => archivedView(), cleanup: () => cleanupView(), images: () => imagesView(), alerts: () => alertsView() };
 function render() {
   famMemo = null;
   applyLook();
@@ -226,6 +188,7 @@ function renderLive() {
   if (!S.loaded) return;
   if (document.hidden) { updateBadge(); return; }   // nothing to draw in a tab you can't see
   renderSide(); updateBadge();
+  if (S.view === 'chat' && CV.readOnly !== externalChatNotice()) paintBar();
   if (S.view === 'triage') { if (!document.activeElement || document.activeElement.id !== 'trBox') render(); return; }
   if (S.view === 'now' && $('nowLive')) {
     $('nowLead').innerHTML = leadHtml();
@@ -280,8 +243,16 @@ function go(view, extra = {}, { push = true } = {}) {
   if (view === 'images') loadGallery().then(() => { render(); if (extra.genOpen) $('genPrompt')?.focus(); }).catch(err => toast(err.message));
   if (view === 'alerts') loadPush().then(render).catch(err => toast(err.message));
 }
+// A swipe from the screen's edge: iOS slides the pages itself, and Lite's own slide on top of it made
+// the two take turns, frame by frame (the chat flashing back as you left it). Then Lite doesn't slide.
+let edgeAt = 0;
+document.addEventListener('touchstart', e => { const x = e.touches[0]?.clientX; if (x != null && (x < 28 || x > innerWidth - 28) && !e.target.closest?.('button, a, input, textarea')) edgeAt = Date.now(); }, { passive: true, capture: true });
 addEventListener('popstate', e => {
   const st = e.state || { view: 'now' };
+  if (e.hasUAVisualTransition || Date.now() - edgeAt < 1500) {
+    document.body.classList.add('no-slide');
+    requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('no-slide')));
+  }
   S.hist = Math.max(0, (S.hist || 0) - 1);
   if (st.view === 'chat' && st.chat) go('chat', { chat: st.chat }, { push: false });
   else go(st.view || 'now', { project: st.project }, { push: false });
@@ -322,10 +293,13 @@ document.addEventListener('click', e => {
   if ((b = el('[data-chatlinks]'))) return linksMenu(b);
   if ((b = el('[data-side-later]'))) { const k = b.dataset.sideLater === '*' ? 'side-later' : 'pl:' + b.dataset.sideLater; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-steerq]'))) { steerQueued(Number(b.dataset.steerq)); return undefined; }
-  if ((b = el('[data-unqueue]'))) { CV.queue.splice(Number(b.dataset.unqueue), 1); paintQueue(); return undefined; }
+  if ((b = el('[data-qedit-start]'))) return editQueued(Number(b.dataset.qeditStart), 'start');
+  if ((b = el('[data-qsave]'))) return editQueued(Number(b.dataset.qsave), 'save');
+  if ((b = el('[data-qcancel]'))) return editQueued(Number(b.dataset.qcancel), 'cancel');
+  if ((b = el('[data-unqueue]'))) { const i = Number(b.dataset.unqueue); if (!CV.queue[i]?.sending) CV.queue.splice(i, 1); paintQueue(); return undefined; }
   if ((b = el('[data-rtnew]'))) return newRoutine(b.dataset.rtnew);
   if ((b = el('[data-rtmenu]'))) { e.stopPropagation(); return routineMenu(b, b.dataset.rtmenu); }
-  if ((b = el('[data-inrepo]'))) { CV.inRepo = true; COMP.perm = 'read-only'; const g = $('folderGone'); if (g) g.outerHTML = folderNotice(); if (typeof paintBar === 'function') paintBar(); $('msgBox')?.focus(); return undefined; }
+  if ((b = el('[data-inrepo]'))) { CV.inRepo = true; COMP.perm = CV.provider === 'codex' ? 'read-only' : 'plan'; const g = $('folderGone'); if (g) g.outerHTML = folderNotice(); if (typeof paintBar === 'function') paintBar(); $('msgBox')?.focus(); return undefined; }
   if ((b = el('[data-evseen]'))) { e.stopPropagation(); return wrap(seeEvents)(b.dataset.evseen === 'all' ? 'all' : b.dataset.evseen.split(',')); }
   if ((b = el('[data-rtrun]'))) { e.stopPropagation(); return openChat(b.dataset.rtrun, { provider: ['codex', 'gemini'].includes(b.dataset.prov) ? b.dataset.prov : null }); }
   if ((b = el('[data-rtproj]'))) { readRoutineForm(); return pickProject(b, k => { const p = projBy.get(k); if (p && p.cwd) { S.rtEdit.cwd = p.cwd; render(); } }); }
@@ -334,6 +308,8 @@ document.addEventListener('click', e => {
   if ((b = el('[data-fam]'))) { e.stopPropagation(); toggleFam(b.dataset.fam); sfx('card'); return render(); }
   if ((b = el('[data-pipe-refresh]'))) { e.stopPropagation(); return loadPipeline(true); }
   if ((b = el('[data-chatmenu]'))) return chatMenu(b);
+  if ((b = el('[data-keep]'))) return keepDialog();
+  if ((b = el('[data-clash]'))) return clashMenu(b);
   if ((b = el('[data-renamechat]'))) return editTitleInline();
   if ((b = el('[data-barmodel]'))) return modelMenu(b);
   if ((b = el('[data-bareffort]'))) return effortMenu(b);
@@ -341,9 +317,13 @@ document.addEventListener('click', e => {
   if ((b = el('[data-attach]'))) { $('attIn')?.click(); return undefined; }
   if ((b = el('[data-rmimg]'))) { const [im] = COMP.images.splice(Number(b.dataset.rmimg), 1); if (im && im.url) URL.revokeObjectURL(im.url); return paintAttachments(); }
   if ((b = el('[data-rmfile]'))) { COMP.files.splice(Number(b.dataset.rmfile), 1); return paintAttachments(); }
-  if ((b = el('[data-zoom]'))) return showPicture(b.src);
-  if ((b = el('[data-stopchat]'))) { sfx('close'); return wrap(() => api('/api/chat/interrupt', { key: CV.key }))(); }
-  if ((b = el('[data-ncproject]'))) return pickProject(b, k => { NC.project = k; paintNewChat(); $('msgBox').focus(); });
+  if ((b = el('[data-zoom]'))) return showPicture(b.src, picsNear(b));
+  if ((b = el('[data-stopchat]'))) { sfx('close'); return wrap(() => api('/api/chat/interrupt', { key: replyTarget().key || CV.key }))(); }
+  if ((b = el('[data-ncproject]'))) return pickProject(b, k => {
+    // Quick runs in the folder of the project picked last (pick a project first to change it).
+    if (k === '__quick__') NC.quick = true; else { NC.quick = false; NC.project = k; }
+    local.set('ncQuick', NC.quick); paintNewChat(); $('msgBox').focus();
+  }, { quick: true });
   if ((b = el('[data-ncwho]'))) return accountMenu(b);
   if ((b = el('[data-triage]'))) return startTriage();
   if ((b = el('[data-tr]'))) { b.disabled = true; return wrap(triageAct)(b.dataset.tr); }
@@ -386,7 +366,7 @@ document.addEventListener('click', e => {
   if ((b = el('[data-projmenu]'))) return projMenu(b, b.dataset.projmenu);
   if ((b = el('[data-bstages]'))) return wrap(async () => { const list = buckets().map(x => (x.id === b.dataset.bstages ? { ...x, stages: !bucketStages(x.id) } : x)); S.lite.buckets = (await api('/api/lite/buckets', { buckets: list })).buckets; render(); })();
   if ((b = el('[data-sidemode]'))) { S.sideMode = b.dataset.sidemode; local.set('sideMode', S.sideMode); return renderSide(); }
-  if ((b = el('[data-foldproj]'))) { const k = 'p:' + b.dataset.foldproj; if (b.dataset.stageless) { if (S.folded[k] === false) delete S.folded[k]; else S.folded[k] = false; } else if (S.folded[k]) delete S.folded[k]; else S.folded[k] = true; local.set('folded', S.folded); return renderSide(); }
+  if ((b = el('[data-foldproj]'))) { const k = 'p:' + b.dataset.foldproj; if (S.folded[k] === false) delete S.folded[k]; else S.folded[k] = false; local.set('folded', S.folded); return renderSide(); }
   if ((b = el('[data-more-proj]'))) { const k = 'pall:' + b.dataset.moreProj; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-side-quiet]'))) { const k = 'pq:' + b.dataset.sideQuiet; S.more[k] = !S.more[k]; return renderSide(); }
   if ((b = el('[data-quietproj]'))) { S.more.quietProj = !S.more.quietProj; return renderSide(); }
@@ -394,14 +374,13 @@ document.addEventListener('click', e => {
   if ((b = el('[data-more-st]'))) { S.more[b.dataset.moreSt] = !S.more[b.dataset.moreSt]; return renderSide(); }
   if ((b = el('[data-automore]'))) { S.more['auto-all'] = true; return render(); }
   if ((b = el('[data-more-all]'))) { S.more['all-' + b.dataset.moreAll] = true; return renderSide(); }
-  if ((b = el('[data-pfold]'))) { const k = 'p-' + (b.dataset.pfold === 'later' ? 'later' : 'done'); S.more[k] = !S.more[k]; return render(); }
+  if ((b = el('[data-pfold]'))) { const k = 'p-' + b.dataset.pfold; S.more[k] = !S.more[k]; return render(); }
   if ((b = el('[data-bfold]'))) { S.more['b-done'] = !S.more['b-done']; return render(); }
   if ((b = el('[data-pq]'))) { S.more['pq-' + b.dataset.pq] = !S.more['pq-' + b.dataset.pq]; return render(); }
-  if ((b = el('[data-pickbucket]'))) return pop(b, `${[['all', 'All buckets'], ...buckets().map(x => [x.id, x.name]), ['unsorted', 'Unsorted']].map(([id, n]) => `<button data-v="${esc(id)}" role="menuitemradio" aria-checked="${S.bucket === id}">${esc(n)}</button>`).join('')}`, v => { S.bucket = v; local.set('bucket', v); render(); });
   if ((b = el('#lookBtn'))) return lookMenu(b);
   if ((b = el('#muteBtn'))) return toggleSound();
   if ((b = el('[data-open]'))) { if (el('input') || el('a[href]') || (el('button') && !el('button').dataset.open)) return undefined; return b.dataset.open ? openChat(b.dataset.open) : toast('That chat hasn’t started yet.'); }
-  if ((b = el('[data-project]'))) return go('project', { project: b.dataset.project });
+  if ((b = el('[data-project]'))) return b.dataset.mainChat ? openChat(b.dataset.mainChat) : go('project', { project: b.dataset.project });
   if ((b = el('[data-chat]'))) {
     const id = b.dataset.chat;
     if (e.metaKey || e.ctrlKey) { if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); S.selAnchor = id; return render(); }
@@ -430,7 +409,7 @@ document.addEventListener('contextmenu', e => {
 document.addEventListener('submit', e => {
   if (e.target.id === 'trForm') { e.preventDefault(); return triageReply(); }
   if (e.target.id === 'cmdForm') { e.preventDefault(); const v = $('cmdInput').value; $('cmdInput').value = ''; return askCommander(v); }
-  if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat(); }
+  if (e.target.id === 'composer') { e.preventDefault(); return S.view === 'newchat' ? startNewChat() : sendInChat({ delivery: followUpDelivery() }); }
   if (e.target.id === 'genForm') { e.preventDefault(); const v = $('genPrompt').value.trim(); if (!v) return undefined; $('genPrompt').value = ''; return wrap(startGenerate)(v, S.genN || 1); }
   if (e.target.id === 'rtForm') { e.preventDefault(); return wrap(saveRoutine)(); }
   if (e.target.dataset.olread) {
@@ -444,13 +423,24 @@ document.addEventListener('submit', e => {
 });
 document.addEventListener('keydown', e => {
   // On a phone, Return is a new line in a message box (the ↑ button sends); with a keyboard, Enter sends.
-  if (e.key === 'Enter' && TOUCH() && e.target.tagName === 'TEXTAREA') return;
-  if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); COMP.steerNow = e.altKey; $('composer').requestSubmit(); return; }
+  if (e.key === 'Enter' && TOUCH() && !e.metaKey && !e.ctrlKey && e.target.tagName === 'TEXTAREA') return;
+  if (e.target.id === 'msgBox' && e.key === 'Enter' && !e.isComposing) {
+    if (e.altKey || e.repeat) return;
+    const explicit = e.metaKey || e.ctrlKey;
+    if (e.shiftKey && !explicit) return;
+    e.preventDefault();
+    if (explicit && S.view === 'chat') sendInChat({ delivery: e.shiftKey ? 'queue' : 'steer' });
+    else $('composer').requestSubmit();
+    return;
+  }
   if (e.target.id === 'trBox' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); triageReply(); return; }
   if (e.target.id === 'msgBox' && e.key.toLowerCase() === 'p' && (e.metaKey || e.ctrlKey) && S.view === 'newchat') { e.preventDefault(); document.querySelector('[data-ncproject]')?.click(); return; }
   if (e.target.dataset && e.target.dataset.qr && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendQuick(e.target.dataset.qr); }
 }, true);
-document.addEventListener('input', e => { if (e.target.id === 'msgBox') autosize(e.target); });
+document.addEventListener('input', e => {
+  if (e.target.id === 'msgBox') autosize(e.target);
+  if (e.target.dataset.qedit !== undefined) { const q = CV.queue[Number(e.target.dataset.qedit)]; if (q) { q.editText = e.target.value; saveQueues(); } }
+});
 // Pictures and files: paste (several at once), drop anywhere on a chat, or pick with +.
 // The routine form redraws when what it asks for changes (the trigger, the plan, triage on or off).
 document.addEventListener('change', e => { if (e.target.form && e.target.form.id === 'rtForm' && ['kind', 'account', 'triage'].includes(e.target.name)) { readRoutineForm(); render(); } });
@@ -465,13 +455,103 @@ const hasFiles = e => e.dataTransfer && [...e.dataTransfer.types].includes('File
 document.addEventListener('dragover', e => { if ((S.view === 'chat' || S.view === 'newchat') && hasFiles(e)) { e.preventDefault(); document.body.classList.add('dropping'); } });
 document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
 document.addEventListener('drop', e => { document.body.classList.remove('dropping'); if ((S.view === 'chat' || S.view === 'newchat') && hasFiles(e)) { e.preventDefault(); addFiles([...e.dataTransfer.files]); } });
-function showPicture(src) {
-  const root = $('modalRoot');
-  root.innerHTML = `<div class="modal-back lightbox"><figure><img src="${esc(src)}" alt=""></figure></div>`;
-  root.querySelector('.modal-back').addEventListener('click', () => { root.innerHTML = ''; });
+// The pictures beside the one you clicked (the whole conversation in a chat, else the panel or
+// page it's in), in order, so the big view can step through them.
+function picsNear(img) {
+  const scope = img.closest('#feed, #viewer, .modal, #main') || document;
+  return [...new Set([...scope.querySelectorAll('img[data-zoom]')].map(x => x.src).filter(Boolean))];
 }
-$('q').addEventListener('input', e => { S.q = e.target.value.trim(); if (S.q) { if (S.view !== 'search') go('search', {}, { push: false }); else render(); } else if (S.view === 'search') go('now', {}, { push: false }); });
-$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { const r = document.querySelector('#main [data-cur]'); if (r) { e.preventDefault(); r.click(); } } if (e.key === 'ArrowDown') { e.preventDefault(); e.target.blur(); setCur(0); } });
+// A picture, big. With others beside it: ‹ › (or ← →, or a swipe on the phone) step through them.
+function showPicture(src, list = []) {
+  const pics = list.length ? list : [src];
+  let i = Math.max(0, pics.indexOf(src));
+  const root = $('modalRoot');
+  const paint = () => {
+    const many = pics.length > 1;
+    root.innerHTML = `<div class="modal-back lightbox" data-piclight="1">${many ? `<button class="lb-nav prev" data-pic="-1" aria-label="Previous picture (←)" ${i > 0 ? '' : 'disabled'}>‹</button>` : ''}`
+      + `<figure><img src="${esc(pics[i])}" alt="">${many ? `<figcaption>${i + 1} of ${pics.length}</figcaption>` : ''}</figure>`
+      + `${many ? `<button class="lb-nav next" data-pic="1" aria-label="Next picture (→)" ${i < pics.length - 1 ? '' : 'disabled'}>›</button>` : ''}</div>`;
+    const back = root.querySelector('.modal-back'), img = back.querySelector('figure img');
+    // Zoom: pinch (and drag while zoomed), double-tap or double-click, or a trackpad pinch. Lite's
+    // phone page doesn't zoom as a whole, so the picture zooms itself.
+    let z = { s: 1, x: 0, y: 0 }, g = null, lastTap = 0;
+    const show = (anim = false) => { img.style.transition = anim ? 'transform .2s ease' : 'none'; img.style.transform = z.s === 1 ? '' : `translate(${z.x}px, ${z.y}px) scale(${z.s})`; back.classList.toggle('zoomed', z.s > 1); };
+    const centre = () => { const r = img.getBoundingClientRect(); return { cx: r.left + r.width / 2 - z.x, cy: r.top + r.height / 2 - z.y }; };
+    // Zooms to s with the point (px, py) on screen staying where it is.
+    const zoomAt = (s, px, py, anim) => {
+      s = Math.min(5, Math.max(1, s));
+      const { cx, cy } = centre();
+      z.x = px - cx - (s / z.s) * (px - cx - z.x); z.y = py - cy - (s / z.s) * (py - cy - z.y); z.s = s;
+      if (s === 1) z = { s: 1, x: 0, y: 0 };
+      show(anim);
+    };
+    const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const mid = t => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+    back.addEventListener('click', e => {
+      const nav = e.target.closest('[data-pic]');
+      if (nav) { e.stopPropagation(); step(Number(nav.dataset.pic)); return; }
+      if (e.target === img || (g && g.moved)) return;   // the picture itself (or the end of a drag) doesn't close it
+      close();
+    });
+    back.addEventListener('dblclick', e => { if (e.target !== img) return; e.preventDefault(); zoomAt(z.s > 1 ? 1 : 2.5, e.clientX, e.clientY, true); });
+    back.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); zoomAt(z.s * Math.exp(-e.deltaY / 100), e.clientX, e.clientY, false); }, { passive: false });
+    back.addEventListener('touchstart', e => {
+      const t = e.touches;
+      if (t.length === 2) { const m = mid(t); g = { kind: 'pinch', d: dist(t), s: z.s, mx: m.x, my: m.y, moved: true }; }
+      else if (t.length === 1) g = { kind: z.s > 1 ? 'pan' : 'swipe', x0: t[0].clientX, y0: t[0].clientY, zx: z.x, zy: z.y, moved: false };
+    }, { passive: true });
+    back.addEventListener('touchmove', e => {
+      if (!g) return;
+      const t = e.touches;
+      if (g.kind === 'pinch' && t.length === 2) {
+        e.preventDefault();
+        // Each step: zoom by how much the fingers spread, around where they are, then follow them.
+        const m = mid(t), d = dist(t);
+        zoomAt(z.s * d / g.d, m.x, m.y, false);
+        if (z.s > 1) { z.x += m.x - g.mx; z.y += m.y - g.my; }
+        g.mx = m.x; g.my = m.y; g.d = d;
+        show();
+      } else if (g.kind === 'pan' && t.length === 1) {
+        e.preventDefault();
+        const dx = t[0].clientX - g.x0, dy = t[0].clientY - g.y0;
+        if (Math.abs(dx) + Math.abs(dy) > 6) g.moved = true;
+        z.x = g.zx + dx; z.y = g.zy + dy; show();
+      } else if (g.kind === 'swipe' && t.length === 1 && Math.abs(t[0].clientX - g.x0) > 6) g.moved = true;
+    }, { passive: false });
+    back.addEventListener('touchend', e => {
+      if (!g) return;
+      const was = g; if (e.touches.length) return;
+      setTimeout(() => { g = null; }, 0);
+      if (was.kind === 'pinch' && z.s < 1.05) { z = { s: 1, x: 0, y: 0 }; show(true); }
+      if (was.kind === 'swipe') {
+        const p = e.changedTouches[0], dx = p.clientX - was.x0;
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(p.clientY - was.y0)) { e.preventDefault(); step(dx < 0 ? 1 : -1); return; }
+        // A double-tap on the picture zooms in there (or back out).
+        if (!was.moved && e.target === img) {
+          const now = Date.now();
+          if (now - lastTap < 300) { e.preventDefault(); lastTap = 0; zoomAt(z.s > 1 ? 1 : 2.5, p.clientX, p.clientY, true); } else lastTap = now;
+        }
+      } else if (was.kind === 'pan' && !was.moved && e.target === img) {
+        const now = Date.now(), p = e.changedTouches[0];
+        if (now - lastTap < 300) { e.preventDefault(); lastTap = 0; zoomAt(1, p.clientX, p.clientY, true); } else lastTap = now;
+      }
+    });
+  };
+  const step = d => { const j = i + d; if (j < 0 || j >= pics.length) return; i = j; paint(); };
+  const onKey = e => {
+    if (!root.querySelector('[data-piclight]')) return removeEventListener('keydown', onKey, true);
+    if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); step(1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); step(-1); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+  };
+  const close = () => { root.innerHTML = ''; removeEventListener('keydown', onKey, true); };
+  if (showPicture.off) showPicture.off();
+  showPicture.off = () => removeEventListener('keydown', onKey, true);
+  addEventListener('keydown', onKey, true);
+  paint();
+}
+$('q').addEventListener('input', e => { S.q = e.target.value.trim(); deepSearch(S.q); if (small()) { $('sideScroll').scrollTop = 0; return renderSide(); } if (S.q) { if (S.view !== 'search') go('search', {}, { push: false }); else render(); } else if (S.view === 'search') go('now', {}, { push: false }); });
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { const r = document.querySelector(small() ? '#sideScroll [data-cur]' : '#main [data-cur]'); if (r) { e.preventDefault(); r.click(); } } if (e.key === 'ArrowDown') { e.preventDefault(); e.target.blur(); setCur(0); } });
 
 async function sendQuick(key) {
   const input = document.querySelector(`[data-qr="${CSS.escape(key)}"]`);
@@ -525,36 +605,44 @@ const nestTarget = t => {
   const fz = r.closest('[data-drop-focus]'); if (fz && !me.focus) return fz;
   return r;
 };
-// A project dropped on another one goes just above it, in that one's bucket; the bucket's order is saved.
-async function placeProject(key, before) {
-  const target = projBy.get(before); if (!target) return;
-  const keys = [...document.querySelectorAll('#sideScroll .proj-row [data-project]')].map(b => b.dataset.project)
-    .filter(k => k !== key && (projBy.get(k) || {}).bucket === target.bucket);
-  keys.splice(keys.indexOf(before), 0, key);
-  for (const [i, k] of keys.entries()) await api('/api/lite/project', { key: k, patch: { order: i + 1, ...(k === key ? { bucket: target.bucket || null } : {}) } });
+// Save the whole destination bucket, including projects outside the current sidebar view.
+async function placeProject(key, targetKey, after = false) {
+  const target = projBy.get(targetKey), moving = projBy.get(key);
+  if (!target || !moving || key === targetKey || target.archived || moving.archived) return;
+  const keys = projectsIn().map(p => p.key).filter(k => k !== key);
+  keys.splice(keys.indexOf(targetKey) + Number(after), 0, key);
+  for (const [i, k] of keys.entries()) await api('/api/lite/project', { key: k, patch: { order: i + 1 } });
   sfx('card'); await loadState(); render();
 }
-const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus]') : drag && drag.project ? t.closest('.proj-row [data-project]:not(.drop-self)') || t.closest('[data-drop-bucket]') : null);
+const projectDropTarget = t => {
+  const p = t.closest('[data-project]') || t.closest('.proj-row')?.querySelector('[data-project]');
+  return p && p.dataset.project !== drag.project && !projBy.get(p.dataset.project)?.archived ? p : null;
+};
+const dropZone = t => (!t.closest ? null : drag && drag.idea ? t.closest('[data-drop-stage], [data-idea-drop]') : drag && drag.chats ? projectDropTarget(t) || nestTarget(t) || t.closest('[data-drop-stage], [data-drop-focus], [data-drop-quick]') : drag && drag.project ? projectDropTarget(t) || t.closest('[data-drop-bucket]') : null);
+const projectDropAfter = (e, z) => { const r = z.getBoundingClientRect(); return e.clientY > r.top + r.height / 2; };
+const clearDrop = () => document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot', 'drop-before', 'drop-after'));
 document.addEventListener('dragover', e => {
   const z = dropZone(e.target); if (!z) return;
   e.preventDefault();
-  document.querySelectorAll('.drop-hot').forEach(x => x !== z && x.classList.remove('drop-hot'));
+  clearDrop();
   z.classList.add('drop-hot');
+  if (drag.project && z.dataset.project) z.classList.add(projectDropAfter(e, z) ? 'drop-after' : 'drop-before');
 });
-document.addEventListener('dragleave', e => { const z = dropZone(e.target); if (z && !z.contains(e.relatedTarget)) z.classList.remove('drop-hot'); });
+document.addEventListener('dragleave', e => { const z = dropZone(e.target); if (z && !z.contains(e.relatedTarget)) z.classList.remove('drop-hot', 'drop-before', 'drop-after'); });
 document.addEventListener('drop', e => {
   const z = dropZone(e.target);
-  document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot'));
+  clearDrop();
   if (!z) return;
   e.preventDefault();
   const d = drag; drag = null;
   if (d.idea) { if (z.dataset.ideaDrop) { const over = e.target.closest('[data-idea]'); wrap(moveIdea)(d.idea, over && over.dataset.idea !== d.idea ? over.dataset.idea : null); } else wrap(startIdea)(d.idea); }
+  else if (d.chats && z.dataset.project) wrap(async () => { await setChats(d.chats, z.dataset.project === '~quick' ? { quick: true } : { project: z.dataset.project, quick: false }, `Moved to ${projBy.get(z.dataset.project)?.name || 'project'}`); await loadState(); render(); })();
   else if (d.chats && z.dataset.chat) wrap(nestChats)(d.chats, z.dataset.chat);
-  else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : z.dataset.dropStage === 'waiting' ? { waiting: true } : { status: z.dataset.dropStage, waiting: false });
-  else if (z.dataset.project) { if (z.dataset.project !== d.project) wrap(placeProject)(d.project, z.dataset.project); }
+  else if (d.chats) wrap(setChats)(d.chats, z.dataset.dropFocus ? { focus: true } : z.dataset.dropQuick ? { quick: true, waiting: false } : z.dataset.dropStage === 'waiting' ? { waiting: true } : { status: z.dataset.dropStage, waiting: false, quick: false }).then(() => loadState()).then(render);
+  else if (z.dataset.project) { if (z.dataset.project !== d.project) wrap(placeProject)(d.project, z.dataset.project, projectDropAfter(e, z)); }
   else wrap(setBucket)(d.project, z.dataset.dropBucket || null);
 });
-document.addEventListener('dragend', () => { drag = null; document.querySelectorAll('.drop-hot').forEach(x => x.classList.remove('drop-hot')); });
+document.addEventListener('dragend', () => { drag = null; clearDrop(); });
 addEventListener('resize', () => { if (S.view === 'side' && !small()) render(); });
 
 /* ---------- start ---------- */
@@ -611,7 +699,7 @@ setSideW(local.get('sideW', SIDE_W.def), false);
 if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').matches) {
   // Once a frame at most (the keyboard fires these many times as it slides), and a conversation
   // that was at its end stays at its end.
-  let frame = 0;
+  let frame = 0, fitSig = '';
   const fit = () => {
     if (frame) return;
     frame = requestAnimationFrame(() => {
@@ -620,6 +708,11 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
       const r = document.documentElement.style;
       const k = Math.round(innerHeight - visualViewport.height);
       const up = k > 150;
+      // iOS sends these while you type too. With nothing changed, nothing moves.
+      const sig = `${k}:${Math.round(visualViewport.height)}:${Math.round(visualViewport.offsetTop)}:${scrollY}`;
+      if (sig === fitSig) return;
+      const sized = sig.split(':')[1] !== fitSig.split(':')[1];
+      fitSig = sig;
       if (up) { kbH = k; try { localStorage.setItem('lite.kb', String(k)); } catch { /* fine */ } }
       document.documentElement.classList.toggle('kb-up', up);
       // With the keyboard away, iOS can leave the page scrolled by the keyboard's push (40-60px, the
@@ -627,7 +720,7 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
       if (!up && (visualViewport.offsetTop > 0 || scrollY > 0 || pageYOffset > 0)) { try { scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch { /* fine */ } }
       r.setProperty('--app-h', `${Math.round(visualViewport.height)}px`);
       r.setProperty('--vv-top', `${up ? Math.round(visualViewport.offsetTop) : 0}px`);
-      if (pinned) f.scrollTop = f.scrollHeight;
+      if (pinned && sized) f.scrollTop = f.scrollHeight;
     });
   };
   // iOS says how tall the keyboard is only once it has finished sliding, so the page would snap after
@@ -637,6 +730,7 @@ if (window.visualViewport && matchMedia('(hover: none) and (pointer: coarse)').m
   let glideT = 0;
   const glide = h => {
     const root = document.documentElement;
+    fitSig = '';   // the next real measurement always applies
     root.classList.add('kb-glide'); root.style.setProperty('--app-h', `${Math.round(h)}px`); root.style.setProperty('--vv-top', '0px');
     clearTimeout(glideT); glideT = setTimeout(() => root.classList.remove('kb-glide'), 450);
   };

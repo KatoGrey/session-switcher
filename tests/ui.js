@@ -2683,7 +2683,7 @@ module.exports = [
       const b = await t.open({ demo: false, path: 'lite' });
       await sleep(3000);
       const r = await b.eval(`const st = await api('/api/lite/state'); return { title: document.title, brand: document.getElementById('brand')?.textContent, side: !!document.getElementById('sideScroll'), used: !!(st.lite && st.lite.used), weeks: st.lite && st.lite.autoStartWeeks === true }`);
-      t.check('Switcher Lite opens on the same app', /Switcher Lite$/.test(r.title) && !!r.brand && r.side, r);
+      t.check('Switcher Lite opens on the same app', r.title === 'Switcher' && !!r.brand && r.side, r);   // the tab says just Switcher
       t.check('once opened, Lite counts as used here (its checks start)', r.used, r);
       t.check('the week-starter is off unless you turn it on', !r.weeks, r);
       // Who answers, in a Claude chat with Gemini set up (and no ChatGPT plan here): Gemini, or both in turn.

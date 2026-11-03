@@ -9,6 +9,22 @@ const VW = { open: false, chat: null, kind: null, target: null, data: null, erro
 const NO_FRAME = /(^|\.)(github\.com|linear\.app|slack\.com|discord\.com|discord\.gg|notion\.so|google\.com|figma\.com|x\.com|twitter\.com|reddit\.com|youtube\.com|apple\.com|claude\.ai|chatgpt\.com|openai\.com|1password\.com)$/i;
 const canFrame = url => { try { const u = new URL(url, location.href); return /^https?:$/.test(u.protocol) && !NO_FRAME.test(u.hostname); } catch { return false; } };
 
+// Links to Switcher chats are navigation, including localhost links opened on a phone.
+function linkedChat(url) {
+  if (!url || url.startsWith('#')) return null;
+  try {
+    const u = new URL(url, location.href);
+    const local = ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname) && u.port === '4777';
+    if (!/^https?:$/.test(u.protocol) || (u.origin !== location.origin && !local) || !['/', '/lite', '/lite/'].includes(u.pathname)) return null;
+    const id = u.searchParams.get('chat');
+    return id && /^[\w-]{1,128}$/.test(id) ? id : null;
+  } catch { return null; }
+}
+function visitLinkedChat(id) {
+  closeViewer();
+  openChat(id);
+}
+
 function fileQuery(p) {
   const q = new URLSearchParams({ path: p });
   if (CV.key) q.set('key', CV.key);
@@ -37,11 +53,11 @@ const baseName = p => String(p).split(/[\\/]/).filter(Boolean).pop() || p;
 // unless it's a command (C:\tools\run.exe --fast).
 const looksLikePath = s => (/^[\\/]*[A-Za-z]:[\\/]/.test(s)
   ? !/[\n"|?*]|&[lg]t;| --?\w/.test(s) && (!/\s/.test(s) || /\.\w{1,8}$|[\\/]$/.test(s))
-  : /^(~|\.{0,2}\/)?[\w@.+-]+([\\/][\w@.+ -]+)*\.(md|mdx|markdown|txt|json|jsonl|js|mjs|cjs|ts|tsx|jsx|py|html|css|csv|ya?ml|toml|sh|sql|go|rs|swift|kt|java|rb|lua|log|png|jpe?g|gif|webp|svg|pdf|mp4|mov|mp3|wav|zip|7z|rar|gz|tgz)$/i.test(s) && !/\s/.test(s));
+  : /^(~|\.{0,2}\/)?[\w@.+-]+([\\/][\w@.+ -]+)*\.(md|mdx|markdown|txt|json|jsonl|js|mjs|cjs|ts|tsx|jsx|py|html|css|csv|ya?ml|toml|sh|sql|go|rs|swift|kt|java|rb|lua|log|png|jpe?g|gif|webp|svg|pdf|mp4|m4v|webm|mov|mp3|wav|m4a|ogg|oga|flac|aac|opus|zip|7z|rar|gz|tgz)$/i.test(s) && !/\s/.test(s));
 
 async function viewFile(p, { from } = {}) {
   if (VW.open && VW.target && from !== 'back') VW.back.push({ kind: VW.kind, target: VW.target });
-  Object.assign(VW, { open: true, chat: CV.id, kind: 'file', target: p, data: null, error: null, loading: true });
+  Object.assign(VW, { open: true, chat: CV.id, kind: 'file', target: p, data: null, error: null, loading: true, source: false });
   paintViewer();
   try { VW.data = await api(`/api/lite/file?${fileQuery(p)}`); } catch (err) {
     // A Switcher that hasn't restarted onto this version only has the full app's file route.
@@ -51,6 +67,8 @@ async function viewFile(p, { from } = {}) {
   if (VW.target === p) paintViewer();
 }
 function viewUrl(url, { from } = {}) {
+  const chat = linkedChat(url);
+  if (chat) return visitLinkedChat(chat);
   if (!canFrame(url)) { window.open(url, '_blank', 'noopener'); return; }
   if (VW.open && VW.target && from !== 'back') VW.back.push({ kind: VW.kind, target: VW.target });
   Object.assign(VW, { open: true, chat: CV.id, kind: 'url', target: url, data: null, error: null, loading: false });
@@ -92,8 +110,15 @@ function viewerBody() {
       : `<iframe class="vw-frame" src="${esc(src)}" title="${esc(baseName(VW.target))}"></iframe>`;
   }
   if (d.kind === 'dir') return `<div class="vw-pad"><div class="vw-files">${(d.entries || []).map(e => `<button class="vw-file" data-viewfile="${esc(`${(d.path || VW.target).replace(/[\\/]$/, '')}/${e.name}`)}"><b>${esc(e.name)}${e.dir ? '/' : ''}</b></button>`).join('')}</div></div>`;
+  // Named but not where it was looked for, and found in more than one place: you pick.
+  if (d.kind === 'choices') return `<div class="vw-pad"><p class="hint-line">More than one ${esc(baseName(d.path || VW.target))} turned up:</p><div class="vw-files">${(d.matches || []).map(m => `<button class="vw-file" data-viewfile="${esc(m)}"><b>${esc(baseName(m))}</b><small>${esc(m)}</small></button>`).join('')}</div></div>`;
   if (d.kind === 'binary') return `<p class="empty-note vw-pad">${esc(d.note || 'This file can’t be shown here.')}</p>`;
   if (d.kind === 'text') {
+    if (d.lang === 'html' && !d.truncated && !VW.source) {
+      // Local reports can run their controls, but cannot access Switcher's origin or send requests.
+      const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; form-action 'none'; base-uri 'none'">`;
+      return `<iframe class="vw-frame" srcdoc="${esc(policy + (d.text || ''))}" title="${esc(baseName(VW.target))}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer"></iframe>`;
+    }
     const body = d.markdown ? `<div class="msg-ai vw-md">${mdHtml(d.text || '')}</div>` : `<pre class="vw-code"><code>${esc(d.text || '')}</code></pre>`;
     return `<div class="vw-pad">${body}${d.truncated ? '<p class="hint-line">Only the start of this file is shown.</p>' : ''}</div>`;
   }
@@ -107,6 +132,7 @@ function viewerHead() {
     `<div class="vw-title"><b title="${esc(VW.target || '')}">${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div>`,
     VW.kind === 'url' ? '<button class="iconbtn" data-vw="reload" aria-label="Reload" title="Reload">↻</button>' : '',
     VW.kind === 'url' ? `<a class="iconbtn" href="${esc(VW.target)}" target="_blank" rel="noopener noreferrer" aria-label="Open in a new tab" title="Open in a new tab">↗</a>` : '',
+    VW.kind === 'file' && VW.data?.lang === 'html' && !VW.data.truncated ? `<button class="iconbtn" data-vw="source" aria-label="${VW.source ? 'Show preview' : 'Show source'}" title="${VW.source ? 'Show preview' : 'Show source'}">${VW.source ? 'Preview' : 'Source'}</button>` : '',
     VW.kind === 'file' && VW.data && VW.data.kind === 'text' ? '<button class="iconbtn" data-vw="copy" aria-label="Copy" title="Copy the text">⧉</button>' : '',
     VW.kind === 'side' && SD.sessionId ? '<button class="iconbtn sd-act" data-sidenew="1" title="Start another side chat">New</button><button class="iconbtn sd-act" data-sideopen="1" title="Open the side chat in full">Open</button>' : '',
     VW.kind !== 'list' && VW.kind !== 'side' ? '<button class="iconbtn" data-vw="files" aria-label="Files in this chat" title="Files in this chat">☰</button>' : '',
@@ -138,9 +164,14 @@ function paintViewer() {
 // click still opens a tab), file paths in steps and in `code`, and the viewer's own buttons.
 document.addEventListener('click', e => {
   const t = e.target;
+  const a = t.closest('a[href]');
+  const chat = a && linkedChat(a.getAttribute('href'));
+  if (chat && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) {
+    e.preventDefault(); e.stopPropagation(); visitLinkedChat(chat); return;
+  }
   const b = t.closest('[data-vw], [data-viewfile], [data-viewfiles], .msg-ai a[href], .msg-you a[href], .msg-ai code.vpath');
   if (!b || t.closest('#palRoot')) return;
-  if (b.matches('.msg-ai a[href], .msg-you a[href]')) {
+  if (b.matches('.msg-ai a[href], .msg-you a[href]') && !b.dataset.viewfile) {
     // On a phone a link just opens (the panel would cover the chat, and sites won't sign in inside it).
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0 || S.view !== 'chat' || matchMedia('(max-width: 760px)').matches) return;
     const href = b.getAttribute('href');
@@ -155,6 +186,7 @@ document.addEventListener('click', e => {
   if (act === 'close') closeViewer();
   else if (act === 'back') viewerBack();
   else if (act === 'files') viewFilesList();
+  else if (act === 'source') { VW.source = !VW.source; paintViewer(); }
   else if (act === 'reload') { const f = $('viewer')?.querySelector('iframe.vw-frame'); if (f) f.src = VW.target; }
   else if (act === 'copy' && VW.data && VW.data.text) navigator.clipboard.writeText(VW.data.text).then(() => toast('Copied.'), () => toast('Couldn’t copy.'));
 }, true);

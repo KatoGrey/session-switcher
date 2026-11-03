@@ -849,7 +849,7 @@ Session Switcher is built to stay quick even with very long chats (hundreds of m
   - task lists and plans
   - skills, agents, commands, rules, output styles and plugins
 - **Synced settings:**
-  - Settings, CLAUDE.md and keybindings are copied over whenever the main copy is newer.
+  - Settings and keybindings are copied over whenever the main copy is newer. CLAUDE.md is a link to the main copy, so every account reads the same rules, once.
   - MCP servers, approved tools and trusted folders are added if the account lacks them, never overwritten.
 - **The file viewer only reads:**
   - It opens files inside the chat's folder or your user folder, never anything else.

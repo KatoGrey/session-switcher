@@ -1,0 +1,87 @@
+[
+  {
+    "slug": "platform",
+    "name": "Platform",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. An immense luminous architectural core suspended over a midnight ocean, elegant interconnected bridges and towers suggesting shared software infrastructure. Obsidian, electric cyan, warm gold."
+  },
+  {
+    "slug": "aid",
+    "name": "AI Dungeon",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A lone cloaked adventurer before an enormous ancient dungeon doorway lit from within by molten gold; a dragon silhouette curls through smoky indigo sky. Rich fantasy wonder, monumental scale."
+  },
+  {
+    "slug": "voyage",
+    "name": "Voyage",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A tiny explorer aboard a luminous sailing craft entering a floating archipelago of impossibly beautiful worlds through a giant celestial portal. Deep cobalt, turquoise seas, coral-gold sunset."
+  },
+  {
+    "slug": "voyage-2d",
+    "name": "Voyage 2D",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. Gorgeous handcrafted pixel-art desert frontier settlement: moisture vaporators, white adobe domes, market lanterns, tiny wandering people, warm twin suns at dusk. Adventure and cozy industrious life. Crisp intentional pixel art."
+  },
+  {
+    "slug": "garden-panic",
+    "name": "Garden Panic",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A heroic little gardener in an exuberant vegetable garden confronted by playful giant chomping weeds and mischievous bugs. Dynamic action, charming expressive shapes, emerald leaves and vivid coral-orange, beautiful stylized game art."
+  },
+  {
+    "slug": "character-forge",
+    "name": "Character Forge",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A magical sculptor's forge shaping a luminous living character bust from molten starlight on an anvil, warm sparks spiral around striking half-formed face. Indigo shadows, copper and radiant gold."
+  },
+  {
+    "slug": "zero-day",
+    "name": "Zero Day",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A mysterious cyberpunk operator silhouetted inside a rain-soaked neon server cathedral, a single fractured glowing red ring as central symbol. Deep navy, sharp vermilion, icy cyan, cinematic thriller."
+  },
+  {
+    "slug": "creator-experience",
+    "name": "Creator Experience",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. An artist's hands crafting a miniature vibrant universe above a glowing workbench, little landscapes and character silhouettes emerging from sculptural ribbons of light. Wonder, bold violet and apricot gold."
+  },
+  {
+    "slug": "growth-insights",
+    "name": "Growth & Insights",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A sculptural luminous tree growing from a dark glass observatory, branching light paths rise like constellations, subtle layered data-inspired geometry without charts or text. Emerald, turquoise, gold."
+  },
+  {
+    "slug": "community-qa",
+    "name": "Community QA",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A band of small intrepid explorers with glowing lanterns inspecting a giant crystalline puzzle world, repairing a fractured luminous bridge together. Warm coral, blue twilight, collaborative and optimistic."
+  },
+  {
+    "slug": "switcher",
+    "name": "Switcher",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A magnificent starship command center with a single central glowing orbital switch mechanism, several elegant colored paths converging into it. Precision crafted metal, ink blue, warm amber, emerald accents."
+  },
+  {
+    "slug": "forage-agent",
+    "name": "Forage agent",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. An inquisitive fox gathering luminous fragments of knowledge in a lush moonlit forest, tiny glowing paper-like leaves and treasure among moss and ferns. Emerald, amber, deep teal. Sophisticated storybook adventure."
+  },
+  {
+    "slug": "labs",
+    "name": "Labs",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A wonderfully inventive laboratory terrarium holding small floating experimental worlds, a brilliant glowing seed in central glass chamber. Cobalt, mint, orange sparks, discovery and playful invention."
+  },
+  {
+    "slug": "aside",
+    "name": "Aside app",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A beautiful open notebook becomes a peaceful miniature garden of thoughts, sculptural paper leaves, warm desk light, luxurious tactile paper and ink. Cream, sage, terracotta, quiet creativity."
+  },
+  {
+    "slug": "ryanseamons-site-redesign",
+    "name": "ryanseamons.com",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. An elegant creative studio suspended above a mountain landscape, a bold sunlit architectural doorway opening toward many possible paths, tactile editorial illustration. Midnight blue, warm orange and cream."
+  },
+  {
+    "slug": "ryanseamons",
+    "name": "Personal projects",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. An inspiring personal maker's study opening onto mountains and stars, a single beautiful illuminated compass on a desk, miniature creative worlds beyond. Rich teal, amber, cream, artful editorial adventure."
+  },
+  {
+    "slug": "account-identity",
+    "name": "Current account identity",
+    "prompt": "Use case: stylized-concept. Create a spectacular premium illustrated project cover, square composition, polished cinematic game key art with tactile painterly detail, one unmistakable central silhouette legible at tiny sidebar size, rich atmospheric depth and dramatic light. Fill edge to edge; crucial subject within center 65% for wide crops. No text, letters, logos, border, UI or watermark. A luminous sculpted fingerprint-like labyrinth inside a polished glass sphere, elegant personal identity motif with no text. Midnight, lavender, mint, warm white."
+  }
+]
