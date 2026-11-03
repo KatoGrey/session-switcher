@@ -9,6 +9,7 @@ const { createServer, URL_BASE, PORT } = require('./shell/server');
 const { offerImport, notes, setNotes } = require('./shell/data');
 const { createUpdates } = require('./shell/updates');
 const { contextMenu, keys, createDesk } = require('./shell/desk');
+const { createAideWindow } = require('./shell/aide');
 
 const APP_ID = 'com.katogrey.sessionswitcher';
 const IS_MAC = process.platform === 'darwin';
@@ -46,7 +47,9 @@ const desk = createDesk({
   show, tray: () => tray, window: () => win, log,
   send: (ch, v) => { if (win && !win.isDestroyed()) win.webContents.send(ch, v); },
   settings: () => notes(DATA_DIR).desk, saveSettings: v => setNotes(DATA_DIR, { desk: v }),
+  onAide: look => { if (aide) aide.toggle(look).catch(err => log(`Companion: ${err.message}`)); },
 });
+let aide = null;
 // What the page asks of the app (shell/preload.js). Only the app's own page is listened to.
 const fromUs = e => { try { return new URL(e.senderFrame.url).origin === URL_BASE.slice(0, -1); } catch { return false; } };
 ipcMain.on('desktop:show', e => { if (fromUs(e)) show(); });
@@ -61,16 +64,28 @@ ipcMain.handle('desktop:check-updates', async e => { if (fromUs(e) && updates) a
 ipcMain.handle('desktop:install-update', e => (fromUs(e) && updates ? updates.install() : null));
 // Read with the same arguments it's set with: on Windows, anything else says it's off.
 const loginItem = () => app.getLoginItemSettings(IS_MAC ? {} : { args: ['--hidden'] });
-ipcMain.handle('desktop:settings', e => (fromUs(e) ? { ...desk.opt(), openAtLogin: loginItem().openAtLogin, dataDir: DATA_DIR, version: app.getVersion() } : null));
+ipcMain.handle('desktop:settings', e => (fromUs(e) ? { ...desk.opt(), ...desk.keys(), openAtLogin: loginItem().openAtLogin, dataDir: DATA_DIR, version: app.getVersion() } : null));
+// Companion's panel asks: only from its own window.
+ipcMain.handle('aide:ask', (e, what, v) => {
+  if (!fromUs(e) || !aide || e.sender !== aide.sender()) return null;
+  const f = aide.handlers[what];
+  return typeof f === 'function' ? f(v) : null;
+});
 ipcMain.handle('desktop:set', (e, patch) => {
   if (!fromUs(e) || !patch || typeof patch !== 'object') return null;
   if (typeof patch.openAtLogin === 'boolean') app.setLoginItemSettings({ openAtLogin: patch.openAtLogin, ...(IS_MAC ? {} : { args: ['--hidden'] }) });
   if (patch.openData) { shell.openPath(DATA_DIR); return null; }
   const r = desk.set(patch);
+  // Turned on: its panel is loaded and waiting, so the key is instant. Off: gone, and nothing's kept running.
+  if (typeof patch.aideOn === 'boolean') syncAide();
   // A different channel: look again now (a test version may be waiting, or no longer apply).
   if (patch.channel && updates) { updates.setChannel(); updates.check(false, { silent: true }); }
   return { ...r, openAtLogin: loginItem().openAtLogin };
 });
+function syncAide() {
+  if (!aide) return;
+  if (desk.opt().aideOn) { aide.prepare(); aide.create(); } else aide.stop();
+}
 const server = createServer({
   appFiles: APP_FILES, dataDir: DATA_DIR, env: shellPath(), log,
   onQuit: () => { quitting = true; app.quit(); },   // Quit in the app quits the app
@@ -175,6 +190,7 @@ function createTray() {
     ...desk.waitingItems(),
     { label: 'New chat…', click: () => doIt('new-chat') },
     { label: 'Search every chat…', click: () => doIt('search') },
+    { label: 'Ask Companion…', visible: desk.opt().aideOn, click: () => desk.aideNow() },
     { type: 'separator' },
     { label: 'Start with Windows', visible: !IS_MAC, type: 'checkbox', checked: loginItem().openAtLogin, click: i => app.setLoginItemSettings({ openAtLogin: i.checked, args: ['--hidden'] }) },
     { label: 'Open at login', visible: IS_MAC, type: 'checkbox', checked: loginItem().openAtLogin, click: i => app.setLoginItemSettings({ openAtLogin: i.checked }) },
@@ -208,6 +224,7 @@ app.on('window-all-closed', e => e.preventDefault());
 app.on('before-quit', e => {
   quitting = true;
   desk.stop();
+  if (aide) aide.stop();
   if (!server.running()) return;
   e.preventDefault();
   saveBounds();
@@ -240,10 +257,16 @@ app.whenReady().then(async () => {
     onState: st => { if (win && !win.isDestroyed()) win.webContents.send('desktop:update', st); desk.status(desk.state); },   // the tray's menu shows it too
   });
   desk.jumpList();
+  aide = createAideWindow({
+    url: `${URL_BASE}?solo=1&aide=1`, preload: path.join(__dirname, 'shell', 'preload.js'), icon: iconFile(), log,
+    settings: () => notes(DATA_DIR).aide, saveSettings: v => setNotes(DATA_DIR, { aide: v }),
+    guard: (wc, popout) => { contextMenu(wc); keys(wc); guard(wc, popout); },
+    openInApp: id => doIt(id ? `aide:${id}` : 'aide'),
+  });
   desk.hotkey();
   const first = doArg(process.argv); if (first) pending = first;
   updates.begin();
-  if (await server.ready()) { if (win) win.loadURL(URL_BASE); }
+  if (await server.ready()) { if (win) win.loadURL(URL_BASE); syncAide(); }
   else {
     dialog.showErrorBox('Session Switcher didn’t start', `Its server didn’t answer on port ${PORT}. The details are in ${path.join(DATA_DIR, 'switcher.log')}.`);
     quitting = true; app.quit();

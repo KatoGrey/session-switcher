@@ -20,7 +20,8 @@ const partnerProv = () => (C.comp && C.comp.provider) || (C.mate && C.mate !== C
 // Whether an assistant can be brought in now.
 const kindReady = k => (k === 'codex' ? codexOK() : k === 'gemini' ? (typeof geminiReady === 'function' && geminiReady()) : !!(typeof current === 'function' && current() && canLaunch(current())));
 const partnerOK = () => kindReady(partnerProv());
-const duo = () => !C.watch && ['claude', 'codex', 'gemini'].includes(C.provider) && (partnerOK() || !!C.comp);
+// (Not in Companion: its chats are limited to the web, and a partner wouldn't be.)
+const duo = () => !C.watch && PAGE_ARGS.get('aide') !== '1' && PAGE_ARGS.get('aidepane') !== '1' && ['claude', 'codex', 'gemini'].includes(C.provider) && (partnerOK() || !!C.comp);
 // The others that could be the partner instead.
 const otherMates = () => ['claude', 'codex', 'gemini'].filter(k => k !== C.provider && k !== partnerProv() && kindReady(k));
 const provFor = src => (src === 'comp' ? partnerProv() : C.provider);
@@ -580,7 +581,8 @@ function renderItem(root, it, live) {
     const d = document.createElement('div');
     // From the partner's side: your message to Codex in a Claude chat (or to Claude in a Codex chat).
     const toPartner = provNow() !== C.provider;
-    const sh = splitShared(it.text);
+    const an = splitAideNotes(it.text);
+    const sh = splitShared(an.own);
     const oc = splitOther(sh.own); sh.own = oc.own;
     // "Keep it working": a small line, not your words; a crew's all get the same one, shown once.
     const keptTo = /^From Session Switcher: keep working until ([^(]+?) \(/.exec(sh.own);
@@ -620,6 +622,7 @@ function renderItem(root, it, live) {
     RAW.set(d, sh.own);
     d._at = at;
     d.innerHTML = `${toPartner ? `<span class="to-tag">to ${PROV_NAME[provNow()]}</span>` : ''}${cmdr ? '<span class="to-tag cmdr-tag">from Commander</span>' : ''}${sh.context ? `<details class="shared"><summary>${PROV_NAME[provNow()]} was caught up on ${sh.items ? `${sh.items} message${sh.items === 1 ? '' : 's'}` : 'the conversation'}</summary><div class="sh-body">${plain(sh.context)}</div></details>` : ''}${otherChatsHtml(oc.chats)}<div class="ububble">${text ? `<div class="utext">${plain(text)}</div>` : ''}${images(it.images)}${attachedFiles(files)}</div>${it.at ? `<span class="utime">${esc(stamp(Date.parse(it.at)))}</span>` : ''}`;
+    if (an.notes) d.insertAdjacentHTML('afterbegin', aideNotesHtml(an.notes));
     root.appendChild(d);
   } else if (it.kind === 'assistant') {
     const mi = C.mi[provNow() !== C.provider ? 'comp' : 'main'];

@@ -8,6 +8,15 @@
 const SHARED_TAG = /^\s*<shared-context(?:\s+items="(\d+)")?[^>]*>\n?([\s\S]*?)(?:\n?<\/shared-context>\s*|$)/;
 // "<other-chat title=… items=…>…</other-chat>": another chat you brought in with "@chat[…]".
 const OTHER_TAG = /^\s*<other-chat([^>]*)>\n?([\s\S]*?)(?:\n?<\/other-chat>\s*|$)/;
+function splitAideNotes(text) {
+  const own = String(text || ''), m = own.match(/^<companion-notes>\n([^\n]+)\n<\/companion-notes>\s*/);
+  if (m) try {
+    const n = JSON.parse(m[1]);
+    if (typeof n.group === 'string' && typeof n.notes === 'string') return { own: own.slice(m[0].length), notes: n };
+  } catch { /* ordinary text, or incomplete history */ }
+  return { own, notes: null };
+}
+const aideNotesHtml = n => n && n.notes ? `<details class="shared aide-notes"><summary>${esc(n.group)} · saved notes</summary><div class="sh-body">${plain(n.notes)}</div></details>` : '';
 function splitOther(text) {
   let s = String(text || '');
   const chats = [];

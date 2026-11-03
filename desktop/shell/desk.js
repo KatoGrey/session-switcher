@@ -5,7 +5,10 @@
 const { app, Menu, MenuItem, clipboard, shell, nativeImage, powerSaveBlocker, globalShortcut } = require('electron');
 
 const IS_MAC = process.platform === 'darwin';
-const DEFAULTS = { keepAwake: true, hotkey: 'CommandOrControl+Shift+Space', hotkeyOn: true };
+// Companion's keys: left hand, thumb on Alt. On a Mac Option+Q types a letter, so Control there.
+const AIDE_KEY = IS_MAC ? 'Control+Q' : 'Alt+Q', AIDE_LOOK = IS_MAC ? 'Control+Shift+Q' : 'Alt+Shift+Q';
+const DEFAULTS = { keepAwake: true, hotkey: 'CommandOrControl+Shift+Space', hotkeyOn: true, aideOn: false, aideKey: AIDE_KEY, aideLookKey: AIDE_LOOK };
+const KEY_OK = /^[\w+`;',.\/\[\]\\=-]{3,40}$/;
 
 // Right-click: spelling suggestions, cut/copy/paste in a text box, copy for a selection, a link or a
 // picture. (The app's own right-click menus, on chats and the like, still win where they're shown.)
@@ -53,9 +56,9 @@ function keys(wc) {
   });
 }
 
-function createDesk({ show, send, tray, window, settings, saveSettings, log = () => {} }) {
+function createDesk({ show, send, tray, window, settings, saveSettings, onAide = () => {}, log = () => {} }) {
   const st = { needs: 0, working: 0, list: [], badge: null };
-  let awake = null, toldAwake = false;
+  let awake = null, toldAwake = false, keysNow = {}, keyRetry = null;
   const opt = () => ({ ...DEFAULTS, ...(settings() || {}) });
 
   // While a chat works, the PC doesn't go to sleep (the screen still may).
@@ -104,25 +107,40 @@ function createDesk({ show, send, tray, window, settings, saveSettings, log = ()
   function hotkey() {
     globalShortcut.unregisterAll();
     const o = opt();
-    if (!o.hotkeyOn || !o.hotkey) return { ok: true, off: true };
-    try {
-      const ok = globalShortcut.register(o.hotkey, () => { const w = window(); if (w && w.isVisible() && w.isFocused()) w.hide(); else show(); });
-      if (!ok) log(`The key ${o.hotkey} is taken by another program.`);
-      return { ok };
-    } catch (err) { log(`Couldn’t set the key ${o.hotkey}: ${err.message}`); return { ok: false }; }
+    const reg = (key, f) => {
+      try {
+        const ok = globalShortcut.register(key, f);
+        if (!ok) log(`The key ${key} is taken by another program.`);
+        return ok;
+      } catch (err) { log(`Couldn’t set the key ${key}: ${err.message}`); return false; }
+    };
+    const out = { ok: true };
+    if (o.hotkeyOn && o.hotkey) out.ok = reg(o.hotkey, () => { const w = window(); if (w && w.isVisible() && w.isFocused()) w.hide(); else show(); });
+    else out.off = true;
+    if (o.aideOn) {
+      out.aideOk = !!o.aideKey && reg(o.aideKey, () => onAide(false));
+      out.aideLookOk = !!o.aideLookKey && o.aideLookKey !== o.aideKey && reg(o.aideLookKey, () => onAide(true));
+    }
+    keysNow = { aideOk: out.aideOk, aideLookOk: out.aideLookOk };
+    // Another program has one: it may let go of it (a game closing), so it's tried again now and then.
+    clearTimeout(keyRetry);
+    if (o.aideOn && (!out.aideOk || !out.aideLookOk)) { keyRetry = setTimeout(hotkey, 60000); if (keyRetry.unref) keyRetry.unref(); }
+    return out;
   }
   function set(patch) {
     const next = { ...opt() };
     for (const k of ['keepAwake', 'hotkeyOn']) if (typeof patch[k] === 'boolean') next[k] = patch[k];
     if (patch.channel === 'beta' || patch.channel === 'stable') next.channel = patch.channel;
     if (typeof patch.hotkey === 'string' && /^[\w+]{3,60}$/.test(patch.hotkey)) next.hotkey = patch.hotkey;
+    if (typeof patch.aideOn === 'boolean') next.aideOn = patch.aideOn;
+    for (const k of ['aideKey', 'aideLookKey']) if (typeof patch[k] === 'string' && KEY_OK.test(patch[k])) next[k] = patch[k];
     saveSettings(next);
     keepAwake();
     const hk = hotkey();
-    return { ...next, hotkeyOk: hk.ok !== false };
+    return { ...next, hotkeyOk: hk.ok !== false, aideOk: hk.aideOk, aideLookOk: hk.aideLookOk };
   }
-  function stop() { if (awake !== null) powerSaveBlocker.stop(awake); globalShortcut.unregisterAll(); }
-  return { status, setTrayMenu, waitingItems, jumpList, hotkey, set, opt, stop, state: st };
+  function stop() { clearTimeout(keyRetry); if (awake !== null) powerSaveBlocker.stop(awake); globalShortcut.unregisterAll(); }
+  return { status, setTrayMenu, waitingItems, jumpList, hotkey, set, opt, stop, state: st, keys: () => keysNow, aideNow: () => onAide(false) };
 }
 
 module.exports = { contextMenu, keys, createDesk, DEFAULTS };

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:">
+  <title>Choose a screen region</title>
+  <link rel="stylesheet" href="aide-region.css">
+  <script src="aide-region-ui.js" defer></script>
+</head>
+<body>
+  <img id="screen" alt="Your screen, frozen for selection" draggable="false">
+  <div id="shade"></div>
+  <div id="selection" hidden></div>
+  <div class="hint" role="status" aria-live="polite"><strong id="instruction">Drag around what you want to ask about</strong><span>Only this area will be attached. Review it in Companion before sending.</span><span id="size"></span></div>
+  <div class="actions"><button id="cancel" type="button">Cancel <kbd>Esc</kbd></button><button id="use" type="button" disabled>Use selection <kbd>Enter</kbd></button></div>
+</body>
+</html>

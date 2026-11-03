@@ -4,6 +4,14 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const { ownText } = require('../lib/shared');
 
+test('saved Companion notes stay out of conversation titles, previews and recovered drafts', () => {
+  const prefix = '<companion-notes>\n{"group":"Game","notes":"Sword build"}\n</companion-notes>\n\n';
+  assert.equal(ownText(prefix + 'My question'), 'My question');
+  assert.equal(ownText(prefix + '<shared-context>Earlier reply</shared-context>\nMy question'), 'My question');
+  assert.equal(ownText('<companion-notes>\n{"group":"Game","notes":"cut off'), '');
+  assert.equal(ownText('Explain <companion-notes> tags'), 'Explain <companion-notes> tags');
+});
+
 test('shared context: tag-like user text cannot trap the server in the prefix-removal loop', () => {
   // Run the malformed inputs outside this process: the regression blocks the event loop, so an
   // ordinary test timeout would not get a chance to fire.

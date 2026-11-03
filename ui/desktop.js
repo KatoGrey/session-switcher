@@ -38,6 +38,8 @@ if (deskOn()) {
     if (what === 'search') return openPalette('');
     if (what === 'new-chat') return openNewChat();
     if (what === 'task') return openTaskDialog(S.view === 'folder' ? S.folder : null);
+    if (what === 'aide') return go('aide');
+    if (/^aide:/.test(what)) return aideSelect(what.slice(5));
     return undefined;
   };
   const t0 = Date.now();

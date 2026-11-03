@@ -1,0 +1,8 @@
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#171a1d;color:#edf0f2;font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;user-select:none;cursor:crosshair}
+#screen{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+#shade{position:fixed;inset:0;background:#0007;pointer-events:none}
+#selection{position:fixed;outline:2px solid #fff;box-shadow:0 0 0 99999px #0007;pointer-events:none}
+.hint{position:fixed;top:20px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 40px);width:max-content;display:flex;flex-direction:column;gap:3px;padding:12px 18px;background:#191c1f;border:1px solid #67727b;pointer-events:none;text-align:center}
+.hint strong{font-size:15px;font-weight:600}.hint span{font-size:12px;color:#c4cbd0}#size:empty{display:none}
+.actions{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:8px;padding:8px;background:#191c1f;border:1px solid #67727b;cursor:default}
+button{padding:9px 13px;background:#191c1f;color:#edf0f2;font:inherit;border:1px solid #67727b;cursor:pointer;white-space:nowrap}button:hover{background:#30363b}button:disabled{opacity:.5;cursor:default}button:focus-visible{outline:2px solid #fff;outline-offset:2px}kbd{margin-left:7px;font:11px system-ui;color:#c4cbd0}

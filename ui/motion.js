@@ -245,6 +245,7 @@ function renderPage() {
   else if (S.view === 'folder') renderFolder();
   else if (S.view === 'search') renderSearch();
   else if (S.view === 'routines') Routines.render();
+  else if (S.view === 'aide') renderAidePage();
 }
 function renderAll() { renderNav(); renderPage(); renderBar(); updateTitle(); }
 // Names the chat window uses.

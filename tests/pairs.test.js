@@ -32,7 +32,7 @@ class FakeChat {
   stop() { this.stopping = true; this.end(); }
   end() { this.state = 'ended'; this.emit({ kind: 'ended' }); this.markExited(); }
 }
-function setup({ transcripts = {}, changed = {} } = {}) {
+function setup({ transcripts = {}, changed = {}, contextFor = () => '' } = {}) {
   const all = new Map();
   const chats = {
     get: k => { const c = all.get(k); if (!c) throw new Error('gone'); return c; },
@@ -42,7 +42,7 @@ function setup({ transcripts = {}, changed = {} } = {}) {
   const prefs = createChatPrefs({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'ss-pairs-')) });
   const started = [], read = [];
   const pairs = createPairs({
-    chats, prefs,
+    chats, prefs, contextFor,
     transcript: async (provider, id) => { read.push(id); return transcripts[id] || []; },
     lastChanged: (provider, id) => changed[id] || 0,
     startPartner: async (lead, { remembered }) => { started.push(remembered); return add(new FakeChat({ provider: lead.provider === 'codex' ? 'claude' : 'codex', sessionId: remembered || `new-${n + 1}` })); },
@@ -50,6 +50,23 @@ function setup({ transcripts = {}, changed = {} } = {}) {
   return { pairs, prefs, add, started, read };
 }
 const at = ms => new Date(Date.now() - ms).toISOString();
+
+test('pairs: reference context is fresh for every provider and never becomes recovered draft text', async () => {
+  let notes = 'first';
+  const { pairs, add } = setup({ contextFor: () => `[notes: ${notes}]\n` });
+  for (const provider of ['claude', 'codex', 'gemini']) {
+    const chat = add(new FakeChat({ provider, sessionId: provider }));
+    await pairs.send(chat, 'My question');
+    assert.equal(chat.sent[0].text, `[notes: ${notes}]\nMy question`);
+    chat.sent[0].onUnsent('Could not deliver');
+    const held = chat.buffer.find(e => e.kind === 'unsent');
+    assert.ok(held);
+    assert.equal(held.text, 'My question');
+    chat.reply('done'); notes = `changed for ${provider}`;
+    await pairs.send(chat, 'Next question');
+    assert.equal(chat.sent[1].text, `[notes: ${notes}]\nNext question`);
+  }
+});
 
 test('pairs: cancellation during preparation prevents delivery and releases only its unused baseline', async () => {
   const {pairs,add}=setup(),lead=add(new FakeChat({sessionId:'cancel-single'}));

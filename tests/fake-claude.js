@@ -23,7 +23,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   let m; try { m = JSON.parse(line); } catch { return; }
   if (m.type === 'control_request') {
     const r = m.request || {};
-    const response = r.subtype === 'initialize' ? { commands: [{ name: 'compact', description: 'Compact', argumentHint: '' }], models: [{ value: 'default', displayName: 'Default', description: 'The default' }, { value: 'haiku', displayName: 'Haiku', description: 'Fast' }], account: { email: 'tester@example.com' } } : {};
+    const response = r.subtype === 'initialize' ? { commands: [{ name: 'compact', description: 'Compact', argumentHint: '' }], models: [{ value: 'default', displayName: 'Default', description: 'The default' }, { value: 'opus', displayName: 'Opus', description: 'Complex work' }, { value: 'sonnet', displayName: 'Sonnet', description: 'Everyday' }, { value: 'fable', displayName: 'Fable', description: 'Toughest' }, { value: 'haiku', displayName: 'Haiku', description: 'Fast' }], account: { email: 'tester@example.com' } } : {};
     return out({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response } });
   }
   if (m.type === 'control_response') return undefined;

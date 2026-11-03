@@ -43,13 +43,14 @@ const { createLiteRoutes } = require('./lib/lite-routes');
 const restartLib = require('./lib/restart');
 const keeperLib = require('./lib/keeper');
 const themeStudioLib = require('./lib/theme-studio');
+const aideLib = require('./lib/aide');
 const pushLib = require('./lib/push');
 const extrasLib = require('./lib/extras');
 const { branchSession } = require('./lib/branch');
 const runnerLib = require('./lib/runner');
 const { ownText } = require('./lib/shared');
 
-const APP_VERSION = '6.6.2';
+const APP_VERSION = '6.7.0';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
 // Installed as a desktop app (desktop/main.js): the app starts and stops this server, and does restarts.
 const SHELL = process.env.SWITCHER_SHELL === 'electron' && typeof process.send === 'function' ? 'electron' : null;
@@ -128,6 +129,10 @@ const namer = require('./lib/namer').createNamer({
 });
 const board = require('./lib/board').createBoard({ dataDir: DATA_DIR, log, allowed: filesLib.allowed, broad: projectsLib.isBroad, newest: root => projectInfo.info(root).images });
 const themeStudio = themeStudioLib.createStudio(DATA_DIR);
+// Companion (lib/aide.js): quick questions over a game or anything else, from a key.
+let aideTimer = null;
+const aide = aideLib.createAide({ dataDir: DATA_DIR, log });
+const aideProject = cwd => (aide.isHere(cwd) ? { cwd: aide.prepare(), name: 'Companion', exists: true } : null);
 const chatPrefs = prefsLib.createChatPrefs({ dataDir: DATA_DIR, log });
 const openclaw = openclawLib.createOpenClaw({ log, run: sys.runCapture, found: async () => (await sys.whereIs('openclaw')).length > 0, dataDir: DATA_DIR });
 openclaw.onSessionsChanged(() => { forgetMerged(); broadcast('sessions'); });
@@ -151,7 +156,7 @@ const OPEN_FILE = path.join(DATA_DIR, 'open-chats.json');
 const REOPEN_FILE = path.join(DATA_DIR, 'reopen.json');
 let shuttingDown = false, openTimer = null;
 function writeOpenChats() {
-  const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId && !(chats.chats.get(c.key) || {}).aside).map(c => ({
+  const list = Object.values(chats.live()).filter(c => !c.parentKey && c.sessionId && !(chats.chats.get(c.key) || {}).aside && !(chats.chats.get(c.key) || {}).aide).map(c => ({
     sessionId: c.sessionId, provider: c.provider || 'claude', accountId: c.accountId, accountName: c.accountName,
     cwd: c.cwd, title: c.title || null, folder: c.folder || null,
     // What it was running with, so it comes back the same (a reopen used to fall back to the app's default mode).
@@ -329,8 +334,10 @@ const chats = chatLib.createChatManager({
     if (chat && chat.state === 'ended' && !chat.parentKey && (chat.companionKey || chat.crew)) for (const p of pairs.crewOf(chat)) if (p.state !== 'ended') p.stop();
     if (chat && chat.state === 'ended') routines.onActivity(chat);
     broadcast('live', chats.live()); scheduleActivity(); schedulePush(); saveOpenChats();
+    if (chat && chat.aide) { clearTimeout(aideTimer); aideTimer = setTimeout(() => broadcast('aide'), 1500); }   // its list says what was asked last
   },
   onSession: chat => {
+    if (chat.aide && chat.sessionId) { aide.note(chat.sessionId, chat.aideGroup); broadcast('aide'); }
     // A side question is set aside as done as soon as it has an id: it never sits in the lists.
     if (chat.aside && chat.sessionId) chatPrefs.setDone(chat.sessionId, true);
     if (chat.provider === 'gemini') { gemini.noteChat(chat.sessionId, { cwd: chat.cwd, title: chat.title }); geminiRows.at = 0; }
@@ -365,6 +372,7 @@ const chats = chatLib.createChatManager({
 // ---------- Claude and Codex in one chat (lib/pairs.js; what each is told: lib/duo.js) ----------
 const pairs = pairsLib.createPairs({
   chats, prefs: chatPrefs, log,
+  contextFor: chat => aide.contextFor(chat),
   onPaired: () => { broadcast('live', chats.live()); scheduleActivity(); },
   transcript: async (provider, id, until) => (provider === 'codex' ? (await codex.history(id, null, until)).items : provider === 'gemini' ? gemini.history(id, until).items : (await chatLib.readHistory(sessions.fileFor(id), { until, limit: 80 })).items),
   // Which assistant a conversation is.
@@ -559,7 +567,7 @@ function mergeSessions() {
     const np = { cwd: nativeDir(x.cwd), name: path.basename(x.cwd.replace(/[\\/]+$/, '')) || x.cwd, exists: x.exists, notes: 0, sessions: [], updated: x.created || 0, added: true };
     byCwd.set(normCwd(x.cwd), np); projects.push(np);
   }
-  projects = applyDesktop(projects, byCwd);
+  projects = applyDesktop(projects, byCwd).filter(p => !aide.isHere(p.cwd));   // Companion's chats have a page of their own
   for (const p of projects) { p.sessions.sort((a, b) => b.updated - a.updated); p.updated = p.sessions.length ? p.sessions[0].updated : (p.updated || 0); }
   projects.sort((a, b) => b.updated - a.updated);
   return { ...base, projects };
@@ -933,6 +941,8 @@ async function openChatNow(c, body) {
   return info;
 }
 async function openChatInner(c, body) {
+  // The effort to use if none was chosen for this chat or its project (Companion's quick questions).
+  const orEffort = /^(minimal|low|medium|high|xhigh|max|ultra)$/.test(String(body.defaultEffort || '')) ? body.defaultEffort : null;
   if (body.provider === 'gemini' || (body.mode !== 'new' && isGeminiId(body.sessionId))) {
     if (!gemini.publicState().checked) await gemini.refreshAccount().catch(() => null);
     requireGeminiReady();
@@ -945,7 +955,7 @@ async function openChatInner(c, body) {
       cwd = row.cwd; sessionId = row.id; title = row.title;
       const live = chats.bySession(sessionId); if (live) return attachedInfo(live);
     } else {
-      const p = projectAt(body.cwd) || raceCopyAt(body.cwd);
+      const p = projectAt(body.cwd) || raceCopyAt(body.cwd) || aideProject(body.cwd);
       if (!p) throw fail(404, 'That folder isn’t in the list.');
       if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
       cwd = p.cwd;
@@ -953,7 +963,8 @@ async function openChatInner(c, body) {
     const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
     const pref = chatPrefs.get({ sessionId, cwd, provider: 'gemini' });
     const asked = geminiLib.MODES.some(m => m.value === body.permissionMode) ? body.permissionMode : null;
-    const chat = gemini.open({ cfg: c, cwd, sessionId, mode: asked || pref.mode || liteStore.get().permissions.gemini, model: body.model || pref.model || null, title: title || 'New Gemini chat', folder });
+    const chat = gemini.open({ cfg: c, cwd, sessionId, mode: aide.isHere(cwd) ? 'plan' : asked || pref.mode || liteStore.get().permissions.gemini, model: body.model || pref.model || null, title: title || (aide.isHere(cwd) ? 'A question' : 'New Gemini chat'), folder });
+    chat.aide = aide.isHere(cwd);
     if (sessionId) sessions.recordLaunch(sessionId, geminiLib.ACCOUNT, 'app');
     log(`Gemini chat window: ${mode} ${sessionId || '(new)'}`);
     return { ...chat.info(), attached: false, remembered: !!pref.mode };
@@ -980,7 +991,7 @@ async function openChatInner(c, body) {
       if (mode === 'resume') { const live = chats.bySession(threadId); if (live) return attachedInfo(live); }
       if (mode === 'fork' && title) title = `${title} (copy)`;
     } else {
-      const p = projectAt(body.cwd) || raceCopyAt(body.cwd) || themeStudio.project(body.cwd);
+      const p = projectAt(body.cwd) || raceCopyAt(body.cwd) || themeStudio.project(body.cwd) || aideProject(body.cwd);
       if (!p) throw fail(404, 'That folder isn’t in the list.');
       if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
       cwd = p.cwd;
@@ -990,7 +1001,8 @@ async function openChatInner(c, body) {
     const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: inst.ACCOUNT.kind === 'ollama' ? 'ollama' : 'codex' });
     const last = threadId && mode !== 'new' && !body.model && !pref.model ? await codexStartedOn(threadId) : null;
     const model = [body.model, pref.model, last && last.model].find(m => m && modelFits(inst, m)) || null;
-    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: body.permissionMode || pref.mode, model, fast: body.fast === true || pref.fast === 'on', effort: pref.effort || (last && model === last.model ? last.effort : null), title: title || (art ? `Paint ${art.name}` : 'New Codex chat'), folder });
+    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: aide.isHere(cwd) ? 'read-only' : body.permissionMode || pref.mode, model, fast: body.fast === true || pref.fast === 'on', effort: pref.effort || (last && model === last.model ? last.effort : null) || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : art ? `Paint ${art.name}` : 'New Codex chat'), folder });
+    chat.aide = aide.isHere(cwd);
     if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
     log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
     return { ...chat.info(), attached: false, remembered: !!pref.mode, companionThread: threadId && mode !== 'new' ? chatPrefs.companionOf(threadId) : null };
@@ -1015,7 +1027,7 @@ async function openChatInner(c, body) {
       }
     }
   } else {
-    const p = projectAt(body.cwd) || raceCopyAt(body.cwd);
+    const p = projectAt(body.cwd) || raceCopyAt(body.cwd) || aideProject(body.cwd);
     if (!p) throw fail(404, 'That folder isn’t in the list.');
     if (!p.exists) throw fail(400, `The folder ${p.cwd} no longer exists.`);
     cwd = p.cwd;
@@ -1029,7 +1041,8 @@ async function openChatInner(c, body) {
   if (sessionId) { try { title = sessions.find(sessionId).session.title; } catch { /* untitled */ } }
   if (mode === 'fork' && title) title = `${title} (copy)`;
   const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort, title: title || 'New chat', folder, extraArgs: chatArgs() });
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : 'New chat'), folder, extraArgs: aide.isHere(cwd) ? aide.claudeArgs() : chatArgs() });
+  chat.aide = aide.isHere(cwd);
   if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
   log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
   return { ...chat.info(), attached: false, remembered: !!pref.mode && !body.permissionMode, companionThread: sessionId && mode !== 'new' ? chatPrefs.companionOf(sessionId) : null };
@@ -1746,6 +1759,8 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
   if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
   if (route === 'GET /api/organize') return send(res, 200, orgView());
+  if (route === 'GET /api/aide') return send(res, 200, aideView());
+  if (route === 'GET /api/aide/notes') return send(res, 200, aide.notes(url.searchParams.get('group') || 'general'));
   if (route === 'GET /api/commander') { const l = commanderLive(); return send(res, 200, { ...orgView().commander, live: l ? l.info() : null }); }
   if (route === 'GET /api/commander/tool/sessions') return send(res, 200, commanderSessions(url.searchParams.get('filter') || 'active', url.searchParams.get('group') || ''));
   if (route === 'GET /api/commander/tool/read') return send(res, 200, await commanderRead(url.searchParams.get('id'), url.searchParams.get('count')));
@@ -2508,6 +2523,12 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, { title });
     }
     case '/api/commander/open': return send(res, 200, await openCommander(c, body));
+    case '/api/aide/settings': { aide.settings(body); broadcast('aide'); return send(res, 200, aideView()); }
+    case '/api/aide/notes': { const result = aide.setNotes(String(body.group || 'general'), body.text, body.version); broadcast('aide'); return send(res, 200, result); }
+    case '/api/aide/open': return send(res, 200, await aideOpen(c, body));
+    case '/api/aide/rename': { if (!aide.rename(String(body.group || ''), body.name)) throw fail(400, 'That group can’t be renamed.'); broadcast('aide'); return send(res, 200, aideView()); }
+    case '/api/aide/move': { aide.move(String(body.id || ''), String(body.group || '')); broadcast('aide'); return send(res, 200, aideView()); }
+    case '/api/aide/forget': { aide.forget(String(body.id || '')); broadcast('aide'); return send(res, 200, aideView()); }
     case '/api/commander/settings': {
       const ch = {};
       if (body.accountId !== undefined) ch.accountId = acc.findAccount(c, body.accountId).id;
@@ -2678,6 +2699,76 @@ async function handleApi(req, res, url, remote = false) {
 }
 
 // ---------- the Commander ----------
+// Companion's chats, wherever each assistant keeps them, and one that's just begun.
+function aideRows() {
+  const out = [];
+  for (const p of sessions.scan().projects) if (aide.isHere(p.cwd)) for (const s of p.sessions) out.push({ id: s.id, title: s.title, provider: 'claude', updated: s.updated });
+  for (const t of [...codexSessions(), ...geminiSessions()]) if (aide.isHere(t.cwd)) out.push({ id: t.id, title: t.title, provider: t.provider, updated: t.updated });
+  for (const ch of chats.chats.values()) {
+    if (!ch.aide || !ch.sessionId || ch.state === 'ended') continue;
+    const had = out.find(r => r.id.toLowerCase() === ch.sessionId.toLowerCase());
+    const at = ch.activity && ch.activity.lastEventAt ? Date.parse(ch.activity.lastEventAt) || 0 : 0;
+    if (had) { had.updated = Math.max(had.updated || 0, at); had.live = ch.key; } else out.push({ id: ch.sessionId, title: ch.title, provider: ch.provider || 'claude', updated: at || Date.now(), live: ch.key });
+  }
+  return out;
+}
+const aideReady = provider => (provider === 'codex' ? (s => !!(s.enabled && s.signedIn))(codexActive().publicState()) : provider === 'gemini' ? (s => !!(s.enabled && s.signedIn))(gemini.publicState()) : config().accounts.some(a => acc.publicAccount(cfg, a).signedIn));
+// What each assistant offers, for Companion's picker: Claude's and Codex's from the list Lite keeps (one
+// question to Claude Code, no message, at most every six hours), Gemini's from agy. Asked again at most
+// every ten minutes, and the page told only when the list has changed.
+let aideModelList = {}, aideModelsSig = '', aideModelsAt = 0, aideModelsTries = 0;
+function aideModels() {
+  // One that's signed in but hasn't said what it has: asked again sooner.
+  const missing = (!aideModelList.claude && aideReady('claude')) || (!aideModelList.codex && aideReady('codex'));
+  if (aide.on && Date.now() - aideModelsAt > (missing ? 10e3 : 10 * 60e3)) loadAideModels(missing);
+  return { claude: aideModelList.claude || null, codex: aideModelList.codex || null, gemini: gemini.models() };
+}
+function loadAideModels(fresh) {
+  aideModelsAt = Date.now();
+  liteRoutes.models(fresh ? { fresh: true } : undefined).then(m => {
+    const v = { claude: m.claude ? [...m.claude.models, ...m.claude.more] : null, codex: m.codex ? [...m.codex.models, ...m.codex.more] : null };
+    const sig = JSON.stringify(v);
+    if (sig !== aideModelsSig) { aideModelsSig = sig; aideModelList = v; broadcast('aide'); }
+    // As the app starts, Codex's sign-in is still being checked: until its list is in, it's asked again in
+    // ten seconds, for a minute and a half, rather than in ten minutes.
+    const waiting = !v.claude || (!v.codex && !!codexActive().publicState().enabled);
+    if (!waiting) aideModelsTries = 0;
+    else if (aideModelsTries++ < 9) { const t = setTimeout(() => loadAideModels(true), 10e3); if (t.unref) t.unref(); }
+  }).catch(err => log(`Companion: the models: ${err.message}`));
+}
+const aideView = () => {
+  const ms = aideModels();
+  return { on: aide.on, who: aide.who, alpha: aide.alpha, assistants: aideLib.PROVIDERS.map(p => ({ provider: p, name: aideLib.PROV_NAME[p], ok: aideReady(p), models: aideLib.modelsFor(p, ms[p]) })), groups: aide.view(aideRows()) };
+};
+// The key, or a new question on the page: the chat to carry on in the group it belongs to, or a new one.
+async function aideOpen(c, body) {
+  aide.prepare();
+  const group = body.group ? { key: String(body.group), name: aide.nameOf(String(body.group)) } : aide.classify(body.app);
+  const key = aide.ensureGroup(group);
+  const rows = aideRows();
+  const wanted = body.sessionId ? rows.find(r => r.id.toLowerCase() === String(body.sessionId).toLowerCase()) : null;
+  if (body.sessionId && !wanted) throw fail(404, 'That Companion conversation is no longer available.');
+  const asked = aideLib.whoOf(body.who || aide.who);
+  const who = wanted && wanted.provider !== asked.provider ? aideLib.whoOf(wanted.provider) : asked;
+  // A model the assistant no longer lists (renamed, or gone with an update) falls back to its usual one.
+  const known = aideModels()[who.provider];
+  const model = who.model && (!known || !known.length || known.some(m => m.value === who.model)) ? who.model : null;
+  const account = who.provider === 'claude' ? body.account || mainAccount().id : undefined;
+  // Quick questions: medium effort, unless you've chosen another for Companion's chats.
+  const effort = who.provider === 'gemini' ? {} : { defaultEffort: 'medium' };
+  const last = wanted || (body.fresh ? null : aide.latest(key, rows.filter(r => r.provider === who.provider)));
+  const info = last ? await openChat(c, { sessionId: last.id, mode: 'resume', provider: last.provider, account, ...effort, ...(!wanted && last.provider === who.provider && model ? { model } : {}) })
+    : await openChat(c, { cwd: aide.dir, mode: 'new', provider: who.provider, account, ...effort, ...(model ? { model } : {}) });
+  const chat = chats.get(info.key);
+  chat.aide = true; chat.aideGroup = wanted ? aide.groupOfChat(wanted.id) : key;
+  if (chat.sessionId) aide.note(chat.sessionId, chat.aideGroup);
+  // Already running, on another model of the same assistant: this one answers from now on.
+  if (!wanted && info.attached && last && last.provider === who.provider && model && chat.setModel && chat.model !== model) Promise.resolve().then(() => chat.setModel(model)).catch(err => log(`Companion: ${err.message}`));
+  // Who answers now: an older question carries on with its own model.
+  const now = !wanted && model ? `${who.provider}:${model}` : `${chat.provider || 'claude'}${chat.model ? `:${chat.model}` : ''}`;
+  return { ...attachedInfo(chat), group: { key: chat.aideGroup, name: aide.nameOf(chat.aideGroup) }, who: aideLib.whoOf(now).id };
+}
+
 // One chat that can see and steer the others, through a small MCP server (lib/commander-mcp.js)
 // that calls the /api/commander/tool/* routes below with this launch's token. It runs in its own
 // folder (commander/, which holds its CLAUDE.md) as the Claude account you pick.
@@ -3371,6 +3462,7 @@ async function handleChat(req, res, url, body, c) {
       const images = validImages(body.images);
       if (!text.trim() && !images.length) throw fail(400, 'Type a message or attach an image.');
       const chat = chats.get(body.key), lead = pairs.leadOf(chat);
+      if (chat.aide && body.to && body.to !== 'me') throw fail(400, 'Companion’s chats have no partners: they can only use the web, and a partner could do more.');
       // "@chat[…]": other chats you brought in; their latest messages go along, before your words.
       if (Array.isArray(body.refs) && body.refs.length) text = (await Promise.all(body.refs.slice(0, 3).map(otherChatBlock))).join('') + text;
       if (body.to === 'both' || body.to === 'all') { await pairs.sendBoth(lead, text, images, { accountId: body.account, kind: body.kind, kinds: Array.isArray(body.kinds) ? body.kinds.map(String).slice(0, 3) : null }); return send(res, 200, { ok: true }); }
@@ -3513,6 +3605,7 @@ async function handleChat(req, res, url, body, c) {
     case '/api/chat/companion': {
       // The other assistant, working inside this chat (Codex in a Claude chat, Claude in a Codex chat).
       const lead = pairs.leadOf(chats.get(body.key));
+      if (lead.aide) throw fail(400, 'Companion’s chats have no partners: they can only use the web, and a partner could do more.');
       return send(res, 200, (await pairs.ensure(lead, { accountId: body.account, kind: body.kind })).info());
     }
     case '/api/chat/stop': {
