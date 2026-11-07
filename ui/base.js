@@ -275,10 +275,12 @@ const isCodex = s => !!(s && s.provider === 'codex');
 // Gemini (Google's Antigravity CLI): its own chats, in their projects with the rest.
 const isGemini = s => !!(s && s.provider === 'gemini');
 const geminiReady = () => !!(S.gemini && S.gemini.enabled && S.gemini.signedIn);
-// Gemini's account line: set up or not, and which models ran out of quota and when they come back.
-// (Antigravity can't say how much is left, only that a model ran out, so that's what shows.)
+// Gemini's account line: set up or not, how much of the plan is left (its 5-hour and weekly windows,
+// as usage under "gemini", from Antigravity's own /usage), and any model that ran out and when it's back.
+// An Antigravity CLI too old to say how much is left shows only the models that ran out.
 const geminiStatus = () => { const g = S.gemini || {}; return !g.enabled ? 'Turned off in Setup' : g.installed === false ? 'Antigravity CLI not installed' : g.checked && !g.signedIn ? 'Not signed in' : !g.checked ? 'Checking…' : `Google AI plan${g.models ? ` · ${g.models} models` : ''}`; };
 const geminiLimits = () => (S.gemini && S.gemini.limits) || [];
+const geminiUsage = () => { const u = usageOf('gemini'); return u && u.data && u.data.available ? u.data : null; };
 const geminiOut = l => `${l.label} ran out${l.resetsAt ? `, back ${when(l.resetsAt)}` : ''}`;
 function geminiQuotaCell() {
   const L = geminiLimits();

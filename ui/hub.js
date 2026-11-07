@@ -737,10 +737,22 @@ function codexAcctCard(c) {
   return acctCard({ key: `cx:${c.id}`, id: c.id, name: c.name || 'Codex', sub, on, action, tag: on ? '<span class="tag gold">new Codex chats</span>' : '', body: `${acctWins(c.id, ollama ? 'Through Ollama, on this computer.' : c.signedIn ? null : 'Sign in to see its usage and reset times.')}${codexLinkTrouble(c)}`, more: () => codexCard(c) });
 }
 function geminiAcct() {
-  const L = geminiLimits(), ready = geminiReady();
-  const body = ready && L.length ? `<ul class="aw-out">${L.map(l => `<li>${esc(geminiOut(l))}</li>`).join('')}</ul>` : `<p class="aw-none">${ready ? 'No model has run out of quota.' : 'Finish setting it up in Setup.'}</p>`;
+  const L = geminiLimits(), ready = geminiReady(), d = ready ? geminiUsage() : null;
+  const out = L.length ? `<ul class="aw-out">${L.map(l => `<li>${esc(geminiOut(l))}</li>`).join('')}</ul>` : '';
+  // Its plan's 5-hour and weekly windows, like Claude's and Codex's; an older Antigravity CLI can't say.
+  const body = !ready ? '<p class="aw-none">Finish setting it up in Setup.</p>'
+    : d ? `${acctWins('gemini')}${out}`
+    : S.gemini.usage ? `${acctWins('gemini', 'Checking how much is left…')}${out}`
+    : out || '<p class="aw-none">No model has run out of quota.</p>';
   const action = ready ? '' : '<button class="btn sm prime" data-act="gemini-setup">Set it up</button>';
-  return acctCard({ key: 'gemini', id: 'gemini', name: 'Gemini', sub: geminiStatus(), action, body, more: () => `<p class="dc-msg">Antigravity can’t say how much of your plan is left, only when a model runs out and when it’s back, so that’s what shows here.</p><div class="dc-act"><button class="btn sm" data-act="gemini-check">Check the sign-in</button><button class="btn quiet sm" data-act="gemini-setup">Gemini in Setup</button></div>` });
+  const groups = d && Array.isArray(d.groups) ? d.groups : [];
+  const main = groups.find(g => g.name === d.main) || groups[0];
+  const others = groups.filter(g => g !== main && (g.fiveHour || g.week));
+  const about = d
+    ? `<p class="dc-msg">${main && main.models ? `${esc(main.models)} share these limits.` : ''} Antigravity counts each reply by what its tokens cost, so shorter jobs and lighter models make it last longer. The weekly limit is your plan’s; the 5-hour one evens out demand.</p>${others.map(g => `<p class="dc-msg"><b>${esc(g.name.replace(/ models$/i, ''))} in Antigravity</b>${g.models ? ` (${esc(g.models)})` : ''} have their own:</p><div class="aw-wins">${acctWin('5 hours', `${g.name}, five-hour window`, g.fiveHour)}${acctWin('This week', `${g.name}, this week`, g.week)}</div>`).join('')}`
+    : S.gemini.usage ? '<p class="dc-msg">Checking how much of your plan is left…</p>'
+    : '<p class="dc-msg">This Antigravity CLI can’t say how much of your plan is left, only when a model runs out and when it’s back. Update it (Setup → Update Gemini) to see your 5-hour and weekly limits here.</p>';
+  return acctCard({ key: 'gemini', id: 'gemini', name: 'Gemini', sub: geminiStatus(), action, body, more: () => `${about}<div class="dc-act">${d ? '<button class="btn sm" data-act="gemini-usage">Check usage</button>' : ''}<button class="btn sm" data-act="gemini-check">Check the sign-in</button><button class="btn quiet sm" data-act="gemini-setup">Gemini in Setup</button></div>` });
 }
 // What used this account's last five hours, chat by chat (counted while the app runs).
 function usedBy(id) {

@@ -8,6 +8,17 @@ const readline = require('readline');
 const args = process.argv.slice(2);
 // Its other two answers: who it is, and which models it has (how the app knows it's signed in).
 if (args[0] === '--version') { console.log('1.3.5'); process.exit(0); }
+// Its own answer to /usage in print mode (recorded from agy 1.5.2): no turn, no conversation.
+if (args[0] === '-p' && args[1] === '/usage') {
+  const at = h => new Date(Date.now() + h * 3600e3).toISOString().replace(/\.\d+Z$/, 'Z');
+  const bucket = (id, name, window, left, h) => ({ id, name, window, remaining_fraction: left, reset_time: at(h) });
+  console.log(JSON.stringify({ conversation_id: '', status: 'SUCCESS', response: 'Gemini Models\tWeekly Limit Remaining\t90%\n', duration_seconds: 0, num_turns: 0, usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+    command: { name: 'usage', data: { description: 'Within each group, models share a weekly limit and a 5-hour limit.', groups: [
+      { name: 'Gemini Models', description: 'Models within this group: Gemini Flash, Gemini Pro', buckets: [bucket('gemini-weekly', 'Weekly Limit Remaining', 'weekly', 0.9, 140), bucket('gemini-5h', 'Five Hour Limit Remaining', '5h', 0.62, 3)] },
+      { name: 'Claude and GPT models', description: 'Models within this group: Claude Opus, Claude Sonnet, GPT-OSS', buckets: [bucket('3p-weekly', 'Weekly Limit Remaining', 'weekly', 1, 160), bucket('3p-5h', 'Five Hour Limit Remaining', '5h', 1, 5)] },
+    ] } } }));
+  process.exit(0);
+}
 if (args[0] === 'models') { console.log('gemini-4-argon-medium\tGemini 4 Argon (Medium)\ngemini-4-argon-high\tGemini 4 Argon (High)'); process.exit(0); }
 if (args[0] === 'mcp' && args[1] === 'add') {
   const file = path.join(require('os').homedir(), '.gemini', 'config', 'mcp_config.json');

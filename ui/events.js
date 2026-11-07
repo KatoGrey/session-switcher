@@ -62,7 +62,7 @@ function openAcctPop() {
   const gL = geminiLimits();
   const gm = S.gemini && S.gemini.enabled ? `<p class="ap-h">Gemini</p><button type="button" class="ap-row gemini" data-ap="gemini" style="--ring:${GEMINI_RING}" title="${geminiReady() ? 'Check the Gemini sign-in again' : 'Finish setting up Gemini'}">
       <span class="ap-dial">${miniDial('gemini', 34)}</span>
-      <span class="ap-t"><b>Gemini${chatAcct === 'gemini' ? ' <span class="tag">this chat</span>' : ''}</b><small>${esc(geminiStatus())}</small><span class="ap-bars">${!geminiReady() ? '' : gL.length ? gL.map(l => `<span class="ap-none hot">${esc(geminiOut(l))}</span>`).join('') : '<span class="ap-none">No model out of quota</span>'}</span></span></button>` : '';
+      <span class="ap-t"><b>Gemini${chatAcct === 'gemini' ? ' <span class="tag">this chat</span>' : ''}</b><small>${esc(geminiStatus())}</small><span class="ap-bars">${!geminiReady() ? '' : (geminiUsage() || (S.gemini.usage && usageOf('gemini')) ? acctBars('gemini') : '') + (gL.length ? gL.map(l => `<span class="ap-none hot">${esc(geminiOut(l))}</span>`).join('') : geminiUsage() || (S.gemini.usage && usageOf('gemini')) ? '' : '<span class="ap-none">No model out of quota</span>')}</span></span></button>` : '';
   pop.innerHTML = `<p class="ap-h">${inChat && chatAcct ? 'Pick the account new chats open as. This chat keeps its own.' : 'New chats open as'}</p>
     <div class="ap-list">${S.accounts.map(row).join('')}</div>${cx}${gm}
     <div class="ap-act">
@@ -199,6 +199,7 @@ const pageClicks = wrap(async e => {
   if (act === 'world-prompt') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : promptMenu(b, S.folder);
   if (act === 'project-new') return openNewProject();
   if (act === 'gemini-setup') return openSetupAt('st-gemini');
+  if (act === 'gemini-usage') { await refreshUsage('gemini'); renderBar(); const u = usageOf('gemini'); return u && u.error ? toast(`Gemini usage: ${u.error}`, 5000) : undefined; }
   if (act === 'gemini-check') { const g = await api('/api/gemini/check', {}); S.gemini = g.gemini; renderBar(); renderLive(); return toast(S.gemini.signedIn ? 'Gemini is signed in.' : 'Gemini isn’t signed in any more: Setup → Gemini → Sign in.', 3500); }
   if (act === 'world-more') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : worldMenu(b);
   if (act === 'reopen' || act === 'reopen-no') return reopenChats(act === 'reopen');

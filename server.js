@@ -331,7 +331,26 @@ const codexOnChange = () => { if (codexTimer) return; codexTimer = setTimeout(()
 const makeCodex = account => codexLib.createCodex({ getConfig: () => config(), log, usage, chats, onChange: codexOnChange, account });
 const codex = makeCodex(codexLib.ACCOUNT);
 // Gemini, through Google's Antigravity CLI (lib/gemini.js).
-const gemini = geminiLib.createGemini({ chats, getConfig: () => config(), dataDir: DATA_DIR, log, onChange: () => broadcast('accounts') });
+const gemini = geminiLib.createGemini({ chats, getConfig: () => config(), dataDir: DATA_DIR, log, onChange: () => broadcast('accounts'), onTurn: () => scheduleGeminiUsage(4000) });
+// Gemini's plan usage (lib/gemini.js usage()), kept with Claude's and Codex's under the id "gemini", so
+// it shows the same way. Asking is free: Antigravity answers it without a turn.
+let geminiUsageAt = 0, geminiUsageBusy = null, geminiUsageTimer = null;
+function refreshGeminiUsage(maxAgeMs = 0) {
+  if (!config().gemini.enabled || !gemini.publicState().usage) return Promise.resolve(null);
+  if (geminiUsageBusy) return geminiUsageBusy;
+  if (maxAgeMs && Date.now() - geminiUsageAt < maxAgeMs) return Promise.resolve(usage.get('gemini'));
+  usage.mark('gemini', true);
+  geminiUsageBusy = gemini.usage()
+    .then(data => { geminiUsageAt = Date.now(); if (data) usage.set('gemini', data); else usage.mark('gemini', false); })
+    .catch(err => { geminiUsageAt = Date.now(); usage.fail('gemini', err.message); log(`Gemini usage: ${err.message}`); })
+    .finally(() => { geminiUsageBusy = null; });
+  return geminiUsageBusy;
+}
+// After a Gemini reply: a moment later, once (replies close together share one look).
+function scheduleGeminiUsage(delayMs) {
+  clearTimeout(geminiUsageTimer);
+  geminiUsageTimer = setTimeout(() => { geminiUsageTimer = null; refreshGeminiUsage(20000); }, delayMs);
+}
 let geminiRows = { at: 0, list: [] };
 const geminiSessions = () => {
   if (!config().gemini.enabled) return [];
@@ -1349,7 +1368,7 @@ function startWatching() {
   setInterval(() => { if (clients.size) sessionsChanged(); }, 8000);       // safety net if watching misses something
   setInterval(pollRunning, 10000);
   setInterval(() => { if (clients.size) pollAccounts(); }, 90000);
-  setInterval(() => { if (clients.size) { refreshAllUsage(4 * 60 * 1000); if (config().codex.enabled) refreshAllCodexUsage(); } }, 5 * 60 * 1000);
+  setInterval(() => { if (clients.size) { refreshAllUsage(4 * 60 * 1000); if (config().codex.enabled) refreshAllCodexUsage(); refreshGeminiUsage(4 * 60 * 1000); } }, 5 * 60 * 1000);
   setInterval(() => { if (clients.size && config().codex.enabled) codexSessions(15000); }, 20000);
   setInterval(() => { if (clients.size) openclawSessions(15000); }, 30000);
   setInterval(() => { if (clients.size && chats.summaries().some(s => s.state !== 'ended')) scheduleActivity(); }, 5000); // keeps elapsed times honest
@@ -1635,7 +1654,7 @@ async function handleApi(req, res, url, remote = false) {
   }
   if (route === 'GET /api/chat/live') return send(res, 200, { live: chats.live() });
   if (route === 'GET /api/activity') return send(res, 200, { list: activityList(), at: Date.now() });
-  if (route === 'GET /api/usage') return send(res, 200, { usage: usage.snapshot() });
+  if (route === 'GET /api/usage') { refreshGeminiUsage(4 * 60 * 1000); return send(res, 200, { usage: usage.snapshot() }); }
   if (route === 'GET /api/organize') return send(res, 200, orgView());
   if (route === 'GET /api/aide') return send(res, 200, aideView());
   if (route === 'GET /api/aide/notes') return send(res, 200, aide.notes(url.searchParams.get('group') || 'general'));
@@ -1970,6 +1989,8 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, r);
     }
     case '/api/usage/refresh': {
+      if (body.account === 'gemini') { if (!gemini.publicState().checked) await gemini.refreshAccount().catch(() => null); await refreshGeminiUsage(0); return send(res, 200, { usage: usage.snapshot() }); }
+      if (!body.account) refreshGeminiUsage(0);
       if (isCodexAccount(body.account)) { const x = codexById(body.account); if (x) await x.refreshUsage(); return send(res, 200, { usage: usage.snapshot() }); }
       if (!body.account) refreshAllCodexUsage();
       const list = body.account ? [acc.findAccount(c, body.account)] : c.accounts.filter(a => acc.signInInfo(a).signedIn);

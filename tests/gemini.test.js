@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { createChatManager } = require('../lib/chat');
-const { createGemini, toolBlock, ownWords, resetFrom, FROM_CLAUDE, MODES } = require('../lib/gemini');
+const { createGemini, toolBlock, ownWords, resetFrom, parseUsage, FROM_CLAUDE, MODES } = require('../lib/gemini');
 
 const FAKE = path.join(__dirname, 'fake-agy.js');
 function setup() {
@@ -140,6 +140,30 @@ test('gemini: out of quota shows on its account with the reset time, until a rep
   await until(chat, () => results(chat).length === 2);
   assert.deepEqual(gemini.publicState().limits, [], 'a reply that works clears it');
   await chat.stop();
+});
+
+test('gemini: how much of the plan is left, from Antigravity’s own /usage, with no turn', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-gemini-usage-')));
+  // The stand-in as a command of its own, the way the app starts a real agy.
+  const asNode = process.versions.electron ? 'ELECTRON_RUN_AS_NODE=1' : '';
+  const launcher = process.platform === 'win32' ? path.join(dir, 'agy.cmd') : path.join(dir, 'agy');
+  if (process.platform === 'win32') fs.writeFileSync(launcher, `@echo off\r\n${asNode ? `set ${asNode}\r\n` : ''}"${process.execPath}" "${FAKE}" %*\r\n`);
+  else { fs.writeFileSync(launcher, `#!/bin/sh\n${asNode ? `export ${asNode}\n` : ''}exec "${process.execPath}" "${FAKE}" "$@"\n`); fs.chmodSync(launcher, 0o755); }
+  const gemini = createGemini({ chats: createChatManager(), getConfig: () => ({ gemini: { enabled: true, command: launcher } }), dataDir: dir });
+  test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  assert.equal(gemini.publicState().usage, false, 'not asked before it’s known to be signed in');
+  await gemini.refreshAccount();
+  assert.equal(gemini.publicState().usage, true);
+  const u = await gemini.usage();
+  assert.equal(u.available, true);
+  assert.equal(Math.round(u.fiveHour.used), 38, 'the Gemini group’s 5-hour window, as used');
+  assert.equal(Math.round(u.week.used), 10);
+  assert.ok(Date.parse(u.fiveHour.resetsAt) > Date.now());
+  assert.deepEqual(u.groups.map(g => g.name), ['Gemini Models', 'Claude and GPT models']);
+  assert.equal(u.groups[1].models, 'Claude Opus, Claude Sonnet, GPT-OSS');
+  // An agy that answers "/usage" as a question (a turn, a conversation) isn't read as usage.
+  assert.equal(parseUsage(JSON.stringify({ conversation_id: 'abc', status: 'SUCCESS', response: 'It looks like…', num_turns: 1 })), null);
+  assert.equal(parseUsage('not json'), null);
 });
 
 test('gemini: reset times are read from the ways quota messages say them', () => {
