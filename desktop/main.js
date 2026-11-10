@@ -5,7 +5,8 @@ const { app, BrowserWindow, Tray, Menu, shell, dialog, nativeImage, Notification
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { createServer, URL_BASE, PORT } = require('./shell/server');
+const { createServer, URL_BASE, PORT, post } = require('./shell/server');
+const { createHome } = require('./shell/home');
 const { offerImport, notes, setNotes } = require('./shell/data');
 const { createUpdates } = require('./shell/updates');
 const { contextMenu, keys, createDesk } = require('./shell/desk');
@@ -20,6 +21,12 @@ const DATA_DIR = process.env.SWITCHER_DATA_DIR || app.getPath('userData');
 // its own "one copy at a time", so it never reaches into the copy you're using.
 if (process.env.SWITCHER_DATA_DIR) app.setPath('userData', path.resolve(DATA_DIR));
 const LOG = path.join(DATA_DIR, 'desktop.log');
+// Your home PC, when this is a laptop paired with it: the window reaches it through this relay (lib/homepc.js).
+const HOME_PORT = Number(process.env.SWITCHER_HOME_PORT) || PORT + 13;
+// Set up as a home PC (Setup → Your home PC → This is my home PC): it may be on by itself with nobody
+// there to answer a box, so trouble with its server is logged and told as a notification, and it keeps
+// trying. Any other computer gets the box, as it always has.
+const unattended = () => { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'accounts.json'), 'utf8')).prefs.homePcShare === true; } catch { return false; } };
 
 function log(msg) {
   try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.appendFileSync(LOG, `[${new Date().toISOString()}] ${msg}\n`); } catch { /* read-only */ }
@@ -51,7 +58,9 @@ const desk = createDesk({
 });
 let aide = null;
 // What the page asks of the app (shell/preload.js). Only the app's own page is listened to.
-const fromUs = e => { try { return new URL(e.senderFrame.url).origin === URL_BASE.slice(0, -1); } catch { return false; } };
+// Your home PC's page, shown here through the relay, counts as the app's own (it's your own PC's app).
+// (Only while this computer is paired with a PC: otherwise nothing of ours is at that address.)
+const fromUs = e => { try { const o = new URL(e.senderFrame.url).origin; return o === URL_BASE.slice(0, -1) || (o === `http://127.0.0.1:${HOME_PORT}` && home.paired()); } catch { return false; } };
 ipcMain.on('desktop:show', e => { if (fromUs(e)) show(); });
 ipcMain.on('desktop:status', (e, st) => { if (fromUs(e) && st && typeof st === 'object') desk.status(st); });
 ipcMain.on('desktop:ready', e => {
@@ -64,7 +73,7 @@ ipcMain.handle('desktop:check-updates', async e => { if (fromUs(e) && updates) a
 ipcMain.handle('desktop:install-update', e => (fromUs(e) && updates ? updates.install() : null));
 // Read with the same arguments it's set with: on Windows, anything else says it's off.
 const loginItem = () => app.getLoginItemSettings(IS_MAC ? {} : { args: ['--hidden'] });
-ipcMain.handle('desktop:settings', e => (fromUs(e) ? { ...desk.opt(), ...desk.keys(), openAtLogin: loginItem().openAtLogin, dataDir: DATA_DIR, version: app.getVersion() } : null));
+ipcMain.handle('desktop:settings', e => (fromUs(e) ? { ...desk.opt(), ...desk.keys(), openAtLogin: loginItem().openAtLogin, dataDir: DATA_DIR, version: app.getVersion(), home: home ? home.state() : null } : null));
 // Companion's panel asks: only from its own window.
 ipcMain.handle('aide:ask', (e, what, v) => {
   if (!fromUs(e) || !aide || e.sender !== aide.sender()) return null;
@@ -75,6 +84,8 @@ ipcMain.handle('desktop:set', (e, patch) => {
   if (!fromUs(e) || !patch || typeof patch !== 'object') return null;
   if (typeof patch.openAtLogin === 'boolean') app.setLoginItemSettings({ openAtLogin: patch.openAtLogin, ...(IS_MAC ? {} : { args: ['--hidden'] }) });
   if (patch.openData) { shell.openPath(DATA_DIR); return null; }
+  // Your home PC or this laptop, in the window.
+  if (patch.home === 'pc' || patch.home === 'laptop') return home ? home.switchTo(patch.home) : null;
   const r = desk.set(patch);
   // Turned on: its panel is loaded and waiting, so the key is instant. Off: gone, and nothing's kept running.
   if (typeof patch.aideOn === 'boolean') syncAide();
@@ -87,13 +98,28 @@ function syncAide() {
   if (desk.opt().aideOn) { aide.prepare(); aide.create(); } else aide.stop();
 }
 const server = createServer({
-  appFiles: APP_FILES, dataDir: DATA_DIR, env: shellPath(), log,
+  appFiles: APP_FILES, dataDir: DATA_DIR, env: { ...shellPath(), SWITCHER_HOME_PORT: String(HOME_PORT) }, log,
   onQuit: () => { quitting = true; app.quit(); },   // Quit in the app quits the app
+  // A home PC says so and keeps trying (true: try again); anywhere else, a box, and the app closes.
   onTrouble: err => {
+    if (unattended()) {
+      log(`The server stopped three times in a minute; trying again in 30 s. ${err}`);
+      notify('Session Switcher is having trouble', `Its server stopped three times in a minute. It keeps trying; the details are in ${path.join(DATA_DIR, 'switcher.log')}.`);
+      return true;
+    }
     dialog.showErrorBox('Session Switcher stopped', `Its server stopped three times in a minute.\n\n${err}\n\nThe details are in ${path.join(DATA_DIR, 'switcher.log')}.`);
     quitting = true; app.quit();
+    return false;
   },
 });
+function notify(title, body) {
+  try { const n = new Notification({ title, body }); n.on('click', show); n.show(); } catch (err) { log(`Couldn’t notify: ${err.message}`); }
+}
+const home = createHome({
+  dataDir: DATA_DIR, relayPort: HOME_PORT, localUrl: URL_BASE, window: () => win, log, notify, post,
+  onState: () => { if (tray) desk.status(desk.state); if (win && !win.isDestroyed()) win.setTitle(win.webContents.getTitle() ? titled(win.webContents.getTitle()) : 'Session Switcher'); },
+});
+const titled = t => (home && home.state().on === 'pc' ? `${t} · your home PC` : t);
 
 // Where the window was, kept between runs.
 const bounds = () => notes(DATA_DIR).window || { width: 1320, height: 920 };
@@ -108,7 +134,7 @@ function guard(wc, popout = false) {
   if (popout) wc.setWindowOpenHandler(({ url }) => { if (/^(https?|mailto):/i.test(url) && !ours(url)) shell.openExternal(url); return { action: 'deny' }; });
   wc.on('will-navigate', (e, url) => { if (!ours(url) && !url.startsWith('data:')) { e.preventDefault(); if (/^https?:/i.test(url)) shell.openExternal(url); } });
 }
-const ours = u => u.startsWith(URL_BASE) || u.startsWith(`http://localhost:${PORT}/`);
+const ours = u => u.startsWith(URL_BASE) || u.startsWith(`http://localhost:${PORT}/`) || (u.startsWith(`http://127.0.0.1:${HOME_PORT}/`) && home.paired());
 const iconFile = () => path.join(APP_FILES, IS_MAC ? 'macos/icon.icns' : 'icon.ico');
 const LOADING = `data:text/html;charset=utf-8,${encodeURIComponent('<!doctype html><html><body style="margin:0;height:100vh;display:grid;place-items:center;background:#0a090c;color:#cfc6b6;font:16px Georgia,serif"><div style="text-align:center"><div style="letter-spacing:.3em;font-size:13px;color:#a5463f">SESSION SWITCHER</div><p>Starting…</p></div></body></html>')}`;
 
@@ -166,13 +192,16 @@ function createWindow(hidden = false) {
   // A new page load (a reload, or after a restart) says again when it's ready.
   win.webContents.on('did-start-navigation', (_e, _u, inPlace, main) => { if (main && !inPlace) { pageReady = false; if (mini && !mini.isDestroyed()) mini.close(); } });
   win.on('focus', () => { if (!IS_MAC) win.flashFrame(false); });
+  // On your home PC: the title says so, and a PC that stops answering hands over to this laptop at once.
+  win.on('page-title-updated', (e, t) => { if (home.state().on === 'pc') { e.preventDefault(); win.setTitle(titled(t)); } });
+  win.webContents.on('did-navigate', (_e, url, code) => home.pageLoaded(url, code));
   const me = win;
   win.on('closed', () => { if (win === me) { win = null; pageReady = false; } });
 }
 function show() {
   // Opened again while it's still starting (the first start's question is up): once it's ready.
   if (!started) { showLater = true; return; }
-  if (!win || win.isDestroyed()) { createWindow(); win.loadURL(URL_BASE); }
+  if (!win || win.isDestroyed()) { createWindow(); win.loadURL(home.currentUrl()); }
   if (win.isMinimized()) win.restore();
   if (win._maxOnShow) { win._maxOnShow = false; win.maximize(); }
   win.show(); win.focus();
@@ -190,6 +219,9 @@ function createTray() {
     ...desk.waitingItems(),
     { label: 'New chat…', click: () => doIt('new-chat') },
     { label: 'Search every chat…', click: () => doIt('search') },
+    ...(home.paired() ? [{ type: 'separator' },
+      { label: 'Use my home PC', type: 'radio', checked: home.state().on === 'pc', click: () => { home.switchTo('pc'); show(); } },
+      { label: 'Use this laptop', type: 'radio', checked: home.state().on !== 'pc', click: () => { home.switchTo('laptop'); show(); } }] : []),
     { label: 'Ask Companion…', visible: desk.opt().aideOn, click: () => desk.aideNow() },
     { type: 'separator' },
     { label: 'Start with Windows', visible: !IS_MAC, type: 'checkbox', checked: loginItem().openAtLogin, click: i => app.setLoginItemSettings({ openAtLogin: i.checked, args: ['--hidden'] }) },
@@ -266,9 +298,19 @@ app.whenReady().then(async () => {
   desk.hotkey();
   const first = doArg(process.argv); if (first) pending = first;
   updates.begin();
-  if (await server.ready()) { if (win) win.loadURL(URL_BASE); syncAide(); }
-  else {
-    dialog.showErrorBox('Session Switcher didn’t start', `Its server didn’t answer on port ${PORT}. The details are in ${path.join(DATA_DIR, 'switcher.log')}.`);
-    quitting = true; app.quit();
+  // A home PC started with nobody there: a server slow to come up gets more time, not a box. Anywhere else,
+  // a box says so after a minute, and the app closes.
+  for (let i = 0; !(await server.ready(i ? 30000 : 60000)); i++) {
+    if (quitting) return;
+    if (!unattended()) {
+      dialog.showErrorBox('Session Switcher didn’t start', `Its server didn’t answer on port ${PORT}. The details are in ${path.join(DATA_DIR, 'switcher.log')}.`);
+      quitting = true; app.quit();
+      return;
+    }
+    if (!i) { log(`The server didn’t answer on port ${PORT}; still trying.`); notify('Session Switcher is slow to start', `Its server hasn’t answered yet. It keeps trying; the details are in ${path.join(DATA_DIR, 'switcher.log')}.`); }
+    if (!server.running()) server.start();
   }
+  if (win) win.loadURL(await home.startUrl());
+  syncAide();
+  home.begin();
 });

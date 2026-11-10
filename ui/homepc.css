@@ -1,0 +1,16 @@
+/* Your home PC, from a laptop (ui/homepc.js) */
+#homeBox .hp-h{margin:16px 0 4px;font-weight:600;color:var(--parch-2)}
+#homeBox .hp-found{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+#homeBox .hp-found small{color:var(--ash);margin-left:6px}
+#homeBox .hp-job{margin:8px 0;color:var(--parch-2)}
+#homeBox .hp-job small{color:var(--ash);word-break:break-all}
+#homeBox .hp-errs{margin:4px 0 8px;font-size:13px;color:var(--ash)}
+#homeBox .hp-errs ul{margin:6px 0 0;padding-left:18px;max-height:180px;overflow:auto}
+#homeBox .hp-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 5px 1px 2px;background:var(--ash)}
+#homeBox .hp-dot.ok{background:#6fae6a}
+#homeBox .hp-dot.bad{background:var(--ember)}
+#homeBox .hp-connect{margin:12px 0 4px}
+#homeBox .hp-connect>summary{cursor:pointer;font-weight:600;color:var(--parch-2);padding:4px 0}
+#homeBox .hp-connect[open]>summary{margin-bottom:6px}
+.hp-banner{position:fixed;z-index:60;top:10px;left:50%;transform:translateX(-50%);max-width:min(760px,calc(100vw - 24px));display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 12px 9px 16px;border-radius:10px;background:var(--card,#151217);color:var(--parch,#ede6d9);border:1px solid var(--line,#4a3f3a);box-shadow:0 8px 28px rgba(0,0,0,.35);font-size:14px}
+.hp-banner span{flex:1 1 260px}

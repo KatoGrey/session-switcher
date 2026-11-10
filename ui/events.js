@@ -303,6 +303,8 @@ function connectLive() {
   es.addEventListener('restart', e => { try { S.restart = JSON.parse(e.data) || {}; } catch { return; } if (S.restart.restarting) restarting(S.pid); else { renderRestartBar(); if (S.restart.error) toast(S.restart.error, 9000); } });
   es.addEventListener('update', e => { try { S.update = !!JSON.parse(e.data).ready; } catch { return; } renderBar(); });
   es.addEventListener('aide', wrap(async () => { await loadAide(); aideRefresh(); }));
+  // Your home PC (ui/homepc.js): paired, forgotten, or the window moved between the PC and this laptop.
+  es.addEventListener('homepc', () => { if (typeof homeBanner === 'function') homeBanner(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);

@@ -49,6 +49,8 @@ const pushLib = require('./lib/push');
 const extrasLib = require('./lib/extras');
 const { branchSession } = require('./lib/branch');
 const runnerLib = require('./lib/runner');
+const mirrorLib = require('./lib/mirror');
+const homePcLib = require('./lib/homepc');
 const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.7.0';
@@ -71,6 +73,8 @@ const DATA_DIR = process.env.SWITCHER_DATA_DIR ? path.resolve(process.env.SWITCH
 const OWN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => /^SWITCHER_/.test(k) && k !== 'SWITCHER_RESTART_FROM' && k !== 'SWITCHER_KEEP_TOKEN'));
 for (const k of Object.keys(OWN_ENV)) delete process.env[k];
 fs.mkdirSync(DATA_DIR, { recursive: true });
+// Settings copied in from your home PC (lib/homepc.js) go in place before anything reads them.
+const HOME_PC_APPLIED = homePcLib.applyIncoming(DATA_DIR);
 const CONFIG_FILE = path.join(DATA_DIR, 'accounts.json');
 // Nobody has used Session Switcher here before (a co-worker's first start): Setup opens with Getting started.
 const FIRST_RUN = !fs.existsSync(CONFIG_FILE);
@@ -96,6 +100,7 @@ const DESKTOP_MIN = '2.1.285';
 // switcher.log (lib/logger.js): a message repeated thousands of times is written once a minute, with a count.
 const logLine = require('./lib/logger').createLog(LOG_FILE);
 function log(msg) { logLine(msg); }
+if (HOME_PC_APPLIED) log(`Home PC: ${HOME_PC_APPLIED} settings files copied from your PC are in place.`);
 
 // ---------- config (reloaded when the file changes on disk) ----------
 
@@ -1728,6 +1733,7 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, fwCache.st);
   }
   if (route === 'GET /api/phone') return send(res, 200, { ...phone.status(), pushPhones: pushes.count(), appsListening: [...new Set([...appWatchers].map(w => w.device.id))] });
+  if (url.pathname.startsWith('/api/homepc')) return homePcApi(req, res, route, remote);
   if (route === 'GET /api/run') { const p = projectAt(url.searchParams.get('cwd')); if (!p) throw fail(404, 'Pick one of your projects.'); return send(res, 200, runner.status(p.cwd)); }
   if (route === 'GET /api/phone/tailscale') return send(res, 200, await tailscaleStatus());
   if (route === 'POST /api/phone/tailscale-serve') return send(res, 200, await tailscaleServe());
@@ -3815,6 +3821,9 @@ async function handleRequest(req, res, { remote = false } = {}) {
       if (imageGet && url.pathname === '/api/media') return sendMedia(req, res, url);
       // The notification's buttons and the Android app's connection have no page token: the phone's
       // pairing (and, for Allow/Deny, a one-time token) is what lets them in.
+      // A laptop of yours copying your work (lib/mirror.js): its pairing is what lets it in, and the
+      // header (which a web page elsewhere can't send without asking first) shows it's the app itself.
+      if (remote && req.device && url.pathname.startsWith('/api/mirror/') && req.headers['x-switcher-mirror'] === '1') return await mirrorApi(req, res, url);
       const pushAct = remote && req.device && ((req.method === 'POST' && (url.pathname === '/api/push/act' || url.pathname === '/api/push/reply')) || (req.method === 'GET' && url.pathname === '/api/notify/stream'));
       if (req.headers['x-switcher-token'] !== TOKEN && !imageGet && !pushAct) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
       return await handleApi(req, res, url, remote);
@@ -3833,6 +3842,67 @@ const server = http.createServer((req, res) => { handleRequest(req, res); });
 
 // Phone access: off unless turned on in Setup.
 const phone = remoteLib.createRemote({ dataDir: DATA_DIR, appDir: APP_DIR, version: APP_VERSION, log, getPrefs: () => config().prefs, handle: handleRequest });
+
+// ---------- your home PC and a laptop of yours (lib/mirror.js on the PC, lib/homepc.js on the laptop) ----------
+// What this PC offers to copy: the folders your chats and projects are in, and each tool's own folder.
+function mirrorPlan() {
+  const c = config();
+  const projects = [], parents = [];
+  try { for (const p of sessionsWithCodex().projects) if (p.exists) projects.push(p.cwd); } catch { /* no chats yet */ }
+  try {
+    const reg = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'projects.json'), 'utf8'));
+    if (reg.lastParent) parents.push(reg.lastParent);
+    for (const a of reg.added || []) if (a && a.cwd) projects.push(a.cwd);
+  } catch { /* none added */ }
+  const main = path.resolve(c.mainConfigDir);
+  const claudeDirs = [{ id: 'main', name: 'Main', dir: main, main: true }];
+  for (const a of c.accounts) if (a.configDir && path.resolve(a.configDir) !== main && !claudeDirs.some(d => d.dir === path.resolve(a.configDir))) claudeDirs.push({ id: a.id, name: a.name, dir: path.resolve(a.configDir), main: false });
+  return mirrorLib.plan({ projects, parents, claudeDirs, codexHome: codexHomes.MAIN_HOME(), geminiHome: GEMINI_HOME(), dataDir: DATA_DIR });
+}
+const mirror = mirrorLib.createMirror({ getPlan: mirrorPlan, dataDir: DATA_DIR, log });
+async function mirrorApi(req, res, url) {
+  // Off until it's turned on at this computer (Setup → Your home PC): a pairing alone doesn't open your files.
+  if (config().prefs.homePcShare !== true) {
+    if (req.method === 'PUT') req.resume();
+    throw fail(403, 'Copying isn’t turned on on your home PC. At the PC, open Setup → Your home PC and turn on “This is my home PC”.', 'share-off');
+  }
+  const q = url.searchParams, route = `${req.method} ${url.pathname}`;
+  if (route === 'GET /api/mirror/plan') { log(`Copy to a laptop: “${req.device.name}” asked what there is.`); return send(res, 200, { ...mirrorPlan(), claude: mirrorLib.claudeExtras() }); }
+  if (route === 'GET /api/mirror/list') return mirror.list(res, q.get('root'));
+  if (route === 'GET /api/mirror/file') return mirror.get(req, res, q.get('root'), q.get('p'));
+  if (route === 'PUT /api/mirror/file') return send(res, 200, await mirror.put(req, res, q.get('root'), q.get('p'), q.get('base'), q.get('mtime')));
+  throw fail(404, 'Not found.');
+}
+// This computer as the laptop: your home PC's Session Switcher in the window, and copies both ways.
+const homePc = homePcLib.createHomePc({ dataDir: DATA_DIR, log, proxyPort: Number(OWN_ENV.SWITCHER_HOME_PORT) || PORT + 13, tailscale: args => tailscale(args), onChange: () => broadcast('homepc') });
+// Both halves are off until you turn them on: this computer as the home PC (homePcShare, changed only at
+// the computer itself, never from a paired device), and this computer as the laptop (paired, or not).
+const homePcView = () => { const p = config().prefs; return { ...homePc.status(), share: p.homePcShare === true, phoneOn: !!(p.phone && p.phone.enabled) }; };
+async function homePcApi(req, res, route, remote) {
+  if (remote) throw fail(403, 'That can only be done at the computer itself.');
+  if (route === 'GET /api/homepc') {
+    if (homePc.settings().key && Date.now() - (homePc.status().checkedAt || 0) > 10000) await homePc.probe();
+    return send(res, 200, homePcView());
+  }
+  if (route === 'POST /api/homepc/share') {
+    const on = (await readBody(req)).on === true;
+    config().prefs.homePcShare = on;
+    save();
+    phone.longRequests();   // a big file sent back may take longer than a request is usually given
+    log(`Home PC: letting a paired laptop copy your work is ${on ? 'on' : 'off'}.`);
+    broadcast('homepc');
+    return send(res, 200, homePcView());
+  }
+  if (route === 'POST /api/homepc/find') return send(res, 200, await homePc.find());
+  if (route === 'POST /api/homepc/stop') { homePc.stopCopy(); return send(res, 200, homePcView()); }
+  if (route === 'POST /api/homepc/forget') { homePc.forget(); return send(res, 200, homePcView()); }
+  const b = await readBody(req);
+  if (route === 'POST /api/homepc/pair') { await homePc.pair({ address: b.address, port: b.port, code: b.code }); return send(res, 200, homePcView()); }
+  if (route === 'POST /api/homepc/copy') { await homePc.start(b.dir === 'up' ? 'up' : 'down', { force: !!b.force, all: !!b.all }); return send(res, 200, homePcView()); }
+  if (route === 'POST /api/homepc/use') { homePc.setUse(b.use); return send(res, 200, homePcView()); }
+  if (route === 'POST /api/homepc/showing') { homePc.setShowing(b); return send(res, 200, homePcView()); }
+  throw fail(404, 'Not found.');
+}
 
 // ---------- notifications on phones (lib/push.js; the phone's side: the Android app, sw.js, ui/push.js) ----------
 const pushes = pushLib.createPush({ dataDir: DATA_DIR, log });

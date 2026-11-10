@@ -70,7 +70,9 @@ function createServer({ appFiles, dataDir, env = {}, log = () => {}, onQuit = ()
       const now = Date.now();
       crashes = crashes.filter(t => now - t < 60000).concat(now);
       log(`The server stopped (code ${code}). ${err.trim().split(/\r?\n/).slice(-3).join(' ')}`);
-      if (crashes.length >= 3) return onTrouble(err.trim() || `The server stopped (code ${code}).`);
+      // Again and again: the app is told. If it says to keep trying (a home PC, where nobody may be there to
+      // restart it), it's started again every half a minute; otherwise it's left stopped, for the app to say so.
+      if (crashes.length >= 3) { crashes = []; if (onTrouble(err.trim() || `The server stopped (code ${code}).`) === true) again = setTimeout(start, 30000); return undefined; }
       again = setTimeout(start, 800);
       return undefined;
     });

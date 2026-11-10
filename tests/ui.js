@@ -883,6 +883,49 @@ module.exports = [
     },
   },
   {
+    name: 'home pc',
+    // Setup → Your home PC: nothing is on until you turn it on, on the PC or on the laptop.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`openSetupAt('st-home'); return 1`); await sleep(1600);
+      const box = () => b.eval(`const x = document.getElementById('homeBox'); return { text: x.textContent, share: x.querySelector('[data-hp="share"]')?.checked ?? null, folded: x.querySelector('.hp-connect') ? !x.querySelector('.hp-connect').open : null, buttons: [...x.querySelectorAll('button')].map(k => k.textContent.trim()) }`);
+      const press = sel => b.eval(`document.querySelector(${JSON.stringify(sel)}).click(); return 1`);
+      let x = await box();
+      t.check('Setup has a Home PC section', await b.eval(`return !!document.querySelector('.setup-toc a[href="#st-home"]')`));
+      t.check('it starts off: “This is my home PC” unticked, the laptop’s part folded away', x.share === false && x.folded === true && /Nothing here is on until you turn it on/.test(x.text), x);
+      await t.shot(b, 'off');
+      // On the PC: turning it on asks first, in plain words.
+      await press('#homeBox [data-hp="share"]'); await sleep(400);
+      const asked = await b.eval(`const d = document.getElementById('confirmDlg'); return { open: !!(d && d.open), q: document.getElementById('cfQ')?.textContent, more: document.getElementById('cfX')?.textContent, yes: document.getElementById('cfYes')?.textContent }`);
+      t.check('turning it on asks first, and says what it opens', asked.open && /copy your work from this computer/.test(asked.q) && /Any device you’ve paired through Phone access/.test(asked.more) && asked.yes === 'Turn it on', asked);
+      await press('#cfNo'); await sleep(300);
+      t.check('Cancel leaves it off', (await box()).share === false);
+      await press('#homeBox [data-hp="share"]'); await sleep(300); await press('#cfYes'); await sleep(500);
+      t.check('and yes turns it on', (await box()).share === true);
+      // On the laptop: find the PC, type its code, pair.
+      await press('#homeBox .hp-connect summary'); await sleep(300);
+      await press('#homeBox [data-hp="find"]'); await sleep(700);
+      const found = await b.eval(`return { addr: document.getElementById('hpAddr').value, open: document.querySelector('#homeBox .hp-connect').open, example: document.getElementById('hpAddr').placeholder }`);
+      t.check('Find my PC fills in its address, and that part stays open', found.addr === '100.101.102.103:4788' && found.open, found);
+      await b.eval(`document.getElementById('hpCode').value = 'ABCD-1234'; return 1`);
+      await press('#homeBox [data-hp="pair"]'); await sleep(800);
+      x = await box();
+      t.check('paired: the PC by name, and the first copy offered', /Paired with TAVERN-PC/.test(x.text) && x.buttons.includes('Copy everything from my PC') && x.buttons.includes('Forget this PC'), x);
+      // A different user folder on the two computers: said before anything is copied.
+      await press('#homeBox [data-hp="down"]'); await sleep(500);
+      x = await box();
+      t.check('a first copy says when the user folders differ, and waits', /different name on the two computers/.test(x.text) && /C:\\Users\\alex on the PC, C:\\Users\\al here/.test(x.text) && x.buttons.includes('Copy anyway'), x);
+      await press('#homeBox [data-hp="down"][data-force="1"]'); await sleep(500);
+      x = await box();
+      t.check('Copy anyway copies, and offers to send work back', /Copied 12 files/.test(x.text) && x.buttons.includes('Send my work to the PC'), x);
+      await t.shot(b, 'paired');
+      // A Windows PC and a Mac: the window works, the folders can't be copied.
+      await b.eval(`HomePc.st = { ...HomePc.st, pcPlatform: 'darwin', job: null }; renderHomeBox(); return 1`); await sleep(200);
+      x = await box();
+      t.check('a Mac and a Windows PC: it says the copy isn’t possible, and offers none', /aren’t the same kind/.test(x.text) && !x.buttons.some(k => /Copy everything|Bring what/.test(k)), x);
+    },
+  },
+  {
     name: 'mentions',
     // "@" and a few letters: the project's files, put in the message as a path.
     async run(t) {

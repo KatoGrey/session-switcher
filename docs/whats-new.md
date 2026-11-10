@@ -1,4 +1,39 @@
-# Companion: ask anything, over anything, with your own subscriptions
+# Your home PC from your laptop, Claude's own commands in the / menu, and Gemini's usage
+
+**Your home PC, from your laptop. New, and off until you turn it on.** Take your laptop away and keep working: on your home PC while it's on, and on the laptop's own copy when it isn't. It's all in **Setup → Your home PC**.
+
+- **Nothing is on until you turn it on.** On the computer you leave at home, tick **This is my home PC**. On the laptop, open **This is my laptop** and pair. A computer that does neither is left exactly as it was.
+- **Pair once.** On the PC, turn on **Phone access**. On the laptop, **Find my PC** looks for it on Tailscale; then type the code from the PC's **Setup → Phone access**.
+- **Your PC in the laptop's window.** Every chat, project and account, run on the PC with its storage. The title says "your home PC", and the tray icon's menu switches between it and the laptop. This works between a Windows PC and a Mac too.
+- **When the PC stops answering** (an update restart, a power cut), the window switches to the laptop's own copy by itself and says so. When the PC is back, **Send my work and switch** takes what you did on the laptop back to it.
+- **A copy on the laptop.** **Copy everything from my PC** brings your projects, your Claude, Codex and Gemini chats and settings, and Session Switcher's own, into the same folders, so every chat opens there too. The PC only allows it while **This is my home PC** is on, and only someone at the PC can turn that on. Sign-ins stay on each computer: sign in on the laptop once. Copying again only brings what changed. Big files that changed again (Codex's history) wait for a full copy at home.
+- **What the copy needs.** Both computers the same kind (two Windows PCs, or two Macs), and the same user name on both: chats are kept under their folder's full name, so with a different user folder the projects still come over but the PC's chats won't open on the laptop. It tells you before the first copy.
+- **Nothing is deleted, on either side.** A file changed in both places keeps both versions: the laptop's goes beside the PC's as "name (laptop)".
+- **A drive the laptop doesn't have** (the PC's D:, say) is kept in a folder under the same letter, so its paths still work.
+- **A home PC left on by itself keeps going.** With **This is my home PC** on, if its server stops again and again it keeps trying, instead of waiting for someone to click OK.
+
+**Type / in a Claude chat to run Claude Code's own commands.**
+
+- **Your skills and commands, and the project's own, are listed first,** each with a line on what it does and what it takes. They come from `~/.claude/skills`, `~/.claude/commands` and the `.claude` folder in the chat's project (those are marked **This folder**). Your prompts follow, as before.
+- **Type a few letters to narrow it,** by name or by a word of the description. **Tab** or a click puts `/name ` in the box: add what it takes and send, and Claude Code runs it.
+- Claude chats only, and when the message goes to Claude itself.
+
+**Gemini's usage, like Claude's and Codex's.**
+
+- **How much of your Google AI plan is left, with reset times.** Gemini's 5-hour and weekly limits show in the top bar's account menu, on the hub's Gemini card, and in a Gemini chat's usage chip, the same way as Claude's and Codex's. It comes from Antigravity's own `/usage`, which answers without a turn: checking spends nothing and leaves no conversation.
+- **Claude and GPT in Antigravity have their own limits,** shown in the Gemini card's details.
+- **It stays current by itself:** every few minutes while the app is open, a moment after each Gemini reply, and with **Check usage**.
+
+**From Ryan (pull request #7).**
+
+- **Claude in Chrome in chats.** Claude chats start with Claude Code's `--chrome`, so a chat can use the Claude in Chrome extension when it's installed. To turn it off, set `"chromeInChats": false` under `prefs` in `accounts.json` (in the app's data folder) and restart the app.
+- **A model you pick becomes the default across projects,** for each assistant.
+- **Gemini through an API key** (`gemini.apiKeyFile` in `accounts.json`), beside Antigravity's sign-in. A key has no plan, so no usage is shown for it.
+- **CLAUDE.md in extra accounts links to the main copy** where links can be made, so it isn't loaded twice in every chat.
+- **On a Mac or Linux, a restart or update no longer ends your chats:** a small keeper process holds them and hands each to the new copy. Windows starts chats directly, as before.
+- **Switcher Lite:** every chat's tokens on a Tokens page, a Quick project for small one-off chores, search inside chats, **Keep it working until…**, a warning when two chats change the same file, videos and music in chats, and phone fixes.
+
+## Earlier in 6.7.0: Companion, ask anything, over anything, with your own subscriptions
 
 **A quick helper for your own questions, over a game or anything else.** Turn it on in **Setup → Companion**.
 

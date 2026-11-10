@@ -205,6 +205,7 @@ async function install(b, { aide = false, desktopStub = null, live = true, state
     codex: { key: 'k-race-codex', state: 'busy', files: [{ path: 'scripts/bard/songs.lua', status: 'changed', add: 1, del: 1 }] },
   } }];
   let keepTries = 0, bothTries = 0, tsServing = false;
+  let homePc = { paired: false, share: false, phoneOn: true, platform: 'win32', pcPlatform: null, use: 'laptop', showing: { on: 'laptop', reason: null }, drives: {}, job: null, lastDown: null, lastUp: null };
   const doneMarks = {};
   let runState = { running: false, cmd: 'npm run dev', custom: false, url: null, exit: null, lines: [] };
   const rulesOut = () => ({ gemini: { path: `${bard}\\GEMINI.md`, exists: false, text: '' }, scope: 'project', cwd: bard, ...rules, same: rules.claude.text.trim() === rules.codex.text.trim() });
@@ -317,6 +318,18 @@ async function install(b, { aide = false, desktopStub = null, live = true, state
     if (p === '/api/chat/diff') return { body: { diff: `diff --git a/${q.get('path')} b/${q.get('path')}\nindex 1..2 100644\n--- a/${q.get('path')}\n+++ b/${q.get('path')}\n@@ -12,3 +12,3 @@ function rally(party)\n   local bonus = 0.15\n-  rally.stacks = true\n+  rally.stacks = false  -- one Rally per party\n   return bonus\n` } };
     // Undo: the first time, one file changed since is left alone; forced, it goes too.
     if (p === '/api/chat/undo') return { body: body.force ? { restored: ['data/balance/party.json'], skipped: [] } : { restored: ['scripts/bard/songs.lua'], skipped: [{ path: 'data/balance/party.json', why: 'changed since' }] } };
+    // Your home PC: nothing on at first. "This is my home PC" lets a laptop copy from here; pairing makes
+    // this computer the laptop, whose first copy warns that the user folders differ, then goes on when told to.
+    if (p === '/api/homepc') return { body: homePc };
+    if (p === '/api/homepc/share') { homePc = { ...homePc, share: body.on === true }; return { body: homePc }; }
+    if (p === '/api/homepc/find') return { body: { found: [{ name: 'tavern-pc', address: '100.101.102.103', port: 4788, version: '6.8.0', tailscale: true }], tailscale: true } };
+    if (p === '/api/homepc/pair') { homePc = { ...homePc, paired: true, address: '100.101.102.103', port: 4788, tailscale: true, pcName: 'TAVERN-PC', pcPlatform: 'win32', up: true, stillPaired: true, use: 'pc', relay: 'http://127.0.0.1:4790/' }; return { body: homePc }; }
+    if (p === '/api/homepc/copy') {
+      const job = { dir: 'down', state: 'blocked', done: 0, doneBytes: 0, same: 0, conflicts: 0, keptHere: 0, bigLater: 0, errors: [], errorCount: 0, warn: { homes: { pc: 'C:\\Users\\alex', here: 'C:\\Users\\al' } } };
+      homePc = body.force ? { ...homePc, job: { ...job, state: 'done', warn: null, done: 12, doneBytes: 3400000 }, lastDown: { at: NOW, state: 'done', files: 12 } } : { ...homePc, job };
+      return { body: homePc };
+    }
+    if (p === '/api/homepc/forget') { homePc = { ...homePc, paired: false, job: null, lastDown: null }; return { body: homePc }; }
     // Phone access on, one phone paired; Tailscale installed: first not serving, then serving.
     if (p === '/api/phone') return { body: { enabled: true, listening: true, port: 4788, addresses: [{ address: '192.168.1.20', name: 'Wi-Fi', tailscale: false }], apk: true, pairing: null, devices: [{ id: 'd1', name: 'Pixel', created: NOW - 864e5, lastSeen: NOW - 6e4 }], pushPhones: tsServing ? 1 : 0 } };
     if (p === '/api/phone/tailscale') return { body: { installed: true, running: true, dns: 'tavern-pc.tail1234.ts.net', url: 'https://tavern-pc.tail1234.ts.net', serving: tsServing, port: 4788 } };

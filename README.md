@@ -551,6 +551,25 @@ Each phone follows its own alert levels and quiet hours, and can gather replies 
 
 To build the app yourself, run `mobile/android/build.cmd` (details in `mobile/android/README.md`). It needs no Android Studio: the first run downloads a JDK and the Android build tools (about 560 MB) into `%LOCALAPPDATA%\SessionSwitcherBuild`. A GitHub Actions workflow (`.github/workflows/android.yml`) builds it in the cloud too.
 
+## Your home PC, from your laptop
+
+Take your laptop away and keep working: on your home PC while it's on, and on the laptop's own copy when it isn't. **It's off until you turn it on**, at both ends, in **Setup → Your home PC**. A computer that does neither is left exactly as it was.
+
+1. **On the PC you leave at home:** turn on **Phone access** (above), and tick **This is my home PC**. That lets a laptop you've paired copy your work from it. It can only be turned on at the PC itself, never from a paired device.
+2. **On the laptop:** open **This is my laptop**, press **Find my PC** (it looks on Tailscale; or type the PC's address), and type the pairing code from the PC's **Setup → Phone access**.
+3. **Open my home PC in this window** shows the PC's Session Switcher in the laptop's desktop app: every chat, project and account, run on the PC. The title says "your home PC", and the tray icon's menu switches between the PC and the laptop. If the PC stops answering, the window switches to the laptop's own copy by itself and says so.
+4. **Copy everything from my PC** brings your projects, your Claude, Codex and Gemini chats and settings, and Session Switcher's own settings to the same folders on the laptop, so it can carry on when the PC is off. **Bring what's changed** fetches only what's new; **Send my work to the PC** takes back what you did on the laptop.
+
+What to know:
+
+- **Sign-ins are never copied.** Sign in to Claude, Codex and Gemini on the laptop once.
+- **Nothing is deleted on either side.** A file changed in both places keeps both versions, the laptop's beside the PC's as "name (laptop)".
+- **The window works between a Windows PC and a Mac. The copy needs both computers to be the same kind,** and the same user name on both: chats are kept under their folder's full name, so with another user folder the projects come over but the PC's chats won't open on the laptop. It says so before the first copy.
+- **Away from home, both computers need [Tailscale](https://tailscale.com)** (signed in to the same account). On your home Wi-Fi the PC's local address works too.
+- **On Windows, a drive the laptop doesn't have** (the PC's D:, say) is stood in for by a folder under the same letter, so paths stay the same. If OneDrive would upload the copied projects, it warns first.
+- **While This is my home PC is on, any device paired through Phone access can copy** your projects and chats from that PC and put changed files back. Turn it off again in the same place.
+- **A home PC left on by itself keeps going:** if its server stops again and again, the app keeps trying instead of showing a box and closing.
+
 ## Regular Claude chats
 
 Your claude.ai conversations live on Anthropic's servers, not on this PC, so they can't be listed inside this app.
