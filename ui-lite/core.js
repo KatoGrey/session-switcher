@@ -20,6 +20,9 @@ const STATUSES = [
 ];
 // Off the active lists: the backlog and what's finished.
 const parked = id => id === 'done' || id === 'later';
+// Keep current work ahead of the review queue and backlog.
+const SHOWN_ORDER = ['building', 'exploring', 'finishing', 'later', 'done'];
+const statusesShown = () => SHOWN_ORDER.map(id => STATUSES.find(s => s.id === id)).filter(Boolean);
 const statusById = id => STATUSES.find(s => s.id === id) || STATUSES[1];
 // Set once. Feature is the plain default and carries no tag.
 const KINDS = [{ id: 'feature', name: 'Feature' }, { id: 'bug', name: 'Bug' }, { id: 'prototype', name: 'Prototype' }, { id: 'idea', name: 'Idea' }];
@@ -39,7 +42,7 @@ const local = {
 const S = {
   view: local.get('view', 'now'), project: null, bucket: local.get('bucket', 'all'), q: '',
   lite: null, projects: [], chats: [], live: [], routines: [], plans: null, now: Date.now(),
-  folded: { later: true, ...local.get('folded', { done: true }) }, more: {}, sel: new Set(), seen: local.get('seen', {}),
+  folded: { later: true, finishing: true, waiting: true, ...local.get('folded', { done: true }) }, more: {}, sel: new Set(), seen: local.get('seen', {}),
   cmd: { key: null, events: [], state: 'idle', error: null, es: null, sentAt: 0 },
   loaded: false, connected: false,
 };
@@ -84,7 +87,7 @@ function loadState() {
       const x = k.startsWith('p:') ? j.projects.find(p => p.key === k.slice(2)) : j.chats.find(c => c.id === k);
       if (x) x.archived = v.on;
     }
-    Object.assign(S, { lite: j.lite, projects: j.projects, chats: j.chats, routines: j.routines, now: j.now, appPermissions: j.appPermissions, permissionModes: j.permissionModes, gemini: !!j.gemini, loaded: true });
+    Object.assign(S, { modelDefaults: j.modelDefaults || {}, lite: j.lite, projects: j.projects, chats: j.chats, routines: j.routines, now: j.now, appPermissions: j.appPermissions, permissionModes: j.permissionModes, gemini: !!j.gemini, loaded: true });
     for (const [k, v] of Object.entries(j.lite.seen || {})) if (!S.seen[k] || S.seen[k] < v) S.seen[k] = v;
     setLive(j.live);
     index();
@@ -157,7 +160,13 @@ function liveAttach(es) {
   es.addEventListener('error', () => { if (Live.mux) Live.mux = false; else direct(); });
 }
 const timers = {};
-const later = (name, ms, fn) => { clearTimeout(timers[name]); timers[name] = setTimeout(() => fn().catch(() => {}), ms); };
+const later = (name, ms, fn) => {
+  // Busy chats can emit faster than this delay. Keep the first live refresh scheduled,
+  // rather than postponing it indefinitely and hiding completions or approval requests.
+  if (name === 'live' && timers[name]) return;
+  clearTimeout(timers[name]);
+  timers[name] = setTimeout(() => { delete timers[name]; fn().catch(() => {}); }, ms);
+};
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || !S.loaded) return;
   if (S.stale) { S.stale = false; later('state', 50, async () => { if (await loadState()) renderWhenIdle(); }); }
@@ -202,6 +211,28 @@ const TOUCH = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
 let pressAt = 0;
 const pressing = () => pressAt && Date.now() - pressAt < 5000;
 const heldSwaps = new Map();
+// Brings el's contents in line with html, changing only what differs. Rows, pictures and running
+// animations that didn't change stay the same elements, so nothing reloads, blinks or restarts.
+const morphKey = n => (n.nodeType === 1 ? n.id || n.getAttribute('data-chat') || n.getAttribute('data-fam') || n.getAttribute('data-project') || '' : '');
+function morphNode(a, b) {
+  if (a.nodeType !== 1) { if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue; return; }
+  if (a.isEqualNode(b)) return;
+  for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name);
+  for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
+  morphKids(a, b);
+}
+function morphKids(a, b) {
+  let x = a.firstChild, y = b.firstChild;
+  while (y) {
+    const nextY = y.nextSibling;
+    if (!x) a.appendChild(y);
+    else if (x.nodeType === y.nodeType && x.nodeName === y.nodeName && morphKey(x) === morphKey(y)) { morphNode(x, y); x = x.nextSibling; }
+    else { const nextX = x.nextSibling; a.replaceChild(y, x); x = nextX; }
+    y = nextY;
+  }
+  while (x) { const nextX = x.nextSibling; a.removeChild(x); x = nextX; }
+}
+function morph(el, html) { const t = document.createElement('template'); t.innerHTML = html; morphKids(el, t.content); }
 function swapHtml(el, html, write = (e, h) => { e.innerHTML = h; }) {
   if (!el) return;
   if (pressing()) { heldSwaps.set(el, [html, write]); return; }
@@ -234,6 +265,9 @@ const liveOf = c => liveBy.get(String(c.id).toLowerCase()) || null;
 const quietDays = () => (S.lite ? S.lite.quietDays : 4);
 const floor = () => (S.lite ? S.lite.plans.floor : 15);
 const statusOf = c => c.status;
+// Waiting keeps its underlying stage; only its place on the board changes.
+const boardStage = c => c.waiting && !parked(statusOf(c)) ? 'waiting' : statusOf(c);
+
 const kindTag = c => (c.kind && c.kind !== 'feature' ? `<span class="tag kind-tag k-${c.kind}">${kindById(c.kind).name}</span>` : '');
 const focusStar = c => (c.focus ? '<span class="focus-star" title="Focus">★</span>' : '');
 const waitTag = c => (c.waiting ? `<span class="tag wait-tag">${esc(c.waitingOn || 'Waiting')}</span>` : '');
@@ -252,7 +286,8 @@ const running = c => { const x = liveOf(c); return !!(x && x.working); };
 const isQuiet = c => S.now - c.updated > quietDays() * DAY && !needs(c) && !running(c) && !c.waiting && !c.focus;
 const visible = c => !c.archived && !c.desktopArchived && !c.auto && !c.routineRun && !(projOf(c).archived);
 const allChats = () => S.chats.filter(visible);
-const inBucket = c => S.bucket === 'all' || (S.bucket === 'unsorted' ? !projOf(c).bucket : projOf(c).bucket === S.bucket);
+// One list of projects: buckets (kept in lite.json) no longer divide it.
+const inBucket = () => true;
 const live = cs => cs.filter(c => !parked(statusOf(c)) && !isQuiet(c));
 /* ---------- families: a chat and the sub-chats started from it ---------- */
 const low = x => String(x || '').toLowerCase();
@@ -398,6 +433,8 @@ function pop(anchor, html, onPick, at) {
   root.querySelector('.pop-back').addEventListener('contextmenu', e => { e.preventDefault(); closePop(); });
   el.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; closePop(); onPick(b.dataset.v); });
   el.querySelector('button')?.focus();
+  // A section that opens (More) keeps the menu on screen.
+  for (const d of el.querySelectorAll('details')) d.addEventListener('toggle', () => { const b = el.getBoundingClientRect(); if (b.bottom > innerHeight - 8) el.style.top = `${Math.max(16, innerHeight - 8 - b.height)}px`; });
 }
 // A plain yes/no before anything that can't be taken back (spending a manual reset, say).
 function confirmBox({ title, body, yes = 'Go ahead', no = 'Cancel' }) {
@@ -422,13 +459,14 @@ const changeWords = (ids, patch) => {
 };
 async function setChats(ids, patch, label) {
   // Undo puts back exactly what was there, guesses included (a guessed status goes back to a guess).
-  const prev = ids.map(id => { const c = chatBy.get(id) || {}, g = c.guessed || {}; return { id, patch: { status: g.status ? null : c.status, kind: g.kind ? null : c.kind || null, focus: !!c.focus, waiting: !!c.waiting, waitingOn: c.waitingOn || '', note: c.note || '', remindAt: c.remindAt || null } }; });
+  const prev = ids.map(id => { const c = chatBy.get(id) || {}, g = c.guessed || {}; return { id, patch: { ...('project' in patch ? { project: S.lite?.chats?.[id]?.project || null } : {}), ...('quick' in patch ? { quick: S.lite?.chats?.[id]?.quick ?? null } : {}), status: g.status ? null : c.status, kind: g.kind ? null : c.kind || null, focus: !!c.focus, waiting: !!c.waiting, waitingOn: c.waitingOn || '', note: c.note || '', remindAt: c.remindAt || null } }; });
   await api('/api/lite/chats', { ids, patch });
   // Show it straight away; the server's own list follows.
   for (const id of ids) {
     const c = chatBy.get(id); if (!c) continue;
     for (const k of ['status', 'kind']) if (k in patch && patch[k]) { c[k] = patch[k]; c.guessed = { ...(c.guessed || {}), [k]: false }; }
-    for (const k of ['focus', 'waiting']) if (k in patch) c[k] = !!patch[k];
+    if ('project' in patch && patch.project) c.project = patch.project;
+    for (const k of ['focus', 'waiting', 'quick']) if (k in patch) c[k] = !!patch[k];
     for (const k of ['waitingOn', 'note']) if (k in patch) c[k] = patch[k] || null;
   }
   S.sel.clear(); sfx('slide'); render();

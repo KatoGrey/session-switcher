@@ -8,7 +8,7 @@
 function rowHtml(c, { showProject = false, showStage = false, depth = 0 } = {}) {
   const p = projOf(c), par = parentOn(c);
   const inParent = par && !depth ? ` · in “${esc(par.title.slice(0, 40))}”` : '';
-  const sub = showProject ? `${esc(p.name)}${p.bucket ? ` · ${esc(bucketName(p.bucket))}` : ''}${inParent}` : (c.waiting && c.note ? esc(c.note) : inParent.replace(/^ · /, ''));
+  const sub = showProject ? `${esc(p.name)}${inParent}` : (c.waiting && c.note ? esc(c.note) : inParent.replace(/^ · /, ''));
   const st = statusById(statusOf(c));
   // In a family, a sub-chat that belongs to another project says which.
   const ranTag = depth && par && par.project !== c.project ? `<span class="tag" title="Lives in ${esc(p.name)}">${esc(p.name)}</span>` : '';
@@ -49,38 +49,102 @@ function cardHtml(p) {
     <span class="body"><span class="name">${esc(p.name)}</span>${stageBar(cs)}
       <span class="meta">${nd ? '<span class="dot needs-dot"></span>' : ''}<span>${lv.length} active${w ? ` · ${w} waiting` : ''}</span></span></span></button>`;
 }
-const projectsIn = b => S.projects.filter(p => !p.archived && (b === null ? !p.bucket : p.bucket === b));
+const projectOrder = (a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || b.updated - a.updated || a.name.localeCompare(b.name);
+// Every project, in your order. (Quick isn't in the order: it's its own category at the bottom.)
+const projectsIn = () => S.projects.filter(p => !p.archived && !p.quick && chatsOfProject(p.key).length).sort(projectOrder);
 const hasChats = p => chatsOfProject(p.key).length > 0;
 function home() {
-  const groups = [...buckets().map(b => ({ id: b.id, name: b.name })), { id: null, name: 'Unsorted' }];
-  const sections = groups.map(b => {
-    const ps = projectsIn(b.id).filter(p => b.id !== null || hasChats(p)).sort((x, y) => y.updated - x.updated);
-    if (b.id === null && !ps.length) return '';
-    const act = ps.filter(p => live(chatsOfProject(p.key)).length);
-    const quiet = ps.filter(p => !live(chatsOfProject(p.key)).length);
-    return `<section class="section" data-drop-bucket="${esc(b.id || '')}">
-      <div class="sec-h"><h2>${esc(b.name)}</h2><span class="n">${ps.length || ''}</span>${b.id === null ? '<span class="hint">Drag one onto a bucket, or right-click it</span>' : `<button class="hint" data-bstages="${esc(b.id)}" title="Whether chats in these projects are grouped by status in the sidebar">${bucketStages(b.id) ? 'By status' : 'Plain list'}</button>`}</div>
+  // One list of projects; Quick (odds and ends) comes last.
+  const ps = projectsIn();
+  const act = ps.filter(p => live(chatsOfProject(p.key)).length);
+  const quiet = ps.filter(p => !live(chatsOfProject(p.key)).length);
+  const quickP = S.projects.find(p => p.quick && !p.archived && hasChats(p));
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${L('Projects')}</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>
+    <section class="section">
       ${act.length ? `<div class="cards">${act.map(cardHtml).join('')}</div>` : ''}
-      ${!ps.length ? '<div class="dropzone">Drag projects here</div>' : ''}
-      ${quiet.length ? `<div class="quiet-line"><span class="why" title="No chat here has moved in ${quietDays()} days, or every chat is Done. A new chat or message brings it back up.">Quiet:</span>${quiet.map(p => `<button data-project="${esc(p.key)}" draggable="true" data-cur="p:${esc(p.key)}"><span class="thumb-xs" style="${artStyle(p)}"></span>${esc(p.name)}</button>`).join('')}</div>` : ''}
-    </section>`;
-  }).join('');
-  const setup = !buckets().length ? '<p class="lead">No buckets yet. Buckets say what a project is for (a product, games, personal apps). They live in lite.json in your data folder.</p>' : '';
-  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${L('Projects')}</h1></div><button class="btn" data-go="cleanup">Clean up…</button></div>${setup}${sections}
-    <p class="hint-line">Drag a project (card or quiet chip) onto another bucket to move it. Right-click one for its picture, bucket or archive.</p></div>`;
+      ${!ps.length ? '<p class="empty-note">No projects yet.</p>' : ''}
+      ${quiet.length ? `<div class="quiet-line"><span class="why" title="No chat here has moved in ${quietDays()} days, or every chat is Done. A new chat or message brings it back up.">Quiet:</span>${quiet.map(p => `<button data-project="${esc(p.key)}" draggable="true">${esc(p.name)}</button>`).join('')}</div>` : ''}
+    </section>
+    ${quickP ? `<section class="section"><div class="sec-h"><h2>Quick</h2><span class="hint">Odds and ends</span></div><div class="cards">${cardHtml(quickP)}</div></section>` : ''}
+    <p class="hint-line">Drag projects before or after one another to reorder them. The sidebar menu moves a project up or down; its page’s ⋯ menu has the other project settings.</p></div>`;
 }
 
+// Chats matching the search: by name, project or first message, newest first.
+function searchMatches(q, { archived = false } = {}) {
+  q = String(q || '').toLowerCase();
+  const pool = archived ? S.chats.filter(c => !c.auto && !c.routineRun) : allChats();
+  return pool.filter(c => c.title.toLowerCase().includes(q) || projOf(c).name.toLowerCase().includes(q) || (c.firstPrompt || '').toLowerCase().includes(q)).sort((a, b) => recentAt(b) - recentAt(a));
+}
+// Words inside chats, for all three assistants, from the server's index (names match at once, above
+// it). Asked a moment after you stop typing; while Codex's and Gemini's chats are still being read
+// it asks again until they're done.
+const SR = { q: '', hits: null, progress: null, seq: 0, timer: 0 };
+function deepSearch(q) {
+  clearTimeout(SR.timer);
+  if (q.length < 3) { Object.assign(SR, { q: '', hits: null, progress: null }); return; }
+  if (SR.q === q && SR.hits && (!SR.progress || SR.progress.ready)) return;
+  SR.timer = setTimeout(async () => {
+    const seq = ++SR.seq;
+    try {
+      const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
+      if (seq !== SR.seq || S.q !== q) return;
+      Object.assign(SR, { q, hits: r.hits || [], progress: r.progress || null });
+      if (r.progress && !r.progress.ready) SR.timer = setTimeout(() => { if (S.q === q) deepSearch(q); }, 1500);
+    } catch { if (seq === SR.seq) Object.assign(SR, { q, hits: [], progress: null }); }
+    const box = $('deepBox'); if (box) box.outerHTML = deepHtml();
+  }, 300);
+}
+function deepHtml() {
+  const q = String(S.q || '');
+  if (q.length < 3) return '<div id="deepBox"></div>';
+  const reading = SR.progress && !SR.progress.ready ? `<span class="hint">reading chats${SR.progress.total ? ` · ${Math.round(100 * SR.progress.done / SR.progress.total)}%` : ''}</span>` : '';
+  const head = `<div class="side-h deep-h">Inside chats ${reading}</div>`;
+  if (!SR.hits || SR.q !== q) return `<div class="group deep" id="deepBox">${head}<p class="hint-line">Looking…</p></div>`;
+  const named = new Set(searchMatches(q, { archived: true }).map(c => c.id));
+  const terms = q.split(/\s+/).filter(Boolean).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const mark = s => (terms.length ? esc(s).replace(new RegExp(`(${terms.map(t => esc(t)).join('|')})`, 'gi'), '<mark>$1</mark>') : esc(s));
+  const rows = SR.hits.map(h => ({ h, c: chatBy.get(h.id) || S.chats.find(x => String(x.id).toLowerCase() === String(h.id).toLowerCase()) })).filter(x => x.c && !named.has(x.c.id)).slice(0, 40);
+  return `<div class="group deep" id="deepBox">${head}${rows.map(({ h, c }) => `<button class="row recent-row deep-row" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" title="${esc(c.title)}">
+    <span class="t"><b>${esc(c.title)}</b><small>${esc(projOf(c).name)} · ${c.provider === 'codex' ? 'Codex' : c.provider === 'gemini' ? 'Gemini' : 'Claude'}${h.count > 1 ? ` · ${h.count} matches` : ''}</small>${h.snippet ? `<span class="snip">${mark(h.snippet)}</span>` : ''}</span>
+    <span class="when">${ago(recentAt(c))}</span><span aria-hidden="true">›</span></button>`).join('') || '<p class="hint-line">Nothing more inside chats.</p>'}</div>`;
+}
+// On a phone the search filters the sidebar as you type (going to a page of results took the box,
+// and the keyboard, away after every letter). Archived chats are found too, dimmed.
+function sideSearchHtml() {
+  const list = searchMatches(S.q, { archived: true }).slice(0, 60);
+  return `<div class="group side-results"><div class="side-h">${list.length ? `${list.length === 60 ? '60+' : list.length} match${list.length === 1 ? '' : 'es'}` : 'Nothing matches'}</div>${list.map(recentRow).join('')}</div>${deepHtml()}`;
+}
 function listView(kind) {
   const all = allChats();
   let list, title;
   if (kind === 'search') {
-    const q = S.q.toLowerCase();
-    list = all.filter(c => c.title.toLowerCase().includes(q) || projOf(c).name.toLowerCase().includes(q) || (c.firstPrompt || '').toLowerCase().includes(q)).sort((a, b) => b.updated - a.updated).slice(0, 80);
+    list = searchMatches(S.q).slice(0, 80);
     title = `Search: ${S.q}`;
-  } else { list = all.filter(inBucket).sort((a, b) => b.updated - a.updated).slice(0, 60); title = L('Recents'); }
+  } else { list = recentChats().slice(0, 60); title = L('Recents'); }
   return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>${esc(title)}</h1></div></div>
-    <div class="rows">${list.map(c => rowHtml(c, { showProject: true, showStage: true })).join('') || '<p class="empty-note">Nothing here.</p>'}</div>${selHint()}</div>`;
+    ${kind === 'recent' ? '<p class="hint-line">Across all projects, including archived chats. Last opened or updated.</p>' : ''}
+    <div class="rows">${list.map(c => kind === 'recent' ? recentRow(c) : rowHtml(c, { showProject: true, showStage: true })).join('') || (kind === 'search' ? '<p class="empty-note">No names match.</p>' : '<p class="empty-note">Nothing here.</p>')}</div>${kind === 'search' ? deepHtml() : ''}${selHint()}</div>`;
 }
+
+const recentAt = c => Math.max(c.updated || 0, S.seen[c.id] || 0);
+const recentChats = () => S.chats.filter(c => !c.auto && !c.routineRun).sort((a, b) => recentAt(b) - recentAt(a));
+function recentRow(c) {
+  const p = projOf(c), archived = c.archived || c.desktopArchived || p.archived;
+  return `<button class="row recent-row${archived ? ' recent-archived' : ''}" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" title="${esc(c.title)}">
+    <span class="t"><b>${esc(c.title)}</b><small>${esc(p.name)} · ${c.provider === 'codex' ? 'Codex' : c.provider === 'gemini' ? 'Gemini' : 'Claude'}${archived ? ' · Archived' : ''}</small></span>
+    <span class="when">${ago(recentAt(c))}</span><span aria-hidden="true">›</span></button>`;
+}
+function recentSection() {
+  const list = recentChats(), more = local.get('recentMore', false);
+  return `<section class="section" id="recentBox"><div class="sec-h"><h2>Recent chats</h2><span class="hint">Across all projects</span><button class="linkish" data-go="recent">All recents ›</button></div>
+    <div class="rows">${list.slice(0, more ? 20 : 10).map(recentRow).join('') || '<p class="empty-note">No recent chats.</p>'}</div>
+    ${list.length > 10 ? `<button class="linkish recent-more" data-recent-more="1" aria-expanded="${more}">${more ? 'Show 10' : `Show ${Math.min(20, list.length)}`}</button>` : ''}</section>`;
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('[data-recent-more]')) return;
+  local.set('recentMore', !local.get('recentMore', false));
+  $('recentBox').outerHTML = recentSection();
+});
 
 function project() {
   const p = projBy.get(S.project);
@@ -88,17 +152,18 @@ function project() {
   const cs = chatsOfProject(p.key).sort((x, y) => y.updated - x.updated);
   const foc = cs.filter(c => c.focus && !parked(statusOf(c)));
   const focusSec = foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span></div><div class="rows">${foc.map(c => rowHtml(c, { showStage: true })).join('')}</div></section>` : '';
-  const sections = focusSec + STATUSES.map(s => {
-    const all = cs.filter(c => isTop(c) && statusOf(c) === s.id && !(c.focus && !parked(s.id)));
+  const sections = focusSec + [...statusesShown().filter(s => !parked(s.id)), { id: 'waiting', name: 'Waiting', c: 'var(--muted)' }, ...statusesShown().filter(s => parked(s.id))].map(s => {
+    const all = cs.filter(c => isTop(c) && boardStage(c) === s.id && !(c.focus && !parked(statusOf(c))));
     if (!all.length) return '';
-    const folded = parked(s.id) ? !S.more['p-' + s.id] : false;
-    const act = parked(s.id) ? all : all.filter(c => !famQuiet(c)), quiet = parked(s.id) ? [] : all.filter(famQuiet);
+    const deferred = parked(s.id) || s.id === 'finishing' || s.id === 'waiting';
+    const folded = deferred && !S.more['p-' + s.id];
+    const act = deferred ? all : all.filter(c => !famQuiet(c)), quiet = deferred ? [] : all.filter(famQuiet);
     const showQ = S.more['pq-' + s.id];
     const shown = showQ ? [...act, ...quiet] : act;
     // Later: one small "N later" line, out of the way like quiet; it opens in place.
     if (s.id === 'later') return `<section class="section later-sec" data-drop-stage="later"><button class="hint later-line" data-pfold="later">${folded ? `${all.length} later` : 'Hide later'}</button>${folded ? '' : `<div class="rows quiet-rows">${famRowsHtml(all)}</div>`}</section>`;
     return `<section class="section" data-drop-stage="${s.id}">
-      <div class="sec-h">${parked(s.id) ? `<button class="fold" data-pfold="${s.id}"><h2>${s.name}</h2><span class="n">${all.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${act.length}</span>`}
+      <div class="sec-h">${deferred ? `<button class="fold" data-pfold="${s.id}" aria-expanded="${!folded}"><h2>${s.name}</h2><span class="n">${all.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${act.length}</span>`}
         ${quiet.length ? `<button class="hint" data-pq="${s.id}">${showQ ? 'Hide quiet' : `${quiet.length} quiet`}</button>` : ''}</div>
       ${folded || !shown.length ? '' : `<div class="rows">${famRowsHtml(shown)}</div>`}
     </section>`;
@@ -107,7 +172,7 @@ function project() {
   return `<div class="wrap">
     <div class="page-h">
       <div class="proj-h">${BACK}<span class="art-s" style="${artStyle(p)}">${artInner(p)}</span>
-        <div style="min-width:0"><div class="crumb"><button data-go="home">${esc(bucketName(p.bucket))}</button><span>·</span><span class="mono">${esc((p.cwd || 'No folder').replace(/^\/Users\/[^/]+/, '~'))}${p.mono ? ` (${esc(p.name)} chats)` : ''}</span></div><h1>${esc(p.name)}</h1></div></div>
+        <div style="min-width:0"><div class="crumb"><button data-go="home">Projects</button><span>·</span><span class="mono">${esc((p.cwd || 'No folder').replace(/^\/Users\/[^/]+/, '~'))}${p.mono ? ` (${esc(p.name)} chats)` : ''}</span></div><h1>${esc(p.name)}</h1></div></div>
       <div style="display:flex;gap:6px">${p.cwd ? `<button class="btn prime" data-newchat="${esc(p.key)}">${L('New chat')} <kbd>c</kbd></button>` : ''}<button class="iconbtn" data-projmenu="${esc(p.key)}" aria-haspopup="menu" aria-label="Project options">${IC.dots}</button></div>
     </div>
     ${sections || '<p class="empty-note">No chats here yet.</p>'}
@@ -402,12 +467,16 @@ async function setPushPref(k, v) {
 function rowMenu(anchor, id, at) {
   const c = chatBy.get(id); if (!c) return;
   const ids = S.sel.has(id) && S.sel.size > 1 ? [...S.sel] : [id];
-  pop(anchor, `<div class="ph">${ids.length > 1 ? `${ids.length} chats` : esc(c.title.slice(0, 60))}</div>
-    <button data-v="open">Open<kbd>↵</kbd></button><button data-v="full">Open in the full app</button><hr><div class="ph">Status</div>
-    ${STATUSES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && statusOf(c) === s.id}"><span class="dot" style="background:${s.c}"></span>${s.name}<kbd>${s.key}</kbd></button>`).join('')}
-    <div class="ph">Kind</div><div class="kind-seg">${KINDS.map(k => `<button data-v="k:${k.id}" role="menuitemradio" aria-checked="${ids.length === 1 && c.kind === k.id}">${k.name}</button>`).join('')}</div>
-    <hr><button data-v="routine">Make this a routine…</button><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}
-    <button data-v="focus" role="menuitemcheckbox" aria-checked="${ids.every(i => (chatBy.get(i) || {}).focus)}">Focus<kbd>f</kbd></button><button data-v="wait">${c.waiting ? 'Waiting on ' + esc(c.waitingOn || 'someone') + '…' : 'Waiting on…'}<kbd>w</kbd></button><button data-v="rename">Rename…</button><button data-v="proj">Move to project…</button><button data-v="arch">Archive<kbd>e</kbd></button>`, v => {
+  // What you change most, first and compact; the rarer things under More. Shortcuts are in the tooltips.
+  const every = k => ids.every(i => (chatBy.get(i) || {})[k]);
+  pop(anchor, `<div class="ph m-title">${ids.length > 1 ? `${ids.length} chats` : esc(c.title.slice(0, 60))}</div>
+    <div class="kind-seg m-chips" role="group" aria-label="Status">${STATUSES.map(s => `<button data-v="s:${s.id}" role="menuitemradio" aria-checked="${ids.length === 1 && statusOf(c) === s.id}" title="${s.name} (${s.key})"><span class="dot" style="background:${s.c}"></span>${s.name}</button>`).join('')}</div>
+    <div class="kind-seg m-chips m-kinds" role="group" aria-label="Kind">${KINDS.map(k => `<button data-v="k:${k.id}" role="menuitemradio" aria-checked="${ids.length === 1 && c.kind === k.id}">${k.name}</button>`).join('')}</div>
+    <hr>
+    <div class="m-toggles"><button data-v="focus" role="menuitemcheckbox" aria-checked="${every('focus')}" title="Focus: pinned at the top (f)">★ Focus</button><button data-v="quick" role="menuitemcheckbox" aria-checked="${every('quick')}" title="Quick: odds and ends, not a project">Quick</button><button data-v="wait" role="menuitemcheckbox" aria-checked="${!!c.waiting}" title="${c.waiting ? `Waiting on ${esc(c.waitingOn || 'someone')}` : 'Waiting on someone (w)'}">Waiting</button></div>
+    <hr>
+    <button data-v="rename">Rename…</button><button data-v="proj">Move to project…<small>${esc(projOf(c).name)}</small></button><button data-v="arch" title="Archive (e)">Archive</button>
+    <details class="m-more"><summary>More</summary><button data-v="full">Open in the full app</button><button data-v="routine">Make this a routine…</button><button data-v="nest">Put under another chat…</button>${parentOn(c) ? '<button data-v="top">Make it top-level</button>' : ''}</details>`, v => {
     if (v === 'open') return openChat(id);
     if (v === 'rename') return askRename(id);
     if (v === 'nest') return pickParent(anchor, ids);
@@ -417,6 +486,7 @@ function rowMenu(anchor, id, at) {
     if (v.startsWith('s:')) return wrap(setChats)(ids, { status: v.slice(2) });
     if (v.startsWith('k:')) return wrap(setChats)(ids, { kind: v.slice(2) });
     if (v === 'focus') return wrap(toggleFocus)(ids);
+    if (v === 'quick') { const on = !ids.every(i => (chatBy.get(i) || {}).quick); return wrap(async () => { await setChats(ids, { quick: on, project: null }, on ? 'Moved to Quick' : 'Moved out of Quick'); await loadState(); render(); })(); }
     if (v === 'wait') return askWaiting(ids);
     if (v === 'arch') return wrap(archiveChats)(ids);
     if (v === 'proj') return pickProject(anchor, k => wrap(async () => {
@@ -434,9 +504,14 @@ function rowMenu(anchor, id, at) {
 }
 function projMenu(anchor, k, at) {
   const p = projBy.get(k); if (!p) return;
-  pop(anchor, `<div class="ph">${esc(p.name)}</div><button data-v="open">Open</button>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button><button data-v="img">Change picture…</button>' : ''}<hr><div class="ph">Bucket</div>${buckets().map(b => `<button data-v="b:${esc(b.id)}" role="menuitemradio" aria-checked="${b.id === p.bucket}">${esc(b.name)}</button>`).join('')}<button data-v="b:" role="menuitemradio" aria-checked="${!p.bucket}">Unsorted</button><hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`,
+  const compact = !!anchor.closest('.side');
+  const peers = projectsIn(), i = peers.findIndex(x => x.key === k);
+  const moves = p.archived ? '' : `<hr><button data-v="up" ${i <= 0 ? 'disabled' : ''}>Move up</button><button data-v="down" ${i < 0 || i === peers.length - 1 ? 'disabled' : ''}>Move down</button>`;
+  const settings = `${p.cwd ? '<button data-v="img">Change picture…</button>' : ''}<hr><button data-v="rename">Rename…</button><button data-v="merge">Merge into another project…</button>${p.cwd && !REMOTE ? '<button data-v="finder">Show in Finder</button>' : ''}<button data-v="arch">${p.archived ? 'Bring back' : 'Archive project'}</button>`;
+  pop(anchor, `<div class="ph">${esc(p.name)}</div>${p.cwd ? '<button data-v="new">New chat here<kbd>c</kbd></button>' : ''}${compact ? moves : settings}`,
     v => {
-      if (v === 'open') return go('project', { project: k });
+      if (v === 'up' && i > 0) return wrap(placeProject)(k, peers[i - 1].key);
+      if (v === 'down' && i < peers.length - 1) return wrap(placeProject)(k, peers[i + 1].key, true);
       if (v === 'new') return go('newchat', { ncProject: k });
       if (v.startsWith('b:')) return wrap(setBucket)(k, v.slice(2) || null);
       if (v === 'arch') return wrap(archiveProject)(k, !p.archived);

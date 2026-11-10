@@ -16,7 +16,7 @@ let shownIcon = null;
 function applyIcon(skin) {
   const key = iconFor(skin); if (key === shownIcon) return;
   shownIcon = key;
-  const fav = $('favicon'); if (fav) { fav.href = iconUrl(key); if (typeof favBase !== 'undefined') favBase = null; }
+  const fav = $('favicon'); if (fav) fav.href = iconUrl(key);
   // The Home Screen icon is a real file per look (Safari's share sheet and Add to Home Screen read the link, not a drawing).
   const a = document.querySelector('link[rel="apple-touch-icon"]'); if (a) a.href = `/ui-lite/icon-${key}.png`;
   if (typeof updateBadge === 'function') updateBadge();

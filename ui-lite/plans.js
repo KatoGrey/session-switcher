@@ -9,6 +9,7 @@ const plans = () => (S.plans ? S.plans.plans : []);
 const planById = id => plans().find(p => p.id === id);
 const orderOf = fam => (S.plans ? (S.plans.order[fam] || []).map(planById).filter(Boolean) : []);
 const useNext = fam => orderOf(fam)[0] || null;
+const preferredPlan = fam => S.plans && S.plans.preferred && S.plans.preferred[fam];
 const metered = () => plans().filter(p => !p.unlimited && !p.broken && typeof p.left === 'number');
 const pLabel = p => (p.family === 'ollama' ? p.label : `${p.label} ${famName(p.family)}`);
 
@@ -39,7 +40,7 @@ function resetsCount(p) {
   return n ? `<span class="pcred" title="Manual resets on hand">${n} reset${n === 1 ? '' : 's'}</span>` : '';
 }
 function planRow(p) {
-  const head = `<span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}</small></span>`;
+  const head = `<span class="pname"><b>${esc(p.label)}</b><small>${esc(p.kind)}${preferredPlan(p.family) === p.id ? ' · chosen' : ''}</small></span>`;
   if (p.unlimited) {
     const r = p.requests;
     const days = r && r.byDay && r.byDay.length ? r.byDay : null;
@@ -79,6 +80,7 @@ function planDetails(anchor, id) {
   const p = planById(id); if (!p) return;
   if (p.family === 'ollama') return ollamaDetails(anchor, p);
   const cr = creditsOf(p), mr = manualOf(p);
+  const chosen = preferredPlan(p.family), available = !p.broken && p.left > 0 && p.fiveLeft !== 0 && (!p.endsAt || Date.parse(p.endsAt) > Date.now());
   const rows = [
     ['Week', `${p.left}% left · resets ${p.resetsAt ? exact(p.resetsAt) : 'when first used'}`],
     p.fiveLeft !== null && p.fiveLeft !== undefined ? ['5-hour window', `${p.fiveLeft}% left${p.fiveResetsAt ? ` · resets ${clock(p.fiveResetsAt)}` : ''}`] : null,
@@ -87,9 +89,22 @@ function planDetails(anchor, id) {
   ].filter(Boolean);
   pop(anchor, `<div class="ph">${esc(p.label)} · ${esc(p.kind)}${p.rank ? ` · #${p.rank} in the use-next order` : ''}</div>
     <div class="pd">${rows.map(([k, v]) => `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('')}</div>
+    <hr><div class="ph">${chosen === id ? 'Your chosen account; falls back automatically if exhausted' : chosen ? `Chosen account: ${esc((planById(chosen) || {}).label || chosen)}` : 'Accounts are selected automatically'}</div>
+    ${available && chosen !== id ? '<button data-v="select">Use this account…<small>asks first</small></button>' : !available ? '<div class="ph">Unavailable until its allowance resets</div>' : ''}
+    ${chosen ? '<button data-v="automatic">Choose automatically…</button>' : ''}
     ${cr.length ? `<hr><div class="ph">Manual resets</div><div class="pd">${cr.map(c => `<div><span>${esc(c.title || 'Full reset')}</span><span>expires ${esc(exact(c.expiresAt))}</span></div>`).join('')}</div><button data-v="use">Use one…<small>asks first</small></button>` : ''}
     ${p.family === 'claude' ? `<hr><div class="ph">Manual resets (noted by hand)</div>${mr.length ? `<div class="pd">${mr.map(m => `<div><span>${esc(m.note || 'Reset')}</span><span>${m.expiresAt ? `expires ${esc(md(m.expiresAt))}` : 'no expiry'} <button class="linkish" data-delreset="${esc(m.id)}">remove</button></span></div>`).join('')}</div>` : ''}<button data-v="add">Add one…</button>` : ''}`,
-  v => { if (v === 'use') return wrap(useReset)(id); if (v === 'add') return addReset(id, anchor); return undefined; });
+  v => { if (v === 'select' || v === 'automatic') return wrap(selectPlan)(p, v === 'automatic'); if (v === 'use') return wrap(useReset)(id); if (v === 'add') return addReset(id, anchor); return undefined; });
+}
+async function selectPlan(p, automatic = false) {
+  const family = famName(p.family);
+  const body = automatic
+    ? `Let Switcher choose the next ${esc(family)} account by allowance and reset time. Accounts with an exhausted five-hour or weekly allowance are skipped.`
+    : `Use <b>${esc(p.label)}</b> for new ${esc(family)} chats and the next message in existing Lite chats. Running replies and background work finish first. If this account runs out, Switcher uses another available account.`;
+  if (!await confirmBox({ title: automatic ? `Choose ${family} accounts automatically?` : `Switch ${family} to ${p.label}?`, body, yes: automatic ? 'Choose automatically' : `Use ${p.label}` })) return;
+  S.plans = await api('/api/lite/plans/select', { family: p.family, account: automatic ? null : p.id });
+  renderPlansOnly();
+  toast(automatic ? `${family} accounts are chosen automatically.` : `${p.label} is now your chosen ${family} account.`);
 }
 const famOrder = p => (p.family === 'chatgpt' ? 0 : p.family === 'claude' ? 1 : 2);
 function plansTable() {
@@ -145,8 +160,9 @@ function renderChip() {
   // The plan each family is on now (next in its use-next order): Claude first, then ChatGPT.
   const on = ['claude', 'chatgpt'].map(useNext).filter(Boolean);
   const btn = $('usageBtn');
-  if (!on.length) { btn.innerHTML = `<span class="top"><span class="who">This week</span><small>${S.plans ? 'No plan has room above the floor' : 'Reading plans…'}</small></span><span class="bar"><i style="width:0%"></i></span>`; return; }
-  btn.innerHTML = on.map(p => `<span class="top"><span class="who">${esc(famName(p.family))}</span><small>${esc(p.label)} · ${p.left}%${p.resetsAt ? ` · ${wd(p.resetsAt)}` : ''}</small></span><span class="bar"><i style="width:${p.left}%"></i></span>`).join('');
+  if (!on.length) { btn._h = null; btn.innerHTML = `<span class="top"><span class="who">This week</span><small>${S.plans ? 'No plan has room above the floor' : 'Reading plans…'}</small></span><span class="bar"><i style="width:0%"></i></span>`; return; }
+  const chipHtml = on.map(p => `<span class="top"><span class="who">${esc(famName(p.family))}</span><small>${esc(p.label)} · ${p.left}%${p.resetsAt ? ` · ${wd(p.resetsAt)}` : ''}</small></span><span class="bar"><i style="width:${p.left}%"></i></span>`).join('');
+  if (btn._h !== chipHtml) { btn.innerHTML = chipHtml; btn._h = chipHtml; }
   btn.title = `Plans in use now: ${on.map(p => `${p.label} ${famName(p.family)}, ${p.left}% left${p.resetsAt ? `, resets ${dayName(p.resetsAt)}` : ''}`).join('; ')}`;
 }
 

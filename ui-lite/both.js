@@ -56,15 +56,20 @@ function partnerFind() {
   if (lead.companionProvider) PARTNER.prov = lead.companionProvider;
 }
 function partnerListen(key, prov) {
-  const me = { key, prov: prov || (selfKind() === 'claude' ? 'codex' : 'claude'), es: null, live: '', busy: false };
+  const me = { key, prov: prov || (selfKind() === 'claude' ? 'codex' : 'claude'), es: null, info: null, live: '', busy: false };
   PARTNERS.set(key, me);
   const name = () => NAME_OF[me.prov];
   const es = liveChat(key);
   me.es = es;
+  es.addEventListener('hello', e => {
+    if (PARTNERS.get(key) !== me) return;
+    try { me.info = JSON.parse(e.data); me.busy = ['busy', 'waiting', 'starting'].includes(me.info.state); rememberModels(me.prov, me.info); paintBar(); } catch { /* next event */ }
+  });
   es.addEventListener('chat', e => {
     let ev; try { ev = JSON.parse(e.data); } catch { return; }
     if (PARTNERS.get(key) !== me) return;
     switch (ev.kind) {
+      case 'model': if (me.info) Object.assign(me.info, ev); paintBar(); break;
       case 'delta': if (!ev.thinking) { me.live += ev.text || ''; me.busy = true; paintLiveSoon(); } break;
       case 'assistant': {
         me.live = '';
@@ -77,9 +82,23 @@ function partnerListen(key, prov) {
         paintFeed(); break;
       }
       case 'notice': CV.items.push({ ...ev, text: `${name()}: ${ev.text || ''}` }); appendItem(CV.items[CV.items.length - 1]); break;
-      case 'permission': { const n = { kind: 'notice', level: 'warning', text: `${name()} is asking to do something. Answer it in the full app.` }; CV.items.push(n); appendItem(n); break; }
-      case 'state': me.busy = ['busy', 'waiting', 'starting'].includes(ev.state); if (ev.state === 'ended') { es.close(); PARTNERS.delete(key); } paintStatus(); break;
-      case 'result': me.busy = false; me.live = ''; paintLive(); paintStatus(); break;
+      case 'permission': {
+        // Request IDs belong to each assistant's process; keep them distinct in the shared feed.
+        const requestId = `${key}:${ev.requestId}`;
+        CV.pending.set(requestId, { ...ev, requestId, originalRequestId: ev.requestId, key, partner: name() });
+        paintPending(); break;
+      }
+      case 'permission_done': case 'permission_cancel': CV.pending.delete(`${key}:${ev.requestId}`); paintPending(); break;
+      case 'state':
+        me.busy = ['busy', 'waiting', 'starting'].includes(ev.state);
+        if (me.info) me.info.state = ev.state;
+        if (ev.state === 'ended') {
+          es.close(); PARTNERS.delete(key);
+          for (const [id, p] of CV.pending) if (p.key === key) CV.pending.delete(id);
+          paintPending();
+        }
+        paintStatus(); paintBar(); break;
+      case 'result': me.busy = false; me.live = ''; paintLive(); paintStatus(); paintBar(); setTimeout(sendQueued, 300); break;
       default: break;
     }
   });

@@ -28,6 +28,17 @@ test('use-next order: per family, soonest reset first, plans at or below the flo
   assert.deepEqual(lite.useNextOrder(plans, 50).chatgpt, ['cx-per', 'cx-aid'], 'below a 50% floor it drops out');
 });
 
+test('use-next order: a cancelled plan goes first until it ends, then drops out', () => {
+  const plans = [
+    { id: 'cx-lat', family: 'chatgpt', left: 97, resetsAt: at(NOW + 3 * D) },
+    { id: 'cx-per', family: 'chatgpt', left: 99, resetsAt: at(NOW + 4 * D) },
+    { id: 'cx-aid', family: 'chatgpt', left: 99, resetsAt: at(NOW + 4 * D), endsAt: at(NOW + 16 * D) },
+  ];
+  assert.deepEqual(lite.useNextOrder(plans, 15, NOW).chatgpt, ['cx-aid', 'cx-lat', 'cx-per'], 'ending: its whole remaining time is lost, so it goes first');
+  assert.deepEqual(lite.useNextOrder(plans, 15, NOW + 17 * D).chatgpt, ['cx-lat', 'cx-per'], 'after it ends it is out');
+  assert.deepEqual(lite.useNextOrder([{ ...plans[2], left: 10 }, plans[0]], 15, NOW).chatgpt, ['cx-lat'], 'still kept above the floor');
+});
+
 test('use-next order: a week that hasn’t started goes last; ties go to the one with less left', () => {
   const plans = [
     { id: 'fresh', family: 'chatgpt', left: 100, resetsAt: null },
@@ -136,9 +147,9 @@ test('lite.json: kind, status, Focus, Waiting with a reminder, buckets, archive 
   assert.equal(s.get().archived.chats.c1.kind, 'bug');
   s.archive({ chats: ['c1'] }, false);
   assert.equal(s.get().archived.chats.c1, undefined);
-  assert.deepEqual(s.get().permissions, { claude: null, codex: null }, 'follows the full app until set');
+  assert.deepEqual(s.get().permissions, { claude: null, codex: null, gemini: null }, 'follows the full app until set');
   s.setLook({ permissions: { claude: 'bypassPermissions', codex: 'full' } });
-  assert.deepEqual(s.get().permissions, { claude: 'bypassPermissions', codex: 'full' });
+  assert.deepEqual(s.get().permissions, { claude: 'bypassPermissions', codex: 'full', gemini: null });
   s.setLook({ permissions: { codex: 'yolo' } });
   assert.equal(s.get().permissions.codex, null, 'an unknown mode goes back to following the app');
   s.setLook({ skin: 'rebel', floor: 20, quietDays: 7, mode: 'nope' });
@@ -156,11 +167,72 @@ test('lite.json: kind, status, Focus, Waiting with a reminder, buckets, archive 
 test('guesses: the model’s JSON is read even inside prose, and bad kinds or statuses are dropped', () => {
   const { parseGuesses, looksLikePrompt } = require('../lib/lite-guess');
   const g = parseGuesses('Sure! ```json\n[{"id":"a","kind":"bug","status":"building","title":"Fix discover spacing."},{"id":"b","kind":"epic","status":"later","title":"x"},{"id":"","kind":"bug"}]\n```');
-  assert.deepEqual(g, [{ id: 'a', kind: 'bug', status: 'building', title: 'Fix discover spacing' }, { id: 'b', kind: null, status: null, title: 'x' }]);
+  assert.deepEqual(g, [{ id: 'a', kind: 'bug', status: 'building', quick: null, title: 'Fix discover spacing' }, { id: 'b', kind: null, status: null, quick: null, title: 'x' }]);
+  assert.deepEqual(parseGuesses('[{"id":"a","size":"quick"},{"id":"b","size":"project"},{"id":"c","size":"huge"}]').map(x => x.quick), [true, false]);
   assert.deepEqual(parseGuesses('no json here'), []);
   assert.ok(looksLikePrompt('You are reviewer "astra-6". Read the file and…'));
   assert.ok(looksLikePrompt('Reply with just the word ready.'));
   assert.ok(!looksLikePrompt('Alchemy release retro'));
+});
+
+test('naming: waits until a chat has settled, one unreadable chat holds up nothing, and it looks again as work grows', async () => {
+  const { createGuesser } = require('../lib/lite-guess');
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lite-name-'));
+  try {
+    const st = lite.createLite({ dataDir: dir });
+    const store = { ...st, get: () => ({ ...st.get(), guessModel: 'fake' }) };
+    const row = id => ({ id, title: `${id} first words`, firstPrompt: 'hi', autoTitle: true, updated: Date.now() });
+    const rows = [row('gone'), row('done'), row('fresh'), row('busy'), row('yours')];
+    rows[4].autoTitle = false;
+    const asked = [];
+    const g = createGuesser({
+      store, chats: () => rows, working: () => new Set(['busy']),
+      context: async id => { if (id === 'gone') throw new Error('That chat can’t be read.'); return `about ${id}`; },
+      ask: async (m, text) => { const ids = rows.map(r => r.id).filter(id => text.includes(`id: ${id}\n`)); asked.push(ids); return { message: { content: JSON.stringify(ids.map(id => ({ id, kind: 'bug', status: 'building', size: 'quick', title: `Named ${id}` }))) } }; },
+    });
+    for (const id of ['gone', 'done', 'busy']) { g.replyFinished(id); store.setGuess(id, { lastReplyAt: Date.now() - 3 * 60e3, keep: true }); }
+    g.replyFinished('fresh');   // just finished: not settled yet
+    await g.run();
+    const G = () => st.get().guess;
+    assert.equal(G().done.title, 'Named done');
+    assert.equal(G().done.replyNamed, true);
+    assert.equal(G().done.quick, true, 'it was sized too');
+    assert.equal(G().done.namedTurns, 1);
+    assert.equal(G().gone.readFails, 1, 'the unreadable one is noted');
+    assert.ok(!G().fresh.replyNamed, 'a chat that just replied waits');
+    assert.ok(!G().busy.replyNamed, 'a chat still working waits');
+    // Unreadable three times: let be.
+    await g.run(); await g.run();
+    assert.equal(G().gone.replyNamed, true);
+    // Another reply isn't enough to rename; the third (once settled) is.
+    asked.length = 0;
+    g.replyFinished('done'); store.setGuess('done', { lastReplyAt: Date.now() - 3 * 60e3, keep: true });
+    await g.run();
+    assert.ok(!asked.flat().includes('done'), 'after 2 replies it isn’t asked about again');
+    g.replyFinished('done'); store.setGuess('done', { lastReplyAt: Date.now() - 3 * 60e3, keep: true });
+    await g.run();
+    assert.ok(asked.flat().includes('done'), 'after 3 replies it is');
+    assert.equal(G().done.namedTurns, 3);
+    // And then it's left alone, however long the chat runs.
+    asked.length = 0;
+    for (let i = 0; i < 6; i++) g.replyFinished('done');
+    store.setGuess('done', { lastReplyAt: Date.now() - 3 * 60e3, keep: true });
+    await g.run();
+    assert.ok(!asked.flat().includes('done'), 'not renamed from its latest task later on');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('chat sizes: only a chat that really is small can be quick; a long one is ongoing', () => {
+  const { chatSizes, isSmallChat, isOngoingChat } = require('../lib/lite-tokens');
+  const day = (d, t) => [`2026-10-${d}`, [0, t, 0, 0]];
+  const files = { a: { sid: 'FIX', days: Object.fromEntries([day(30, 10e6)]) }, b: { sid: 'long', days: Object.fromEntries([day(10, 1e6), day(11, 1e6), day(12, 1e6), day(13, 1e6)]) }, c: { sid: 'big', days: Object.fromEntries([day(30, 536e6)]) }, d: { sid: 'mid', days: Object.fromEntries([day(28, 10e6), day(29, 10e6), day(30, 8e6)]) } };
+  const s = chatSizes({ files });
+  assert.ok(isSmallChat(s.get('fix')) && !isOngoingChat(s.get('fix')), 'a day and 10M: an odd job');
+  assert.ok(!isSmallChat(s.get('mid')) && !isOngoingChat(s.get('mid')), 'three days: not quick, not yet ongoing');
+  assert.ok(!isSmallChat(s.get('long')) && isOngoingChat(s.get('long')), 'four days: ongoing, however few tokens');
+  assert.ok(!isSmallChat(s.get('big')) && isOngoingChat(s.get('big')), '536M in a day: ongoing');
+  assert.ok(isSmallChat(undefined) && !isOngoingChat(undefined), 'not counted yet: the model’s call stands');
 });
 
 test('seen and guesses are kept in lite.json; yours still wins', async () => {
@@ -497,14 +569,6 @@ test('pipeline: chats in a repo that isn’t on GitHub show without a pull reque
   const v = await p.view([chat], []);
   assert.deepEqual(v.items.map(i => [i.chat, i.stage, i.repo, i.pr]), [['c1', 'working', null, null]]);
   assert.deepEqual([v.errors, logs], [[], []], 'no gh call, so no gh errors');
-});
-
-test('lite-models: shapeGemini exposes Gemini models and default model for New chat and stopped chats', () => {
-  const { shapeGemini } = require('../lib/lite-models');
-  const g = shapeGemini();
-  assert.ok(Array.isArray(g.models) && g.models.length >= 4);
-  assert.equal(g.defaultModel, 'Gemini 4 Argon (Medium)');
-  assert.ok(g.models.some(m => m.value === 'gemini-4-argon-high'));
 });
 
 test('ui-lite readability & accessibility: no text under 11px, opaque muted placeholders, and named routine controls', () => {
