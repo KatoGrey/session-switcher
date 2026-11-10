@@ -857,6 +857,32 @@ module.exports = [
     },
   },
   {
+    name: 'commands',
+    // "/" in a Claude chat: Claude Code's own commands (the folder's and yours) first, then your prompts.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const typeIn = async text => { await b.eval(`const ta = document.getElementById('cText'); ta.focus(); ta.value = ${JSON.stringify(text)}; ta.setSelectionRange(ta.value.length, ta.value.length); ta.dispatchEvent(new Event('input', { bubbles: true })); return 1`); await sleep(400); };
+      const pop = () => b.eval(`const box = document.getElementById('cSlash'); return box.hidden ? null : { head: box.querySelector('.cs-h')?.textContent, cmds: [...box.querySelectorAll('li.cs-cmd b')].map(x => x.textContent), tags: [...box.querySelectorAll('li.cs-cmd .tag')].map(x => x.textContent), seps: [...box.querySelectorAll('.cs-sep')].map(x => x.textContent), rows: box.querySelectorAll('li[data-si]').length }`);
+      await typeIn('/');
+      let p = await pop();
+      t.check('“/” lists Claude’s commands first, the folder’s own marked', p && p.head === 'Commands' && p.cmds[0] === '/balance-pass [song]' && p.tags[0] === 'This folder' && p.cmds.length === 3, p);
+      t.check('your prompts follow under their own heading', p && (p.rows === 3 || p.seps.some(s => /^Prompts/.test(s))), p);
+      await t.shot(b, 'popup');
+      await typeIn('/world');
+      p = await pop();
+      t.check('typing narrows it to the command, with what it takes', p && p.cmds.length === 1 && p.cmds[0] === '/world-feedback <world name> [last 3 weeks]', p);
+      await b.key('Tab', 'Tab', 9);
+      t.check('Tab types the command, ready for what goes after it', (await b.eval(`return document.getElementById('cText').value`)) === '/world-feedback ');
+      t.check('and the list closes', !(await pop()));
+      await typeIn('/world-feedback Starfall last 3 weeks');
+      t.check('once you add to it, the list gets out of the way', !(await pop()));
+      await typeIn('/rewrite');
+      p = await pop();
+      t.check('a word from the description finds it too', p && p.cmds[0] === '/humanizer', p);
+    },
+  },
+  {
     name: 'mentions',
     // "@" and a few letters: the project's files, put in the message as a path.
     async run(t) {

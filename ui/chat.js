@@ -435,6 +435,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
   C.background = info.background || [];
   C.provider = info.provider || 'claude';
   C.mate = info.mate && info.mate !== C.provider ? info.mate : null;
+  if (C.provider === 'claude' && !cmdsFresh()) loadCommands();   // so the first "/" already lists them
   if (info.modes) modeOptions(info.modes);
   if (info.permissionMode) setMode(info.permissionMode);
   if (info.models && info.models.length) C.mi.main = info;

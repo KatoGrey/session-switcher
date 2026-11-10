@@ -269,26 +269,58 @@ function closeSlash() {
   const uc = document.getElementById('cUnsentCard');
   if (uc && uc.dataset.gen && uc.dataset.gen !== String(C.gen)) uc.remove();
 }
+// Claude Code's own commands for the / menu: your skills and commands, and the chat folder's own
+// (/api/commands reads their descriptions). Only when the message goes to Claude itself; Claude Code runs
+// "/name what you typed after it" when it arrives.
+const Cmds = { cwd: null, listCwd: null, list: [], at: 0, loading: null };
+const cmdsApply = () => C.provider === 'claude' && !C.watch && (C.target || 'main') === 'main';
+const cmdsCwd = () => (C.info && C.info.cwd) || '';
+function loadCommands() {
+  const cwd = cmdsCwd();
+  if (Cmds.loading && Cmds.cwd === cwd) return Cmds.loading;
+  Cmds.cwd = cwd;
+  const q = C.key ? `key=${encodeURIComponent(C.key)}` : C.sessionId ? `session=${encodeURIComponent(C.sessionId)}` : cwd ? `cwd=${encodeURIComponent(cwd)}` : '';
+  const p = api(`/api/commands${q ? `?${q}` : ''}`).then(r => r.commands || []).catch(() => []).then(list => {
+    if (Cmds.loading === p) { Cmds.list = list; Cmds.listCwd = cwd; Cmds.at = Date.now(); Cmds.loading = null; }
+    return list;
+  });
+  Cmds.loading = p;
+  return p;
+}
+// Fresh for this chat's folder (a skill added a minute ago shows up), without asking on every letter.
+const cmdsFresh = () => Cmds.listCwd === cmdsCwd() && Date.now() - Cmds.at < 30000;
 function renderSlash() {
   // "@" and a few letters: the project's files (unless it's @codex, @claude or @both).
   const men = mentionAt();
   if (men && $c('cText').value !== Slash.dismissed) return renderMention(men);
   if (Slash.kind === 'file') { Slash.kind = 'prompt'; Slash.at = null; Slash.sel = 0; }
   const q = slashQuery();
-  if (q === null || C.watch || !S.prompts.length || $c('cText').value === Slash.dismissed) return closeSlash();
-  const words = t => t.toLowerCase().split(/[^\p{L}\p{N}]+/u);
-  Slash.items = S.prompts.filter(pr => !q || pr.id.startsWith(q) || words(pr.title).some(w => w.startsWith(q)) || pr.title.toLowerCase().startsWith(q));
+  if (q === null || C.watch || $c('cText').value === Slash.dismissed) return closeSlash();
+  const cmdsOn = cmdsApply();
+  if (cmdsOn && !cmdsFresh() && !Cmds.loading) loadCommands().then(() => { if (slashQuery() !== null && Slash.kind !== 'file' && cmdsApply()) renderSlash(); });
+  const words = t => String(t || '').toLowerCase().split(/[^\p{L}\p{N}]+/u);
+  const cmds = cmdsOn && Cmds.listCwd === cmdsCwd()
+    ? Cmds.list.filter(c => { const n = c.name.toLowerCase(); return !q || n.includes(q) || words(c.description).some(w => w.startsWith(q)); })
+      .sort((a, b) => (q ? Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)) : 0))
+    : [];
+  const prompts = S.prompts.filter(pr => !q || pr.id.startsWith(q) || words(pr.title).some(w => w.startsWith(q)) || pr.title.toLowerCase().startsWith(q));
+  Slash.items = [...cmds.map(c => ({ cmd: c })), ...prompts];
   if (!Slash.items.length) return closeSlash();
   Slash.sel = Math.min(Slash.sel, Slash.items.length - 1);
   Slash.open = true;
   const box = $c('cSlash'); box.hidden = false;
-  box.innerHTML = `<p class="cs-h">Prompts${C.folder ? ` for ${esc(C.folder)}` : ''}</p><ul>${Slash.items.map((pr, i) => `<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}"><b>${esc(pr.title)}</b>${pr.provider === 'codex' && C.provider !== 'codex' ? '<span class="tag codex">Codex</span>' : ''}<span class="cs-x">${esc(fillPrompt(pr.text, C.folder))}</span></li>`).join('')}</ul>
+  const promptsHead = `Prompts${C.folder ? ` for ${esc(C.folder)}` : ''}`;
+  const cmdRow = (c, i) => `<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}" class="cs-cmd"><b>/${esc(c.name)}${c.hint ? ` <span class="cs-arg">${esc(c.hint)}</span>` : ''}</b>${c.scope === 'project' ? '<span class="tag">This folder</span>' : ''}<span class="cs-x">${esc(c.description || (c.kind === 'skill' ? 'A skill' : 'A command'))}</span></li>`;
+  const promptRow = (pr, i) => `<li role="option" data-si="${i}" aria-selected="${i === Slash.sel}"><b>${esc(pr.title)}</b>${pr.provider === 'codex' && C.provider !== 'codex' ? '<span class="tag codex">Codex</span>' : ''}<span class="cs-x">${esc(fillPrompt(pr.text, C.folder))}</span></li>`;
+  box.innerHTML = `<p class="cs-h">${cmds.length ? 'Commands' : promptsHead}</p><ul>${cmds.map(cmdRow).join('')}${cmds.length && prompts.length ? `<li class="cs-sep" role="presentation">${promptsHead}</li>` : ''}${prompts.map((pr, j) => promptRow(pr, cmds.length + j)).join('')}</ul>
       <p class="cs-f">${Slash.moved ? '<kbd class="kbd">Enter</kbd> or <kbd class="kbd">Tab</kbd> inserts it' : '<kbd class="kbd">Tab</kbd> inserts · <kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> choose · <kbd class="kbd">Enter</kbd> sends what you typed'}</p>`;
   box.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
 }
 function pickSlash(i) {
   if (Slash.kind === 'file') { const f = Slash.items[i], at = Slash.at; closeSlash(); if (f && at) { if (typeof f === 'string') insertMention(f, at); else insertChatRef(f, at); } return; }
-  const pr = Slash.items[i]; closeSlash(); if (pr) insertPrompt(pr, true);
+  const it = Slash.items[i]; closeSlash();
+  if (it && it.cmd) return placeText(`/${it.cmd.name} `, true);
+  if (it) insertPrompt(it, true);
 }
 
 /* ---------- @ mentions: a project's files ---------- */

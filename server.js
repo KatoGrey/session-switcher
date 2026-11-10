@@ -30,6 +30,7 @@ const geminiLib = require('./lib/gemini');
 const { reviewTarget, fixText, reviewAsk, parseFindings, mergeFindings } = require('./lib/review');
 const { createReviewLoop } = require('./lib/reviewloop');
 const rulesLib = require('./lib/rules');
+const commandsLib = require('./lib/commands');
 const store = require('./lib/store');
 const { listFiles } = require('./lib/filelist');
 const tasksLib = require('./lib/tasks');
@@ -1710,6 +1711,11 @@ async function handleApi(req, res, url, remote = false) {
     const cwd = fileBase(Object.fromEntries(url.searchParams));
     if (!cwd || !fs.existsSync(cwd)) throw fail(404, 'That folder isn’t available.');
     return send(res, 200, { cwd, files: await listFiles(cwd) });
+  }
+  // The / menu in a Claude chat: your skills and commands, and the chat folder's own.
+  if (route === 'GET /api/commands') {
+    const cwd = fileBase(Object.fromEntries(url.searchParams));
+    return send(res, 200, { cwd, commands: commandsLib.list({ claudeDir: config().mainConfigDir, cwd: cwd && fs.existsSync(cwd) ? cwd : null }) });
   }
   if (route === 'GET /api/tasks') return send(res, 200, { tasks: tasksView() });
   if (route === 'GET /api/races') return send(res, 200, { races: await racesView() });

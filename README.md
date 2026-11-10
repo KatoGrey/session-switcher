@@ -676,7 +676,7 @@ It stays light on the PC: working in another app with Session Switcher beside it
 | `Ctrl+K` (or `/` outside a chat) | Jump to any chat, project, document, prompt or action (in a chat, its own actions too), or search inside every message |
 | `N` | New chat, in any project |
 | `Alt+1` … `Alt+9` | Open one of your open chats |
-| `/` in the message box | Pick a saved prompt |
+| `/` in the message box | Pick a saved prompt, or in a Claude chat one of Claude Code's own commands: your skills and commands (`~/.claude/skills`, `~/.claude/commands`) and the project's (`.claude/` in its folder). `Tab` types `/name `; add what it takes and send |
 | `←` / `→` | Step through a project's pictures in the full-size view |
 | `K` · `R` · `U` · `N` · `C` | On a picture: keep it, redo it, take the mark back, add a note, compare it with the same name in another folder |
 | `N` · `Ctrl+F` | Reading a file: add a note, find in it |

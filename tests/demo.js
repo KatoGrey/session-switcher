@@ -348,6 +348,11 @@ async function install(b, { aide = false, desktopStub = null, live = true, state
       if (body.action === 'start') taskList = taskList.map(t => (t.id === body.id ? { ...t, state: 'started', key: 'k-started', accountName: 'Personal', why: undefined } : t));
       return { body: { tasks: taskList } };
     }
+    if (p === '/api/commands') return { body: { cwd: bard, commands: [
+      { name: 'balance-pass', description: 'Rebalance the bard’s songs against the party sheet.', hint: '[song]', kind: 'skill', scope: 'project' },
+      { name: 'humanizer', description: 'Rewrite AI-sounding text so it reads naturally.', hint: '', kind: 'skill', scope: 'yours' },
+      { name: 'world-feedback', description: 'Gather player feedback for a world from its reports, comments and Discord thread.', hint: '<world name> [last 3 weeks]', kind: 'skill', scope: 'yours' },
+    ] } };
     if (p === '/api/files/list') return { body: { cwd: bard, files: ['README.md', 'PATCH-NOTES.md', 'scripts/bard/songs.lua', 'scripts/bard/encore.lua', 'scripts/party/rally.lua', 'data/balance/party.json', 'art/harvest-festival.png', 'docs/Song list.md'] } };
     if (p === '/api/rules' && method === 'GET') return { body: rulesOut() };
     if (p === '/api/rules') { for (const k of body.to || []) rules[k] = { ...rules[k], exists: true, text: body.text.endsWith('\n') ? body.text : `${body.text}\n` }; return { body: rulesOut() }; }
