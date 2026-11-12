@@ -51,6 +51,8 @@ const { branchSession } = require('./lib/branch');
 const runnerLib = require('./lib/runner');
 const mirrorLib = require('./lib/mirror');
 const homePcLib = require('./lib/homepc');
+const mcpAuthLib = require('./lib/mcpauth');
+const prsLib = require('./lib/prs');
 const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.7.0';
@@ -215,7 +217,7 @@ const OPEN_LAST_TIME = restarted ? restarted.chats : toReopen();
 // Chats of those left running by the app before it was closed (see checkLeftovers): id -> { pid, title, since }.
 const leftovers = new Map();
 function stopForQuit() {
-  shuttingDown = true; clearTimeout(openTimer); chats.stopAll({ keepKept: handingOver }); try { runner.stopAll(); } catch { /* not started yet */ } try { agentIndex.stop(); } catch { /* not started yet */ }
+  shuttingDown = true; clearTimeout(openTimer); chats.stopAll({ keepKept: handingOver }); try { runner.stopAll(); } catch { /* not started yet */ } try { agentIndex.stop(); } catch { /* not started yet */ } try { mcpAuth.stopAll(); } catch { /* not started yet */ }
   // Quitting (not handing over): whatever the keeper holds ends too.
   if (!handingOver && keeper && keeper.usable()) keeper.killAll();
 }
@@ -336,6 +338,7 @@ const chats = chatLib.createChatManager({
   extras: chatExtras,
   onChange: chat => {
     nameAfterFirstReply(chat);
+    if (chat && chat.state === 'ready' && !chat.aide) mcpAuth.watchChat(chat);
     // A partner doesn't outlive its chat: it would be left running with no window to show it.
     if (chat && chat.state === 'ended' && !chat.parentKey && (chat.companionKey || chat.crew)) for (const p of pairs.crewOf(chat)) if (p.state !== 'ended') p.stop();
     if (chat && chat.state === 'ended') routines.onActivity(chat);
@@ -368,6 +371,7 @@ const chats = chatLib.createChatManager({
     const f = chat.activity.finishedAt;
     if (f && finishedSeen.get(chat.key) !== f) {
       finishedSeen.set(chat.key, f); scheduleUsage(chat.account.id, 8000);
+      mcpAuth.recheck(chat);   // a sign-in can run out partway through a chat
       if (chat.activity.ok && !chat.parentKey && !chat.aside) liteRoutes.replyFinished(chat.sessionId);
       for (const k of finishedSeen.keys()) if (!chats.chats.has(k)) finishedSeen.delete(k);
     }
@@ -1085,10 +1089,10 @@ function rulesPathsFor(cwd) {
   return rulesLib.rulesPaths({ cwd: p.cwd });
 }
 // Codex's MCP servers, as `codex mcp list --json` reports them.
-function codexMcpList(cwd) {
+function codexMcpList(cwd, inst = codexActive()) {
   return new Promise(resolve => {
     let child;
-    try { child = sys.spawnCodex(codexActive().config(), cwd || os.homedir(), ['mcp', 'list', '--json']); } catch (err) { return resolve({ error: err.message }); }
+    try { child = sys.spawnCodex(inst.config(), cwd || os.homedir(), ['mcp', 'list', '--json']); } catch (err) { return resolve({ error: err.message }); }
     let out = '', errText = '';
     const timer = setTimeout(() => { try { sys.killTree(child); } catch { /* gone */ } resolve({ error: 'Codex didn’t list its tools in time.' }); }, 20000);
     child.stdout.on('data', d => { out += d; });
@@ -1107,6 +1111,99 @@ async function toolsFor(cwd) {
   const cx = config().codex.enabled ? await codexMcpList(p && p.exists ? p.cwd : null) : { list: [] };
   return { servers: rulesLib.merged(claude, rulesLib.codexServers(cx.list), geminiTools()), codexError: cx.error || null, codexOn: config().codex.enabled, geminiOn: config().gemini.enabled };
 }
+// MCP sign-ins (lib/mcpauth.js): servers like Latitude's sign in with OAuth, once per Claude account and per
+// Codex account. Done through Claude Code's and Codex's own requests, so nothing needs a terminal.
+const MCP_HELPER_DIR = path.join(DATA_DIR, 'mcp-helper');
+const mcpAuth = mcpAuthLib.createMcpAuth({
+  log,
+  accounts: () => config().accounts,
+  // Claude Code in the chats' streaming mode, as the account, with no message sent: it only answers questions.
+  spawnHelper: (a, cwd) => {
+    const c = config();
+    try { acc.prepareForLaunch(c, a); } catch { /* the servers it has already will do */ }
+    fs.mkdirSync(MCP_HELPER_DIR, { recursive: true });
+    return sys.spawnClaude(c, a, cwd || MCP_HELPER_DIR, ['--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose']);
+  },
+  kill: p => sys.killTree(p),
+  chatsOf: (provider, accountId) => [...chats.chats.values()].filter(ch => ch.state !== 'ended' && (ch.provider || 'claude') === provider && ch.account && ch.account.id === accountId),
+  codex: {
+    accounts: () => (config().codex.enabled ? codexAll().filter(x => x.ACCOUNT.kind !== 'ollama').map(x => x.ACCOUNT) : []),
+    server: id => { const x = codexById(id); return x ? x.server() : null; },
+    list: async (id, cwd) => {
+      const inst = codexById(id);
+      if (!inst) throw fail(404, 'That Codex account isn’t in the list any more.');
+      const r = await codexMcpList(cwd, inst);
+      if (r.error) throw new Error(r.error);
+      return Array.isArray(r.list) ? r.list : [];
+    },
+  },
+  openUrl: url => sys.openUrl(url),
+  onChange: () => broadcast('mcp', { flows: mcpAuth.flows() }),
+});
+// Pull requests (lib/prs.js), through gh as whoever is signed in to it here. Each one's folders here are your
+// projects that have its repo; the chat that worked on its branch is found by the branch its chats were on.
+const prs = prsLib.createPrs({
+  log,
+  projects: () => sessionsWithCodex().projects.map(p => ({ cwd: p.cwd, exists: p.exists, updated: Math.max(0, ...(p.sessions || []).map(x => x.updated || 0)) })),
+  sessions: () => sessions.scan().projects.flatMap(p => p.sessions.map(x => ({ id: x.id, cwd: p.cwd, branch: x.branch || null, updated: x.updated || 0, title: x.title || null }))),
+});
+// A chat for a pull request, opened the way routines open theirs (so it's a chat like any other), with its
+// first message sent: Claude as the account asked for (else the main one), or Codex.
+async function startPrChat({ provider, account, cwd, sessionId = null, text, title }) {
+  const c = config();
+  const id = provider === 'codex'
+    ? (isCodexAccount(account) ? account : (c.codexActive && isCodexAccount(c.codexActive) ? c.codexActive : 'codex'))
+    : (account && c.accounts.some(a => a.id === account) ? account : (c.accounts.find(a => a.isDefault) || c.accounts[0]).id);
+  const chat = await routineChat({ account: id, cwd, sessionId, permissionMode: null, model: null, effort: null, title });
+  await pairs.send(chat, text);
+  return chat;
+}
+async function prAction(body) {
+  const action = String(body.action || '');
+  if (!['review', 'fix-comments', 'fix-checks'].includes(action)) throw fail(400, 'Review it, fix its comments or fix its checks.');
+  const pr = await prs.detail(body.repo, body.n, { fresh: true });
+  const same = (a, b) => normCwd(a) === normCwd(b);
+  const cwd = (body.cwd && pr.clones.find(x => same(x, body.cwd))) || pr.clones[0];
+  if (!cwd) throw fail(409, `No folder on this computer has ${pr.repo}. Clone it, open it once in a chat here, then try again.`);
+  const provider = body.provider === 'codex' ? 'codex' : 'claude';
+  if (action === 'review') {
+    const refs = await prs.fetchPr(cwd, pr);
+    const chat = await startPrChat({ provider, account: body.account, cwd, text: prsLib.reviewPrompt(pr, refs), title: `Review #${pr.number}: ${pr.title}`.slice(0, 120) });
+    log(`PRs: ${provider} reviewing ${pr.repo}#${pr.number} in ${cwd}.`);
+    return { key: chat.key, cwd, resumed: false };
+  }
+  const text = action === 'fix-comments' ? prsLib.fixCommentsPrompt(pr) : prsLib.fixChecksPrompt(pr);
+  // The Claude chat that made it knows the work: it carries on there unless a new chat is asked for.
+  // (Not while it's open in a terminal: that one carries on there, and this starts a new chat instead.)
+  const reuse = provider === 'claude' && pr.chat && body.fresh !== true && !running[String(pr.chat.sessionId).toLowerCase()];
+  const chat = await startPrChat({ provider, account: body.account, cwd: reuse ? pr.chat.cwd : cwd, sessionId: reuse ? pr.chat.sessionId : null, text, title: reuse ? pr.chat.title : `${action === 'fix-comments' ? 'Comments' : 'Checks'} on #${pr.number}: ${pr.title}`.slice(0, 120) });
+  log(`PRs: ${provider} fixing the ${action === 'fix-comments' ? 'review comments' : 'checks'} on ${pr.repo}#${pr.number}${reuse ? ' in the chat that made it' : ''}.`);
+  return { key: chat.key, cwd: chat.cwd, resumed: !!reuse };
+}
+
+// One of your accounts, Claude's or Codex's, for a sign-in.
+function mcpAccount(provider, id) {
+  if (provider === 'codex') {
+    if (!config().codex.enabled) throw fail(409, 'Codex is off. Turn it on in Setup first.');
+    const x = codexById(id || 'codex');
+    if (!x) throw fail(404, 'That Codex account isn’t in the list any more.');
+    return x.ACCOUNT;
+  }
+  return acc.findAccount(config(), id || (config().accounts.find(a => a.isDefault) || {}).id);
+}
+// A running chat that has MCP servers (Claude's or Codex's).
+function mcpChat(key) {
+  const chat = chats.get(key);
+  if (!['claude', 'codex'].includes(chat.provider || 'claude')) throw fail(400, 'Only Claude and Codex chats have MCP servers here.');
+  return chat;
+}
+// Everything Connections shows about MCP: each account's servers, and the sign-ins going on.
+async function connectionsMcp(cwd, fresh) {
+  const p = cwd ? projectAt(cwd) : null;
+  if (cwd && !p) throw fail(404, 'That folder isn’t in the list.');
+  return { accounts: await mcpAuth.allAccounts(p && p.exists ? p.cwd : null, { fresh }), flows: mcpAuth.flows(), codexOn: config().codex.enabled };
+}
+
 // `agy mcp add`, for the tools it should have too.
 function agyMcp(args) {
   return new Promise(resolve => {
@@ -1877,6 +1974,12 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, { scope: cwd ? 'project' : 'user', cwd, ...rulesLib.readRules(rulesPathsFor(cwd)) });
   }
   if (route === 'GET /api/tools') return send(res, 200, await toolsFor(url.searchParams.get('cwd') || null));
+  if (route === 'GET /api/connections/mcp') return send(res, 200, await connectionsMcp(url.searchParams.get('cwd') || null, url.searchParams.get('fresh') === '1'));
+  if (route === 'GET /api/connections/flows') return send(res, 200, { flows: mcpAuth.flows() });
+  if (route === 'GET /api/prs/status') return send(res, 200, { ...(await prs.status({ fresh: url.searchParams.get('fresh') === '1' })), signIn: prs.signInState() });
+  if (route === 'GET /api/prs/mine') return send(res, 200, await prs.mine({ fresh: url.searchParams.get('fresh') === '1' }));
+  if (route === 'GET /api/prs/detail') return send(res, 200, await prs.detail(url.searchParams.get('repo'), url.searchParams.get('n'), { fresh: url.searchParams.get('fresh') === '1' }));
+  if (route === 'GET /api/prs/folder') { const p = projectAt(url.searchParams.get('cwd')); if (!p || !p.exists) throw fail(404, 'Pick one of your projects.'); return send(res, 200, await prs.inFolder(p.cwd, { fresh: url.searchParams.get('fresh') === '1' })); }
   // Setup: the Codex this app runs and the newest one out (a newer Codex lists newer models), and
   // the Antigravity CLI's version.
   if (route === 'GET /api/tools/versions') {
@@ -2032,7 +2135,7 @@ async function handleApi(req, res, url, remote = false) {
   if (req.method !== 'POST') throw fail(404, 'Not found.');
   const body = await readBody(req, url.pathname === '/api/chat/send' ? 40 * 1024 * 1024 : url.pathname === '/api/themes/save' ? 6 * 1024 * 1024 : ['/api/rules', '/api/prompts'].includes(url.pathname) ? 2 * 1024 * 1024 : 65536);
 
-  if ((url.pathname.startsWith('/api/chat/') && !NOT_IN_HANDLE_CHAT.includes(url.pathname)) || IN_HANDLE_CHAT.includes(url.pathname)) return handleChat(req, res, url, body, c);
+  if ((url.pathname.startsWith('/api/chat/') && !NOT_IN_HANDLE_CHAT.includes(url.pathname)) || IN_HANDLE_CHAT.includes(url.pathname)) return handleChat(req, res, url, body, c, remote);
 
   switch (url.pathname) {
     case '/api/themes/create': return send(res, 200, themeStudio.create(body));
@@ -2065,6 +2168,23 @@ async function handleApi(req, res, url, remote = false) {
       return send(res, 200, { scope: body.cwd ? 'project' : 'user', cwd: body.cwd || null, ...rulesLib.readRules(paths) });
     }
     case '/api/tools/copy': return send(res, 200, await copyTool(body.name, body.to, body.cwd || null));
+    // A sign-in to one of an account's MCP servers. From the PC, its page opens in the browser here; from a
+    // phone, the page comes back to open there (and the address it lands on is pasted into /finish).
+    case '/api/connections/signin': {
+      const provider = body.provider === 'codex' ? 'codex' : 'claude';
+      const a = mcpAccount(provider, body.account);
+      const p = body.cwd ? projectAt(body.cwd) : null;
+      return send(res, 200, { flow: await mcpAuth.start({ provider, account: a, name: String(body.name || ''), cwd: p && p.exists ? p.cwd : null, local: !remote }) });
+    }
+    case '/api/connections/finish': return send(res, 200, { flow: await mcpAuth.finish(body.id, body.url) });
+    // GitHub: gh's own sign-in (its one-time code is shown on the page), switching between gh's accounts,
+    // and what a chat is asked to do with a pull request.
+    case '/api/prs/signin': return send(res, 200, { signIn: await prs.signIn({ onChange: () => broadcast('prs', { signIn: prs.signInState() }) }) });
+    case '/api/prs/signin-cancel': return send(res, 200, { signIn: prs.cancelSignIn() });
+    case '/api/prs/switch': { const st = await prs.switchTo(String(body.user || '')); broadcast('prs', {}); return send(res, 200, st); }
+    case '/api/prs/act': return send(res, 200, await prAction(body));
+    case '/api/connections/cancel': return send(res, 200, { flow: mcpAuth.cancel(body.id) });
+    case '/api/connections/reopen': { if (remote) throw fail(403, 'Open the link on this device instead.'); return send(res, 200, { flow: await mcpAuth.reopen(body.id) }); }
     case '/api/race': {
       if (body.action === 'start') { const r = await startRace(body); return send(res, 200, { id: r.id, races: await racesView() }); }
       const r = raceOf(body.id);
@@ -3451,7 +3571,7 @@ function validImages(images) {
 // handleChat has the /api/chat/ addresses, but for these, and these others. (tests/workspace.test.js checks each is reachable.)
 const NOT_IN_HANDLE_CHAT = ['/api/chat/rename', '/api/chat/done'];
 const IN_HANDLE_CHAT = ['/api/run'];
-async function handleChat(req, res, url, body, c) {
+async function handleChat(req, res, url, body, c, remote = false) {
   switch (url.pathname) {
     // With who its partner is (or would be), and its crew, so the window shows the right ones before they've started.
     case '/api/chat/open': {
@@ -3591,6 +3711,21 @@ async function handleChat(req, res, url, body, c) {
       return send(res, 200, { keep: id ? keepWorking.view(id) : null });
     }
     case '/api/chat/compact': await chats.get(body.key).compact(); return send(res, 200, { ok: true });
+    // MCP in a chat: its servers (for /mcp), signing in to one (through the chat's own Claude Code, so the
+    // tools load right there; a Codex chat signs in through its account's Codex), connecting one again.
+    case '/api/chat/mcp': return send(res, 200, await mcpAuth.chatServers(mcpChat(body.key)));
+    case '/api/chat/mcp-signin': {
+      const chat = mcpChat(body.key), provider = chat.provider || 'claude';
+      return send(res, 200, { flow: await mcpAuth.start({ provider, account: chat.account, name: String(body.name || ''), chat: provider === 'claude' ? chat : null, cwd: chat.cwd, local: !remote }) });
+    }
+    case '/api/chat/mcp-reconnect': return send(res, 200, await mcpAuth.reconnect(mcpChat(body.key), String(body.name || '')));
+    // "Make a pull request": the chat is asked to, following its repository's own PR instructions.
+    case '/api/chat/make-pr': {
+      const chat = chats.get(body.key);
+      if (chat.state === 'ended') throw fail(409, 'This chat has stopped. Start it again first.');
+      await pairs.send(chat, prsLib.makePrPrompt(typeof body.note === 'string' ? body.note : ''));
+      return send(res, 200, { ok: true });
+    }
     case '/api/chat/undo': {
       const chat = chats.get(body.key), r = await chat.undoTurn(body.turn, !!body.force);
       if (r && r.restored && r.restored.length) {
@@ -4184,7 +4319,7 @@ server.on('error', err => {
 });
 process.on('uncaughtException', err => { log(`Unexpected error: ${err.stack || err.message}`); noteProblem('PC', err.message, err.stack); });
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopForQuit(); for (const x of codexAll()) { try { x.stop(true); } catch { /* not running */ } } setTimeout(() => process.exit(0), 300); });
-process.on('exit', () => { try { routines.stop(); } catch { /* not started */ } stopForQuit(); try { chatPrefs.flush(); organize.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
+process.on('exit', () => { try { routines.stop(); } catch { /* not started */ } try { mcpAuth.stopAll(); } catch { /* not started */ } stopForQuit(); try { chatPrefs.flush(); organize.flush(); } catch { /* best effort */ } handover.clearLock(PORT, process.pid); });
 // In the desktop app: if the app itself goes (it crashed, or was ended in Task Manager), this server
 // goes too, keeping what it can, rather than staying behind on the port with no window.
 if (SHELL) process.on('disconnect', () => {

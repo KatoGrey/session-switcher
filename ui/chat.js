@@ -826,6 +826,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'limitas': { const card = c.closest('.limit-card'); if (card && card._auto) { clearTimeout(card._auto); card._auto = 0; } return continueAs(c.dataset.acct); }
       case 'limitnoauto': { const card = c.closest('.limit-card'); if (card) { clearTimeout(card._auto); card._auto = 0; c.closest('.lm-auto').remove(); } return undefined; }
       case 'limithand': { noAutopilot(c); return handOver(c.dataset.to); }
+      case 'mcpsign': case 'mcpall': case 'mcpcopy': case 'mcpcancel': case 'mcppaste': case 'mcpskip': return mcpCardAction(c.dataset.c, c);
       case 'stuckwait': return c.closest('.stuck-card').remove();
       case 'stuckstop': { const card = c.closest('.stuck-card'); C.interruptedAt = Date.now(); card.remove(); return api('/api/chat/interrupt', { key: keyOfCard(card, card.dataset.src) }); }
       case 'limitwait': case 'limitnowait': { const card = c.closest('.limit-card'); noAutopilot(c); return card && card._ev ? waitForReset(card._ev, card.dataset.src || 'main', c.dataset.c === 'limitnowait', keyOfCard(card, card.dataset.src || 'main')) : undefined; }
@@ -1045,6 +1046,7 @@ function chatHeadItems() {
     ...(id && window.orgItems ? ['-', ...window.orgItems(id)] : []),
     { label: 'Browse this chat’s folder', run: () => openFile('.') },
     ...(C.info && C.info.cwd ? [{ glyph: '§', label: 'Rules and tools…', hint: 'one set for all of them', run: () => openRules(C.info.cwd) }] : []),
+    ...(!C.watch && C.state !== 'ended' && (C.provider === 'claude' || C.provider === 'codex') ? [{ glyph: '⚿', label: 'Tools and sign-ins…', hint: '/mcp: this chat’s MCP servers', run: () => openChatMcp('main') }, { glyph: '⇄', label: 'Make a pull request…', hint: '/pr: push this work and open the PR', run: () => makePrFromChat('main') }] : []),
     ...(!C.watch && C.state !== 'ended' ? ['-', stopItem()] : []),
   ];
 }

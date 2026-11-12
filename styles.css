@@ -2296,10 +2296,91 @@ details.shared[open] summary{margin-bottom:6px}
 .rd-no{color:var(--ash-2)}
 .rd-both{color:rgb(var(--c-7fb79a));font-size:13px}
 .rd-note{color:var(--ash);font-size:13px}
+/* Connections (ui/connections.js): a sign-in for each account and tool, the chat's card and /mcp. */
+dialog.conn-dlg{width:min(980px,calc(calc(100vw / var(--look-ui, 1)) - 32px))}
+.cn-wrap{overflow-x:auto}
+.cn-table td:last-child{text-align:left;white-space:normal}
+.cn-table th{vertical-align:bottom;white-space:nowrap}
+.cn-table th small{display:block;margin-top:4px;letter-spacing:0;text-transform:none}
+.cn-table td{min-width:150px}
+.cn-table td:first-child{min-width:170px}
+.cn-prov{display:block;margin-bottom:4px;font-size:9.5px;opacity:.75}
+.cn-prov.codex{color:rgb(var(--c-7fb79a))}
+.cn-yes{color:rgb(var(--c-7fb79a));font-size:13.5px}
+.cn-yes + small,.cn-st + small{display:block;font:400 11px var(--f-mono);color:var(--ash-2)}
+.cn-bad{color:var(--ember-soft);font-size:13px;margin-right:6px}
+.cn-flow{font-size:13.5px;color:var(--parch-2)}
+.cn-flow .lm-b{gap:6px;margin:6px 0}
+.cn-all{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;margin:0 0 12px}
+.cn-all span{color:var(--ash);font-size:13.5px;flex:1 1 280px}
+.cn-foot{display:flex;align-items:center;gap:10px;margin-top:12px}
+.cn-list{list-style:none;margin:0;padding:0}
+.cn-srv{padding:10px 0;border-bottom:1px solid var(--seam)}
+.cn-srv-h{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+.cn-srv-h small{font:400 11px var(--f-mono);color:var(--ash-2)}
+.cn-srv-h .spacer{flex:1}
+.cn-st{font-size:13px;color:var(--ash)}
+.cn-st.connected,.cn-st.signed-in{color:rgb(var(--c-7fb79a))}
+.cn-st.needs-auth{color:var(--gilt)}
+.cn-st.failed{color:var(--ember-soft)}
+.mcp-card .mcp-row + .mcp-row{margin-top:12px;padding-top:12px;border-top:1px solid var(--seam)}
+.mcp-wait{display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;color:var(--parch-2);font-size:14px;line-height:1.5}
+.mcp-wait .gen-spin{flex:0 0 auto;margin-top:2px}
+.mcp-ok{margin:0;color:rgb(var(--c-7fb79a));font-size:14px}
+.mcp-err{margin:4px 0 8px;color:var(--ember-soft);font-size:13.5px}
+.mcp-more{margin:10px 0 0;font-size:12.5px;color:var(--ash)}
+.mcp-paste{margin-top:6px;font-size:13px;color:var(--ash)}
+.mcp-paste summary{cursor:pointer}
+.mcp-paste p{margin:6px 0;line-height:1.5}
+.mcp-paste code{font:400 12px var(--f-mono);color:var(--gilt)}
+.mcp-paste-row{display:flex;gap:6px}
+.mcp-paste-row input{flex:1;min-width:0;font:400 12.5px var(--f-mono)}
+.cn-h{margin:14px 0 8px;font:500 10.5px/1 var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ember)}
+.cn-h:first-child{margin-top:4px}
+.gh-box{margin:0 0 6px}
+.gh-who{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;font-size:14.5px;color:var(--parch-2)}
+.gh-who small{display:block;font:400 11px var(--f-mono);color:var(--ash-2)}
+.gh-who .spacer{flex:1}
+.gh-note{margin:6px 0 0;font-size:12.5px;color:var(--ash)}
+.gh-note code,.gh-box code{font:400 12px var(--f-mono);color:var(--gilt)}
+.gh-code > p{margin:0 0 10px;color:var(--parch-2);font-size:14.5px}
+/* Pull requests (ui/prs.js). */
+dialog.pr-dlg{width:min(880px,calc(calc(100vw / var(--look-ui, 1)) - 32px))}
+.pr-top{display:flex;align-items:center;gap:10px;margin:2px 0 10px;font-size:13.5px;color:var(--ash)}
+.pr-top b{color:var(--parch-2)}
+.pr-top .spacer{flex:1}
+.pr-list{list-style:none;margin:0;padding:0}
+.pr-row{border-bottom:1px solid var(--seam)}
+.pr-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;width:100%;padding:11px 4px;border:0;background:none;text-align:left;color:var(--parch);cursor:pointer;font:15px/1.35 var(--f-body)}
+.pr-head:hover .pr-t{color:var(--gilt)}
+.pr-num{font:500 12.5px var(--f-mono);color:var(--ash)}
+.pr-t{flex:1 1 300px;min-width:0}
+.pr-meta{flex-basis:100%;font:400 11.5px var(--f-mono);color:var(--ash-2)}
+.pr-dec.ok{color:rgb(var(--c-7fb79a));border-color:rgb(var(--c-7fb79a) / .45)}
+.pr-dec.bad{color:var(--ember-soft);border-color:var(--ember-soft)}
+.pr-detail{padding:2px 4px 14px}
+.pr-line{margin:0 0 6px;font-size:13.5px;color:var(--parch-2);line-height:1.5}
+.pr-line code{font:400 12px var(--f-mono);color:var(--gilt)}
+.pr-line a{color:inherit}
+.pr-k{display:inline-block;min-width:84px;font:500 10px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ash-2)}
+.pr-detail .lm-b{margin-top:10px;gap:6px}
+.pr-hub li{border-bottom:1px solid var(--seam)}
+.pr-hub-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;width:100%;padding:10px 6px;border:0;background:none;text-align:left;color:var(--parch);cursor:pointer;font:15px/1.35 var(--f-body)}
+.pr-hub-row:hover .pr-t{color:var(--gilt)}
+.pr-hub-more{margin:8px 6px}
+/* On a phone the pull requests' tabs get a row of their own, under the title. */
+@media (max-width:760px){
+  .pr-dlg .setup-head{flex-wrap:wrap}
+  .pr-dlg .stabs{order:3;flex-basis:100%;margin:8px 0 0;overflow-x:auto}
+  .pr-dlg .stabs button{white-space:nowrap;padding:6px 11px}
+}
 @media (max-width:760px){ .rd-body{padding:4px 14px 14px} .rd-tools td:first-child small{max-width:160px}
   /* On a phone each tool is a row of three, and its Add button goes under it, whole. */
   .rd-tools tr{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr)} .rd-tools th:last-child{display:none}
-  .rd-tools td:last-child{grid-column:1 / -1;text-align:left;white-space:normal;padding-top:0} .rd-tools td{border-bottom:0} .rd-tools tr{border-bottom:1px solid var(--seam)} }
+  .rd-tools td:last-child{grid-column:1 / -1;text-align:left;white-space:normal;padding-top:0} .rd-tools td{border-bottom:0} .rd-tools tr{border-bottom:1px solid var(--seam)}
+  /* Connections on a phone: each tool, then a line for each account with its name. */
+  .cn-table thead{display:none} .cn-table tr{display:block;padding:6px 0} .cn-table td,.cn-table td:last-child{display:block;grid-column:auto;min-width:0;padding:5px 0}
+  .cn-table td[data-who]::before{content:attr(data-who);display:block;font:500 10px/1.4 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ash-2);margin-bottom:3px} }
 
 /* ---------- pick up where you left off ---------- */
 .reopen{display:flex;gap:16px;margin:0 0 26px;padding:16px 20px;border:1px solid rgb(var(--c-d9bf74) / .4);border-radius:10px;background:linear-gradient(180deg,rgb(var(--c-d9bf74) / .07),transparent)}

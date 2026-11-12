@@ -1,4 +1,21 @@
-# Your home PC from your laptop, Claude's own commands in the / menu, and Gemini's usage
+# Connections and pull requests, your home PC from your laptop, Claude's own commands in the / menu, and Gemini's usage
+
+**Connections: sign in to tools like Latitude's, for every account, without a terminal.** A tool (MCP server) like Latitude's asks you to sign in once for each account: every Claude account keeps its own sign-in, and so does Codex. Chats here couldn't run Claude Code's own `/mcp` sign-in, which needs a terminal to type in. Now Session Switcher does it, through Claude Code and Codex themselves.
+
+- **In a chat:** when one of its tools needs you, a card says so. **Sign in to latitude** opens its page in your browser; approve it there, and the tools load in that chat right away, no restart. The account's other open chats connect again by themselves.
+- **Type /mcp** (or ⋯ → **Tools and sign-ins**) for the chat's tools: which are connected, how many tools each has, and a button to sign in or connect one again.
+- **Every account at once:** Ctrl+K → **Connections** lists each tool against each Claude account and Codex: signed in, or a **Sign in** button. **Sign in everywhere it's needed** goes through them one after another; if your browser is signed in already, each is a click. A tool Claude has and Codex doesn't is **Add to Codex** away.
+- **From your phone:** the sign-in page opens on the phone. Afterwards the phone's browser lands on a page that won't load (it was meant for the PC): copy its address into **Signing in on another device?** and the PC finishes the sign-in.
+- **GitHub, too.** Connections shows who's signed in to GitHub (through `gh`, which Claude and Codex also use to push and make pull requests). **Sign in to GitHub** shows GitHub's one-time code right there, with a button to copy it. With more than one GitHub account, switch between them.
+
+**Pull requests: yours and the ones waiting on you, and Claude or Codex to review, fix and make them.**
+
+- **Ctrl+K → Pull requests,** or the hub's new **Pull requests** section: your open pull requests, the ones waiting on your review and the ones assigned to you, across GitHub, as whoever is signed in to `gh` on this computer.
+- **Open one** for its checks (passed, failing, still running), its reviews and who it's waiting on, its open review threads, its preview (Latitude's pull requests), and the chat that made it.
+- **Review it…** with Claude (as any of your accounts) or Codex. The pull request's code is fetched into your copy of the repo without touching what you have checked out, and the review follows the repo's own review guide. Nothing is posted to GitHub unless you ask for it in the chat.
+- **Fix the comments…** and **Fix the failing checks…** on your own pull requests: the open review threads (or the failing checks, with how to read their logs) go to the chat that made the pull request when there is one, since it knows the work, or to a new chat. It works on the pull request's branch, in a separate worktree if your folder has other changes, and pushes there.
+- **Make a pull request from a chat:** type **/pr** (with a ticket or "draft" after it, if you like) or choose ⋯ → **Make a pull request**. The chat commits its work on a branch, pushes it and opens the pull request, following the repo's own PR instructions and template. In Latitude's repo that means a pull request to `internal` with its Linear link and Human Review section.
+- **One project's:** right-click a project that's in git → **Pull requests**.
 
 **Your home PC, from your laptop. New, and off until you turn it on.** Take your laptop away and keep working: on your home PC while it's on, and on the laptop's own copy when it isn't. It's all in **Setup → Your home PC**.
 

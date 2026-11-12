@@ -866,7 +866,8 @@ module.exports = [
       const pop = () => b.eval(`const box = document.getElementById('cSlash'); return box.hidden ? null : { head: box.querySelector('.cs-h')?.textContent, cmds: [...box.querySelectorAll('li.cs-cmd b')].map(x => x.textContent), tags: [...box.querySelectorAll('li.cs-cmd .tag')].map(x => x.textContent), seps: [...box.querySelectorAll('.cs-sep')].map(x => x.textContent), rows: box.querySelectorAll('li[data-si]').length }`);
       await typeIn('/');
       let p = await pop();
-      t.check('“/” lists Claude’s commands first, the folder’s own marked', p && p.head === 'Commands' && p.cmds[0] === '/balance-pass [song]' && p.tags[0] === 'This folder' && p.cmds.length === 3, p);
+      t.check('“/” lists Claude’s commands first, the folder’s own marked', p && p.head === 'Commands' && p.cmds[0] === '/balance-pass [song]' && p.tags[0] === 'This folder' && p.cmds.length === 5, p);
+      t.check('then the app’s own: the chat’s tools and a pull request', p && p.cmds[3] === '/mcp' && p.cmds[4] === '/pr [ticket, draft…]', p);
       t.check('your prompts follow under their own heading', p && (p.rows === 3 || p.seps.some(s => /^Prompts/.test(s))), p);
       await t.shot(b, 'popup');
       await typeIn('/world');

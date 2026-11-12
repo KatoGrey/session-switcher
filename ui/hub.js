@@ -948,7 +948,7 @@ function renderJump() {
   const box = $('hubJump'); if (!box) return;
   const chip = (id, label, n) => { const el = $(id); return el && !el.hidden ? `<button type="button" class="hj" data-jump="${id}"><span>${esc(voice(label))}</span>${n ? `<span class="count">${n}</span>` : ''}</button>` : ''; };
   const nProjects = S.projects.filter(p => p.cwd !== cmdrSet().cwd).length;
-  const h = [chip('secAwait', 'Awaiting you', awaiting().length), chip('secWork', atWork().length ? 'At work' : 'Open chats', atWork().length || quietOpen().length), chip('secQueue', 'Queued', (S.tasks || []).length), chip('secRaces', 'Races', (S.races || []).length), chip('secGroups', 'Your groups', S.org.groups.length), chip('secRecent', 'Recent chats'), chip('secAccounts', 'Accounts and usage'), chip('secCompanion', 'Companion'), chip('secWorlds', 'Your projects', nProjects), chip('secToday', 'Your day at a glance')].join('');
+  const h = [chip('secAwait', 'Awaiting you', awaiting().length), chip('secWork', atWork().length ? 'At work' : 'Open chats', atWork().length || quietOpen().length), chip('secQueue', 'Queued', (S.tasks || []).length), chip('secRaces', 'Races', (S.races || []).length), chip('secPrs', 'Pull requests', prHubCount()), chip('secGroups', 'Your groups', S.org.groups.length), chip('secRecent', 'Recent chats'), chip('secAccounts', 'Accounts and usage'), chip('secCompanion', 'Companion'), chip('secWorlds', 'Your projects', nProjects), chip('secToday', 'Your day at a glance')].join('');
   if (box._h === h) return;
   box.innerHTML = h; box._h = h;
   watchJump();
@@ -1024,6 +1024,10 @@ function renderHub() {
       ${secHead('Coming up', 'Queued', '', 'queue')}
       <ul class="queue" id="queueList"></ul>
     </section>`,
+    prs: `<section class="sec${secFold('prs')}" id="secPrs" data-sec="prs" hidden>
+      ${secHead('On GitHub', 'Pull requests', '<button class="btn quiet sm" data-act="prs">All of them</button>', 'prs')}
+      <ul class="rows pr-hub" id="prHubList"></ul>
+    </section>`,
     groups: `<section class="sec${secFold('groups')}" id="secGroups" data-sec="groups" ${S.org.groups.length ? '' : 'hidden'}>
       ${secHead('Together', 'Your groups', '<button class="btn quiet sm" data-gact="new">New group</button>', 'groups')}
       <div class="gcards" id="gcards"></div>
@@ -1046,13 +1050,13 @@ function renderHub() {
   // Most used first: what needs you, what's moving, then where to pick up, your plans and your projects.
   $('page').innerHTML = saga
     ? `${slots}${hero}${notes}${sections.await}${sections.work}${sections.today}${sections.races}${sections.queue}${sections.groups}${sections.worlds}${sections.recent}${sections.accounts}${dry}`
-    : `${hero}<nav class="hub-jump" id="hubJump" aria-label="On this page"></nav>${slots}${notes}${sections.await}${sections.work}${sections.queue}${sections.races}${sections.groups}<div class="hub-cw"><div class="hub-cols">${sections.recent}${sections.accounts}</div></div>${aideHubSection()}${sections.worlds}${sections.today}${dry}`;
+    : `${hero}<nav class="hub-jump" id="hubJump" aria-label="On this page"></nav>${slots}${notes}${sections.await}${sections.work}${sections.queue}${sections.races}${sections.prs}${sections.groups}<div class="hub-cw"><div class="hub-cols">${sections.recent}${sections.accounts}</div></div>${aideHubSection()}${sections.worlds}${sections.today}${dry}`;
   renderHubLists();
   renderAideHub();
   renderLive(true);
   watchHero();
   if (!dialsDrawn && !renderHub.timer) renderHub.timer = setTimeout(() => { dialsDrawn = true; }, 2600);
-  renderQueue(); renderRaces();
+  renderQueue(); renderRaces(); renderPrHub();
   renderJump();
 }
 // Recent chats and the index, patched in place when transcripts change.

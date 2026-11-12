@@ -256,6 +256,7 @@ function handleEvent(ev, src) {
     case 'limit': renderLimit(ev, src); break;
     case 'resumeat': renderResumeAt(ev, src); break;
     case 'stuck': renderStuck(ev, src); break;
+    case 'mcp': renderMcpCard(ev, src); break;
     case 'changes': renderChanges(ev, src); break;
     case 'undone': renderUndone(ev, src); break;
     case 'unsent': if (!comp) restoreUnsent(ev); break;

@@ -204,6 +204,8 @@ const pageClicks = wrap(async e => {
   if (act === 'world-more') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : worldMenu(b);
   if (act === 'reopen' || act === 'reopen-no') return reopenChats(act === 'reopen');
   if (/^task-(new|start|remove|open)$/.test(act)) return taskAction(act, b);
+  if (act === 'prs') return openPrs();
+  if (act === 'pr-open') return openPrs({ show: { repo: b.dataset.repo, n: Number(b.dataset.n) } });
   if (/^race-(new|open|diff|keep|both|discard|judge|files)$|^split-new$/.test(act)) return raceAction(act, b);
   if (act === 'reveal') { const r = await api('/api/reveal', { cwd: S.folder }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
   if (act === 'browse') return Viewer.open({ path: S.folder, cwd: S.folder });
@@ -305,6 +307,8 @@ function connectLive() {
   es.addEventListener('aide', wrap(async () => { await loadAide(); aideRefresh(); }));
   // Your home PC (ui/homepc.js): paired, forgotten, or the window moved between the PC and this laptop.
   es.addEventListener('homepc', () => { if (typeof homeBanner === 'function') homeBanner(); });
+  es.addEventListener('mcp', e => { try { mcpFlowsChanged(JSON.parse(e.data).flows); } catch { /* invalid event */ } });
+  es.addEventListener('prs', e => { let d = {}; try { d = JSON.parse(e.data); } catch { /* invalid event */ } prsChanged(d).catch(() => {}); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
@@ -483,6 +487,7 @@ function projectItems(cwd) {
     ...(S.codex && S.codex.enabled ? [{ glyph: '◆', label: 'New Codex chat', disabled: !codexReady() || !p.exists, why: 'Sign in to Codex first', run: () => ChatUI.open({ cwd, mode: 'new', provider: 'codex' }) }] : []),
     ...(S.prompts.length ? [{ glyph: '❡', label: 'Start with a prompt…', disabled: !p.exists, run: () => showMenu(Ctx.at, worldNewItems(cwd).filter(x => x !== '-' && /^Start with|Edit prompts/.test(x.label || ''))) }] : []),
     { glyph: '§', label: 'Rules and tools…', hint: 'CLAUDE.md · AGENTS.md · MCP', disabled: !p.exists, why: 'The folder is gone', run: () => openRules(cwd) },
+    ...(p.exists && (p.sessions || []).some(s => s.branch) ? [{ glyph: '⇄', label: 'Pull requests…', hint: 'on GitHub, that involve you', run: () => openPrs({ folder: cwd }) }] : []),
     { glyph: '❖', label: 'Project crest…', hint: 'choose a picture or make one with Codex', disabled: !p.exists, run: () => ProjectArt.open(cwd) },
     { glyph: '▦', label: 'Review pictures', hint: 'keep or redo, folder by folder', disabled: !p.exists, why: 'The folder is gone', run: () => openBoard(cwd) },
     ...(() => { const open = S.activity.filter(x => x.source === 'app' && x.key && !x.parentKey && x.cwd && x.cwd.toLowerCase() === cwd.toLowerCase()); return open.length > 1 ? [{ glyph: '❝', label: 'Message its open chats…', hint: `${open.length} open`, run: () => openManyDialog({ keys: open.map(x => x.key), title: `Message ${p.name}` }) }] : []; })(),

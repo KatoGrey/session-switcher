@@ -304,6 +304,13 @@ function renderSlash() {
       .sort((a, b) => (q ? Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)) : 0))
     : [];
   const prompts = S.prompts.filter(pr => !q || pr.id.startsWith(q) || words(pr.title).some(w => w.startsWith(q)) || pr.title.toLowerCase().startsWith(q));
+  // The app's own, after Claude's: /mcp opens the chat's tools and sign-ins, /pr makes a pull request.
+  const ownOk = !C.watch && (C.target || 'main') === 'main' && (C.provider === 'claude' || C.provider === 'codex');
+  const own = ownOk ? [
+    ...(!q || 'mcp'.startsWith(q) || ['tools', 'sign', 'login', 'connect'].some(w => w.startsWith(q)) ? [{ name: 'mcp', description: 'This chat’s tools (MCP servers): sign in, connect again', kind: 'app' }] : []),
+    ...(!q || 'pr'.startsWith(q) || ['pull', 'push', 'request'].some(w => w.startsWith(q)) ? [{ name: 'pr', hint: '[ticket, draft…]', description: 'Make a pull request of this chat’s work, the way the repo asks', kind: 'app' }] : []),
+  ] : [];
+  cmds.push(...own.filter(o => !cmds.some(c => c.name === o.name)));
   Slash.items = [...cmds.map(c => ({ cmd: c })), ...prompts];
   if (!Slash.items.length) return closeSlash();
   Slash.sel = Math.min(Slash.sel, Slash.items.length - 1);
@@ -319,6 +326,7 @@ function renderSlash() {
 function pickSlash(i) {
   if (Slash.kind === 'file') { const f = Slash.items[i], at = Slash.at; closeSlash(); if (f && at) { if (typeof f === 'string') insertMention(f, at); else insertChatRef(f, at); } return; }
   const it = Slash.items[i]; closeSlash();
+  if (it && it.cmd && it.cmd.kind === 'app') { $c('cText').value = ''; grow(); return it.cmd.name === 'pr' ? makePrFromChat('main') : openChatMcp('main'); }
   if (it && it.cmd) return placeText(`/${it.cmd.name} `, true);
   if (it) insertPrompt(it, true);
 }
@@ -511,6 +519,11 @@ async function sendMessage() {
   if (!text.trim() && !C.attachments.length && !ready.length) return;
   if (ready.length) text = `${text.replace(/\s+$/, '')}${text.trim() ? '\n\n' : ''}${ready.map(f => `Attached file: \`${f.rel}\` (${f.kind}, ${sizeText(f.size)})`).join('\n')}`;
   // /model and /effort switch without sending.
+  const ownCmd = n => (C.provider === 'claude' || C.provider === 'codex') && !(C.provider === 'claude' && Cmds.list.some(c => c.name === n));
+  if (/^\/mcp\s*$/i.test(text.trim()) && !C.attachments.length && ownCmd('mcp')) { clear(); await openChatMcp('main'); return; }
+  // "/pr" (and what to add, if anything): this chat makes a pull request of its work.
+  const pr = text.trim().match(/^\/pr(?:\s+([\s\S]{1,1500}))?$/i);
+  if (pr && !C.attachments.length && ownCmd('pr') && C.state !== 'ended') { clear(); if (pr[1]) await api('/api/chat/make-pr', { key: C.key, note: pr[1] }); else await makePrFromChat('main'); return; }
   const sw = text.trim().match(/^\/(model|effort)\s+(.{1,60})$/i);
   if (sw && !C.attachments.length) { clear(); await quickSwitch(sw[1].toLowerCase(), sw[2].trim()); return; }
   // "@codex …", "@gemini …", "@claude …" sends just this message to that one; "@both" or "@all" to all of them.

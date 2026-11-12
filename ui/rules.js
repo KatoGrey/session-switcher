@@ -31,6 +31,7 @@ function rulesDialog() {
     if (act === 'gemfile') { if (await rulesDirty()) return undefined; d.dataset.dirty = ''; d.close(); return Viewer.open({ path: RulesUI.data.gemini.path, cwd: RulesUI.cwd }); }
     if (act === 'save') return saveRules();
     if (act === 'copy') return copyTool(b.dataset.name, b.dataset.to);
+    if (act === 'connections') { d.close(); return openConnections(RulesUI.cwd); }
     return undefined;
   }));
   d.addEventListener('input', e => { if (e.target.id === 'rdText') d.dataset.dirty = '1'; });
@@ -142,7 +143,7 @@ function toolsHtml() {
     return lacking.map(to => (to === 'codex' && !t.codexOn ? '<span class="rd-note">Codex is off</span>'
       : `<button type="button" class="btn sm" data-rd="copy" data-name="${esc(r.name)}" data-to="${to}"${window.REMOTE ? ' disabled title="Only on the PC"' : ''}>Add to ${RULE_WHO[to]}</button>`)).join(' ');
   };
-  return `<p class="rd-intro">The tools (MCP servers) each one can use. Add a tool to ${gem ? 'another' : 'the other'} in a click: it’s set up for all your projects, with the same settings.</p>
+  return `<p class="rd-intro">The tools (MCP servers) each one can use. Add a tool to ${gem ? 'another' : 'the other'} in a click: it’s set up for all your projects, with the same settings. Tools that need a sign-in (each account signs in once): <button type="button" class="linkish" data-rd="connections">Connections</button>.</p>
     ${t.codexError ? `<p class="rd-state warn">Codex didn’t say which tools it has: ${esc(t.codexError)}</p>` : ''}
     ${t.servers.length ? `<table class="rd-tools"><thead><tr><th>Tool</th><th>Claude</th><th>Codex</th>${gem ? '<th>Gemini</th>' : ''}<th></th></tr></thead><tbody>${t.servers.map(r => {
       const v = r.claude || r.codex || r.gemini;
@@ -159,5 +160,5 @@ async function copyTool(name, to) {
   const res = await api('/api/tools/copy', { name, to, cwd: RulesUI.cwd });
   RulesUI.tools = res;
   renderRules();
-  toast(`${name} is now in ${target}.${to === 'codex' && v.transport === 'http' ? ` If it needs a sign-in, run “codex mcp login ${name}” in a terminal.` : ' New chats can use it.'}`, 7000);
+  toast(`${name} is now in ${target}.${v.transport === 'http' ? ' If it needs a sign-in, Connections does it.' : ' New chats can use it.'}`, 7000, v.transport === 'http' ? { label: 'Open Connections', run: () => { $('rulesDlg').close(); openConnections(RulesUI.cwd); } } : null);
 }
