@@ -103,6 +103,7 @@ function navHtml() {
     <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">${esc(voice('The hub'))}</span>${A ? `<span class="tag gilt">${A}<span class="sr"> awaiting you</span></span>` : W ? `<span class="tag">${W}<span class="sr"> at work</span></span>` : ''}</button>
     ${navCommanderHtml()}
     ${routinesNav()}
+    ${workNav()}
     ${aideNav()}
     ${activeHtml}
     ${pinnedHtml}
@@ -1025,7 +1026,7 @@ function renderHub() {
       <ul class="queue" id="queueList"></ul>
     </section>`,
     prs: `<section class="sec${secFold('prs')}" id="secPrs" data-sec="prs" hidden>
-      ${secHead('On GitHub', 'Pull requests', '<button class="btn quiet sm" data-act="prs">All of them</button>', 'prs')}
+      ${secHead('On GitHub', 'Pull requests', '<button class="btn sm" data-view="work">Your work board</button><button class="btn quiet sm" data-act="prs">All of them</button>', 'prs')}
       <ul class="rows pr-hub" id="prHubList"></ul>
     </section>`,
     groups: `<section class="sec${secFold('groups')}" id="secGroups" data-sec="groups" ${S.org.groups.length ? '' : 'hidden'}>

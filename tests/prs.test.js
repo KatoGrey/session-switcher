@@ -43,9 +43,19 @@ test('prs: one PR read in full: checks, open threads without bot markup, reviewe
   assert.deepEqual(d.reviewers, ['ryan', 'core-team']);
   assert.equal(d.open, 1);
   assert.equal(d.threads[0].comments[0].body, '**P2 Keep boy and girl intent**\n\nNormalization drops it.');
-  assert.deepEqual({ ...d.checks, failed: d.checks.failed.map(f => [f.name, f.job]) }, { state: 'FAILURE', passed: 2, failed: [['unit tests', '777']], pending: 1, cancelled: 1, skipped: 0 });
-  assert.equal(d.preview, 'https://pr-18982.preview.voyage.io/', 'Latitude’s PRs have a live copy');
-  assert.equal(detailOf('acme/game', PR).preview, null);
+  assert.deepEqual({ ...d.checks, failed: d.checks.failed.map(f => [f.name, f.job]) }, { state: 'FAILURE', passed: 2, failed: [['unit tests', '777']], pending: 1, cancelled: 1, skipped: 0, required: null });
+  assert.equal(d.preview, null, 'no live copy until someone asks for one');
+  assert.equal(d.previewable, true, 'Latitude’s PRs can ask for one');
+  const labelled = detailOf('latitudegames/latitude', { ...PR, labels: { nodes: [{ name: 'preview' }] } });
+  assert.equal(labelled.preview, 'https://pr-18982.preview.voyage.io/');
+  assert.equal(labelled.previewable, false);
+  assert.equal(detailOf('acme/game', PR).previewable, false);
+  // The checks branch protection asks for, when GitHub says which.
+  const req = checksOf({ state: 'PENDING', contexts: { nodes: [{ name: 'ci', conclusion: 'SUCCESS', isRequired: true }, { name: 'pr-policy', conclusion: 'FAILURE', isRequired: true }, { name: 'size-gate', status: 'IN_PROGRESS', isRequired: true }, { name: 'e2e', conclusion: 'FAILURE', isRequired: false }] } });
+  assert.deepEqual(req.required, { passed: 1, failed: 1, pending: 1 });
+  assert.deepEqual(req.failed.map(x => [x.name, x.required]), [['pr-policy', true], ['e2e', false]]);
+  assert.equal(detailOf('acme/game', { ...PR, mergeStateStatus: 'BLOCKED', autoMergeRequest: { enabledAt: 'x' } }).mergeState, 'BLOCKED');
+  assert.equal(detailOf('acme/game', { ...PR, autoMergeRequest: { enabledAt: 'x' } }).autoMerge, true);
   assert.equal(checksOf(null).passed, 0);
   assert.equal(readable('<details><summary>x</summary></details>'), 'x');
 });

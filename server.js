@@ -53,6 +53,7 @@ const mirrorLib = require('./lib/mirror');
 const homePcLib = require('./lib/homepc');
 const mcpAuthLib = require('./lib/mcpauth');
 const prsLib = require('./lib/prs');
+const linearLib = require('./lib/linear');
 const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.8.0';
@@ -1147,6 +1148,60 @@ const prs = prsLib.createPrs({
   projects: () => sessionsWithCodex().projects.map(p => ({ cwd: p.cwd, exists: p.exists, updated: Math.max(0, ...(p.sessions || []).map(x => x.updated || 0)) })),
   sessions: () => sessions.scan().projects.flatMap(p => p.sessions.map(x => ({ id: x.id, cwd: p.cwd, branch: x.branch || null, updated: x.updated || 0, title: x.title || null }))),
 });
+// Linear (lib/linear.js): the issues assigned to you, for the work board. Its key: your own, saved here, or the one
+// Latitude's agents keep in a Latitude clone's .env.local.
+const linear = linearLib.createLinear({ dataDir: DATA_DIR, log, clones: async () => (await prs.clonesOf('latitudegames/latitude')).map(c => c.cwd) });
+// The chats started from the board for each Linear issue: issue -> { key, sessionId, at }.
+const WORK_FILE = path.join(DATA_DIR, 'work.json');
+const workChats = () => store.readJson(WORK_FILE) || {};
+function noteWorkChat(issue, chat) {
+  const all = workChats();
+  all[issue] = { key: chat.key, sessionId: chat.sessionId || null, at: Date.now() };
+  try { store.writeJsonAtomic(WORK_FILE, all); } catch (err) { log(`Work board: couldn’t note the chat for ${issue}: ${err.message}`); }
+}
+// The work board: your Linear issues, and your pull requests (and the ones linked to your issues, whoever made
+// them, and the ones waiting on your review), each matched to its issue and to the chat on its branch.
+async function workBoard(fresh) {
+  const [gh, lin] = await Promise.all([prs.status({ fresh }).catch(err => ({ installed: null, signedIn: false, error: err.message })), linear.status({ fresh }).catch(err => ({ connected: false, error: err.message }))]);
+  let issues = [], issuesError = null;
+  if (lin.connected && lin.me) { try { issues = await linear.myIssues({ fresh }); } catch (err) { issuesError = err.message; } }
+  let list = [], prsError = null;
+  if (gh.signedIn) { try { list = (await prs.board({ extra: issues.flatMap(i => i.prs), fresh })).prs; } catch (err) { prsError = err.message; } }
+  const key = (repo, n) => `${String(repo).toLowerCase()}#${n}`;
+  const byKey = new Map(list.map(p => [key(p.repo, p.number), p]));
+  for (const i of issues) for (const l of i.prs) { const p = byKey.get(key(l.repo, l.number)); if (p && !p.issue) p.issue = i.identifier; }
+  for (const p of list) if (!p.issue) { const m = /\[([A-Z][A-Z0-9]{1,9}-\d{1,7})\]/.exec(p.title) || /(?:^|\/)([a-z][a-z0-9]{1,9}-\d{1,7})(?:-|$)/.exec(p.head || ''); if (m) p.issue = m[1].toUpperCase(); }
+  // The Claude chat on each PR's branch, and the chat started for each issue (still running, or by its id).
+  const recent = new Map();
+  for (const proj of sessions.scan().projects) for (const x of proj.sessions) if (x.branch && (!recent.has(x.branch) || recent.get(x.branch).updated < x.updated)) recent.set(x.branch, { id: x.id, title: x.title || null, updated: x.updated || 0 });
+  for (const p of list) { const c = p.head && recent.get(p.head); p.chat = c ? { sessionId: c.id, title: c.title } : null; }
+  const started = workChats();
+  let notes = false;
+  for (const i of issues) {
+    const w = started[i.identifier];
+    if (!w) continue;
+    let live = null; try { live = chats.get(w.key); } catch { /* ended */ }
+    if (live && live.sessionId && !w.sessionId) { w.sessionId = live.sessionId; notes = true; }
+    i.chat = { key: live && live.state !== 'ended' ? live.key : null, sessionId: w.sessionId || null, at: w.at };
+  }
+  if (notes) { try { store.writeJsonAtomic(WORK_FILE, started); } catch { /* next time */ } }
+  return { gh: { installed: gh.installed, signedIn: !!gh.signedIn, login: gh.login || null, error: gh.error || null }, linear: lin, issues, issuesError, prs: list, prsError, at: Date.now() };
+}
+// "Start": a chat in the Latitude clone, told the issue and how to work on it.
+async function startWork(body) {
+  const issue = await linear.issue(String(body.identifier || ''));
+  const clones = await prs.clonesOf('latitudegames/latitude');
+  const cwd = (body.cwd && clones.find(c => normCwd(c.cwd) === normCwd(body.cwd)) || clones[0] || {}).cwd;
+  if (!cwd) throw fail(409, 'No folder on this computer has Latitude’s repo (latitudegames/latitude). Clone it, open it once in a chat here, then try again.');
+  const gh = await prs.status().catch(() => ({}));
+  const provider = body.provider === 'codex' ? 'codex' : 'claude';
+  const text = linearLib.startPrompt(issue, { branch: linearLib.branchFor(issue, gh.login) });
+  const chat = await startPrChat({ provider, account: body.account, cwd, text, title: `${issue.identifier}: ${issue.title}`.slice(0, 120) });
+  noteWorkChat(issue.identifier, chat);
+  log(`Work board: ${provider} started on ${issue.identifier} in ${cwd}.`);
+  return { key: chat.key, cwd };
+}
+
 // A chat for a pull request, opened the way routines open theirs (so it's a chat like any other), with its
 // first message sent: Claude as the account asked for (else the main one), or Codex.
 async function startPrChat({ provider, account, cwd, sessionId = null, text, title }) {
@@ -1160,7 +1215,7 @@ async function startPrChat({ provider, account, cwd, sessionId = null, text, tit
 }
 async function prAction(body) {
   const action = String(body.action || '');
-  if (!['review', 'fix-comments', 'fix-checks'].includes(action)) throw fail(400, 'Review it, fix its comments or fix its checks.');
+  if (!['review', 'fix-comments', 'fix-checks', 'update'].includes(action)) throw fail(400, 'Review it, fix its comments or checks, or bring it up to date.');
   const pr = await prs.detail(body.repo, body.n, { fresh: true });
   const same = (a, b) => normCwd(a) === normCwd(b);
   const cwd = (body.cwd && pr.clones.find(x => same(x, body.cwd))) || pr.clones[0];
@@ -1172,12 +1227,12 @@ async function prAction(body) {
     log(`PRs: ${provider} reviewing ${pr.repo}#${pr.number} in ${cwd}.`);
     return { key: chat.key, cwd, resumed: false };
   }
-  const text = action === 'fix-comments' ? prsLib.fixCommentsPrompt(pr) : prsLib.fixChecksPrompt(pr);
+  const text = action === 'fix-comments' ? prsLib.fixCommentsPrompt(pr) : action === 'update' ? prsLib.updatePrompt(pr) : prsLib.fixChecksPrompt(pr);
   // The Claude chat that made it knows the work: it carries on there unless a new chat is asked for.
   // (Not while it's open in a terminal: that one carries on there, and this starts a new chat instead.)
   const reuse = provider === 'claude' && pr.chat && body.fresh !== true && !running[String(pr.chat.sessionId).toLowerCase()];
-  const chat = await startPrChat({ provider, account: body.account, cwd: reuse ? pr.chat.cwd : cwd, sessionId: reuse ? pr.chat.sessionId : null, text, title: reuse ? pr.chat.title : `${action === 'fix-comments' ? 'Comments' : 'Checks'} on #${pr.number}: ${pr.title}`.slice(0, 120) });
-  log(`PRs: ${provider} fixing the ${action === 'fix-comments' ? 'review comments' : 'checks'} on ${pr.repo}#${pr.number}${reuse ? ' in the chat that made it' : ''}.`);
+  const chat = await startPrChat({ provider, account: body.account, cwd: reuse ? pr.chat.cwd : cwd, sessionId: reuse ? pr.chat.sessionId : null, text, title: reuse ? pr.chat.title : `${{ 'fix-comments': 'Comments', update: 'Up to date', 'fix-checks': 'Checks' }[action]} on #${pr.number}: ${pr.title}`.slice(0, 120) });
+  log(`PRs: ${provider} ${{ 'fix-comments': 'fixing the review comments', update: 'bringing up to date', 'fix-checks': 'fixing the checks' }[action]} on ${pr.repo}#${pr.number}${reuse ? ' in the chat that made it' : ''}.`);
   return { key: chat.key, cwd: chat.cwd, resumed: !!reuse };
 }
 
@@ -1978,6 +2033,10 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/connections/flows') return send(res, 200, { flows: mcpAuth.flows() });
   if (route === 'GET /api/prs/status') return send(res, 200, { ...(await prs.status({ fresh: url.searchParams.get('fresh') === '1' })), signIn: prs.signInState() });
   if (route === 'GET /api/prs/mine') return send(res, 200, await prs.mine({ fresh: url.searchParams.get('fresh') === '1' }));
+  if (route === 'GET /api/work') return send(res, 200, await workBoard(url.searchParams.get('fresh') === '1'));
+  if (route === 'GET /api/linear/status') return send(res, 200, await linear.status({ fresh: url.searchParams.get('fresh') === '1' }));
+  if (route === 'GET /api/linear/users') return send(res, 200, { users: await linear.users(url.searchParams.get('q') || '') });
+  if (route === 'GET /api/prs/team') return send(res, 200, { team: await prs.team(String(url.searchParams.get('repo') || '')) });
   if (route === 'GET /api/prs/detail') return send(res, 200, await prs.detail(url.searchParams.get('repo'), url.searchParams.get('n'), { fresh: url.searchParams.get('fresh') === '1' }));
   if (route === 'GET /api/prs/folder') { const p = projectAt(url.searchParams.get('cwd')); if (!p || !p.exists) throw fail(404, 'Pick one of your projects.'); return send(res, 200, await prs.inFolder(p.cwd, { fresh: url.searchParams.get('fresh') === '1' })); }
   // Setup: the Codex this app runs and the newest one out (a newer Codex lists newer models), and
@@ -2183,6 +2242,15 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/prs/signin-cancel': return send(res, 200, { signIn: prs.cancelSignIn() });
     case '/api/prs/switch': { const st = await prs.switchTo(String(body.user || '')); broadcast('prs', {}); return send(res, 200, st); }
     case '/api/prs/act': return send(res, 200, await prAction(body));
+    // The work board's buttons that change a pull request on GitHub (you press each one yourself).
+    case '/api/prs/ready': return send(res, 200, await prs.ready(body.repo, body.n));
+    case '/api/prs/merge': return send(res, 200, await prs.merge(body.repo, body.n, { auto: !!body.auto }));
+    case '/api/prs/merge-cancel': return send(res, 200, await prs.cancelAutoMerge(body.repo, body.n));
+    case '/api/prs/reviewers': return send(res, 200, await prs.requestReviewers(body.repo, body.n, body.users));
+    case '/api/prs/preview': return send(res, 200, await prs.askPreview(body.repo, body.n));
+    case '/api/work/start': return send(res, 200, await startWork(body));
+    case '/api/linear/me': return send(res, 200, await linear.setMe(String(body.id || '')));
+    case '/api/linear/key': return send(res, 200, await linear.setKey(typeof body.key === 'string' ? body.key : ''));
     case '/api/connections/cancel': return send(res, 200, { flow: mcpAuth.cancel(body.id) });
     case '/api/connections/reopen': { if (remote) throw fail(403, 'Open the link on this device instead.'); return send(res, 200, { flow: await mcpAuth.reopen(body.id) }); }
     case '/api/race': {

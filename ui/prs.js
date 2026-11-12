@@ -81,10 +81,12 @@ function prDialog() {
 async function openPrs({ folder = null, show = null } = {}) {
   const d = prDialog();
   Object.assign(PRS, { folder, folderData: null, err: null, openKey: null, tab: folder ? 'folder' : (PRS.tab === 'folder' ? 'authored' : PRS.tab) });
-  if (show && PRS.data) {
+  PRS.one = null;
+  if (show) {
     const k = prKey(show.repo, show.n);
-    const tab = PR_TABS.map(([t]) => t).find(t => (PRS.data[t] || []).some(p => prKey(p.repo, p.number) === k));
+    const tab = PRS.data && PR_TABS.map(([t]) => t).find(t => (PRS.data[t] || []).some(p => prKey(p.repo, p.number) === k));
     if (tab) { PRS.tab = tab; PRS.openKey = k; }
+    else if (show.item) { PRS.one = { ...show.item }; PRS.tab = 'one'; PRS.openKey = k; }
   }
   if (!d.open) d.showModal();
   prsRender();
@@ -110,6 +112,7 @@ async function prsLoad(fresh) {
   prsRender();
 }
 function prsList() {
+  if (PRS.tab === 'one' && PRS.one) return [PRS.one];
   if (PRS.folder) return (PRS.folderData && PRS.folderData.prs) || null;
   return PRS.data ? PRS.data[PRS.tab] || [] : null;
 }
@@ -118,7 +121,7 @@ function prsRender() {
   const tabs = $('prTabs');
   const count = k => (PRS.data && PRS.data[k] ? ` (${PRS.data[k].length})` : '');
   tabs.innerHTML = PRS.folder ? `<button role="tab" aria-selected="true">${esc((PRS.folderData && PRS.folderData.repo) || 'This repo')}</button>`
-    : PR_TABS.map(([k, label]) => `<button role="tab" data-prtab="${k}" aria-selected="${PRS.tab === k}">${label}${count(k)}</button>`).join('');
+    : PR_TABS.map(([k, label]) => `<button role="tab" data-prtab="${k}" aria-selected="${PRS.tab === k}">${label}${count(k)}</button>`).join('') + (PRS.one ? `<button role="tab" data-prtab="one" aria-selected="${PRS.tab === 'one'}">#${PRS.one.number}</button>` : '');
   const gh = PRS.gh;
   if (!gh || !gh.signedIn) { box.innerHTML = `<div class="gh-box">${ghHtml(gh)}</div>`; return; }
   const list = prsList();
@@ -158,6 +161,7 @@ function prDetailHtml(d) {
   return `<p class="pr-line">+${d.additions} −${d.deletions} in ${d.changedFiles} file${d.changedFiles === 1 ? '' : 's'} · <code>${esc(d.head)}</code> → <code>${esc(d.base)}</code>${d.author ? ` · by ${esc(d.author)}` : ''}${d.mergeable === 'CONFLICTING' ? ' · <span class="cn-bad">has conflicts</span>' : ''}</p>
     <p class="pr-line"><span class="pr-k">Checks</span>${checks}</p>
     <p class="pr-line"><span class="pr-k">Reviews</span>${reviews}</p>
+    ${d.mergeState && d.mergeState !== 'UNKNOWN' ? `<p class="pr-line"><span class="pr-k">Merging</span>${esc({ CLEAN: 'ready to merge', HAS_HOOKS: 'ready to merge', BLOCKED: 'blocked (it needs an approval, resolved threads or required checks)', BEHIND: 'behind its base: bring it up to date', DIRTY: 'has conflicts: bring it up to date', UNSTABLE: 'some checks are failing', DRAFT: 'a draft' }[d.mergeState] || d.mergeState.toLowerCase())}${d.autoMerge ? ' · merges by itself when it’s ready' : ''}${c.required ? ` · required checks: ${c.required.passed} passed${c.required.failed ? `, ${c.required.failed} failed` : ''}${c.required.pending ? `, ${c.required.pending} waiting` : ''}` : ''}</p>` : ''}
     <p class="pr-line"><span class="pr-k">Comments</span>${d.open ? `${d.open} open review thread${d.open === 1 ? '' : 's'}` : 'no open review threads'}</p>
     ${d.chat ? `<p class="pr-line"><span class="pr-k">Chat</span>Made in “${esc(d.chat.title || 'a chat')}” <button type="button" class="linkish" data-pr="chat" data-id="${esc(d.chat.sessionId)}">Open it</button></p>` : ''}
     ${d.clones.length ? '' : `<p class="rd-state">No folder on this computer has ${esc(d.repo)}, so Claude and Codex can’t work on it here. Clone it and open it once in a chat, then check again.</p>`}

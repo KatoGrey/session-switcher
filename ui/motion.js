@@ -245,6 +245,7 @@ function renderPage() {
   else if (S.view === 'folder') renderFolder();
   else if (S.view === 'search') renderSearch();
   else if (S.view === 'routines') Routines.render();
+  else if (S.view === 'work') Work.render();
   else if (S.view === 'aide') renderAidePage();
 }
 function renderAll() { renderNav(); renderPage(); renderBar(); updateTitle(); }
@@ -268,7 +269,7 @@ function go(view, folder, prov) {
     if (window.ChatUI && ChatUI.isOpen()) ChatUI.close(true);
     renderNav(); renderPage(); window.scrollTo({ top: 0 });
     // Said to a screen reader, as a new page would be.
-    announce(view === 'hub' ? voice('The hub') : view === 'recent' ? voice('Recent chats') : view === 'routines' ? voice('Routines') : view === 'folder' ? (S.projects.find(p => p.cwd === S.folder) || {}).name || '' : '');
+    announce(view === 'hub' ? voice('The hub') : view === 'recent' ? voice('Recent chats') : view === 'routines' ? voice('Routines') : view === 'work' ? voice('Your work') : view === 'folder' ? (S.projects.find(p => p.cwd === S.folder) || {}).name || '' : '');
     // Coming back from a project: its banner settles back into its card.
     if (view === 'hub' && from && motionOk()) {
       const art = document.querySelector(`#atlas > [data-k="${CSS.escape(from)}"] .w-art`);

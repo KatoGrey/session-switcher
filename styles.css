@@ -2368,6 +2368,47 @@ dialog.pr-dlg{width:min(880px,calc(calc(100vw / var(--look-ui, 1)) - 32px))}
 .pr-hub-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;width:100%;padding:10px 6px;border:0;background:none;text-align:left;color:var(--parch);cursor:pointer;font:15px/1.35 var(--f-body)}
 .pr-hub-row:hover .pr-t{color:var(--gilt)}
 .pr-hub-more{margin:8px 6px}
+/* Your work (ui/work.js): Linear issues and pull requests in columns, from to do to merged. */
+.wk-setup{margin:16px 0 0;padding:14px 16px;border:1px solid rgb(var(--c-d9bf74) / .45);border-left:3px solid var(--gilt);border-radius:8px;background:rgb(var(--c-d9bf74) / .06);font-size:14.5px;color:var(--parch-2)}
+.wk-setup p{margin:0 0 10px}
+.wk-users{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.wk-users small{margin-left:4px;font:400 11px var(--f-mono);color:var(--ash-2)}
+.wk-cols{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:22px;align-items:start}
+.wk-col{min-width:0}
+.wk-col h2{margin:0;font:500 11px/1 var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ember)}
+.wk-col h2 .count{margin-left:6px;color:var(--ash);letter-spacing:0}
+.wk-hint{margin:6px 0 10px;font-size:12.5px;color:var(--ash-2)}
+.wk-empty{margin:0;padding:14px;border:1px dashed var(--seam);border-radius:8px;font-size:13.5px;color:var(--ash)}
+.wk-card{margin:0 0 10px;padding:12px 13px;border:1px solid var(--seam);border-radius:9px;background:var(--vellum-2)}
+.wk-card h3{margin:4px 0 6px;font:600 15px/1.35 var(--f-body);color:var(--parch)}
+.wk-k{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0}
+.wk-id{font:500 12px var(--f-mono);color:var(--gilt);text-decoration:none}
+.wk-id:hover{text-decoration:underline}
+.wk-tag{font:500 11px var(--f-mono);color:var(--parch-2);padding:1px 6px;border:1px solid var(--seam-2);border-radius:999px;text-decoration:none}
+.wk-by{font-size:12px;color:var(--ash)}
+.wk-meta{margin:0 0 8px;font-size:12.5px;color:var(--ash)}
+.wk-next{margin:0 0 6px;font-size:13.5px;color:var(--parch-2)}
+.wk-next.ok{color:rgb(var(--c-7fb79a))}
+.wk-next.warn{color:var(--gilt)}
+.wk-next.bad{color:var(--ember-soft)}
+.wk-next.gilt{color:var(--gilt)}
+.wk-sig{display:flex;flex-wrap:wrap;gap:4px 6px;margin:0 0 8px;font-size:12px;color:var(--ash)}
+.wk-sig i{font-style:normal;color:var(--ash-2)}
+.wk-sig a{color:inherit}
+.wk-acts{display:flex;flex-wrap:wrap;gap:6px}
+.wk-merged{margin-top:24px}
+.wk-merged h2{margin:0 0 8px;font:500 11px/1 var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ember)}
+.wk-mrow{margin:0 0 6px;font-size:14px;color:var(--parch-2)}
+.wk-mrow a{font:500 12px var(--f-mono);color:var(--gilt)}
+.wk-mrow small{color:var(--ash-2)}
+.wk-foot{margin-top:22px}
+.wk-rev-dlg .wk-rev-q{width:100%;margin:4px 0 10px}
+.wk-rev-list{max-height:min(420px,55vh);overflow:auto;border:1px solid var(--seam);border-radius:8px}
+.wk-rev{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--seam);cursor:pointer;font-size:14px}
+.wk-rev small{font:400 11px var(--f-mono);color:var(--ash-2)}
+@media (max-width:1180px){ .wk-cols{grid-template-columns:repeat(2,minmax(0,1fr))} }
+/* On a phone, one column: what needs you first (your pull requests, others' waiting on you), then what's to start. */
+@media (max-width:760px){ .wk-cols{grid-template-columns:minmax(0,1fr)} #wk-review{order:1} #wk-waiting{order:2} #wk-doing{order:3} #wk-todo{order:4} }
 /* On a phone the pull requests' tabs get a row of their own, under the title. */
 @media (max-width:760px){
   .pr-dlg .setup-head{flex-wrap:wrap}

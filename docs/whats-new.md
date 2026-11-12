@@ -1,4 +1,19 @@
-# Connections and pull requests, your home PC from your laptop, Claude's own commands in the / menu, and Gemini's usage
+# Your work: your Linear issues and pull requests on one page, with what's next for each
+
+**Your work, in the sidebar (and Ctrl+K → Your work).** One page to work from: the issues assigned to you in Linear and your pull requests on GitHub, in columns.
+
+- **To do:** your Linear issues that haven't started, most urgent first. **Start…** opens a chat (Claude as any of your accounts, or Codex) in your copy of the repo, with the issue's description and comments. It makes a branch for it under your GitHub name, finds the cause, tells you its plan, fixes it, and opens a draft pull request the repo's way (in Latitude's repo: its PR workflow, template and the issue's ID in the title).
+- **In progress:** issues you've started, with a button back to their chat.
+- **In review:** your pull requests, and the ones linked to your Linear issues whoever made them. Each says what's next ("2 comments to address", "Checks failing", "Approved: ready to merge") and has the button for it: **Fix the comments…**, **Fix the checks…**, **Ready for review**, **Merge…**. More… has **Bring it up to date** (merges in its base, in a chat), **Ask for a review…** (from your team's list in Latitude's repo), **Ask for a preview** (Latitude's live copy) and the details.
+- **Waiting on you:** other people's pull requests asking for your review, with **Review it…**.
+- **Merged this week,** underneath.
+- **Merging is GitHub's way:** squashed, now or by GitHub as soon as it's approved, its checks pass and its threads are resolved. Anything that changes a pull request asks first.
+- **Linear and you:** the first time, it asks which Linear person you are (Latitude's repo keeps a shared key for its agents, so Linear can't tell). Or give it a Linear API key of your own. Linear is only read here; the chats do any writing.
+- **On your phone,** what needs you comes first.
+
+**Pull requests' details** say where each one stands for merging, and which of the checks GitHub requires have passed. Pull requests linked to your issues that someone else made open there too.
+
+## Earlier in 6.8.0: Connections and pull requests, your home PC from your laptop, Claude's own commands in the / menu, and Gemini's usage
 
 **Connections: sign in to tools like Latitude's, for every account, without a terminal.** A tool (MCP server) like Latitude's asks you to sign in once for each account: every Claude account keeps its own sign-in, and so does Codex. Chats here couldn't run Claude Code's own `/mcp` sign-in, which needs a terminal to type in. Now Session Switcher does it, through Claude Code and Codex themselves.
 

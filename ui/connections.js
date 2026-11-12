@@ -44,6 +44,15 @@ async function mcpFlowAction(act, b) {
   return false;
 }
 
+// Linear, as the work board reads it: whose key, and who you are there.
+function linearLine() {
+  const l = Conn.linear;
+  if (!l) return '<p class="loading">Asking Linear…</p>';
+  const go = '<button type="button" class="btn sm" data-cn="work">Your work board</button>';
+  if (!l.connected) return `<p class="rd-state">Not connected${l.error ? ` (${esc(l.error)})` : ''}. The work board can take a Linear API key of your own.</p><div class="lm-b">${go}</div>`;
+  return `<div class="gh-who"><span class="cn-yes">✓</span><span>${l.me ? `You’re <b>${esc(l.me.name || l.me.displayName)}</b> in Linear` : 'Connected, but it doesn’t know which Linear person you are yet'}<small>${esc(l.source === 'yours' ? 'your own key' : l.source === 'repo' ? `the agents’ key in Latitude’s repo (${l.keyOwner || 'shared'})` : 'LINEAR_API_KEY')}</small></span><span class="spacer"></span>${go}</div>`;
+}
+
 /* ---------- the dialog ---------- */
 
 function connDialog() {
@@ -65,6 +74,7 @@ function connDialog() {
     if (act === 'everywhere') return connEverywhere();
     if (act === 'stopqueue') { Conn.queue = []; return connRender(); }
     if (act === 'rules') { d.close(); return openRules(Conn.cwd, 'tools'); }
+    if (act === 'work') { d.close(); return go('work'); }
     // From /mcp: through the chat itself, so its tools load right there.
     if (act === 'chatsignin') { b.disabled = true; try { await connSignIn({ key: Conn.chatKey, name: b.dataset.name }); } finally { b.disabled = false; } return connRender(); }
     if (act === 'add') return connAdd(b.dataset.name, b.dataset.to);
@@ -83,6 +93,7 @@ async function openConnections(cwd = null) {
   if (!d.open) d.showModal();
   connRender();
   ghLoad().then(prsRedraw).catch(() => {});
+  api('/api/linear/status').then(st => { Conn.linear = st; const box = $('cnLinear'); if (box) box.innerHTML = linearLine(); }).catch(err => { Conn.linear = { connected: false, error: err.message }; });
   return connLoad(false);
 }
 async function connLoad(fresh) {
@@ -144,6 +155,7 @@ function connRender() {
   const need = connNeeded();
   const queued = Conn.queue.length || Conn.qFlow;
   box.innerHTML = `<h4 class="cn-h">GitHub</h4><div id="cnGitHub" class="gh-box">${ghHtml(PRS.gh, { inConnections: true })}</div>
+    <h4 class="cn-h">Linear</h4><div class="gh-box" id="cnLinear">${linearLine()}</div>
     <h4 class="cn-h">Tools that sign in (MCP)</h4>
     <p class="rd-intro">Tools (MCP servers) like Latitude’s need you to sign in once for each account: Claude Code and Codex each keep their own sign-in, and so does every Claude account. Sign in here and every chat on that account can use the tool${Conn.cwd ? '' : ', in every project'}.</p>
     ${need.length > 1 && !queued ? `<div class="cn-all"><button type="button" class="btn gilt" data-cn="everywhere">Sign in everywhere it’s needed</button><span>${need.length} sign-ins, one after another. Each opens its page in your browser; if you’re signed in there already, it’s a click each.</span></div>` : ''}
