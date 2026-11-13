@@ -3,6 +3,7 @@
 
 /* ---------- top bar ---------- */
 function renderBar() {
+  Shell.sync();
   $('updPill').hidden = !S.update || !!window.REMOTE;
   renderRestartBar();
   const A = awaiting(), W = atWork();
@@ -36,6 +37,12 @@ function renderBar() {
       : a.gemini ? `<span class="ac-sep" aria-hidden="true"></span>${geminiQuotaCell()}`
       : a.signedIn ? `<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Usage</small><b>${u && (u.error || (u.data && !u.checking)) ? 'Unavailable' : 'Checking…'}</b></span>` : '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Account</small><b>Not signed in</b></span>'}`;
   chip.insertAdjacentHTML('beforeend', '<span class="ac-caret" aria-hidden="true">▾</span>');
+  const windows = d ? [['5-hour window', d.fiveHour], ['This week', d.week]].filter(([, w]) => w).sort((a, b) => leftOf(a[1]) - leftOf(b[1])) : [];
+  const limiting = windows[0];
+  const unavailable = a.gemini ? (!geminiReady() && geminiStatus()) : !a.signedIn && 'Not signed in';
+  const modelLimits = a.gemini ? geminiLimits() : [];
+  const summary = unavailable || (modelLimits.length ? `${plural(modelLimits.length, 'model')} out of quota` : limiting ? `${leftOf(limiting[1])}% left` : a.gemini ? 'Usage details' : u && (u.error || (u.data && !u.checking)) ? 'Usage unavailable' : 'Checking usage…');
+  chip.insertAdjacentHTML('beforeend', `<span class="ac-summary${unavailable || modelLimits.length || (limiting && hot(leftOf(limiting[1]))) ? ' hot' : ''}"${limiting ? ` title="${esc(limiting[0])}${limiting[1].resetsAt ? ` · resets ${esc(when(limiting[1].resetsAt))}` : ''}"` : ''}>${esc(summary)}</span>`);
   chip.title = `${inChat ? 'This chat runs as' : 'New chats open as'} ${a.name}${a.email ? ` (${a.email})` : ''}. ${usageLine(a.id) || ''} Click to see all your accounts.`;
 }
 function updateTitle() {
@@ -60,7 +67,9 @@ function renderNav() {
   const d = focused ? focused.dataset : {};
   const keep = focused && (d.cwd ? `[data-cwd="${CSS.escape(d.cwd)}"][data-view="${d.view || ''}"]` : d.view ? `[data-view="${d.view}"]` : d.navchat ? `[data-navchat="${CSS.escape(d.navchat)}"]` : d.navopen ? `[data-navopen="${CSS.escape(d.navopen)}"]` : d.navprov ? `[data-navprov="${d.navprov}"]` : d.fold ? `[data-fold="${d.fold}"]` : d.group ? `[data-group="${CSS.escape(d.group)}"]` : d.cmdr ? '[data-cmdr]' : focused.id ? `#${focused.id}` : null);
   const caret = focused && focused.id === 'navQ' ? focused.selectionStart : null;
+  const scroll = $('nav').querySelector('.nav-scroll')?.scrollTop || 0;
   $('nav').innerHTML = html;
+  const scroller = $('nav').querySelector('.nav-scroll'); if (scroller) scroller.scrollTop = scroll;
   const el = keep && $('nav').querySelector(keep);
   if (el) { el.focus({ preventScroll: true }); if (caret !== null) el.setSelectionRange(caret, caret); }
 }
@@ -96,22 +105,28 @@ function navHtml() {
   const listed = new Set([...active.flatMap(x => [x.sessionId, x.startedAs]), ...pinnedC.map(([c]) => c.id)].filter(Boolean).map(lowId));
   const recentC = allSessions().filter(([c, p]) => p.cwd !== cmdrSet().cwd && !listed.has(lowId(c.id))).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6);
   const recentHtml = total ? `${fold('recent', voice('Recent'), recentC.length, 'recent')}
-    ${S.navFold.has('recent') ? '' : recentC.map(([c, p]) => `<button class="nav-i nav-chat ${provCls(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(viewing && lowId(c.id) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)} · ${esc(agoL(c.updated))}${provWord(c)}</small></span></button>`).join('')
-      + `<button class="nav-i nav-more" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">${esc(voice('All recent chats'))}</span><span class="count">${total}</span></button>`}` : '';
+    ${S.navFold.has('recent') ? '' : recentC.map(([c, p]) => `<button class="nav-i nav-chat ${provCls(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(viewing && lowId(c.id) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)} · ${esc(agoL(c.updated))}${provWord(c)}</small></span></button>`).join('')}` : '';
   return `
+    <div class="nav-destinations" aria-label="Workspace">
     <button type="button" class="nav-i nav-newchat" data-newchat><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New chat</span></button>
     <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">${esc(voice('The hub'))}</span>${A ? `<span class="tag gilt">${A}<span class="sr"> awaiting you</span></span>` : W ? `<span class="tag">${W}<span class="sr"> at work</span></span>` : ''}</button>
+    ${workNav()}
+    <button type="button" class="nav-i" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">${esc(voice('Recent chats'))}</span><span class="count">${total}</span></button>
+    <button type="button" class="nav-i nav-connections" data-shell-connections><span class="glyph" aria-hidden="true">⚿</span><span class="ni-t">Connections</span></button>
+    </div>
+    <div class="nav-scroll">
+    <div class="nav-tools">
     ${navCommanderHtml()}
     ${routinesNav()}
-    ${workNav()}
     ${aideNav()}
-    ${activeHtml}
+    </div>
     ${pinnedHtml}
+    ${navProjectsHtml()}
+    ${activeHtml}
     ${recentHtml}
     ${navGroupsHtml()}
     ${navFamiliesHtml()}
-    ${navProjectsHtml()}
-    <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p>`;
+    <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p></div>`;
 }
 // Projects: one list, whichever assistant their chats are with. The ones in use lately, then the rest
 // a click away, with a box to filter them. A row of buttons narrows it to one assistant's chats.
@@ -1051,7 +1066,7 @@ function renderHub() {
   // Most used first: what needs you, what's moving, then where to pick up, your plans and your projects.
   $('page').innerHTML = saga
     ? `${slots}${hero}${notes}${sections.await}${sections.work}${sections.today}${sections.races}${sections.queue}${sections.groups}${sections.worlds}${sections.recent}${sections.accounts}${dry}`
-    : `${hero}<nav class="hub-jump" id="hubJump" aria-label="On this page"></nav>${slots}${notes}${sections.await}${sections.work}${sections.queue}${sections.races}${sections.prs}${sections.groups}<div class="hub-cw"><div class="hub-cols">${sections.recent}${sections.accounts}</div></div>${aideHubSection()}${sections.worlds}${sections.today}${dry}`;
+    : `${hero}<nav class="hub-jump" id="hubJump" aria-label="On this page"></nav>${slots}${notes}<div class="wk-hub-entry"><span class="wk-hub-mark" aria-hidden="true">↗</span><div><p>YOUR WORKSPACE</p><h2>Issues, reviews, and the next step.</h2><span>Linear and GitHub, together in one place.</span></div><button class="btn" data-view="work">Open your work <span aria-hidden="true">↗</span></button></div>${sections.await}${sections.work}${sections.queue}${sections.races}${sections.prs}${sections.groups}<div class="hub-cw"><div class="hub-cols">${sections.recent}${sections.accounts}</div></div>${aideHubSection()}${sections.worlds}${sections.today}${dry}`;
   renderHubLists();
   renderAideHub();
   renderLive(true);

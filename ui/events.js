@@ -4,18 +4,18 @@
 /* ---------- clicks ---------- */
 $('nav').addEventListener('click', wrap(async e => {
   const seal = e.target.closest('#seal'); if (seal) return seal.getAttribute('aria-expanded') === 'true' ? closeMenu() : sealMenu(seal);
-  if (e.target.closest('[data-newchat]')) { document.body.classList.remove('nav-open'); return openNewChat(); }
+  if (e.target.closest('[data-newchat]')) { setNavOpen(false); return openNewChat(); }
   const np = e.target.closest('[data-navprov]'); if (np) { S.navProv = np.dataset.navprov; store('navProv', S.navProv); return renderNav(); }
-  const no = e.target.closest('[data-navopen]'); if (no) { document.body.classList.remove('nav-open'); const x = findActivity(no.dataset.navopen); return x ? openActivity(x) : undefined; }
+  const no = e.target.closest('[data-navopen]'); if (no) { setNavOpen(false); const x = findActivity(no.dataset.navopen); return x ? openActivity(x) : undefined; }
   const f = e.target.closest('[data-fold]');
   if (f) { const id = f.dataset.fold; if (S.navFold.has(id)) S.navFold.delete(id); else S.navFold.add(id); store('navFold', JSON.stringify([...S.navFold])); return renderNav(); }
-  const nc = e.target.closest('[data-navchat]'); if (nc) { document.body.classList.remove('nav-open'); return openChatFromNav(nc.dataset.navchat); }
+  const nc = e.target.closest('[data-navchat]'); if (nc) { setNavOpen(false); return openChatFromNav(nc.dataset.navchat); }
   if (e.target.closest('[data-cmdr]')) return openCommander();
   if (e.target.closest('[data-gact="new"]')) return newGroup();
   const ng = e.target.closest('[data-group]'); if (ng) { const g = S.org.groups.find(x => x.id === ng.dataset.group); if (g) return orgDo({ action: 'collapse', id: g.id, collapsed: !g.collapsed }); return undefined; }
   const b = e.target.closest('[data-view]'); if (!b) return;
-  if (b.dataset.view === 'palette') { document.body.classList.remove('nav-open'); return openPalette(); }
-  if (b.dataset.view === 'newproject') { document.body.classList.remove('nav-open'); return openNewProject(); }
+  if (b.dataset.view === 'palette') { setNavOpen(false); return openPalette(); }
+  if (b.dataset.view === 'newproject') { setNavOpen(false); return openNewProject(); }
   go(b.dataset.view, b.dataset.cwd, b.dataset.prov);
 }));
 // The sidebar with the keyboard: Up and Down move through it, Home and End to its ends.
@@ -110,8 +110,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('acctPo
 window.addEventListener('resize', closeAcctPop);
 $('seek').addEventListener('click', () => openPalette());
 $('setupBtn').addEventListener('click', openSetup);
-$('navBack').addEventListener('click', () => { document.body.classList.remove('nav-open'); $('navToggle').setAttribute('aria-expanded', 'false'); });
-$('navToggle').addEventListener('click', () => { const on = !document.body.classList.contains('nav-open'); document.body.classList.toggle('nav-open', on); $('navToggle').setAttribute('aria-expanded', String(on)); });
+$('navBack').addEventListener('click', () => setNavOpen(false, true));
+$('navToggle').addEventListener('click', () => Shell.toggle());
 
 const pageClicks = wrap(async e => {
   const t = e.target;
@@ -246,6 +246,7 @@ $('page').addEventListener('keydown', e => {
 $('page').addEventListener('input', e => { if (e.target.id === 'chatFilter') { S.chatFilter = e.target.value; return renderWorldBody(); } if (e.target.id === 'pcFilter') { S.changeFilter = e.target.value; return renderProjectChanges(); } if (e.target.id === 'projQ') { S.projQ = e.target.value; return renderProjAll(); } if (e.target.id === 'docFilter') { S.docFilter = e.target.value; return filterDocs(); } if (e.target.matches('form.qr textarea')) { e.target.style.height = 'auto'; e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`; } });
 
 document.addEventListener('keydown', e => {
+  if (e.defaultPrevented) return;
   const typing = e.target instanceof Element && e.target.closest('input, select, textarea, [contenteditable]');
   if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); return $('palette').hidden ? openPalette() : closePalette(); }
   if (!$('palette').hidden || document.querySelector('dialog[open]')) return;
@@ -257,7 +258,7 @@ document.addEventListener('keydown', e => {
     if (x) { e.preventDefault(); return openActivity(x); }
   }
   if (e.key === 'Escape') {
-    if (document.body.classList.contains('nav-open')) { document.body.classList.remove('nav-open'); return; }
+    if (document.body.classList.contains('nav-open')) { setNavOpen(false, true); return; }
     if (!$('drawer').hidden && $('menu').hidden) { const id = S.drawerId; closeDrawer(); document.querySelector(`[data-preview="${CSS.escape(id || '')}"]`)?.focus(); }
   }
 });
@@ -308,7 +309,8 @@ function connectLive() {
   // Your home PC (ui/homepc.js): paired, forgotten, or the window moved between the PC and this laptop.
   es.addEventListener('homepc', () => { if (typeof homeBanner === 'function') homeBanner(); });
   es.addEventListener('mcp', e => { try { mcpFlowsChanged(JSON.parse(e.data).flows); } catch { /* invalid event */ } });
-  es.addEventListener('prs', e => { let d = {}; try { d = JSON.parse(e.data); } catch { /* invalid event */ } prsChanged(d).catch(() => {}); if (window.Work) Work.changed(); });
+  es.addEventListener('prs', e => { let d = {}; try { d = JSON.parse(e.data); } catch { /* invalid event */ } prsChanged(d).catch(() => {}); if (typeof Work !== 'undefined') Work.changed(); });
+  es.addEventListener('pr-record', e => { try { Work.recordChanged(JSON.parse(e.data)).catch(() => {}); } catch { /* invalid event */ } });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);
@@ -602,6 +604,7 @@ function openShortcuts() {
       <div class="keys-body">${[
         ['Anywhere', [['Ctrl K', 'Search chats, projects, documents, prompts and actions'], ['N', 'Start a new chat, in any project'], ['Alt 1 … 9', 'Open one of your open chats, in the order they’re listed'], ['?', 'This list'], ['Right-click', 'Options for whatever you clicked (Shift for the browser’s menu)'], ['Esc', 'Close what’s open']]],
         ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['↑', 'In an empty box: what you last sent here'], ['Ctrl F', 'Find in this chat'], ['Ctrl \\', 'Focus mode: just the conversation'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc twice', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between open chats'], ['Alt Shift ↑ ↓', 'Move the chat you’re in up or down the list'], ['End', 'Jump to the latest message']]],
+        ['Your work', [['/', 'Search issues and pull requests'], ['↑ ↓', 'Move through the list (Home and End for its ends)'], ['Enter', 'Open the focused item'], ['Esc', 'Close details and return to the item']]],
         ['In the sidebar', [['↑ ↓', 'Move through it (Home and End for its ends)']]],
         ['Pictures', [['← →', 'Step through a project’s pictures'], ['K', 'Keep the picture you’re on'], ['R', 'Redo it, and say why'], ['U', 'Take the mark back'], ['N', 'Add a note to it'], ['C', 'Side by side with the same name in another folder']]],
         ['Reading a file', [['N', 'Add a note on the passage you’ve selected, or on the whole file'], ['Ctrl F', 'Find in the file']]],
@@ -633,7 +636,7 @@ window.__mobileBack = () => {
   for (const d of document.querySelectorAll('dialog[open]')) { d.close(); return true; }
   if (!$('drawer').hidden) { closeDrawer(); return true; }
   if (window.ChatUI && ChatUI.back()) return true;
-  if (document.body.classList.contains('nav-open')) { document.body.classList.remove('nav-open'); return true; }
+  if (document.body.classList.contains('nav-open')) { setNavOpen(false, true); return true; }
   // Then the page you came from (a project, recent chats, a search), and the hub after that.
   if (goBackPage()) return true;
   if (S.view !== 'hub') { go('hub'); return true; }
@@ -654,5 +657,6 @@ wrap(async () => {
   if (PAGE_ARGS.get('chat')) await ChatUI.open({ sessionId: PAGE_ARGS.get('chat') });
   else if (PAGE_ARGS.get('key')) await ChatUI.openKey(PAGE_ARGS.get('key')).catch(() => {});   // from a notification
   else if (restartReturn()) backFromRestart();
+  else if (!SOLO && !sagaLook() && store('start-page') === 'work') await go('work');
   else maybeTour();
 })();

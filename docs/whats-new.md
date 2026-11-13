@@ -1,4 +1,25 @@
-# Your work: your Linear issues and pull requests on one page, with what's next for each
+# A clearer workspace for issues and pull requests
+
+**Your work** now has a searchable list and board, a **Needs you** filter, repository filters, and a detail panel. Linear still uses your Linear identity, so issues assigned to you include their linked PRs even when a teammate opened them.
+
+- Read an issue, its comments, or a PR’s review threads and failing checks inside the workspace. **Plan this issue** investigates in a read-only chat; **Start & draft PR…** implements it and opens a draft through the repo’s workflow.
+- **Cross-model review** bundles the team’s `cross-model-pr-review` skill. Claude reviews in one persistent session; Codex checks each finding and makes useful fixes. Add your own instructions and optionally choose Claude’s model and effort. It uses CLI defaults otherwise, with no fixed round limit.
+- Find the skill in Ctrl+K or type **/cross-model-pr-review** (also **/cross-review**) in a chat. **/work** opens your workspace. Paste a GitHub PR URL or Linear issue ID into Ctrl+K to open it directly.
+- **Make this my start page** opens Your work when the app starts. Turn it off from the same button. Direct chat links and restored chats still take priority.
+- The PR overview brings together approval, required checks, unresolved threads, and GitHub’s merge state. Requested reviews stay visible while CI runs. Required and optional checks have separate lists; successful optional checks fold away. Latitude’s secrets gate is clearly distinguished from typecheck and build validation.
+- **Files** opens a wider review view with the work queue alongside it. Browse changes by monorepo package, read patches, and switch files with a compact picker on a phone. Branch, base, and revision stay visible. A changed revision asks you to refresh before continuing; merging also checks that the PR still matches the revision you inspected.
+- **Validate changes…** starts a focused package-validation chat without editing tracked source or pushing. **Prepare handoff…** drafts human review notes with revision-specific verification evidence. Choose Claude or Codex from the PR or use Ctrl+K while a PR is selected. These commands follow the repository’s current instructions.
+- **Review journal:** PR actions leave a link to their chat and the revision they started on. Record the checks, findings, and limitations as a result. Earlier revisions keep their own evidence; new commits never inherit an old pass. Notes can be edited or removed and survive app restarts. **Prepare handoff** includes the saved notes with their revisions, distinguishing recorded claims from verified results. Saving a note does not post it to GitHub or Linear.
+- A wider **Review brief** puts the change beside its merge requirements, with numbered shortcuts to the files, feedback, and journal. Details remember your preferred width. A compact heading and tabs stay in view as you read, and opening a tab brings its content forward.
+- **Pull requests** now opens the same workspace from the hub and Ctrl+K. Follow the linked Linear issue and return to the PR without losing your place.
+- PRs are only labeled **Ready to merge** when GitHub reports an eligible merge state, the PR is approved, threads are resolved, and required checks are satisfied. Incomplete check and thread summaries cannot claim readiness.
+- A compact summary strip, ruled lists, and a details column put more work in view. Use **↑ / ↓** to move between rows, **Enter** to open one, and the details panel’s previous/next buttons to work through the filtered queue.
+- Refined default-theme navigation, typography, dialogs, and chat controls, with precise corners and clearer selection markers. Light mode, phone layouts, and interface sizing are supported. Imperial and Rebel keep their own appearance.
+- A shared workspace frame keeps **Your work**, **Connections**, and **New chat** reachable above scrolling projects and conversations. The header names the current page; account details open on demand, with the limiting allowance still visible. Hide the desktop sidebar for more room and restore it from the same header control. This preference stays on the device.
+- Chats show where **Back** will take you, expose **Files & output**, and label **Send**, **Queue**, and **Stop** in words. Returning to the workspace leaves the conversation running. On phones, navigation closes with consistent keyboard focus and state.
+- **Search and commands** puts actions for the current chat or selected PR first, followed by destinations. Tab stays inside the command palette, and Escape returns to the control that opened it.
+
+## Earlier in 6.8.1: Your work, your Linear issues and pull requests on one page, with what's next for each
 
 **Your work, in the sidebar (and Ctrl+K → Your work).** One page to work from: the issues assigned to you in Linear and your pull requests on GitHub, in columns.
 

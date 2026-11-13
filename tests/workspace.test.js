@@ -30,9 +30,35 @@ async function startServer() {
     return { status: r.status, json: await r.json().catch(() => null) };
   };
   const stop = async () => { await call('/api/quit', {}).catch(() => {}); await new Promise(r => { proc.on('exit', r); setTimeout(() => { proc.kill(); r(); }, 3000); }); };
-  return { call, stop, base, token, html };
+  return { call, stop, base, token, html, dataDir };
 }
 const put = (root, rel, data = PNG) => { const f = path.join(root, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, data); return f; };
+
+test('workspace: bundled review assets and new routes reach the real server', async () => {
+  const w = await startServer();
+  try {
+    for (const asset of ['/ui/workspace.css', '/ui/work-model.js', '/ui/work-detail.js', '/ui/work-record.js', '/ui/pr-review.js']) {
+      const r = await fetch(w.base + asset); assert.equal(r.status, 200); assert.ok((await r.text()).length > 100);
+    }
+    const invalid = await w.call('/api/prs/act', { action: 'cross-review', url: 'https://elsewhere.test/a/b/pull/1' });
+    assert.equal(invalid.status, 400); assert.match(invalid.json.error, /GitHub pull request URL/);
+    const instructions = await w.call('/api/prs/act', { action: 'cross-review', url: 'https://github.com/a/b/pull/1', instructions: 'x'.repeat(6001) });
+    assert.equal(instructions.status, 400); assert.match(instructions.json.error, /instructions/);
+    const issue = await w.call('/api/linear/issue?id=not-an-issue');
+    assert.equal(issue.status, 400); assert.match(issue.json.error, /Linear issue/);
+    const files = await w.call('/api/prs/files?repo=a/b&n=1&head=invalid');
+    assert.equal(files.status, 400); assert.match(files.json.error, /revision/i);
+    const merge = await w.call('/api/prs/merge', { repo: 'a/b', n: 1 });
+    assert.equal(merge.status, 400); assert.match(merge.json.error, /revision/i);
+    const record = require('../lib/pr-records').createPrRecords({ dataDir: w.dataDir }).started({ repo: 'a/b', number: 1, headSha: 'a'.repeat(40) }, 'validate', { key: 'stand-in', provider: 'codex' });
+    const saved = await w.call('/api/prs/record', { repo: 'a/b', n: 1, id: record.id, head: record.head, kind: 'validate', outcome: 'notes', notes: 'Real route check, with no model or GitHub writes.' });
+    assert.equal(saved.status, 200); assert.equal(saved.json.entry.head, record.head);
+    const listed = await w.call('/api/prs/record?repo=a/b&n=1');
+    assert.equal(listed.json.entries[0].notes, saved.json.entry.notes);
+    assert.equal((await w.call('/api/prs/record-remove', { repo: 'a/b', n: 1, id: record.id })).status, 200);
+    assert.equal((await w.call('/api/prs/record?repo=a/b&n=1')).json.entries.length, 0);
+  } finally { await w.stop(); }
+});
 
 test('workspace: every address the page asks for is there, and can be reached', () => {
   const read = f => fs.readFileSync(path.join(APP, f), 'utf8');

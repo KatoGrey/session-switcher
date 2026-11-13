@@ -1,0 +1,173 @@
+/* A shared frame: location, commands, then account and activity. Theme colors stay authoritative. */
+.shell-context,.ac-summary,.rail-destinations,.c-return,.c-return-sep,.c-output>span,.sidebar-ico{display:none}
+.hub2:not([data-family]){--nav-w:252px}
+.hub2:not([data-family]) .bar{gap:10px;padding:0 16px 0 12px}
+.hub2:not([data-family]) .navtoggle{display:inline-grid;flex:none;order:0;border-radius:3px}
+.hub2:not([data-family]) .navtoggle .menu-ico{display:none}
+.hub2:not([data-family]) .navtoggle .sidebar-ico{display:block}
+.hub2:not([data-family]) .brand{order:1;margin:0 3px 0 0;padding:0;min-width:28px}
+.hub2:not([data-family]) .brand .wordmark{display:none}
+.hub2:not([data-family]) .brand .sigil{width:26px;height:26px}
+.hub2:not([data-family]) .shell-context{order:2;display:flex;flex-direction:column;gap:3px;min-width:80px;max-width:240px}
+.hub2:not([data-family]) .shell-context span{font:500 11px/1.2 var(--f-ui);letter-spacing:.02em;color:var(--ash)}
+.hub2:not([data-family]) .shell-context b{font:550 14px/1.25 var(--f-ui);color:var(--parch);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hub2:not([data-family]) .bar>.spacer{order:3;flex:1;min-width:0}
+.hub2:not([data-family]) .seek{order:4;gap:12px;height:34px;min-width:210px;text-align:left;padding:0 10px}
+.hub2:not([data-family]) .seek .s-t{display:block;font:400 12px/1 var(--f-ui);flex:1}
+.hub2:not([data-family]) .seek .kbd{margin-left:8px;border-radius:2px}
+.hub2:not([data-family]) .newchat{order:5;height:34px;padding:0 12px;width:auto;font-size:12px}
+.hub2:not([data-family]) .newchat span{display:inline}
+.hub2:not([data-family]) .pulse{order:6;height:34px;padding:0 10px;font:450 12px/1 var(--f-ui);background:none;border-color:transparent}
+.hub2:not([data-family]) .pulse .p-label{display:inline}
+.hub2:not([data-family]) .pulse:not(.needs):has(.ash-dot){display:none}
+.hub2:not([data-family]) .usechip{order:7;position:relative;height:36px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 9px;min-width:116px;max-width:172px;padding:4px 10px 4px 12px;text-align:left;border:0;border-left:1px solid var(--seam-2);border-radius:0;background:none}
+.hub2:not([data-family]) .usechip[hidden]{display:none}
+.hub2:not([data-family]) .usechip:hover{background:var(--vellum)}
+.hub2:not([data-family]) .usechip :is(.ac-ring,.ac-sep,.ac-win,.ac-who small){display:none}
+.hub2:not([data-family]) .ac-who{display:flex;grid-column:1;grid-row:1;min-width:0}
+.hub2:not([data-family]) .ac-who b{font:550 12px/1.2 var(--f-ui);max-width:100%;text-overflow:ellipsis;overflow:hidden}
+.hub2:not([data-family]) .ac-summary{grid-column:1;grid-row:2;display:block;font:400 11px/1.1 var(--f-ui);color:var(--ash);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hub2:not([data-family]) .ac-summary.hot{color:var(--ember-soft);font-weight:600}
+.hub2:not([data-family]) .ac-caret{grid-column:2;grid-row:1 / 3;color:var(--ash);font-size:11px}
+.hub2:not([data-family]) .updpill{order:8}
+.hub2:not([data-family]) .setupbtn{order:9;border-radius:3px}
+.hub2:not([data-family]) .bar>.icon{height:34px;width:34px}
+
+/* Destinations do not move when a long project or chat list scrolls. */
+.hub2:not([data-family]) .nav{display:flex;flex-direction:column;padding:0 0 38px;overflow:hidden;scrollbar-gutter:auto}
+.hub2:not([data-family]) .nav-destinations{flex:none;padding:15px 12px 12px;border-bottom:1px solid var(--seam)}
+.hub2:not([data-family]) .nav-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:8px 12px 20px;scrollbar-gutter:stable}
+.hub2:not([data-family]) .nav-tools{padding-bottom:2px}
+.hub2:not([data-family]) .nav-tools .nav-i{color:var(--ash);font-size:12px;min-height:34px}
+.hub2:not([data-family]) .nav-destinations .nav-i{font-size:13px;min-height:38px}
+.hub2:not([data-family]) .nav-i .glyph{color:var(--ash);font-size:14px}
+.hub2:not([data-family]) .nav-h{padding-left:10px;letter-spacing:.09em;margin-top:14px}
+.hub2:not([data-family]) .nav-chat .nc-t{font-size:13px;font-weight:450}
+.hub2:not([data-family]) .nav-chat .ni-t small{font-size:11px}
+.hub2:not([data-family]) .nav-foot{opacity:1;color:var(--ash);padding:8px 10px;margin-top:14px}
+.hub2:not([data-family]) .nav-newchat{display:flex;margin:0 0 9px;background:var(--vellum-3);border-color:var(--seam)}
+.hub2:not([data-family]) .rail-top{padding:15px 12px 12px;border-bottom:1px solid var(--seam)}
+.hub2:not([data-family]) .rail-back{font:550 13px/1.3 var(--f-ui);padding:10px;border:0;border-radius:2px;min-height:38px}
+.hub2:not([data-family]) .rail-back .glyph{color:var(--ash)}
+.hub2:not([data-family]) .rail-destinations{display:flex;gap:8px;padding:0 4px}
+.hub2:not([data-family]) .rail-destinations button{display:flex;align-items:center;gap:12px;flex:1;justify-content:space-between;border:0;border-radius:2px;background:none;color:var(--ash);font:450 11px/1.4 var(--f-ui);padding:7px 6px;text-align:left}
+.hub2:not([data-family]) .rail-destinations button:hover{color:var(--parch);background:var(--vellum-2)}
+.hub2:not([data-family]) .rail-keys{font:400 11px/1.6 var(--f-ui);color:var(--ash)}
+.hub2:not([data-family]) .ri[aria-current="true"]{border-color:transparent;background:rgb(var(--c-cf8274) / .1);box-shadow:inset 2px 0 var(--ember)}
+.hub2:not([data-family]) .ri-n{font:550 13px/1.4 var(--f-ui)}
+.hub2:not([data-family]) .ri-s{font:400 11px/1.4 var(--f-ui)}
+.hub2:not([data-family]) .ri[aria-current="true"] .ri-s{color:var(--parch-2)}
+@media(min-width:981px){
+  .hub2:not([data-family]) .nav-newchat{display:none}
+  .hub2:not([data-family]) body:not(.pane):not(.solo) .chat{grid-template-columns:var(--nav-w) minmax(0,1fr) 300px}
+  .hub2:not([data-family]) body:not(.pane):not(.solo) .chat.no-ledger{grid-template-columns:var(--nav-w) minmax(0,1fr)}
+  .hub2:not([data-family]) body:not(.pane):not(.solo) .chat.split{grid-template-columns:var(--nav-w) minmax(0,var(--sa,1fr)) 7px minmax(0,var(--sb,1fr))}
+  .hub2:not([data-family]) .nav-collapsed .shell{grid-template-columns:minmax(0,1fr)}
+  .hub2:not([data-family]) .nav-collapsed #nav{display:none}
+  .hub2:not([data-family]) .nav-collapsed:not(.pane):not(.solo) .chat{grid-template-columns:0 minmax(0,1fr) 300px}
+  .hub2:not([data-family]) .nav-collapsed:not(.pane):not(.solo) .chat.no-ledger{grid-template-columns:0 minmax(0,1fr)}
+  .hub2:not([data-family]) .nav-collapsed:not(.pane):not(.solo) .chat.split{grid-template-columns:0 minmax(0,var(--sa,1fr)) 7px minmax(0,var(--sb,1fr))}
+  .hub2:not([data-family]) .nav-collapsed:not(.pane):not(.solo) .chat>.rail{visibility:hidden;overflow:hidden}
+  .hub2:not([data-family]) .nav-collapsed .livepill{width:auto;left:12px;bottom:10px;border:1px solid var(--seam);border-radius:3px;height:28px;padding:0 9px}
+}
+@media(min-width:981px) and (max-width:1320px){
+  .hub2:not([data-family]) body:not(.pane):not(.solo) .chat{grid-template-columns:var(--nav-w) minmax(0,1fr)}
+  .hub2:not([data-family]) .nav-collapsed:not(.pane):not(.solo) .chat{grid-template-columns:0 minmax(0,1fr)}
+}
+
+/* Context is readable in the conversation as well as the workspace. */
+.hub2:not([data-family]) .c-head{gap:10px 14px;padding:14px 20px;background:var(--abyss);min-height:84px}
+.hub2:not([data-family]) .c-return{display:inline-flex;align-items:center;gap:7px;max-width:200px;font:450 11px/1.3 var(--f-ui);color:var(--ash);background:none;border:0;border-radius:2px;padding:4px 0;text-transform:none;letter-spacing:0;min-height:24px}
+.hub2:not([data-family]) .c-return>span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hub2:not([data-family]) .c-return:hover{color:var(--parch)}
+.hub2:not([data-family]) .c-return-sep{display:inline;margin:0 10px;color:var(--ash)}
+.hub2:not([data-family]) :is(body.pane,body.solo) :is(.c-return,.c-return-sep){display:none}
+.hub2:not([data-family]) .c-title{font-size:22px;line-height:1.25;margin-top:4px;letter-spacing:-.035em}
+.hub2:not([data-family]) .c-acct{border-radius:2px;font-size:12px;padding:4px 8px}
+.hub2:not([data-family]) .c-acct .ca-n{font:550 12px/1.2 var(--f-ui);letter-spacing:0}
+.hub2:not([data-family]) .c-state{font:450 11px/1.3 var(--f-ui);letter-spacing:0;text-transform:none}
+.hub2:not([data-family]) .c-mode{font:450 11px/1.3 var(--f-ui);border-radius:2px;min-height:28px}
+.hub2:not([data-family]) .c-icons>.icon{border-radius:3px}
+.hub2:not([data-family]) .c-icons .c-output{width:auto;padding:0 9px;display:inline-flex;align-items:center;gap:7px}
+.hub2:not([data-family]) .c-output>span{display:inline;font:450 11px/1.3 var(--f-ui);white-space:nowrap}
+.hub2:not([data-family]) .ledger{background:var(--vellum);font-family:var(--f-ui)}
+.hub2:not([data-family]) .lg-details{margin-top:22px;border-top:1px solid var(--seam);padding-top:8px}
+.hub2:not([data-family]) .lg-details summary{padding:9px 0;min-height:32px;font:500 12px/1.4 var(--f-ui);color:var(--ash);cursor:pointer}
+.hub2:not([data-family]) .lg-details summary:hover{color:var(--parch)}
+.hub2:not([data-family]) .lg-details .lg-h{display:none}
+/* Interface zoom uses an effective viewport narrower than the browser media query. */
+.hub2.ui-narrow:not([data-family]) body:not(.pane):not(.solo) .chat:not(.split){grid-template-columns:var(--nav-w) minmax(0,1fr)}
+.hub2.ui-narrow:not([data-family]) .nav-collapsed:not(.pane):not(.solo) .chat:not(.split){grid-template-columns:0 minmax(0,1fr)}
+
+/* Message actions use words. Companion keeps its compact screen-capture row. */
+.hub2:not([data-family]) body:not(.aide-panel) .c-compose{padding:8px 20px 12px}
+.hub2:not([data-family]) body:not(.aide-panel) .c-box{border:1px solid var(--seam-2);border-radius:3px;padding-bottom:6px;background:var(--vellum)}
+.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-row{flex-wrap:wrap;gap:5px 8px;padding:0 10px}
+.hub2:not([data-family]) body:not(.aide-panel) .c-row .c-status{order:-4;flex:1 0 calc(100% - 32px);font:400 11px/1.5 var(--f-ui);color:var(--ash);min-height:17px}
+.hub2:not([data-family]) body:not(.aide-panel) .c-row .c-status:empty{display:none}
+.hub2:not([data-family]) body:not(.aide-panel) .c-row .typing{order:-5}
+.hub2:not([data-family]) body:not(.aide-panel) .c-row .c-ib{border-radius:3px;width:auto;height:34px;padding:0 8px;gap:6px;font-size:11px;order:0}
+.hub2:not([data-family]) body:not(.aide-panel) .c-row .c-ib span{display:inline}
+.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew .crew{border-radius:3px}
+.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew :is(.crew-n,.crew-m){font-family:var(--f-ui);font-size:12px;letter-spacing:0}
+.hub2:not([data-family]) .ledger :is(.lg-h,.lg-about dt){font:550 11px/1.5 var(--f-ui);letter-spacing:.04em;color:var(--ash)}
+.hub2:not([data-family]) .ledger :is(.lg-about dd,.lg-list,.lg-use b,.lg-use small){font-family:var(--f-ui)}
+.hub2:not([data-family]) body:not(.aide-panel) :is(#cSend,#cStop){width:auto;min-width:68px;height:34px;padding:0 10px;border-radius:3px;gap:7px;font:550 12px/1 var(--f-ui)}
+.hub2:not([data-family]) body:not(.aide-panel) :is(#cSend,#cStop) .ct{position:static;width:auto;height:auto;padding:0;margin:0;overflow:visible;clip:auto;clip-path:none;white-space:nowrap}
+.hub2:not([data-family]) body:not(.aide-panel) #cSend{background:var(--parch);color:var(--abyss);border-color:var(--parch)}
+.hub2:not([data-family]) body:not(.aide-panel) #cSend.queue{background:var(--vellum-3);color:var(--parch);border:1px solid var(--seam-2)}
+.hub2:not([data-family]) body:not(.aide-panel) .c-hint{display:block;font:400 11px/1.4 var(--f-ui);letter-spacing:0;color:var(--ash);margin:7px 4px 0}
+@container cmain (max-width:850px){
+  .hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew{flex:1 0 100%;order:-3;margin-bottom:4px}
+  .hub2:not([data-family]) .c-output>span{display:none}
+}
+@container cmain (max-width:520px){
+  .hub2:not([data-family]) .c-head{padding:10px 12px;gap:6px 8px}
+  .hub2:not([data-family]) .c-title{font-size:18px}
+  .hub2:not([data-family]) .c-return{max-width:140px}
+  .hub2:not([data-family]) .c-return-sep{margin:0 6px}
+  .hub2:not([data-family]) .c-return-sep{display:none}
+  .hub2:not([data-family]) .c-return{display:flex;max-width:100%;margin-bottom:3px}
+  .hub2:not([data-family]) body:not(.aide-panel) .c-compose{padding:6px 10px 10px}
+  .hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-row{padding:0 8px;gap:4px}
+  .hub2:not([data-family]) body:not(.aide-panel) .c-row .c-ib{height:40px;min-width:40px;padding:0 8px}
+  .hub2:not([data-family]) body:not(.aide-panel) .c-row .c-ib span{display:none}
+  .hub2:not([data-family]) body:not(.aide-panel) .c-row .c-ib[data-c="prompts"]{display:inline-flex}
+  .hub2:not([data-family]) body:not(.aide-panel) :is(#cSend,#cStop){height:40px;min-width:64px}
+  .hub2:not([data-family]) body:not(.aide-panel) .c-hint{display:none}
+}
+
+/* Search is a command surface, with context first and destinations always near the top. */
+.hub2:not([data-family]) .pal-box{border-radius:4px;background:var(--vellum);border-color:var(--seam-2);font-family:var(--f-ui)}
+.hub2:not([data-family]) .pal-in{padding:19px 22px;border-bottom:1px solid var(--seam-2)}
+.hub2:not([data-family]) .pal-in input{font:450 16px/1.5 var(--f-ui)}
+.hub2:not([data-family]) .pal-g{font:600 11px/1.4 var(--f-ui);letter-spacing:.08em;color:var(--ash);padding:18px 20px 8px}
+.hub2:not([data-family]) .pal-i{border-radius:2px;min-height:40px;padding:9px 16px}
+.hub2:not([data-family]) .pi-t{font:450 13px/1.4 var(--f-ui)}
+.hub2:not([data-family]) .pi-s{font:400 11px/1.4 var(--f-ui);color:var(--ash)}
+.hub2:not([data-family]) .pal-foot{font:400 11px/1.4 var(--f-ui);color:var(--ash);border-top:1px solid var(--seam)}
+@media(max-width:1200px){
+  .hub2:not([data-family]) .seek{min-width:0}
+  .hub2:not([data-family]) .seek .s-t{display:none}
+  .hub2:not([data-family]) .pulse .p-label{display:none}
+  .hub2:not([data-family]) .shell-context{max-width:180px}
+}
+@media(max-width:760px){
+  .hub2:not([data-family]) .bar{gap:6px;padding:0 8px}
+  .hub2:not([data-family]) .brand,.hub2:not([data-family]) .bar>.newchat{display:none}
+  .hub2:not([data-family]) .shell-context{flex:1;max-width:none;min-width:0}
+  .hub2:not([data-family]) .shell-context span{font-size:11px}
+  .hub2:not([data-family]) .shell-context b{font-size:13px}
+  .hub2:not([data-family]) .bar>.spacer{display:none}
+  .hub2:not([data-family]) .seek{min-width:40px;height:40px;padding:0 11px;gap:0}
+  .hub2:not([data-family]) .seek .kbd{display:none}
+  .hub2:not([data-family]) .usechip{min-width:0;max-width:110px;padding:4px 7px}
+  .hub2:not([data-family]) .ac-caret{display:none}
+  .hub2:not([data-family]) .bar>.icon{height:40px;width:40px;flex:none}
+  .hub2:not([data-family]) .pulse{gap:4px;padding:0 4px}
+  .hub2:not([data-family]) .pulse .sep{display:none}
+  .hub2:not([data-family]) .nav{padding-bottom:12px}
+  .hub2:not([data-family]) .nav-destinations .nav-i{min-height:44px}
+  .hub2:not([data-family]) .pal-i{min-height:44px;align-items:flex-start}
+  .hub2:not([data-family]) .pi-s{max-width:40%}
+}

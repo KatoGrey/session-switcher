@@ -265,9 +265,10 @@ function go(view, folder, prov) {
   S.view = view; if (folder !== undefined) S.folder = folder;
   if (view === 'folder') S.prov = ['claude', 'codex', 'gemini', 'openclaw'].includes(prov) ? prov : null;
   const run = () => {
-    document.body.classList.remove('nav-open');
+    setNavOpen(false);
     if (window.ChatUI && ChatUI.isOpen()) ChatUI.close(true);
-    renderNav(); renderPage(); window.scrollTo({ top: 0 });
+    renderNav(); renderPage(); renderBar(); window.scrollTo({ top: 0 });
+    $('page').focus({ preventScroll: true });
     // Said to a screen reader, as a new page would be.
     announce(view === 'hub' ? voice('The hub') : view === 'recent' ? voice('Recent chats') : view === 'routines' ? voice('Routines') : view === 'work' ? voice('Your work') : view === 'folder' ? (S.projects.find(p => p.cwd === S.folder) || {}).name || '' : '');
     // Coming back from a project: its banner settles back into its card.

@@ -415,12 +415,13 @@ function growFrom(chat) {
 }
 function show() {
   const chat = $c('chat'), opening = chat.hidden;
+  if (opening && !PANE && !SOLO) Shell.captureReturn();
   chat.hidden = false;
   chat.classList.remove('show-rail', 'show-ledger');
   let noLedger = false; try { noLedger = localStorage.getItem('ledger') === 'off'; } catch { /* default */ }
   chat.classList.toggle('no-ledger', noLedger);
   document.body.classList.add('chat-open');
-  document.body.classList.remove('nav-open');
+  setNavOpen(false);
   if (!$c('drawer').hidden) $c('drawer').hidden = true;
   renderRail();
   if (typeof renderKeep === 'function') renderKeep();   // the line over the chat is this chat's
@@ -639,7 +640,7 @@ function closeChatView(silent) {
   document.body.classList.remove('chat-open');
   C.key = null; C.watch = null;
   updateTitle(); renderBar();
-  if (!silent) loadSessions().then(() => { renderSide(); renderMain(); }).catch(() => {});
+  if (!silent) loadSessions().then(() => { renderSide(); renderMain(); Shell.restoreReturn(); }).catch(() => { Shell.restoreReturn(); });
 }
 
 /* ---------- selecting ---------- */
@@ -667,6 +668,7 @@ document.addEventListener('selectionchange', onSelection);
 // toggles it; it's remembered on this device.
 function toggleFocus(on = !$c('chat').classList.contains('focus')) {
   $c('chat').classList.toggle('focus', on);
+  Shell.sync();
   store('chat-focus', on ? '1' : '');
   toast(on ? 'Focus mode: just the conversation. Ctrl+\\ brings the rest back.' : 'The side list and panel are back.', 2500);
 }

@@ -25,6 +25,11 @@ function projectNamed(words) {
 function sayItems(q) {
   const t = String(q || '').trim(), out = [];
   let m;
+  if ((m = t.match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/([1-9]\d{0,8})(?:[/?#].*)?$/i))) {
+    out.push({ glyph: '⇄', t: `Open pull request #${m[2]}`, s: m[1] + ' · checks, feedback, and actions', run: () => openWorkPr(t) });
+    out.push({ glyph: '↗', t: `Cross-model review #${m[2]}`, s: 'Claude reviews; Codex weighs the findings', run: () => openCrossReview({ url: t }) });
+  }
+  if (/^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/i.test(t)) out.push({ glyph: '◌', t: `Open Linear issue ${t.toUpperCase()}`, s: 'Read the issue, plan it, or start work', run: async () => { await go('work'); await Work.openIssue(t.toUpperCase()); } });
   if ((m = t.match(/^(?:start\s+|new\s+|open\s+)?(?:an?\s+)?(claude|codex|gemini)?\s*chat\s+(?:in|for|on)\s+(.+?)(?:\s*(?::|\bto\b|\babout\b|\bthat\b|\bwhich\b)\s+(.+))?$/i))) {
     const p = projectNamed(m[2]), prov = (m[1] || 'claude').toLowerCase();
     const ready = prov === 'claude' ? canLaunch(current()) : prov === 'gemini' ? geminiReady() : codexReady();
@@ -43,6 +48,7 @@ function sayItems(q) {
 function palItems(q) {
   const out = [];
   const add = (g, list) => { if (list.length) out.push({ g }, ...list); };
+  const workActs = typeof Work !== 'undefined' ? Work.commands() : [];
   const run = S.activity.filter(x => !x.parentKey).map(x => ({ glyph: NEEDS.has(statusOf(x)) || statusOf(x) === 'reply' ? '✦' : '◉', t: x.title || 'New chat', s: `${{ approve: 'needs your OK', question: 'has a question', 'terminal-wait': 'waiting in its terminal', reply: 'your turn', working: 'at work', quiet: 'open', ended: 'stopped' }[statusOf(x)]}${x.folder ? ` · ${x.folder}` : ''}`, run: () => openActivity(x), text: `${x.title} ${x.folder}` }));
   const acts = [
     { glyph: '+', t: 'New chat', s: 'in any project, with any of them', run: () => openNewChat(), alias: 'start chat new claude codex gemini' },
@@ -53,6 +59,7 @@ function palItems(q) {
     { glyph: '❡', t: 'Edit prompts', run: () => openPromptEditor(), alias: 'prompts saved slash templates' },
     { glyph: '✦', t: 'Go to the hub', run: () => go('hub') },
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
+    ...(Shell.canCollapse() ? [{ glyph: '◫', t: document.body.classList.contains('nav-collapsed') ? 'Show sidebar' : 'Hide sidebar', s: 'more room for your current work', run: () => Shell.toggle(), alias: 'focus sidebar collapse expand navigation' }] : []),
     { glyph: '⟳', t: 'Routines', s: 'chats that start on a schedule or when something new turns up', run: () => go('routines'), alias: 'schedule watch automation cron' },
     { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health' },
     { glyph: '✧', t: 'Take the tour', s: 'a minute on what’s where', run: () => startTour(), alias: 'tour help guide intro getting started' },
@@ -65,6 +72,9 @@ function palItems(q) {
     { glyph: '⚿', t: 'Connections', s: 'GitHub, and tools like Latitude’s, for every Claude and Codex account', run: () => openConnections(paletteHere()), alias: 'mcp sign in login oauth authenticate connect latitude tools accounts github gh' },
     { glyph: '⇄', t: 'Your work', s: 'your Linear issues and pull requests, from to do to merged, with what’s next for each', run: () => go('work'), alias: 'work board dashboard linear issues assigned tickets pr prs pull requests kanban todo' },
     { glyph: '⇄', t: 'Pull requests', s: 'yours, to review and assigned to you; review or fix one with Claude or Codex', run: () => openPrs(), alias: 'pr prs pull request github review fix comments checks ci assigned' },
+    { glyph: '⇄', t: 'Cross-model PR review', s: 'Claude reviews, Codex weighs the findings and makes useful fixes', run: () => openCrossReview(), alias: 'cross-model-pr-review cross review claude fable opus codex skill' },
+    { glyph: '↗', t: 'Open a pull request by URL', s: 'inspect any PR in your workspace', run: () => openWorkPr(), alias: 'github pr link url paste' },
+    ...workActs,
     ...(window.ChatUI && ChatUI.isOpen() && !C.watch && C.state !== 'ended' && (C.provider === 'claude' || C.provider === 'codex') ? [{ glyph: '⇄', t: 'Make a pull request from this chat', s: 'its work on a branch, pushed, the PR opened the way the repo asks', run: () => makePrFromChat('main'), alias: 'pr pull request push branch open create' }] : []),
     { glyph: '◐', t: 'Appearance', s: 'themes, fonts, light or dark, text and interface size', run: () => openSetup('look'), alias: 'font fonts typeface' },
     { glyph: '?', t: 'Keyboard shortcuts', run: () => openShortcuts(), alias: 'keys hotkeys help' },
@@ -106,24 +116,32 @@ function palItems(q) {
     text: `${it.label} ${it.hint || ''} ${/done/i.test(it.label) ? 'done archive finish tidy' : /side question/i.test(it.label) ? 'btw aside quick question' : /Summarize/.test(it.label) ? 'compact summarize context' : /Stop/.test(it.label) ? 'stop end quit chat' : /Find/.test(it.label) ? 'find search' : ''}`,
   })) : [];
   if (!q) {
-    add('This chat', chatActs);
+    const destinations = new Set(['New chat', 'Go to the hub', 'Your work', 'Recent chats', 'Connections', 'Routines', 'Setup and health']);
+    if (inChat) add('This chat', [
+      { glyph: '←', t: `Back to ${Shell.location()}`, s: 'leave the conversation running', run: () => document.querySelector('#chat [data-c="back"]').click() },
+      { glyph: '▤', t: 'Files and output', s: 'artifacts, files, commands and tasks', run: () => document.querySelector('#chat [data-c="ledger"]').click() },
+      ...chatActs.filter(x => /Find in|Make a pull request/.test(x.t)),
+    ]);
+    else if (S.view === 'work') add('Selected work', acts.filter(x => workActs.some(w => w.t === x.t)));
+    add('Go to', acts.filter(x => destinations.has(x.t)));
     add('Active now', run);
     if (here) add(`Start ${here.name} with a prompt`, prompts.slice(0, S.prompts.length));
     add('Recent chats', chats.slice(0, 6));
     add('Projects', folders.slice(0, 6));
-    add('Actions', acts);
+    add('More chat commands', chatActs.filter(x => !/Find in|Make a pull request/.test(x.t)));
+    add('Actions', acts.filter(x => !destinations.has(x.t) && (inChat || S.view !== 'work' || !workActs.some(w => w.t === x.t))));
     return out;
   }
   const rank = list => list.map(x => ({ x, s: score(x.text, q) })).filter(r => r.s >= 0).sort((a, b) => b.s - a.s).map(r => r.x);
   add('Do it', sayItems(q));
+  add('This chat', rank(chatActs).slice(0, 3));
+  add('Actions', rank(acts).slice(0, 5));
   add('Active now', rank(run).slice(0, 5));
   add('Chats', rank(chats).slice(0, 8));
   add('Projects', rank(folders).slice(0, 5));
   add('Review pictures', rank(boards).slice(0, 3));
   add('Documents', rank(docs).slice(0, 5));
   add('Start with a prompt', rank(prompts).slice(0, 4));
-  add('Actions', rank(acts).slice(0, 5));
-  add('This chat', rank(chatActs).slice(0, 3));
   add('Switch model in this chat', rank(models).slice(0, 6));
   add('Start a chat', rank([...claudeNew, ...cxNew]).slice(0, 4));
   add('Pin', rank(pinItems).slice(0, 3));
@@ -151,18 +169,25 @@ function openPalette(prefill = '') {
   $('palette').hidden = false; $('palQ').value = prefill; Pal.sel = 0; renderPal(); $('palQ').focus();
 }
 function closePalette() {
+  if ($('palette').hidden) return;
   $('palette').hidden = true;
-  if (palReturn && document.contains(palReturn) && palReturn.focus) palReturn.focus({ preventScroll: true });
+  if (palReturn && document.contains(palReturn) && palReturn.focus && !palReturn.closest('[inert]')) palReturn.focus({ preventScroll: true });
+  else (window.ChatUI?.isOpen() ? $('cText') : $('seek')).focus({ preventScroll: true });
   palReturn = null;
 }
 function pickPal(n) { const x = Pal.items.filter(i => !i.g)[n]; if (!x) return; closePalette(); wrap(x.run)(); }
 $('palQ').addEventListener('input', () => { Pal.sel = 0; renderPal(); });
 $('palQ').addEventListener('keydown', e => {
+  // The input owns selection through aria-activedescendant; listbox options are not tab stops.
+  if (e.key === 'Tab') { e.preventDefault(); return; }
   const count = Pal.items.filter(x => !x.g).length;
   if (e.key === 'ArrowDown') { Pal.sel = (Pal.sel + 1) % Math.max(1, count); renderPal(); e.preventDefault(); }
   else if (e.key === 'ArrowUp') { Pal.sel = (Pal.sel - 1 + count) % Math.max(1, count); renderPal(); e.preventDefault(); }
   else if (e.key === 'Enter') { e.preventDefault(); pickPal(Pal.sel); }
   else if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
+});
+document.addEventListener('focusin', e => {
+  if (!$('palette').hidden && !$('palette').contains(e.target)) $('palQ').focus({ preventScroll: true });
 });
 $('palList').addEventListener('mousemove', e => { const i = e.target.closest('.pal-i'); if (i && +i.dataset.n !== Pal.sel) { Pal.sel = +i.dataset.n; renderPal(); } });
 $('palList').addEventListener('click', e => { const i = e.target.closest('.pal-i'); if (i) pickPal(+i.dataset.n); });

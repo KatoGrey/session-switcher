@@ -38,7 +38,7 @@ process.on('SIGINT', () => { for (const x of running) try { x.close ? x.close() 
 
 const { launch, sleep } = require('./browser');
 const demo = require('./demo');
-const suites = [...require('./ui'), ...require('./hub.ui'), ...require('./project-art.ui'), ...require('./theme-studio.ui')];
+const suites = [...require('./ui'), ...require('./hub.ui'), ...require('./project-art.ui'), ...require('./theme-studio.ui'), ...require('./work.ui'), ...require('./shell.ui')];
 
 const APP = path.join(__dirname, '..');
 const only = process.argv.slice(2);

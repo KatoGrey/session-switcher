@@ -190,6 +190,7 @@ function syncSend() {
   $c('cTyping').hidden = !ts.some(x => x.state === 'busy');
   $c('cTyping').classList.toggle('codex', (C.target === 'comp' && duo()) || C.provider === 'codex');
   $c('cSend').classList.toggle('queue', busy); $c('cSend').setAttribute('aria-label', busy ? 'Queue' : 'Send');
+  $c('cSend').querySelector('.ct').textContent = busy ? 'Queue' : 'Send';
   $c('cSend').title = busy ? `${name} ${ts.length > 1 ? 'are' : 'is'} working; this will be sent when ready` : `Send to ${name}`;
   $c('chat').classList.toggle('to-codex', C.target === 'comp' && duo() && partnerProv() === 'codex');
   $c('chat').classList.toggle('to-claude', C.target === 'comp' && duo() && partnerProv() === 'claude');

@@ -176,7 +176,7 @@ const AIDE_GROUPS = () => [
   { key: 'elden-ring', name: 'Elden Ring', updated: NOW - 2 * 864e5, chats: [{ id: 'aide-4', title: 'Where do I go after Liurnia?', provider: 'claude', updated: NOW - 2 * 864e5 }] },
   { key: 'general', name: 'General', updated: NOW - 4 * 3600e3, chats: [{ id: 'aide-5', title: 'Convert 5 km to miles', provider: 'claude', updated: NOW - 4 * 3600e3 }, { id: 'aide-6', title: 'What does this error mean?', provider: 'codex', updated: NOW - 3 * 864e5 }] },
 ];
-async function install(b, { aide = false, desktopStub = null, live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false, gemini = false, crew = false } = {}) {
+async function install(b, { aide = false, desktopStub = null, live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false, gemini = false, crew = false, respond = null } = {}) {
   // Windows Firewall, as a fresh PC has it: nothing let in, the Wi-Fi set as public.
   let firewall = { known: true, program: 'C:\\Program Files\\nodejs\\node.exe', port: 4788, firewallOn: true, allowed: false, blocked: true, network: 'Public' };
   const info = { ...chatInfo, ...(context ? { context } : {}), ...(crew ? { crew: CREW, mate: 'codex' } : {}) };
@@ -218,6 +218,7 @@ async function install(b, { aide = false, desktopStub = null, live = true, state
     const u = new URL(url), q = u.searchParams, p = u.pathname;
     let body = {}; try { body = JSON.parse(postData || '{}'); } catch { /* not JSON */ }
     if (seen) seen(p, url, body);
+    if (respond) { const answer = await respond(p, q, body, method); if (answer) return answer; }
     if (p === '/api/reopen') { const out = { reopened: body.action === 'reopen' ? reopen.map(c => c.sessionId) : [], failed: [] }; reopen = []; return { body: out }; }
     if (p === '/api/state') return { body: { gemini: gemini ? GEMINI_STATE : null, reopen, accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '6.0.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
     if (p === '/api/chat/done') { if (body.done) doneMarks[String(body.id).toLowerCase()] = { done: Date.now(), undone: 0 }; else doneMarks[String(body.id).toLowerCase()] = { done: 0, undone: Date.now() }; return { body: { doneMarks } }; }

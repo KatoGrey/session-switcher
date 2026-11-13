@@ -1931,7 +1931,7 @@ module.exports = [
       await b.eval(`document.querySelector('#nav [data-view="hub"]').focus(); return 1`);
       await b.down(); await sleep(60);
       const next = await b.eval(`return document.activeElement.closest('#nav') && (document.activeElement.textContent || '').trim()`);
-      t.check('↓ moves down the sidebar', /Commander/.test(next || ''), next);
+      t.check('↓ moves down the sidebar', /Your work/.test(next || ''), next);
       await b.key('End', 'End', 35); await sleep(60);
       const end = await b.eval(`const all = [...document.querySelectorAll('#nav button, #nav input')].filter(x => x.offsetParent); return document.activeElement === all.at(-1)`);
       t.check('End goes to its end', end);
@@ -1954,3 +1954,4 @@ module.exports = [
     },
   },
 ];
+module.exports.textAudit = TEXT_AUDIT;

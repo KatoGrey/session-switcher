@@ -79,6 +79,10 @@ function prDialog() {
 }
 // folder: a project's folder, for just its repo's pull requests that involve you.
 async function openPrs({ folder = null, show = null } = {}) {
+  if (!sagaLook() && !folder) {
+    if (show) return openWorkPr(`https://github.com/${show.repo}/pull/${show.n}`);
+    await go('work'); Work.showPrs(); return;
+  }
   const d = prDialog();
   Object.assign(PRS, { folder, folderData: null, err: null, openKey: null, tab: folder ? 'folder' : (PRS.tab === 'folder' ? 'authored' : PRS.tab) });
   PRS.one = null;
@@ -153,6 +157,7 @@ function prDetailHtml(d) {
   const acts = [];
   if (d.clones.length) {
     acts.push(`${who('review')}Review it…</button>`);
+    acts.push(`${who('cross-review')}Cross-model review ↗</button>`);
     if (d.mine && d.open) acts.push(`${who('fix-comments')}Fix ${d.open} comment${d.open === 1 ? '' : 's'}…</button>`);
     if (d.mine && c.failed.length) acts.push(`${who('fix-checks')}Fix the failing check${c.failed.length === 1 ? '' : 's'}…</button>`);
   }
@@ -185,10 +190,12 @@ async function prGo(d, action, provider, account, fresh = false) {
   if (r.resumed) toast('It carries on in the chat that made the pull request, which knows the work.', 6000);
 }
 async function prAction(act, b) {
+  if (act === 'cross-review') return openCrossReview(PRS.details.get(prKey(b.dataset.repo, b.dataset.n)) || {});
   if (act === 'close') return $('prDlg').close();
   if (act === 'refresh') { PRS.details.clear(); return prsLoad(true); }
   if (act === 'open') { if ($('connDlg')) $('connDlg').close(); return openPrs(); }
   if (act === 'toggle') {
+    if (!sagaLook()) { $('prDlg').close(); return openWorkPr(`https://github.com/${b.dataset.repo}/pull/${b.dataset.n}`); }
     const k = prKey(b.dataset.repo, b.dataset.n);
     PRS.openKey = PRS.openKey === k ? null : k;
     prsRender();

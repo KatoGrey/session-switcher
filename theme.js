@@ -434,6 +434,9 @@
       if (o.fCode) f.mono = stack(o.fCode, 'code') || f.mono;
     }
     for (const [k, v] of [['--f-body', f.body], ['--f-display', f.display], ['--f-caps', f.caps], ['--f-label', f.label], ['--f-mono', f.mono]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
+    // Interface text stays easy to scan; explicit font choices still win.
+    st.setProperty('--f-ui', f.body || INTER);
+    st.setProperty('--f-ui-head', f.display || INTER);
     root.classList.toggle('look-liga', !!o.liga);
     if (t.family) root.dataset.family = t.family; else delete root.dataset.family;
     // The hub's compact layout (ui/hub.css). Ryan's space saga themes keep their own, as he made them.

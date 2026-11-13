@@ -82,7 +82,7 @@ module.exports = [
       const navP = await b.eval(`const q = document.querySelector('.nav-i[data-cwd]').getBoundingClientRect(); return [q.left + 60, q.top + 10]`);
       await b.click(navP[0], navP[1], 'right');
       t.check('a right-click elsewhere opens that spot’s menu', (await st()).open);
-      const recent = await b.eval(`const q = document.querySelector('.nav-i[data-view="recent"]').getBoundingClientRect(); return [q.left + 40, q.top + 10]`);
+      const recent = await b.eval(`const q = document.querySelector('.nav-i[data-view="work"]').getBoundingClientRect(); return [q.left + 40, q.top + 10]`);
       await b.click(recent[0], recent[1]);
       const s1 = await st();
       t.check('closing click doesn’t press what’s underneath', !s1.open && s1.view === 'hub', s1);
@@ -866,8 +866,9 @@ module.exports = [
       const pop = () => b.eval(`const box = document.getElementById('cSlash'); return box.hidden ? null : { head: box.querySelector('.cs-h')?.textContent, cmds: [...box.querySelectorAll('li.cs-cmd b')].map(x => x.textContent), tags: [...box.querySelectorAll('li.cs-cmd .tag')].map(x => x.textContent), seps: [...box.querySelectorAll('.cs-sep')].map(x => x.textContent), rows: box.querySelectorAll('li[data-si]').length }`);
       await typeIn('/');
       let p = await pop();
-      t.check('“/” lists Claude’s commands first, the folder’s own marked', p && p.head === 'Commands' && p.cmds[0] === '/balance-pass [song]' && p.tags[0] === 'This folder' && p.cmds.length === 5, p);
+      t.check('“/” lists Claude’s commands first, the folder’s own marked', p && p.head === 'Commands' && p.cmds[0] === '/balance-pass [song]' && p.tags[0] === 'This folder', p);
       t.check('then the app’s own: the chat’s tools and a pull request', p && p.cmds[3] === '/mcp' && p.cmds[4] === '/pr [ticket, draft…]', p);
+      t.check('the workspace and cross-model review are discoverable commands', p && p.cmds.includes('/cross-model-pr-review [PR URL]') && p.cmds.includes('/work'), p);
       t.check('your prompts follow under their own heading', p && (p.rows === 3 || p.seps.some(s => /^Prompts/.test(s))), p);
       await t.shot(b, 'popup');
       await typeIn('/world');
@@ -2075,11 +2076,11 @@ module.exports = [
       const side = await b.eval(`const h = document.querySelector('.nav-h.recent'); const rows = [...document.querySelectorAll('.nav-h.recent ~ .nav-chat')].slice(0, 6);
         const lists = navLists(), listed = new Set([...lists.active.flatMap(x => [x.sessionId, x.startedAs]), ...lists.pinned.map(x => x.sessionId)].filter(Boolean).map(x => x.toLowerCase()));
         const want = allSessions().filter(([s, p]) => p.cwd !== cmdrSet().cwd && !listed.has(s.id.toLowerCase())).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6).map(([s]) => s.id);
-        return { head: h && h.textContent.replace(/\\s+/g, ' ').trim(), ids: rows.map(r => r.dataset.navchat), want, more: !!document.querySelector('.nav-more[data-view="recent"]'), sub: rows[0] && rows[0].querySelector('small').textContent }`);
+        return { head: h && h.textContent.replace(/\\s+/g, ' ').trim(), ids: rows.map(r => r.dataset.navchat), want, more: !!document.querySelector('#nav [data-view="recent"]'), sub: rows[0] && rows[0].querySelector('small').textContent }`);
       t.check('the sidebar has Recent: the latest chats not listed above it, newest first', !!side.head && /Recent/.test(side.head) && JSON.stringify(side.ids) === JSON.stringify(side.want) && side.ids.length > 0, side);
       t.check('each says its project and how long ago', / · /.test(side.sub || ''), side.sub);
-      await b.clickOn('.nav-more[data-view="recent"]'); await sleep(500);
-      t.check('All recent chats opens the Recent chats page', await b.eval(`return S.view === 'recent'`));
+      await b.clickOn('#nav [data-view="recent"]'); await sleep(500);
+      t.check('Recent chats in the sidebar opens the Recent chats page', await b.eval(`return S.view === 'recent'`));
       await b.clickOn('.nav-h.recent'); await sleep(200);
       t.check('Recent folds away like the other sections', await b.eval(`return !document.querySelector('.nav-h.recent ~ .nav-chat[data-navchat="${side.ids[0]}"]') || !!document.querySelector('.nav-h.recent[aria-expanded="false"]')`));
       await b.clickOn('.nav-h.recent'); await sleep(200);

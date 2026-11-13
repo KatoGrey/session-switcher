@@ -269,8 +269,8 @@ function renderLedger() {
   const id = C.info && C.info.accountId;
   const a = id && acctById(id);
   const b = id ? binding(usageOf(id)) : null;
-  let html = '';
-  html += sec('This chat', 0, `${a ? `<div class="lg-use">${miniDial(id, 34)}<span class="lu-t"><b>${esc(a.name)}</b><small class="${b && hot(b.left) ? 'hot' : ''}">${esc(usageLine(id) || (a.plan || ''))}</small></span></div>` : ''}
+  const compact = document.documentElement.matches('.hub2:not([data-family])');
+  const about = sec('This chat', 0, `${a ? `<div class="lg-use">${miniDial(id, 34)}<span class="lu-t"><b>${esc(a.name)}</b><small class="${b && hot(b.left) ? 'hot' : ''}">${esc(usageLine(id) || (a.plan || ''))}</small></span></div>` : ''}
       <dl class="lg-about">
         ${C.watch ? `<dt>Running</dt><dd>${C.watch.source === 'terminal' ? 'In a terminal' : C.watch.source === 'openclaw' ? 'In OpenClaw' : 'In another app'}</dd>` : ''}
         ${C.model ? `<dt>Model</dt><dd>${esc(C.model)}${C.mi.main && C.mi.main.effort ? ` · ${esc(C.mi.main.effort)} effort` : ''}</dd>` : ''}
@@ -280,6 +280,7 @@ function renderLedger() {
         ${C.info && C.info.cwd ? `<dt>Folder</dt><dd><button class="linkish" data-file="." title="${esc(C.info.cwd)}">${esc(C.info.cwd)}</button></dd>` : ''}
         ${C.sessionId ? `<dt>Chat ID</dt><dd><button class="linkish" data-copy="${esc(C.sessionId)}" title="Copy the chat ID">${esc(C.sessionId.slice(0, 8))}…</button></dd>` : ''}
       </dl>`);
+  let html = compact ? '' : about;
   const arts = [...L.arts.entries()].reverse();
   if (arts.length) html += sec('Artifacts', arts.length, `<ul class="lg-list">${arts.map(([u, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">✦</span><span class="lg-t"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">${esc(t)}</a></span></li>`).join('')}</ul>`);
   const imgs = [...L.images.entries()].reverse();
@@ -303,6 +304,7 @@ function renderLedger() {
   const cmds = L.cmds.slice(-14).reverse();
   if (cmds.length) html += sec('Commands', L.cmds.length, `<ul class="lg-list">${cmds.map(c => `<li class="lg-i" title="${esc(c.text)}"><span class="t-st ${c.st}" aria-hidden="true" style="margin-top:6px"></span><span class="lg-t"><code>${esc(c.text.split('\n')[0])}</code></span></li>`).join('')}</ul>`);
   if (!arts.length && !imgs.length && !links.length && !files.length && !tasks.length && !cmds.length) html += '<p class="lg-empty">Artifacts, files, commands and tasks from this chat collect here as it works.</p>';
+  if (compact) html += `<details class="lg-details"${box.querySelector('.lg-details')?.open ? ' open' : ''}><summary>Chat details</summary>${about}</details>`;
   box.innerHTML = html;
 }
 

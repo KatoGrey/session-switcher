@@ -309,6 +309,8 @@ function renderSlash() {
   const own = ownOk ? [
     ...(!q || 'mcp'.startsWith(q) || ['tools', 'sign', 'login', 'connect'].some(w => w.startsWith(q)) ? [{ name: 'mcp', description: 'This chat’s tools (MCP servers): sign in, connect again', kind: 'app' }] : []),
     ...(!q || 'pr'.startsWith(q) || ['pull', 'push', 'request'].some(w => w.startsWith(q)) ? [{ name: 'pr', hint: '[ticket, draft…]', description: 'Make a pull request of this chat’s work, the way the repo asks', kind: 'app' }] : []),
+    ...(!q || 'cross-model-pr-review'.startsWith(q) || 'cross-review'.startsWith(q) || ['cross', 'review', 'opus', 'fable'].some(w => w.startsWith(q)) ? [{ name: 'cross-model-pr-review', hint: '[PR URL]', description: 'Claude reviews; Codex adjudicates and fixes, in one persistent review', kind: 'app' }] : []),
+    ...(!q || 'work'.startsWith(q) ? [{ name: 'work', description: 'Your Linear issues and PR workspace', kind: 'app' }] : []),
   ] : [];
   cmds.push(...own.filter(o => !cmds.some(c => c.name === o.name)));
   Slash.items = [...cmds.map(c => ({ cmd: c })), ...prompts];
@@ -326,7 +328,7 @@ function renderSlash() {
 function pickSlash(i) {
   if (Slash.kind === 'file') { const f = Slash.items[i], at = Slash.at; closeSlash(); if (f && at) { if (typeof f === 'string') insertMention(f, at); else insertChatRef(f, at); } return; }
   const it = Slash.items[i]; closeSlash();
-  if (it && it.cmd && it.cmd.kind === 'app') { $c('cText').value = ''; grow(); return it.cmd.name === 'pr' ? makePrFromChat('main') : openChatMcp('main'); }
+  if (it && it.cmd && it.cmd.kind === 'app') { $c('cText').value = ''; grow(); return it.cmd.name === 'cross-model-pr-review' ? openCrossReview() : it.cmd.name === 'work' ? go('work') : it.cmd.name === 'pr' ? makePrFromChat('main') : openChatMcp('main'); }
   if (it && it.cmd) return placeText(`/${it.cmd.name} `, true);
   if (it) insertPrompt(it, true);
 }
@@ -521,6 +523,9 @@ async function sendMessage() {
   // /model and /effort switch without sending.
   const ownCmd = n => (C.provider === 'claude' || C.provider === 'codex') && !(C.provider === 'claude' && Cmds.list.some(c => c.name === n));
   if (/^\/mcp\s*$/i.test(text.trim()) && !C.attachments.length && ownCmd('mcp')) { clear(); await openChatMcp('main'); return; }
+  if (/^\/work\s*$/i.test(text.trim()) && !C.attachments.length && ownCmd('work')) { clear(); go('work'); return; }
+  const crossReview = text.trim().match(/^\/(?:cross-review|cross-model-pr-review)(?:\s+(\S+))?$/i);
+  if (crossReview && !C.attachments.length && ownCmd(text.trim().split(/\s/)[0].slice(1).toLowerCase())) { clear(); openCrossReview({ url: crossReview[1] || '', cwd: C.info?.cwd }); return; }
   // "/pr" (and what to add, if anything): this chat makes a pull request of its work.
   const pr = text.trim().match(/^\/pr(?:\s+([\s\S]{1,1500}))?$/i);
   if (pr && !C.attachments.length && ownCmd('pr') && C.state !== 'ended') { clear(); if (pr[1]) await api('/api/chat/make-pr', { key: C.key, note: pr[1] }); else await makePrFromChat('main'); return; }
