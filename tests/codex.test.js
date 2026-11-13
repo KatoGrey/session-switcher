@@ -285,3 +285,22 @@ test('codex: a refused steer arriving after Stop is recovered instead of restart
   assert.equal(chat.queue.length,0);
   assert.ok(chat.buffer.some(e=>e.kind==='unsent'&&e.text==='Cancelled instruction.'));
 });
+
+test('codex: a chat’s thread starts with its subagents (roles in config, what Codex is told), and without them when there are none', async t => {
+  const { CodexChat } = require('../lib/codex');
+  const open = extras => {
+    const requests = [];
+    const srv = { listeners: new Set(), request(method, params) { requests.push({ method, params }); return method === 'thread/start' ? new Promise(() => {}) : Promise.resolve({}); } };
+    const chat = new CodexChat({ cfg: {}, account: { id: 'test', name: 'Test' }, cwd: process.cwd(), codex: { server: () => srv, models: async () => [], threadExtras: () => extras } });
+    chat.beforeTurn = async () => {};
+    t.after(() => chat.stop());
+    chat.start();
+    return requests.find(r => r.method === 'thread/start').params;
+  };
+  const p = open({ config: { 'agents.cx.description': 'Codex checks', 'agents.cx.config_file': 'C:/x/cx.toml' }, note: 'Sub-agents: use cx.' });
+  assert.deepEqual(p.config, { 'agents.cx.description': 'Codex checks', 'agents.cx.config_file': 'C:/x/cx.toml' });
+  assert.equal(p.developerInstructions, 'Sub-agents: use cx.');
+  const none = open({ config: {}, note: '' });
+  assert.equal(none.config, undefined);
+  assert.equal(none.developerInstructions, undefined);
+});

@@ -1,4 +1,33 @@
-# Defaults for Claude, Codex and Gemini, a new chat about any PR, and Latitude's repo set up right on Windows
+# Subagents on the model you choose, Codex and Gemini as subagents, Latitude's read-only tools without asking, and weekly Fable usage
+
+**Subagents.** When a chat hands part of a job to a subagent (a search, a review, a check), you now choose what it runs on. Open **Subagents** in the sidebar or Ctrl+K:
+
+- **Defaults** for any subagent: one for Claude chats, one for chats started from Your work, and one for Codex chats.
+- **Your subagents**, each with a name, what it's for, the assistant it runs on (Claude, Codex or Gemini), its model and effort, and whether it can change files. It starts with a fast **scout** for look-ups (Haiku, low effort), a **reviewer** (Opus, high effort), a **builder**, a **verifier**, and a **codex-reviewer** for a second opinion from another model family. Change or remove any of them.
+- **Claude chats** get all of them. A Codex or Gemini subagent hands its job to that assistant, on the model and effort you chose, and brings back the answer. Gemini runs tidy up after themselves, so they don't fill your chat list.
+- **Codex chats** get the Codex ones as Codex's own subagents, each on its own model and effort.
+- **Ask in words**, in any chat: “do the searches on Haiku, low effort”, “have Codex review it”.
+- **Your work** has a Subagents choice beside the assistants' defaults, for its PR and issue chats.
+
+**Latitude's read-only tools run without asking.** Tool calls that only read (Datadog, Athena and Sentry searches, GitHub look-ups) no longer stop for your OK in Claude or Codex chats. Ones that change, send or run something still ask. Turn it off for either in **Setup → Claude** or **Setup → Codex**.
+
+- **Fixed:** Codex chats couldn't use Latitude's tools at all: Codex's request to approve each call went unanswered and the call failed. Reads now go ahead, and the rest show the usual Allow and Deny.
+
+**Your work.**
+
+- Pull requests show their checks (✕ failing, ◌ running, ✓ passing) and review state in the list.
+- When a chat is working on a PR or its issue, the row says so (**Chat working**, or **Needs your OK**), and the PR's details open with a banner that takes you to it. A new **With a chat** filter lists them, the ones waiting on you first.
+- PR descriptions, issue text and review comments are shown formatted, not as raw markdown.
+
+**Weekly Fable usage.** Account cards, the account chip and the chat header show **Fable this week** when your plan has a weekly limit for it, with its reset time.
+
+**This PC, on Your work** (Windows, Latitude's repo):
+
+- **1Password (AWS and feedback saves):** Latitude's local tools reach AWS through the 1Password tokens in .env.local, so nobody needs an AWS user of their own. **Install 1Password…** installs the 1Password app and its CLI; then **Fill from 1Password** reads the tokens from your vaults, writes them to .env.local (and any worktree's copy), and checks 1Password accepts them. Once it does, **Test AWS access** checks the whole way in a chat.
+- **Worktrees:** choose a folder for new worktrees outside OneDrive, which slows installs a lot. Chats are told to install new worktrees with `--copy`: Windows allows only 1,024 hard links to a file, and the default install fails after many minutes with “UNKNOWN: unknown error, link”.
+- **Build tokens** now lists only Turbo's and Expo's. **Fixed:** an empty line in .env.local could count as filled in.
+
+## Earlier in 6.10.0: defaults for Claude, Codex and Gemini, a new chat about any PR, and Latitude's repo set up right on Windows
 
 **Defaults, on Your work.** Pick the model Claude, Codex and Gemini each use, and the effort for Claude and Codex, from dropdowns of what each one offers, so a name can't be typed wrong. Every chat started from Your work uses them: fixing comments or checks, a review, validating, a handoff, planning or starting an issue, bringing a branch up to date. The menu that asks who should do it says what each will run with, and the choice is kept on this device. Leave one on Default to use that assistant's own. Gemini's effort is part of its model's name, so it has one dropdown.
 

@@ -48,6 +48,41 @@ const Work = (() => {
   }
   const icon = (kind, size = 18) => `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${({ pr: '<circle cx="5" cy="4" r="2"/><circle cx="5" cy="16" r="2"/><circle cx="15" cy="16" r="2"/><path d="M5 6v8m10 0V8a4 4 0 0 0-4-4h-1m2-2-2 2 2 2"/>', issue: '<circle cx="10" cy="10" r="7" stroke-dasharray="3 3"/>', done: '<circle cx="10" cy="10" r="7"/><path d="m6 10 3 3 5-6"/>', search: '<circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/>', list: '<path d="M7 5h10M7 10h10M7 15h10M3 5h.1M3 10h.1M3 15h.1"/>', board: '<rect x="2" y="3" width="6" height="14" rx="1.5"/><rect x="12" y="3" width="6" height="10" rx="1.5"/>' })[kind] || ''}</svg>`;
   const rowKey = x => x.identifier || kOf(x);
+  // GitHub and Linear text, drawn as markdown (escaped first, by the chat's own renderer), without the template's
+  // hidden <!-- comments -->.
+  const prose = text => md(String(text || '').replace(/<!--[\s\S]*?-->/g, '').trim());
+  // The first part of a long description, cut where a paragraph ends.
+  function excerpt(text, max = 700) {
+    const t = String(text || '').replace(/<!--[\s\S]*?-->/g, '').trim();
+    if (t.length <= max) return { text: t, cut: false };
+    const at = t.lastIndexOf('\n\n', max);
+    return { text: t.slice(0, at > max / 3 ? at : max).trimEnd(), cut: true };
+  }
+  // The running chat working on this (the PR's own, or the one started from its Linear issue), or null.
+  function liveChatOf(x) {
+    const c = x.chat || (x.issue && (W.data?.issues || []).find(i => i.identifier === x.issue)?.chat) || null;
+    if (!c) return null;
+    const all = Object.values(S.live || {});
+    const live = (c.sessionId && liveOf(c.sessionId)) || (c.key && all.find(l => l.key === c.key)) || null;
+    return live && live.state !== 'ended' ? { ...live, ref: c } : null;
+  }
+  const CHAT_WORD = { waiting: ['Needs your OK', 'warn'], busy: ['Chat working', 'accent'], starting: ['Chat starting', 'accent'], ready: ['Chat ready', 'muted'] };
+  function chatWord(live) {
+    if (!live) return null;
+    if (live.state === 'ready' && (live.background || []).length) return ['Working in the background', 'accent'];
+    return CHAT_WORD[live.state] || null;
+  }
+  // Checks and review at a glance: ✓ passing, ✕ failing, ◌ running; approved or changes requested.
+  function signals(x) {
+    if (x.identifier || x.state !== 'OPEN') return '';
+    const gate = WorkModel.checkGate(x.checks || {}), out = [];
+    if (gate.failed) out.push(`<span class="wk-sig bad" title="${gate.failed} check${gate.failed === 1 ? '' : 's'} failing">✕ ${gate.failed} failing</span>`);
+    else if (gate.pending) out.push(`<span class="wk-sig" title="${gate.pending} check${gate.pending === 1 ? '' : 's'} running">◌ ${gate.pending} running</span>`);
+    else if ((x.checks || {}).passed) out.push('<span class="wk-sig ok" title="Checks passing">✓ checks</span>');
+    if (x.reviewDecision === 'APPROVED') out.push('<span class="wk-sig ok" title="Approved">✓ approved</span>');
+    else if (x.reviewDecision === 'CHANGES_REQUESTED') out.push('<span class="wk-sig warn" title="Changes requested">± changes</span>');
+    return out.join('');
+  }
   const match = x => !W.query.trim() || W.query.toLowerCase().trim().split(/\s+/).every(q => `${x.title} ${x.identifier || ''} ${x.number ? '#' + x.number : ''} ${x.repo || ''} ${x.issue || ''} ${x.author || ''} ${x.priorityLabel || ''} ${x.state?.name || ''}`.toLowerCase().includes(q));
   const scoped = () => W.repo === 'all' ? W.data || {} : { ...W.data, prs: (W.data?.prs || []).filter(p => p.repo.toLowerCase() === W.repo), issues: W.repo === 'latitudegames/latitude' ? W.data?.issues || [] : [] };
   const item = key => (W.data?.issues || []).find(i => i.identifier === key) || (W.data?.prs || []).find(p => kOf(p) === key) || W.external.get(key) || W.details.get(key);
@@ -56,19 +91,20 @@ const Work = (() => {
     const s = issue ? { label: x.state?.name || 'To do', tone: x.priority === 1 ? 'warn' : 'muted' } : WorkModel.status(x);
     return `<button type="button" class="wk-row${selected ? ' selected' : ''}" data-wk="select" data-key="${esc(key)}" aria-expanded="${selected}" aria-controls="wkInspector">
       <span class="wk-row-icon ${s.tone}">${icon(issue ? 'issue' : x.state === 'MERGED' ? 'done' : 'pr')}</span>
-      <span class="wk-row-main"><span class="wk-row-title">${esc(x.title)}</span><span class="wk-row-meta"><b>${esc(issue ? x.identifier : '#' + x.number)}</b>${x.issue ? ` <span>${esc(x.issue)}</span>` : ''}<span title="${esc(issue ? x.team?.name || 'Linear' : x.repo)}">${esc(issue ? x.team?.name || 'Linear' : x.repo.split('/').pop())}</span>${!issue && x.author ? `<span>${esc(x.author)}</span>` : ''}</span></span>
+      <span class="wk-row-main"><span class="wk-row-title">${esc(x.title)}</span><span class="wk-row-meta">${(() => { const live = liveChatOf(x), w = chatWord(live); return w ? `<span class="wk-row-chat ${w[1]}${live.state === 'waiting' ? ' asks' : ''}" data-wk="issuechat" data-key="${esc(live.key || '')}" data-id="${esc(live.sessionId || '')}" title="Open the chat">${live.state === 'busy' || live.state === 'starting' ? '<i class="wk-pulse" aria-hidden="true"></i>' : ''}${esc(w[0])}</span>` : ''; })()}${signals(x)}<b>${esc(issue ? x.identifier : '#' + x.number)}</b>${x.issue ? ` <span>${esc(x.issue)}</span>` : ''}<span title="${esc(issue ? x.team?.name || 'Linear' : x.repo)}">${esc(issue ? x.team?.name || 'Linear' : x.repo.split('/').pop())}</span>${!issue && x.author ? `<span>${esc(x.author)}</span>` : ''}</span></span>
       <span class="wk-status ${s.tone}"><i aria-hidden="true"></i>${esc(s.label)}</span><span class="wk-row-time">${esc(agoL(Date.parse(x.updatedAt || x.mergedAt) || W.at))}</span><span class="wk-row-arrow" aria-hidden="true">›</span></button>`;
   }
   function filteredGroups() {
     const g = WorkModel.group(scoped());
-    const groups = W.filter === 'attention' ? [['attention', 'Needs your attention', g.attention]] : W.filter === 'merged' ? [['merged', 'Merged this week', g.merged]] : [
+    const withChat = () => { const all = [...g.review, ...g.waiting, ...g.doing, ...g.todo].filter(x => liveChatOf(x)); const asks = all.filter(x => liveChatOf(x).state === 'waiting'); return [['chat-asks', 'Chat needs your OK', asks], ['chat-working', 'A chat is working on it', all.filter(x => !asks.includes(x))]]; };
+    const groups = W.filter === 'chats' ? withChat() : W.filter === 'attention' ? [['attention', 'Needs your attention', g.attention]] : W.filter === 'merged' ? [['merged', 'Merged this week', g.merged]] : [
       ['review', 'In review', g.review], ['waiting', 'Waiting on you', g.waiting], ['doing', 'In progress', g.doing], ['todo', 'To do', g.todo],
     ].filter(([id]) => W.filter === 'prs' ? ['review', 'waiting'].includes(id) : W.filter === 'issues' ? ['doing', 'todo'].includes(id) : true);
     return groups.map(([id, title, xs]) => [id, title, xs.filter(match)]);
   }
   function resultsHtml() {
     const groups = filteredGroups(), total = groups.reduce((n, g) => n + g[2].length, 0);
-    if (!total) return `<div class="wk-no-results">${icon('done', 30)}<h3>${W.query ? 'No matches' : W.filter === 'attention' ? 'You’re all caught up' : 'Nothing here yet'}</h3><p>${W.query ? 'Try a title, PR number, person, or Linear ID.' : W.filter === 'attention' ? 'No pull requests currently need your action.' : 'Your assigned issues and pull requests appear here.'}</p>${W.query || W.filter !== 'all' ? '<button class="btn" data-wk="reset">Show all work</button>' : ''}</div>`;
+    if (!total) return `<div class="wk-no-results">${icon('done', 30)}<h3>${W.query ? 'No matches' : W.filter === 'attention' ? 'You’re all caught up' : W.filter === 'chats' ? 'No chats on your work right now' : 'Nothing here yet'}</h3><p>${W.query ? 'Try a title, PR number, person, or Linear ID.' : W.filter === 'attention' ? 'No pull requests currently need your action.' : W.filter === 'chats' ? 'Start one from an issue or PR, and it shows up here while it works.' : 'Your assigned issues and pull requests appear here.'}</p>${W.query || W.filter !== 'all' ? '<button class="btn" data-wk="reset">Show all work</button>' : ''}</div>`;
     return `<div class="wk-results-heading"><span role="status">${W.query ? 'Search results' : 'Work queue'}<b>${total}</b></span><span class="wk-list-hint">↑ ↓ to move · Enter to open</span></div><div class="wk-results ${W.layout === 'board' ? 'as-board' : ''}">${groups.filter(g => g[2].length || W.layout === 'board').map(([id, title, xs]) => `<section class="wk-group" data-group="${id}"><h2><span class="wk-group-dot" data-kind="${id}"></span>${title}<span>${xs.length}</span></h2>${xs.length ? xs.map(row).join('') : '<p class="wk-empty">All clear.</p>'}</section>`).join('')}</div>`;
   }
   const queue = () => filteredGroups().flatMap(g => g[2]);
@@ -129,7 +165,7 @@ const Work = (() => {
         <button class="wk-metric" data-wk="filter" data-value="issues" aria-pressed="${W.filter === 'issues'}"><span>Your issues</span><strong>${(g.todo.length + g.doing.length).toString().padStart(2, '0')}</strong><small>${g.doing.length} in progress · ${g.todo.length} to do</small></button>
         <button class="wk-metric" data-wk="filter" data-value="merged" aria-pressed="${W.filter === 'merged'}"><span>Merged</span><strong>${g.merged.length.toString().padStart(2, '0')}</strong><small>This week</small></button>
       </div>
-      <div class="wk-toolbar"><div class="wk-filters" aria-label="Filter work">${[['all', 'All work'], ['attention', 'Needs you'], ['prs', 'Pull requests'], ['issues', 'Issues'], ['merged', 'Merged']].map(([v, t]) => `<button data-wk="filter" data-value="${v}" aria-pressed="${W.filter === v}">${t}</button>`).join('')}</div><div class="wk-tools"><select id="wkRepo" aria-label="Repository"><option value="all">All repositories</option>${[...new Set([...(d.issues?.length ? ['latitudegames/latitude'] : []), ...(d.prs || []).map(p => p.repo.toLowerCase())])].sort().map(r => `<option value="${esc(r)}"${W.repo === r ? ' selected' : ''}>${esc(r.split('/')[1])}</option>`).join('')}</select><label class="wk-search">${icon('search', 15)}<input type="search" id="wkSearch" placeholder="Search work…" aria-label="Search work" value="${esc(W.query)}"><kbd>/</kbd></label><div class="wk-layout" aria-label="View layout">${['list', 'board'].map(v => `<button data-wk="layout" data-value="${v}" aria-pressed="${W.layout === v}" title="${v === 'list' ? 'List' : 'Board'} view" aria-label="${v === 'list' ? 'List' : 'Board'} view">${icon(v, 16)}</button>`).join('')}</div></div></div>
+      <div class="wk-toolbar"><div class="wk-filters" aria-label="Filter work">${[['all', 'All work'], ['attention', 'Needs you'], ['chats', 'With a chat'], ['prs', 'Pull requests'], ['issues', 'Issues'], ['merged', 'Merged']].map(([v, t]) => { const n = v === 'chats' ? [...g.review, ...g.waiting, ...g.doing, ...g.todo].filter(x => liveChatOf(x)).length : 0; return `<button data-wk="filter" data-value="${v}" aria-pressed="${W.filter === v}">${t}${n ? ` <span class="wk-filter-n">${n}</span>` : ''}</button>`; }).join('')}</div><div class="wk-tools"><select id="wkRepo" aria-label="Repository"><option value="all">All repositories</option>${[...new Set([...(d.issues?.length ? ['latitudegames/latitude'] : []), ...(d.prs || []).map(p => p.repo.toLowerCase())])].sort().map(r => `<option value="${esc(r)}"${W.repo === r ? ' selected' : ''}>${esc(r.split('/')[1])}</option>`).join('')}</select><label class="wk-search">${icon('search', 15)}<input type="search" id="wkSearch" placeholder="Search work…" aria-label="Search work" value="${esc(W.query)}"><kbd>/</kbd></label><div class="wk-layout" aria-label="View layout">${['list', 'board'].map(v => `<button data-wk="layout" data-value="${v}" aria-pressed="${W.layout === v}" title="${v === 'list' ? 'List' : 'Board'} view" aria-label="${v === 'list' ? 'List' : 'Board'} view">${icon(v, 16)}</button>`).join('')}</div></div></div>
       <div class="wk-content${W.open ? ' has-selection' : ''}${W.open && W.wide ? ' detail-focus' : ''}"><div id="wkResults">${resultsHtml()}</div><aside id="wkInspector" class="wk-inspector" data-key="${esc(W.open || '')}" aria-label="Work details">${inspectorHtml()}</aside></div>
       <footer class="wk-footer"><button class="wk-manage" data-wk="home" aria-pressed="${store('start-page') === 'work'}">${store('start-page') === 'work' ? 'Your start page · Undo' : 'Make this my start page'}</button><span><kbd>/</kbd> Search work <span class="wk-foot-sep">·</span> <kbd>Ctrl K</kbd> All commands</span></footer>` : `<div class="wk-loading" role="status"><span class="gen-spin"></span><h2>${W.err ? 'Couldn’t load your work' : 'Bringing your work together'}</h2><p>${W.err ? 'Try refreshing to reconnect.' : 'Reading your issues and pull requests…'}</p></div>`}
     </div>`;
@@ -166,6 +202,7 @@ const Work = (() => {
       <div class="wk-detail-nav">${index >= 0 ? `<span>${index + 1} / ${items.length}</span><button class="icon" data-wk="previous" aria-label="Previous item" title="Previous item" ${index === 0 ? 'disabled' : ''}>↑</button><button class="icon" data-wk="next" aria-label="Next item" title="Next item" ${index === items.length - 1 ? 'disabled' : ''}>↓</button>` : ''}<button class="icon wk-expand" data-wk="expand-detail" aria-label="${W.wide ? 'Narrow' : 'Expand'} details" title="${W.wide ? 'Narrow' : 'Expand'} details" aria-pressed="${W.wide}">${W.wide ? '⊟' : '⤢'}</button><button class="icon" data-wk="close-detail" aria-label="Close details" title="Close details (Esc)">✕</button></div></div>
       <div class="wk-inspector-body"><span class="wk-status ${state.tone}"><i></i>${esc(state.label)}</span><h2 tabindex="-1" id="wkDetailTitle">${esc(p.title)}</h2><p class="wk-detail-repo">${esc(issue ? p.team?.name || 'Linear' : p.repo)}${!issue && p.author ? ` · ${esc(p.author)}` : ''}</p>
       ${!issue ? `<div class="wk-revision"><button data-wk="copy" data-text="${esc(p.head || '')}" title="Copy branch name">${esc(p.head || 'Branch not reported')}</button><span>→ ${esc(p.base || 'base')}</span>${p.headSha ? `<a href="${esc('https://github.com/' + p.repo + '/commit/' + p.headSha)}" target="_blank" rel="noopener noreferrer" title="Revision being reviewed">${esc(p.headSha.slice(0, 7))}</a>` : ''}<button data-wk="refresh-detail" title="Refresh this PR" aria-label="Refresh this PR">↻</button></div>` : ''}
+      ${(() => { const live = liveChatOf(p), w = chatWord(live); return w ? `<button class="wk-live-chat ${w[1]}" data-wk="issuechat" data-key="${esc(live.key || '')}" data-id="${esc(live.sessionId || '')}">${live.state === 'waiting' ? '<span class="wk-live-mark" aria-hidden="true">!</span>' : '<i class="wk-pulse" aria-hidden="true"></i>'}<span><b>${esc(w[0])}</b><small>${esc(live.title || 'Its chat')}${live.status ? ' · ' + esc(String(live.status).slice(0, 90)) : ''}</small></span><span aria-hidden="true">Open →</span></button>` : ''; })()}
       <div class="wk-detail-actions">${actions.join('')}</div><div class="wk-detail-links"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Open in ${issue ? 'Linear' : 'GitHub'} ↗</a><button class="linkish" data-wk="copy" data-text="${esc(p.url)}">Copy link</button>${p.preview ? `<a href="${esc(p.preview)}" target="_blank" rel="noopener noreferrer">Preview ↗</a>` : ''}</div>
       ${issue ? '<p class="wk-action-note">Plan investigates first. Start makes a branch, implements the issue, and opens a draft PR.</p>' : `<div class="wk-detail-tabs" aria-label="PR details">${tabs.map(([v, t]) => `<button data-wk="detail-tab" data-value="${v}" aria-pressed="${W.detailTab === v}">${t}</button>`).join('')}</div>`}
       <div class="wk-tab-body" data-tab="${issue ? 'overview' : W.detailTab}">${full?.error ? `<p class="wk-error" role="alert">${esc(full.error)} <button class="linkish" data-wk="retry-detail">Try again</button></p>` : body}</div></div>`;
@@ -173,19 +210,19 @@ const Work = (() => {
   function overviewHtml(p, issue, full) {
     const props = issue ? [['Priority', p.priorityLabel || 'Not set'], ['Team', p.team?.name || '—'], ...(p.project ? [['Project', p.project]] : [])] : [['Reviewers', (p.reviewers || []).join(', ') || 'None requested'], ['Changes', p.changedFiles == null ? '—' : `${p.changedFiles} files · +${p.additions} −${p.deletions}`]];
     if (!issue) {
-      const body = p.body || '', long = body.length > 650;
-      return `${WorkDetail.route(p)}<div class="wk-brief-grid"><div class="wk-brief-main"><section class="wk-brief-description"><p class="wk-eyebrow">THE CHANGE</p><h3>Review brief</h3>${body ? `<div class="wk-prose wk-brief-excerpt">${esc(long ? body.slice(0, 600).trimEnd() + '…' : body)}</div>${long ? `<details data-preserve="pr-description"><summary>Read the full description</summary><div class="wk-prose">${esc(body)}</div></details>` : ''}` : `<p class="wk-muted">${full ? 'No description added.' : 'Loading the description…'}</p>`}</section>
+      const body = p.body || '';
+      return `${WorkDetail.route(p)}<div class="wk-brief-grid"><div class="wk-brief-main"><section class="wk-brief-description"><p class="wk-eyebrow">THE CHANGE</p><h3>Review brief</h3>${body ? (() => { const ex = excerpt(body); return `<div class="wk-prose wk-md wk-brief-excerpt">${prose(ex.text)}</div>${ex.cut ? `<details data-preserve="pr-description"><summary>Read the full description</summary><div class="wk-prose wk-md">${prose(body)}</div></details>` : ''}`; })() : `<p class="wk-muted">${full ? 'No description added.' : 'Loading the description…'}</p>`}</section>
         <dl class="wk-properties">${props.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>${WorkDetail.evidence(p)}
         ${(p.reviews || []).map(r => `<p class="wk-review-line"><b>${esc(r.author)}</b> ${esc({ APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', COMMENTED: 'commented', DISMISSED: 'review dismissed' }[r.state] || r.state)}</p>`).join('')}</div><div class="wk-brief-aside">${WorkDetail.summary(p, !!full)}</div></div>`;
     }
-    return `<div class="wk-detail-section"><h3>Issue</h3>${p.description ? `<div class="wk-prose">${esc(p.description)}</div>` : !full ? '<p class="wk-muted">Loading details…</p>' : '<p class="wk-muted">No description added.</p>'}</div>
+    return `<div class="wk-detail-section"><h3>Issue</h3>${p.description ? `<div class="wk-prose wk-md">${prose(p.description)}</div>` : !full ? '<p class="wk-muted">Loading details…</p>' : '<p class="wk-muted">No description added.</p>'}</div>
       <dl class="wk-properties">${props.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
-      ${(p.prs || []).length ? `<div class="wk-detail-section"><h3>Linked pull requests</h3>${p.prs.map(l => `<button class="wk-linked" data-wk="linked" data-url="${esc(l.url)}">${icon('pr', 15)} ${esc(l.repo)} #${l.number} →</button>`).join('')}</div>` : ''}${(p.comments || []).map(c => `<article class="wk-thread"><b>${esc(c.by)}</b><p>${esc(c.body)}</p></article>`).join('')}`;
+      ${(p.prs || []).length ? `<div class="wk-detail-section"><h3>Linked pull requests</h3>${p.prs.map(l => `<button class="wk-linked" data-wk="linked" data-url="${esc(l.url)}">${icon('pr', 15)} ${esc(l.repo)} #${l.number} →</button>`).join('')}</div>` : ''}${(p.comments || []).map(c => `<article class="wk-thread"><b>${esc(c.by)}</b><div class="wk-md">${prose(c.body)}</div></article>`).join('')}`;
   }
   function threadsHtml(p) {
     if (!p.threads) return '<p class="wk-muted">Loading review threads…</p>';
     const open = p.threads.filter(t => !t.resolved), resolved = p.threads.filter(t => t.resolved);
-    const thread = t => `<article class="wk-thread"><p class="wk-thread-path">${esc(t.path || 'General feedback')}${t.line ? ':' + t.line : ''}${t.outdated ? ' · outdated' : ''}</p>${(t.comments || []).map(c => `<div><b>${esc(c.author)}</b><p>${esc(c.body)}</p>${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">View thread ↗</a>` : ''}</div>`).join('')}</article>`;
+    const thread = t => `<article class="wk-thread"><p class="wk-thread-path">${esc(t.path || 'General feedback')}${t.line ? ':' + t.line : ''}${t.outdated ? ' · outdated' : ''}</p>${(t.comments || []).map(c => `<div><b>${esc(c.author)}</b><div class="wk-md">${prose(c.body)}</div>${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">View thread ↗</a>` : ''}</div>`).join('')}</article>`;
     return `<div class="wk-detail-section"><h3>Open threads · ${open.length}</h3>${p.threadsComplete === false ? `<p class="wk-action-note">This is a partial thread list. <a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Read all feedback on GitHub ↗</a></p>` : ''}${open.length ? open.map(thread).join('') : '<p class="wk-muted">No unresolved review threads in this list.</p>'}${resolved.length ? `<details data-preserve="resolved-threads"><summary>${resolved.length} resolved thread${resolved.length === 1 ? '' : 's'}</summary>${resolved.map(thread).join('')}</details>` : ''}</div>`;
   }
   async function detailLoad(key) {
@@ -244,8 +281,8 @@ const Work = (() => {
     const st = W.setup; if (!st || !st.root) return '';
     const fix = st.checks.filter(c => c.state === 'fix'), info = st.checks.filter(c => c.state === 'info');
     const summary = fix.length ? `${fix.length} thing${fix.length === 1 ? '' : 's'} to fix` : 'Set up';
-    const label = { here: 'Fix', chat: 'Fix in a chat…', open: 'Open .env.local' };
-    const row = c => `<li class="wk-setup-row" data-state="${esc(c.state)}"><span class="wk-setup-dot" aria-hidden="true"></span><span class="wk-setup-text"><b>${esc(c.label)}</b><span>${esc(c.detail)}</span></span>${c.fix && !(window.REMOTE && c.fix !== 'chat') ? `<button type="button" class="btn sm ${c.state === 'fix' ? '' : 'quiet'}" data-wk="setup-fix" data-id="${esc(c.id)}" data-how="${esc(c.fix)}"${c.fix === 'chat' ? ' aria-haspopup="menu"' : ''}>${label[c.fix]}</button>` : ''}</li>`;
+    const label = { here: 'Fix', chat: 'Fix in a chat…', open: 'Open .env.local', folder: 'Choose folder…', onepass: 'Fill from 1Password' };
+    const row = c => `<li class="wk-setup-row" data-state="${esc(c.state)}"><span class="wk-setup-dot" aria-hidden="true"></span><span class="wk-setup-text"><b>${esc(c.label)}</b><span>${esc(c.detail)}</span></span>${c.fix && !(window.REMOTE && c.fix !== 'chat') ? `<button type="button" class="btn sm ${c.state === 'fix' ? '' : 'quiet'}" data-wk="setup-fix" data-id="${esc(c.id)}" data-how="${esc(c.fix)}"${c.fix === 'chat' ? ' aria-haspopup="menu"' : ''}${c.fix === 'onepass' ? ` data-op="${c.op ? 1 : 0}"` : ''}>${c.fix === 'onepass' && !c.op ? 'Install 1Password…' : label[c.fix]}</button>` : ''}</li>`;
     return `<details class="wk-setup-box${fix.length ? ' has-fix' : ''}"${W.setupOpen ? ' open' : ''}><summary data-wk="setup-toggle"><span class="wk-run-label">This PC</span><span class="wk-setup-sum" data-state="${fix.length ? 'fix' : 'ok'}">${esc(summary)}</span>${info.length ? `<span class="wk-setup-note">${info.length} note${info.length === 1 ? '' : 's'}</span>` : ''}<span class="wk-setup-where">${esc(st.root)}</span></summary>
       <ul class="wk-setup-list">${[...fix, ...info, ...st.checks.filter(c => c.state === 'ok')].map(row).join('')}</ul>
       <p class="wk-setup-foot">From Latitude’s guide, docs/developer-setup/local-windows-setup.md. <button type="button" class="linkish" data-wk="setup-recheck">Check again</button></p></details>`;
@@ -258,8 +295,15 @@ const Work = (() => {
         await ChatUI.openKey(r.key);
       }, { review: true }));
     }
+    let extra = {};
+    if (how === 'folder') {
+      const folder = await ask('Folder for new worktrees', 'Chats make new worktrees of Latitude’s repo here, outside OneDrive. A full path, like G:\\LatitudeWorktrees.', '', 'Use this folder');
+      if (!folder) return undefined;
+      extra = { folder };
+    }
+    if (how === 'onepass') toast(b.dataset.op === '1' ? 'Asking 1Password. It may ask you to unlock it on this PC…' : 'Opening the 1Password installer…', 8000);
     b.disabled = true;
-    try { const r = await api('/api/work/setup-fix', { id, root: W.setup && W.setup.root }); toast(r.done || 'Done.', 6000); } finally { b.disabled = false; }
+    try { const r = await api('/api/work/setup-fix', { id, root: W.setup && W.setup.root, ...extra }); toast(r.done || 'Done.', 9000); } finally { b.disabled = false; }
     return loadSetup(true);
   }
 
@@ -294,7 +338,10 @@ const Work = (() => {
         <select data-wkm="${prov}-model" aria-label="${name} model"${list || cur.model ? '' : ' disabled'}><option value="">${esc(dm)}</option>${models.map(x => `<option value="${esc(x.value)}"${x.value === cur.model ? ' selected' : ''} title="${esc(x.note)}">${esc(x.label)}</option>`).join('')}${known ? '' : `<option value="${esc(cur.model)}" selected>${esc(cur.model)}</option>`}</select>
         ${noEffort ? '' : `<select data-wkm="${prov}-effort" aria-label="${name} effort"${efforts.length || cur.effort ? '' : ' disabled'}><option value="">${esc(de)}</option>${efforts.map(e => `<option value="${esc(e)}"${e === cur.effort ? ' selected' : ''}>${esc(cap(e))}</option>`).join('')}</select>`}</span>`;
     };
-    return `<div class="wk-runwith" aria-label="Default model for each assistant"><span class="wk-run-label" title="Used by every chat started from Your work">Defaults</span>${group('claude', 'Claude', '✦')}${group('codex', 'Codex', '◆')}${group('gemini', 'Gemini', '✧')}<span class="wk-run-note">${W.models ? 'every chat started from here' : 'Asking for the models…'}</span></div>`;
+    if (W.subs === undefined && !W.subsLoading) { W.subsLoading = true; api('/api/subagents').then(v => { W.subs = v && v.defaults && v.work && Array.isArray(v.models) && Array.isArray(v.roster) ? v : false; }).catch(() => { W.subs = false; }).finally(() => { W.subsLoading = false; if (showing()) render(); }); }
+    const sv = W.subs;
+    const subs = sv ? `<span class="wk-run wk-run-subs" role="group" aria-label="Claude’s subagents: model and effort"><span class="wk-run-who">⋔ Subagents</span><select data-wks="model" aria-label="Subagent model"><option value="">${esc(sv.defaults.model && sv.defaults.model !== 'inherit' ? `App default (${(sv.models.find(m => m.value === sv.defaults.model) || {}).label})` : 'Same as the chat')}</option>${sv.models.filter(m => m.value !== 'inherit').map(m => `<option value="${esc(m.value)}"${m.value === sv.work.model ? ' selected' : ''}>${esc(m.label)}</option>`).join('')}</select><select data-wks="effort" aria-label="Subagent effort"><option value="">${esc(sv.defaults.effort ? `App default (${sv.defaults.effort})` : 'Model’s default')}</option>${sv.efforts.map(e => `<option value="${esc(e)}"${e === sv.work.effort ? ' selected' : ''}>${esc(e === 'xhigh' ? 'Extra high' : cap(e))}</option>`).join('')}</select><button type="button" class="linkish" data-wk="subagents" title="Your named subagents and the app’s defaults">${sv.roster.length} named…</button></span>` : '';
+    return `<div class="wk-runwith" aria-label="Default model for each assistant"><span class="wk-run-label" title="Used by every chat started from Your work">Defaults</span>${group('claude', 'Claude', '✦')}${group('codex', 'Codex', '◆')}${group('gemini', 'Gemini', '✧')}${subs}<span class="wk-run-note">${W.models ? 'every chat started from here' : 'Asking for the models…'}</span></div>`;
   }
   // What a chat started now is given, for the assistant chosen.
   const runFor = prov => { const r = W.run[prov] || {}; return { ...(r.model ? { model: r.model } : {}), ...(r.effort ? { effort: r.effort } : {}) }; };
@@ -461,6 +508,7 @@ const Work = (() => {
     if (a === 'refresh') { loadSetup(true); return load(true); }
     if (a === 'prchat') { const p = find(b.dataset.repo, b.dataset.n); if (!p) return undefined; return showMenu(b, whoItems((pv, acct) => freeChat(p, pv, acct), { review: true })); }
     if (a === 'connections') return openConnections(null);
+    if (a === 'subagents') return openSubagents();
     if (a === 'savekey') { await api('/api/linear/key', { key: $('wkKey').value }); return load(true); }
     if (a === 'who') { W.usersQ = $('wkWho').value.trim(); W.users = W.usersQ ? (await api(`/api/linear/users?q=${encodeURIComponent(W.usersQ)}`)).users : null; return render(); }
     if (a === 'me') { await api('/api/linear/me', { id: b.dataset.id }); W.users = null; return load(true); }
@@ -531,7 +579,15 @@ const Work = (() => {
       render();
     }
     if (e.target.id === 'wkFileSelect') act('file', { dataset: { path: e.target.value } });
+    // Subagents for Your work's chats: saved with the app's other subagent choices (lib/subagents.js).
+    const wks = e.target.dataset && e.target.dataset.wks;
+    if (wks && W.subs) {
+      const v = W.subs, work = { ...v.work, [wks]: e.target.value };
+      api('/api/subagents', { defaults: v.defaults, work, codex: v.codex, roster: v.roster }).then(saved => { W.subs = { ...v, ...saved }; toast('Saved. PR and issue chats started from here use it.', 4000); render(); }).catch(err => { toast(err.message, 6000); render(); });
+    }
   });
+  // Changed on the Subagents page: Your work shows it at once.
+  document.addEventListener('subagents-saved', e => { if (W.subs) W.subs = { ...W.subs, ...e.detail }; if (showing()) render(); });
   document.addEventListener('input', e => { if (showing() && e.target.id === 'wkSearch') { W.query = e.target.value; renderResults(); } });
   document.addEventListener('scroll', e => { if (e.target.id === 'wkInspector') e.target.classList.toggle('scrolled', e.target.scrollTop > 90); }, true);
 

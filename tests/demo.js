@@ -4,6 +4,9 @@
 const fs = require('fs'), path = require('path');
 const ART = process.env.ART;
 const NOW = Date.now();
+// Subagents, saved in a throwaway folder (lib/subagents.js), as the server would.
+let subagentsSaved = null, subagentsKept = null;
+const subagentsStore = () => subagentsKept || (subagentsKept = require('../lib/subagents').createSubagents({ file: path.join(require('os').tmpdir(), `ss-demo-subagents-${process.pid}`, 'subagents.json'), tmp: path.join(require('os').tmpdir(), `ss-demo-subagents-${process.pid}`) }));
 const min = n => NOW - n * 60000;
 const iso = t => new Date(t).toISOString();
 const later = h => new Date(NOW + h * 3600000).toISOString();
@@ -374,6 +377,11 @@ async function install(b, { aide = false, desktopStub = null, live = true, state
     if (p === '/api/tools/copy') {
       servers = servers.map(r => (r.name !== body.name ? r : { ...r, [body.to]: { ...(r.claude || r.codex || r.gemini), scope: 'user', enabled: true } }));
       return { body: { servers, codexError: null, codexOn: true, geminiOn: !!gemini, copied: body.name } };
+    }
+    if (p === '/api/subagents') {
+      if (method === 'POST') subagentsSaved = subagentsStore().save(body);
+      const sub = require('../lib/subagents'), v = subagentsSaved || subagentsStore().get();
+      return { body: { ...v, models: sub.MODELS.map(m => ({ value: m, label: sub.MODEL_LABEL[m] })), efforts: sub.EFFORTS, starters: sub.STARTERS } };
     }
     if (p === '/api/chat/review') { return { body: { id: `rv${++reviews}`, what: 'your uncommitted changes', base: body.base || null } }; }
     // Restart, pretended: "now" says it's restarting; "idle" waits on one chat; "cancel" calls it off.

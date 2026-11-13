@@ -505,3 +505,46 @@ html[data-mode="light"] .wk-row.selected :is(.wk-row-meta,.wk-status){color:var(
 .xr-pick-row .xr-field{margin:0}
 .xr-pick-who{font-weight:550;color:var(--parch-2);padding-bottom:12px}
 @media(max-width:760px){.xr-pick-row{grid-template-columns:1fr 1fr}.xr-pick-who{grid-column:1/-1;padding:0}}
+
+/* Row signals: checks, review, and the chat working on it */
+.wk-sig{display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border:1px solid var(--seam-2);border-radius:999px;font:500 11px/1.45 var(--f-mono);color:var(--ash);white-space:nowrap}
+.wk-sig.ok{border-color:rgb(var(--c-7fb08a, 127 176 138) / .35)}
+.wk-sig.bad{border-color:rgb(var(--c-cf8274) / .45);background:rgb(var(--c-cf8274) / .07)}
+.wk-sig.warn{border-color:rgb(var(--c-d9bf74) / .45)}
+.wk-row-meta>.wk-sig::before,.wk-row-meta>.wk-row-chat::before,.wk-row-meta>.wk-sig+span::before{content:none!important}
+.wk-row-chat{display:inline-flex;align-items:center;gap:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.6;cursor:pointer;background:rgb(var(--c-cf8274) / .06);border:1px solid var(--seam-2)}
+.wk-row-chat:hover{background:var(--vellum-2)}
+.wk-row-chat.asks{color:var(--gilt);border-color:rgb(var(--c-d9bf74) / .55);background:rgb(var(--c-d9bf74) / .1);animation:wk-ask 2.4s ease-in-out infinite}
+@keyframes wk-ask{50%{box-shadow:0 0 0 3px rgb(var(--c-d9bf74) / .12)}}
+.wk-pulse{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none;animation:wk-pulse 1.4s ease-in-out infinite}
+@keyframes wk-pulse{50%{opacity:.25;transform:scale(.7)}}
+@media (prefers-reduced-motion:reduce){.wk-pulse,.wk-row-chat.asks{animation:none}}
+/* The chat on it, at the top of the details */
+.wk-live-chat{display:flex;align-items:center;gap:12px;width:100%;margin:2px 0 14px;padding:11px 14px;text-align:left;border:1px solid var(--seam-2);border-left:3px solid currentColor;border-radius:8px;background:var(--vellum);color:var(--violet);cursor:pointer}
+.wk-live-chat.warn{color:var(--gilt);background:rgb(var(--c-d9bf74) / .07)}
+.wk-live-chat>span:nth-child(2){display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.wk-live-chat b{color:var(--parch);font-weight:600;font-size:13px}
+.wk-live-chat small{color:var(--ash);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wk-live-chat>span:last-child{font-size:12px;white-space:nowrap}
+.wk-live-chat:hover{background:var(--vellum-2)}
+.wk-live-mark{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--gilt);color:var(--ink, #111);font-weight:700;font-size:12px;flex:none}
+/* Markdown from GitHub and Linear */
+.wk-md{white-space:normal}
+.wk-md>:first-child{margin-top:0}.wk-md>:last-child{margin-bottom:0}
+.wk-md p{margin:0 0 10px}
+.wk-md h2,.wk-md h3,.wk-md h4,.wk-md h5{font:600 13.5px/1.4 var(--f-ui-head, inherit);color:var(--parch);margin:16px 0 6px;letter-spacing:0}
+.wk-md h2{font-size:15px}
+.wk-md ul,.wk-md ol{margin:0 0 10px;padding-left:20px}
+.wk-md li{margin:2px 0}
+.wk-md a{color:var(--violet);text-decoration:underline;text-underline-offset:2px}
+.wk-md code{font:400 .92em var(--f-mono);padding:1px 4px;border-radius:4px;background:var(--vellum-2)}
+.wk-md pre{max-height:260px;overflow:auto;padding:10px 12px;border-radius:6px;background:var(--vellum-2);font-size:11.5px;line-height:1.55}
+.wk-md pre code{padding:0;background:none}
+.wk-md blockquote{margin:0 0 10px;padding:2px 12px;border-left:2px solid var(--seam-2);color:var(--ash)}
+.wk-md table{border-collapse:collapse;margin:0 0 10px;font-size:11.5px}
+.wk-md th,.wk-md td{border:1px solid var(--seam);padding:4px 8px;text-align:left}
+.wk-md hr{border:0;border-top:1px solid var(--seam);margin:12px 0}
+.wk-md img{max-width:100%}
+.wk-thread .wk-md{font-size:12.5px;line-height:1.65;color:var(--parch-2);margin:4px 0 6px}
+.wk-filter-n{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;margin-left:3px;border-radius:8px;background:rgb(var(--c-d9bf74) / .18);color:var(--gilt);font:600 11px/1 var(--f-mono)}
+.wk-group-dot[data-kind="chat-asks"]{background:var(--gilt)}.wk-group-dot[data-kind="chat-working"]{background:var(--violet)}

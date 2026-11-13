@@ -3966,3 +3966,41 @@ body.from-cache .pulse::after{content:'';position:absolute;inset:-2px;border-rad
 .cr-side.next.gemini .cr-dot{box-shadow:inset 0 0 0 2px var(--gemini)}
 .c-relay:has(.cr-side.gemini:last-child) .cr-link:is(.flow,.lit){background:linear-gradient(90deg,var(--crimson),var(--gemini))}
 .c-relay:has(.cr-side.gemini:first-child) .cr-link:is(.flow,.lit){background:linear-gradient(90deg,var(--gemini),var(--crimson))}
+/* Subagents (ui/subagents.js): defaults, and your named subagents with their model, effort and tools. */
+dialog.subs-dlg{width:min(860px,calc(calc(100vw / var(--look-ui, 1)) - 32px))}
+.sa-intro{margin:0 0 14px;color:var(--parch-2);font-size:13.5px;line-height:1.6}
+.sa-sec{margin:0 0 18px;padding-top:14px;border-top:1px solid var(--seam)}
+.sa-sec h4{margin:0 0 4px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--parch-2);display:flex;align-items:center;gap:8px}
+.sa-count{font:600 11px var(--f-mono);color:var(--ash)}
+.sa-grid{display:grid;grid-template-columns:minmax(150px,auto) 1fr 1fr;gap:8px 10px;align-items:center;margin-top:10px}
+.sa-who{font-weight:600;font-size:13px;display:flex;flex-direction:column}
+.sa-who small{font-weight:400;color:var(--ash);font-size:11.5px}
+.sa-list{list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:10px}
+.sa-card{padding:12px;border:1px solid var(--seam-2);border-radius:8px;background:var(--vellum)}
+.sa-card-top{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.sa-card label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--ash)}
+.sa-card label>span small{color:var(--ash-2, var(--ash))}
+.sa-name{flex:1 1 160px}
+.sa-name input{font:600 13px var(--f-mono);width:100%}
+.sa-remove{margin-left:auto;align-self:center}
+.sa-what{margin-top:8px}
+.sa-card textarea{width:100%;resize:vertical;font-size:12.5px;line-height:1.5}
+.sa-more{margin-top:6px;font-size:12px;color:var(--ash)}
+.sa-more summary{cursor:pointer;padding:3px 0}
+.sa-more textarea{margin-top:6px}
+.sa-row{display:flex;gap:8px;flex-wrap:wrap}
+.sa-tip p{margin:6px 0 0;font-size:13px;color:var(--parch-2);line-height:1.6}
+.sa-foot{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding-top:12px;border-top:1px solid var(--seam)}
+.sa-err{flex:1;color:var(--ember-soft, #e08a7a);font-size:12.5px}
+@media (max-width:640px){.sa-grid{grid-template-columns:1fr 1fr}.sa-who{grid-column:1 / -1}}
+.wk-run-subs .linkish{font-size:12px;white-space:nowrap}
+.subs-dlg select,.subs-dlg input,.subs-dlg textarea{font-size:13px;color:var(--parch);background:var(--vellum-2);border:1px solid var(--seam-2);border-radius:6px;padding:6px 8px}
+.subs-dlg select{padding:5px 8px;min-width:0}
+.subs-dlg textarea:focus,.subs-dlg input:focus,.subs-dlg select:focus{outline:2px solid var(--ember);outline-offset:-1px}
+.sa-grid select{width:100%}
+.sa-how{margin:8px 0 0;font-size:12px;color:var(--ash);line-height:1.5}
+.sa-engine[data-engine="codex"]{border-color:rgb(var(--c-7fa7d8, 127 167 216) / .6)}
+.sa-engine[data-engine="gemini"]{border-color:rgb(var(--c-b48ce0, 180 140 224) / .6)}
+.sa-card-top label:not(.sa-name) select{max-width:190px;text-overflow:ellipsis}
+.sa-card-top{flex-wrap:nowrap}
+@media (max-width:760px){.sa-card-top{flex-wrap:wrap}}

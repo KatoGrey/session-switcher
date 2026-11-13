@@ -33,7 +33,7 @@ function renderBar() {
   chip.style.setProperty('--ring', ringById(a.id));
   chip.innerHTML = `<span class="ac-ring">${miniDial(a.id, 30)}</span>
     <span class="ac-who"><small>${inChat ? 'This chat runs as' : 'New chats open as'}</small><b>${esc(a.name)}</b></span>
-    ${d ? `<span class="ac-sep" aria-hidden="true"></span>${cell('5-hour window', d.fiveHour)}${cell('This week', d.week)}`
+    ${d ? `<span class="ac-sep" aria-hidden="true"></span>${cell('5-hour window', d.fiveHour)}${cell('This week', d.week)}${(d.models || []).filter(m => m.used !== null).map(m => cell(`${esc(m.name)} this week`, m)).join('')}`
       : a.gemini ? `<span class="ac-sep" aria-hidden="true"></span>${geminiQuotaCell()}`
       : a.signedIn ? `<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Usage</small><b>${u && (u.error || (u.data && !u.checking)) ? 'Unavailable' : 'Checking…'}</b></span>` : '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Account</small><b>Not signed in</b></span>'}`;
   chip.insertAdjacentHTML('beforeend', '<span class="ac-caret" aria-hidden="true">▾</span>');
@@ -113,6 +113,7 @@ function navHtml() {
     ${workNav()}
     <button type="button" class="nav-i" data-view="recent" aria-current="${S.view === 'recent'}"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">${esc(voice('Recent chats'))}</span><span class="count">${total}</span></button>
     <button type="button" class="nav-i nav-connections" data-shell-connections><span class="glyph" aria-hidden="true">⚿</span><span class="ni-t">Connections</span></button>
+    <button type="button" class="nav-i nav-subagents" data-shell-subagents><span class="glyph" aria-hidden="true">⋔</span><span class="ni-t">Subagents</span></button>
     </div>
     <div class="nav-scroll">
     <div class="nav-tools">
@@ -667,8 +668,10 @@ function usageDetail(u, signedIn, signedOutText) {
   };
   let detail = '';
   if (d) {
-    detail = `<ul class="win">${win('Five-hour window', d.fiveHour, SPAN.fiveHour)}${win('This week', d.week, SPAN.week)}</ul>`;
-    const chips = d.models.filter(m => m.used !== null).map(m => { const l = leftOf(m); return `<span class="model ${hot(l) ? 'hot' : ''}" title="${esc(m.name)} weekly limit${m.resetsAt ? `, resets ${when(m.resetsAt)}` : ''}">${esc(m.name)} <b>${l}% left</b></span>`; });
+    // A model with a weekly limit of its own (Fable, say) gets a row like the week's, with its bar and reset.
+    const own = d.models.filter(m => m.used !== null);
+    detail = `<ul class="win">${win('Five-hour window', d.fiveHour, SPAN.fiveHour)}${win('This week', d.week, SPAN.week)}${own.map(m => win(`${esc(m.name)} this week`, m)).join('')}</ul>`;
+    const chips = [];
     if (d.extra) chips.push(`<span class="model" title="Extra usage beyond your plan">${d.extra.credits !== undefined && d.extra.used === null ? `Credits <b>${esc(d.extra.unlimited ? 'unlimited' : fmtCredits(d.extra.credits))}</b>` : `Extra usage <b>${d.extra.used !== null ? `${Math.round(d.extra.used)}% of monthly cap` : 'on'}</b>`}</span>`);
     if (chips.length) detail += `<div class="models">${chips.join('')}</div>`;
     const pf = paceOf(d.fiveHour, SPAN.fiveHour), pw = paceOf(d.week, SPAN.week);

@@ -29,13 +29,17 @@ test('only clones of Latitude’s repo, from anywhere inside them, get the note,
   assert.ok(w.isLatitude(lat) && w.isLatitude(deep) && w.isLatitude(ssh) && w.isLatitude(alias), 'an SSH alias is the same repo');
   assert.ok(!w.isLatitude(other), 'a repo whose name only starts the same isn’t it');
   assert.ok(!w.isLatitude(none) && !w.isLatitude(os.tmpdir()));
-  assert.equal(w.noteFor(deep, 'win32'), w.WINDOWS_NOTE);
+  assert.ok(w.noteFor(deep, 'win32').startsWith(w.WINDOWS_NOTE));
+  assert.match(w.noteFor(deep, 'win32'), /worktree-setup\.mjs --copy/);
+  assert.match(w.noteFor(deep, 'win32'), /beside the clone/, 'no folder chosen yet');
   assert.equal(w.noteFor(deep, 'darwin'), '');
   assert.equal(w.noteFor(other, 'win32'), '');
   assert.equal(w.noteFor(null, 'win32'), '');
   assert.match(w.WINDOWS_NOTE, /GRAPHQL_FRESHNESS_SKIP=1/);
   assert.match(w.WINDOWS_NOTE, /Never run schema:write or schema:generate/);
   assert.match(w.WINDOWS_NOTE, /git mv -f/);
+  assert.match(w.WINDOWS_NOTE, /This PC → 1Password/);
+  assert.match(w.WINDOWS_NOTE, /no personal AWS user/);
 });
 
 test('a worktree of Latitude’s repo counts too (its config is the shared repository’s)', () => {
@@ -53,18 +57,20 @@ test('the setup check says what’s fine, what to fix and how, without changing 
   const dir = repo('https://github.com/latitudegames/latitude.git'); gone.push(dir);
   fs.writeFileSync(path.join(dir, '.nvmrc'), execFileSync('node', ['--version'], { encoding: 'utf8', windowsHide: true }).trim());
   fs.writeFileSync(path.join(dir, 'yarn.lock'), '# lock\n');
-  fs.writeFileSync(path.join(dir, '.env.local'), 'TURBO_TOKEN=abc\nEXPO_TOKEN=\n');
+  fs.writeFileSync(path.join(dir, '.env.local'), 'TURBO_TOKEN=abc\nEXPO_TOKEN=\nONEPASS_TOKEN=ops_...your_1password_service_account_token\n');
   const before = git(dir, 'status', '--porcelain');
-  const mac = await w.check(dir, { platform: 'darwin' });
+  const mac = await w.check(dir, { platform: 'darwin', verifyFn: async () => { throw new Error('never asked with tokens missing'); } });
   const by = id => mac.find(c => c.id === id);
-  assert.deepEqual(mac.map(c => c.id), ['node', 'hooks', 'deps', 'env', 'turbo'], 'nothing Windows-only on a Mac');
+  assert.deepEqual(mac.map(c => c.id), ['node', 'hooks', 'deps', 'env', 'onepass', 'turbo'], 'nothing Windows-only on a Mac');
   assert.equal(by('node').state, 'ok');
   assert.equal(by('node').fix, null, 'nothing to fix, no button');
   assert.deepEqual([by('hooks').state, by('hooks').fix], ['fix', 'chat']);
   assert.deepEqual([by('deps').state, by('deps').fix], ['fix', 'chat']);
   assert.match(by('deps').detail, /Not installed/);
-  assert.equal(by('env').state, 'info', 'secrets only matter for running the app');
-  assert.match(by('env').detail, /ONEPASS_CONNECT_TOKEN, ONEPASS_TOKEN, EXPO_TOKEN/);
+  assert.equal(by('env').state, 'info', 'build tokens are optional');
+  assert.match(by('env').detail, /EXPO_TOKEN/);
+  assert.deepEqual([by('onepass').state, by('onepass').fix], ['fix', 'onepass']);
+  assert.match(by('onepass').detail, /ONEPASS_TOKEN, ONEPASS_CONNECT_TOKEN, ONEPASS_AGENT_TOKEN, ONEPASS_AGENT_VAULT_ID, ONEPASS_VAULT_ID/, 'a placeholder isn’t a value');
   assert.doesNotMatch(by('env').detail, /TURBO_TOKEN/);
   assert.equal(by('turbo').state, 'info');
   assert.equal(git(dir, 'status', '--porcelain'), before, 'checking changes nothing');
@@ -78,7 +84,7 @@ test('the setup check says what’s fine, what to fix and how, without changing 
   assert.deepEqual([wy('node').state, wy('node').fix], ['fix', 'chat']);
   assert.match(wy('node').detail, /the repo uses 1\.2\.3/);
   assert.equal(wy('deps').state, 'ok');
-  for (const id of ['longpaths', 'symlinks', 'graphql', 'notes', 'gemini']) assert.ok(wy(id), `Windows checks ${id}`);
+  for (const id of ['longpaths', 'symlinks', 'worktrees', 'graphql', 'notes', 'gemini']) assert.ok(wy(id), `Windows checks ${id}`);
   assert.equal(wy('longpaths').fix === null || wy('longpaths').fix === 'here', true);
   assert.equal(wy('graphql').state, 'ok');
   assert.deepEqual([wy('gemini').state, wy('gemini').fix], ['fix', 'here']);
@@ -117,7 +123,15 @@ test('Gemini’s local note is written once, kept out of git, and a GEMINI.md of
 });
 
 test('fixes through a chat follow the repo’s guide and stay on this PC; the others aren’t chats', async () => {
-  for (const id of ['node', 'symlinks', 'hooks', 'deps', 'turbo']) {
+  assert.match(w.fixPrompt('aws'), /get-game-state 5F05E476/);
+  assert.match(w.fixPrompt('aws'), /Never print the tokens/);
+  const ready = repo('https://github.com/latitudegames/latitude.git'); gone.push(ready);
+  fs.writeFileSync(path.join(ready, '.env.local'), ['ONEPASS_TOKEN', 'ONEPASS_CONNECT_TOKEN', 'ONEPASS_VAULT_ID', 'ONEPASS_AGENT_TOKEN', 'ONEPASS_AGENT_VAULT_ID'].map(k => `${k}=v${k.length}`).join('\n'));
+  const okRows = await w.check(ready, { platform: 'darwin', verifyFn: async () => ({ ONEPASS_TOKEN: { ok: true }, ONEPASS_AGENT_TOKEN: { ok: true } }) });
+  assert.deepEqual([okRows.find(c => c.id === 'onepass').state, okRows.find(c => c.id === 'aws')?.fix], ['ok', 'chat'], 'the AWS test is offered once 1Password takes them');
+  const noRows = await w.check(ready, { platform: 'darwin', verifyFn: async () => ({ ONEPASS_TOKEN: { ok: false, error: '403' } }) });
+  assert.ok(!noRows.some(c => c.id === 'aws'), 'not before');
+  for (const id of ['node', 'symlinks', 'hooks', 'deps', 'turbo', 'aws']) {
     const p = w.fixPrompt(id, { detail: 'something.' });
     assert.match(p, /don't commit, push or change tracked files/, id);
   }
@@ -126,4 +140,26 @@ test('fixes through a chat follow the repo’s guide and stay on this PC; the ot
   assert.throws(() => w.fixPrompt('graphql'), e => e.status === 400);
   for (const id of ['constructor', 'toString', '__proto__']) assert.throws(() => w.fixPrompt(id), e => e.status === 400, id);
   await assert.rejects(w.fixHere('node', os.tmpdir()), e => e.status === 400);
+});
+
+test('the folder for new worktrees: outside OneDrive and the clone, made if missing, and every chat is told', async () => {
+  const dir = repo('https://github.com/latitudegames/latitude.git'); gone.push(dir);
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'winrepo-data-')); gone.push(data);
+  w.configure({ file: path.join(data, 'winrepo.json') });
+  try {
+    const drive = fs.mkdtempSync(path.join(os.tmpdir(), 'winrepo-od-')); gone.push(drive);
+    const env = { ...process.env, OneDrive: drive };
+    const inOd = path.join(drive, 'Desktop', 'clone');
+    assert.ok(w.inOneDrive(inOd, env) && !w.inOneDrive(dir, env) && !w.inOneDrive(drive + '-other', env));
+    await assert.rejects(w.fixHere('worktrees', dir, { folder: 'relative/path', env }), e => e.status === 400);
+    await assert.rejects(w.fixHere('worktrees', dir, { folder: path.join(drive, 'trees'), env }), e => e.status === 400 && /OneDrive/.test(e.message));
+    await assert.rejects(w.fixHere('worktrees', dir, { folder: path.join(dir, 'trees'), env }), e => e.status === 400, 'not inside the clone');
+    const home = path.join(data, 'LatitudeWorktrees');
+    assert.match(await w.fixHere('worktrees', dir, { folder: home, env }), /LatitudeWorktrees/);
+    assert.ok(fs.statSync(home).isDirectory());
+    assert.equal(w.settings().worktrees, home);
+    assert.ok(w.noteFor(dir, 'win32').includes(`make them in ${home}`));
+    const row = (await w.check(dir, { platform: 'win32', env })).find(c => c.id === 'worktrees');
+    assert.equal(row.state, 'ok');
+  } finally { w.configure({ file: null }); }
 });

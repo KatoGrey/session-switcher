@@ -53,6 +53,6 @@ const WorkModel = (() => {
     const todo = available.filter(i => !doing.includes(i)).sort((a, b) => (a.priority || 5) - (b.priority || 5) || Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0));
     return { todo, doing, review: open.filter(p => p.mine || (p.roles || []).includes('linked')), waiting: open.filter(p => !p.mine && !(p.roles || []).includes('linked')), merged: prs.filter(p => p.state === 'MERGED'), attention: open.filter(p => status(p).attention) };
   }
-  return { key, status, group, readiness, area };
+  return { key, status, group, readiness, area, checkGate };
 })();
 if (typeof module !== 'undefined') module.exports = WorkModel;

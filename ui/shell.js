@@ -52,6 +52,7 @@ const Shell = (() => {
     if (view) go(view.dataset.shellView);
     if (e.target.closest('[data-shell-new]')) openNewChat();
     if (e.target.closest('[data-shell-connections]')) { setNavOpen(false); openConnections(); }
+    if (e.target.closest('[data-shell-subagents]')) { setNavOpen(false); openSubagents(); }
   });
   return { sync, toggle, location, captureReturn, restoreReturn, canCollapse: () => desktop.matches && standard() };
 })();

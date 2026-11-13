@@ -55,6 +55,8 @@ const mcpAuthLib = require('./lib/mcpauth');
 const prsLib = require('./lib/prs');
 const linearLib = require('./lib/linear');
 const winrepo = require('./lib/winrepo');
+const onepass = require('./lib/onepass');
+const subagentsLib = require('./lib/subagents');
 const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.10.0';
@@ -70,6 +72,11 @@ const APP_DIR = __dirname;
 // Your accounts, history and settings live next to the app, unless SWITCHER_DATA_DIR points
 // elsewhere (the tests use a throwaway folder, so they never touch your real data).
 const DATA_DIR = process.env.SWITCHER_DATA_DIR ? path.resolve(process.env.SWITCHER_DATA_DIR) : APP_DIR;
+// This PC's settings for Latitude's repo (the folder for new worktrees).
+winrepo.configure({ file: path.join(DATA_DIR, 'winrepo.json') });
+// Subagents: their models and effort, and your roster of them (lib/subagents.js).
+// (engines: how a Codex or Gemini subagent runs from a Claude chat: the Codex command and home, and agy.)
+const subagents = subagentsLib.createSubagents({ file: path.join(DATA_DIR, 'subagents.json'), log: (...a) => log(...a), engines: () => { const c = config(); return { codex: { command: sys.codexCommand(c), ...(c.codex && c.codex.home ? { home: c.codex.home } : {}) }, gemini: { command: geminiLib.agyPath(c.gemini && c.gemini.command) } }; } });
 // This copy's own settings (its data folder, port, the desktop app's flag) stay with it: the chats,
 // terminals and tools it starts don't inherit them. Otherwise a test, or `node server.js`, run from
 // one of its chats would use this copy's data and port, and could take it over. A restart passes them
@@ -336,6 +343,7 @@ function saveDrafts() { clearTimeout(draftsTimer); draftsTimer = setTimeout(() =
 // Run the project (lib/runner.js): one run per project, its output kept for the page.
 const runner = runnerLib.createRunner({ dataDir: DATA_DIR, log, onChange: cwd => broadcast('run', { cwd }) });
 const chats = chatLib.createChatManager({
+  envFor: opts => subagents.envFor({ work: !!opts.work }),
   log,
   extras: chatExtras,
   onChange: chat => {
@@ -440,7 +448,7 @@ const usage = usageLib.createUsage({ log, chats, onChange: () => { scheduleUsage
 // and new chats go to the active account (codexActive()), like "New chats open as" for Claude.
 let codexTimer = null;
 const codexOnChange = () => { if (codexTimer) return; codexTimer = setTimeout(() => { codexTimer = null; broadcast('accounts'); }, 300); };
-const makeCodex = account => codexLib.createCodex({ getConfig: () => config(), log, usage, chats, onChange: codexOnChange, account });
+const makeCodex = account => codexLib.createCodex({ getConfig: () => config(), log, usage, chats, onChange: codexOnChange, account, threadExtras: () => subagents.codexThread() });
 const codex = makeCodex(codexLib.ACCOUNT);
 // Gemini, through Google's Antigravity CLI (lib/gemini.js).
 const gemini = geminiLib.createGemini({ chats, getConfig: () => config(), dataDir: DATA_DIR, log, onChange: () => broadcast('accounts'), onTurn: () => scheduleGeminiUsage(4000) });
@@ -959,7 +967,15 @@ showsPicturesArgs();
 // Claude in Chrome: chats here can use your Chrome (through the Claude extension) like a terminal
 // session started with /chrome can. Off with prefs.chromeInChats = false.
 // cwd: the chat's folder, for what it should know about it (Latitude's repo on Windows).
-const chatArgs = (cwd = null) => [...showsPicturesArgs(winrepo.noteFor(cwd)), ...(config().prefs.chromeInChats === false ? [] : ['--chrome'])];
+// What the Subagents page shows: the saved choices, and what can be chosen.
+const subagentsView = v => ({ ...v, models: subagentsLib.MODELS.map(m => ({ value: m, label: subagentsLib.MODEL_LABEL[m] })), efforts: subagentsLib.EFFORTS, codexEfforts: subagentsLib.CODEX_EFFORTS, engines: subagentsLib.ENGINES.map(e => ({ value: e, label: subagentsLib.ENGINE_LABEL[e] })), starters: subagentsLib.STARTERS });
+// Your subagents and the skill for assigning their models reach every chat as the app's own plugin (lib/subagents.js).
+function subagentArgs() {
+  const dir = subagents.pluginDir();
+  const arg = dir && dir.replace(/\\/g, '/');
+  return arg && /^[\w.:=\/-]+$/.test(arg) ? ['--plugin-dir', arg] : [];
+}
+const chatArgs = (cwd = null) => [...showsPicturesArgs(winrepo.noteFor(cwd)), ...subagentArgs(), ...(config().prefs.chromeInChats === false ? [] : ['--chrome'])];
 async function openChatNow(c, body) {
   // A partner's conversation opens inside the chat it belongs to.
   const lead = (!body.mode || body.mode === 'resume') && body.sessionId ? chatPrefs.parentOf(body.sessionId) : null;
@@ -1213,7 +1229,7 @@ async function setupCheck(fresh) {
   if (!winrepo.IS_WIN) return { root: null, checks: [] };
   if (!fresh && workSetup.value && Date.now() - workSetup.at < 3 * 60000) return workSetup.value;
   const root = await latitudeClone();
-  const value = root ? { root, windows: true, checks: await winrepo.check(root, { env: sys.agentEnv() }) } : { root: null, checks: [] };
+  const value = root ? { root, windows: true, checks: await winrepo.check(root, { env: sys.agentEnv(), fresh: !!fresh }) } : { root: null, checks: [] };
   workSetup = { at: Date.now(), value };
   return value;
 }
@@ -1224,7 +1240,39 @@ async function setupFix(body, remote) {
   const id = String(body.id || '');
   const seen = workSetup.value && normCwd(workSetup.value.root || '') === normCwd(root) ? workSetup.value.checks : null;
   workSetup.at = 0;
-  if (id === 'longpaths' || id === 'gemini') { if (remote) throw fail(403, 'Do this one at the PC.'); return { done: await winrepo.fixHere(id, root) }; }
+  if (id === 'longpaths' || id === 'gemini' || id === 'worktrees') { if (remote) throw fail(403, 'Do this one at the PC.'); return { done: await winrepo.fixHere(id, root, { folder: typeof body.folder === 'string' ? body.folder : null }) }; }
+  if (id === 'onepass') {
+    // Latitude's 1Password tokens, read from your own 1Password through its CLI and written to .env.local. At the
+    // PC only (1Password asks you there), and the values never come back to the page.
+    if (remote) throw fail(403, 'Do this one at the PC: 1Password asks you there.');
+    const op = onepass.findOp({ env: sys.agentEnv() });
+    if (!op) {
+      // Not here yet: the 1Password app and its CLI, installed in a window you can watch (winget skips one that's
+      // already there). Then you sign in to the app, turn on its CLI integration, and press the button again.
+      if (!sys.IS_WIN) throw fail(409, 'Install the 1Password app and its CLI (brew install --cask 1password 1password-cli), turn on Settings → Developer → Integrate with 1Password CLI, then try again.');
+      const r = await sys.runInTerminal(config(), os.homedir(), 'Install 1Password', [
+        '@echo off', 'title Install 1Password and its CLI',
+        'echo Installing the 1Password app and its command-line tool (op) with winget...', 'echo.',
+        'winget install --exact --id AgileBits.1Password --accept-package-agreements --accept-source-agreements',
+        'winget install --exact --id AgileBits.1Password.CLI --accept-package-agreements --accept-source-agreements',
+        'echo.', 'echo Next: open 1Password and sign in to your Latitude account.',
+        'echo Then Settings, Developer: turn on "Integrate with 1Password CLI".',
+        'echo Then press Fill from 1Password again in Session Switcher.', 'echo.', 'pause', '',
+      ].join('\r\n'));
+      if (r && r.ok === false) throw fail(500, `Couldn’t open the installer window: ${r.error}`);
+      return { done: 'Installing 1Password and its CLI in a new window. When it’s done: sign in to 1Password, turn on Settings → Developer → Integrate with 1Password CLI, then press Fill from 1Password again.', installing: true };
+    }
+    let got;
+    try { got = await onepass.fromOp(op, { env: sys.agentEnv() }); } catch (err) {
+      throw fail(409, `1Password didn’t answer: ${err.message}. Is the 1Password app open and unlocked, with Integrate with 1Password CLI on?`);
+    }
+    if (!got.found.length) throw fail(404, `No items named ${onepass.TOKENS.map(t => t.key).join(', ')} in the vaults you can see (${got.vaults.join(', ') || 'none'}). Ask for access to Dev_Secrets and Agents.`);
+    const saved = await onepass.save(root, got.values);
+    log(`This PC: wrote ${saved.keys.join(', ')} from 1Password to .env.local${saved.worktrees ? ` (and ${saved.worktrees} worktree copies)` : ''}`);
+    const row = await onepass.check(root, { env: sys.agentEnv(), fresh: true });
+    const missing = got.notFound.length ? ` Not found: ${got.notFound.map(n => `${n.key} (in ${n.vaultName})`).join(', ')}.` : '';
+    return { done: `${row.state === 'ok' ? '1Password accepts them.' : row.detail}${missing}`, ok: row.state === 'ok' };
+  }
   if (id === 'env') {
     // .env.local, in Notepad (a copy of the example first, as the repo's guide says, if there's none yet).
     if (remote) throw fail(403, 'Open it at the PC.');
@@ -1275,7 +1323,7 @@ async function openPrChat({ provider, account, cwd, sessionId = null, title, per
     ? (isCodexAccount(account) ? account : (c.codexActive && isCodexAccount(c.codexActive) ? c.codexActive : 'codex'))
     : (account && c.accounts.some(a => a.id === account) ? account : (c.accounts.find(a => a.isDefault) || c.accounts[0]).id);
   // (Codex calls looking without changing anything read-only; Claude and Gemini call it plan.)
-  return routineChat({ account: id, cwd, sessionId, permissionMode: provider === 'codex' && permissionMode === 'plan' ? 'read-only' : permissionMode, model, effort, title });
+  return routineChat({ account: id, cwd, sessionId, permissionMode: provider === 'codex' && permissionMode === 'plan' ? 'read-only' : permissionMode, model, effort, title, work: true });
 }
 // A chat about a pull request with no task given: opened in its repo with your defaults, its details ready in the
 // message box for you to say what you want.
@@ -1799,7 +1847,7 @@ function stateFor() {
 // ---------- routines ----------
 
 // Chats that start on their own (lib/routines.js). They open the same way the chat window opens one.
-async function routineChat({ account, cwd, sessionId, permissionMode, model, effort, title }) {
+async function routineChat({ account, cwd, sessionId, permissionMode, model, effort, title, work = false }) {
   const c = config();
   if (account === 'gemini') return openGeminiFor(c, { sessionId, cwd, mode: permissionMode, model, title });
   const folder = path.basename(cwd.replace(/[\\/]+$/, '')) || cwd;
@@ -1816,7 +1864,7 @@ async function routineChat({ account, cwd, sessionId, permissionMode, model, eff
   if (sessionId && running[sessionId.toLowerCase()]) throw fail(409, 'That chat is open in a terminal, so the routine left it alone.');
   await guarded(a);
   acc.prepareForLaunch(c, a);
-  const chat = chats.open({ extraArgs: chatArgs(cwd), cfg: c, account: a, cwd, sessionId: sessionId || null, permissionMode, model, effort: effort || undefined, title, folder });
+  const chat = chats.open({ extraArgs: chatArgs(cwd), cfg: c, account: a, cwd, sessionId: sessionId || null, permissionMode, model, effort: effort || undefined, title, folder, work });
   if (sessionId) sessions.recordLaunch(sessionId, a, 'app');
   return chat;
 }
@@ -2126,6 +2174,7 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/prs/mine') return send(res, 200, await prs.mine({ fresh: url.searchParams.get('fresh') === '1' }));
   if (route === 'GET /api/work') return send(res, 200, await workBoard(url.searchParams.get('fresh') === '1'));
   if (route === 'GET /api/work/setup') return send(res, 200, await setupCheck(url.searchParams.get('fresh') === '1'));
+  if (route === 'GET /api/subagents') return send(res, 200, subagentsView(subagents.get()));
   if (route === 'GET /api/work/models') {
     const m = await liteRoutes.models(url.searchParams.get('fresh') === '1' ? { fresh: true } : undefined).catch(() => ({}));
     const view = x => (x ? {
@@ -2370,6 +2419,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/prs/preview': return send(res, 200, await prs.askPreview(body.repo, body.n));
     case '/api/work/start': return send(res, 200, await startWork(body));
     case '/api/work/setup-fix': return send(res, 200, await setupFix(body, remote));
+    case '/api/subagents': return send(res, 200, subagentsView(subagents.save(body)));
     case '/api/linear/me': return send(res, 200, await linear.setMe(String(body.id || '')));
     case '/api/linear/key': return send(res, 200, await linear.setKey(typeof body.key === 'string' ? body.key : ''));
     case '/api/connections/cancel': return send(res, 200, { flow: mcpAuth.cancel(body.id) });
@@ -2961,7 +3011,7 @@ async function handleApi(req, res, url, remote = false) {
       // Tidy up: chats with nothing new for this many days count as done (0: never).
       if (body.autoDone !== undefined) { const d = Number(body.autoDone); if (![0, 3, 7, 14, 30].includes(d)) throw fail(400, 'Unknown choice.'); p.autoDone = d; }
       if (body.terminal !== undefined) { if (!acc.TERMINALS.includes(body.terminal)) throw fail(400, 'Unknown terminal choice.'); p.terminal = body.terminal; }
-      for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow', 'autoSwitch', 'autoReview', 'nightlyCheck', 'autoName']) if (typeof body[k] === 'boolean') p[k] = body[k];
+      for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow', 'autoSwitch', 'autoReview', 'nightlyCheck', 'autoName', 'latitudeReadsClaude', 'latitudeReadsCodex']) if (typeof body[k] === 'boolean') p[k] = body[k];
       if (body.autoName === true) setImmediate(() => namer.resume());
       if (body.openIn !== undefined) { if (!['app', 'terminal'].includes(body.openIn)) throw fail(400, 'Unknown choice.'); p.openIn = body.openIn; }
       if (body.claudeMode !== undefined) { if (!chatLib.MODES.includes(body.claudeMode)) throw fail(400, 'Unknown mode.'); p.claudeMode = body.claudeMode; }
