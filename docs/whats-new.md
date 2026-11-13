@@ -1,4 +1,23 @@
-# A clearer workspace for issues and pull requests
+# Defaults for Claude, Codex and Gemini, a new chat about any PR, and Latitude's repo set up right on Windows
+
+**Defaults, on Your work.** Pick the model Claude, Codex and Gemini each use, and the effort for Claude and Codex, from dropdowns of what each one offers, so a name can't be typed wrong. Every chat started from Your work uses them: fixing comments or checks, a review, validating, a handoff, planning or starting an issue, bringing a branch up to date. The menu that asks who should do it says what each will run with, and the choice is kept on this device. Leave one on Default to use that assistant's own. Gemini's effort is part of its model's name, so it has one dropdown.
+
+- **Cross-model review** picks from the same dropdowns now, for Claude and Codex, starting on your defaults.
+- Gemini is in Your work's menus beside Claude and Codex, when it's set up.
+
+**A new chat about a pull request.** **New chat…**, beside a PR's buttons (also in More… and Ctrl+K), opens a chat in your copy of the repo with Claude, Codex or Gemini, on your default, with nothing asked yet. The PR's number, title, link, branches, open threads and failing checks are ready in the message box, for you to say what you want.
+
+**This PC, on Your work.** A line under the defaults says whether your clone of Latitude's repo is set up the way its Windows guide asks (docs/developer-setup/local-windows-setup.md). Open it for the list: Node's version against .nvmrc, long file paths, symlinks, git hooks, dependencies against yarn.lock, the secrets for running the app here, and Turbo's cache. **Fix** does the safe one-liners here (long file paths, Gemini's notes). **Fix in a chat…** asks the assistant you choose to do the rest, following the guide, on this PC only, without committing or pushing. **Open .env.local** opens it in Notepad for the values from Latitude's 1Password.
+
+**Windows notes in every chat in Latitude's repo.** Claude and Codex chats there are told what differs on Windows: pushes skip the GraphQL check, never regenerate the schema here, run the shell scripts with Git Bash, rename by letter case with `git mv -f`, keep LF line endings and forward-slash paths, and use the Node version in .nvmrc. Gemini can't be told per chat, so **This PC** can write the same notes into a local GEMINI.md that git ignores.
+
+**Pushes from Latitude's repo on Windows** no longer stop at its GraphQL check. It can't run on Windows: it can't start its tools there, and Windows loads the schema's files in a different order. GitHub still runs the real check on every PR, and it blocks merging. To keep the local check anyway, set `GRAPHQL_FRESHNESS_SKIP=0`.
+
+**Chats keep moving while you work somewhere else.** With Session Switcher open on a second monitor, replies, steps and spinners now keep updating while you're in another window, instead of pausing until you click back in. It still rests while minimized, and when it's been untouched for a while with nothing working. To save power instead, turn off **Setup → Keep chats live in the background**.
+
+- **Fixed:** a reply, step or approval that arrived while the window was holding still could stay invisible until you clicked back into it. It now shows at once, whichever way the setting is.
+
+## Earlier in 6.9.0: a clearer workspace for issues and pull requests
 
 **Your work** now has a searchable list and board, a **Needs you** filter, repository filters, and a detail panel. Linear still uses your Linear identity, so issues assigned to you include their linked PRs even when a teammate opened them.
 

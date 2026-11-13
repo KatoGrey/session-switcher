@@ -1366,10 +1366,11 @@ module.exports = [
       const b = await t.open();
       await b.eval(`Look.set({ theme: 'highfantasy', mode: 'dark' }); return 1`); await sleep(1200);
       const rest = await b.eval(`const running = () => document.getAnimations().filter(a => a.playState === 'running' && a.effect && a.effect.getTiming().iterations === Infinity).length;
+        store('stayLive', 'off');   // (the power-saving way: tests/live.ui.js has the live one)
         const before = running(); restSeen = 0; restCheck(); await new Promise(r => setTimeout(r, 100));
         const resting = document.documentElement.classList.contains('at-rest'), during = running();
         window.dispatchEvent(new Event('pointerdown')); await new Promise(r => setTimeout(r, 100));
-        return { before, resting, during, awake: !document.documentElement.classList.contains('at-rest') && running() > 0 }`);
+        const out = { before, resting, during, awake: !document.documentElement.classList.contains('at-rest') && running() > 0 }; localStorage.removeItem('stayLive'); return out`);
       t.check('left alone, the world rests: nothing loops, and a touch wakes it', rest.before > 0 && rest.resting && rest.during === 0 && rest.awake, rest);
       const pics = await b.eval(`const box = document.createElement('div'); document.body.appendChild(box);
         box.innerHTML = genImage({ src: '/art/none-such.webp', prompt: 'A lantern at dusk' }) + '<div class="w-art">' + worldArt({ name: 'Lost Banner', cwd: 'C:\\\\x' }, { banner: 'C:\\\\x\\\\missing.png' }, '', false) + '</div>';
@@ -2149,14 +2150,14 @@ module.exports = [
       const b = await t.open();
       await sleep(800);
       const r = await b.eval(`const looping = () => document.getAnimations().filter(a => a.playState === 'running' && a.effect && a.effect.getTiming().iterations === Infinity).length;
-        const before = looping();
+        const before = looping(); store('stayLive', 'off');   // (with Keep chats live off: tests/live.ui.js has it on)
         const real = document.hasFocus; document.hasFocus = () => false;
         window.dispatchEvent(new Event('blur')); awaySince = Date.now() - 20000; restCheck();
         await new Promise(r => setTimeout(r, 300));
         const still = document.documentElement.classList.contains('still'), dimmed = document.documentElement.classList.contains('at-rest'), during = looping();
         document.hasFocus = real; document.hasFocus = () => true; window.dispatchEvent(new Event('focus'));
         await new Promise(r => setTimeout(r, 300));
-        return { before, still, dimmed, during, back: !document.documentElement.classList.contains('still') && looping() > 0 }`);
+        const out = { before, still, dimmed, during, back: !document.documentElement.classList.contains('still') && looping() > 0 }; localStorage.removeItem('stayLive'); return out`);
       t.check('beside another app, the decoration holds still (not dimmed)', r.before > 0 && r.still && !r.dimmed && r.during === 0, r);
       t.check('back in it, it moves again', r.back, r);
     },

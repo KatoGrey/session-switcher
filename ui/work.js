@@ -7,6 +7,10 @@
 
 const Work = (() => {
   const W = { data: null, loading: false, err: null, at: 0, open: null, team: null, usersQ: '', users: null, query: '', filter: 'all', repo: 'all', layout: 'list', details: new Map(), external: new Map(), files: new Map(), detailTab: 'overview', wide: true, trail: [] };
+  // Runs with: the model and effort each assistant uses for the chats started here (empty: its own default).
+  W.run = { claude: { model: '', effort: '' }, codex: { model: '', effort: '' }, gemini: { model: '', effort: '' } }; W.models = null; W.modelsLoading = false;
+  W.setup = null; W.setupLoading = false; W.setupOpen = false;
+  try { const r = JSON.parse(localStorage.getItem('work-run') || 'null'); if (r) for (const p of ['claude', 'codex', 'gemini']) if (r[p]) W.run[p] = { model: String(r[p].model || ''), effort: String(r[p].effort || '') }; } catch { /* the defaults */ }
   try { W.layout = localStorage.getItem('work-layout') === 'board' ? 'board' : 'list'; W.repo = localStorage.getItem('work-repo') || 'all'; W.wide = localStorage.getItem('work-detail-width') !== 'narrow'; } catch {}
 
   const kOf = p => `${String(p.repo).toLowerCase()}#${p.number}`;
@@ -70,6 +74,7 @@ const Work = (() => {
   const queue = () => filteredGroups().flatMap(g => g[2]);
   function focusSelector(el) {
     if (el?.id) return '#' + CSS.escape(el.id);
+    if (el?.dataset.wkm) return `[data-wkm="${CSS.escape(el.dataset.wkm)}"]`;
     if (!el?.dataset.wk) return null;
     return `[data-wk="${CSS.escape(el.dataset.wk)}"]` + ['value', 'key', 'path'].filter(k => el.dataset[k]).map(k => `[data-${k}="${CSS.escape(el.dataset[k])}"]`).join('');
   }
@@ -114,6 +119,8 @@ const Work = (() => {
     pg.innerHTML = `<div class="wk-workspace">
       <header class="wk-header"><div><p class="wk-eyebrow"><span class="wk-emblem" aria-hidden="true">↗</span> WORKSPACE</p><h1>Your work</h1><p class="wk-subtitle">Issues, pull requests, and the next step.</p></div><div class="wk-header-actions"><button class="btn quiet" data-wk="refresh" ${W.loading ? 'disabled' : ''}>${W.loading ? 'Refreshing…' : '↻ Refresh'}</button><button class="btn" data-wk="open-pr">Open a PR</button><button class="btn prime" data-wk="cross-review">Cross-model review <span aria-hidden="true">↗</span></button></div></header>
       <div class="wk-identities"><span class="wk-identity"><i class="${lin?.me ? 'connected' : ''}"></i>Linear <b>${esc(name || 'Not connected')}</b></span><span class="wk-identity"><i class="${gh?.signedIn ? 'connected' : ''}"></i>GitHub <b>${esc(gh?.login || 'Not connected')}</b></span><button class="wk-manage" data-wk="connections">Manage connections ↗</button><span class="wk-updated">${W.at ? 'Updated ' + esc(agoL(W.at)) : 'Connecting…'}</span></div>
+      ${runRow()}
+      ${setupRow()}
       ${d ? setupHtml(d) : ''}
       ${[W.err, d?.issuesError && 'Linear: ' + d.issuesError, d?.prsError && 'GitHub: ' + d.prsError].filter(Boolean).map(e => `<p class="wk-error" role="alert">${esc(e)} <button class="linkish" data-wk="refresh">Try again</button></p>`).join('')}
       ${d ? `<div class="wk-overview" aria-label="Work overview">
@@ -150,7 +157,7 @@ const Work = (() => {
     else if (p.state === 'OPEN') {
       const primary = { 'fix-comments': 'Fix the comments…', 'fix-checks': 'Fix the checks…', update: 'Update branch…', ready: 'Ready for review', merge: 'Merge…', review: 'Review…', validate: 'Validate changes…' };
       if (state.action) actions.push(button(state.action, primary[state.action], 'prime'));
-      actions.push(button('cross-review', 'Cross-model review ↗'), button('more', 'More…'));
+      actions.push(button('cross-review', 'Cross-model review ↗'), button('prchat', 'New chat…'), button('more', 'More…'));
     }
     if (p.chat) actions.push(issue ? `<button class="btn quiet sm" data-wk="issuechat" data-key="${esc(p.chat.key || '')}" data-id="${esc(p.chat.sessionId || '')}">Continue its chat ↗</button>` : `<button class="btn quiet sm" data-wk="chat" data-id="${esc(p.chat.sessionId)}">Continue its chat ↗</button>`);
     const body = !issue && W.detailTab === 'threads' ? threadsHtml(p) : !issue && W.detailTab === 'checks' ? WorkDetail.checks(p) : !issue && W.detailTab === 'files' ? WorkDetail.files(p, W.files.get(W.open)) : !issue && W.detailTab === 'record' ? WorkRecord.render(p) : overviewHtml(p, issue, full);
@@ -223,27 +230,111 @@ const Work = (() => {
     const key = kOf(d); W.external.set(key, d); W.details.set(key, d); await select(key);
   }
 
+  /* ---------- this PC's setup (lib/winrepo.js) ---------- */
+
+  function loadSetup(fresh = false) {
+    if (W.setupLoading) return;
+    W.setupLoading = true;
+    api(`/api/work/setup${fresh ? '?fresh=1' : ''}`).then(r => { W.setup = r; }).catch(() => { W.setup = W.setup || { root: null, checks: [] }; })
+      .finally(() => { W.setupLoading = false; if (showing()) render(); });
+  }
+  // Is this PC's Latitude clone set up the way Latitude's guide asks? A line when it's fine; what to fix when not.
+  function setupRow() {
+    if (!W.setup && !W.setupLoading) loadSetup();
+    const st = W.setup; if (!st || !st.root) return '';
+    const fix = st.checks.filter(c => c.state === 'fix'), info = st.checks.filter(c => c.state === 'info');
+    const summary = fix.length ? `${fix.length} thing${fix.length === 1 ? '' : 's'} to fix` : 'Set up';
+    const label = { here: 'Fix', chat: 'Fix in a chat…', open: 'Open .env.local' };
+    const row = c => `<li class="wk-setup-row" data-state="${esc(c.state)}"><span class="wk-setup-dot" aria-hidden="true"></span><span class="wk-setup-text"><b>${esc(c.label)}</b><span>${esc(c.detail)}</span></span>${c.fix && !(window.REMOTE && c.fix !== 'chat') ? `<button type="button" class="btn sm ${c.state === 'fix' ? '' : 'quiet'}" data-wk="setup-fix" data-id="${esc(c.id)}" data-how="${esc(c.fix)}"${c.fix === 'chat' ? ' aria-haspopup="menu"' : ''}>${label[c.fix]}</button>` : ''}</li>`;
+    return `<details class="wk-setup-box${fix.length ? ' has-fix' : ''}"${W.setupOpen ? ' open' : ''}><summary data-wk="setup-toggle"><span class="wk-run-label">This PC</span><span class="wk-setup-sum" data-state="${fix.length ? 'fix' : 'ok'}">${esc(summary)}</span>${info.length ? `<span class="wk-setup-note">${info.length} note${info.length === 1 ? '' : 's'}</span>` : ''}<span class="wk-setup-where">${esc(st.root)}</span></summary>
+      <ul class="wk-setup-list">${[...fix, ...info, ...st.checks.filter(c => c.state === 'ok')].map(row).join('')}</ul>
+      <p class="wk-setup-foot">From Latitude’s guide, docs/developer-setup/local-windows-setup.md. <button type="button" class="linkish" data-wk="setup-recheck">Check again</button></p></details>`;
+  }
+  async function setupFix(b) {
+    const id = b.dataset.id, how = b.dataset.how;
+    if (how === 'chat') {
+      return showMenu(b, whoItems(async (provider, account) => {
+        const r = await api('/api/work/setup-fix', { id, root: W.setup && W.setup.root, provider, account, ...runFor(provider) });
+        await ChatUI.openKey(r.key);
+      }, { review: true }));
+    }
+    b.disabled = true;
+    try { const r = await api('/api/work/setup-fix', { id, root: W.setup && W.setup.root }); toast(r.done || 'Done.', 6000); } finally { b.disabled = false; }
+    return loadSetup(true);
+  }
+
+  /* ---------- runs with ---------- */
+
+  const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
+  function loadModels(fresh = false) {
+    if (W.modelsLoading) return;
+    W.modelsLoading = true;
+    api(`/api/work/models${fresh ? '?fresh=1' : ''}`).then(m => { W.models = m || {}; }).catch(() => { W.models = W.models || {}; })
+      .finally(() => { W.modelsLoading = false; if (showing()) render(); });
+  }
+  const listOf = prov => (W.models && W.models[prov]) || null;
+  // The efforts a model offers (or the assistant's usual ones).
+  function effortsFor(prov) {
+    const list = listOf(prov); if (!list) return [];
+    const m = list.models.find(x => x.value === W.run[prov].model);
+    return m && m.efforts.length ? m.efforts : list.efforts || [];
+  }
+  function runRow() {
+    if (!W.models && !W.modelsLoading) loadModels();
+    const group = (prov, name, glyph) => {
+      const list = listOf(prov), cur = W.run[prov];
+      if (!list && ((prov === 'codex' && !codexOK()) || (prov === 'gemini' && !geminiReady()))) return '';
+      const noEffort = prov === 'gemini';   // (its models carry their effort in their names)
+      const models = list ? list.models : [];
+      const known = !cur.model || models.some(x => x.value === cur.model);
+      const efforts = effortsFor(prov);
+      const dm = list && list.defaultModel ? `Default (${list.defaultModel})` : 'Default model';
+      const de = list && list.defaultEffort ? `Default (${list.defaultEffort})` : 'Default effort';
+      return `<span class="wk-run${noEffort ? ' solo' : ''}" role="group" aria-label="${name}: ${noEffort ? 'model' : 'model and effort'}"><span class="wk-run-who">${glyph} ${name}</span>
+        <select data-wkm="${prov}-model" aria-label="${name} model"${list || cur.model ? '' : ' disabled'}><option value="">${esc(dm)}</option>${models.map(x => `<option value="${esc(x.value)}"${x.value === cur.model ? ' selected' : ''} title="${esc(x.note)}">${esc(x.label)}</option>`).join('')}${known ? '' : `<option value="${esc(cur.model)}" selected>${esc(cur.model)}</option>`}</select>
+        ${noEffort ? '' : `<select data-wkm="${prov}-effort" aria-label="${name} effort"${efforts.length || cur.effort ? '' : ' disabled'}><option value="">${esc(de)}</option>${efforts.map(e => `<option value="${esc(e)}"${e === cur.effort ? ' selected' : ''}>${esc(cap(e))}</option>`).join('')}</select>`}</span>`;
+    };
+    return `<div class="wk-runwith" aria-label="Default model for each assistant"><span class="wk-run-label" title="Used by every chat started from Your work">Defaults</span>${group('claude', 'Claude', '✦')}${group('codex', 'Codex', '◆')}${group('gemini', 'Gemini', '✧')}<span class="wk-run-note">${W.models ? 'every chat started from here' : 'Asking for the models…'}</span></div>`;
+  }
+  // What a chat started now is given, for the assistant chosen.
+  const runFor = prov => { const r = W.run[prov] || {}; return { ...(r.model ? { model: r.model } : {}), ...(r.effort ? { effort: r.effort } : {}) }; };
+  function runLabel(prov) {
+    const r = W.run[prov] || {}, list = listOf(prov);
+    if (!r.model && !r.effort) return 'its default model';
+    const m = r.model ? ((list && list.models.find(x => x.value === r.model)) || { label: r.model }).label : 'default model';
+    return r.effort ? `${m}, ${r.effort} effort` : m;
+  }
+
   /* ---------- buttons ---------- */
 
   const find = (repo, n) => { const k = kOf({ repo, number: n }); const p = item(k); return p ? { ...p, ...(W.details.get(k)?.error ? {} : W.details.get(k)) } : null; };
   function whoItems(run, { chat = null, review = false } = {}) {
-    const items = (S.accounts || []).filter(a => canLaunch(a)).map(a => ({ glyph: '✦', label: `Claude · ${a.name}`, hint: chat && !review ? `in “${chat.title || 'its chat'}”` : 'a new chat', run: () => run('claude', a.id, false) }));
-    if (chat && !review) items.push({ glyph: '✦', label: 'Claude, in a new chat', hint: `as ${current().name}`, run: () => run('claude', current().id, true) });
-    if (codexOK()) items.push({ glyph: '◆', label: 'Codex', hint: 'a new chat', run: () => run('codex', (S.codex && S.codex.id) || 'codex', true) });
+    const items = (S.accounts || []).filter(a => canLaunch(a)).map(a => ({ glyph: '✦', label: `Claude · ${a.name}`, hint: `${chat && !review ? `in “${chat.title || 'its chat'}”` : 'a new chat'} · ${runLabel('claude')}`, run: () => run('claude', a.id, false) }));
+    if (chat && !review) items.push({ glyph: '✦', label: 'Claude, in a new chat', hint: `as ${current().name} · ${runLabel('claude')}`, run: () => run('claude', current().id, true) });
+    if (codexOK()) items.push({ glyph: '◆', label: 'Codex', hint: `a new chat · ${runLabel('codex')}`, run: () => run('codex', (S.codex && S.codex.id) || 'codex', true) });
+    if (typeof geminiReady === 'function' && geminiReady()) items.push({ glyph: '✧', label: 'Gemini', hint: `a new chat · ${runLabel('gemini')}`, run: () => run('gemini', 'gemini', true) });
     return items;
   }
   async function prChat(p, action, provider, account, fresh) {
     toast(action === 'review' ? `Fetching #${p.number} and starting the review…` : 'Starting…', 4000);
-    const r = await api('/api/prs/act', { action, repo: p.repo, n: p.number, provider, account, fresh });
+    const r = await api('/api/prs/act', { action, repo: p.repo, n: p.number, provider, account, fresh, ...runFor(provider) });
     await ChatUI.openKey(r.key);
     if (r.recordWarning) toast(r.recordWarning, 7000);
     if (r.resumed) toast('It carries on in the chat that made the pull request, which knows the work.', 6000);
+  }
+  // A new chat about a pull request, with nothing asked yet: it opens with the defaults, and the PR's details in
+  // the box for you to add what you want.
+  async function freeChat(p, provider, account) {
+    toast('Opening a new chat…', 3000);
+    const r = await api('/api/prs/open-chat', { repo: p.repo, n: p.number, provider, account, ...runFor(provider) });
+    await ChatUI.openKey(r.key, { initialText: r.text });
   }
   function commands() {
     const selected = showing() && W.open && item(W.open);
     if (!selected || selected.identifier) return [];
     const p = find(selected.repo, selected.number);
-    return [...[['validate', 'Validate changes', 'focused checks for the changed packages'], ['handoff', 'Prepare handoff', 'draft review notes and verification evidence']].map(([action, title, hint]) => ({
+    return [{ glyph: '❝', t: `New chat about #${p.number}`, s: `${p.repo} · free-form, with its details ready in the box`, alias: 'chat talk ask discuss free form pr', run: () => showMenu($('wkDetailTitle'), whoItems((pv, acct) => freeChat(p, pv, acct), { review: true })) },
+      ...[['validate', 'Validate changes', 'focused checks for the changed packages'], ['handoff', 'Prepare handoff', 'draft review notes and verification evidence']].map(([action, title, hint]) => ({
       glyph: action === 'validate' ? '✓' : '↗', t: `${title} for #${p.number}`, s: `${p.repo} · ${hint}`, alias: 'pr workflow',
       run: () => showMenu($('wkDetailTitle'), whoItems((provider, account) => prChat(p, action, provider, account, true), { review: true })),
     })), { glyph: '≡', t: `Review journal for #${p.number}`, s: 'results and chats, grouped by revision', alias: 'evidence record validation history', run: () => act('detail-tab', { dataset: { value: 'record' } }) }];
@@ -296,6 +387,7 @@ const Work = (() => {
   }
   function more(b, p) {
     const items = [
+      { glyph: '❝', label: 'New chat about it…', hint: 'free-form, with its details ready in the box', run: () => showMenu(b, whoItems((pv, acct) => freeChat(p, pv, acct), { review: true })) },
       { glyph: '✓', label: 'Validate changes…', hint: 'focused checks for the changed packages', run: () => showMenu(b, whoItems((pv, acct) => prChat(p, 'validate', pv, acct, true), { review: true })) },
       { glyph: '↗', label: 'Prepare handoff…', hint: 'draft review notes without posting', run: () => showMenu(b, whoItems((pv, acct) => prChat(p, 'handoff', pv, acct, true), { review: true })) },
       '-',
@@ -326,6 +418,9 @@ const Work = (() => {
     load(true);
   }
   async function act(a, b) {
+    if (a === 'setup-toggle') { W.setupOpen = !W.setupOpen; return undefined; }
+    if (a === 'setup-recheck') return loadSetup(true);
+    if (a === 'setup-fix') return setupFix(b);
     if (a === 'home') { try { localStorage.setItem('start-page', localStorage.getItem('start-page') === 'work' ? 'hub' : 'work'); } catch {} render(); return; }
     if (a === 'select') { W.trail = []; return select(b.dataset.key); }
     if (a === 'back-detail') { const key = W.trail.pop(); if (key) return select(key); return; }
@@ -363,7 +458,8 @@ const Work = (() => {
     if (a === 'linked') { if (W.open) W.trail.push(W.open); return openUrl(b.dataset.url); }
     if (a === 'issue-link') { const id = b.dataset.id; if (!item(id)) W.external.set(id, await api(`/api/linear/issue?id=${encodeURIComponent(id)}`)); if (W.open) W.trail.push(W.open); return select(id); }
     if (a === 'plan') return showMenu(b, whoItems((pv, acct) => startIssue(b.dataset.id, pv, acct, 'plan'), { review: true }));
-    if (a === 'refresh') return load(true);
+    if (a === 'refresh') { loadSetup(true); return load(true); }
+    if (a === 'prchat') { const p = find(b.dataset.repo, b.dataset.n); if (!p) return undefined; return showMenu(b, whoItems((pv, acct) => freeChat(p, pv, acct), { review: true })); }
     if (a === 'connections') return openConnections(null);
     if (a === 'savekey') { await api('/api/linear/key', { key: $('wkKey').value }); return load(true); }
     if (a === 'who') { W.usersQ = $('wkWho').value.trim(); W.users = W.usersQ ? (await api(`/api/linear/users?q=${encodeURIComponent(W.usersQ)}`)).users : null; return render(); }
@@ -397,7 +493,7 @@ const Work = (() => {
   }
   async function startIssue(id, provider, account, mode = 'start') {
     toast(`Starting ${id}…`, 4000);
-    const r = await api('/api/work/start', { identifier: id, provider, account, mode });
+    const r = await api('/api/work/start', { identifier: id, provider, account, mode, ...runFor(provider) });
     await ChatUI.openKey(r.key);
     load(true);
   }
@@ -424,6 +520,16 @@ const Work = (() => {
   document.addEventListener('change', e => {
     if (!showing()) return;
     if (e.target.id === 'wkRepo') { W.repo = e.target.value; store('work-repo', W.repo); render(); }
+    const wkm = e.target.dataset && e.target.dataset.wkm;
+    if (wkm) {
+      const [prov, what] = wkm.split('-');
+      if (!W.run[prov] || !['model', 'effort'].includes(what)) return;
+      W.run[prov][what] = e.target.value;
+      // A model that doesn't offer the chosen effort goes back to its default effort.
+      if (what === 'model' && W.run[prov].effort && !effortsFor(prov).includes(W.run[prov].effort)) W.run[prov].effort = '';
+      try { localStorage.setItem('work-run', JSON.stringify(W.run)); } catch { /* this session only */ }
+      render();
+    }
     if (e.target.id === 'wkFileSelect') act('file', { dataset: { path: e.target.value } });
   });
   document.addEventListener('input', e => { if (showing() && e.target.id === 'wkSearch') { W.query = e.target.value; renderResults(); } });
@@ -431,6 +537,8 @@ const Work = (() => {
 
   return { render: () => { render(); if (!W.loading && (!W.data || Date.now() - W.at > 60000)) load(false); }, changed: () => { if (showing()) load(true); else W.at = 0; }, count, load, openPr: url => { W.trail = []; return openUrl(url); },
     showPrs: () => { W.filter = 'prs'; W.query = ''; render(); }, commands, recordChanged,
+    runPrefs: () => JSON.parse(JSON.stringify(W.run)),
+    modelsFor: prov => (W.models && W.models[prov]) || null,
     openIssue: async id => { if (!item(id)) W.external.set(id, await api(`/api/linear/issue?id=${encodeURIComponent(id)}`)); await select(id); } };
 })();
 

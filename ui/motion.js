@@ -310,8 +310,15 @@ setInterval(tick, 1000);
 
 /* ---------- rest ---------- */
 // The world rests when you do: after a while with no one using the window (unfocused for 90 seconds,
-// or untouched for 5 minutes), every looping animation pauses and the scene dims a little; the first
+// or untouched for 2 minutes), every looping animation pauses and the scene dims a little; the first
 // touch, key or look back wakes it. Nothing redraws while you're away, however fast the screen.
+//
+// "Keep chats live in the background" (Setup, on unless turned off, kept on this device): a window that's
+// open but not focused, on a second monitor say, keeps moving: replies, steps, spinners and the working
+// dots, as if you were in it. It rests only when it can't be seen (minimized), or when it's been untouched
+// for a while and nothing is working. Off: the power-saving pause below, as before.
+const stayLive = () => store('stayLive') !== 'off';
+const somethingWorking = () => (S.activity || []).some(x => x && x.phase && x.phase !== 'idle' && x.phase !== 'ended');
 const REST_AWAY_MS = 90 * 1000, REST_IDLE_MS = 2 * 60 * 1000, STILL_AWAY_MS = 15 * 1000;
 let restSeen = Date.now(), awaySince = document.hasFocus() ? 0 : Date.now();
 // Still: working in another app with this one beside it, the looping decoration (petals, the seal,
@@ -321,10 +328,28 @@ function restCheck() {
   const now = Date.now(), idle = now - restSeen;
   const focused = document.hasFocus();
   if (focused) awaySince = 0; else if (!awaySince) awaySince = now;
-  const rest = document.hidden || (!focused && idle > REST_AWAY_MS) || idle > REST_IDLE_MS;
-  document.documentElement.classList.toggle('at-rest', rest);
-  document.documentElement.classList.toggle('still', !rest && !focused && now - awaySince > STILL_AWAY_MS);
+  const live = stayLive();
+  const rest = document.hidden || (live ? idle > REST_IDLE_MS && !somethingWorking() : (!focused && idle > REST_AWAY_MS) || idle > REST_IDLE_MS);
+  setResting('at-rest', rest);
+  setResting('still', !live && !rest && !focused && now - awaySince > STILL_AWAY_MS);
 }
+// A fade-in that has played is done, so a later pause and wake doesn't play it again: its class goes (the sidebar's
+// and handovers' keep theirs, which also mean "new", and are marked shown instead).
+const RESTING = ['at-rest', 'still', 'low-power'];
+const freshDone = el => { if (el.classList.contains('nav-h') || el.classList.contains('handover')) el.classList.add('shown'); else el.classList.remove('fresh'); };
+// Waking: what arrived while the window rested was shown at once, so it counts as played too (rather than everything
+// that came in fading in together).
+function setResting(cls, on) {
+  const root = document.documentElement.classList;
+  if (!on && root.contains(cls) && RESTING.every(c => c === cls || !root.contains(c))) for (const el of document.querySelectorAll('.fresh:not(.shown)')) freshDone(el);
+  root.toggle(cls, on);
+}
+document.addEventListener('animationend', e => {
+  const el = e.target; if (!el || !el.classList) return;
+  if (e.animationName === 'fresh') freshDone(el);
+  else if (e.animationName === 'perm-ping' || e.animationName === 'perm-ping-cx') el.classList.remove('arrive');
+  else if (e.animationName === 'develop') { const g = el.closest('.gen'); if (g) g.classList.remove('develop'); }
+}, true);
 window.addEventListener('blur', () => { awaySince = Date.now(); setTimeout(restCheck, STILL_AWAY_MS + 200); });
 window.addEventListener('focus', () => { awaySince = 0; restCheck(); });
 function restWake() {
@@ -339,7 +364,7 @@ setInterval(restCheck, 15000);
 if (navigator.getBattery) navigator.getBattery().then(bat => {
   // A machine with no battery (a desktop, a virtual machine) can report "not charging, 0%": that's
   // no battery at all, not an empty one (nothing runs at 0%).
-  const sync = () => document.documentElement.classList.toggle('low-power', !bat.charging && bat.level > 0 && bat.level < 0.4);
+  const sync = () => setResting('low-power', !bat.charging && bat.level > 0 && bat.level < 0.4);
   for (const ev of ['chargingchange', 'levelchange']) bat.addEventListener(ev, sync);
   sync();
 }).catch(() => {});

@@ -54,6 +54,7 @@ const homePcLib = require('./lib/homepc');
 const mcpAuthLib = require('./lib/mcpauth');
 const prsLib = require('./lib/prs');
 const linearLib = require('./lib/linear');
+const winrepo = require('./lib/winrepo');
 const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.9.0';
@@ -419,7 +420,7 @@ const pairs = pairsLib.createPairs({
       acc.prepareForLaunch(c, a);
       const pref = chatPrefs.get({ sessionId, cwd: lead.cwd, provider: 'claude' });
       const follow = followMode(leadKind, lead.permissionMode, 'claude');
-      return chats.open({ extraArgs: chatArgs(), cfg: c, account: a, cwd: lead.cwd, sessionId, permissionMode: chatLib.MODES.includes(follow) ? follow : chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: `Claude · ${lead.title || 'New chat'}`, folder: lead.folder });
+      return chats.open({ extraArgs: chatArgs(lead.cwd), cfg: c, account: a, cwd: lead.cwd, sessionId, permissionMode: chatLib.MODES.includes(follow) ? follow : chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: `Claude · ${lead.title || 'New chat'}`, folder: lead.folder });
     }
     let inst = await codexChecked(codexForThread(remembered, accountId && isCodexAccount(accountId) ? accountId : null));
     if (!inst.publicState().signedIn) inst = await codexChecked(codexActive());
@@ -944,10 +945,12 @@ const SHOWS_PICTURES = 'This conversation is shown in Session Switcher, which di
 // It lives in the temp folder, which Windows' cleanup (Storage Sense, Disk Cleanup) may empty while the
 // app runs; Claude Code refuses to start when the file is gone, so it's put back before every chat.
 const SHOWS_PICTURES_PATH = path.join(os.tmpdir(), 'claude-switcher', 'shows-pictures.md');
-function showsPicturesArgs() {
-  const f = SHOWS_PICTURES_PATH;
+// extra: more to say in this chat (Latitude's repo on Windows: what differs there, lib/winrepo.js), in a file of its own.
+function showsPicturesArgs(extra = '') {
+  const f = extra ? SHOWS_PICTURES_PATH.replace(/\.md$/, `-${crypto.createHash('sha1').update(extra).digest('hex').slice(0, 8)}.md`) : SHOWS_PICTURES_PATH;
+  const text = extra ? `${SHOWS_PICTURES}\n\n${extra}` : SHOWS_PICTURES;
   try {
-    if (!fs.existsSync(f) || fs.readFileSync(f, 'utf8') !== SHOWS_PICTURES) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, SHOWS_PICTURES); }
+    if (!fs.existsSync(f) || fs.readFileSync(f, 'utf8') !== text) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); }
   } catch (err) { log(`Couldn’t write the pictures note: ${err.message}`); return []; }
   const arg = f.replace(/\\/g, '/');   // Claude Code takes forward slashes on Windows too
   return /^[\w.:=\/-]+$/.test(arg) ? ['--append-system-prompt-file', arg] : []; // a path with spaces couldn't be passed; chats start without the note
@@ -955,7 +958,8 @@ function showsPicturesArgs() {
 showsPicturesArgs();
 // Claude in Chrome: chats here can use your Chrome (through the Claude extension) like a terminal
 // session started with /chrome can. Off with prefs.chromeInChats = false.
-const chatArgs = () => [...showsPicturesArgs(), ...(config().prefs.chromeInChats === false ? [] : ['--chrome'])];
+// cwd: the chat's folder, for what it should know about it (Latitude's repo on Windows).
+const chatArgs = (cwd = null) => [...showsPicturesArgs(winrepo.noteFor(cwd)), ...(config().prefs.chromeInChats === false ? [] : ['--chrome'])];
 async function openChatNow(c, body) {
   // A partner's conversation opens inside the chat it belongs to.
   const lead = (!body.mode || body.mode === 'resume') && body.sessionId ? chatPrefs.parentOf(body.sessionId) : null;
@@ -1072,7 +1076,7 @@ async function openChatInner(c, body) {
   if (sessionId) { try { title = sessions.find(sessionId).session.title; } catch { /* untitled */ } }
   if (mode === 'fork' && title) title = `${title} (copy)`;
   const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : 'New chat'), folder, extraArgs: aide.isHere(cwd) ? aide.claudeArgs() : chatArgs() });
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : 'New chat'), folder, extraArgs: aide.isHere(cwd) ? aide.claudeArgs() : chatArgs(cwd) });
   chat.aide = aide.isHere(cwd);
   if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
   log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
@@ -1196,6 +1200,46 @@ async function workBoard(fresh) {
   if (notes) { try { store.writeJsonAtomic(WORK_FILE, started); } catch { /* next time */ } }
   return { gh: { installed: gh.installed, signedIn: !!gh.signedIn, login: gh.login || null, error: gh.error || null }, linear: lin, issues, issuesError, prs: list, prsError, at: Date.now() };
 }
+// The setup check on Your work: is this PC's Latitude clone set up the way its Windows guide asks (lib/winrepo.js)?
+let workSetup = { at: 0, value: null };
+// The clone: the one asked for if it's one of them (the one the page showed), else the one used most lately.
+async function latitudeClone(want = null) {
+  const cs = await prs.clonesOf('latitudegames/latitude');
+  const hit = want && cs.find(x => normCwd(x.cwd) === normCwd(want));
+  return (hit || cs[0] || {}).cwd || null;
+}
+// (Windows only: the guide it follows is Latitude's Windows guide, and a Mac or Linux needs none of it.)
+async function setupCheck(fresh) {
+  if (!winrepo.IS_WIN) return { root: null, checks: [] };
+  if (!fresh && workSetup.value && Date.now() - workSetup.at < 3 * 60000) return workSetup.value;
+  const root = await latitudeClone();
+  const value = root ? { root, windows: true, checks: await winrepo.check(root, { env: sys.agentEnv() }) } : { root: null, checks: [] };
+  workSetup = { at: Date.now(), value };
+  return value;
+}
+async function setupFix(body, remote) {
+  if (!winrepo.IS_WIN) throw fail(409, 'This is for Windows.');
+  const root = await latitudeClone(typeof body.root === 'string' ? body.root : null);
+  if (!root) throw fail(409, 'No folder on this computer has Latitude’s repo.');
+  const id = String(body.id || '');
+  const seen = workSetup.value && normCwd(workSetup.value.root || '') === normCwd(root) ? workSetup.value.checks : null;
+  workSetup.at = 0;
+  if (id === 'longpaths' || id === 'gemini') { if (remote) throw fail(403, 'Do this one at the PC.'); return { done: await winrepo.fixHere(id, root) }; }
+  if (id === 'env') {
+    // .env.local, in Notepad (a copy of the example first, as the repo's guide says, if there's none yet).
+    if (remote) throw fail(403, 'Open it at the PC.');
+    const file = path.join(root, '.env.local'), example = path.join(root, '.env.local.example');
+    if (!fs.existsSync(file) && fs.existsSync(example)) fs.copyFileSync(example, file);
+    if (!fs.existsSync(file)) throw fail(404, 'There’s no .env.local or .env.local.example here.');
+    const r = sys.IS_WIN ? await sys.spawnDetached('notepad.exe', [file]) : await sys.spawnDetached('open', ['-e', file]);
+    if (r && r.ok === false) throw fail(500, `Couldn’t open it: ${r.error}`);
+    return { done: 'Opened .env.local. Paste the values from Latitude’s 1Password, then save.' };
+  }
+  const item = (seen || await winrepo.check(root, { env: sys.agentEnv() })).find(x => x.id === id) || {};
+  const chat = await startPrChat({ provider: agentOf(body.provider), account: body.account, model: body.model, effort: body.effort, cwd: root, text: winrepo.fixPrompt(id, item), title: `Setup on this PC: ${item.label || id}`.slice(0, 120) });
+  return { key: chat.key };
+}
+
 // "Start": a chat in the Latitude clone, told the issue and how to work on it.
 async function startWork(body) {
   const issue = await linear.issue(String(body.identifier || ''));
@@ -1203,9 +1247,9 @@ async function startWork(body) {
   const cwd = (body.cwd && clones.find(c => normCwd(c.cwd) === normCwd(body.cwd)) || clones[0] || {}).cwd;
   if (!cwd) throw fail(409, 'No folder on this computer has Latitude’s repo (latitudegames/latitude). Clone it, open it once in a chat here, then try again.');
   const gh = await prs.status().catch(() => ({}));
-  const provider = body.provider === 'codex' ? 'codex' : 'claude';
+  const provider = agentOf(body.provider);
   const text = linearLib.startPrompt(issue, { branch: linearLib.branchFor(issue, gh.login), mode: body.mode === 'plan' ? 'plan' : 'start' });
-  const chat = await startPrChat({ provider, account: body.account, cwd, text, permissionMode: body.mode === 'plan' ? 'plan' : null, title: `${issue.identifier}: ${issue.title}`.slice(0, 120) });
+  const chat = await startPrChat({ provider, account: body.account, model: body.model, effort: body.effort, cwd, text, permissionMode: body.mode === 'plan' ? 'plan' : null, title: `${issue.identifier}: ${issue.title}`.slice(0, 120) });
   noteWorkChat(issue.identifier, chat);
   log(`Work board: ${provider} started on ${issue.identifier} in ${cwd}.`);
   return { key: chat.key, cwd };
@@ -1213,14 +1257,39 @@ async function startWork(body) {
 
 // A chat for a pull request, opened the way routines open theirs (so it's a chat like any other), with its
 // first message sent: Claude as the account asked for (else the main one), or Codex.
-async function startPrChat({ provider, account, cwd, sessionId = null, text, title, permissionMode = null }) {
+// Which assistant a request asks for: Claude unless it says Codex or Gemini.
+const agentOf = v => (v === 'codex' || v === 'gemini' ? v : 'claude');
+async function startPrChat(opts) {
+  const chat = await openPrChat(opts);
+  await pairs.send(chat, opts.text);
+  return chat;
+}
+async function openPrChat({ provider, account, cwd, sessionId = null, title, permissionMode = null, model = null, effort = null }) {
   const c = config();
-  const id = provider === 'codex'
+  // The model and effort chosen on Your work (empty: the assistant's own default). Only names that look like a
+  // model or an effort get through; the chat itself checks them against what the assistant offers.
+  const pick = (v, re) => (typeof v === 'string' && re.test(v.trim()) ? v.trim() : null);
+  model = pick(model, /^[\w.:[\]-]{1,80}$/);
+  effort = pick(effort, /^(minimal|low|medium|high|xhigh|max|ultra)$/);
+  const id = provider === 'gemini' ? 'gemini' : provider === 'codex'
     ? (isCodexAccount(account) ? account : (c.codexActive && isCodexAccount(c.codexActive) ? c.codexActive : 'codex'))
     : (account && c.accounts.some(a => a.id === account) ? account : (c.accounts.find(a => a.isDefault) || c.accounts[0]).id);
-  const chat = await routineChat({ account: id, cwd, sessionId, permissionMode: provider === 'codex' && permissionMode === 'plan' ? 'read-only' : permissionMode, model: null, effort: null, title });
-  await pairs.send(chat, text);
-  return chat;
+  // (Codex calls looking without changing anything read-only; Claude and Gemini call it plan.)
+  return routineChat({ account: id, cwd, sessionId, permissionMode: provider === 'codex' && permissionMode === 'plan' ? 'read-only' : permissionMode, model, effort, title });
+}
+// A chat about a pull request with no task given: opened in its repo with your defaults, its details ready in the
+// message box for you to say what you want.
+async function prOpenChat(body) {
+  const pr = await prs.detail(body.repo, body.n, { fresh: false });
+  const cwd = (body.cwd && pr.clones.find(x => normCwd(x) === normCwd(body.cwd))) || pr.clones[0];
+  if (!cwd) throw fail(409, `No folder on this computer has ${pr.repo}. Clone it, open it once in a chat here, then try again.`);
+  const provider = agentOf(body.provider);
+  const chat = await openPrChat({ provider, account: body.account, model: body.model, effort: body.effort, cwd, title: `#${pr.number}: ${pr.title}`.slice(0, 120) });
+  const c = pr.checks || {};
+  const state = [pr.isDraft ? 'a draft' : null, pr.open ? `${pr.open} open review thread${pr.open === 1 ? '' : 's'}` : null, c.failed && c.failed.length ? `${c.failed.length} failing check${c.failed.length === 1 ? '' : 's'}` : null].filter(Boolean).join(', ');
+  const text = `About pull request #${pr.number} in ${pr.repo}: “${pr.title}”${pr.author ? ` by ${pr.author}` : ''} (${pr.url}; branch ${pr.head} → ${pr.base}${state ? `; ${state}` : ''}).\n\n`;
+  log(`PRs: a new ${provider} chat about ${pr.repo}#${pr.number}.`);
+  return { key: chat.key, text };
 }
 async function prAction(body) {
   const action = String(body.action || '');
@@ -1232,7 +1301,7 @@ async function prAction(body) {
     const pr = await prs.detail(target.repo, target.n, { fresh: true });
     const cwd = (body.cwd && pr.clones.find(x => normCwd(x) === normCwd(body.cwd))) || pr.clones[0];
     if (!cwd) throw fail(409, `No folder on this computer has ${pr.repo}. Open its local folder in a chat first.`);
-    const chat = await startPrChat({ provider: 'codex', account: body.account, cwd, text, title: `Cross-model review #${pr.number}: ${pr.title}`.slice(0, 120) });
+    const chat = await startPrChat({ provider: 'codex', account: body.account, model: body.codexModel, effort: body.codexEffort, cwd, text, title: `Cross-model review #${pr.number}: ${pr.title}`.slice(0, 120) });
     return { key: chat.key, cwd, resumed: false, recordWarning: notePrRun(pr, action, chat) };
   }
   if (!['review', 'fix-comments', 'fix-checks', 'update', 'validate', 'handoff'].includes(action)) throw fail(400, 'Choose a review, fix, validation, handoff, or branch update.');
@@ -1240,12 +1309,12 @@ async function prAction(body) {
   const same = (a, b) => normCwd(a) === normCwd(b);
   const cwd = (body.cwd && pr.clones.find(x => same(x, body.cwd))) || pr.clones[0];
   if (!cwd) throw fail(409, `No folder on this computer has ${pr.repo}. Clone it, open it once in a chat here, then try again.`);
-  const provider = body.provider === 'codex' ? 'codex' : 'claude';
+  const provider = agentOf(body.provider);
   if (['review', 'validate', 'handoff'].includes(action)) {
     const refs = await prs.fetchPr(cwd, pr);
     const text = action === 'review' ? prsLib.reviewPrompt(pr, refs) : prsLib.workflowPrompt(action === 'handoff' ? { ...pr, record: prRecords.list(pr.repo, pr.number) } : pr, action, refs);
     const label = { review: 'Review', validate: 'Validate', handoff: 'Handoff' }[action];
-    const chat = await startPrChat({ provider, account: body.account, cwd, text, permissionMode: action === 'validate' ? null : 'plan', title: `${label} #${pr.number}: ${pr.title}`.slice(0, 120) });
+    const chat = await startPrChat({ provider, account: body.account, model: body.model, effort: body.effort, cwd, text, permissionMode: action === 'validate' ? null : 'plan', title: `${label} #${pr.number}: ${pr.title}`.slice(0, 120) });
     log(`PRs: ${provider} started ${action} for ${pr.repo}#${pr.number} in ${cwd}.`);
     return { key: chat.key, cwd, resumed: false, recordWarning: notePrRun(pr, action, chat) };
   }
@@ -1253,7 +1322,7 @@ async function prAction(body) {
   // The Claude chat that made it knows the work: it carries on there unless a new chat is asked for.
   // (Not while it's open in a terminal: that one carries on there, and this starts a new chat instead.)
   const reuse = provider === 'claude' && pr.chat && body.fresh !== true && !running[String(pr.chat.sessionId).toLowerCase()];
-  const chat = await startPrChat({ provider, account: body.account, cwd: reuse ? pr.chat.cwd : cwd, sessionId: reuse ? pr.chat.sessionId : null, text, title: reuse ? pr.chat.title : `${{ 'fix-comments': 'Comments', update: 'Up to date', 'fix-checks': 'Checks' }[action]} on #${pr.number}: ${pr.title}`.slice(0, 120) });
+  const chat = await startPrChat({ provider, account: body.account, model: body.model, effort: body.effort, cwd: reuse ? pr.chat.cwd : cwd, sessionId: reuse ? pr.chat.sessionId : null, text, title: reuse ? pr.chat.title : `${{ 'fix-comments': 'Comments', update: 'Up to date', 'fix-checks': 'Checks' }[action]} on #${pr.number}: ${pr.title}`.slice(0, 120) });
   log(`PRs: ${provider} ${{ 'fix-comments': 'fixing the review comments', update: 'bringing up to date', 'fix-checks': 'fixing the checks' }[action]} on ${pr.repo}#${pr.number}${reuse ? ' in the chat that made it' : ''}.`);
   return { key: chat.key, cwd: chat.cwd, resumed: !!reuse, recordWarning: notePrRun(pr, action, chat) };
 }
@@ -1747,7 +1816,7 @@ async function routineChat({ account, cwd, sessionId, permissionMode, model, eff
   if (sessionId && running[sessionId.toLowerCase()]) throw fail(409, 'That chat is open in a terminal, so the routine left it alone.');
   await guarded(a);
   acc.prepareForLaunch(c, a);
-  const chat = chats.open({ extraArgs: chatArgs(), cfg: c, account: a, cwd, sessionId: sessionId || null, permissionMode, model, effort: effort || undefined, title, folder });
+  const chat = chats.open({ extraArgs: chatArgs(cwd), cfg: c, account: a, cwd, sessionId: sessionId || null, permissionMode, model, effort: effort || undefined, title, folder });
   if (sessionId) sessions.recordLaunch(sessionId, a, 'app');
   return chat;
 }
@@ -2056,6 +2125,23 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/prs/status') return send(res, 200, { ...(await prs.status({ fresh: url.searchParams.get('fresh') === '1' })), signIn: prs.signInState() });
   if (route === 'GET /api/prs/mine') return send(res, 200, await prs.mine({ fresh: url.searchParams.get('fresh') === '1' }));
   if (route === 'GET /api/work') return send(res, 200, await workBoard(url.searchParams.get('fresh') === '1'));
+  if (route === 'GET /api/work/setup') return send(res, 200, await setupCheck(url.searchParams.get('fresh') === '1'));
+  if (route === 'GET /api/work/models') {
+    const m = await liteRoutes.models(url.searchParams.get('fresh') === '1' ? { fresh: true } : undefined).catch(() => ({}));
+    const view = x => (x ? {
+      defaultModel: x.defaultModel || null, defaultEffort: x.defaultEffort || null, efforts: Array.isArray(x.efforts) ? x.efforts : [],
+      models: [...(x.models || []), ...(x.more || [])].filter(y => y && typeof y.value === 'string' && y.value && y.value !== 'default').slice(0, 30)
+        .map(y => ({ value: y.value, label: String(y.label || y.value).slice(0, 60), note: String(y.note || '').slice(0, 120), efforts: Array.isArray(y.efforts) ? y.efforts.filter(e => typeof e === 'string') : [] })),
+    } : null);
+    let gem = null;
+    if (config().gemini.enabled) {
+      let list = gemini.models();
+      if (!list.length) list = await gemini.refreshModels().catch(() => []);
+      const def = list.find(x => x.isDefault) || null;
+      gem = list.length ? { defaultModel: def ? def.label : null, defaultEffort: null, efforts: [], models: list.slice(0, 30).map(x => ({ value: x.value, label: String(x.label || x.value).slice(0, 60), note: String(x.description || '').slice(0, 120), efforts: [] })) } : null;
+    }
+    return send(res, 200, { claude: view(m.claude), codex: config().codex.enabled ? view(m.codex) : null, gemini: gem });
+  }
   if (route === 'GET /api/linear/issue') return send(res, 200, await linear.issue(String(url.searchParams.get('id') || '')));
   if (route === 'GET /api/linear/status') return send(res, 200, await linear.status({ fresh: url.searchParams.get('fresh') === '1' }));
   if (route === 'GET /api/linear/users') return send(res, 200, { users: await linear.users(url.searchParams.get('q') || '') });
@@ -2267,6 +2353,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/prs/signin-cancel': return send(res, 200, { signIn: prs.cancelSignIn() });
     case '/api/prs/switch': { const st = await prs.switchTo(String(body.user || '')); broadcast('prs', {}); return send(res, 200, st); }
     case '/api/prs/act': return send(res, 200, await prAction(body));
+    case '/api/prs/open-chat': return send(res, 200, await prOpenChat(body));
     case '/api/prs/record': {
       const entry = await prRecords.save(body, async t => (await prs.detail(t.repo, t.n, { fresh: true })).headSha);
       broadcast('pr-record', { repo: body.repo, n: body.n }); return send(res, 200, { entry });
@@ -2282,6 +2369,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/prs/reviewers': return send(res, 200, await prs.requestReviewers(body.repo, body.n, body.users));
     case '/api/prs/preview': return send(res, 200, await prs.askPreview(body.repo, body.n));
     case '/api/work/start': return send(res, 200, await startWork(body));
+    case '/api/work/setup-fix': return send(res, 200, await setupFix(body, remote));
     case '/api/linear/me': return send(res, 200, await linear.setMe(String(body.id || '')));
     case '/api/linear/key': return send(res, 200, await linear.setKey(typeof body.key === 'string' ? body.key : ''));
     case '/api/connections/cancel': return send(res, 200, { flow: mcpAuth.cancel(body.id) });
@@ -3210,7 +3298,7 @@ async function chatForCommander(c, id) {
   const a = await accountForCommander(c, session.id);
   acc.prepareForLaunch(c, a);
   const pref = chatPrefs.get({ sessionId: session.id, cwd: project.cwd, provider: 'claude' });
-  const chat = chats.open({ extraArgs: chatArgs(), cfg: c, account: a, cwd: project.cwd, sessionId: session.id, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: session.title, folder: project.name });
+  const chat = chats.open({ extraArgs: chatArgs(project.cwd), cfg: c, account: a, cwd: project.cwd, sessionId: session.id, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: session.title, folder: project.name });
   sessions.recordLaunch(session.id, a, 'app');
   return { chat, opened: true };
 }
@@ -3277,7 +3365,7 @@ async function openSubChat(c, pid) {
     const a = await accountForCommander(c, pid);
     acc.prepareForLaunch(c, a);
     const pref = chatPrefs.get({ cwd, provider: 'claude' });
-    chat = chats.open({ extraArgs: chatArgs(), cfg: c, account: a, cwd, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: 'New chat', folder });
+    chat = chats.open({ extraArgs: chatArgs(cwd), cfg: c, account: a, cwd, permissionMode: chatLib.MODES.includes(pref.mode) ? pref.mode : null, model: pref.model, effort: pref.effort, title: 'New chat', folder });
   }
   chat.parentSession = pid;
   return { chat, cwd, folder, title };
@@ -3824,7 +3912,8 @@ async function handleChat(req, res, url, body, c, remote = false) {
     case '/api/chat/make-pr': {
       const chat = chats.get(body.key);
       if (chat.state === 'ended') throw fail(409, 'This chat has stopped. Start it again first.');
-      await pairs.send(chat, prsLib.makePrPrompt(typeof body.note === 'string' ? body.note : ''));
+      const where = await prs.slugOf(chat.cwd).catch(() => ({}));
+      await pairs.send(chat, prsLib.makePrPrompt(typeof body.note === 'string' ? body.note : '', where.slug || null));
       return send(res, 200, { ok: true });
     }
     case '/api/chat/undo': {

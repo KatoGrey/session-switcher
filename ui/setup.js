@@ -26,6 +26,7 @@ function renderSetup(j) {
       ${(q => `<label class="toggle"><input type="checkbox" data-quiet="on" ${q.on ? 'checked' : ''}><span><b>Quiet hours</b><span>No chimes or notifications from <input type="time" data-quiet="from" value="${esc(q.from)}" aria-label="Quiet from"> to <input type="time" data-quiet="to" value="${esc(q.to)}" aria-label="Quiet until">; the hub still shows everything. Each chat’s ⋯ menu can also quiet just that chat.</span></span></label>`)({ from: '22:00', to: '08:00', on: false, ...(quietHours() || {}) })}
       ${t('petals', esc(voice('Drifting petals')), `${esc(voice('A few slow petals behind the hub.'))} ${esc(voice('Turned off automatically if Windows is set to reduce motion.'))}`, true)}
       ${t('motion', 'Animations', 'World banners that open into their pages, cards that rise in, dials that draw themselves. Turned off automatically if Windows is set to reduce motion.', true)}
+      ${t('stayLive', 'Keep chats live in the background', 'While this window is open but you’re working somewhere else (on another monitor, say), replies, steps and spinners keep moving as they happen. Off: it holds still after 15 seconds to save power and catches up when you come back. It always rests while minimized.', true)}
     </div>
     <p class="d-h" id="st-prefs">Preferences</p>
     <div class="prefs">
@@ -448,6 +449,7 @@ const Local = {
   notify: store('notify') === 'on' && 'Notification' in window && Notification.permission === 'granted',
   petals: store('petals') !== 'off',
   motion: store('motion') !== 'off',
+  stayLive: store('stayLive') !== 'off',
 };
 async function setLocal(k, on) {
   if (k === 'notify' && on) {
@@ -460,6 +462,7 @@ async function setLocal(k, on) {
   Local[k] = on; store(k, on ? 'on' : 'off');
   if (k === 'petals') petals();
   if (k === 'motion') applyMotion();
+  if (k === 'stayLive' && typeof restCheck === 'function') restCheck();
   if (k === 'sound' && on) chime('reply');
   renderLivePill();
   const box = document.querySelector(`[data-local="${k}"]`); if (box) box.checked = on;

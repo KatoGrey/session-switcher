@@ -178,3 +178,29 @@ test('prs: not signed in, or no gh: it says how to fix that', async () => {
   const noGh = createPrs({ run: async () => ({ code: -1, out: '', missing: true }) });
   await assert.rejects(noGh.mine(), /isn’t installed/);
 });
+
+test('prs: on Windows, Latitude PR work is told never to regenerate the schema', () => {
+  const { windowsNote, fixChecksPrompt, makePrPrompt } = require('../lib/prs');
+  assert.match(windowsNote('latitudegames/latitude', 'win32'), /Never run schema:write or schema:generate/);
+  assert.equal(windowsNote('latitudegames/latitude', 'darwin'), '', 'a Mac regenerates as usual');
+  assert.equal(windowsNote('acme/game', 'win32'), '', 'only Latitude');
+  const pr = { repo: 'latitudegames/latitude', number: 1, title: 'T', head: 'h', base: 'internal', threads: [], checks: { failed: [] } };
+  assert.equal(/Never run schema:write/.test(fixChecksPrompt(pr)), process.platform === 'win32');
+  assert.equal(/Never run schema:write/.test(makePrPrompt('', 'latitudegames/latitude')), process.platform === 'win32');
+});
+
+test('system: chats on Windows skip Latitude’s GraphQL push check, unless you said otherwise', () => {
+  const sys = require('../lib/system');
+  const was = process.env.GRAPHQL_FRESHNESS_SKIP, plat = Object.getOwnPropertyDescriptor(process, 'platform');
+  const as = p => Object.defineProperty(process, 'platform', { ...plat, value: p });
+  try {
+    delete process.env.GRAPHQL_FRESHNESS_SKIP;
+    as('win32'); assert.equal(sys.agentEnv().GRAPHQL_FRESHNESS_SKIP, '1');
+    as('darwin'); assert.equal(sys.agentEnv().GRAPHQL_FRESHNESS_SKIP, undefined, 'a Mac runs the check');
+    as('win32'); process.env.GRAPHQL_FRESHNESS_SKIP = '0';
+    assert.equal(sys.agentEnv().GRAPHQL_FRESHNESS_SKIP, '0', 'your own setting wins');
+  } finally {
+    Object.defineProperty(process, 'platform', plat);
+    if (was === undefined) delete process.env.GRAPHQL_FRESHNESS_SKIP; else process.env.GRAPHQL_FRESHNESS_SKIP = was;
+  }
+});

@@ -284,8 +284,7 @@
 .xr-options summary{cursor:pointer;color:var(--parch-2)}
 .xr-options summary span{color:var(--ash);margin-left:12px;font-size:11px}
 .xr-options p{font-size:11px;color:var(--ash)}
-.xr-picks{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.xr-picks .xr-field{margin-bottom:0}
+.xr-picks{display:block}
 .xr-note{font-size:11px;color:var(--ash);line-height:1.8}
 .xr-error{font-size:12px;color:var(--ember-soft)}
 .xr-footer{display:flex;align-items:center;gap:8px;margin-top:24px}
@@ -458,3 +457,51 @@ html[data-mode="light"] .wk-row.selected :is(.wk-row-meta,.wk-status){color:var(
   .wk-record-entry{padding-left:27px}.wk-record-line h4{font-size:13px}.wk-record-actions{gap:12px}
   .wr-body{padding:20px}.wr-body select,.wr-body textarea{font-size:16px}.wr-footer{flex-wrap:wrap;justify-content:flex-end}.wr-footer>span{flex-basis:100%;max-width:none}.wr-choices{gap:10px}
 }
+/* Runs with: the model and effort for the chats started from Your work, one pair for each assistant. */
+.wk-runwith{display:flex;align-items:center;flex-wrap:wrap;gap:8px 18px;margin:-8px 0 20px;padding:8px 0;border-top:1px solid var(--seam);border-bottom:1px solid var(--seam);font-size:11px;color:var(--ash)}
+.wk-run-label{font:600 11px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ash)}
+.wk-run{display:flex;align-items:center;gap:6px}
+.wk-run-who{color:var(--parch-2);font-weight:550;margin-right:2px}
+.wk-run select{border:1px solid var(--seam);background:var(--vellum);border-radius:2px;padding:5px 8px;color:var(--parch-2);font-size:11px;max-width:190px;min-width:0}
+.wk-run select:disabled{color:var(--ash-2)}
+.wk-run select:focus-visible{outline:2px solid var(--wk-accent);outline-offset:1px}
+.wk-run-note{margin-left:auto;color:var(--ash-2)}
+/* This PC: is the Latitude clone set up the way its Windows guide asks (lib/winrepo.js)? One line, opened for the list. */
+.wk-setup-box{margin:-20px 0 20px;border-bottom:1px solid var(--seam);font-size:11px;color:var(--ash)}
+.wk-setup-box>summary{display:flex;align-items:center;gap:8px 14px;padding:8px 0;cursor:pointer;list-style:none;min-width:0}
+.wk-setup-box>summary::-webkit-details-marker{display:none}
+.wk-setup-box>summary::after{content:'›';color:var(--ash-2);font-size:14px;line-height:1;transition:transform .15s}
+.wk-setup-box[open]>summary::after{transform:rotate(90deg)}
+.wk-setup-box>summary:focus-visible{outline:2px solid var(--wk-accent);outline-offset:2px}
+.wk-setup-sum{display:inline-flex;align-items:center;gap:6px;color:var(--parch-2);font-weight:550}
+.wk-setup-sum::before,.wk-setup-dot{content:'';width:6px;height:6px;border-radius:50%;background:var(--wk-green);flex:none}
+.wk-setup-sum[data-state="fix"]::before,.wk-setup-row[data-state="fix"] .wk-setup-dot{background:var(--gilt)}
+.wk-setup-row[data-state="info"] .wk-setup-dot{background:transparent;border:1px solid var(--ash)}
+.wk-setup-note{color:var(--ash)}
+.wk-setup-where{margin-left:auto;color:var(--ash-2);font-family:var(--f-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;direction:rtl;text-align:left}
+.wk-setup-list{list-style:none;margin:0;padding:2px 0 6px}
+.wk-setup-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--seam)}
+.wk-setup-row .wk-setup-dot{margin-top:1px}
+.wk-setup-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.wk-setup-text b{color:var(--parch-2);font-weight:550}
+.wk-setup-text span{overflow-wrap:anywhere}
+.wk-setup-row .btn{flex:none}
+.wk-setup-foot{margin:0;padding:8px 0 10px;border-top:1px solid var(--seam);color:var(--ash-2)}
+.wk-setup-foot .linkish{margin-left:6px}
+@media(max-width:760px){
+  .wk-runwith{gap:8px;margin:-6px 0 16px}
+  .wk-run{width:100%;display:grid;grid-template-columns:70px minmax(0,1.4fr) minmax(0,1fr);gap:6px}
+  .wk-run.solo select{grid-column:2/-1}
+  .wk-run select{max-width:none;width:100%;padding:8px 5px;min-height:34px}
+  .wk-run-note{display:none}
+  .wk-setup-box{margin:-16px 0 16px}
+  .wk-setup-where{display:none}
+  .wk-setup-box>summary::after{margin-left:auto}
+  .wk-setup-row{flex-wrap:wrap}
+  .wk-setup-row .btn{margin-left:18px;min-height:34px}
+}
+/* Cross-model review: a model and an effort for each assistant. */
+.xr-pick-row{display:grid;grid-template-columns:64px minmax(0,1.3fr) minmax(0,1fr);gap:14px;align-items:end;margin-top:12px}
+.xr-pick-row .xr-field{margin:0}
+.xr-pick-who{font-weight:550;color:var(--parch-2);padding-bottom:12px}
+@media(max-width:760px){.xr-pick-row{grid-template-columns:1fr 1fr}.xr-pick-who{grid-column:1/-1;padding:0}}

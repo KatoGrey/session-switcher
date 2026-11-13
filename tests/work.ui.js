@@ -191,6 +191,143 @@ module.exports = [{
     await b.eval(`document.querySelector('[data-wk="home"]').click(); return 1`);
     t.check('the start-page preference can be undone', await b.eval(`return store('start-page') === 'hub'`));
   },
+}, {
+  name: 'work runs with',
+  // The model and effort each assistant runs with, chosen on Your work, go with every chat started there.
+  async run(t) {
+    const seen = [], base = responder(seen);
+    const all = ['low', 'medium', 'high', 'xhigh', 'max'];
+    const models = {
+      claude: { defaultModel: 'Opus 5.5', defaultEffort: 'high', efforts: all, models: [{ value: 'opus', label: 'Opus', note: '', efforts: all }, { value: 'sonnet', label: 'Sonnet', note: '', efforts: ['low', 'medium', 'high'] }, { value: 'haiku', label: 'Haiku', note: '', efforts: [] }] },
+      codex: { defaultModel: 'GPT-6', defaultEffort: 'medium', efforts: ['low', 'medium', 'high'], models: [{ value: 'gpt-6', label: 'GPT-6', note: '', efforts: ['low', 'medium', 'high', 'xhigh'] }, { value: 'gpt-6-mini', label: 'GPT-6 mini', note: '', efforts: ['low', 'medium'] }] },
+    };
+    const b = await t.open({ respond: (p, q, body) => (p === '/api/work/models' ? { body: models } : base(p, q, body)), width: 1512, height: 1000 });
+    await b.eval(`localStorage.removeItem('work-run'); go('work'); return 1`); await sleep(1500);
+    const row = () => b.eval(`const r = document.querySelector('.wk-runwith'); return r && { text: r.textContent.replace(/\\s+/g, ' '), cm: r.querySelector('[data-wkm="claude-model"]').value, ce: r.querySelector('[data-wkm="claude-effort"]').value, xm: r.querySelector('[data-wkm="codex-model"]')?.value, efforts: [...r.querySelectorAll('[data-wkm="claude-effort"] option')].map(o => o.value) }`);
+    let r = await row();
+    t.check('Runs with shows each assistant with its own defaults', r && /Default \(Opus 5\.5\)/.test(r.text) && /Default \(GPT-6\)/.test(r.text) && r.cm === '' && r.ce === '', r);
+    const pick = (sel, v) => b.eval(`const e = document.querySelector(${JSON.stringify(sel)}); e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
+    await pick('[data-wkm="claude-model"]', 'opus'); await pick('[data-wkm="claude-effort"]', 'max'); await sleep(200);
+    await pick('[data-wkm="claude-model"]', 'sonnet'); await sleep(200);
+    r = await row();
+    t.check('a model that doesn’t offer the chosen effort goes back to its default effort', r.cm === 'sonnet' && r.ce === '' && !r.efforts.includes('max'), r);
+    await pick('[data-wkm="claude-effort"]', 'high'); await pick('[data-wkm="codex-model"]', 'gpt-6-mini'); await sleep(200);
+    await b.eval(`location.reload(); return 1`); await sleep(1500);
+    await b.eval(`go('work'); return 1`); await sleep(1500);
+    r = await row();
+    t.check('the choice is kept on this device', r && r.cm === 'sonnet' && r.ce === 'high' && r.xm === 'gpt-6-mini', r);
+    await t.shot(b, 'row');
+    await b.clickOn('[data-wk="select"][data-key="latitudegames/latitude#18982"]'); await sleep(400);
+    await b.eval(`const entry = palItems('Validate changes').find(x => x.t?.includes('#18982')); if (!entry) throw new Error('Missing contextual command'); entry.run(); return 1`); await sleep(250);
+    const menu = await b.eval(`return [...document.querySelectorAll('#menu button')].map(x => x.textContent.replace(/\\s+/g, ' ').trim())`);
+    t.check('the account menu says what each will run with', menu.some(x => /Claude/.test(x) && /Sonnet, high effort/.test(x)) && menu.some(x => /Codex/.test(x) && /GPT-6 mini/.test(x)), menu);
+    await b.eval(`const choice = [...document.querySelectorAll('#menu button')].find(x => /Claude/.test(x.textContent)); choice.click(); return 1`); await sleep(300);
+    const claude = seen.filter(x => x.p === '/api/prs/act' && x.body.action === 'validate').pop();
+    t.check('a Claude chat starts with the chosen model and effort', claude && claude.body.provider === 'claude' && claude.body.model === 'sonnet' && claude.body.effort === 'high', claude && claude.body);
+    await b.eval(`const entry = palItems('Prepare handoff').find(x => x.t?.includes('#18982')); entry.run(); return 1`); await sleep(250);
+    await b.eval(`const choice = [...document.querySelectorAll('#menu button')].find(x => /Codex/.test(x.textContent)); choice.click(); return 1`); await sleep(300);
+    const codex = seen.filter(x => x.p === '/api/prs/act' && x.body.action === 'handoff').pop();
+    t.check('a Codex chat starts with Codex’s choice, not Claude’s', codex && codex.body.provider === 'codex' && codex.body.model === 'gpt-6-mini' && !codex.body.effort, codex && codex.body);
+    await b.clickOn('#wkInspector [data-wk="cross-review"]'); await sleep(300);
+    const xr = await b.eval(`const f = document.querySelector('#xrForm'); return { model: f.model.value, effort: f.effort.value, cx: f.codexModel.value, open: f.querySelector('.xr-options').open }`);
+    t.check('cross-model review starts with the same choices', xr.model === 'sonnet' && xr.effort === 'high' && xr.cx === 'gpt-6-mini' && xr.open, xr);
+    await t.shot(b, 'runs-with');
+    await b.esc();
+    const phone = await t.open({ respond: (p, q, body) => (p === '/api/work/models' ? { body: models } : base(p, q, body)), width: 390, height: 844, mobile: true });
+    await phone.eval(`go('work'); return 1`); await sleep(1500);
+    t.check('on a phone the row fits the screen', await phone.eval(`return !!document.querySelector('.wk-runwith') && document.documentElement.scrollWidth <= innerWidth + 1`));
+    await t.shot(phone, 'runs-with-phone');
+  },
+}, {
+  name: 'work defaults and a fresh chat',
+  // Gemini's default beside Claude's and Codex's, picked from what it offers; a free-form chat about a PR; This PC's
+  // setup check with its fixes; and cross-model review's dropdowns.
+  async run(t) {
+    const seen = [], base = responder(seen);
+    const all = ['low', 'medium', 'high', 'xhigh', 'max'];
+    const models = {
+      claude: { defaultModel: 'Opus 5.5', defaultEffort: 'high', efforts: all, models: [{ value: 'opus', label: 'Opus', note: '', efforts: all }, { value: 'sonnet', label: 'Sonnet', note: '', efforts: ['low', 'medium', 'high'] }, { value: 'haiku', label: 'Haiku', note: '', efforts: [] }] },
+      codex: { defaultModel: 'GPT-6', defaultEffort: 'medium', efforts: ['low', 'medium', 'high'], models: [{ value: 'gpt-6', label: 'GPT-6', note: '', efforts: ['low', 'medium', 'high', 'xhigh'] }, { value: 'gpt-6-mini', label: 'GPT-6 mini', note: '', efforts: ['low', 'medium'] }] },
+      gemini: { defaultModel: 'Gemini 4 Argon (Medium)', defaultEffort: null, efforts: [], models: [{ value: 'gemini-4-argon-medium', label: 'Gemini 4 Argon (Medium)', note: '', efforts: [] }, { value: 'gemini-4-argon-high', label: 'Gemini 4 Argon (High)', note: '', efforts: [] }] },
+    };
+    const setup = { root: 'C:\\Latitude', windows: true, checks: [
+      { id: 'node', label: 'Node', state: 'fix', detail: '24.16.0 here; the repo uses 24.22.1 (.nvmrc).', fix: 'chat' },
+      { id: 'longpaths', label: 'Long file paths', state: 'fix', detail: 'Off: some files in this repo have paths longer than Windows allows by default.', fix: 'here' },
+      { id: 'env', label: 'Secrets to run the app here', state: 'info', detail: 'Only needed to run the app on this PC (yarn api, yarn web).', fix: 'open' },
+      { id: 'hooks', label: 'Git hooks', state: 'ok', detail: 'Installed (yarn prepare).', fix: null },
+    ] };
+    const captured = { status: 409, body: { error: 'Test launch captured. No model was started.' } };
+    const respond = (p, q, body) => {
+      if (p === '/api/work/models') return { body: models };
+      if (p === '/api/work/setup') { seen.push({ p, query: Object.fromEntries(q) }); return { body: setup }; }
+      if (p === '/api/work/setup-fix') {
+        seen.push({ p, body });
+        if (body.id !== 'longpaths') return captured;
+        setup.checks[1] = { ...setup.checks[1], state: 'ok', detail: 'On (git core.longpaths).', fix: null };
+        return { body: { done: 'Long file paths are on.' } };
+      }
+      if (p === '/api/prs/open-chat') { seen.push({ p, body }); return captured; }
+      return base(p, q, body);
+    };
+    const b = await t.open({ respond, gemini: true, width: 1512, height: 1000 });
+    await b.eval(`localStorage.removeItem('work-run'); go('work'); return 1`); await sleep(1500);
+    const g = await b.eval(`const r = document.querySelector('.wk-runwith'); return r && { label: r.querySelector('.wk-run-label').textContent, gem: !!r.querySelector('[data-wkm="gemini-model"]'), gemEffort: !!r.querySelector('[data-wkm="gemini-effort"]'), opts: [...r.querySelectorAll('[data-wkm="gemini-model"] option')].map(o => o.textContent) }`);
+    t.check('Defaults has Gemini too, picked from its models (its effort is in their names)', g && g.label === 'Defaults' && g.gem && !g.gemEffort && g.opts[0] === 'Default (Gemini 4 Argon (Medium))' && g.opts.includes('Gemini 4 Argon (High)'), g);
+    const pick = (sel, v) => b.eval(`const e = document.querySelector(${JSON.stringify(sel)}); e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
+    await pick('[data-wkm="gemini-model"]', 'gemini-4-argon-high'); await pick('[data-wkm="codex-model"]', 'gpt-6-mini'); await sleep(250);
+    t.check('the Gemini default is kept on this device', await b.eval(`return JSON.parse(localStorage.getItem('work-run')).gemini.model === 'gemini-4-argon-high'`));
+
+    // A new chat about a PR: free-form, with the assistant's default.
+    await b.clickOn('[data-wk="select"][data-key="latitudegames/latitude#18982"]'); await sleep(500);
+    await b.clickOn('#wkInspector [data-wk="prchat"]'); await sleep(250);
+    const menu = await b.eval(`return [...document.querySelectorAll('#menu button')].map(x => x.textContent.replace(/\\s+/g, ' ').trim())`);
+    t.check('a new chat about a PR can go to Claude, Codex or Gemini, each with its default', menu.some(x => /Claude/.test(x)) && menu.some(x => /Codex/.test(x) && /GPT-6 mini/.test(x)) && menu.some(x => /Gemini/.test(x) && /Gemini 4 Argon \(High\)/.test(x)), menu);
+    await t.shot(b, 'fresh-chat-menu');
+    await b.eval(`[...document.querySelectorAll('#menu button')].find(x => /Gemini/.test(x.textContent)).click(); return 1`); await sleep(400);
+    const fresh = seen.filter(x => x.p === '/api/prs/open-chat').pop();
+    t.check('it asks for a chat about that PR with nothing sent, on Gemini’s default', fresh && fresh.body.provider === 'gemini' && fresh.body.model === 'gemini-4-argon-high' && fresh.body.repo === 'latitudegames/latitude' && fresh.body.n === 18982 && !fresh.body.action && !fresh.body.text, fresh && fresh.body);
+    t.check('it’s in More… and Ctrl+K too', await b.eval(`return !!palItems('New chat about').find(x => x.t?.includes('#18982'))`));
+    await b.eval(`palItems('New chat about').find(x => x.t?.includes('#18982')).run(); return 1`); await sleep(250);
+    await b.eval(`[...document.querySelectorAll('#menu button')].find(x => /Claude/.test(x.textContent)).click(); return 1`); await sleep(400);
+    const viaClaude = seen.filter(x => x.p === '/api/prs/open-chat').pop();
+    t.check('with Claude it carries Claude’s default, not Gemini’s', viaClaude && viaClaude.body.provider === 'claude' && !viaClaude.body.model, viaClaude && viaClaude.body);
+
+    // This PC: one closed line, the list when opened, fixes here and through a chat.
+    const pc = () => b.eval(`const d = document.querySelector('.wk-setup-box'); return d && { sum: d.querySelector('summary').textContent.replace(/\\s+/g, ' '), open: d.open, rows: d.querySelectorAll('.wk-setup-row').length, first: d.querySelector('.wk-setup-row b')?.textContent }`);
+    let st = await pc();
+    t.check('This PC sums up the clone’s setup in one closed line', st && /2 things to fix/.test(st.sum) && /1 note/.test(st.sum) && !st.open && st.rows === 4 && st.first === 'Node', st);
+    await b.clickOn('.wk-setup-box summary'); await sleep(250);
+    await t.shot(b, 'this-pc');
+    await b.clickOn('[data-wk="setup-fix"][data-id="longpaths"]'); await sleep(700);
+    const here = seen.filter(x => x.p === '/api/work/setup-fix').pop();
+    st = await pc();
+    t.check('a fix done here asks the PC, checks again and stays open', here && here.body.id === 'longpaths' && !here.body.provider && seen.some(x => x.p === '/api/work/setup' && x.query.fresh === '1') && st.open && /1 thing to fix/.test(st.sum), { body: here && here.body, st });
+    await b.clickOn('[data-wk="setup-fix"][data-id="node"]'); await sleep(250);
+    await b.eval(`[...document.querySelectorAll('#menu button')].find(x => /Codex/.test(x.textContent)).click(); return 1`); await sleep(400);
+    const viaChat = seen.filter(x => x.p === '/api/work/setup-fix' && x.body.id === 'node').pop();
+    t.check('a fix through a chat goes to the assistant chosen, with its default', viaChat && viaChat.body.provider === 'codex' && viaChat.body.model === 'gpt-6-mini', viaChat && viaChat.body);
+    const audit = await b.eval(textAudit); const bad = audit.filter(r => r.size < 11 || (!r.disabled && r.ratio < r.needed));
+    t.check('the new pieces are readable', !bad.length, bad.slice(0, 8));
+
+    // Cross-model review: dropdowns of what each assistant offers.
+    await b.eval(`localStorage.setItem('work-run', JSON.stringify({ claude: { model: 'opus', effort: 'max' }, codex: { model: 'gpt-6-mini', effort: '' }, gemini: { model: '', effort: '' } })); location.reload(); return 1`); await sleep(1500);
+    await b.eval(`go('work'); return 1`); await sleep(1500);
+    await b.clickOn('[data-wk="select"][data-key="latitudegames/latitude#18982"]'); await sleep(500);
+    await b.clickOn('#wkInspector [data-wk="cross-review"]'); await sleep(400);
+    let xr = await b.eval(`const f = document.querySelector('#xrForm'); return { kinds: [f.model, f.effort, f.codexModel, f.codexEffort].map(x => x.tagName), model: f.model.value, effort: f.effort.value, cx: f.codexModel.value, models: [...f.model.options].map(o => o.value), open: f.querySelector('.xr-options').open }`);
+    t.check('cross-model review picks from dropdowns, starting on Your work’s defaults', xr.kinds.every(k => k === 'SELECT') && xr.model === 'opus' && xr.effort === 'max' && xr.cx === 'gpt-6-mini' && xr.models.join() === ',opus,sonnet,haiku' && xr.open, xr);
+    await b.eval(`const e = document.querySelector('#xrForm').model; e.value = 'sonnet'; e.dispatchEvent(new Event('change', { bubbles: true })); return 1`); await sleep(150);
+    xr = await b.eval(`const f = document.querySelector('#xrForm'); return { model: f.model.value, effort: f.effort.value, efforts: [...f.effort.options].map(o => o.value) }`);
+    t.check('a model without the chosen effort goes back to its default effort', xr.model === 'sonnet' && xr.effort === '' && !xr.efforts.includes('max'), xr);
+    await t.shot(b, 'cross-review-picks');
+    await b.esc();
+
+    const phone = await t.open({ respond, gemini: true, width: 390, height: 844, mobile: true });
+    await phone.eval(`go('work'); return 1`); await sleep(1500);
+    await phone.eval(`document.querySelector('.wk-setup-box').open = true; return 1`); await sleep(150);
+    t.check('on a phone Defaults and This PC fit the screen', await phone.eval(`return !!document.querySelector('[data-wkm="gemini-model"]') && !!document.querySelector('.wk-setup-box') && document.documentElement.scrollWidth <= innerWidth + 1`));
+    await t.shot(phone, 'defaults-phone');
+  },
 }];
 module.exports.fixture = fixture;
 module.exports.responder = responder;
