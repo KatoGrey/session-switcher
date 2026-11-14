@@ -1,4 +1,29 @@
-# Subagents on the model you choose, Codex and Gemini as subagents, Latitude's read-only tools without asking, and weekly Fable usage
+# A new look: Studio, eight themes with one colour for each model, and a calmer, quicker app
+
+**Studio.** The standard themes have a new, modern look: one clean typeface (Inter) everywhere unless you pick your own, softer corners, layered surfaces with a fine edge and a soft shadow, and one focus ring. Cards share the width instead of leaving gaps, the message box is one big soft card, and the side navigation uses clear pills. Imperial, Rebel, the anime and glam themes and your own Theme Studio worlds keep their looks.
+
+**Eight main themes.** Setup → Appearance:
+
+- **Light** and **Dark** for every day, plus **Paper** (ink on warm paper), **Midnight** (deep navy) and **Sage** (muted moss).
+- **Signature darks:** **Gold** (black lacquer and champagne gold), **Garnet** (oxblood and gilt) and **Crema** (ivory on dark roast).
+- The app now **follows your device**: pick one theme for light and one for dark. If you were on the old default (Crimson), you move to Light and Dark once. Crimson and every other theme are under **More themes**, and Ctrl+K → **Change theme…** lists them all.
+
+**One colour for each model, in every theme.** Claude is clay, Codex is graphite and Gemini is blue, always with a name or logo too. Status colours never borrow them: gold for "Needs your OK", the theme's own accent for work in progress, olive for done and a crimson of its own for errors. Every main theme is checked for contrast and for the commonest colour blindness.
+
+**Notifications stack.** Up to three show at once, so a new one no longer wipes out an **Undo**. Point at them to spread them out, swipe down to dismiss, and press **F6** to reach their buttons from the keyboard. Slow actions (merging a PR, a fix on This PC) show a loading notice that turns into done or failed.
+
+**Ctrl+K finds more with less typing.** Loose matches ("nc" finds New chat), the things you pick most come first, and some items open a list of their own: **Change theme…**, **Switch account…** and, in a chat, **Switch model…**. Backspace on an empty box goes back.
+
+**Chats show what's happening.** A running step shows how long it's been going, a subagent's step says which one and its model ("scout · Haiku, low"), and thinking folds away once the reply moves on.
+
+**Usage numbers roll** to their new value instead of jumping.
+
+**On a phone,** menus and sheets open along the bottom again and can be dragged down to close.
+
+- **Fixed:** errors were drawn in nearly the same colour as Claude's replies in dark themes.
+- **Fixed:** dialogs now give focus back to the button that opened them, and the page behind a phone dialog no longer scrolls.
+
+## Earlier in 6.11: subagents on the model you choose, Codex and Gemini as subagents, Latitude's read-only tools without asking, and weekly Fable usage
 
 **Subagents.** When a chat hands part of a job to a subagent (a search, a review, a check), you now choose what it runs on. Open **Subagents** in the sidebar or Ctrl+K:
 
