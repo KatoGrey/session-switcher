@@ -307,3 +307,9 @@
 .hub2:not([data-family]) :is(.nav-h,.ledger .lg-h) .count{font:500 12px var(--f-ui);letter-spacing:0;color:var(--ash-2)}
 .hub2:not([data-family]) .ledger .lg-h{margin:20px 0 8px}
 .hub2:not([data-family]) .ledger .lg-h:first-child{margin-top:4px}
+
+/* Setup you can find: the Setup button's dot, when Health or This PC has something to fix, is the needs-you colour
+   (Gold and Garnet set their own --needs), ringed in the bar's colour so it reads apart from the gear. Errors keep
+   theirs. */
+.hub2:not([data-family]) .hdot.warn{background:var(--needs, var(--gilt))}
+.hub2:not([data-family]) :is(.hdot.warn,.hdot.error){box-shadow:0 0 0 2px var(--abyss)}

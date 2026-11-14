@@ -93,7 +93,7 @@ async function openConnections(cwd = null) {
   if (!d.open) d.showModal();
   connRender();
   ghLoad().then(prsRedraw).catch(() => {});
-  api('/api/linear/status').then(st => { Conn.linear = st; const box = $('cnLinear'); if (box) box.innerHTML = linearLine(); }).catch(err => { Conn.linear = { connected: false, error: err.message }; });
+  api('/api/linear/status').then(st => { Conn.linear = st; }).catch(err => { Conn.linear = { connected: false, error: err.message }; }).finally(() => { const box = $('cnLinear'); if (box) box.innerHTML = linearLine(); });
   return connLoad(false);
 }
 async function connLoad(fresh) {
@@ -149,15 +149,17 @@ function connRender() {
   const box = $('cnBody'); if (!box || !$('connDlg').open) return;
   if (Conn.mode === 'chat') return connChatRender(box);
   $('cnTitle').textContent = 'Connections';
-  const d = Conn.data;
-  if (!d) { box.innerHTML = Conn.err ? `<p class="rd-state warn">${esc(Conn.err)}</p><div class="d-row"><button class="btn" data-cn="refresh">Try again</button></div>` : '<p class="loading">Asking each of your accounts which tools it can use…</p>'; return; }
+  // GitHub and Linear show at once (each fills itself in, and Setup and Ctrl+K can point at them); the tools that sign
+  // in follow once every account has answered, redrawn on their own.
+  if (!$('cnTools')) box.innerHTML = `<h4 class="cn-h" id="cnGitHubH">GitHub</h4><div id="cnGitHub" class="gh-box" tabindex="-1" role="group" aria-labelledby="cnGitHubH">${ghHtml(PRS.gh, { inConnections: true })}</div>
+    <h4 class="cn-h" id="cnLinearH">Linear</h4><div class="gh-box" id="cnLinear" tabindex="-1" role="group" aria-labelledby="cnLinearH">${linearLine()}</div>
+    <h4 class="cn-h">Tools that sign in (MCP)</h4><div id="cnTools"></div>`;
+  const tools = $('cnTools'), d = Conn.data;
+  if (!d) { tools.innerHTML = Conn.err ? `<p class="rd-state warn">${esc(Conn.err)}</p><div class="d-row"><button class="btn" data-cn="refresh">Try again</button></div>` : '<p class="loading">Asking each of your accounts which tools it can use…</p>'; return; }
   for (const a of d.accounts || []) a.isMain = a.provider === 'claude' && !!(S.accounts || []).find(x => x.id === a.accountId && x.isDefault);
   const need = connNeeded();
   const queued = Conn.queue.length || Conn.qFlow;
-  box.innerHTML = `<h4 class="cn-h">GitHub</h4><div id="cnGitHub" class="gh-box">${ghHtml(PRS.gh, { inConnections: true })}</div>
-    <h4 class="cn-h">Linear</h4><div class="gh-box" id="cnLinear">${linearLine()}</div>
-    <h4 class="cn-h">Tools that sign in (MCP)</h4>
-    <p class="rd-intro">Tools (MCP servers) like Latitude’s need you to sign in once for each account: Claude Code and Codex each keep their own sign-in, and so does every Claude account. Sign in here and every chat on that account can use the tool${Conn.cwd ? '' : ', in every project'}.</p>
+  tools.innerHTML = `<p class="rd-intro">Tools (MCP servers) like Latitude’s need you to sign in once for each account: Claude Code and Codex each keep their own sign-in, and so does every Claude account. Sign in here and every chat on that account can use the tool${Conn.cwd ? '' : ', in every project'}.</p>
     ${need.length > 1 && !queued ? `<div class="cn-all"><button type="button" class="btn gilt" data-cn="everywhere">Sign in everywhere it’s needed</button><span>${need.length} sign-ins, one after another. Each opens its page in your browser; if you’re signed in there already, it’s a click each.</span></div>` : ''}
     ${queued ? `<p class="rd-state">Signing in one after another: ${Conn.queue.length} more after this one. <button type="button" class="linkish" data-cn="stopqueue">Stop after this one</button></p>` : ''}
     ${connTable(d)}

@@ -158,8 +158,18 @@ function palRank(list, q) {
 }
 // The project an action is about: the open chat's, else the project page you're on.
 const paletteHere = () => (window.ChatUI && ChatUI.isOpen() && C.info && C.info.cwd) || (S.view === 'folder' ? S.folder : null);
-// Setup, at one of its sections.
-async function openSetupAt(id) { await openSetup(); setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 300); }
+// Setup, at one of its sections: its heading at the top with the keyboard on it, its settings lit for a moment. On a
+// phone, a section only the PC has says so rather than nothing happening.
+async function openSetupAt(id) {
+  await openSetup();
+  setTimeout(() => {
+    const h = document.getElementById(id);
+    if (!h) { if (window.REMOTE && $('st-health')) toast('That part of Setup is only on the PC itself. Open Setup there to change it.', 7000); return; }
+    h.scrollIntoView({ block: 'start' });
+    h.tabIndex = -1; h.focus({ preventScroll: true });
+    if (h.nextElementSibling) lightUp(h.nextElementSibling);
+  }, 300);
+}
 // Plain words for an action: "codex chat in starfall to make the icons", "queue the patch notes in
 // starfall tonight", "race fixing the save bug in starfall". Each opens ready to go; nothing is sent.
 function projectNamed(words) {
@@ -199,7 +209,7 @@ function palItems(q) {
   const run = S.activity.filter(x => !x.parentKey).map(x => ({ glyph: NEEDS.has(statusOf(x)) || statusOf(x) === 'reply' ? '✦' : '◉', t: x.title || 'New chat', s: `${{ approve: 'needs your OK', question: 'has a question', 'terminal-wait': 'waiting in its terminal', reply: 'your turn', working: 'at work', quiet: 'open', ended: 'stopped' }[statusOf(x)]}${x.folder ? ` · ${x.folder}` : ''}`, run: () => openActivity(x), text: `${x.title} ${x.folder}` }));
   const acts = [
     { glyph: '+', t: 'New chat', s: 'in any project, with any of them', run: () => openNewChat(), alias: 'start chat new claude codex gemini' },
-    { glyph: '◈', t: 'Phone access', s: 'pair a phone, notifications', run: () => openSetupAt('st-phone'), alias: 'phone android iphone pair mobile notifications tailscale' },
+    { glyph: '◈', t: 'Phone access', s: 'pair a phone, notifications', run: () => openSetupAt('st-phone'), alias: 'phone android iphone pair mobile notifications push tailscale', setup: true },
     { glyph: '◈', t: 'Alerts and quiet hours', s: 'chimes, notifications, when to keep quiet', run: () => openSetupAt('st-alerts'), alias: 'alerts quiet hours notifications chime sound mute' },
     { glyph: '◐', t: 'Text and interface size', run: () => openSetup('look'), alias: 'text size zoom bigger smaller interface scale' },
     { glyph: '❖', t: 'Theme Studio', s: 'a world of your own, painted with Codex', run: () => { const x = document.createElement('button'); x.setAttribute('data-studio-open', ''); x.hidden = true; document.body.appendChild(x); x.click(); x.remove(); }, alias: 'theme studio world paint custom' },
@@ -208,16 +218,24 @@ function palItems(q) {
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
     ...(Shell.canCollapse() ? [{ glyph: '◫', t: document.body.classList.contains('nav-collapsed') ? 'Show sidebar' : 'Hide sidebar', s: 'more room for your current work', run: () => Shell.toggle(), alias: 'focus sidebar collapse expand navigation' }] : []),
     { glyph: '⟳', t: 'Routines', s: 'chats that start on a schedule or when something new turns up', run: () => go('routines'), alias: 'schedule watch automation cron' },
-    { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health' },
+    { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health', setup: true },
     { glyph: '✧', t: 'Take the tour', s: 'a minute on what’s where', run: () => startTour(), alias: 'tour help guide intro getting started' },
     { glyph: '⚑', t: 'Race', s: 'two of Claude, Codex and Gemini, the same task in two copies of a project; keep the better one', run: () => openRaceDialog(paletteHere()), alias: 'race compete compare both versus head to head claude codex gemini' },
-    ...(aideOn() ? [{ glyph: '◈', t: 'Open Companion', s: 'your quick questions, by game', run: () => go('aide') }, { glyph: '◈', t: 'Ask Companion something new', s: 'a new question', run: () => aideNew() }] : [{ glyph: '◈', t: 'Turn on Companion', s: 'a quick helper over games and anything else', run: () => openSetup() }]),
+    ...(aideOn() ? [{ glyph: '◈', t: 'Open Companion', s: 'your quick questions, by game', run: () => go('aide') }, { glyph: '◈', t: 'Ask Companion something new', s: 'a new question', run: () => aideNew() }, { glyph: '◈', t: 'Companion settings', s: 'its keys, who answers first, the panel', run: () => openSetupAt('st-companion'), alias: 'companion aide keys hotkey alt q panel who answers', setup: true }] : [{ glyph: '◈', t: 'Turn on Companion', s: 'a quick helper over games and anything else', run: () => openSetupAt('st-companion'), alias: 'companion aide helper games quick questions', setup: true }]),
     ...(window.ChatUI && ChatUI.isOpen() && C.info && C.info.cwd ? [{ glyph: '▶', t: 'Run the project', s: 'its dev server or start script, with its output, beside the chat', run: () => openRun(), alias: 'run start dev server preview serve launch' }] : []),
     { glyph: '⑂', t: 'Split the work', s: 'two of them each take a part, in their own copies; keep both', run: () => openRaceDialog(paletteHere(), 'split'), alias: 'split divide parallel share both halves worktree' },
     { glyph: '⏳', t: 'Queue a task', s: 'starts as a new chat when an account has room, or at a time', run: () => openTaskDialog(paletteHere()), alias: 'queue later schedule task when limit resets' },
-    { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, one set for all of them', run: () => openRules(paletteHere()), alias: 'claude.md agents.md mcp servers tools rules instructions memory' },
-    { glyph: '⋔', t: 'Subagents', s: 'The model and effort of the helpers Claude starts, and your own named ones', run: () => openSubagents(), alias: 'subagent agents agent model effort reasoning haiku sonnet opus fable scout reviewer delegate helpers task' },
-    { glyph: '⚿', t: 'Connections', s: 'GitHub, and tools like Latitude’s, for every Claude and Codex account', run: () => openConnections(paletteHere()), alias: 'mcp sign in login oauth authenticate connect latitude tools accounts github gh' },
+    { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, one set for all of them', run: () => openRules(paletteHere()), alias: 'claude.md agents.md gemini.md mcp servers tools rules instructions memory', setup: true },
+    { glyph: '⋔', t: 'Subagents', s: 'The model and effort of the helpers Claude starts, and your own named ones', run: () => openSubagents(), alias: 'subagent agents agent model effort reasoning haiku sonnet opus fable scout reviewer delegate helpers task', setup: true },
+    { glyph: '⚿', t: 'Connections', s: 'GitHub, Linear and tools like Latitude’s, for every Claude and Codex account', run: () => openConnections(paletteHere()), alias: 'mcp sign in login oauth authenticate connect latitude tools accounts github gh linear key api', setup: true },
+    // Setup by what it's for, found by the words you'd use for it, each opening the exact place (ui/setup.js).
+    ...(S.platform === 'win32' ? [
+      { glyph: '▣', t: 'This PC (Latitude’s repo)', s: 'its setup on this computer, the way Latitude’s Windows guide asks', run: () => openThisPc(), alias: 'this pc repo latitude setup clone windows guide node long paths symlinks git hooks dependencies yarn turbo graphql notes', setup: true },
+      { glyph: '⚿', t: '1Password (AWS and feedback saves)', s: 'This PC: Latitude’s tokens from your vaults, filled into .env.local', run: () => openThisPc('onepass'), alias: '1password one password op aws secrets secret tokens token .env.local env local vault vaults dev_secrets agents feedback saves', setup: true },
+      { glyph: '⑂', t: 'Worktrees folder', s: 'This PC: where new worktrees of Latitude’s repo go', run: () => openThisPc('worktrees'), alias: 'worktree worktrees folder onedrive copy install hard links', setup: true },
+    ] : []),
+    ...(window.REMOTE ? [] : [{ glyph: '⌂', t: 'Your home PC', s: 'your PC’s work on a laptop while you’re away', run: () => openSetupAt('st-home'), alias: 'home pc laptop away travel copy sync mirror pair', setup: true }]),
+    ...(window.desktop ? [{ glyph: '❐', t: 'Desktop app', s: 'updates, starting with Windows, its keys', run: () => openSetupAt('st-desktop'), alias: 'desktop app update updates version tray start windows login startup hotkey shortcut keep awake test versions beta', setup: true }] : []),
     { glyph: '⇄', t: 'Your work', s: 'your Linear issues and pull requests, from to do to merged, with what’s next for each', run: () => go('work'), alias: 'work board dashboard linear issues assigned tickets pr prs pull requests kanban todo' },
     { glyph: '⇄', t: 'Pull requests', s: 'yours, to review and assigned to you; review or fix one with Claude or Codex', run: () => openPrs(), alias: 'pr prs pull request github review fix comments checks ci assigned' },
     { glyph: '⇄', t: 'Cross-model PR review', s: 'Claude reviews, Codex weighs the findings and makes useful fixes', run: () => openCrossReview(), alias: 'cross-model-pr-review cross review claude fable opus codex skill' },
@@ -283,7 +301,8 @@ function palItems(q) {
     add('Recent chats', chats.slice(0, 6));
     add('Projects', folders.slice(0, 6));
     add('More chat commands', chatActs.filter(x => !/Find in|Make a pull request/.test(x.t)));
-    add('Actions', acts.filter(x => !destinations.has(x.t) && (inChat || S.view !== 'work' || !workActs.some(w => w.t === x.t))));
+    add('Actions', acts.filter(x => !destinations.has(x.t) && !x.setup && (inChat || S.view !== 'work' || !workActs.some(w => w.t === x.t))));
+    add('Setup', acts.filter(x => x.setup && !destinations.has(x.t)));
     return out;
   }
   // Each group ranked; the groups ordered by their best match (ties keep this order). Phrases first,
@@ -292,7 +311,8 @@ function palItems(q) {
   add('Do it', sayItems(q));
   const groups = [
     ['This chat', rank([...chatActs, ...modelPage]).slice(0, 3)],
-    ['Actions', rank(acts).slice(0, 5)],
+    ['Actions', rank(acts.filter(x => !x.setup)).slice(0, 5)],
+    ['Setup', rank(acts.filter(x => x.setup)).slice(0, 5)],
     ['Active now', rank(run).slice(0, 5)],
     ['Chats', rank(chats).slice(0, 8)],
     ['Projects', rank(folders).slice(0, 5)],

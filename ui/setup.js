@@ -5,20 +5,23 @@
 async function loadHealth(showIn) {
   const j = await api('/api/health');
   if (!j || !Array.isArray(j.checks)) throw new Error('The health checks didn’t answer properly. Close Setup and open it again in a moment.');
-  const worst = j.checks.some(c => c.state === 'error') ? 'error' : j.checks.some(c => c.state === 'warn') ? 'warn' : 'ok';
-  $('hdot').className = `hdot ${worst}`;
-  $('setupBtn').title = worst === 'ok' ? 'Setup: everything looks good' : 'Setup: something needs attention';
+  Places.health = j; setupDot();
+  // This PC's checks count for the dot too: asked once, once the app's own start-up work is done (at once with Setup
+  // open); Your work keeps them current after that.
+  if (S.platform === 'win32' && !SOLO && typeof Work !== 'undefined' && !Work.setupState()) setTimeout(() => { if (!Work.setupState()) Work.loadSetup().catch(() => {}); }, showIn ? 0 : 15000);
   if (showIn) renderSetup(j);
   return j;
 }
 function renderSetup(j) {
-  const p = j.prefs;
+  const p = j.prefs, R = window.REMOTE;
   const t = (k, label, text, local) => `<label class="toggle"><input type="checkbox" ${local ? `data-local="${k}"` : `data-pref="${k}"`} ${(local ? Local[k] : p[k]) ? 'checked' : ''}><span><b>${label}</b><span>${text}</span></span></label>`;
   $('setupBody').innerHTML = `
-    <nav class="setup-toc" aria-label="Sections"><a href="#st-health">Health</a><a href="#st-alerts">Alerts</a><a href="#st-prefs">Preferences</a><a href="#st-companion">Companion</a><a href="#st-codex">Codex</a><a href="#st-gemini">Gemini</a>${window.REMOTE ? '' : '<a href="#st-home">Home PC</a>'}<a href="#st-phone">Phone</a>${window.desktop ? '<a href="#st-desktop">Desktop app</a>' : ''}<a href="#st-problems">Problems</a><a href="#st-app">App</a></nav>
+    <nav class="setup-toc" aria-label="Sections"><a href="#st-health">Health</a><a href="#st-places">${S.platform === 'win32' ? 'This PC and connections' : 'Connections'}</a><a href="#st-alerts">Alerts</a><a href="#st-prefs">Preferences</a>${R ? '' : '<a href="#st-companion">Companion</a>'}<a href="#st-codex">Codex</a>${R ? '' : '<a href="#st-gemini">Gemini</a><a href="#st-home">Home PC</a>'}<a href="#st-phone">Phone</a>${window.desktop ? '<a href="#st-desktop">Desktop app</a>' : ''}${R ? '' : '<a href="#st-problems">Problems</a>'}<a href="#st-app">App</a></nav>
+    ${R ? `<p class="ph-note st-pc-only">Some setup can only be done on the PC itself: ${S.platform === 'win32' ? 'Gemini, Your home PC, Companion, Problems and speed, and most of This PC’s fixes' : 'Gemini, Your home PC, Companion, and Problems and speed'}. Open Setup there for those.</p>` : ''}
     ${startHtml(j)}
     <ul class="checks" id="st-health">${j.checks.map(c => `<li class="check ${c.state}"><span class="st" aria-label="${c.state}"></span><span><b>${esc(c.label)}</b><span class="dt">${esc(c.detail)}</span></span>
       ${c.fix ? `<button class="btn sm" data-fix="${esc(c.fix.action)}" data-account="${esc(c.fix.account || '')}">${esc(c.fix.label)}</button>` : '<span></span>'}</li>`).join('')}</ul>
+    ${placesHtml()}
     <p class="d-h" id="st-alerts">Alerts and looks</p>
     <div class="prefs">
       ${t('sound', 'Chime when a chat needs you or replies', 'A soft bell. It doesn’t play for the chat you’re looking at.', true)}
@@ -136,23 +139,175 @@ function startHtml(j) {
   const step = (n, ok, title, text, act) => `<li class="gs-step ${ok ? 'ok' : ''}"><span class="gs-n" aria-hidden="true">${ok ? '✓' : n}</span><div><b>${title}</b><p>${text}</p></div>${ok ? '' : act || ''}</li>`;
   const fixBtn = c => (c && c.fix ? `<button class="btn prime sm" data-fix="${esc(c.fix.action)}" data-account="${esc(c.fix.account || '')}">${esc(c.fix.label)}</button>` : '');
   const essentials = done(cl) && done(acct);
+  // GitHub, Linear and (with a clone of Latitude's repo here) 1Password, as Setup's This PC and connections has them.
+  const gh = PRS.gh, lin = Places.linear, pc = pcSetup(), op = pc && pc.root ? pc.checks.find(c => c.id === 'onepass') : null;
+  const link = (place, label) => `<button type="button" class="btn quiet sm" data-place="${place}">${label}</button>`;
+  const steps = [
+    [done(cl), 'Claude Code', done(cl) ? esc(cl.detail) : 'Session Switcher works with Anthropic’s Claude Code. Install it here; a terminal window shows it working.', fixBtn(cl)],
+    [done(acct), 'Your Claude account', done(acct) ? esc(acct.detail) : 'Sign in with the Claude account (Pro or Max) you use. More accounts can be added later, under Accounts on the hub.', fixBtn(acct)],
+    [!!(S.codex && S.codex.enabled && S.codex.signedIn), 'Codex too (optional)', 'Use OpenAI’s Codex next to Claude, even in the same chat.', '<a class="btn quiet sm" href="#st-codex">Codex settings</a>'],
+    [!!(S.gemini && S.gemini.enabled && S.gemini.signedIn), 'Gemini too (optional)', 'Use Google’s Gemini (Gemini 4 Argon on a Google AI plan) beside Claude and Codex, even in the same chat.', '<a class="btn quiet sm" href="#st-gemini">Gemini settings</a>'],
+    [!!(gh && gh.signedIn), 'GitHub (optional)', gh && gh.signedIn ? `Signed in as ${esc(gh.login)}.` : gh && gh.installed === false ? 'GitHub’s gh isn’t installed on this PC yet. Once it is and you’re signed in, Your work shows your pull requests.' : 'Sign in, and Your work shows your pull requests; Claude and Codex can push and open them too.', link('github', gh && gh.installed === false ? 'Install gh' : 'GitHub sign-in')],
+    [!!(lin && lin.connected && lin.me), 'Linear (optional)', lin && lin.connected && lin.me ? `You’re ${esc(lin.me.name || lin.me.displayName)} in Linear.` : lin && lin.connected ? 'Connected through a shared key: say which Linear person you are.' : 'A Linear API key of your own, and Your work shows the issues assigned to you.', link('linear', 'Linear key')],
+    ...(op ? [[op.state !== 'fix', '1Password for Latitude’s repo', op.state !== 'fix' ? 'Latitude’s tokens are in .env.local.' : 'Latitude’s local tools reach AWS (feedback saves) through tokens from your 1Password, filled into .env.local.', link('pc:onepass', '1Password on This PC')]] : []),
+    [false, 'Your phone (optional)', 'Answer chats and approve steps from your phone, over your Wi-Fi.', '<a class="btn quiet sm" href="#st-phone">Phone access</a>'],
+    [!!store('toured'), 'A two-minute tour', 'Where everything is: the hub, projects, chats, Ctrl+K.', '<button class="btn quiet sm" data-fix="tour">Take the tour</button>'],
+  ];
   return `<section class="gs" aria-label="Getting started"><div class="gs-h"><p class="eyebrow">Getting started</p><b>${essentials ? 'You’re set up. A few extras, if you like:' : 'Two things and you’re ready.'}</b><button type="button" class="icon" data-gs="done" aria-label="Put this away" title="Put this away">✕</button></div>
     <ol class="gs-list">
-      ${step(1, done(cl), 'Claude Code', done(cl) ? esc(cl.detail) : 'Session Switcher works with Anthropic’s Claude Code. Install it here; a terminal window shows it working.', fixBtn(cl))}
-      ${step(2, done(acct), 'Your Claude account', done(acct) ? esc(acct.detail) : 'Sign in with the Claude account (Pro or Max) you use. More accounts can be added later, under Accounts on the hub.', fixBtn(acct))}
-      ${step(3, !!(S.codex && S.codex.enabled && S.codex.signedIn), 'Codex too (optional)', 'Use OpenAI’s Codex next to Claude, even in the same chat.', '<a class="btn quiet sm" href="#st-codex">Codex settings</a>')}
-      ${step(4, !!(S.gemini && S.gemini.enabled && S.gemini.signedIn), 'Gemini too (optional)', 'Use Google’s Gemini (Gemini 4 Argon on a Google AI plan) beside Claude and Codex, even in the same chat.', '<a class="btn quiet sm" href="#st-gemini">Gemini settings</a>')}
-      ${step(5, false, 'Your phone (optional)', 'Answer chats and approve steps from your phone, over your Wi-Fi.', '<a class="btn quiet sm" href="#st-phone">Phone access</a>')}
-      ${step(6, !!store('toured'), 'A two-minute tour', 'Where everything is: the hub, projects, chats, Ctrl+K.', '<button class="btn quiet sm" data-fix="tour">Take the tour</button>')}
+      ${steps.map(([ok, title, text, act], i) => step(i + 1, ok, title, text, act)).join('')}
     </ol>
     <p class="gs-b"><button class="btn quiet sm" data-gs="check">Check again</button>${essentials ? '<button class="btn sm" data-gs="done">Done</button>' : ''}</p></section>`;
+}
+// What the keyboard is on inside a part that's drawn again, found again after (null: nothing to keep).
+function focusKey(box) {
+  const el = box.contains(document.activeElement) ? document.activeElement : null; if (!el) return null;
+  for (const k of ['place', 'fix', 'gs']) if (el.dataset[k]) return `[data-${k}="${CSS.escape(el.dataset[k])}"]`;
+  return el.getAttribute('href') ? `[href="${CSS.escape(el.getAttribute('href'))}"]` : el.matches('summary') ? 'summary' : null;
+}
+// Getting started's list again, once GitHub, Linear or This PC have answered (the rest of Setup stays as it is).
+function renderStart() {
+  const list = document.querySelector('#setupBody .gs-list'); if (!list || !Places.health) return;
+  const t = document.createElement('div'); t.innerHTML = startHtml(Places.health);
+  const fresh = t.querySelector('.gs-list'); if (!fresh || fresh.innerHTML === list.innerHTML) return;
+  const at = focusKey(list);
+  list.replaceWith(fresh);
+  if (at) fresh.querySelector(at)?.focus({ preventScroll: true });
 }
 document.addEventListener('click', wrap(async e => {
   const b = e.target.closest('[data-gs]'); if (!b) return;
   if (b.dataset.gs === 'done') { store('getting-started', 'done'); return loadHealth(true); }
   b.disabled = true;
   await reload().catch(() => {});
-  return loadHealth(true);
+  await loadHealth(true);
+  return loadPlaces(true);
+}));
+
+/* ---------- Setup → This PC and connections ---------- */
+// GitHub and Linear as Connections has them, and This PC's checks for a clone of Latitude's repo (Your work → This
+// PC, lib/winrepo.js), one line each with a button to where it's set up. They read the answers those places use,
+// so nothing is checked twice. The Setup button's dot counts Health's problems and This PC's fixes.
+const Places = { health: null, linear: null, loading: null };
+const pcSetup = () => (typeof Work !== 'undefined' && Work.setupState ? Work.setupState() : null);
+function placesHtml() {
+  return `<p class="d-h" id="st-places">${S.platform === 'win32' ? 'This PC and connections' : 'Connections'}</p><ul class="checks places" id="placesBox">${placesRows()}</ul>`;
+}
+function placesRows() {
+  const gh = PRS.gh, lin = Places.linear, pc = pcSetup();
+  // Each line's state in words too, for a screen reader (none while it's still being asked).
+  const word = { ok: 'set up', warn: 'needs a fix', info: 'a note', '': 'not set up yet', unknown: '' };
+  const row = (state, label, detail, btn = '') => `<li class="check ${state}"><span class="st" aria-hidden="true"></span><span><b>${label}${word[state] ? `<span class="sr"> (${word[state]})</span>` : ''}</b><span class="dt">${detail}</span></span>${btn || '<span></span>'}</li>`;
+  // (A fix stands out as Health's fixes do; the rest are quiet.)
+  const link = (place, text, name, fix = false) => `<button type="button" class="btn ${fix ? '' : 'quiet '}sm" data-place="${esc(place)}" aria-label="${esc(name)}">${text}</button>`;
+  const out = [];
+  out.push(!gh ? row('unknown', 'GitHub', 'Checking…')
+    : gh.error && gh.installed === undefined ? row('unknown', 'GitHub', esc(gh.error), link('github', 'Show', 'Show GitHub in Connections'))
+    : gh.signedIn ? row('ok', 'GitHub', `Signed in as ${esc(gh.login)}.`, link('github', 'Show', 'Show GitHub in Connections'))
+    : gh.installed === false ? row('', 'GitHub', 'GitHub’s gh isn’t installed on this PC. Connections says where to get it.', link('github', 'Install gh…', 'Install gh: Connections says how'))
+    : row('', 'GitHub', 'Not signed in. Once you are, Your work shows your pull requests and chats can open them.', link('github', 'Sign in…', 'Sign in to GitHub, in Connections')));
+  out.push(!lin ? row('unknown', 'Linear', 'Checking…')
+    : lin.connected && lin.me ? row('ok', 'Linear', `You’re ${esc(lin.me.name || lin.me.displayName)} in Linear.`, link('linear', 'Show', 'Show Linear in Connections'))
+    : lin.connected ? row('', 'Linear', 'Connected, but it doesn’t know which Linear person you are yet.', link('linear', 'Say who…', 'Say who you are in Linear, on Your work'))
+    : row('', 'Linear', `Not connected${lin.error ? ` (${esc(lin.error)})` : ''}. A Linear API key of your own shows your issues in Your work.`, link('linear', 'Add a key…', 'Add a key for Linear, on Your work')));
+  if (S.platform === 'win32') {
+    if (!pc) out.push(row('unknown', 'This PC', 'Checking Latitude’s repo on this computer…'));
+    else if (!pc.root) out.push(row('', 'This PC', 'No clone of Latitude’s repo on this computer. Start a chat in the folder you cloned it into, and its setup shows here.'));
+    else {
+      const fix = pc.checks.filter(c => c.state === 'fix'), info = pc.checks.filter(c => c.state === 'info'), ok = pc.checks.filter(c => c.state === 'ok');
+      // (On a phone only the fixes done through a chat can be done from here, as on Your work.)
+      const canFix = c => c.state === 'fix' && !(window.REMOTE && c.fix !== 'chat');
+      const check = c => row(c.state === 'fix' ? 'warn' : c.state, esc(c.label), esc(c.detail), link(`pc:${c.id}`, canFix(c) ? 'Fix…' : 'Show', `${canFix(c) ? 'Fix' : 'Show'} ${c.label}, on This PC`, canFix(c)));
+      out.push(row(fix.length ? 'warn' : 'ok', 'This PC', `Latitude’s repo in ${esc(pc.root)}: ${fix.length ? `${plural(fix.length, 'thing')} to fix` : 'set up'}.`, link('pc', 'Show', 'Show This PC on Your work')), ...fix.map(check), ...info.map(check));
+      if (ok.length) out.push(`<li class="places-more"><details><summary>${ok.length} more ${ok.length === 1 ? 'is' : 'are'} set up</summary><ul class="checks places">${ok.map(check).join('')}</ul></details></li>`);
+    }
+  }
+  return out.join('');
+}
+function renderPlaces() {
+  const box = $('placesBox'); if (!box) return;
+  const open = !!box.querySelector('.places-more details[open]');
+  const at = focusKey(box);
+  box.innerHTML = placesRows();
+  if (open) box.querySelector('.places-more details')?.setAttribute('open', '');
+  if (at) box.querySelector(at)?.focus({ preventScroll: true });
+}
+// Asked each time Setup opens (GitHub's and Linear's answers are kept a while on the PC; This PC's too). A fresh ask
+// while another is under way follows it, so Check again always gets a new answer.
+function loadPlaces(fresh = false) {
+  if (Places.loading) return fresh ? Places.loading.then(() => loadPlaces(true)) : Places.loading;
+  const jobs = [ghLoad(fresh), api(`/api/linear/status${fresh ? '?fresh=1' : ''}`).then(st => { Places.linear = st; }, err => { Places.linear = { connected: false, error: err.message }; })];
+  if (S.platform === 'win32' && typeof Work !== 'undefined') jobs.push(Work.loadSetup(fresh));
+  Places.loading = Promise.all(jobs).catch(() => {}).finally(() => { Places.loading = null; renderPlaces(); renderStart(); });
+  return Places.loading;
+}
+// The Setup button: a dot when Health or This PC has something to fix, and its name says how many.
+function setupDot() {
+  const btn = $('setupBtn'), dot = $('hdot'); if (!btn || !dot) return;
+  const health = ((Places.health && Places.health.checks) || []).filter(c => c.state === 'warn' || c.state === 'error');
+  const pc = pcSetup(), fix = pc && pc.root ? pc.checks.filter(c => c.state === 'fix') : [];
+  const n = health.length + fix.length, what = `${plural(n, 'thing')} ${n === 1 ? 'needs' : 'need'} attention`;
+  dot.className = `hdot ${health.some(c => c.state === 'error') ? 'error' : n ? 'warn' : 'ok'}`;
+  btn.setAttribute('aria-label', n ? `Setup, ${what}` : 'Setup and health');
+  btn.title = n ? `Setup: ${what}` : 'Setup: everything looks good';
+}
+document.addEventListener('work-setup', () => { setupDot(); renderPlaces(); renderStart(); });
+
+/* ---------- going to where something is set up (Setup's buttons, Ctrl+K) ---------- */
+// Where a jump lands: lit once, the way a jump from the chat map is (.cm-flash); flashPlace also brings it into view
+// and puts the keyboard on what's there to press.
+function lightUp(el) { el.classList.remove('cm-flash'); void el.offsetWidth; el.classList.add('cm-flash'); }
+function flashPlace(el, focusEl = null) {
+  if (!el) return;
+  el.scrollIntoView({ block: 'center', behavior: motionOk() ? 'smooth' : 'auto' });
+  lightUp(el);
+  if (focusEl) focusEl.focus({ preventScroll: true });
+}
+// (Off once it has played, so it doesn't play again when a dialog or page shows it next time.)
+document.addEventListener('animationend', e => { if (e.animationName === 'cm-flash' && e.target.classList) e.target.classList.remove('cm-flash'); });
+// Something drawn a moment from now (a page that's loading): it, or null after a while.
+async function waitFor(find, ms = 8000) {
+  for (const t0 = Date.now(); Date.now() - t0 < ms; await new Promise(r => setTimeout(r, 120))) { const x = find(); if (x) return x; }
+  return null;
+}
+// This PC on Your work, at one of its rows; or, when there's none to show, why and what to do (Setup stays open when
+// that's known before going).
+async function openThisPc(id = null) {
+  const none = () => toast(S.platform !== 'win32' ? 'This PC’s checks follow Latitude’s Windows guide, so they’re only on Windows.' : 'No clone of Latitude’s repo was found on this computer, so This PC has nothing to show. Start a chat in the folder you cloned it into, then try again.', 9000);
+  const st = pcSetup();
+  if (S.platform !== 'win32' || (st && !st.root)) return none();
+  if ($('setup').open) $('setup').close();
+  if (!(await Work.showSetup(id))) none();
+  return undefined;
+}
+// Connections, at GitHub or Linear (both there at once; the tools that sign in come after). The keyboard goes to the
+// box itself, which stays put while its answer fills it in; Tab goes on to its buttons.
+async function openConnectionsAt(part) {
+  if ($('setup').open) $('setup').close();
+  openConnections(null).catch(() => {});
+  const el = await waitFor(() => $(part === 'linear' ? 'cnLinear' : 'cnGitHub'), 3000);
+  if (el) flashPlace(el, el);
+}
+// Linear: Your work's box for a key of your own, or for who you are there; Connections when it needs neither. Asked
+// first when it isn't known yet, so it doesn't wait on Your work for nothing.
+async function openLinearSetup() {
+  if (!Places.linear) Places.linear = await api('/api/linear/status').catch(err => ({ connected: false, error: err.message }));
+  if (Places.linear.connected && Places.linear.me) return openConnectionsAt('linear');
+  if ($('setup').open) $('setup').close();
+  await go('work');
+  // (Your work shows that it's loading meanwhile.)
+  const el = await waitFor(() => $('wkKey') || $('wkWho') || (document.querySelector('#page .wk-overview, #page .wk-error') ? 'none' : null), 20000);
+  if (el && el !== 'none') return flashPlace(el.closest('.wk-setup') || el, el);
+  if (el === 'none') return openConnectionsAt('linear');
+  return toast('Your work is still loading. Its Linear box shows near the top once it’s in.', 6000);
+}
+async function goPlace(place) {
+  if (place === 'github') return openConnectionsAt('github');
+  if (place === 'linear') return openLinearSetup();
+  if (place === 'pc' || place.startsWith('pc:')) return openThisPc(place.slice(3) || null);
+  return undefined;
+}
+$('setupBody').addEventListener('click', wrap(async e => {
+  const b = e.target.closest('[data-place]'); if (b) await goPlace(b.dataset.place);
 }));
 
 /* ---------- Windows Firewall: can the phone get in? ---------- */
@@ -239,7 +394,7 @@ async function openSetup(tab = 'health') {
   if (!$('setup').open) $('setup').showModal();
   if (tab === 'look') return renderLook();
   $('setupBody').innerHTML = '<p class="loading">Checking Claude Code, your accounts and shared data…</p>';
-  try { await loadHealth(true); loadPhone(); loadHomeBox(); renderPushBox(); loadProblems(); loadDeskBox(); loadAideBox(); loadToolVersions(); } catch (err) {
+  try { await loadHealth(true); loadPlaces(); loadPhone(); loadHomeBox(); renderPushBox(); loadProblems(); loadDeskBox(); loadAideBox(); loadToolVersions(); } catch (err) {
     // A slip in the page itself shouldn't show as programmer's text.
     const msg = err instanceof TypeError || err instanceof ReferenceError ? 'Setup couldn’t finish loading. Close it and open it again; if it keeps happening, restart Session Switcher.' : err.message;
     $('setupBody').innerHTML = `<p class="loading">${esc(msg)}</p>`;
