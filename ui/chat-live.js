@@ -281,8 +281,9 @@ function handleEvent(ev, src) {
     case 'stream_start': if (!itemDone(ev.itemId)) withStick(() => part(feed, ev.mid)); break;
     case 'delta':
       if (liveRender) speedDone('reply');
-      if (ev.thinking) { setStatus(src, 'Thinking…'); break; }
+      if (ev.thinking) { setStatus(src, 'Thinking…'); if (ev.text && !itemDone(ev.itemId)) thinkDelta(feed, ev.mid, ev.text); break; }
       if (itemDone(ev.itemId)) break;   // a page of history already has this one, finished
+      settleThink();
       setStatus(src, comp ? 'Writing…' : '');
       part(feed, ev.mid);
       C.liveText[ev.mid] = (C.liveText[ev.mid] || '') + ev.text;
@@ -300,16 +301,17 @@ function handleEvent(ev, src) {
     case 'tool_start': setStatus(src, `Using ${ev.name}…`); break;
     case 'tool_progress': {
       const tool = lastTool(feed, ev.toolUseId);
-      if (tool) tool.querySelector('.t-time').textContent = `${ev.seconds}s`;
+      if (tool) stepProgress(tool, ev.seconds);
       setStatus(src, `${ev.name || 'Tool'} running, ${ev.seconds}s`);
       break;
     }
-    case 'tool_result': withStick(() => setToolResult(feed, ev.toolUseId, ev.result)); break;
+    case 'tool_result': withStick(() => setToolResult(feed, ev.toolUseId, ev.result, ev.at)); break;
     case 'notice': withStick(() => renderItem(feed, ev, true)); break;
     case 'permission': addPermission(ev, src); break;
-    case 'permission_cancel': case 'permission_done': removePermission(ev.requestId, src); break;
+    case 'permission_cancel': case 'permission_done': removePermission(ev.requestId, src, ev.at); break;
     case 'result':
       setStatus(src, '');
+      settleThink();
       foldSteps(src);
       if (!ev.ok && Date.now() - C.interruptedAt > 8000 && (ev.errors.length || ev.text)) {
         withStick(() => renderItem(feed, { kind: 'notice', level: 'warning', text: ev.text || ev.errors.join('\n') || `${PROV_NAME[provFor(src)]} stopped with an error.` }));
@@ -319,12 +321,14 @@ function handleEvent(ev, src) {
       if (comp) {
         // The helper stopping doesn't end the Claude chat; your next message to Codex starts it again.
         C.comp.ended = true; C.comp.state = 'ended'; if (C.comp.es) C.comp.es.close();
+        stepsStop(lastTurnOf(provFor(src)));
         for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src === 'comp' && (!card._kind || card._kind === partnerProv())) card.remove();
         if (!ev.stopped) withStick(() => renderItem(feed, { kind: 'notice', level: 'info', text: `${PROV_NAME[partnerProv()]} stopped. Your next message to ${PROV_NAME[partnerProv()]} starts it again.` }));
         renderCrew(); syncSend();
         break;
       }
       setState('ended');
+      stepsStop(lastTurnOf(C.provider));   // its steps' clocks stop with it
       // The Codex helper may still be running and waiting on you; keep its cards.
       for (const card of $c('cPending').querySelectorAll('.perm')) if (card._src !== 'comp') card.remove();
       const tool = { codex: 'Codex', gemini: 'Gemini' }[C.provider] || 'Claude Code';
@@ -386,15 +390,19 @@ function addPermission(p, src = 'main') {
   card._p = p;
   box.appendChild(card);
   const tool = lastTool($c('cFeed'), p.toolUseId);
-  if (tool) tool.querySelector('.t-time').textContent = 'waiting for you';
+  if (tool) { stepWait(tool); tool.querySelector('.t-time').className = 't-time'; tool.querySelector('.t-time').textContent = 'waiting for you'; }
   if (nearBottom()) toBottom(); else noteUnseen();
   // Only take focus if you're not typing: a keystroke meant for the message box must never approve a step.
   const a = document.activeElement;
   if (!(a && a.closest && a.closest('input, textarea, select, [contenteditable="true"]'))) (card.querySelector('.btn.gilt') || card.querySelector('button')).focus({ preventScroll: true });
 }
-function removePermission(id, src = 'main') {
+function removePermission(id, src = 'main', at = null) {
   const c = $c('cPending').querySelector(`[data-req="${CSS.escape(`${src}:${id}`)}"]`);
-  if (c) c.remove();
+  if (!c) return;
+  // Answered: that step's clock starts now.
+  const tool = c._p && c._p.toolUseId ? lastTool($c('cFeed'), c._p.toolUseId) : null;
+  if (tool) stepResume(tool, at);
+  c.remove();
 }
 function clearPermissions() { $c('cPending').innerHTML = ''; }
 

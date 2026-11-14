@@ -382,18 +382,21 @@ function toolEl(b, live) {
   d.dataset.name = b.name;
   const st = b.result ? (b.result.isError ? 'err' : 'ok') : (live ? 'run' : '');
   const filePath = (b.meta && b.meta.path) || (b.name === 'Read' ? b.summary : null);
-  d.innerHTML = `<summary><span class="t-st ${st}" aria-hidden="true"></span><span class="t-name">${esc(TOOL_VERBS[b.name] || b.name)}</span><span class="t-sum">${esc(b.summary || '')}</span><span class="t-time"></span></summary>
-      <div class="t-body">${b.name && !TOOL_VERBS[b.name] ? `<p class="t-tool">Tool: ${esc(b.name)}</p>` : ''}${filePath ? `<button type="button" class="btn quiet sm t-open" data-file="${esc(filePath)}">Open ${esc(base(filePath))}</button>` : ''}${toolDetail(b)}<div class="t-res">${toolResultHtml(b.result)}</div></div>`;
+  const agent = agentOf(b);   // a subagent: which one, on what (ui/chat-steps.js)
+  d.innerHTML = `<summary><span class="t-st ${st}" aria-hidden="true"></span><span class="t-name">${esc(TOOL_VERBS[b.name] || b.name)}</span>${agentChip(agent)}<span class="t-sum">${esc(b.summary || '')}</span><span class="t-time"></span></summary>
+      <div class="t-body">${b.name && !TOOL_VERBS[b.name] ? `<p class="t-tool">Tool: ${esc(b.name)}</p>` : ''}${agent && agent.type ? `<p class="t-tool">Subagent: ${esc(agent.type)}</p>` : ''}${filePath ? `<button type="button" class="btn quiet sm t-open" data-file="${esc(filePath)}">Open ${esc(base(filePath))}</button>` : ''}${toolDetail(b)}<div class="t-res">${toolResultHtml(b.result)}</div></div>`;
+  if (b.result && b.ms >= STEP_LONG) stepTookMark(d.querySelector('.t-time'), b.ms);
   d._view = b;
   ledgerTool(b);
   return d;
 }
 const lastTool = (root, id) => { const all = root.querySelectorAll(`.tool[data-tool-id="${CSS.escape(id || '')}"]`); return all[all.length - 1] || null; };
-function setToolResult(root, id, result) {
+// at: when it finished (a live result says); ms: how long it took (history says, for Claude's).
+function setToolResult(root, id, result, at, ms) {
   const d = lastTool(root, id);
   if (!d) return;
   const s = d.querySelector('.t-st'); s.className = `t-st ${result.isError ? 'err' : 'ok'}`;
-  d.querySelector('.t-time').textContent = '';
+  stepDone(d, at, ms);
   d.querySelector('.t-res').innerHTML = toolResultHtml(result);
   ledgerResult(d._view, result);
   picsFromTool(d.closest('.turn'), d._view, result);
@@ -408,6 +411,7 @@ function foldSteps(src) {
   const prov = provFor(src);
   const turn = lastTurnOf(prov);
   if (!turn) return;
+  stepsStop(turn);
   for (const g of turn.querySelectorAll('.tools')) if (g.querySelectorAll('.tool').length >= 3 && !g._opened) { g.classList.add('folded'); updateGroup(g); }
 }
 // A reply's steps in one line: "Edited songs.lua, party.json · ran 2 commands · read 4 files".
@@ -419,12 +423,14 @@ function stepsSummary(g) {
   const cmds = steps.filter(x => x.name === 'Bash' || x.name === 'PowerShell').length;
   const reads = steps.filter(x => READ_TOOLS.has(x.name)).length;
   const web = steps.filter(x => /^Web/.test(x.name)).length;
-  const counted = steps.filter(x => FILE_TOOLS.has(x.name) || x.name === 'Bash' || x.name === 'PowerShell' || READ_TOOLS.has(x.name) || /^Web/.test(x.name)).length;
+  const agents = steps.filter(x => x.name === 'Agent' || x.name === 'Task');
+  const counted = steps.filter(x => FILE_TOOLS.has(x.name) || x.name === 'Bash' || x.name === 'PowerShell' || READ_TOOLS.has(x.name) || /^Web/.test(x.name)).length + agents.length;
   const parts = [];
   if (edited.length) parts.push(`edited ${edited.slice(0, 3).join(', ')}${edited.length > 3 ? ` and ${edited.length - 3} more` : ''}`);
   if (cmds) parts.push(`ran ${plural(cmds, 'command')}`);
   if (reads) parts.push(`looked at ${plural(reads, 'file')}`);
   if (web) parts.push(`used the web ${web === 1 ? 'once' : `${web} times`}`);
+  if (agents.length) parts.push(agentsLine(agents.map(x => x.v)));
   if (steps.length > counted) parts.push(plural(steps.length - counted, 'other step'));
   const text = parts.join(' · ');
   return {
@@ -521,8 +527,10 @@ function blockThere(p, id, sel = `[data-bid="${CSS.escape(id)}"]`) {
   const feed = $c('cFeed'), turn = p.closest('.turn'), root = turn && turn.parentElement;
   return feed.querySelector(sel) || (root && root !== feed ? root.querySelector(sel) : null);
 }
-function addBlock(p, b, live) {
+// at: when the message with this block came (a step's clock starts from it).
+function addBlock(p, b, live, at) {
   const fin = p.querySelector('.final');
+  if (liveRender && b.type !== 'thinking') settleThink();   // the reply moved on: the open thinking folds
   if (b.type === 'image') {
     const old = b.id ? $c('cFeed').querySelector(`.gen[data-gid="${CSS.escape(b.id)}"]`) : null;
     // Replayed from before it finished: a picture that's already there stays.
@@ -537,7 +545,7 @@ function addBlock(p, b, live) {
   if (b.type === 'tool') {
     if (b.id) {
       const had = blockThere(p, b.id, `.tool[data-tool-id="${CSS.escape(b.id)}"]`);
-      if (had) { if (b.result && had.querySelector('.t-st:not(.ok):not(.err)')) setToolResult(had.parentElement, b.id, b.result); return; }
+      if (had) { if (b.result && had.querySelector('.t-st:not(.ok):not(.err)')) setToolResult(had.parentElement, b.id, b.result, live ? at : null, b.ms); return; }
     }
     let g = fin.lastElementChild;
     if (!g || !g.classList.contains('tools')) {
@@ -548,6 +556,7 @@ function addBlock(p, b, live) {
     }
     const te = toolEl(b, live); if (liveRender) te.classList.add('fresh');
     g.appendChild(te);
+    if (live && !b.result) stepRun(te, at);
     if (b.result) picsFromTool(p.closest('.turn'), b);
     // From history, a finished reply's steps start folded to their one line.
     if (!liveRender && g.querySelectorAll('.tool').length >= 3) g.classList.add('folded');
@@ -558,7 +567,9 @@ function addBlock(p, b, live) {
   if (b.type === 'thinking') {
     const had = b.id && blockThere(p, b.id);
     if (had) { had.querySelector('.think-t').innerHTML = plain(b.text); return; }
+    if (thinkBlock(p, b)) return;   // the thinking that streamed, now whole (ui/chat-steps.js)
     fin.insertAdjacentHTML('beforeend', `<details class="think"${b.id ? ` data-bid="${esc(b.id)}"` : ''}><summary>Thinking</summary><div class="think-t">${plain(b.text)}</div></details>`);
+    thinkAsLeft(fin.lastElementChild);
     return;
   }
   const had = b.id && blockThere(p, b.id);
@@ -634,7 +645,7 @@ function renderItem(root, it, live) {
     if (wm && model && model !== '<synthetic>' && !wm.textContent) wm.textContent = modelName(model);
     const who = p.closest('.turn').querySelector('.who');
     if (it.at && who && !who.querySelector('.who-time')) who.querySelector('.who-m').insertAdjacentHTML('afterend', `<time class="who-time" datetime="${esc(it.at)}" title="${esc(stamp(Date.parse(it.at)))}">${esc(shortTime(Date.parse(it.at)))}</time>`);
-    for (const b of it.blocks) addBlock(p, b, live);
+    for (const b of it.blocks) addBlock(p, b, live, it.at);
     markEdits(p, it.blocks);
     if (it.aborted) p.querySelector('.final').insertAdjacentHTML('beforeend', '<p class="aborted">Stopped before finishing.</p>');
   } else if (it.kind === 'notice') {

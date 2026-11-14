@@ -1,0 +1,19 @@
+/* What the assistant is doing (ui/chat-steps.js): a running step's clock, a long step's time once done,
+   which subagent a step went to, and thinking that folds. Calm: the running dot's own pulse is the only
+   movement. */
+.t-time.t-running{color:var(--ash)}
+.t-time .t-rs{color:var(--parch-2);font-variant-numeric:tabular-nums}
+.t-time.t-took{color:var(--ash-2);font-variant-numeric:tabular-nums}
+@media (max-width:760px){ .t-time .t-rl{display:none} }
+
+/* A subagent step: its name, then its model and effort */
+.t-agent{flex:0 1 auto;min-width:0;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 12.5px/1.4 var(--f-label);color:var(--parch-2)}
+.t-agent .t-am{font-weight:400;color:var(--ash)}
+
+/* Thinking: a small mark while it streams, and a caret that says it opens and shuts (Imperial and Rebel
+   keep theirs as it was) */
+.think-on{display:inline-block;width:6px;height:6px;margin-left:8px;border-radius:50%;background:var(--violet);vertical-align:middle;opacity:.7}
+.motion .think-on{animation:think-on 1.6s ease-in-out infinite}
+@keyframes think-on{0%,100%{opacity:.35}50%{opacity:1}}
+:root:not([data-family="saga"]) .think > summary::after{content:"";display:inline-block;width:5px;height:5px;margin:0 2px 3px 9px;border:solid var(--ash-2);border-width:0 1.5px 1.5px 0;transform:rotate(45deg);transition:transform .15s}
+:root:not([data-family="saga"]) .think:not([open]) > summary::after{transform:rotate(-45deg);margin-bottom:1px}
