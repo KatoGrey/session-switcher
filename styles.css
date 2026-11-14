@@ -748,6 +748,7 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .c-box textarea{width:100%;resize:none;border:0;background:none;outline:none;font:16.5px/1.55 var(--f-body);color:var(--parch);max-height:calc(40vh / var(--look-ui, 1));padding:2px 2px 6px}
 .c-box textarea::placeholder{color:var(--ash-2);font-style:italic}
 .c-row{display:flex;align-items:center;gap:10px}
+.c-go{display:contents}   /* Stop + Send: one group (the Studio look keeps them together on the right) */
 .c-status{font:italic 13.5px var(--f-body);color:var(--ash);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .c-model{font:400 11px var(--f-label);color:var(--ash-2);letter-spacing:.06em;white-space:nowrap}
 .c-hint{margin:7px 2px 0;font:400 10.5px var(--f-label);color:var(--ash-2);letter-spacing:.02em}

@@ -1,4 +1,20 @@
-# A new look: Studio, eight themes with one colour for each model, and a calmer, quicker app
+# Chats that look the part: pictures that fit, a roomier message box, and calmer labels
+
+**Pictures in a chat fit.** Screenshots and pictures you send, and ones a chat makes or opens, show whole, in their own proportions, in a frame that fits them. No more empty black strip beside a small preview. Wide screenshots get room to be read, several pictures wrap to fit a narrow chat or a phone, and a picture is never stretched or cropped.
+
+**Replies are easier to read.** Paragraphs keep a comfortable line length in the main themes, while code, tables and pictures still use the full width. Long file names wrap instead of being cut off, and the "getting full" warning keeps its text clear of its button.
+
+**The message box has room.** What you type now sits 20px from the edges (16px on a phone), lined up with the buttons and the hint below. It no longer sits in a tight box of its own; the whole card shows that it's active.
+
+- **Stop and Send (or Queue) stay together at the right.** With two or three models and long model names, the model chips wrap among themselves rather than pushing Send onto a line of its own. Attach and Prompts become icons when there isn't room for their names.
+- **Removing an attachment** is easier to hit, and can't open the picture by mistake.
+- **The hub's quick replies** and a task's editable steps get the same roomier, single-frame treatment, as do the search boxes (Ctrl+K and Your work).
+
+**Calmer labels.** Section labels in the side panels ("Active now", "Images it made", "Files changed") read as ordinary words instead of spaced-out capitals.
+
+Imperial, Rebel, the anime and glam themes and your own Theme Studio worlds keep their own look.
+
+## Earlier in 6.12: a new look, Studio, eight themes with one colour for each model, and a calmer, quicker app
 
 **Studio.** The standard themes have a new, modern look: one clean typeface (Inter) everywhere unless you pick your own, softer corners, layered surfaces with a fine edge and a soft shadow, and one focus ring. Cards share the width instead of leaving gaps, the message box is one big soft card, and the side navigation uses clear pills. Imperial, Rebel, the anime and glam themes and your own Theme Studio worlds keep their looks.
 

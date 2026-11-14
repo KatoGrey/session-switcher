@@ -243,7 +243,22 @@
 :root.hub2:not([data-family]) body:not(.aide-panel) .c-box textarea{padding:0;margin:0 0 12px;border:0 !important;box-shadow:none !important;outline:none}
 :root.hub2:not([data-family]) body:not(.aide-panel) .c-box:has(textarea:focus-visible){outline:2px solid color-mix(in srgb, var(--focus) 70%, transparent);outline-offset:2px}
 :root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-row{padding:0;margin:0 -8px;row-gap:6px}
-:root.hub2:not([data-family]) body:not(.aide-panel) :is(#cSend,#cStop){margin-left:auto;flex:none}
+/* Stop and Send are one group at the right: the row can wrap before them, never between them or away from the edge.
+   The model chips give way first: past a share of the row they wrap among themselves (Codex's handoff). */
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-go{display:flex;align-items:center;gap:8px;margin-left:auto;flex:none}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-go > *{margin:0;flex:none}
+:root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew{flex-wrap:wrap;row-gap:4px;max-width:calc(100% - 23rem)}
+:root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew .crew{max-width:100%}
+/* With more than one of them in the row, Attach and Prompts are their icons (their names are their tooltips and
+   labels), so the row stays one line; once the crew has a row of its own (a narrower chat), the words come back. */
+:root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew.duo ~ .c-ib{width:34px;padding:0;justify-content:center}
+:root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew.duo ~ .c-ib span{display:none}
+@container cmain (max-width:850px){
+  :root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew{max-width:none}
+  :root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-row .typing{order:0}
+  :root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew.duo ~ .c-ib{width:auto;padding:0 8px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew.duo ~ .c-ib span{display:inline}
+}
 :root.hub2:not([data-family]) body:not(.aide-panel) .c-hint{margin:8px 20px 0}
 @media (max-width:760px){
   :root.hub2:not([data-family]) body:not(.aide-panel) .c-box{padding:12px 16px 8px}
@@ -252,3 +267,36 @@
 /* Other text fields that sit inside a frame of their own: the frame shows focus, not a ring hugging the text. */
 .hub2:not([data-family]) :is(.pal-in input,.seek input,.wk-search input,.c-box textarea):focus-visible{box-shadow:none !important;border-color:transparent !important}
 .hub2:not([data-family]) :is(.pal-in,.wk-search):focus-within{border-color:color-mix(in srgb, var(--focus) 60%, transparent)}
+
+/* Removing a picture or file from the message box: the badge stays small, the target is 32px (40px for a finger),
+   centred where the old 20px one was, so it can't miss onto the picture under it. */
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-att .att button{width:32px;height:32px;top:-12px;right:-12px;border:0;border-radius:50%;background:transparent;color:var(--parch-2);font-size:10px;display:grid;place-items:center;isolation:isolate}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-att .att button::before{content:"";position:absolute;inset:5px;border-radius:50%;border:1px solid var(--seam-2);background:var(--vellum-3);z-index:-1;transition:background .12s,border-color .12s}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-att .att button:hover{color:var(--parch)}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-att .att button:hover::before{border-color:var(--ash-2);background:color-mix(in srgb, var(--parch) 12%, var(--vellum-3))}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-att .att button:focus-visible{outline:none}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-att .att button:focus-visible::before{outline:2px solid var(--focus);outline-offset:1px}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-att .att.file button{top:0;right:0;width:30px;height:30px}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-att{margin:0 0 12px;gap:10px;padding-top:2px}
+@media (pointer:coarse){
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-att .att:not(.file) button{width:40px;height:40px;top:-16px;right:-16px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-att .att:not(.file) button::before{inset:9px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-att{padding-top:6px}
+}
+
+/* The hub's quick replies and a task's editable steps: the same one-frame pattern as the message box. The frame
+   lights up; the text inside gets no ring of its own and a proper inset. */
+.hub2:not([data-family]) :is(.qr textarea,.lt-step textarea):focus-visible{box-shadow:none !important;border-color:transparent !important;outline:none}
+.hub2:not([data-family]) .qr{padding:6px 6px 6px 14px;border-radius:var(--st-r);background:var(--abyss-2)}
+.hub2:not([data-family]) .qr:focus-within{border-color:color-mix(in srgb, var(--focus) 60%, transparent);box-shadow:none}
+.hub2:not([data-family]) .qr textarea{font-family:var(--f-ui);font-size:14.5px;padding:5px 0}
+.hub2:not([data-family]) .qr textarea::placeholder{font-style:normal}
+.hub2:not([data-family]) .lt-step{padding:8px 12px;border-radius:var(--st-r)}
+.hub2:not([data-family]) .lt-step:has(textarea:focus-visible){border-color:color-mix(in srgb, var(--focus) 60%, transparent)}
+
+/* Section labels in the side panels read as words, not signage: sentence case at 12px, no wide letter-spacing,
+   the count beside it in the same quiet tone. (Chat speaker tags keep their small caps: they name who spoke.) */
+.hub2:not([data-family]) :is(.nav-h,.ledger .lg-h){font:600 12px/1.3 var(--f-ui);letter-spacing:0;text-transform:none;color:var(--ash)}
+.hub2:not([data-family]) :is(.nav-h,.ledger .lg-h) .count{font:500 12px var(--f-ui);letter-spacing:0;color:var(--ash-2)}
+.hub2:not([data-family]) .ledger .lg-h{margin:20px 0 8px}
+.hub2:not([data-family]) .ledger .lg-h:first-child{margin-top:4px}
