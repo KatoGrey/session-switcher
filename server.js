@@ -59,7 +59,7 @@ const onepass = require('./lib/onepass');
 const subagentsLib = require('./lib/subagents');
 const { ownText } = require('./lib/shared');
 
-const APP_VERSION = '6.12.0';
+const APP_VERSION = '6.12.1';
 const PORT = Number(process.env.SWITCHER_PORT) || 4777;
 // Installed as a desktop app (desktop/main.js): the app starts and stops this server, and does restarts.
 const SHELL = process.env.SWITCHER_SHELL === 'electron' && typeof process.send === 'function' ? 'electron' : null;
