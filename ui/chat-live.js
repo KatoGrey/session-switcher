@@ -458,7 +458,8 @@ function ctxWarn(src) {
   C.ctxWarned[src] = true;
   const name = PROV_NAME[provFor(src)];
   withStick(() => $c('cFeed').insertAdjacentHTML('beforeend', `<div class="ctx-warn ${provFor(src)}" data-src="${src}" role="status">
-    <p><b>${src === 'comp' ? `${name}’s side of this chat` : 'This chat'} is getting full</b> (${esc(ctxLine(src))}). ${name} will summarize the conversation by itself soon, maybe in the middle of a task. Summarizing now, between tasks, keeps what matters.</p>
+    <div class="ctx-warn-copy"><p class="ctx-warn-title"><b>${src === 'comp' ? `${name}’s side of this chat` : 'This chat'} is getting full</b><span>${esc(ctxLine(src))}</span></p>
+    <p>${name} will summarize the conversation by itself soon, maybe in the middle of a task. Summarizing now, between tasks, keeps what matters.</p></div>
     <button type="button" class="btn" data-c="compact" data-src="${src}"${src === 'comp' ? ` data-kind="${partnerProv()}"` : ''}>Summarize now</button></div>`));
   if (nearBottom()) toBottom(); else noteUnseen();
 }

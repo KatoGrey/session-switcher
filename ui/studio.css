@@ -235,3 +235,20 @@
 .hub2.look-main[data-theme="garnet"] .nav-i[aria-current="true"]{background:var(--lacquer-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--lacquer) 60%, transparent)}
 .hub2.look-main[data-theme="garnet"] .ububble{background:var(--lacquer-soft)}
 .lk-sig{margin-top:18px}
+
+/* The message box as one control (with Codex's research, docs/design-research/codex-composer-2026-11-14): the text
+   gets no ring of its own, so it never sits in a tight box; the card shows focus once; one gutter for text, attachments,
+   controls and hint (20px, 16px on a phone), 12px between the writing and the controls; Send stays at the right. */
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-box{padding:14px 20px 10px}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-box textarea{padding:0;margin:0 0 12px;border:0 !important;box-shadow:none !important;outline:none}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-box:has(textarea:focus-visible){outline:2px solid color-mix(in srgb, var(--focus) 70%, transparent);outline-offset:2px}
+:root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-row{padding:0;margin:0 -8px;row-gap:6px}
+:root.hub2:not([data-family]) body:not(.aide-panel) :is(#cSend,#cStop){margin-left:auto;flex:none}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-hint{margin:8px 20px 0}
+@media (max-width:760px){
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-box{padding:12px 16px 8px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-hint{margin:6px 16px 0}
+}
+/* Other text fields that sit inside a frame of their own: the frame shows focus, not a ring hugging the text. */
+.hub2:not([data-family]) :is(.pal-in input,.seek input,.wk-search input,.c-box textarea):focus-visible{box-shadow:none !important;border-color:transparent !important}
+.hub2:not([data-family]) :is(.pal-in,.wk-search):focus-within{border-color:color-mix(in srgb, var(--focus) 60%, transparent)}

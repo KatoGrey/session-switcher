@@ -361,8 +361,8 @@ function attachedFiles(list) {
 const fileGlyph = p => (/\.pdf$/i.test(p) ? 'PDF' : VIDEO_RE.test(p) ? '▶' : AUDIO_RE.test(p) ? '♪' : (String(p).split('.').pop() || 'file').slice(0, 4).toUpperCase());
 function images(list) {
   if (!list || !list.length) return '';
-  return `<div class="imgs">${list.map(im => (im.path ? `<button type="button" class="thumb" data-full="${esc(imageUrl(im.path))}"><img src="${esc(imageUrl(im.path))}" alt="Image" loading="lazy"></button>`
-    : im.src ? `<button type="button" class="thumb" data-full="${esc(im.src)}"><img src="${esc(im.src)}" alt="Attached image"></button>`
+  return `<div class="imgs">${list.map((im, i) => (im.path ? `<button type="button" class="thumb" data-full="${esc(imageUrl(im.path))}" data-path="${esc(im.path)}" data-cap="${esc(base(im.path))}" aria-label="Open attached image ${i + 1}"><img src="${esc(imageUrl(im.path))}" alt="${esc(base(im.path))}" loading="lazy" decoding="async"></button>`
+    : im.src ? `<button type="button" class="thumb" data-full="${esc(im.src)}" data-cap="Attached image ${i + 1}" aria-label="Open attached image ${i + 1}"><img src="${esc(im.src)}" alt="Attached image ${i + 1}" decoding="async"></button>`
     : im.url ? `<a class="thumb-link" href="${esc(im.url)}" target="_blank" rel="noopener noreferrer">Image link</a>` : im.dropped ? '<span class="thumb-missing">A picture (it’s in the chat’s history; reopen the chat to see it)</span>' : '<span class="thumb-missing">Image too large to preview</span>')).join('')}</div>`;
 }
 const TOOL_VERBS = { Bash: 'Ran', PowerShell: 'Ran', Read: 'Read', Write: 'Wrote', Edit: 'Edited', MultiEdit: 'Edited', NotebookEdit: 'Edited', Glob: 'Found', Grep: 'Searched', WebFetch: 'Fetched', WebSearch: 'Searched', Agent: 'Delegated', Task: 'Delegated', TodoWrite: 'Tasks', TaskCreate: 'Task', TaskUpdate: 'Task', Artifact: 'Artifact', AskUserQuestion: 'Asked' };

@@ -1,0 +1,58 @@
+/* Conversation content: images keep their shape and frames fit the image, while prose has a
+   comfortable reading measure. Keep this separate from Studio's controls and composer. */
+
+/* Constrain the frame, not just the image inside it. A percentage on the image alone can leave
+   the button at the image's original width, with an empty black strip beside a small preview. */
+.c-feed .imgs{align-items:flex-start;gap:12px;margin-top:12px}
+.c-feed .imgs .thumb,.c-feed .mdimg .md-pic{
+  display:block;flex:0 1 auto;width:fit-content;max-width:min(100%,720px);min-width:0;
+  align-self:flex-start;background:var(--abyss-2);border-radius:var(--st-r,8px);
+}
+.c-feed .imgs .thumb img,.c-feed .mdimg .md-pic img{
+  display:block;width:auto;height:auto;max-width:100%;max-height:420px;object-fit:contain;
+}
+.c-feed .imgs .thumb:focus-visible,.c-feed .mdimg .md-pic:focus-visible,
+.c-feed .pic-b:focus-visible{outline:2px solid var(--focus,var(--gilt));outline-offset:3px}
+.c-feed .mdimg{min-width:0;gap:8px}
+.c-feed .mdimg-cap{line-height:1.45;overflow-wrap:anywhere}
+
+/* Tool screenshots and generated pictures use the same uncropped treatment. Several images
+   still share a grid; the image's frame follows its actual proportions instead of forcing 4:3. */
+.c-feed .pics{grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:12px;align-items:start;max-width:720px}
+.c-feed .pic{gap:8px}
+.c-feed .pic-b{width:fit-content;max-width:100%;align-self:flex-start;background:var(--abyss-2);border-radius:var(--st-r,8px)}
+.c-feed .pics .pic-b img{display:block;width:auto;height:auto;max-width:100%;max-height:420px;aspect-ratio:auto;object-fit:contain;margin:0}
+.c-feed .pic figcaption{line-height:1.45}
+.c-feed .pics-board{grid-column:1 / -1;justify-self:start}
+.c-feed .gen{gap:12px;max-width:720px}
+.c-feed .gen-frame:has(.gen-img){width:fit-content;max-width:100%;min-height:0;align-self:flex-start;background:var(--abyss-2);border-radius:var(--st-r,8px)}
+.c-feed .gen-img{width:fit-content;max-width:100%;min-width:0;background:var(--abyss-2)}
+.c-feed .gen-img img{width:auto;height:auto;max-width:100%;max-height:520px;object-fit:contain;margin:0}
+
+/* Studio's reading rhythm. Wide outputs (code, tables, diffs and pictures) retain the full lane. */
+.hub2:not([data-family]) body:not(.aide-panel) .c-feed{--chat-measure:72ch}
+.hub2:not([data-family]) body:not(.aide-panel) .c-feed .umsg{max-width:min(88%,calc(72ch + 32px));min-width:0}
+.hub2:not([data-family]) body:not(.aide-panel) .c-feed .ububble{min-width:0;max-width:100%}
+.hub2:not([data-family]) body:not(.aide-panel) .c-feed .utext{max-width:var(--chat-measure);line-height:1.6;overflow-wrap:anywhere}
+.hub2:not([data-family]) body:not(.aide-panel) .c-feed .md > :is(p:not(:has(.mdimg)),ul,ol,blockquote,h2,h3,h4,h5,h6){max-width:var(--chat-measure)}
+.hub2:not([data-family]) body:not(.aide-panel) .c-feed .afiles{gap:12px;margin-top:12px;min-width:0}
+.hub2:not([data-family]) body:not(.aide-panel) .c-feed .af-file{width:fit-content;max-width:min(100%,520px);padding:10px 14px 10px 10px;gap:12px;border-radius:var(--st-r,8px);background:var(--abyss-2)}
+.hub2:not([data-family]) body:not(.aide-panel) .c-feed .af-file b{white-space:normal;overflow-wrap:anywhere;line-height:1.4}
+.hub2:not([data-family]) body:not(.aide-panel) .c-feed .af-file small{line-height:1.5;margin-top:2px}
+
+/* A warning has a readable copy block and a separate action. Flex wrapping responds to the
+   available chat lane (including split view and UI zoom), not only to the window breakpoint. */
+.c-feed .ctx-warn{align-items:flex-start;flex-wrap:wrap;gap:16px 24px;padding:16px;border-radius:var(--st-r-lg,10px)}
+.ctx-warn-copy{flex:1 1 36ch;min-width:0;max-width:72ch;display:grid;gap:6px}
+.c-feed .ctx-warn-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.ctx-warn-title span{font-size:12px;color:var(--ash)}
+.c-feed .ctx-warn-copy p{flex:none;min-width:0;overflow-wrap:anywhere}
+.c-feed .ctx-warn > .btn{flex:none;margin-left:auto;white-space:nowrap}
+
+@media(max-width:760px){
+  .hub2:not([data-family]) body:not(.aide-panel) .c-feed .umsg{max-width:96%}
+  .c-feed .ctx-warn{flex-direction:row}
+  .ctx-warn-copy{flex-basis:100%}
+  .c-feed .ctx-warn > .btn{margin-left:0}
+  .c-feed .imgs .thumb img,.c-feed .mdimg .md-pic img,.c-feed .pics .pic-b img{max-height:360px}
+}
