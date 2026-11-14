@@ -1876,6 +1876,31 @@ module.exports = [
       // Nothing known about usage: no such choice.
       await b.eval(`const was = S.usage; S.usage = {}; openNewChat({ cwd: ${JSON.stringify(tavern)} }); window._s = [...document.getElementById('ncAs').options].map(o => o.textContent); S.usage = was; document.querySelector('[data-nc="close"]').click(); return 1`); await sleep(100);
       t.check('when usage isn’t known, it isn’t offered', await b.eval(`return !_s.some(x => /Most room/.test(x))`));
+
+      // The model, picked as you start: the same presets as the chat's own picker, put on once the chat knows its models.
+      await b.eval(`openNewChat({ cwd: ${JSON.stringify(tavern)} }); document.querySelector('[data-nc-who="claude"]').click(); return 1`); await sleep(150);
+      const models = await b.eval(`return [...document.getElementById('ncModel').options].map(o => o.value)`);
+      t.check('New chat offers the model: as last time, or Quick, Balanced, Deep and Max', models.join() === ',quick,balanced,deep,max', models);
+      await b.eval(`window._model = []; const orig = api; window._origApi = orig;
+        api = async (u, body) => { if (u === '/api/chat/model') { _model.push(body); return { ...C.mi.main, model: body.model, effort: body.effort }; } return orig(u, body); };
+        ChatUI.isOpen = () => true;
+        ChatUI.open = o => { _open.push(o); C.key = 'k-model'; C.mi.main = { model: 'sonnet', effort: 'medium', efforts: ['low', 'medium', 'high', 'max'], models: [{ value: 'haiku', label: 'Haiku' }, { value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus', isDefault: true }] }; return Promise.resolve(); };
+        const m = document.getElementById('ncModel'); m.value = 'deep'; m.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ncGo').click(); return 1`); await sleep(400);
+      const picked = await b.eval(`return { calls: _model, left: C.startPreset }`);
+      t.check('Deep goes on as the chat starts: its strongest everyday model, high effort', picked.calls.length === 1 && picked.calls[0].model === 'opus' && picked.calls[0].effort === 'high' && !picked.left, picked);
+      await b.eval(`openNewChat({ cwd: ${JSON.stringify(tavern)} }); return 1`); await sleep(150);
+      t.check('and New chat remembers it for the project', await b.eval(`return document.getElementById('ncModel').value === 'deep'`));
+      await b.eval(`document.querySelector('[data-nc-who="gemini"]').click(); return 1`); await sleep(100);
+      const gem = await b.eval(`return [...document.getElementById('ncModel').options].map(o => o.value)`);
+      t.check('Gemini offers its own presets', gem.join() === ',quick,balanced,deep,max', gem);
+      await b.eval(`document.querySelector('[data-nc="close"]').click(); api = _origApi; ChatUI.open = _realOpen; ChatUI.isOpen = _isOpen; C.key = null; return 1`);
+
+      // A project's own New chat menu: Gemini too, and the whole New chat on that project.
+      const items = await b.eval(`return worldNewItems(${JSON.stringify(tavern)}).filter(x => x !== '-').map(x => x.label)`);
+      t.check('a project’s New chat offers Claude, Codex and Gemini, and the full New chat', ['New Claude chat', 'New Codex chat', 'New Gemini chat', 'New chat…'].every(x => items.includes(x)), items);
+      await b.eval(`worldNewItems(${JSON.stringify(tavern)}).find(x => x.label === 'New chat…').run(); return 1`); await sleep(200);
+      t.check('which opens New chat on that project', await b.eval(`return document.getElementById('ncDlg').open && NC.cwd === ${JSON.stringify(tavern)}`));
+      await b.eval(`document.querySelector('[data-nc="close"]').click(); return 1`);
     },
   },
   {
@@ -1888,6 +1913,29 @@ module.exports = [
       t.check('the window says it’s using one connection', r.mux && !r.direct, r);
       const bad = await b.eval(`try { await api('/api/chat/watch', { stream: 'nobody', sub: 's1', key: 'not-a-chat' }); return 'no error'; } catch (e) { return e.status; }`);
       t.check('asking for a chat that isn’t there says so', bad === 404 || bad === 409, bad);
+    },
+  },
+  {
+    name: 'connections scope',
+    // Connections says whether a project's own tools (its .mcp.json) are in the list, and lets that change:
+    // the sidebar opens it for every project, Ctrl+K and a chat for the project you're in.
+    async run(t) {
+      const b = await t.open();
+      await sleep(600);
+      const tavern = demo.projects.find(x => x.name === 'Starfall Tavern').cwd;
+      await b.eval(`window._asked = []; const orig = api; api = async (u, body) => { if (u.startsWith('/api/connections/mcp')) { _asked.push(u); return { accounts: [], flows: [], codexOn: true }; } return orig(u, body); }; openConnections(); return 1`); await sleep(400);
+      let line = await b.eval(`return document.querySelector('#connDlg .cn-scope')?.textContent || ''`);
+      t.check('opened from the sidebar: it says it covers every project', /Your tools, in every project./.test(line), line);
+      await b.eval(`document.getElementById('connDlg').close(); S.view = 'folder'; S.folder = ${JSON.stringify(tavern)}; openConnections(); return 1`); await sleep(400);
+      line = await b.eval(`return document.querySelector('#connDlg .cn-scope')?.textContent || ''`);
+      t.check('on a project, it offers to add that project’s own tools', /Add Starfall Tavern’s own tools/.test(line), line);
+      await b.eval(`document.querySelector('#connDlg [data-cn="scope-here"]').click(); return 1`); await sleep(400);
+      line = await b.eval(`return document.querySelector('#connDlg .cn-scope')?.textContent || ''`);
+      const asked = await b.eval(`return _asked`);
+      t.check('and then lists them, saying so', /With Starfall Tavern’s own tools/.test(line) && asked.some(u => /cwd=/.test(u)), { line, asked });
+      await b.eval(`document.querySelector('#connDlg [data-cn="scope-all"]').click(); return 1`); await sleep(400);
+      t.check('“Show just yours” goes back to every project', /Your tools, in every project/.test(await b.eval(`return document.querySelector('#connDlg .cn-scope')?.textContent || ''`)));
+      await b.eval(`document.getElementById('connDlg').close(); return 1`);
     },
   },
   {

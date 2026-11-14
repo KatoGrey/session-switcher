@@ -1222,13 +1222,16 @@ function worldCard(p, i) {
     </div>
   </article>`;
 }
-// New chat in a project: Claude or Codex, plain or starting from a saved prompt.
+// New chat in a project: straight in with Claude, Codex or Gemini, the full New chat on this project, or a saved prompt.
 function worldNewItems(cwd) {
   const p = S.projects.find(x => x.cwd === cwd); if (!p) return [];
   const a = current();
   return [
     { label: `New Claude chat`, hint: `as ${a.name}`, disabled: !canLaunch(a), why: a.lockMessage || 'Sign in first', run: () => ChatUI.open({ cwd, mode: 'new' }) },
     ...(S.codex && S.codex.enabled ? [{ label: 'New Codex chat', hint: 'ChatGPT', disabled: !codexReady(), why: 'Sign in to Codex first', run: () => ChatUI.open({ cwd, mode: 'new', provider: 'codex' }) }] : []),
+    ...(S.gemini && S.gemini.enabled ? [{ label: 'New Gemini chat', hint: 'Antigravity', disabled: !geminiReady(), why: 'Sign in to Gemini first (Setup → Gemini)', run: () => ChatUI.open({ cwd, mode: 'new', provider: 'gemini' }) }] : []),
+    // Everything the main New chat has (account, model, Together), already on this project.
+    { label: 'New chat…', hint: 'choose who, model, together', run: () => openNewChat({ cwd }) },
     '-',
     ...S.prompts.slice(0, 10).map(pr => ({ label: `Start with: ${pr.title}`, hint: promptRuns(pr).hint, disabled: !promptRuns(pr).ok, run: () => startWithPrompt(cwd, pr) })),
     { label: 'Edit prompts…', run: openPromptEditor },

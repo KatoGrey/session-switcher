@@ -70,6 +70,10 @@ function connDialog() {
     if (await mcpFlowAction(act, b)) return undefined;
     if (act === 'refresh') return Conn.mode === 'chat' ? connChatLoad() : connLoad(true);
     if (act === 'all') return openConnections(Conn.cwd);
+    // Which project's own tools come along: say so, and let it change (the sidebar opens it for every project,
+    // Ctrl+K and a chat for the one you're in).
+    if (act === 'scope-all') return openConnections(null);
+    if (act === 'scope-here') return openConnections(b.dataset.cwd);
     if (act === 'signin') return connSignIn({ provider: b.dataset.provider, account: b.dataset.account, name: b.dataset.name });
     if (act === 'everywhere') return connEverywhere();
     if (act === 'stopqueue') { Conn.queue = []; return connRender(); }
@@ -157,11 +161,19 @@ function connRender() {
   box.innerHTML = `<h4 class="cn-h">GitHub</h4><div id="cnGitHub" class="gh-box">${ghHtml(PRS.gh, { inConnections: true })}</div>
     <h4 class="cn-h">Linear</h4><div class="gh-box" id="cnLinear">${linearLine()}</div>
     <h4 class="cn-h">Tools that sign in (MCP)</h4>
+    ${connScopeLine()}
     <p class="rd-intro">Tools (MCP servers) like Latitude’s need you to sign in once for each account: Claude Code and Codex each keep their own sign-in, and so does every Claude account. Sign in here and every chat on that account can use the tool${Conn.cwd ? '' : ', in every project'}.</p>
     ${need.length > 1 && !queued ? `<div class="cn-all"><button type="button" class="btn gilt" data-cn="everywhere">Sign in everywhere it’s needed</button><span>${need.length} sign-ins, one after another. Each opens its page in your browser; if you’re signed in there already, it’s a click each.</span></div>` : ''}
     ${queued ? `<p class="rd-state">Signing in one after another: ${Conn.queue.length} more after this one. <button type="button" class="linkish" data-cn="stopqueue">Stop after this one</button></p>` : ''}
     ${connTable(d)}
     <div class="cn-foot"><button type="button" class="btn quiet sm" data-cn="refresh"${Conn.loading ? ' disabled' : ''}>${Conn.loading ? 'Checking…' : 'Check again'}</button>${d.codexOn ? '' : '<span class="rd-note">Codex is off (Setup turns it on).</span>'}</div>`;
+}
+
+// What the list covers: every project, or one project's own servers (its .mcp.json) as well.
+function connScopeLine() {
+  const here = !Conn.cwd && typeof paletteHere === 'function' ? paletteHere() : null;
+  if (Conn.cwd) return `<p class="cn-scope">With <b>${esc(projName(Conn.cwd))}</b>’s own tools (its .mcp.json) as well as yours. <button type="button" class="linkish" data-cn="scope-all">Show just yours</button></p>`;
+  return `<p class="cn-scope">Your tools, in every project.${here ? ` <button type="button" class="linkish" data-cn="scope-here" data-cwd="${esc(here)}">Add ${esc(projName(here))}’s own tools</button>` : ''}</p>`;
 }
 
 async function connSignIn({ provider, account, name, key = null }) {

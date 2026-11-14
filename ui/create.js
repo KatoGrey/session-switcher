@@ -269,6 +269,7 @@ function ncRecall() {
   NC.as = (m && m.as) || null;
   NC.with = m && Array.isArray(m.with) ? m.with.slice() : [];
   NC.how = (m && m.how) || 'turns';
+  NC.model = (m && m.model) || '';
 }
 // Of the accounts that can start a chat, the one with the most left, when that's known for at least two.
 function ncRoom(opts) {
@@ -297,7 +298,8 @@ function openNewChat({ cwd = null, text = '' } = {}) {
         <input type="search" id="ncQ" placeholder="Filter projects" autocomplete="off" spellcheck="false" role="combobox" aria-controls="ncList" aria-expanded="true" aria-autocomplete="list">
         <ul class="nc-list" id="ncList" role="listbox" aria-label="Projects"></ul></div>
       <div class="nc-who"><div><span class="nc-l" id="ncWhoL">With</span><div class="nc-seg" id="ncSeg" role="group" aria-labelledby="ncWhoL"></div></div>
-        <div class="nc-as" id="ncAsWrap" hidden><label class="nc-l" for="ncAs">As</label><select id="ncAs"></select></div></div>
+        <div class="nc-as" id="ncAsWrap" hidden><label class="nc-l" for="ncAs">As</label><select id="ncAs"></select></div>
+        <div class="nc-as nc-model"><label class="nc-l" for="ncModel">Model</label><select id="ncModel"></select></div></div>
       <div class="nc-crew" id="ncCrew" hidden></div>
       <div><label class="nc-l" for="ncText">First message <small>(optional; it waits in the box for you to send)</small></label><textarea id="ncText" rows="2"></textarea></div>
       <div class="nc-foot"><button type="button" class="btn quiet" data-nc="project">New project…</button><span class="spacer"></span><button type="button" class="btn" data-nc="close">Cancel</button><button type="submit" class="btn prime" id="ncGo">Start chat</button></div>
@@ -325,6 +327,7 @@ function openNewChat({ cwd = null, text = '' } = {}) {
       if (next) { NC.cwd = next.cwd; ncRecall(); ncRenderWho(); ncRenderList(); }
     });
     $('ncAs').addEventListener('change', () => { NC.as = $('ncAs').value; });
+    $('ncModel').addEventListener('change', () => { NC.model = $('ncModel').value; });
   }
   const list = ncProjects();
   const here = cwd || (typeof paletteHere === 'function' ? paletteHere() : null);
@@ -360,8 +363,14 @@ function ncRenderWho() {
   const had = NC.as === ':room' ? (room ? ':room' : null) : opts.some(o => o.id === NC.as && o.ok) ? NC.as : null;
   const was = had || (NC.prov === 'claude' ? (canLaunch(current()) ? S.acct : (opts.find(o => o.ok) || {}).id) : S.codex && S.codex.id);
   $('ncAs').innerHTML = `${room ? `<option value=":room" ${was === ':room' ? 'selected' : ''} title="Whichever has the most left when the chat starts">Most room: ${esc(room.name || 'Codex')} (${room.left}% left)</option>` : ''}${opts.map(o => `<option value="${esc(o.id)}" ${o.id === was ? 'selected' : ''} ${o.ok ? '' : 'disabled'}>${esc(o.label)}</option>`).join('')}`;
+  ncRenderModel();
   ncRenderCrew();
   ncSync();
+}
+function ncRenderModel() {
+  const presets = (typeof PRESETS === 'object' && PRESETS[NC.prov]) || [];
+  if (!presets.some(p => p.id === NC.model)) NC.model = '';
+  $('ncModel').innerHTML = `<option value="">As last time</option>${presets.map(p => `<option value="${p.id}" ${p.id === NC.model ? 'selected' : ''} title="${esc(p.note)}">${esc(p.name)}: ${esc(p.note.toLowerCase())}</option>`).join('')}`;
 }
 // Bring the others in from the start: they join with your first message, as Together does in a chat.
 function ncRenderCrew() {
@@ -382,11 +391,14 @@ async function ncStart() {
   const as = chosen === ':room' ? (room && room.id) : chosen;
   store('nc-prov', prov);
   const crew = NC.with.slice(), how = NC.how;
-  store(`nc:${cwd}`, JSON.stringify({ prov, as: chosen, with: crew, how }));
+  const model = $('ncModel').value;
+  store(`nc:${cwd}`, JSON.stringify({ prov, as: chosen, with: crew, how, model }));
   $('ncDlg').close();
   if (prov === 'codex' && as && S.codex && as !== S.codex.id) await setCodexActive(as);
   const was = C.key;
   await ChatUI.open({ cwd, mode: 'new', ...(prov === 'claude' ? (as && as !== S.acct ? { accountId: as } : {}) : { provider: prov }), initialText });
+  // The model picked here: put on as soon as the new chat knows its models (chat-live.js applyStartPreset).
+  if (model && ChatUI.isOpen() && C.key !== was) { C.startPreset = { key: C.key, id: model }; applyStartPreset(); }
   if (crew.length && ChatUI.isOpen() && C.key !== was) {
     C.group = { kinds: [prov, ...crew], how };
     store('together', JSON.stringify(C.group));

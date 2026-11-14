@@ -234,6 +234,7 @@ function handleEvent(ev, src) {
     }
     case 'model': {
       C.mi[src] = ev;
+      if (!comp) applyStartPreset();
       if (!comp) { C.model = modelLabel(ev); $c('cModel').textContent = C.model; }
       renderCrew(); renderLedgerSoon();
       if (pickShows(src)) renderPick();
@@ -673,6 +674,16 @@ function presetsFor(src) {
     out.push({ ...p, model: m.value, label: m.label, effort });
   }
   return out;
+}
+// A model picked in New chat (Quick, Balanced, Deep, Max): put on once the new chat knows its models, once,
+// and only in that chat.
+function applyStartPreset() {
+  const sp = C.startPreset; if (!sp || sp.key !== C.key) return;
+  const mi = C.mi.main; if (!mi || !mi.models) return;
+  C.startPreset = null;
+  const p = presetsFor('main').find(x => x.id === sp.id); if (!p) return;
+  if (mi.model === p.model && (!p.effort || mi.effort === p.effort)) return;
+  pickModel('main', { model: p.model, ...(p.effort ? { effort: p.effort } : {}) }).catch(err => toast(`Couldn’t switch to ${p.name}: ${err.message}`, 5000));
 }
 const isPhone = () => matchMedia('(max-width: 760px)').matches;
 // News from one of the crew only redraws the picker if it's that one's page that's open.
