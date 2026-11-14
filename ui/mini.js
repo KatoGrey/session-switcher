@@ -47,7 +47,7 @@ function renderMini() {
   const working = atWork(), a = current();
   const row = x => {
     const p = (x.pending || [])[0], approve = ownStatus(x) === 'approve' && p && p.requestId;
-    return `<li class="mn-i ${NEEDS.has(ownStatus(x)) ? 'needs' : 'work'}"><button type="button" class="mn-t" data-mini="${esc(keyOf(x))}" title="Open it in Session Switcher">${esc(x.title || 'A chat')}<small>${esc(approve ? wantsTo(p) : x.folder || '')}</small></button>${approve ? `<span class="mn-b"><button type="button" class="btn sm gilt" data-mini-a="allow" data-k="${esc(keyOf(x))}">Allow</button><button type="button" class="btn sm" data-mini-a="deny" data-k="${esc(keyOf(x))}">Deny</button></span>` : ''}</li>`;
+    return `<li class="mn-i ${NEEDS.has(ownStatus(x)) ? 'needs' : 'work'}"><button type="button" class="mn-t" data-mini="${esc(keyOf(x))}" title="Open it in Session Switcher">${esc(x.title || 'A chat')}<small>${esc(approve ? wantsTo(p) : x.folder || '')}</small></button>${approve ? `<span class="mn-b"><button type="button" class="btn sm${p.defaultToNo ? '' : ' gilt'}" data-mini-a="allow" data-k="${esc(keyOf(x))}" data-req="${esc(p.requestId)}">${p.canAlways ? 'Allow once' : 'Allow'}</button><button type="button" class="btn sm${p.defaultToNo ? ' gilt' : ''}" data-mini-a="deny" data-k="${esc(keyOf(x))}" data-req="${esc(p.requestId)}">Deny</button></span>` : ''}</li>`;
   };
   const h = `<header class="mn-h"><svg class="mn-seal" aria-hidden="true"><use href="#sigil"/></svg><b>${esc(voice('Right now'))}</b><span class="mn-n"><i class="needs">${needs.length}</i> · <i>${working.length}</i></span></header>
     ${needs.length ? `<p class="mn-k">${esc(voice('Awaiting you'))}</p><ul>${needs.slice(0, 4).map(row).join('')}</ul>` : `<p class="mn-quiet">${esc(voice('Nothing needs you yet.'))}</p>`}
@@ -64,9 +64,11 @@ async function miniClick(e) {
   const t = e.target;
   const ab = t.closest('[data-mini-a]');
   if (ab) {
-    const x = findActivity(ab.dataset.k), p = x && (x.pending || [])[0]; if (!p) return;
+    // Exactly the request the row showed (its id is on the button), never whichever waits now.
+    const x = findActivity(ab.dataset.k); if (!x || !ab.dataset.req) return;
     ab.disabled = true;
-    await api('/api/chat/permission', { key: x.key, requestId: p.requestId, decision: ab.dataset.miniA, message: '' });
+    try { await api('/api/chat/permission', { key: x.key, requestId: ab.dataset.req, decision: ab.dataset.miniA, message: '' }); }
+    catch (err) { ab.disabled = false; if (err.reason !== 'answered') throw err; toast('Already answered: that request isn’t waiting any more, so nothing was changed.', 6000); loadActivity().then(renderMini).catch(() => {}); }
     return;
   }
   const o = t.closest('[data-mini]');

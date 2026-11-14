@@ -638,11 +638,12 @@ function patch(container, items, keyFn, htmlFn, emptyHtml = '') {
       const t = document.createElement('template'); t.innerHTML = w.h;
       const n = t.content.firstElementChild; n.dataset.k = w.k; n._h = w.h;
       if (el) {
-        // Carry over anything typed into a quick reply, and keep focus where it was.
+        // Carry over anything typed into a quick reply, and keep focus where it was. (Words typed for one
+        // request on a card, a note for Deny say, never carry over to another one.)
         const oi = el.querySelector('textarea, input[type="text"]'), ni = n.querySelector('textarea, input[type="text"]');
         const hadFocus = active && el.contains(active);
         const focusAttr = hadFocus && active.dataset ? Object.entries(active.dataset).map(([k, v]) => `[data-${k.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}="${CSS.escape(v)}"]`).join('') : '';
-        if (oi && ni) { ni.value = oi.value; }
+        if (oi && ni && (oi.dataset.req || '') === (ni.dataset.req || '')) { ni.value = oi.value; }
         el.replaceWith(n);
         if (hadFocus) { const f = (oi && active === oi ? ni : null) || (focusAttr && n.querySelector(focusAttr)); if (f) { f.focus({ preventScroll: true }); if (f === ni && typeof ni.setSelectionRange === 'function') ni.setSelectionRange(ni.value.length, ni.value.length); } }
       }

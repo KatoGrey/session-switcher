@@ -124,18 +124,16 @@ const pageClicks = wrap(async e => {
   if (t.closest('[data-proj-all]')) { if (S.hubFold.has('projects-all')) { S.hubFold.delete('projects-all'); S.projQ = ''; } else S.hubFold.add('projects-all'); store('hubFold', JSON.stringify([...S.hubFold])); renderProjAll(); if (S.hubFold.has('projects-all')) $('projQ')?.focus(); else $('projAll').querySelector('[data-proj-all]')?.focus(); return undefined; }
   // Cards on the hub.
   const card = t.closest('.omen, .qchip');
+  // A decision on a card (ui/decision.js): the request the card shows is the one answered.
+  const dp = card && t.closest('[data-dec] [data-p]');
+  if (dp) return Decision.press(dp, hubDecision(card));
   const ab = t.closest('[data-a]');
   if (card && ab && card.dataset.k && ab.tagName !== 'FORM') {
     const x = findActivity(card.dataset.k); if (!x) return;
-    const p = (x.pending || [])[0];
     switch (ab.dataset.a) {
       case 'open': return openActivity(x);
       case 'seen': markSeen(x); return toast('Marked as read.', 1800);
       case 'resume': markSeen(x); return ChatUI.open({ sessionId: x.sessionId });
-      case 'allow': case 'always': case 'deny':
-        ab.disabled = true;
-        await api('/api/chat/permission', { key: x.key, requestId: p.requestId, decision: ab.dataset.a, message: '' });
-        return toast(ab.dataset.a === 'deny' ? `Denied. ${x.title || 'The chat'} will try something else.` : `Allowed. ${x.title || 'The chat'} carries on.`, 2500);
       default: return;
     }
   }
@@ -214,6 +212,15 @@ const pageClicks = wrap(async e => {
 });
 $('page').addEventListener('click', pageClicks);
 $('drawer').addEventListener('click', pageClicks);
+// Around a decision on a hub card: it says what happened, and when the request was answered somewhere else
+// meanwhile (the chat, the phone), the hub catches up.
+function hubDecision(card) {
+  const x = card && findActivity(card.dataset.k), who = (x && x.title) || 'The chat';
+  return {
+    done: (decision, how) => toast(how === 'answer' ? `Answered. ${who} carries on.` : how === 'skip' ? `Skipped. ${who} carries on.` : decision === 'deny' ? `Denied. ${who} will try something else.` : `Allowed. ${who} carries on.`, 2500),
+    stale: () => loadActivity().then(() => { renderLive(); renderNav(); }).catch(() => {}),
+  };
+}
 
 // Quick replies from the hub: type on the card, Enter sends, without opening the chat.
 async function sendQuick(form) {
@@ -229,6 +236,8 @@ async function sendQuick(form) {
 }
 $('page').addEventListener('submit', e => { const f = e.target.closest('form.qr'); if (!f) return; e.preventDefault(); wrap(sendQuick)(f); });
 $('page').addEventListener('keydown', e => {
+  // A decision's note (ui/decision.js): Enter sends the denial, Esc goes back to the choices.
+  if (e.target.matches('[data-dec] .dec-why')) { Decision.key(e, hubDecision(e.target.closest('.omen'))); return; }
   if (e.target.matches('form.qr textarea')) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); wrap(sendQuick)(e.target.closest('form')); }
     return;

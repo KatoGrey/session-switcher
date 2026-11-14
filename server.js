@@ -3952,6 +3952,8 @@ async function handleChat(req, res, url, body, c, remote = false) {
     case '/api/chat/permission': {
       const decision = ['allow', 'always', 'deny'].includes(body.decision) ? body.decision : null;
       if (!decision) throw fail(400, 'Choose allow or deny.');
+      // Exactly the request the card showed: one that's gone is "already answered" (409), never the next one.
+      if (body.requestId == null || String(body.requestId) === '') throw fail(400, 'Say which request this answers.');
       let answers;
       if (body.answers !== undefined) {
         if (!body.answers || typeof body.answers !== 'object' || Array.isArray(body.answers)) throw fail(400, 'Bad answers.');

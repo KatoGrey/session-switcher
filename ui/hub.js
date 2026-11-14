@@ -578,21 +578,27 @@ function guardHtml() {
 
 function awaitCard(x) {
   const st = ownStatus(x), k = keyOf(x);
-  const p = (x.pending || [])[0];
-  const label = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: asked(x) ? 'Your turn · asked you something' : x.ok === false ? 'Your turn · stopped early' : 'Your turn' }[st];
+  const waiting = x.pending || [], p = waiting[0];
+  // What it asks, as the one decision control (ui/decision.js): the first request waiting, answered for exactly
+  // that request, with how many more wait behind it.
+  const app = x.source === 'app' && !!x.key;
+  const d = (st === 'approve' || st === 'question') && p && p.requestId ? Decision.shape(p, { provider: x.provider || 'claude', key: app ? x.key : '' }) : null;
+  const dec = d ? Decision.parts(d, { density: 'hub', more: waiting.length - 1, answerable: app }) : null;
+  const label = d ? (d.question ? 'Has a question' : 'Needs your OK') : { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: asked(x) ? 'Your turn · asked you something' : x.ok === false ? 'Your turn · stopped early' : 'Your turn' }[st];
   const since = st === 'reply' ? `<span class="o-time" data-ago="${x.finishedAt}"></span>` : `<span class="o-time">waiting <span data-since="${x.lastEventAt || Date.now()}"></span></span>`;
   let body = '';
-  if (st === 'approve') body = `<p class="o-ask">${esc(wantsTo(p))}${p && (p.detail || p.summary) ? `:</p><p class="o-cmd"><code>${esc(p.detail || p.summary)}</code></p>` : '.</p>'}`;
-  else if (st === 'question') body = `<p class="o-ask">Claude asked a multiple-choice question. Open the chat to answer it.</p>`;
+  if (dec) body = dec.body + dec.note;
+  else if (st === 'approve') body = `<p class="o-ask">${esc(wantsTo(p))}${p && (p.detail || p.summary) ? `:</p><p class="o-cmd"><code>${esc(p.detail || p.summary)}</code></p>` : '.</p>'}`;
+  else if (st === 'question') body = `<p class="o-ask">${esc(Decision.who(x.provider))} asked a question with choices. Open the chat to answer it.</p>`;
   else if (st === 'terminal-wait') body = `<p class="o-ask">It looks like it’s waiting for you in its terminal${x.tool ? ` (${esc(x.tool)}${x.detail ? `: <code>${esc(x.detail)}</code>` : ''})` : ''}. Switch to that window to answer.</p>`;
   else {
     const said = plainMd(lastLine(x.lastText));
     body = said ? `<blockquote class="o-quote">${esc(said.length > 320 ? `${said.slice(0, 319)}…` : said)}</blockquote>` : '<p class="o-ask">Claude finished its turn.</p>';
   }
   let acts = '';
-  if (st === 'approve' && x.source === 'app') {
-    acts = `<button class="btn gilt sm" data-a="allow">Allow</button>${p && p.canAlways ? '<button class="btn sm" data-a="always" title="Don’t ask again for this kind of action in this project">Always allow</button>' : ''}<button class="btn sm" data-a="deny">Deny</button><span class="spacer"></span><button class="btn quiet sm" data-a="open">Open chat</button>`;
-  } else if (st === 'question') acts = '<button class="btn gilt sm" data-a="open">Answer it</button>';
+  if (dec && dec.acts) acts = `${dec.acts}<span class="spacer"></span><button class="btn quiet sm" data-a="open">Open chat</button>`;
+  else if (st === 'question' || (dec && dec.complex)) acts = '<button class="btn gilt sm" data-a="open">Answer it</button>';
+  else if (st === 'approve') acts = '<button class="btn sm" data-a="open">Open chat</button>';
   else if (st === 'terminal-wait') acts = '<button class="btn sm" data-a="open">Watch it here</button>';
   else if (x.source === 'app') {
     acts = `<form class="qr" data-a="reply"><textarea rows="1" placeholder="Reply to Claude…" aria-label="Reply to ${esc(x.title || 'this chat')}" data-qr="1"></textarea><button class="btn prime sm" type="submit">Send</button></form>
@@ -600,7 +606,7 @@ function awaitCard(x) {
   } else {
     acts = `<button class="btn sm" data-a="open">Read it here</button>${x.source === 'elsewhere' ? '<button class="btn quiet sm" data-a="resume">Continue it here</button>' : ''}<span class="spacer"></span><button class="btn quiet sm" data-a="seen">${ICON.check} Mark as read</button>`;
   }
-  return `<article class="omen summons ${NEEDS.has(st) ? 'needs' : 'reply'}"><div class="omen-in">
+  return `<article class="omen summons ${NEEDS.has(st) ? 'needs' : 'reply'}"${dec ? ` ${dec.attrs}` : ''}><div class="omen-in">
     <header class="o-top"><span class="${NEEDS.has(st) ? 'gilt-dot' : 'reply-dot'}" aria-hidden="true"></span>${esc(label)}${since}</header>
     <h3 class="o-title"><button data-a="open">${esc(x.title || 'New chat')}</button></h3>
     <p class="o-where">${crestHtml(projectOf(x), 18, 'o-crest')}${whereOf(x)}</p>
