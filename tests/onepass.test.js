@@ -55,6 +55,16 @@ test('saving writes the clone’s .env.local (from scratch: the example’s vaul
   assert.deepEqual([copy.LINEAR_AGENT_TOKEN, copy.ONEPASS_TOKEN, copy.ONEPASS_AGENT_TOKEN], ['lin', 'ops_new', 'ops_agent']);
   assert.ok(!fs.existsSync(path.join(without, '.env.local')), 'one without stays without (Latitude’s scripts read the main checkout’s)');
 
+  // The clone spelled another way (letter case on Windows; GitHub's machines use short names, Macs /private/var) is
+  // still the clone, not one of its worktrees.
+  const other = process.platform === 'win32'
+    ? (() => { try { return execFileSync('cmd.exe', ['/d', '/s', '/c', `"for %I in ("${root}") do @echo %~sI"`], { encoding: 'utf8', windowsHide: true, windowsVerbatimArguments: true }).trim(); } catch { return root; } })()
+    : (() => { const link = path.join(tmp('onepass-link-'), 'clone'); fs.symlinkSync(root, link); return link; })();
+  if (other !== root) {
+    const again = await op.save(other, { ONEPASS_TOKEN: 'ops_newer' });
+    assert.equal(again.worktrees, 1, `the clone itself (as ${other}) isn’t counted as a worktree`);
+  }
+
   // The vault ID stays as it is once it's there.
   fs.writeFileSync(path.join(root, '.env.local'), 'ONEPASS_VAULT_ID=keepme\n');
   await op.save(root, { ONEPASS_TOKEN: 'ops_x' });
