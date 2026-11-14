@@ -50,13 +50,18 @@ function taskDialog() {
         <label id="tkAtWrap" hidden>Time<input type="datetime-local" id="tkAt"></label>
         <label id="tkRepWrap" hidden title="A repeating task becomes a routine (on the Routines page)">Repeat<select id="tkRepeat"><option value="">Just once</option><option value="daily">Every day</option><option value="weekdays">Every weekday</option><option value="weekly">Every week</option></select></label>
       </div>
+      <p class="tk-note" id="tkNote" hidden></p>
       <label class="tk-prompt">What should it do?<select id="tkFrom" aria-label="Start from a saved prompt"><option value="">Start from a saved prompt…</option></select><textarea id="tkText" rows="7" aria-label="What should it do?" placeholder="Write the README for this project: how to install it, run it and test it."></textarea></label>
       <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-tk="close">Cancel</button><button type="submit" class="btn prime" id="tkGo">Queue it</button></div>
     </div></form></dialog>`);
   d = $('taskDlg');
-  d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-tk="close"]')) d.close(); });
+  d.addEventListener('click', e => {
+    if (e.target === d || e.target.closest('[data-tk="close"]')) d.close();
+    // (Setup opens over the dialog, so what you've written stays.)
+    if (e.target.closest('[data-tk="signin"]')) openSetupAt('st-health');
+  });
   d.addEventListener('change', e => {
-    if (e.target.id === 'tkWho') $('tkAcctWrap').hidden = e.target.value !== 'claude';
+    if (e.target.id === 'tkWho') { $('tkAcctWrap').hidden = e.target.value !== 'claude'; taskNote(); }
     if (e.target.id === 'tkWhen') { $('tkAtWrap').hidden = $('tkRepWrap').hidden = e.target.value !== 'at'; $('tkGo').textContent = e.target.value === 'watch' ? 'Next: what to watch' : 'Queue it'; }
     if (e.target.id === 'tkFrom' && e.target.value) {
       const pr = S.prompts.find(x => x.id === e.target.value);
@@ -65,6 +70,7 @@ function taskDialog() {
         $('tkText').value = fillPrompt(pr.text, p ? p.name : '');
         if (pr.provider === 'codex' && codexReady()) { $('tkWho').value = 'codex'; $('tkAcctWrap').hidden = true; }
         else if (pr.provider === 'gemini' && geminiReady()) { $('tkWho').value = 'gemini'; $('tkAcctWrap').hidden = true; }
+        taskNote();
       }
       e.target.value = '';
     }
@@ -89,10 +95,16 @@ function taskDialog() {
   }));
   return d;
 }
+// Nobody signed in can start it: it still queues, and waits for a sign-in. The dialog says so, with where to sign in.
+function taskNote() {
+  const who = $('tkWho').value, ready = who === 'codex' ? codexReady() : who === 'gemini' ? geminiReady() : S.accounts.some(canLaunch);
+  $('tkNote').hidden = ready;
+  if (!ready) $('tkNote').innerHTML = `${who === 'claude' ? 'No Claude account is signed in yet, so it waits until one is.' : `${esc(PROV_NAME[who] || who)} isn’t signed in yet, so it waits until it is.`} <button type="button" class="linkish" data-tk="signin">Sign in</button>`;
+}
 function openTaskDialog(cwd = null, text = '') {
   const d = taskDialog();
   const projects = S.projects.filter(p => p.exists).slice().sort((a, b) => a.name.localeCompare(b.name));
-  if (!projects.length) { toast('Add a project first.'); return; }
+  if (!projects.length) { toast('A task starts as a chat in a project, and there’s no project yet.', 7000, { label: 'New project', run: openNewProject }); return; }
   const pick = cwd || (S.view === 'folder' ? S.folder : null) || (projects[0] && projects[0].cwd);
   $('tkProject').innerHTML = projects.map(p => `<option value="${esc(p.cwd)}"${p.cwd === pick ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
   $('tkWho').innerHTML = `<option value="claude">Claude</option>${S.codex && S.codex.enabled ? `<option value="codex"${codexReady() ? '' : ' disabled'}>Codex</option>` : ''}${S.gemini && S.gemini.enabled ? `<option value="gemini"${geminiReady() ? '' : ' disabled'}>Gemini</option>` : ''}`;
@@ -100,6 +112,7 @@ function openTaskDialog(cwd = null, text = '') {
   $('tkFrom').innerHTML = `<option value="">Start from a saved prompt…</option>${S.prompts.map(pr => `<option value="${esc(pr.id)}">${esc(pr.title)}</option>`).join('')}`;
   $('tkFrom').hidden = !S.prompts.length;
   $('tkWhen').value = 'now'; $('tkGo').textContent = 'Queue it'; $('tkAtWrap').hidden = true; $('tkRepWrap').hidden = true; $('tkRepeat').value = ''; $('tkAcctWrap').hidden = false; $('tkText').value = '';
+  taskNote();
   const soon = new Date(Date.now() + 3600e3); soon.setMinutes(0, 0, 0);
   $('tkAt').value = new Date(soon - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   if (text) $('tkText').value = text;

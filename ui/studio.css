@@ -340,3 +340,9 @@
   .hub2:not([data-family]) :is(.perm-b .btn:not([data-p="always"]),.perm .dec-note .btn){min-height:50px;font-size:16px}
   .hub2:not([data-family]) .perm-b [data-p="always"]{min-height:36px;border:0;background:none;box-shadow:none;font-size:14.5px;color:var(--parch-2);text-decoration:underline;text-decoration-color:var(--seam-2);text-underline-offset:4px}
 }
+
+/* No dead ends: a menu with nothing in it explains itself in the interface face, and the card of a race you've just
+   started lights up in the theme's accent rather than gold. */
+.hub2:not([data-family]) .menu .m-empty{font:400 var(--st-t-body)/1.45 var(--f-ui);color:var(--parch-2)}
+.hub2:not([data-family]) .race{--flash:var(--focus)}
+.hub2:not([data-family]) .tk-note{font-family:var(--f-ui)}

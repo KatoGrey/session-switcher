@@ -79,7 +79,7 @@ function renderSetup(j) {
       ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h" id="st-phone">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
     ${window.REMOTE ? '' : aideSetupHtml()}
     ${window.desktop ? '<p class="d-h" id="st-desktop">Desktop app</p><div class="prefs" id="deskBox"><p class="loading">Checking…</p></div>' : ''}
-    ${window.REMOTE ? '' : '<p class="d-h" id="st-problems">Problems and speed</p><div class="prefs" id="problemsBox"><p class="loading">Checking…</p></div>'}
+    ${window.REMOTE ? '<p class="d-h" id="st-problems">Problems</p><div class="prefs" id="problemsBox"></div>' : '<p class="d-h" id="st-problems">Problems and speed</p><div class="prefs" id="problemsBox"><p class="loading">Checking…</p></div>'}
     <p class="d-h" id="st-app">App</p>
     <div class="app-actions">
       ${S.shell ? '' : `<button class="btn" data-fix="shortcut">${S.platform === 'darwin' ? 'Add to Applications' : 'Create desktop shortcut'}</button>`}

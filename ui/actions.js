@@ -60,14 +60,28 @@ function closeDrawer() {
 
 /* ---------- menus ---------- */
 let menuAnchor = null, menuReturn = null;
+// A menu of who starts something, when nobody can: it says so, with where to sign in (Setup's checks list each
+// account and assistant, with its sign-in).
+const NO_WHO = { empty: 'No signed-in account can start this.', action: { label: 'Sign in to an account', hint: 'in Setup', run: () => openSetupAt('st-health') } };
 // anchor: the button it belongs to, or { x, y } for a right-click menu at the pointer.
-function showMenu(anchor, items) {
+// ifEmpty: { empty, action } says what to do when there's nothing in it. A list can carry its own (items.ifEmpty).
+function showMenu(anchor, items, ifEmpty = null) {
   const m = $('menu');
+  const none = ifEmpty || items.ifEmpty || null;
   closeMenu();
   items = items.filter((it, i, all) => it !== '-' || (i > 0 && i < all.length - 1 && all[i - 1] !== '-'));
-  // Labels line up whether or not an item has an icon.
-  const glyphs = items.some(it => it !== '-' && it.glyph);
-  m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${it.glyph || glyphs ? `<span class="m-g" aria-hidden="true">${esc(it.glyph || '')}</span>` : ''}<span class="m-l">${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</span>${it.keys ? `<kbd class="m-k">${esc(it.keys)}</kbd>` : ''}${it.more ? '<span class="m-more" aria-hidden="true">›</span>' : ''}`}</button>`)).join('');
+  if (!items.some(it => it !== '-')) {
+    // Never a blank menu: it says why it's empty, with the next step as its one item when there is one.
+    const say = esc((none && none.empty) || 'Nothing to choose from here yet.'), act = none && none.action;
+    items = act ? [act] : [];
+    m.innerHTML = act
+      ? `<p class="m-empty" id="menuEmpty" aria-hidden="true">${say}</p><button role="menuitem" data-i="0" class="m-next" aria-describedby="menuEmpty"><span class="m-g" aria-hidden="true">→</span><span class="m-l">${esc(act.label)}${act.hint ? `<span class="hint">${esc(act.hint)}</span>` : ''}</span></button>`
+      : `<p class="m-empty" role="menuitem" aria-disabled="true" tabindex="-1">${say}</p>`;
+  } else {
+    // Labels line up whether or not an item has an icon.
+    const glyphs = items.some(it => it !== '-' && it.glyph);
+    m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${it.glyph || glyphs ? `<span class="m-g" aria-hidden="true">${esc(it.glyph || '')}</span>` : ''}<span class="m-l">${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</span>${it.keys ? `<kbd class="m-k">${esc(it.keys)}</kbd>` : ''}${it.more ? '<span class="m-more" aria-hidden="true">›</span>' : ''}`}</button>`)).join('');
+  }
   menuReturn = document.activeElement;
   $('menuBack').hidden = false;
   m.hidden = false;
@@ -81,7 +95,7 @@ function showMenu(anchor, items) {
   menuAnchor = anchor instanceof Element ? anchor : null;
   if (menuAnchor) menuAnchor.setAttribute('aria-expanded', 'true');
   m.onclick = e => { const b = e.target.closest('button[data-i]'); if (!b || b.disabled) return; const it = items[+b.dataset.i]; closeMenu(true); wrap(it.run)(); };
-  m.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+  (m.querySelector('button:not(:disabled)') || m.querySelector('.m-empty[tabindex]'))?.focus({ preventScroll: true });
 }
 // Puts a popup under (or above) its anchor. Works in screen pixels, then divides by the interface
 // size, since the page is scaled by it.
@@ -212,7 +226,7 @@ function chatItems(id) {
     { glyph: '🗄', label: 'Archive in OpenClaw', hint: 'keeps it out of the active list; nothing is deleted', run: async () => {
       if (!(await appConfirm(`Archive this session in OpenClaw?\n\n${s.title}\n\nIt leaves the active list; its transcript stays archived and searchable. This can't be undone from here.`, { ok: 'Archive' }))) return;
       try { await api('/api/openclaw/archive', { id: s.id }); await loadSessions(); renderAll(); toast('Archived in OpenClaw.', 3000); }
-      catch (err) { toast(`Couldn’t archive: ${err.message}`, 6000); }
+      catch (err) { toast(`Couldn’t archive: ${err.message}`, 6000, null, { tone: 'error' }); }
     } },
     doneItem(id),
   ];

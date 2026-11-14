@@ -19,16 +19,82 @@ window.addEventListener('error', e => {
 });
 window.addEventListener('unhandledrejection', e => {
   const r = e.reason;
-  // An answer from the PC that it couldn't do something is said in a toast already; slips are code errors.
+  // An answer from the PC that it couldn't do something is said in a toast already (and kept under What went wrong
+  // lately); slips are code errors.
   if (!(r instanceof TypeError || r instanceof ReferenceError || r instanceof RangeError || r instanceof SyntaxError)) return;
   noteSlip(r.message, r.stack);
 });
 
+/* ---------- what went wrong lately: the errors toasts said, kept on this device ---------- */
+// A toast fades, so every error one says is kept here too (ui/toasts.js), to be found later in Setup → Problems: the
+// last 20, for a day, on this device. Only the words that were shown, and never a key or token even if one was in
+// them. Try again (when whatever failed gave a way) lasts while this window stays open.
+const Lately = { key: 'recent-problems', max: 20, keep: 864e5, again: new Map(), n: 0 };
+function latelyList() {
+  let list = [];
+  try { list = JSON.parse(store(Lately.key) || '[]'); } catch { list = []; }
+  const now = Date.now();
+  return (Array.isArray(list) ? list : []).filter(x => x && typeof x.text === 'string' && now - x.at < Lately.keep).slice(0, Lately.max);
+}
+const latelySave = list => store(Lately.key, JSON.stringify(list.slice(0, Lately.max)));
+const unsecret = s => String(s)
+  .replace(/\b(sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|lin_api_[A-Za-z0-9]{8,}|xox[abprs]-[A-Za-z0-9-]{8,})/g, '…')
+  .replace(/\b(bearer)\s+[A-Za-z0-9._~+/-]{8,}=*/gi, '$1 …')
+  .replace(/\b(token|api[_-]?key|secret|password)(\s*[=:]\s*)[^\s,;'")\]]+/gi, '$1$2…');
+// Where you were, to help place it: a chat, Setup, or the page.
+function latelyWhere() {
+  if ($('setup') && $('setup').open) return 'Setup';
+  if (window.ChatUI && ChatUI.isOpen()) return 'A chat';
+  if (S.view === 'folder') return (S.projects.find(p => p.cwd === S.folder) || {}).name || 'A project';
+  return { hub: voice('The hub'), work: voice('Your work'), recent: voice('Recent chats'), routines: voice('Routines'), aide: 'Companion', search: 'Search' }[S.view] || '';
+}
+// Called for each error toast. The same words again are the same entry, moved to the top (and counted, unless its toast
+// is still showing: then it's the same time, said twice). Returns its id.
+function noteError(text, again = null, showing = false) {
+  const t = unsecret(String(text || '').trim()).slice(0, 600);
+  if (!t) return null;
+  const list = latelyList(), old = list.find(x => x.text === t);
+  const x = old || { id: `e${Date.now().toString(36)}${(++Lately.n).toString(36)}`, text: t, count: 0 };
+  if (!(old && showing)) Object.assign(x, { at: Date.now(), where: latelyWhere(), count: (x.count || 0) + 1 });
+  latelySave([x, ...list.filter(y => y !== x)]);
+  if (again) Lately.again.set(x.id, again);
+  latelyPaint();
+  return x.id;
+}
+function forgetError(id) {
+  latelySave(id === 'all' ? [] : latelyList().filter(x => x.id !== id));
+  if (id === 'all') Lately.again.clear(); else Lately.again.delete(id);
+  latelyPaint();
+}
+// On the phone it's the whole of Setup → Problems, so it says so when there's nothing.
+function latelyHtml() {
+  const list = latelyList(), phone = !!window.REMOTE;
+  const row = x => `<li class="pb-row lately-row" data-id="${esc(x.id)}"><div class="pb-t">${x.where ? `<span class="pb-where">${esc(x.where)}</span>` : ''}<b>${esc(x.text)}</b><span class="pb-when" title="${esc(stamp(x.at))}">${esc(agoL(x.at))}${x.count > 1 ? ` · ${x.count} times` : ''}</span></div>
+    <div class="pb-b">${Lately.again.has(x.id) ? `<button class="btn sm" data-lately="again" data-id="${esc(x.id)}">Try again</button>` : ''}<button class="btn quiet sm" data-lately="clear" data-id="${esc(x.id)}">Put away</button></div></li>`;
+  const body = list.length ? `<ul class="pb-list">${list.map(row).join('')}</ul>${list.length > 1 ? '<p class="pb-act"><button class="btn quiet sm" data-lately="clear" data-id="all">Put them all away</button></p>' : ''}`
+    : phone ? '<p class="pb-none">Nothing has gone wrong here lately. When something does, it’s listed here for a day, with Try again where it can be.</p>' : '';
+  return `<div class="lately" id="latelyBox">${list.length && !phone ? '<p class="d-h sub" id="st-lately">What went wrong lately</p>' : ''}${body}</div>`;
+}
+function latelyPaint() { const el = $('latelyBox'); if (el) el.outerHTML = latelyHtml(); }
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-lately]'); if (!b) return;
+  const id = b.dataset.id, rows = [...document.querySelectorAll('#latelyBox .lately-row')], i = rows.findIndex(r => r.dataset.id === id);
+  if (b.dataset.lately === 'again') { const fn = Lately.again.get(id); if (fn) toast.again(fn, id); }
+  else forgetError(id);
+  // The keyboard goes on to the next one, or back to the section, rather than to nowhere.
+  const left = [...document.querySelectorAll('#latelyBox .lately-row')];
+  const next = left[Math.min(Math.max(i, 0), left.length - 1)];
+  (next ? next.querySelector('button') : $('problemsBox') && $('problemsBox').querySelector('button, input'))?.focus({ preventScroll: true });
+});
+latelySave(latelyList());   // (anything older than a day goes)
+
 /* ---------- Setup → Problems and speed ---------- */
 async function loadProblems() {
   const box = $('problemsBox'); if (!box) return;
+  // On the phone, only what went wrong here; on the PC, that first (even if the PC doesn't answer), then the rest.
+  if (window.REMOTE) { box.innerHTML = latelyHtml(); return; }
   let p, sc;
-  try { [p, sc] = await Promise.all([api('/api/problems'), api('/api/selfcheck')]); } catch (err) { box.innerHTML = `<p class="loading">${esc(err.message)}</p>`; return; }
+  try { [p, sc] = await Promise.all([api('/api/problems'), api('/api/selfcheck')]); } catch (err) { box.innerHTML = `${latelyHtml()}<p class="loading">${esc(err.message)}</p>`; return; }
   Problems.data = p;
   const last = sc.last;
   const check = sc.running ? '<p class="pb-check">The self-check is running now (a few minutes, at low priority).</p>'
@@ -36,7 +102,7 @@ async function loadProblems() {
       : '<p class="pb-check">No self-check yet: the first runs tonight at half past three, if nothing is working.</p>';
   const rows = p.problems.map(x => `<li class="pb-row"><div class="pb-t"><span class="pb-where">${esc(x.where)}</span><b>${esc(x.message)}</b><span class="pb-when">${esc(agoL(Date.parse(x.at)))}${x.count > 1 ? ` · ${x.count} times` : ''}</span></div>
     <div class="pb-b"><button class="btn sm" data-pb="fix" data-id="${esc(x.id)}">Ask Claude to fix this</button><button class="btn quiet sm" data-pb="report" data-id="${esc(x.id)}" title="Opens a GitHub issue for KatoGrey, filled in (nothing personal)">Report it</button><button class="btn quiet sm" data-pb="copy" data-id="${esc(x.id)}">Copy report</button><button class="btn quiet sm" data-pb="clear" data-id="${esc(x.id)}">Put away</button></div></li>`).join('');
-  box.innerHTML = `${check}
+  box.innerHTML = `${latelyHtml()}${check}
     <label class="toggle"><input type="checkbox" data-pref="nightlyCheck" ${S.prefs.nightlyCheck !== false ? 'checked' : ''}><span><b>Check itself every night</b><span>At half past three, when nothing is working, it runs its own tests and compares every theme with how it looked before, at low priority.</span></span></label>
     <p class="pb-act"><button class="btn sm" data-pb="run" ${sc.running ? 'disabled' : ''}>Run the self-check now</button>${p.problems.length > 1 ? '<button class="btn quiet sm" data-pb="clear" data-id="all">Put them all away</button>' : ''}</p>
     ${rows ? `<ul class="pb-list">${rows}</ul>` : '<p class="pb-none">No problems noted. Anything that goes wrong on this page or on the PC shows here, with a way to have Claude fix it.</p>'}

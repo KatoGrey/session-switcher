@@ -331,6 +331,33 @@ module.exports = [{
     t.check('on a phone Defaults and This PC fit the screen', await phone.eval(`return !!document.querySelector('[data-wkm="gemini-model"]') && !!document.querySelector('.wk-setup-box') && document.documentElement.scrollWidth <= innerWidth + 1`));
     await t.shot(phone, 'defaults-phone');
   },
+}, {
+  name: 'work: nothing to start with',
+  // No dead ends: an empty board offers to connect what fills it, and a menu of who starts something, when nobody
+  // can, says so, with where to sign in.
+  async run(t) {
+    const base = responder(), state = { empty: true };
+    const respond = (p, q, body) => (p === '/api/work' && state.empty ? { body: { gh: { installed: true, signedIn: false }, linear: { connected: false }, at: Date.now(), issues: [], prs: [] } } : base(p, q, body));
+    const b = await t.open({ respond, width: 1440, height: 900 });
+    await b.eval(`go('work'); return 1`); await sleep(1400);
+    const empty = await b.eval(`const e = document.querySelector('.wk-no-results'); return e && { text: e.textContent.replace(/\\s+/g, ' '), btn: (e.querySelector('[data-wk="connections"]') || {}).textContent }`);
+    t.check('an empty board offers to connect GitHub and Linear', !!empty && /Nothing here yet/.test(empty.text) && empty.btn === 'Connect GitHub and Linear', empty);
+    await b.eval(`document.querySelector('.wk-no-results').scrollIntoView({ block: 'center' }); return 1`); await sleep(200);
+    await t.shot(b, 'empty-board');
+    await b.clickOn('.wk-no-results [data-wk="connections"]'); await sleep(500);
+    t.check('which opens Connections', await b.eval(`return !!(document.getElementById('connDlg') || {}).open`));
+    await b.eval(`document.getElementById('connDlg').close(); return 1`);
+    // Work to do, and nobody signed in to start a chat on it.
+    state.empty = false;
+    await b.eval(`await Work.load(true); S.accounts.forEach(a => { a.signedIn = false; }); S.codex.signedIn = false; return 1`); await sleep(400);
+    await b.clickOn('[data-wk="select"][data-key="VOY-3012"]'); await sleep(400);
+    await b.clickOn('#wkInspector [data-wk="plan"]'); await sleep(300);
+    const menu = await b.eval(`const m = document.getElementById('menu'); return { open: !m.hidden, say: (m.querySelector('.m-empty') || {}).textContent, btn: (m.querySelector('button') || { textContent: '' }).textContent.replace(/\\s+/g, ' ').trim(), focus: document.activeElement.classList.contains('m-next') }`);
+    t.check('a menu of who starts it, when nobody can, says so, with where to sign in', menu.open && menu.say === 'No signed-in account can start this.' && /Sign in to an account/.test(menu.btn) && menu.focus, menu);
+    await t.shot(b, 'nobody-can-start');
+    await b.clickOn('#menu .m-next'); await sleep(900);
+    t.check('which opens Setup at the sign-ins', await b.eval(`return document.getElementById('setup').open && !!document.getElementById('st-health')`));
+  },
 }];
 module.exports.fixture = fixture;
 module.exports.responder = responder;

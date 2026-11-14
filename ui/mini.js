@@ -23,7 +23,7 @@ async function openMini() {
   syncMiniLook();
   d.body.className = 'mini';
   d.body.innerHTML = '<main class="mini-in" aria-live="polite"></main>';
-  d.addEventListener('click', e => miniClick(e).catch(err => toast(err.message)));
+  d.addEventListener('click', e => miniClick(e).catch(err => toast(err.message, 8000, null, { tone: 'error' })));
   const gone = () => { Mini.win = null; clearInterval(Mini.timer); };
   w.addEventListener('pagehide', gone);
   w.addEventListener('beforeunload', gone);

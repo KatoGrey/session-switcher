@@ -57,7 +57,7 @@ function autoReview(ev, src) {
   if (lines < 40 || C.autoReviewed.has(once)) return;
   C.autoReviewed.add(once);
   toast(`Codex is reviewing the ${lines} lines Claude just changed. (Setup → Codex turns this off.)`, 5000);
-  setTimeout(() => startReview().catch(err => toast(err.message)), 1200);
+  setTimeout(() => startReview().catch(err => toast(err.message, 8000, null, { tone: 'error' })), 1200);
 }
 // A chat opened again (after a restart, an update, or an idle stop): its earlier replies' changes,
 // undos and reviews, kept by the PC (lib/extras.js), go back where they were, each under the reply

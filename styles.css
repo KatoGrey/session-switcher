@@ -419,6 +419,10 @@ mark{background:rgb(var(--c-d9bf74) / .26);color:var(--parch);border-radius:2px;
 .menu .m-acct .m-t small{font-size:12.5px;color:var(--ash);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .menu .m-acct .m-u{font:500 11.5px var(--f-label);color:var(--ash)}
 .menu .m-acct[aria-checked="true"]{background:rgb(var(--c-8c3a34) / .16)}
+/* A menu with nothing in it says why, with the next step under it. */
+.menu .m-empty{margin:0;padding:8px 11px 6px;color:var(--parch-2);font:400 14px/1.45 var(--f-body);overflow-wrap:anywhere}
+.menu .m-empty[tabindex]:focus{outline:none}
+.menu button.m-next{color:var(--parch);font-weight:600}
 
 /* ---------- dialogs ---------- */
 dialog{border:1px solid var(--seam-2);border-radius:10px;background:linear-gradient(180deg,rgb(var(--c-1a161d)),rgb(var(--c-121014)));color:var(--parch);padding:24px;width:min(460px,calc(calc(100vw / var(--look-ui, 1)) - 32px));box-shadow:0 40px 90px -20px rgb(var(--c-000000))}
@@ -1865,7 +1869,7 @@ button.nav-h.fold[aria-expanded="false"] .fold-c{transform:rotate(-90deg)}
 .c-skel i.u{align-self:flex-end;width:42%;height:38px;border-radius:14px}
 .c-skel i.s{width:48%}
 @keyframes skel{from{background-position:100% 0}to{background-position:-100% 0}}
-.toast-act{border:0;background:none;color:var(--gilt);font:600 14px var(--f-body);padding:2px 4px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.toast-act{border:0;background:none;color:var(--gilt);font:600 14px var(--f-body);padding:2px 4px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;white-space:nowrap;flex:none}
 .toast-act:hover{color:var(--parch)}
 @media (max-width:760px){
   .ac-win{flex:0 1 auto;min-width:0}
@@ -2537,6 +2541,9 @@ body.solo .c-head .icon.c-backm{display:none}
 .tk-grid select,.tk-grid input,.tk-prompt select{font:400 14px var(--f-body);letter-spacing:0;text-transform:none;padding:7px 9px;border:1px solid var(--seam-2);border-radius:7px;background:rgb(var(--c-100e12));color:var(--parch)}
 .tk-prompt textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--seam-2);border-radius:8px;background:rgb(var(--c-100e12));color:var(--parch);font:400 14.5px/1.5 var(--f-body);letter-spacing:0;text-transform:none;resize:vertical}
 .tk-prompt select{justify-self:start}
+/* Nobody signed in to start it yet: it still queues, and this says what it waits for. */
+.tk-note{margin:-4px 0 12px;color:var(--parch-2);font-size:13.5px;line-height:1.45}
+.tk-note[hidden]{display:none}
 
 
 /* Phones: Claude and Codex each show their name over their model, so the model fits; Both takes only its own width */
@@ -2674,6 +2681,13 @@ body.solo .c-head .icon.c-backm{display:none}
 @media (max-width:640px){.rc-parts{grid-template-columns:1fr}}
 .race.over{opacity:.7}
 .race-end{margin:0;color:var(--ash)}
+/* The race you've just started: its card lights up for a moment (it glows and fades only with animations on). */
+.race{--flash:var(--gilt)}
+.race.race-flash{box-shadow:0 0 0 2px var(--flash)}
+.motion .race.race-flash{animation:race-flash 2.4s ease-out both}
+@keyframes race-flash{0%,55%{box-shadow:0 0 0 2px var(--flash),0 0 28px -6px var(--flash)}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.motion .race.race-flash{animation:none}}
+.race:focus-visible{outline:2px solid var(--gilt);outline-offset:3px}
 @media (max-width:760px){ .race-cols{grid-template-columns:1fr} }
 
 /* ==================== the space saga themes: Imperial and Rebel ====================
@@ -3920,6 +3934,9 @@ body.from-cache .pulse::after{content:'';position:absolute;inset:-2px;border-rad
 .pb-b{display:flex;gap:6px}
 .pb-none{color:var(--ash);font-size:13px;margin:6px 0}
 .d-h.sub{margin-top:18px}
+/* What went wrong lately, first in Setup → Problems when there's something. */
+.lately:not(:empty){margin:0 0 16px}
+.lately > .d-h.sub:first-child{margin-top:2px}
 .speed{border-collapse:collapse;width:100%}
 .speed th{text-align:left;font-weight:500;color:var(--parch-2);padding:6px 12px 6px 0}
 .speed td{padding:6px 12px 6px 0;color:var(--parch)}

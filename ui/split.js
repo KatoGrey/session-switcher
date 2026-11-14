@@ -130,7 +130,7 @@ window.splitFromPane = (win, what) => {
     // What's in the main place goes beside, and this one comes to the main place.
     const main = { key: ChatUI.key() || null, sessionId: ChatUI.sessionId() || null, title: ($('cTitle') || {}).textContent || '' };
     closePane(p, true);
-    (p.sessionId ? ChatUI.open({ sessionId: p.sessionId }) : ChatUI.openKey(p.key)).then(() => { if (main.key || main.sessionId) openBeside(main); }).catch(err => toast(err.message));
+    (p.sessionId ? ChatUI.open({ sessionId: p.sessionId }) : ChatUI.openKey(p.key)).then(() => { if (main.key || main.sessionId) openBeside(main); }).catch(err => toast(err.message, 8000, null, { tone: 'error' }));
   }
   return undefined;
 };

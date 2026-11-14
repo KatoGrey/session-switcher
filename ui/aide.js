@@ -411,7 +411,7 @@ async function aidePanelOpen({ fresh = false, group = null, who = null, sessionI
     aideBarLine(); renderAidePick();
     // (Who's signed in is only known a moment after the app starts.)
     loadAide().then(() => { renderAidePick(); aideAlpha(); }).catch(() => {});
-  } catch (err) { toast(err.message, 7000); } finally {
+  } catch (err) { toast(err.message, 7000, null, { tone: 'error' }); } finally {
     if (seq === Aide.seq) {
       Aide.opening = false;
       renderAidePick();

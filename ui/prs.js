@@ -177,9 +177,10 @@ function prWhoItems(d, action) {
   const items = [];
   const reuse = action !== 'review' && d.chat;
   for (const a of (S.accounts || []).filter(x => canLaunch(x))) items.push({ glyph: '✦', label: `Claude · ${a.name}`, hint: reuse ? `in “${d.chat.title || 'the chat that made it'}”` : 'a new chat', run: () => prGo(d, action, 'claude', a.id) });
-  if (reuse) items.push({ glyph: '✦', label: 'Claude, in a new chat', hint: `as ${current().name}`, run: () => prGo(d, action, 'claude', current().id, true) });
+  if (reuse && canLaunch(current())) items.push({ glyph: '✦', label: 'Claude, in a new chat', hint: `as ${current().name}`, run: () => prGo(d, action, 'claude', current().id, true) });
   if (codexOK()) items.push({ glyph: '◆', label: 'Codex', hint: 'a new chat', run: () => prGo(d, action, 'codex', (S.codex && S.codex.id) || 'codex') });
-  return items;
+  // Nobody can start it: the menu says so, with where to sign in.
+  return Object.assign(items, { ifEmpty: NO_WHO });
 }
 async function prGo(d, action, provider, account, fresh = false) {
   toast(action === 'review' ? `Fetching #${d.number} and starting the review…` : 'Starting…', 4000);
@@ -207,9 +208,7 @@ async function prAction(act, b) {
   }
   if (act === 'review' || act === 'fix-comments' || act === 'fix-checks') {
     const d = PRS.details.get(prKey(b.dataset.repo, b.dataset.n)); if (!d) return undefined;
-    const items = prWhoItems(d, act);
-    if (!items.length) { toast('Sign in to a Claude account or Codex first.'); return undefined; }
-    return showMenu(b, items);
+    return showMenu(b, prWhoItems(d, act));
   }
   if (act === 'chat') { $('prDlg').close(); return ChatUI.open({ sessionId: b.dataset.id }); }
   return ghAction(act, b);

@@ -18,6 +18,13 @@ const Toaster = (() => {
   function show(msg, ms = 5000, action = null, opts = null) {
     const o = opts && typeof opts === 'object' ? opts : {};
     const text = String(msg ?? ''), tone = ['error', 'success', 'loading'].includes(o.tone) ? o.tone : '';
+    // An error is kept in Setup → Problems too (ui/problems.js), to be found once this has gone. A way to do it
+    // again (o.retry) is the toast's button, unless it has one already, and is offered there as well.
+    const retry = typeof o.retry === 'function' ? o.retry : null;
+    // (The same error said again while it still shows is that toast again, so it isn't counted twice.)
+    const same = tone === 'error' && live.some(x => x.text === text && x.tone === 'error');
+    const kept = tone === 'error' && typeof noteError === 'function' ? noteError(text, retry, same) : null;
+    if (retry && !action) action = { label: 'Try again', run: () => again(retry, kept) };
     const label = action ? String(action.label) : '';
     // A name (o.id) updates that toast where it is; otherwise the same words still showing are that toast again.
     let t = o.id != null ? live.find(x => x.id === o.id) : null;
@@ -257,7 +264,8 @@ const Toaster = (() => {
   if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', remeasure);
 
   // A slow job: "loading" while it runs, then what came of it. Returns the job, so it can be awaited.
-  function promise(job, { loading = 'Working on it…', success = null, error = null, ms = 5000 } = {}) {
+  // retry: does it again, if it failed.
+  function promise(job, { loading = 'Working on it…', success = null, error = null, ms = 5000, retry = null } = {}) {
     const id = `p${++st.n}`, p = Promise.resolve(job);
     show(loading, Infinity, null, { id, tone: 'loading' });
     p.then(v => {
@@ -266,9 +274,18 @@ const Toaster = (() => {
     }, err => {
       const raw = err && err.message ? err.message : String(err ?? '');
       const m = typeof error === 'function' ? error(err) : error || raw;
-      if (m && raw !== 'Reloading…') show(m, 9000, null, { id, tone: 'error' }); else close(id);
+      if (m && raw !== 'Reloading…') show(m, 9000, null, { id, tone: 'error', retry }); else close(id);
     });
     return job;
+  }
+  // Tries something again (from its toast, or from Setup → Problems), and it leaves the list of what went wrong. If it
+  // fails again, that's said (and kept) again, with the same way to try.
+  async function again(fn, kept = null) {
+    if (kept != null && typeof forgetError === 'function') forgetError(kept);
+    try { await fn(); } catch (err) {
+      const m = err && err.message ? err.message : String(err ?? '');
+      if (m !== 'Reloading…') show(m, 9000, null, { tone: 'error', retry: fn });
+    }
   }
   function close(id) {
     if (id == null) { for (const t of live.slice()) dismiss(t); return; }
@@ -276,10 +293,12 @@ const Toaster = (() => {
     if (t) dismiss(t);
   }
 
-  return { show, promise, dismiss: close, live };
+  return { show, promise, again, dismiss: close, live };
 })();
 // A short message at the bottom. With an action ({ label, run }), it carries a button, like Undo.
-// opts: { tone: 'error' | 'success' | 'loading', id } (an id updates that toast in place).
+// opts: { tone: 'error' | 'success' | 'loading', id, retry } (an id updates that toast in place; retry, for an error,
+// does it again: the toast's Try again, and in Setup → Problems while this window is open).
 function toast(msg, ms = 5000, action = null, opts = null) { Toaster.show(msg, ms, action, opts); }
 toast.promise = (job, o) => Toaster.promise(job, o);
 toast.dismiss = id => Toaster.dismiss(id);
+toast.again = (fn, kept) => Toaster.again(fn, kept);

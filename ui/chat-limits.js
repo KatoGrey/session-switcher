@@ -48,7 +48,7 @@ function renderLimit(ev, src = 'main') {
   withStick(() => feed.appendChild(card));
   // Autopilot (Setup, on unless you turn it off): out of room as it happens, it carries on as the
   // account with the most room by itself, after a moment to say no.
-  if (auto) card._auto = setTimeout(() => { if (card.isConnected && card._auto) { card._auto = 0; continueAs(auto.a.id).catch(err => toast(err.message)); } }, 2500);
+  if (auto) card._auto = setTimeout(() => { if (card.isConnected && card._auto) { card._auto = 0; continueAs(auto.a.id).catch(err => toast(err.message, 8000, null, { tone: 'error' })); } }, 2500);
 }
 // Choosing anything on the card (wait for the reset, hand it over) calls off the autopilot: it would
 // otherwise switch accounts a moment later anyway.

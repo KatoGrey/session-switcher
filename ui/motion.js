@@ -70,7 +70,7 @@ function renderRecent() {
   $('page').innerHTML = `<div id="guardSlot">${guardHtml()}</div>
     <header class="f-head"><div><p class="eyebrow">✧ Every folder</p><h1>Recent chats</h1><p class="f-meta">Your latest chats${f === 'codex' ? ' in Codex' : f === 'claude' ? ` in Claude Code, ready to open as ${esc(current().name)}` : f === 'openclaw' ? ' from OpenClaw agents, to read here' : ''}.</p></div>
       ${kinds.length > 1 ? `<div class="seg provseg" role="group" aria-label="Show">${tab('all', 'All', every.length)}${kinds.map(k => tab(k, PROV_TITLE[k], n[k])).join('')}</div>` : ''}</header>
-    ${all.length ? `<ul class="rows sec-gap">${all.slice(0, 60).map(([x, p]) => rowHtml(x, p.name)).join('')}</ul>` : emptyArt('chats', 'Nothing here yet.')}`;
+    ${all.length ? `<ul class="rows sec-gap">${all.slice(0, 60).map(([x, p]) => rowHtml(x, p.name)).join('')}</ul>` : emptyArt('chats', 'No chats yet. Start one with <button class="linkish" data-act="project-new">New project</button>, or open a folder in Claude Code once and its chats appear here.')}`;
 }
 // A project: its banner, then its chats, documents and pictures.
 // The project briefing: this week at a glance (chats, files changed, reviews, what's queued and what

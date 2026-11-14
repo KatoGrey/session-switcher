@@ -104,7 +104,10 @@ const Work = (() => {
   }
   function resultsHtml() {
     const groups = filteredGroups(), total = groups.reduce((n, g) => n + g[2].length, 0);
-    if (!total) return `<div class="wk-no-results">${icon('done', 30)}<h3>${W.query ? 'No matches' : W.filter === 'attention' ? 'You’re all caught up' : W.filter === 'chats' ? 'No chats on your work right now' : 'Nothing here yet'}</h3><p>${W.query ? 'Try a title, PR number, person, or Linear ID.' : W.filter === 'attention' ? 'No pull requests currently need your action.' : W.filter === 'chats' ? 'Start one from an issue or PR, and it shows up here while it works.' : 'Your assigned issues and pull requests appear here.'}</p>${W.query || W.filter !== 'all' ? '<button class="btn" data-wk="reset">Show all work</button>' : ''}</div>`;
+    // Nothing at all: the way to connect what fills it (or to check who it's connected as).
+    const unlinked = !W.data?.gh?.signedIn || !W.data?.linear?.connected;
+    const next = W.query || W.filter !== 'all' || W.repo !== 'all' ? '<button class="btn" data-wk="reset">Show all work</button>' : `<button class="btn${unlinked ? ' prime' : ''}" data-wk="connections">${unlinked ? 'Connect GitHub and Linear' : 'Check your connections'}</button>`;
+    if (!total) return `<div class="wk-no-results">${icon('done', 30)}<h3>${W.query ? 'No matches' : W.filter === 'attention' ? 'You’re all caught up' : W.filter === 'chats' ? 'No chats on your work right now' : 'Nothing here yet'}</h3><p>${W.query ? 'Try a title, PR number, person, or Linear ID.' : W.filter === 'attention' ? 'No pull requests currently need your action.' : W.filter === 'chats' ? 'Start one from an issue or PR, and it shows up here while it works.' : unlinked ? 'Your assigned issues and pull requests appear here once GitHub and Linear are connected.' : 'Your assigned issues and pull requests appear here.'}</p>${next}</div>`;
     return `<div class="wk-results-heading"><span role="status">${W.query ? 'Search results' : 'Work queue'}<b>${total}</b></span><span class="wk-list-hint">↑ ↓ to move · Enter to open</span></div><div class="wk-results ${W.layout === 'board' ? 'as-board' : ''}">${groups.filter(g => g[2].length || W.layout === 'board').map(([id, title, xs]) => `<section class="wk-group" data-group="${id}"><h2><span class="wk-group-dot" data-kind="${id}"></span>${title}<span>${xs.length}</span></h2>${xs.length ? xs.map(row).join('') : '<p class="wk-empty">All clear.</p>'}</section>`).join('')}</div>`;
   }
   const queue = () => filteredGroups().flatMap(g => g[2]);
@@ -357,10 +360,11 @@ const Work = (() => {
   const find = (repo, n) => { const k = kOf({ repo, number: n }); const p = item(k); return p ? { ...p, ...(W.details.get(k)?.error ? {} : W.details.get(k)) } : null; };
   function whoItems(run, { chat = null, review = false } = {}) {
     const items = (S.accounts || []).filter(a => canLaunch(a)).map(a => ({ glyph: '✦', label: `Claude · ${a.name}`, hint: `${chat && !review ? `in “${chat.title || 'its chat'}”` : 'a new chat'} · ${runLabel('claude')}`, run: () => run('claude', a.id, false) }));
-    if (chat && !review) items.push({ glyph: '✦', label: 'Claude, in a new chat', hint: `as ${current().name} · ${runLabel('claude')}`, run: () => run('claude', current().id, true) });
+    if (chat && !review && canLaunch(current())) items.push({ glyph: '✦', label: 'Claude, in a new chat', hint: `as ${current().name} · ${runLabel('claude')}`, run: () => run('claude', current().id, true) });
     if (codexOK()) items.push({ glyph: '◆', label: 'Codex', hint: `a new chat · ${runLabel('codex')}`, run: () => run('codex', (S.codex && S.codex.id) || 'codex', true) });
     if (typeof geminiReady === 'function' && geminiReady()) items.push({ glyph: '✧', label: 'Gemini', hint: `a new chat · ${runLabel('gemini')}`, run: () => run('gemini', 'gemini', true) });
-    return items;
+    // Nobody can start it: the menu says so, with where to sign in.
+    return Object.assign(items, { ifEmpty: NO_WHO });
   }
   async function prChat(p, action, provider, account, fresh) {
     toast(action === 'review' ? `Fetching #${p.number} and starting the review…` : 'Starting…', 4000);
@@ -586,7 +590,7 @@ const Work = (() => {
     const wks = e.target.dataset && e.target.dataset.wks;
     if (wks && W.subs) {
       const v = W.subs, work = { ...v.work, [wks]: e.target.value };
-      api('/api/subagents', { defaults: v.defaults, work, codex: v.codex, roster: v.roster }).then(saved => { W.subs = { ...v, ...saved }; toast('Saved. PR and issue chats started from here use it.', 4000); render(); }).catch(err => { toast(err.message, 6000); render(); });
+      api('/api/subagents', { defaults: v.defaults, work, codex: v.codex, roster: v.roster }).then(saved => { W.subs = { ...v, ...saved }; toast('Saved. PR and issue chats started from here use it.', 4000); render(); }).catch(err => { toast(err.message, 6000, null, { tone: 'error' }); render(); });
     }
   });
   // Changed on the Subagents page: Your work shows it at once.

@@ -113,6 +113,19 @@ module.exports = [
       await b.clickOn(other); await sleep(250);
       t.check('its button again closes it', !(await st()).open);
       t.check('and presses nothing in the menu', !(await b.eval(`return !!document.querySelector('dialog[open]')`)) && (await pressed()) === toastsBefore);
+      // Nothing to choose: never a blank menu. It says why, with the next step as its one item.
+      await b.eval(`window._next = 0; showMenu(document.getElementById('livepill'), [], { empty: 'Nothing to pick from yet.', action: { label: 'Do the next thing', hint: 'somewhere else', run: () => { window._next++; } } }); return 1`); await sleep(250);
+      const em = await b.eval(`const m = document.getElementById('menu'), a = document.activeElement; return { open: !m.hidden, say: m.querySelector('.m-empty')?.textContent, btns: [...m.querySelectorAll('button')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()), focus: a.classList.contains('m-next'), desc: a.getAttribute('aria-describedby') }`);
+      t.check('an empty menu says why, with the next step', em.open && em.say === 'Nothing to pick from yet.' && em.btns.length === 1 && /Do the next thing/.test(em.btns[0]) && em.focus && em.desc === 'menuEmpty', em);
+      await t.shot(b, 'empty');
+      await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+      await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); await sleep(250);
+      t.check('Enter takes the step, and the menu closes', await b.eval(`return window._next === 1 && document.getElementById('menu').hidden`));
+      await b.eval(`showMenu(document.getElementById('livepill'), ['-']); return 1`); await sleep(250);
+      const bare = await b.eval(`const m = document.getElementById('menu'); return { open: !m.hidden, say: m.textContent.trim(), focus: document.activeElement.classList.contains('m-empty') }`);
+      t.check('one with no next step still says something, and has the keyboard', bare.open && bare.say === 'Nothing to choose from here yet.' && bare.focus, bare);
+      await b.esc();
+      t.check('and Esc closes it', !(await st()).open);
     },
   },
   {
@@ -649,6 +662,22 @@ module.exports = [
       t.check('importing adds theirs, skipping names you already have', (await b.eval(`return document.querySelectorAll('#pdList .pd-item').length`)) === n0 + 1 && /Added 1 prompt \(1 with a name you already have was skipped\)\. Press Save to keep them\./.test(await b.eval(`return document.getElementById('toast').textContent`)));
       await b.eval(`addPromptsFrom('not json'); return 1`);
       t.check('and says plainly when a file isn’t a prompt file', /isn’t a prompt file/.test(await b.eval(`return document.getElementById('toast').textContent`)));
+
+      // Shared from the phone (the Android app) when it can't get into a chat: it's kept, it says so, and Try again
+      // puts it there.
+      await b.eval(`const d = document.getElementById('promptDlg'); d.dataset.dirty = ''; d.close();
+        window._open = ChatUI.open; ChatUI.open = async () => { throw new Error('No chat could open just now.'); };
+        window._choice = appChoice; window.appChoice = async () => 'new';
+        window.Android = { takeShare: () => JSON.stringify({ text: 'https://example.com/tavern-map' }) };
+        window.onAndroidShare(); await new Promise(r => setTimeout(r, 400)); return 1`);
+      const failed = await b.eval(`const t = document.getElementById('toast'); return { text: t.textContent, tone: t.dataset.tone, act: (t.querySelector('.toast-act') || {}).textContent, kept: Share.pending && Share.pending.text, problems: localStorage.getItem('recent-problems') || '' }`);
+      t.check('a share that can’t reach a chat is kept, and says so', failed.tone === 'error' && /Couldn’t put the link into a chat: No chat could open just now\. It’s kept, so you can try again\./.test(failed.text) && failed.act === 'Try again' && failed.kept === 'https://example.com/tavern-map', failed);
+      t.check('and it’s in Setup → Problems too, without what was shared', /Couldn’t put the link into a chat/.test(failed.problems) && !/tavern-map/.test(failed.problems), failed.problems);
+      await b.eval(`ChatUI.open = window._open; return 1`);
+      await b.clickOn('#toast .toast-act'); await sleep(2500);
+      const put = await b.eval(`return { open: ChatUI.isOpen(), box: document.getElementById('cText').value, pending: Share.pending }`);
+      t.check('Try again puts it in a new chat’s message box', put.open && /tavern-map/.test(put.box) && put.pending === null, put);
+      await b.eval(`window.appChoice = window._choice; delete window.Android; return 1`);
     },
   },
   {
@@ -678,6 +707,10 @@ module.exports = [
       await b.eval(`rcText.value = 'Add a Lullaby cooldown.'; return 1`);
       await b.clickOn('#rcForm [type="submit"]'); await sleep(600);
       t.check('Start the race starts it', calls.some(([p, body]) => p === '/api/race' && body.action === 'start' && body.prompt === 'Add a Lullaby cooldown.') && /Add a Lullaby cooldown/.test((await card()).text));
+      await sleep(500);
+      const shown = await b.eval(`const a = document.activeElement, c = a && a.closest && a.closest('[data-race]'), r = c && c.getBoundingClientRect(); return { id: c && c.dataset.race, flash: !!c && c.classList.contains('race-flash'), seen: !!r && r.top >= 0 && r.bottom <= innerHeight, toast: document.getElementById('toast').textContent, act: !!document.querySelector('#toast .toast-act') }`);
+      t.check('then its card is brought into view and lit up, with the keyboard on it', shown.id === 'race2' && shown.flash && shown.seen && /Compare them on this card/.test(shown.toast) && !shown.act, shown);
+      await t.shot(b, 'started');
       // A judge, and keeping file by file.
       await b.clickOn('[data-act="race-judge"]'); await sleep(500);
       t.check('Ask a judge starts one, and the card says so', calls.some(([p, body]) => p === '/api/race' && body.action === 'judge') && /Judge working Read its verdict/.test((await card()).text), (await card()).text);
@@ -712,6 +745,23 @@ module.exports = [
       await b.eval(`openRaceDialog(null); return 1`); await sleep(200);
       t.check('the race dialog opens as a race again', await b.eval(`return rcTitle.textContent === 'Race Claude and Codex' && document.querySelector('.rc-parts').hidden`));
       await b.eval(`raceDlg.close(); return 1`);
+      // Started away from the hub: the toast offers to take you to its card.
+      await b.eval(`go('recent'); return 1`); await sleep(600);
+      await b.eval(`openRaceDialog(${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}); rcText.value = 'One more go.'; return 1`); await sleep(300);
+      await b.clickOn('#rcForm [type="submit"]'); await sleep(600);
+      const off = await b.eval(`const t = document.getElementById('toast'); return { view: S.view, text: t.textContent, act: t.querySelector('.toast-act')?.textContent }`);
+      t.check('started away from the hub, the toast offers to show it', off.view === 'recent' && off.act === 'Show it' && /on its card on the hub/.test(off.text), off);
+      await b.clickOn('#toast .toast-act'); await sleep(1200);
+      const there = await b.eval(`const c = document.activeElement.closest && document.activeElement.closest('[data-race]'); return { view: S.view, id: c && c.dataset.race, flash: !!c && c.classList.contains('race-flash') }`);
+      t.check('Show it goes to the hub, and to its card', there.view === 'hub' && there.id === 'race2' && there.flash, there);
+      // Only one assistant ready: it says a race needs two, with the way to set up another.
+      await b.eval(`S.codex.signedIn = false; openRaceDialog(null); return 1`); await sleep(300);
+      const two = await b.eval(`const t = document.getElementById('toast'); return { text: t.textContent, act: t.querySelector('.toast-act')?.textContent, dialog: raceDlg.open }`);
+      t.check('with one assistant ready, it says a race needs two, with Setup a click away', /A race needs two assistants, and only one is ready yet/.test(two.text) && two.act === 'Set up Codex' && !two.dialog, two);
+      await t.shot(b, 'needs-two');
+      await b.clickOn('#toast .toast-act'); await sleep(900);
+      t.check('which opens Setup', await b.eval(`return document.getElementById('setup').open`));
+      await b.eval(`document.getElementById('setup').close(); S.codex.signedIn = true; return 1`);
     },
   },
   {
@@ -776,6 +826,14 @@ module.exports = [
       const rt = await b.eval(`const d = document.getElementById('rtDlg'); return { open: !!d && d.open, task: document.getElementById('taskDlg').open, name: document.getElementById('rtName')?.value, prompt: document.getElementById('rtPrompt')?.value, watch: !!d && d.querySelector('[data-rte-kind="watch"]').classList.contains('on') }`);
       t.check('which opens a routine that watches, with the project, name and prompt filled in', rt.open && !rt.task && rt.watch && rt.name === 'Triage the new bug reports' && /label them/.test(rt.prompt), rt);
       await b.eval(`document.getElementById('rtDlg').close(); return 1`);
+      // No dead ends: no project yet, or nobody signed in to start it.
+      const none = await b.eval(`const keep = S.projects; S.projects = []; try { openTaskDialog(); } finally { S.projects = keep; } const t = document.getElementById('toast'); return { text: t.textContent, act: t.querySelector('.toast-act')?.textContent, open: taskDlg.open }`);
+      t.check('with no project yet, it says so, with New project', /there’s no project yet/.test(none.text) && none.act === 'New project' && !none.open, none);
+      const note = await b.eval(`const was = S.accounts.map(a => a.signedIn); S.accounts.forEach(a => { a.signedIn = false; }); openTaskDialog(); const n = document.getElementById('tkNote'), r = { shown: !n.hidden, text: n.textContent, btn: !!n.querySelector('[data-tk="signin"]') }; S.accounts.forEach((a, i) => { a.signedIn = was[i]; }); return r`);
+      t.check('with nobody signed in, it says the task waits, with a way to sign in', note.shown && /waits until one is/.test(note.text) && note.btn, note);
+      await b.clickOn('#tkNote [data-tk="signin"]'); await sleep(900);
+      t.check('Sign in opens Setup over the dialog, keeping it', await b.eval(`return document.getElementById('setup').open && taskDlg.open`));
+      t.check('signed in, there’s no note', await b.eval(`document.getElementById('setup').close(); taskDlg.close(); openTaskDialog(); const hidden = document.getElementById('tkNote').hidden; taskDlg.close(); return hidden`));
     },
   },
   {
@@ -2047,6 +2105,41 @@ module.exports = [
       await b.clickOn('#problemsBox .pb-row:last-child [data-pb="fix"]'); await sleep(1500);
       const fix = await b.eval(`return { open: ChatUI.isOpen(), cwd: C.info && C.info.cwd, text: document.getElementById('cText').value }`);
       t.check('Ask Claude to fix this opens a chat in the app’s folder with the error and the log', fix.open && /Cannot read properties of undefined/.test(fix.text) && /switcher\.log/.test(fix.text) && /usage\.js:42/.test(fix.text), fix);
+
+      // What went wrong lately: an error a toast said stays findable in Setup → Problems after the toast has gone.
+      await b.eval(`ChatUI.close(); window._again = 0; return 1`); await sleep(600);
+      await b.eval(`toast('Couldn’t reach the PC just now.', 9000, null, { tone: 'error', retry: () => { window._again++; } }); return 1`); await sleep(200);
+      const tt = await b.eval(`const t = document.getElementById('toast'); return { tone: t.dataset.tone, act: t.querySelector('.toast-act')?.textContent }`);
+      t.check('an error with a way to retry has Try again on its toast', tt.tone === 'error' && tt.act === 'Try again', tt);
+      await b.clickOn('#toast .toast-act'); await sleep(200);
+      t.check('which does it again, and it leaves the list', await b.eval(`return window._again === 1 && !/reach the PC/.test(localStorage.getItem('recent-problems') || '')`));
+      await b.eval(`toast('Couldn’t copy the files: the disk is full.', 9000, null, { tone: 'error', retry: () => { window._again++; } }); return 1`);
+      await b.eval(`await wrap(async () => { throw new Error('GitHub said no (token=ghp_abcdefghijklmnopqrstuvwxyz0123)'); })(); return 1`);
+      await b.eval(`openSetupAt('st-problems'); return 1`); await sleep(1200);
+      const rows = () => b.eval(`return [...document.querySelectorAll('#latelyBox .lately-row')].map(r => ({ text: r.querySelector('b').textContent, again: !!r.querySelector('[data-lately="again"]'), when: r.querySelector('.pb-when').textContent, where: (r.querySelector('.pb-where') || {}).textContent || '' }))`);
+      let lately = await rows();
+      t.check('Setup → Problems lists what went wrong lately, newest first, with when and where', lately.length === 2 && /GitHub said no/.test(lately[0].text) && /disk is full/.test(lately[1].text) && lately[1].when === 'just now' && lately[1].where === 'The hub', lately);
+      t.check('with Try again only where there’s a way to', lately[1].again && !lately[0].again, lately);
+      t.check('and never a key or token, even one in the message', /token=…/.test(lately[0].text) && !/ghp_abc/.test(await b.eval(`return localStorage.getItem('recent-problems')`)), lately[0]);
+      await t.shot(b, 'lately');
+      await b.clickOn('#latelyBox [data-lately="again"]'); await sleep(300);
+      lately = await rows();
+      t.check('Try again there does it again, and it leaves the list', (await b.eval(`return window._again`)) === 2 && lately.length === 1 && /GitHub said no/.test(lately[0].text), lately);
+      // Kept across a reload (Try again only lasts while the window is open); a day old, it's gone.
+      await b.eval(`const l = JSON.parse(localStorage.getItem('recent-problems')); l.push({ id: 'old', text: 'Something from the day before yesterday', at: Date.now() - 2 * 864e5, count: 1 }); localStorage.setItem('recent-problems', JSON.stringify(l)); location.reload(); return 1`).catch(() => {});
+      await sleep(3500);
+      await b.eval(`openSetupAt('st-problems'); return 1`); await sleep(1200);
+      lately = await rows();
+      t.check('it’s kept across a reload, and anything a day old is dropped', lately.length === 1 && /GitHub said no/.test(lately[0].text) && !lately[0].again, lately);
+      await b.clickOn('#latelyBox [data-lately="clear"]'); await sleep(200);
+      t.check('Put away clears it', await b.eval(`return !document.querySelector('#latelyBox .lately-row') && JSON.parse(localStorage.getItem('recent-problems')).length === 0`));
+      // The phone (phone access) has Setup → Problems too, with only what went wrong there.
+      const phone = await b.eval(`document.getElementById('setup').close(); window.REMOTE = true;
+        toast('Couldn’t put the link into a chat: the chat didn’t open in time. It’s kept, so you can try again.', 9000, null, { tone: 'error', retry: () => {} });
+        await openSetupAt('st-problems'); await new Promise(r => setTimeout(r, 900));
+        const box = document.getElementById('problemsBox'), r = { heading: (document.getElementById('st-problems') || {}).textContent, text: box && box.textContent.replace(/\\s+/g, ' '), again: !!(box && box.querySelector('[data-lately="again"]')) };
+        window.REMOTE = false; return r`);
+      t.check('the phone’s Setup lists them under Problems, with Try again', phone.heading === 'Problems' && /Couldn’t put the link into a chat/.test(phone.text || '') && phone.again && !/self-check/.test(phone.text || ''), phone);
     },
   },
   {
@@ -2251,6 +2344,8 @@ module.exports = [
       t.check('each says its project and how long ago', / · /.test(side.sub || ''), side.sub);
       await b.clickOn('#nav [data-view="recent"]'); await sleep(500);
       t.check('Recent chats in the sidebar opens the Recent chats page', await b.eval(`return S.view === 'recent'`));
+      const none = await b.eval(`const keep = S.projects; S.projects = keep.map(p => ({ ...p, sessions: [] })); renderRecent(); const e = document.querySelector('#page .empty-art'); const r = { text: e && e.textContent.replace(/\\s+/g, ' ').trim(), next: !!(e && e.querySelector('[data-act="project-new"]')) }; S.projects = keep; renderRecent(); return r`);
+      t.check('with no chats yet, it says how to start one', /No chats yet/.test(none.text || '') && none.next, none);
       await b.clickOn('.nav-h.recent'); await sleep(200);
       t.check('Recent folds away like the other sections', await b.eval(`return !document.querySelector('.nav-h.recent ~ .nav-chat[data-navchat="${side.ids[0]}"]') || !!document.querySelector('.nav-h.recent[aria-expanded="false"]')`));
       await b.clickOn('.nav-h.recent'); await sleep(200);
