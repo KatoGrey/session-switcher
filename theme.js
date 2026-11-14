@@ -433,6 +433,9 @@
       if (o.fHead) f.display = f.caps = stack(o.fHead, 'head') || f.display;
       if (o.fCode) f.mono = stack(o.fCode, 'code') || f.mono;
     }
+    // The standard themes' "Studio" look (ui/studio.css): one interface face for replies, headings and labels too,
+    // unless a font set or a pick in Setup says otherwise. Code stays in its monospace.
+    if (!t.family) { f.body = f.body || INTER; f.display = f.display || INTER; f.caps = f.caps || INTER; f.label = f.label || INTER; }
     for (const [k, v] of [['--f-body', f.body], ['--f-display', f.display], ['--f-caps', f.caps], ['--f-label', f.label], ['--f-mono', f.mono]]) { if (v) st.setProperty(k, v); else st.removeProperty(k); }
     // Interface text stays easy to scan; explicit font choices still win.
     st.setProperty('--f-ui', f.body || INTER);

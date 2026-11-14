@@ -1,0 +1,189 @@
+/* "Studio": the standard themes' look (Crimson, Sapphire, Emerald, Graphite and the rest; html.hub2 with no
+   data-family). One interface face (Inter, unless you pick fonts in Setup), one size scale, soft corners, layered
+   surfaces with a hairline and a quiet shadow, and the theme's accent kept for focus, selection and what's live.
+   Loaded last, so it only overrides; every theme's colours still apply. The saga themes (Imperial, Rebel) and the
+   anime, glam and custom families carry data-family and keep their own look. */
+
+:root.hub2:not([data-family]){
+  --radius:8px;
+  --r-card:12px;
+  --st-r-xs:6px; --st-r:8px; --st-r-lg:12px; --st-r-xl:16px;
+  /* Elevation: a faint top highlight (dark mode) and a soft drop. */
+  --st-hi:inset 0 1px 0 rgb(var(--c-ede6d9) / .035);
+  --st-shadow:0 1px 2px rgb(var(--c-000000) / .28), 0 8px 24px -14px rgb(var(--c-000000) / .55);
+  --st-shadow-lg:0 2px 6px rgb(var(--c-000000) / .3), 0 24px 60px -24px rgb(var(--c-000000) / .75);
+  --st-hover:rgb(var(--c-ede6d9) / .05);
+  --st-press:rgb(var(--c-ede6d9) / .08);
+  --st-line:rgb(var(--c-ede6d9) / .07);
+  --focus:var(--ember);
+  --st-focus-glow:0 0 0 3px rgb(var(--c-cf8274) / .22);
+  --st-t-meta:12px; --st-t-body:14px; --st-t-title:15px; --st-t-h3:17px; --st-t-h2:21px; --st-t-h1:28px;
+  --st-ease:cubic-bezier(.2,.8,.2,1);
+}
+:root.hub2:not([data-family])[data-mode="light"]{
+  --st-hi:none;
+  --st-shadow:0 1px 2px rgb(var(--c-000000) / .06), 0 8px 24px -16px rgb(var(--c-000000) / .18);
+  --st-shadow-lg:0 2px 6px rgb(var(--c-000000) / .08), 0 24px 60px -28px rgb(var(--c-000000) / .3);
+  --st-hover:rgb(var(--c-000000) / .04);
+  --st-press:rgb(var(--c-000000) / .07);
+  --st-line:rgb(var(--c-000000) / .07);
+}
+
+/* ---------- the page ---------- */
+.hub2:not([data-family]) body{
+  background:radial-gradient(1200px 480px at 70% -14%, rgb(var(--c-a5463f) / .06), transparent 64%), var(--abyss);
+  background-attachment:fixed;
+  font-feature-settings:"cv11","ss01";
+}
+.hub2:not([data-family]) ::selection{background:rgb(var(--c-cf8274) / .32)}
+
+/* One focus look everywhere: the accent, 2px. Each control keeps its own offset. */
+.hub2:not([data-family]) :focus-visible{outline-color:var(--focus);outline-width:2px}
+.hub2:not([data-family]) :is(input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select):focus-visible{outline:none;border-color:var(--focus) !important;box-shadow:var(--st-focus-glow)}
+
+/* Labels: small, quiet, the interface face (no wide-spaced monospace). */
+.hub2:not([data-family]) :is(.eyebrow,.nav-h,.wk-eyebrow,.wk-run-label,.wk-section-label h3){font-family:var(--f-ui);font-weight:600;letter-spacing:.06em}
+.hub2:not([data-family]) .eyebrow{font-size:11px;color:var(--ash)}
+
+/* ---------- top bar ---------- */
+.hub2:not([data-family]) .bar{background:rgb(var(--c-0a090c) / .82);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--st-line)}
+.hub2:not([data-family])[data-mode="light"] .bar{background:rgb(var(--c-0a090c) / .86)}
+.hub2:not([data-family]) .seek{border-radius:var(--st-r);background:var(--vellum);border:1px solid var(--seam);height:36px;box-shadow:var(--st-hi);transition:border-color .15s,background .15s}
+.hub2:not([data-family]) .seek:hover{border-color:var(--seam-2);background:var(--vellum-2)}
+.hub2:not([data-family]) .seek kbd,.hub2:not([data-family]) kbd{font:500 11px/1 var(--f-ui);padding:3px 6px;border-radius:5px;border:1px solid var(--seam-2);background:var(--vellum-2);color:var(--ash);box-shadow:inset 0 -1px 0 var(--seam)}
+.hub2:not([data-family]) :is(.pulse,.usechip){border-radius:var(--st-r)}
+
+/* ---------- side navigation ---------- */
+.hub2:not([data-family]) .nav{background:var(--abyss-2);border-right:1px solid var(--st-line)}
+.hub2:not([data-family]) .nav-i{border-radius:var(--st-r);min-height:34px;padding-inline:10px;color:var(--parch-2);font-weight:450;transition:background .12s,color .12s}
+.hub2:not([data-family]) .nav-i:hover{background:var(--st-hover);color:var(--parch)}
+.hub2:not([data-family]) .nav-i[aria-current="true"]{background:var(--vellum-2);color:var(--parch);box-shadow:var(--st-hi),inset 0 0 0 1px var(--seam);font-weight:550}
+.hub2:not([data-family]) .nav-i[aria-current="true"] .glyph{color:var(--ember)}
+.hub2:not([data-family]) .nav-i .glyph{color:var(--ash);width:18px;text-align:center}
+.hub2:not([data-family]) .nav-h{font-size:11px;color:var(--ash-2);text-transform:uppercase}
+.hub2:not([data-family]) .nav-newchat{border-radius:var(--st-r);background:var(--vellum-2);box-shadow:var(--st-hi)}
+.hub2:not([data-family]) .nav .tag{border-radius:999px;min-width:20px;padding:1px 7px;font:600 11px/1.5 var(--f-ui);text-align:center}
+.hub2:not([data-family]) .nav .count{font:500 11.5px var(--f-ui);color:var(--ash-2)}
+
+/* ---------- buttons ---------- */
+.hub2:not([data-family]) .btn{border-radius:var(--st-r);font:550 13px/1.2 var(--f-ui);padding:8px 14px;min-height:34px;border:1px solid var(--seam-2);background:var(--vellum-2);color:var(--parch);box-shadow:var(--st-hi);transition:background .12s,border-color .12s,color .12s,transform .08s}
+.hub2:not([data-family]) .btn:hover:not(:disabled){background:var(--vellum-3);border-color:rgb(var(--c-ede6d9) / .16)}
+.hub2:not([data-family]) .btn:active:not(:disabled){transform:translateY(.5px)}
+.hub2:not([data-family]) .btn.sm{font-size:12px;padding:6px 10px;min-height:28px;border-radius:var(--st-r-xs)}
+.hub2:not([data-family]) .btn.quiet{background:transparent;border-color:transparent;box-shadow:none;color:var(--parch-2)}
+.hub2:not([data-family]) .btn.quiet:hover:not(:disabled){background:var(--st-hover);color:var(--parch);border-color:transparent}
+.hub2:not([data-family]) .btn.prime{background:var(--parch);color:var(--abyss);border-color:transparent;box-shadow:0 1px 0 rgb(var(--c-ffffff) / .25) inset,0 6px 16px -8px rgb(var(--c-000000) / .6)}
+.hub2:not([data-family]) .btn.prime:hover:not(:disabled){background:rgb(var(--c-ffffff));border-color:transparent}
+.hub2:not([data-family])[data-mode="light"] .btn.prime:hover:not(:disabled){background:var(--parch-2)}
+.hub2:not([data-family]) .btn.gilt{background:var(--gilt);color:var(--gilt-ink);border-color:transparent;box-shadow:0 6px 18px -10px rgb(var(--c-d9bf74) / .9)}
+.hub2:not([data-family]) .btn.gilt:hover:not(:disabled){filter:brightness(1.06)}
+.hub2:not([data-family]) .btn:disabled{opacity:.5}
+.hub2:not([data-family]) :is(.linkish,.wk-manage){text-underline-offset:3px;text-decoration-color:rgb(var(--c-ede6d9) / .3)}
+.hub2:not([data-family]) .icon{border-radius:var(--st-r)}
+.hub2:not([data-family]) .icon:hover{background:var(--st-hover)}
+
+/* ---------- inputs ---------- */
+.hub2:not([data-family]) :is(.field input,.field select,.field textarea,.mcp-paste-row input,.wk-tools select,.wk-search,.wk-runwith select,.subs-dlg :is(input,select,textarea),.rd-body :is(input[type=text],input[type=search],input[type=password],input[type=url],input:not([type]),select,textarea)){border-radius:var(--st-r);border:1px solid var(--seam-2);background:var(--abyss-2);transition:border-color .12s,box-shadow .12s}
+.hub2:not([data-family]) :is(.wk-tools select,.wk-runwith select){background:var(--vellum)}
+
+/* ---------- toggles (Setup) ---------- */
+.hub2:not([data-family]) .toggle{border-radius:var(--st-r)}
+
+/* ---------- cards and sections ---------- */
+.hub2:not([data-family]) .omen{border-radius:var(--st-r-lg);border-color:var(--seam);background:var(--vellum);box-shadow:var(--st-hi),var(--st-shadow);transition:border-color .15s,box-shadow .15s,transform .15s}
+.hub2:not([data-family]) .omen:hover{border-color:var(--seam-2)}
+.hub2:not([data-family]) .omen.needs{border-color:rgb(var(--c-d9bf74) / .45);box-shadow:var(--st-hi),var(--st-shadow),0 0 0 1px rgb(var(--c-d9bf74) / .12)}
+.hub2:not([data-family]) .omen :is(input,textarea){border-radius:var(--st-r)}
+.hub2:not([data-family]) .sec-h{border-bottom:1px solid var(--st-line)}
+.hub2:not([data-family]) .sec-h h2{font:650 var(--st-t-h2)/1.25 var(--f-ui-head);letter-spacing:-.022em}
+.hub2:not([data-family]) .sec-h .tag,.hub2:not([data-family]) .sec-h .count{border-radius:999px}
+.hub2:not([data-family]) .hero h1{font-weight:650;letter-spacing:-.035em}
+.hub2:not([data-family]) .hero .subtitle{font-size:15px}
+.hub2:not([data-family]) .hub-jump{background:rgb(var(--c-0a090c) / .82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.hub2:not([data-family]) .hub-jump :is(a,button){border-radius:var(--st-r-xs)}
+.hub2:not([data-family]) .hub-jump :is(a,button):hover{background:var(--st-hover)}
+
+/* Generic framed panels in the hub (self-check, the workspace card, lists). */
+.hub2:not([data-family]) #page :is(.check-note,.selfcheck,.hub-note,.notice,.wk-setup,.wk-setup-box,.studio-entry){border-radius:var(--st-r-lg)}
+
+/* ---------- menus, palette, dialogs ---------- */
+.hub2:not([data-family]) .menu{border-radius:var(--st-r-lg);border:1px solid var(--seam-2);background:var(--vellum-2);box-shadow:var(--st-shadow-lg);padding:6px}
+.hub2:not([data-family]) .menu button{border-radius:var(--st-r-xs)}
+.hub2:not([data-family]) .menu hr{border-color:var(--st-line)}
+.hub2:not([data-family]) .palette{background:rgb(var(--c-050406) / .55);backdrop-filter:blur(6px)}
+.hub2:not([data-family]) .palette>*:first-child,.hub2:not([data-family]) .pal-box{border-radius:var(--st-r-xl);box-shadow:var(--st-shadow-lg);border-color:var(--seam-2)}
+.hub2:not([data-family]) dialog{border-radius:var(--st-r-xl);border:1px solid var(--seam-2);background:var(--vellum);box-shadow:var(--st-shadow-lg)}
+.hub2:not([data-family]) dialog::backdrop{background:rgb(var(--c-050406) / .55);backdrop-filter:blur(4px)}
+.hub2:not([data-family]) .setup-head{border-bottom:1px solid var(--st-line)}
+.hub2:not([data-family]) .setup-head h3{font:650 17px/1.3 var(--f-ui-head);letter-spacing:-.015em}
+
+/* ---------- conversations ---------- */
+.hub2:not([data-family]) .rail{background:var(--abyss-2);border-right:1px solid var(--st-line)}
+.hub2:not([data-family]) .rail :is(.ri,.rail-i){border-radius:var(--st-r)}
+.hub2:not([data-family]) .c-head{border-bottom:1px solid var(--st-line)}
+.hub2:not([data-family]) .c-box{border-radius:var(--st-r-xl);border-color:var(--seam);background:var(--vellum);box-shadow:var(--st-hi),var(--st-shadow-lg)}
+.hub2:not([data-family]) .c-box:focus-within{border-color:rgb(var(--c-cf8274) / .5);box-shadow:var(--st-hi),var(--st-shadow-lg),var(--st-focus-glow)}
+.hub2:not([data-family]) .c-box textarea{font:400 15px/1.55 var(--f-ui)}
+.hub2:not([data-family]) .turn .who{font:650 12px/1.3 var(--f-ui);letter-spacing:.04em}
+.hub2:not([data-family]) .md{line-height:1.65}
+.hub2:not([data-family]) .md :is(h1,h2,h3,h4){font-family:var(--f-ui-head);font-weight:650;letter-spacing:-.015em}
+.hub2:not([data-family]) .md :not(pre)>code{border-radius:5px;padding:.1em .38em;background:var(--vellum-2);border:1px solid var(--seam)}
+.hub2:not([data-family]) .md pre,.hub2:not([data-family]) .code pre{border-radius:var(--st-r);border:1px solid var(--seam);background:var(--abyss-2)}
+.hub2:not([data-family]) .md blockquote{border-left-color:var(--seam-2)}
+.hub2:not([data-family]) .md table{border-radius:var(--st-r);overflow:hidden}
+
+/* ---------- Your work ---------- */
+.hub2:not([data-family]) .wk-workspace{--r-card:var(--st-r-lg)}
+.hub2:not([data-family]) .wk-workspace h1{font-weight:650;letter-spacing:-.035em}
+.hub2:not([data-family]) :is(.wk-metric,.wk-inspector,.wk-group,.wk-live-chat,.wk-setup,.wk-setup-box,.wk-tool,.wk-gate,.wk-review-route,.wk-command-grid,.wk-issue-context,.wk-evidence-link){border-radius:var(--st-r-lg)}
+.hub2:not([data-family]) .wk-inspector{box-shadow:var(--st-hi),var(--st-shadow)}
+.hub2:not([data-family]) .wk-row{border-radius:var(--st-r)}
+.hub2:not([data-family]) .wk-row.selected{box-shadow:inset 3px 0 0 var(--ember);background:rgb(var(--c-cf8274) / .07)}
+.hub2:not([data-family]) .wk-filters button{border-radius:var(--st-r-xs)}
+.hub2:not([data-family]) .wk-filters button[aria-pressed="true"]{background:var(--vellum-2);box-shadow:var(--st-hi),inset 0 0 0 1px var(--seam)}
+
+/* ---------- motion ---------- */
+@media (prefers-reduced-motion:reduce){.hub2:not([data-family]) :is(.btn,.omen,.nav-i,.seek){transition:none}}
+
+/* ================= second pass: the bigger moves ================= */
+
+/* Hub cards: no coloured edge; more air; a lift on hover; they share the row instead of leaving an empty column. */
+.hub2:not([data-family]) .summons-grid{grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:14px}
+.hub2:not([data-family]) .board{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:14px}
+.hub2:not([data-family]) :is(.summons-grid,.board)>.omen:only-child{max-width:620px}
+.hub2:not([data-family]) .omen{padding:0;background:linear-gradient(180deg,var(--vellum-2),var(--vellum) 46%)}
+.hub2:not([data-family]) .omen-in{box-shadow:none;padding:14px 16px 12px;gap:7px}
+.hub2:not([data-family]) .o-top{font:600 12px/1.2 var(--f-ui)}
+.hub2:not([data-family]) :is(.o-title,.o-title button){font:650 15.5px/1.35 var(--f-ui);letter-spacing:-.01em}
+.hub2:not([data-family]) .o-foot{padding-top:6px;border-top:1px solid var(--st-line);margin-top:4px}
+.hub2:not([data-family]) .o-quote{border-left-color:var(--seam-2)}
+.motion.hub2:not([data-family]) .omen:hover,.hub2:not([data-family]) body.motion .omen:hover{transform:translateY(-1px);box-shadow:var(--st-hi),var(--st-shadow-lg)}
+
+/* The hub's "on this page" strip: quiet pills, the current one filled. */
+.hub2:not([data-family]) .hj{border-radius:999px;padding:5px 11px;color:var(--ash);font:500 12.5px/1.2 var(--f-ui)}
+.hub2:not([data-family]) .hj:hover{background:var(--st-hover);color:var(--parch)}
+.hub2:not([data-family]) .hj[aria-current="true"]{background:var(--vellum-2);color:var(--parch);box-shadow:var(--st-hi),inset 0 0 0 1px var(--seam)}
+.hub2:not([data-family]) .hj .count{font:600 11px/1 var(--f-ui);margin-left:6px;color:var(--ash)}
+
+/* "Your workspace": a card with an icon tile, not a ruled strip. */
+.hub2:not([data-family]) .wk-hub-entry{border:1px solid var(--seam);border-radius:var(--st-r-lg);background:linear-gradient(110deg,rgb(var(--c-cf8274) / .09),var(--vellum) 42%);box-shadow:var(--st-hi),var(--st-shadow);padding:18px 20px}
+.hub2:not([data-family]) .wk-hub-mark{border:0;width:42px;height:42px;border-radius:var(--st-r-lg);background:rgb(var(--c-cf8274) / .14);font-size:20px;box-shadow:inset 0 0 0 1px rgb(var(--c-cf8274) / .25)}
+.hub2:not([data-family]) .wk-hub-entry p{letter-spacing:.06em;font-weight:600}
+.hub2:not([data-family]) .wk-hub-entry h2{font-weight:650;letter-spacing:-.025em}
+
+/* The message box: one big soft card, a ring in the accent while you type. */
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-box{border-radius:var(--st-r-xl);border:1px solid var(--seam);background:var(--vellum);padding:12px 12px 8px 16px;box-shadow:var(--st-hi),var(--st-shadow-lg)}
+:root.hub2:not([data-family]) body:not(.aide-panel) .c-box:focus-within{border-color:rgb(var(--c-cf8274) / .55);box-shadow:var(--st-hi),var(--st-shadow-lg),var(--st-focus-glow)}
+:root.hub2:not([data-family]) body:not(.aide-panel) .chat.to-codex .c-box:focus-within{border-color:rgb(var(--c-6f97d8) / .6);box-shadow:var(--st-hi),var(--st-shadow-lg),0 0 0 3px rgb(var(--c-6f97d8) / .2)}
+.hub2:not([data-family]) .c-dock{background:linear-gradient(180deg,transparent,var(--abyss) 36%)}
+.hub2:not([data-family]) :is(#cSend,#cStop){border-radius:var(--st-r)}
+
+/* Chat: the hand-over card and the steps line up with the rest. */
+.hub2:not([data-family]) #cFeed :is(.ububble,.handover,.ho-card,.relay-card){border-radius:var(--st-r-lg)}
+.hub2:not([data-family]) .c-head{background:rgb(var(--c-0a090c) / .6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+
+/* Lists in the side navigation and Recent chats: rounded rows, a clear hover. */
+.hub2:not([data-family]) :is(.nav .proj,.nav .wi,.nav .live-i,.nav-proj,.nav li>button,.rc-row,.recent-row){border-radius:var(--st-r)}
+
+/* Tags and counts: pills. */
+.hub2:not([data-family]) :is(.tag,.count-pill,.badge){border-radius:999px}

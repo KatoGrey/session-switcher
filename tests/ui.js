@@ -1438,12 +1438,12 @@ module.exports = [
       t.check('42 families to choose from, in 11 ready-made sets', cat.n === 42 && cat.sets === 11, cat);
       const served = await b.eval(`const bad = []; for (const f of ${JSON.stringify(cat.files)}) { const r = await fetch('/fonts/' + f + '.woff2'); if (!r.ok || r.headers.get('content-type') !== 'font/woff2' || (await r.arrayBuffer()).byteLength < 2000) bad.push(f); } return bad`);
       t.check('every font file is served', served.length === 0, served);
-      // The default look is untouched: Spectral replies, Playfair headings, JetBrains Mono code, no ligatures.
+      // The standard themes' Studio look: Inter for replies and headings, JetBrains Mono code, no ligatures.
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2000);
       const read = `await document.fonts.ready; const ff = s => { const e = document.querySelector(s); return e ? getComputedStyle(e).fontFamily : null; }; const code = document.querySelector('#cFeed .md code, #cFeed pre');
         return { body: ff('#cFeed .md p'), code: code && getComputedStyle(code).fontFamily, liga: code && getComputedStyle(code).fontVariantLigatures, display: getComputedStyle(document.documentElement).getPropertyValue('--f-display').trim() }`;
       const def = await b.eval(read);
-      t.check('out of the box: Spectral replies, Playfair headings, JetBrains Mono code', /^"?Spectral/.test(def.body) && /^"Playfair"/.test(def.display) && /^"?JetBrains Mono/.test(def.code), def);
+      t.check('out of the box: Inter replies and headings, JetBrains Mono code', /^"?Inter/.test(def.body) && /^"Inter"/.test(def.display) && /^"?JetBrains Mono/.test(def.code), def);
       t.check('code ligatures start off', def.liga === 'none', def);
       // A set changes all three; its fonts load.
       await b.eval(`Look.set({ fontSet: 'editorial' }); return 1`); await sleep(400);
@@ -1789,10 +1789,11 @@ module.exports = [
       let tries = 0, block = 2;
       await b.intercept('*/ui/base.js*', () => (block-- > 0 ? (tries++, { status: 503, type: 'text/plain', body: 'busy' }) : null));
       await b.nav(`${await b.eval('return location.origin')}/`, 4000);
-      const r = await b.eval(`return { alert: document.querySelector('[role="alert"]')?.textContent || '', loaded: typeof wrap === 'function' }`);
+      const r = await b.eval(`return { alert: document.querySelector('p[role="alert"]')?.textContent || '', loaded: typeof wrap === 'function' }`);
       t.check('it reloads once by itself, and then says it didn’t load fully', tries === 2 && /didn’t load fully/.test(r.alert) && !r.loaded, { tries, ...r });
       await b.nav(`${await b.eval('return location.origin')}/`, 3000);
-      t.check('the next time it loads, it’s whole again', await b.eval(`return typeof wrap === 'function' && !document.querySelector('[role="alert"]')`));
+      // (The notice is a <p role="alert">; the toasts' screen-reader region is always there, empty.)
+      t.check('the next time it loads, it’s whole again', await b.eval(`return typeof wrap === 'function' && !document.querySelector('p[role="alert"]')`));
       b.logs.length = 0;   // the lost script's errors were the point of this test
     },
   },
