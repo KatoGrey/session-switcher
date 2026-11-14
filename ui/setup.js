@@ -309,6 +309,7 @@ function renderLook() {
     <p class="d-h">Interface</p>
     <div class="lk-row"><label for="lkUi"><b>Interface size</b><small>Scales everything: bars, buttons, cards and text</small></label>
       <div class="lk-range"><span class="a-sm" aria-hidden="true">▢</span><input type="range" id="lkUi" min="80" max="130" step="5" value="${o.ui}" data-look="ui"><span class="a-lg" aria-hidden="true">▢</span><output id="lkUiV">${o.ui}%</output></div></div>
+    <label class="toggle"><input type="checkbox" data-layout-next ${Shell.next() ? 'checked' : ''}><span><b>Try the new layout</b><span>The sidebar stays beside a chat, so the hub, Your work and your projects are one click away. For the main themes; Imperial, Rebel and the other theme families keep theirs.</span></span></label>
     <div class="lk-preview" aria-hidden="true">
       <div class="turn" data-prov="claude"><div class="who"><span class="who-n">Claude</span><span class="who-m">Preview</span></div><div class="part"><div class="final"><div class="md"><p>This is how replies read. <strong>Bold words</strong>, <code>code</code> and <a href="#">links</a> follow your theme.</p></div></div></div></div>
       <div class="umsg"><div class="ububble"><div class="utext">And this is how your messages look.</div></div></div>
@@ -386,6 +387,8 @@ $('setupBody').addEventListener('click', e => {
   if (e.target.closest('[data-look-reset]')) { Look.reset(); renderLook(); toast('Back to the original look.', 2000); }
 });
 $('setupBody').addEventListener('change', e => {
+  const ln = e.target.closest('input[data-layout-next]');
+  if (ln) { Shell.setNext(ln.checked); e.stopImmediatePropagation(); return; }
   const c = e.target.closest('input[type="checkbox"][data-look]');
   if (c) { Look.set({ [c.dataset.look]: c.checked }); e.stopImmediatePropagation(); }
   // Font picks apply at once; the list keeps focus, so arrow keys can try one font after another.

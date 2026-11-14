@@ -3,6 +3,35 @@ const demo = require('./demo');
 const { responder } = require('./work.ui');
 
 module.exports = [{
+  name: 'new layout',
+  // Try the new layout: the sidebar stays beside a chat (main themes, wide screens); off, nothing changes.
+  async run(t) {
+    const b = await t.open({ state: 'busy', width: 1440, height: 900, respond: responder() });
+    await sleep(600);
+    const id = JSON.stringify(demo.ID['s-bard']);
+    const shape = () => b.eval(`const nav = document.getElementById('nav').getBoundingClientRect(), chat = document.getElementById('chat').getBoundingClientRect(), rail = document.getElementById('cRail');
+      const hit = document.elementFromPoint(nav.left + nav.width / 2, nav.top + 120);
+      return { navShows: !!hit && document.getElementById('nav').contains(hit), chatLeft: Math.round(chat.left), navW: Math.round(nav.width), rail: !!rail && getComputedStyle(rail).display !== 'none' }`);
+    await b.eval(`ChatUI.open({ sessionId: ${id} }); return 1`); await sleep(2200);
+    let r = await shape();
+    t.check('off: a chat has its own list of open chats, as before', r.rail && !r.navShows && r.chatLeft === 0, r);
+    await b.eval(`ChatUI.close(); openSetup && openSetup('look'); return 1`).catch(() => {}); await sleep(600);
+    const toggle = await b.eval(`const c = document.querySelector('#setupBody input[data-layout-next]'); if (!c) return false; c.click(); return c.checked`);
+    t.check('Appearance has “Try the new layout”', toggle === true, toggle);
+    await b.eval(`document.getElementById('setup').open && document.getElementById('setup').close(); if (!Shell.next()) Shell.setNext(true); ChatUI.open({ sessionId: ${id} }); return 1`); await sleep(2200);
+    r = await shape();
+    t.check('on: the sidebar stays beside the chat, and the chat starts where it ends', r.navShows && !r.rail && Math.abs(r.chatLeft - r.navW) <= 2, r);
+    await t.shot(b, 'new-layout');
+    t.check('the open chat is marked in the sidebar', await b.eval(`return !!document.querySelector('#nav .nav-chat[aria-current="true"]')`));
+    await b.eval(`document.querySelector('#nav [data-view="work"]').click(); return 1`); await sleep(1200);
+    t.check('a destination in the sidebar goes there from a chat', await b.eval(`return S.view === 'work' && !ChatUI.isOpen()`));
+    // Imperial keeps its own layout, switch or not.
+    await b.eval(`Look.set({ theme: 'imperial' }); ChatUI.open({ sessionId: ${id} }); return 1`); await sleep(2200);
+    r = await shape();
+    t.check('Imperial keeps its chat list and layout', r.rail && r.chatLeft === 0, r);
+    await b.eval(`ChatUI.close(); Shell.setNext(false); Look.reset(); return 1`);
+  },
+}, {
   name: 'workspace shell',
   async run(t) {
     const calls = [];

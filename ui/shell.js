@@ -54,7 +54,18 @@ const Shell = (() => {
     if (e.target.closest('[data-shell-connections]')) { setNavOpen(false); openConnections(); }
     if (e.target.closest('[data-shell-subagents]')) { setNavOpen(false); openSubagents(); }
   });
-  return { sync, toggle, location, captureReturn, restoreReturn, canCollapse: () => desktop.matches && standard() };
+  // Try the new layout (Setup → Appearance, saved on this device): the main themes' sidebar stays beside a chat
+  // instead of giving way to the chat's own list, so the hub, Your work and your projects stay one click away.
+  // Imperial, Rebel and the other theme families keep their layout.
+  const next = () => store('layout-next') === 'true';
+  function setNext(on) {
+    store('layout-next', String(!!on));
+    document.documentElement.classList.toggle('layout-next', !!on);
+    if (typeof renderNav === 'function') renderNav();
+    sync();
+  }
+  document.documentElement.classList.toggle('layout-next', next());
+  return { sync, toggle, location, captureReturn, restoreReturn, canCollapse: () => desktop.matches && standard(), next, setNext };
 })();
 function setNavOpen(on, restoreFocus = false) {
   document.body.classList.toggle('nav-open', on);

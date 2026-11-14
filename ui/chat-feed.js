@@ -274,7 +274,7 @@ async function loadRelated() {
   let r = null;
   try { r = await api(`/api/related?${q}`); } catch { return; }   // the panel just goes without
   if (gen !== C.gen) return;
-  C.related = r && !r.none ? r : null;
+  C.related = r && !r.none && (r.issue || r.pr || (r.runs && r.runs.length) || r.origin) ? r : null;
   renderLedgerSoon();
 }
 const REL_ROLE = { plan: 'Plan', start: 'Work', review: 'Review', 'cross-review': 'Cross-review', validate: 'Validate', handoff: 'Handoff', 'fix-comments': 'Fix comments', 'fix-checks': 'Fix checks', update: 'Update branch' };

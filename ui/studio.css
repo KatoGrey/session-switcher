@@ -307,3 +307,16 @@
 .hub2:not([data-family]) :is(.nav-h,.ledger .lg-h) .count{font:500 12px var(--f-ui);letter-spacing:0;color:var(--ash-2)}
 .hub2:not([data-family]) .ledger .lg-h{margin:20px 0 8px}
 .hub2:not([data-family]) .ledger .lg-h:first-child{margin-top:4px}
+
+/* Try the new layout (Shell.next, html.layout-next): on a wide screen the sidebar stays beside a chat. The chat
+   starts where the sidebar ends and drops its own list of open chats; the sidebar's Active now shows them, with the
+   open one marked. Collapsing the sidebar gives the chat the whole width, as before. */
+@media (min-width:981px){
+  html.layout-next.hub2:not([data-family]) body:not(.pane):not(.solo):not(.nav-collapsed) .chat{left:var(--nav-w)}
+  html.layout-next.hub2:not([data-family]) body:not(.pane):not(.solo) .chat > .rail{display:none}
+  html.layout-next.hub2:not([data-family]) body:not(.pane):not(.solo) .chat{grid-template-columns:minmax(0,1fr) 300px}
+  html.layout-next.hub2:not([data-family]) body:not(.pane):not(.solo) .chat.no-ledger{grid-template-columns:minmax(0,1fr)}
+  html.layout-next.hub2:not([data-family]) body:not(.pane):not(.solo) .chat.split{grid-template-columns:minmax(0,var(--sa,1fr)) 7px minmax(0,var(--sb,1fr))}
+  html.layout-next.hub2:not([data-family]) body.chat-open .nav .nav-i:not(.nav-chat)[aria-current="true"]{background:none;box-shadow:none;font-weight:inherit;color:var(--parch-2)}
+  html.layout-next.hub2:not([data-family]) body.chat-open .nav .nav-chat[aria-current="true"]{background:var(--vellum-2);color:var(--parch);box-shadow:var(--st-hi),inset 0 0 0 1px var(--seam)}
+}
