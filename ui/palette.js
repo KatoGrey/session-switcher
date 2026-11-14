@@ -163,6 +163,7 @@ const paletteHere = () => (window.ChatUI && ChatUI.isOpen() && C.info && C.info.
 async function openSetupAt(id) {
   await openSetup();
   setTimeout(() => {
+    if (typeof setupShowSection === 'function') setupShowSection(id);   // with Setup in groups, that section's group first
     const h = document.getElementById(id);
     if (!h) { if (window.REMOTE && $('st-health')) toast('That part of Setup is only on the PC itself. Open Setup there to change it.', 7000); return; }
     h.scrollIntoView({ block: 'start' });

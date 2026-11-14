@@ -77,11 +77,13 @@ function renderSetup(j) {
       <div class="field"><label>Rules and tools</label><div class="row2"><span class="rd-hint">Write rules once for all of them (CLAUDE.md and AGENTS.md), and give each one the other’s MCP tools.</span><button class="btn" data-fix="rules">Rules and tools…</button></div></div>
     </div>
     ${geminiHtml()}
+    ${window.REMOTE ? '' : `<p class="d-h" id="st-helpers">Subagents</p><div class="prefs"><div class="field"><label>Helpers a chat hands work to</label><div class="row2"><span class="rd-hint">Which assistant, model and effort each subagent runs on (a fast scout for look-ups, a careful reviewer, Codex for a second opinion).</span><button class="btn" data-fix="subagents">Subagents…</button></div></div></div>`}
     ${homeSetupHtml()}
     ${window.REMOTE ? `<p class="d-h" id="st-phone">This phone</p><div class="prefs"><p class="ph-note">You’re using Session Switcher on your PC from this phone.</p><div id="pushBox"></div>
       ${window.Android ? '<button class="btn" data-fix="phone-disconnect">Disconnect this phone</button>' : ''}</div>` : `<p class="d-h" id="st-phone">Phone access</p><div class="prefs" id="phoneBox"><p class="loading">Checking…</p></div>`}
     ${window.REMOTE ? '' : aideSetupHtml()}
     ${window.desktop ? '<p class="d-h" id="st-desktop">Desktop app</p><div class="prefs" id="deskBox"><p class="loading">Checking…</p></div>' : ''}
+    ${window.REMOTE ? '' : '<p class="d-h" id="st-lite">Switcher Lite</p><div class="prefs"><div class="field"><label>A lighter Session Switcher</label><div class="row2"><span class="rd-hint">Buckets, stages and plans for your chats, made for a phone or a small window. It shares your chats and accounts with this app.</span><button class="btn" data-fix="lite">Open Switcher Lite</button></div></div></div>'}
     ${window.REMOTE ? '<p class="d-h" id="st-problems">Problems</p><div class="prefs" id="problemsBox"></div>' : '<p class="d-h" id="st-problems">Problems and speed</p><div class="prefs" id="problemsBox"><p class="loading">Checking…</p></div>'}
     <p class="d-h" id="st-app">App</p>
     <div class="app-actions">
@@ -94,7 +96,62 @@ function renderSetup(j) {
       <button class="btn" data-fix="restart">Restart</button><button class="btn danger" data-fix="quit">Quit Session Switcher</button>
     </div>
     <p class="ver">Session Switcher ${esc(j.appVersion)}. Your chats are read from your own .claude folder and never leave this PC.</p>`;
+  groupSetup();
 }
+/* ---------- Setup in groups (the new layout) ---------- */
+// With the new layout on, Options shows one group at a time instead of one long sheet with a jump list. Each section
+// (its st-… heading and everything after it, up to the next one) belongs to a group; a link to a section (Ctrl+K,
+// the Setup dot, Try again) opens its group first. Off, the sheet is as it was.
+const SETUP_GROUPS = [
+  ['health', 'Health', ['st-health', 'st-problems']],
+  ['general', 'General', ['st-alerts', 'st-prefs']],
+  ['assistants', 'Assistants', ['st-codex', 'st-gemini', 'st-helpers']],
+  ['connections', 'Connections', ['st-places']],
+  ['devices', 'Devices', ['st-phone', 'st-home', 'st-desktop', 'st-lite']],
+  ['companion', 'Companion', ['st-companion']],
+  ['about', 'About', ['st-app']],
+];
+const setupGrouped = () => typeof Shell === 'object' && typeof Shell.next === 'function' && Shell.next() && document.documentElement.matches('.hub2:not([data-family])');
+const setupGroupOf = id => (SETUP_GROUPS.find(g => g[2].includes(id)) || [])[0] || null;
+function groupSetup() {
+  const body = $('setupBody'); if (!body || !setupGrouped()) return;
+  let g = 'health';   // what comes before the first heading (Getting started, a phone's note) is Health's
+  for (const el of [...body.children]) {
+    if (el.matches('.setup-toc')) continue;
+    const own = el.id && setupGroupOf(el.id) ? el.id : null;
+    if (own) g = setupGroupOf(own);
+    el.dataset.sg = g;
+  }
+  const toc = body.querySelector('.setup-toc');
+  const tabs = SETUP_GROUPS.filter(([k]) => body.querySelector(`[data-sg="${k}"]`));
+  if (toc) toc.outerHTML = `<div class="st-groups" role="tablist" aria-label="Setup groups">${tabs.map(([k, label]) => `<button type="button" role="tab" data-sg-tab="${k}" aria-selected="false">${esc(label)}</button>`).join('')}</div>`;
+  showSetupGroup(store('setup-group') || 'health', false);
+}
+function showSetupGroup(k, remember = true) {
+  const body = $('setupBody'); if (!body) return;
+  if (!body.querySelector(`[data-sg="${k}"]`)) k = 'health';
+  if (remember) store('setup-group', k);
+  for (const el of body.querySelectorAll('[data-sg]')) el.classList.toggle('sg-off', el.dataset.sg !== k);
+  for (const b of body.querySelectorAll('[data-sg-tab]')) { const on = b.dataset.sgTab === k; b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; }
+}
+// A link to one section: its group first (then the caller scrolls to it).
+function setupShowSection(id) {
+  if (!setupGrouped()) return;
+  const el = document.getElementById(id), g = el && el.closest('[data-sg]');
+  if (g) showSetupGroup(g.dataset.sg);
+}
+$('setupBody').addEventListener('click', e => {
+  const t = e.target.closest('[data-sg-tab]'); if (!t) return;
+  showSetupGroup(t.dataset.sgTab);
+  $('setupBody').scrollTop = 0;
+});
+// The tabs: arrow keys move between them, as tabs do.
+$('setupBody').addEventListener('keydown', e => {
+  const t = e.target.closest('[data-sg-tab]'); if (!t || !['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  const all = [...$('setupBody').querySelectorAll('[data-sg-tab]')], i = all.indexOf(t);
+  const n = e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : (i + (['ArrowDown', 'ArrowRight'].includes(e.key) ? 1 : -1) + all.length) % all.length;
+  e.preventDefault(); all[n].focus(); showSetupGroup(all[n].dataset.sgTab);
+});
 /* ---------- Gemini (Google's Antigravity CLI) ---------- */
 function geminiHtml() {
   if (window.REMOTE) return '';
@@ -596,6 +653,8 @@ $('setupBody').addEventListener('click', wrap(async e => {
   if (what === 'signin') { $('setup').close(); S.acct = account; store('acct', account); renderAll(); return accountAction(current().expectEmail ? 'signin-direct' : 'signin', account); }
   if (what === 'set-claude-path') { $('prefClaude').focus(); return; }
   if (what === 'rules') { $('setup').close(); return openRules(null); }
+  if (what === 'subagents') { $('setup').close(); return openSubagents(); }
+  if (what === 'lite') { window.open(new URL('/lite', location.href).href, 'ss-lite'); return undefined; }
   if (what === 'tour') { $('setup').close(); return startTour(); }
   if (what === 'name-older') {
     const r = await api('/api/chats/name-older', {});

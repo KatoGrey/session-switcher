@@ -3,6 +3,38 @@ const demo = require('./demo');
 const { responder } = require('./work.ui');
 
 module.exports = [{
+  name: 'setup in groups',
+  // With the new layout, Setup's Options show one group at a time; a link to a section opens its group. Subagents
+  // and Switcher Lite have a place in Setup in every layout.
+  async run(t) {
+    const b = await t.open({ respond: responder() });
+    await sleep(600);
+    await b.eval(`await openSetup(); return 1`); await sleep(900);
+    let r = await b.eval(`const body = document.getElementById('setupBody'); return { toc: !!body.querySelector('.setup-toc'), tabs: body.querySelectorAll('[data-sg-tab]').length, helpers: !!document.getElementById('st-helpers'), lite: !!document.getElementById('st-lite') }`);
+    t.check('off: Options is one sheet with its jump list, as before', r.toc && !r.tabs, r);
+    t.check('Subagents and Switcher Lite have a place in Setup', r.helpers && r.lite, r);
+    await b.eval(`document.getElementById('setup').close(); Shell.setNext(true); await openSetup(); return 1`); await sleep(900);
+    r = await b.eval(`const body = document.getElementById('setupBody'), vis = id => { const el = document.getElementById(id); return !!el && el.getClientRects().length > 0; };
+      return { tabs: [...body.querySelectorAll('[data-sg-tab]')].map(x => x.textContent), on: body.querySelector('[data-sg-tab][aria-selected="true"]')?.textContent, health: vis('st-health'), prefs: vis('st-prefs'), codex: vis('st-codex') }`);
+    t.check('on: Options shows groups as tabs', ['Health', 'General', 'Assistants', 'Connections', 'Devices', 'About'].every(x => r.tabs.includes(x)), r.tabs);
+    t.check('one group at a time, Health first', r.on === 'Health' && r.health && !r.prefs && !r.codex, r);
+    await t.shot(b, 'setup-groups');
+    await b.eval(`document.querySelector('[data-sg-tab="assistants"]').click(); return 1`); await sleep(200);
+    r = await b.eval(`const vis = id => { const el = document.getElementById(id); return !!el && el.getClientRects().length > 0; }; return { codex: vis('st-codex'), helpers: vis('st-helpers'), health: vis('st-health') }`);
+    t.check('Assistants has Codex, Gemini and Subagents', r.codex && r.helpers && !r.health, r);
+    await b.eval(`document.querySelector('[data-sg-tab="assistants"]').focus(); return 1`);
+    await b.key('ArrowRight', 'ArrowRight', 39); await sleep(150);
+    t.check('arrow keys move between the groups', await b.eval(`return document.activeElement.dataset.sgTab === 'connections' && document.querySelector('[data-sg-tab="connections"]').getAttribute('aria-selected') === 'true'`));
+    // A link to a section (as Ctrl+K and Try again use) opens its group first.
+    await b.eval(`document.getElementById('setup').close(); openSetupAt('st-lite'); return 1`); await sleep(1200);
+    r = await b.eval(`const el = document.getElementById('st-lite'); return { shown: !!el && el.getClientRects().length > 0, on: document.querySelector('[data-sg-tab][aria-selected="true"]')?.textContent }`);
+    t.check('a link to Switcher Lite opens Devices, with it in view', r.shown && r.on === 'Devices', r);
+    await b.eval(`window._opened = []; window._open = window.open; window.open = (u, n) => { _opened.push([u, n]); return null; }; document.querySelector('[data-fix="lite"]').click(); window.open = _open; return 1`); await sleep(200);
+    const opened = await b.eval(`return _opened`);
+    t.check('Open Switcher Lite opens it', opened.length === 1 && /\/lite$/.test(opened[0][0]), opened);
+    await b.eval(`document.getElementById('setup').close(); Shell.setNext(false); return 1`);
+  },
+}, {
   name: 'new layout',
   // Try the new layout: the sidebar stays beside a chat (main themes, wide screens); off, nothing changes.
   async run(t) {
