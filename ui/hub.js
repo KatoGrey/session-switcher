@@ -1078,8 +1078,12 @@ function renderHub() {
   const notes = `<div id="reopenSlot">${reopenHtml()}</div><div id="guardSlot">${guardHtml()}</div><div id="clashSlot"></div><div id="backSlot"></div>`;
   const dry = S.dryRun ? '<p class="note">Preview mode: terminal buttons show what would run instead of opening one.</p>' : '';
   // Most used first: what needs you, what's moving, then where to pick up, your plans and your projects.
+  // The new layout (Shell.next): the sidebar stays everywhere and already holds Your work, recent chats and your
+  // projects, so the hub keeps to what needs you and what's running, then your plans and your day. No jump bar.
+  const next = !saga && typeof Shell === 'object' && typeof Shell.next === 'function' && Shell.next();
   $('page').innerHTML = saga
     ? `${slots}${hero}${notes}${sections.await}${sections.work}${sections.today}${sections.races}${sections.queue}${sections.groups}${sections.worlds}${sections.recent}${sections.accounts}${dry}`
+    : next ? `${hero}${slots}${notes}${sections.await}${sections.work}${sections.queue}${sections.races}${sections.groups}${aideHubSection()}${sections.accounts}${sections.today}${dry}`
     : `${hero}<nav class="hub-jump" id="hubJump" aria-label="On this page"></nav>${slots}${notes}<div class="wk-hub-entry"><span class="wk-hub-mark" aria-hidden="true">↗</span><div><p>YOUR WORKSPACE</p><h2>Issues, reviews, and the next step.</h2><span>Linear and GitHub, together in one place.</span></div><button class="btn" data-view="work">Open your work <span aria-hidden="true">↗</span></button></div>${sections.await}${sections.work}${sections.queue}${sections.races}${sections.prs}${sections.groups}<div class="hub-cw"><div class="hub-cols">${sections.recent}${sections.accounts}</div></div>${aideHubSection()}${sections.worlds}${sections.today}${dry}`;
   renderHubLists();
   renderAideHub();

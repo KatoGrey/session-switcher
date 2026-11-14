@@ -62,6 +62,7 @@ const Shell = (() => {
     store('layout-next', String(!!on));
     document.documentElement.classList.toggle('layout-next', !!on);
     if (typeof renderNav === 'function') renderNav();
+    if (S.view === 'hub' && typeof renderPage === 'function') renderPage();
     sync();
   }
   document.documentElement.classList.toggle('layout-next', next());

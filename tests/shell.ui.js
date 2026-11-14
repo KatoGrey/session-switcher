@@ -25,11 +25,17 @@ module.exports = [{
     t.check('the open chat is marked in the sidebar', await b.eval(`return !!document.querySelector('#nav .nav-chat[aria-current="true"]')`));
     await b.eval(`document.querySelector('#nav [data-view="work"]').click(); return 1`); await sleep(1200);
     t.check('a destination in the sidebar goes there from a chat', await b.eval(`return S.view === 'work' && !ChatUI.isOpen()`));
+    // The hub keeps to what needs you and what's running: the sidebar has the rest.
+    await b.eval(`go('hub'); return 1`); await sleep(1200);
+    const hub = await b.eval(`const has = id => !!document.getElementById(id); return { jump: has('hubJump'), banner: !!document.querySelector('.wk-hub-entry'), prs: has('secPrs'), recent: has('secRecent'), projects: has('secWorlds'), await: has('secAwait'), work: has('secWork'), accounts: has('secAccounts') }`);
+    t.check('on: the hub keeps to what needs you and what’s running, without the jump bar or what the sidebar has', !hub.jump && !hub.banner && !hub.prs && !hub.recent && !hub.projects && hub.await && hub.work && hub.accounts, hub);
+    await t.shot(b, 'new-layout-hub');
     // Imperial keeps its own layout, switch or not.
     await b.eval(`Look.set({ theme: 'imperial' }); ChatUI.open({ sessionId: ${id} }); return 1`); await sleep(2200);
     r = await shape();
     t.check('Imperial keeps its chat list and layout', r.rail && r.chatLeft === 0, r);
-    await b.eval(`ChatUI.close(); Shell.setNext(false); Look.reset(); return 1`);
+    await b.eval(`ChatUI.close(); Shell.setNext(false); Look.reset(); go('hub'); return 1`); await sleep(1200);
+    t.check('off again: the hub is as it was', await b.eval(`return !!document.getElementById('hubJump') && !!document.getElementById('secRecent') && !!document.getElementById('secWorlds')`));
   },
 }, {
   name: 'workspace shell',
