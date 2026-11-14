@@ -261,6 +261,59 @@ function ledgerText(text) {
   renderLedgerSoon();
 }
 function renderLedgerSoon() { if (!ledgerTimer) ledgerTimer = setTimeout(renderLedger, 180); }
+
+/* ---------- this work: what the chat belongs to (lib/related.js) ---------- */
+// Asked for when a chat opens, when it gets its session id and when a PR's journal changes. An ordinary chat
+// (no issue, no PR) simply has no such section.
+async function loadRelated() {
+  const gen = C.gen, key = C.key, sid = C.sessionId;
+  if (!key && !sid) return;
+  const q = new URLSearchParams();
+  if (key) q.set('key', key);
+  if (sid) q.set('sessionId', sid);
+  let r = null;
+  try { r = await api(`/api/related?${q}`); } catch { return; }   // the panel just goes without
+  if (gen !== C.gen) return;
+  C.related = r && !r.none ? r : null;
+  renderLedgerSoon();
+}
+const REL_ROLE = { plan: 'Plan', start: 'Work', review: 'Review', 'cross-review': 'Cross-review', validate: 'Validate', handoff: 'Handoff', 'fix-comments': 'Fix comments', 'fix-checks': 'Fix checks', update: 'Update branch' };
+function relatedHtml(R) {
+  const rows = [];
+  if (R.issue) {
+    const i = R.issue;
+    rows.push(`<li class="lg-i rel-row"><span class="glyph" aria-hidden="true">◇</span><span class="lg-t"><button class="linkish" data-rel="issue" data-id="${esc(i.identifier)}" title="Open ${esc(i.identifier)} in Your work">${esc(i.identifier)}</button>${i.title ? ` <span class="rel-sub" title="${esc(i.title)}">${esc(i.title)}</span>` : ''}</span>${i.state ? `<small class="rel-st">${esc(i.state)}</small>` : ''}</li>`);
+  }
+  if (R.pr) {
+    const p = R.pr, c = p.checks;
+    const checks = !c ? '' : c.failed ? `<small class="rel-ck bad" title="${c.failed} failing, ${c.passed} passed">✕ ${c.failed} failing</small>`
+      : c.pending ? `<small class="rel-ck wait" title="${c.pending} still running">◌ ${c.pending} running</small>` : c.passed ? `<small class="rel-ck ok" title="All ${c.passed} passed">✓ checks</small>` : '';
+    const review = { APPROVED: 'Approved', CHANGES_REQUESTED: 'Changes asked', REVIEW_REQUIRED: 'Needs review' }[p.review] || '';
+    const state = /merged/i.test(p.state || '') ? 'Merged' : /closed/i.test(p.state || '') ? 'Closed' : p.draft ? 'Draft' : '';
+    rows.push(`<li class="lg-i rel-row"><span class="glyph" aria-hidden="true">⇄</span><span class="lg-t"><button class="linkish" data-rel="pr" data-url="${esc(p.url || `https://github.com/${p.repo}/pull/${p.number}`)}" title="Open the pull request in Your work">#${p.number}</button>${p.title ? ` <span class="rel-sub" title="${esc(p.title)}">${esc(p.title)}</span>` : ''}</span>${checks}${state || review ? `<small class="rel-st">${esc(state || review)}</small>` : ''}</li>`);
+    if (p.guess) rows.push('<li class="rel-note">Found by the branch this chat is on.</li>');
+  }
+  if (R.branch) rows.push(`<li class="lg-i rel-row"><span class="glyph" aria-hidden="true">⑂</span><span class="lg-t"><button class="linkish rel-mono" data-copy="${esc(R.branch)}" title="Copy the branch name">${esc(R.branch)}</button></span></li>`);
+  if (R.origin) {
+    const o = R.origin, what = o.kind === 'routine' ? 'Routine' : o.kind === 'task' ? 'Queued task' : 'Started by';
+    rows.push(`<li class="lg-i rel-row"><span class="glyph" aria-hidden="true">↻</span><span class="lg-t">${what}: <button class="linkish" data-rel="${esc(o.kind)}" data-id="${esc(o.id)}">${esc(o.name || 'open it')}</button></span></li>`);
+  }
+  const runs = (R.runs || []).map(r => {
+    const who = r.provider ? PROV_NAME[r.provider] || r.provider : '';
+    const what = r.role ? REL_ROLE[r.role] || r.role : r.how === 'branch' ? 'On this branch' : 'Chat';
+    return `<li class="lg-i rel-row"><span class="glyph" aria-hidden="true">${r.key ? '●' : '○'}</span><span class="lg-t"><button class="linkish" data-rel="chat" ${r.key ? `data-key="${esc(r.key)}"` : ''} ${r.sessionId ? `data-sid="${esc(r.sessionId)}"` : ''} title="${esc(r.title || 'Open this chat')}">${esc(what)}${who ? ` · ${esc(who)}` : ''}</button></span>${r.at ? `<small class="rel-st">${esc(ago(r.at))}</small>` : ''}</li>`;
+  });
+  return `<ul class="lg-list rel-list">${rows.join('')}</ul>${runs.length ? `<p class="rel-h">Other chats on it${R.more ? ` <span class="count">+${R.more}</span>` : ''}</p><ul class="lg-list rel-list">${runs.join('')}</ul>` : ''}`;
+}
+async function relatedAction(b) {
+  const a = b.dataset.rel;
+  if (a === 'issue') { await go('work'); return Work.openIssue(b.dataset.id); }
+  if (a === 'pr') return openWorkPr(b.dataset.url);
+  if (a === 'chat') return b.dataset.key ? openKey(b.dataset.key) : ChatUI.open({ sessionId: b.dataset.sid });
+  if (a === 'routine') return go('routines');
+  if (a === 'task') { await go('hub'); const q = document.getElementById('secQueue'); if (q) q.scrollIntoView({ block: 'start', behavior: motionOk() ? 'smooth' : 'auto' }); }
+  return undefined;
+}
 const base = p => String(p).split(/[\\/]/).filter(Boolean).pop() || p;
 function renderLedger() {
   ledgerTimer = null;
@@ -280,7 +333,8 @@ function renderLedger() {
         ${C.info && C.info.cwd ? `<dt>Folder</dt><dd><button class="linkish" data-file="." title="${esc(C.info.cwd)}">${esc(C.info.cwd)}</button></dd>` : ''}
         ${C.sessionId ? `<dt>Chat ID</dt><dd><button class="linkish" data-copy="${esc(C.sessionId)}" title="Copy the chat ID">${esc(C.sessionId.slice(0, 8))}…</button></dd>` : ''}
       </dl>`);
-  let html = compact ? '' : about;
+  const work = C.related ? sec('This work', 0, relatedHtml(C.related)) : '';
+  let html = work + (compact ? '' : about);
   const arts = [...L.arts.entries()].reverse();
   if (arts.length) html += sec('Artifacts', arts.length, `<ul class="lg-list">${arts.map(([u, t]) => `<li class="lg-i"><span class="glyph" aria-hidden="true">✦</span><span class="lg-t"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">${esc(t)}</a></span></li>`).join('')}</ul>`);
   const imgs = [...L.images.entries()].reverse();

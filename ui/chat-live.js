@@ -243,6 +243,7 @@ function handleEvent(ev, src) {
     case 'init':
       if (comp) { C.comp.sessionId = ev.sessionId; break; }
       setTimeout(syncFav, 0);
+      if (ev.sessionId && ev.sessionId !== C.sessionId) setTimeout(loadRelated, 0);   // now its issue or PR can be found by it
       C.sessionId = ev.sessionId || C.sessionId;
       if (ev.permissionMode) setMode(ev.permissionMode);
       C.model = modelName(ev.model);

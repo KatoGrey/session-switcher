@@ -311,7 +311,7 @@ function connectLive() {
   es.addEventListener('homepc', () => { if (typeof homeBanner === 'function') homeBanner(); });
   es.addEventListener('mcp', e => { try { mcpFlowsChanged(JSON.parse(e.data).flows); } catch { /* invalid event */ } });
   es.addEventListener('prs', e => { let d = {}; try { d = JSON.parse(e.data); } catch { /* invalid event */ } prsChanged(d).catch(() => {}); if (typeof Work !== 'undefined') Work.changed(); });
-  es.addEventListener('pr-record', e => { try { Work.recordChanged(JSON.parse(e.data)).catch(() => {}); } catch { /* invalid event */ } });
+  es.addEventListener('pr-record', e => { try { Work.recordChanged(JSON.parse(e.data)).catch(() => {}); } catch { /* invalid event */ } if (window.ChatUI && ChatUI.isOpen()) loadRelated(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
 }
 setInterval(() => { if (idle() && S.view === 'hub' && !document.activeElement.closest('form.qr')) renderLive(true); else renderBar(); }, 60000);

@@ -1916,6 +1916,39 @@ module.exports = [
     },
   },
   {
+    name: 'this work',
+    // A chat knows its work: its side panel shows the issue, the PR with its checks, the branch, and the other chats
+    // on it (planning, review), each opening where it lives. An ordinary chat shows none of it.
+    async run(t) {
+      const b = await t.open();
+      await sleep(600);
+      const rel = { branch: 'tyler/voy-1-tavern', role: 'start',
+        issue: { identifier: 'VOY-1', title: 'Fix the tavern', state: 'In Progress', url: null },
+        pr: { repo: 'o/r', number: 7, title: 'Tavern fix', url: 'https://github.com/o/r/pull/7', state: 'OPEN', draft: false, checks: { state: 'FAILURE', passed: 12, failed: 1, pending: 0 }, review: 'REVIEW_REQUIRED', guess: false },
+        runs: [{ key: null, sessionId: 'plan-1', at: Date.now() - 3600e3, role: 'plan', provider: 'claude', how: 'issue' }, { key: 'k-rev', sessionId: null, at: Date.now() - 60e3, role: 'review', provider: 'codex', how: 'pr' }], more: 0, origin: null };
+      await b.eval(`window._rel = ${JSON.stringify(rel)}; window._went = []; const orig = api;
+        api = async (u, body) => { if (u.startsWith('/api/related')) return window._rel; return orig(u, body); };
+        window._openWorkPr = openWorkPr; openWorkPr = url => { _went.push(['pr', url]); };
+        window._openKey = openKey; openKey = k => { _went.push(['key', k]); };
+        ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const panel = await b.eval(`const box = document.getElementById('cLedgerBody'); return { first: box.querySelector('.lg-h')?.textContent, text: box.textContent }`);
+      t.check('the side panel starts with This work', /^This work/.test(panel.first || ''), panel.first);
+      t.check('with the issue, the PR and its failing check, and the branch', /VOY-1/.test(panel.text) && /#7/.test(panel.text) && /1 failing/.test(panel.text) && panel.text.includes('tyler/voy-1-tavern'), panel.text.slice(0, 300));
+      t.check('and the other chats on it, by their part', /Other chats on it/.test(panel.text) && /Plan · Claude/.test(panel.text) && /Review · Codex/.test(panel.text), panel.text.slice(0, 400));
+      await t.shot(b, 'this-work');
+      await b.eval(`document.querySelector('#cLedgerBody [data-rel="pr"]').click(); document.querySelector('#cLedgerBody [data-rel="chat"][data-key]').click(); return 1`); await sleep(300);
+      const went = await b.eval(`return _went`);
+      t.check('the PR opens in Your work; a running chat opens itself', went.some(x => x[0] === 'pr' && x[1] === 'https://github.com/o/r/pull/7') && went.some(x => x[0] === 'key' && x[1] === 'k-rev'), went);
+      // A guess says so.
+      await b.eval(`window._rel = { ...window._rel, issue: null, runs: [], pr: { ...window._rel.pr, guess: true } }; loadRelated(); return 1`); await sleep(500);
+      t.check('a PR found only by the branch says so', /Found by the branch this chat is on/.test(await b.eval(`return document.getElementById('cLedgerBody').textContent`)));
+      // An ordinary chat: nothing.
+      await b.eval(`window._rel = { none: true, branch: null }; loadRelated(); return 1`); await sleep(500);
+      t.check('an ordinary chat has no This work section', await b.eval(`return !/This work/.test(document.getElementById('cLedgerBody').textContent)`));
+      await b.eval(`openWorkPr = _openWorkPr; openKey = _openKey; return 1`);
+    },
+  },
+  {
     name: 'connections scope',
     // Connections says whether a project's own tools (its .mcp.json) are in the list, and lets that change:
     // the sidebar opens it for every project, Ctrl+K and a chat for the project you're in.

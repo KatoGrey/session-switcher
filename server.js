@@ -38,6 +38,7 @@ const raceLib = require('./lib/race');
 const pairsLib = require('./lib/pairs');
 const handover = require('./lib/handover');
 const routinesLib = require('./lib/routines');
+const relatedLib = require('./lib/related');
 const organizeLib = require('./lib/organize');
 const liteLib = require('./lib/lite');
 const { createLiteRoutes } = require('./lib/lite-routes');
@@ -1181,12 +1182,13 @@ function notePrRun(pr, kind, chat) {
 // Linear (lib/linear.js): the issues assigned to you, for the work board. Its key: your own, saved here, or the one
 // Latitude's agents keep in a Latitude clone's .env.local.
 const linear = linearLib.createLinear({ dataDir: DATA_DIR, log, clones: async () => (await prs.clonesOf('latitudegames/latitude')).map(c => c.cwd) });
-// The chats started from the board for each Linear issue: issue -> { key, sessionId, at }.
+// The chats started from the board for each Linear issue: issue -> { key, sessionId, at, runs: [...] }, every
+// chat (planning, the work itself, a review), newest first (lib/related.js).
 const WORK_FILE = path.join(DATA_DIR, 'work.json');
 const workChats = () => store.readJson(WORK_FILE) || {};
-function noteWorkChat(issue, chat) {
+function noteWorkChat(issue, chat, role = 'start') {
   const all = workChats();
-  all[issue] = { key: chat.key, sessionId: chat.sessionId || null, at: Date.now() };
+  all[issue] = relatedLib.addRun(all[issue], { key: chat.key, sessionId: chat.sessionId || null, at: Date.now(), role, provider: chat.provider || 'claude' });
   try { store.writeJsonAtomic(WORK_FILE, all); } catch (err) { log(`Work board: couldn’t note the chat for ${issue}: ${err.message}`); }
 }
 // The work board: your Linear issues, and your pull requests (and the ones linked to your issues, whoever made
@@ -1203,7 +1205,7 @@ async function workBoard(fresh) {
   for (const p of list) if (!p.issue) { const m = /\[([A-Z][A-Z0-9]{1,9}-\d{1,7})\]/.exec(p.title) || /(?:^|\/)([a-z][a-z0-9]{1,9}-\d{1,7})(?:-|$)/.exec(p.head || ''); if (m) p.issue = m[1].toUpperCase(); }
   // The Claude chat on each PR's branch, and the chat started for each issue (still running, or by its id).
   const folders = new Map(await Promise.all([...new Set(list.map(p => p.repo))].map(async repo => [repo, (await prs.clonesOf(repo)).map(c => c.cwd)])));
-  for (const p of list) { const c = prs.chatOn(p.head, folders.get(p.repo) || []); p.chat = c ? { sessionId: c.id, title: c.title, cwd: c.cwd } : null; }
+  for (const p of list) { p.cwds = folders.get(p.repo) || []; const c = prs.chatOn(p.head, p.cwds); p.chat = c ? { sessionId: c.id, title: c.title, cwd: c.cwd } : null; }
   const started = workChats();
   let notes = false;
   for (const i of issues) {
@@ -1212,9 +1214,35 @@ async function workBoard(fresh) {
     let live = null; try { live = chats.get(w.key); } catch { /* ended */ }
     if (live && live.sessionId && !w.sessionId) { w.sessionId = live.sessionId; notes = true; }
     i.chat = { key: live && live.state !== 'ended' ? live.key : null, sessionId: w.sessionId || null, at: w.at };
+    // Every chat on it, each with its session id once it has one, and whether it's still running.
+    if (Array.isArray(w.runs)) for (const r of w.runs) { if (r.sessionId || !r.key) continue; let c = null; try { c = chats.get(r.key); } catch { /* ended */ } if (c && c.sessionId) { r.sessionId = c.sessionId; notes = true; } }
+    i.runs = relatedLib.runsOf(w).map(r => { let c = null; try { c = r.key && chats.get(r.key); } catch { /* ended */ } return { ...r, key: c && c.state !== 'ended' ? c.key : null }; });
   }
   if (notes) { try { store.writeJsonAtomic(WORK_FILE, started); } catch { /* next time */ } }
   return { gh: { installed: gh.installed, signedIn: !!gh.signedIn, login: gh.login || null, error: gh.error || null }, linear: lin, issues, issuesError, prs: list, prsError, at: Date.now() };
+}
+// What a chat belongs to (lib/related.js), for its side panel: its issue, its PR, the other chats on that work,
+// and what started it. From the work board as last fetched, so opening a chat never waits on GitHub.
+let relatedBoard = { at: 0, value: null };
+async function relatedOf({ key = null, sessionId = null }) {
+  let live = null; if (key) { try { live = chats.get(key); } catch { /* ended */ } }
+  const sid = sessionId || (live && live.sessionId) || null;
+  if (!key && !sid) throw fail(400, 'Which chat?');
+  const scanned = sid ? sessionsWithCodex().projects.flatMap(p => (p.sessions || []).map(x => ({ ...x, cwd: p.cwd }))).find(x => x.id === sid) : null;
+  const chat = { key: key || null, sessionId: sid, cwd: (live && live.cwd) || (scanned && scanned.cwd) || null, branch: (scanned && scanned.branch) || null };
+  if (!relatedBoard.value || Date.now() - relatedBoard.at > 60000) {
+    relatedBoard = { at: Date.now(), value: await workBoard(false).catch(() => ({ issues: [], prs: [] })) };
+  }
+  const origins = [
+    ...routines.list().flatMap(r => (r.history || []).filter(h => h.key || h.sessionId).map(h => ({ kind: 'routine', id: r.id, name: r.name, key: h.key || null, sessionId: h.sessionId || null }))),
+    ...taskList.filter(t => t.key).map(t => ({ kind: 'task', id: t.id, name: t.title || String(t.prompt || '').slice(0, 60), key: t.key, sessionId: null })),
+  ];
+  return relatedLib.relatedFor({
+    chat, board: relatedBoard.value, work: workChats(), origins,
+    records: prRecords.findByChat({ key: chat.key, sessionId: chat.sessionId }),
+    journal: (repo, n) => { try { return prRecords.list(repo, n); } catch { return []; } },
+    prChats: p => (p.head ? prs.chatsOn(p.head, p.cwds || []) : []).slice(0, 12),
+  });
 }
 // The setup check on Your work: is this PC's Latitude clone set up the way its Windows guide asks (lib/winrepo.js)?
 let workSetup = { at: 0, value: null };
@@ -1298,7 +1326,7 @@ async function startWork(body) {
   const provider = agentOf(body.provider);
   const text = linearLib.startPrompt(issue, { branch: linearLib.branchFor(issue, gh.login), mode: body.mode === 'plan' ? 'plan' : 'start' });
   const chat = await startPrChat({ provider, account: body.account, model: body.model, effort: body.effort, cwd, text, permissionMode: body.mode === 'plan' ? 'plan' : null, title: `${issue.identifier}: ${issue.title}`.slice(0, 120) });
-  noteWorkChat(issue.identifier, chat);
+  noteWorkChat(issue.identifier, chat, body.mode === 'plan' ? 'plan' : 'start');
   log(`Work board: ${provider} started on ${issue.identifier} in ${cwd}.`);
   return { key: chat.key, cwd };
 }
@@ -2197,6 +2225,7 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/prs/team') return send(res, 200, { team: await prs.team(String(url.searchParams.get('repo') || '')) });
   if (route === 'GET /api/prs/detail') { const p = await prs.detail(url.searchParams.get('repo'), url.searchParams.get('n'), { fresh: url.searchParams.get('fresh') === '1' }); return send(res, 200, { ...p, record: prRecords.list(p.repo, p.number) }); }
   if (route === 'GET /api/prs/record') return send(res, 200, { entries: prRecords.list(url.searchParams.get('repo'), url.searchParams.get('n')) });
+  if (route === 'GET /api/related') return send(res, 200, await relatedOf({ key: url.searchParams.get('key'), sessionId: url.searchParams.get('sessionId') }));
   if (route === 'GET /api/prs/files') return send(res, 200, await prs.files(url.searchParams.get('repo'), url.searchParams.get('n'), { page: url.searchParams.get('page') || 1, head: url.searchParams.get('head') }));
   if (route === 'GET /api/prs/folder') { const p = projectAt(url.searchParams.get('cwd')); if (!p || !p.exists) throw fail(404, 'Pick one of your projects.'); return send(res, 200, await prs.inFolder(p.cwd, { fresh: url.searchParams.get('fresh') === '1' })); }
   // Setup: the Codex this app runs and the newest one out (a newer Codex lists newer models), and

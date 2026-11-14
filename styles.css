@@ -793,6 +793,16 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .lg-owner small{margin-left:auto;font:400 11px/1 var(--f-label);color:var(--ash-2)}
 .lg-i .glyph{flex:none;color:var(--crimson);font-size:11px;width:12px}
 .lg-i .lg-t{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* This work (the chat's issue, PR and other chats) */
+.rel-sub{color:var(--ash)}
+.rel-st,.rel-ck{flex:none;font-size:12px;color:var(--ash)}
+.rel-ck.ok{color:rgb(var(--c-7fb79a))}
+.rel-ck.bad{color:var(--ember-soft)}
+.rel-ck.wait{color:var(--gilt)}
+.rel-mono{font-family:var(--f-mono);font-size:12.5px}
+.rel-note{list-style:none;margin:-2px 0 2px 27px;font-size:12px;color:var(--ash-2)}
+.rel-h{margin:10px 0 4px 6px;font-size:12px;color:var(--ash)}
+.rel-h .count{color:var(--ash-2)}
 .lg-i .lg-t > .linkish{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .lg-i .lg-m{flex:none;font:400 10.5px var(--f-label);color:var(--ash-2)}
 .lg-i code{font:12px var(--f-mono);color:var(--parch-2)}

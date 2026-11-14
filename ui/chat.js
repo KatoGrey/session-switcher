@@ -434,6 +434,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
   reset();
   const gen = C.gen;
   C.key = info.key; C.info = info; C.sessionId = info.sessionId || sessionId;
+  C.related = null; setTimeout(loadRelated, 0);
   C.background = info.background || [];
   C.provider = info.provider || 'claude';
   C.mate = info.mate && info.mate !== C.provider ? info.mate : null;
@@ -745,6 +746,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (rv) { const r = await api('/api/reveal', { path: rv.dataset.reveal, key: C.key, session: C.sessionId }); if (r.dryRun) toast(`Would run: ${r.script}`); return; }
     const cp = t.closest('[data-copy]');
     if (cp) return copyText(cp.dataset.copy);
+    const relB = t.closest('[data-rel]'); if (relB) return relatedAction(relB);
     const ri = t.closest('.ri');
     // Ctrl+click: beside this chat, not instead of it.
     if (ri && (e.ctrlKey || e.metaKey) && Split.can()) {
