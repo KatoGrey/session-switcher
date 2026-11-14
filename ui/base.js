@@ -643,9 +643,10 @@ function patch(container, items, keyFn, htmlFn, emptyHtml = '') {
         const oi = el.querySelector('textarea, input[type="text"]'), ni = n.querySelector('textarea, input[type="text"]');
         const hadFocus = active && el.contains(active);
         const focusAttr = hadFocus && active.dataset ? Object.entries(active.dataset).map(([k, v]) => `[data-${k.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}="${CSS.escape(v)}"]`).join('') : '';
-        if (oi && ni && (oi.dataset.req || '') === (ni.dataset.req || '')) { ni.value = oi.value; }
+        const sameReq = !!(oi && ni) && (oi.dataset.req || '') === (ni.dataset.req || '');
+        if (sameReq) { ni.value = oi.value; }
         el.replaceWith(n);
-        if (hadFocus) { const f = (oi && active === oi ? ni : null) || (focusAttr && n.querySelector(focusAttr)); if (f) { f.focus({ preventScroll: true }); if (f === ni && typeof ni.setSelectionRange === 'function') ni.setSelectionRange(ni.value.length, ni.value.length); } }
+        if (hadFocus) { const f = (oi && active === oi && sameReq ? ni : null) || (focusAttr && n.querySelector(focusAttr)); if (f) { f.focus({ preventScroll: true }); if (f === ni && typeof ni.setSelectionRange === 'function') ni.setSelectionRange(ni.value.length, ni.value.length); } }
       }
       el = n;
     }

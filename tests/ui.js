@@ -1300,14 +1300,14 @@ module.exports = [
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
       // With Gemini and Codex both in the chat, a card acts for the one it came from, whoever's in view.
       const cards = await b.eval(`const realApi = api, sent = [];
-        api = async (u, body) => { if (/^\\/api\\/chat\\/(undo|answer|permission|interrupt|resume-at|respond)/.test(u)) { sent.push([u, body && body.key]); return { restored: [], skipped: [] }; } return realApi(u, body); };
+        api = async (u, body) => { if (/^\\/api\\/chat\\/(undo|answer|permission|interrupt|resume-at|respond)/.test(u)) { sent.push([u, body && body.key, body && body.requestId]); return { restored: [], skipped: [] }; } return realApi(u, body); };
         window.appConfirm = async () => true;
         C.comps = { gemini: { key: 'key-gemini', provider: 'gemini', state: 'waiting' }, codex: { key: 'key-codex', provider: 'codex', state: 'busy' } };
         C.crewKinds = ['codex', 'gemini'];
         focusMate('codex');
         withComp('gemini', () => addPermission({ requestId: 'g1', toolName: 'Bash', view: { summary: 'x', detail: 'x', detailKind: 'command' } }, 'comp'));
         const card = document.querySelector('[data-req="comp:g1"]');
-        await answer(card, 'allow');
+        await answer(card.querySelector('[data-p="allow"]'), 'allow');
         const bar = document.createElement('div'); bar.dataset.src = 'comp';
         withComp('gemini', () => { bar._kind = compKind('comp'); });
         bar._ev = { turn: 2, files: [{ path: 'a.js', status: 'modified', add: 1, del: 0 }] };
@@ -1319,7 +1319,7 @@ module.exports = [
         document.querySelectorAll('.stuck-card').forEach(x => x.remove());
         api = realApi;
         return { sent, stuck, inView }`);
-      t.check('Allow on Gemini’s card goes to Gemini, with Codex in view', cards.inView === 'codex' && cards.sent[0] && cards.sent[0][1] === 'key-gemini', cards);
+      t.check('Allow on Gemini’s card goes to Gemini, with Codex in view, for that very request', cards.inView === 'codex' && cards.sent[0] && cards.sent[0][1] === 'key-gemini' && cards.sent[0][2] === 'g1', cards);
       t.check('Undo under Gemini’s reply undoes Gemini’s, not Codex’s turn of that number', cards.sent.some(([u, k]) => /undo/.test(u) && k === 'key-gemini') && !cards.sent.some(([, k]) => k === 'key-codex'), cards);
       t.check('and each partner’s “stuck” card stays its own', cards.stuck === 2, cards);
       // Opening a chat replays what's happened in it: that mustn't act again.

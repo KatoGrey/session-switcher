@@ -3960,7 +3960,7 @@ async function handleChat(req, res, url, body, c, remote = false) {
         answers = {};
         for (const [k, v] of Object.entries(body.answers).slice(0, 10)) answers[String(k).slice(0, 2000)] = String(v).slice(0, 4000);
       }
-      chats.get(body.key).answer(String(body.requestId || ''), { decision, message: typeof body.message === 'string' ? body.message.slice(0, 4000) : '', answers });
+      chats.get(body.key).answer(String(body.requestId ?? ''), { decision, message: typeof body.message === 'string' ? body.message.slice(0, 4000) : '', answers });
       return send(res, 200, { ok: true });
     }
     case '/api/chat/interrupt': {

@@ -3740,6 +3740,8 @@ dialog.rt-dlg{width:min(660px,calc(100vw - 32px))}
 }
 /* Imperial and Rebel */
 [data-family="saga"] :is(.rt-card,.rt-tpl,.rt-last,.rt-ic){border-radius:var(--radius)}
+/* The decision control's note field and a question's choices keep the saga themes' own corners. */
+[data-family="saga"] :is(.dec-note .dec-why,.omen .opt){border-radius:var(--radius)}
 [data-family="saga"] :is(.rt-none){font-style:normal}
 [data-family="saga"] .rt-tt h3{font-size:18px}
 [data-family="saga"] .rt-ic::before{font-family:var(--f-label)}

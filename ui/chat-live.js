@@ -369,7 +369,9 @@ function addPermission(p, src = 'main') {
   if (nearBottom()) toBottom(); else noteUnseen();
   // Only when nothing else has the keyboard: a keystroke meant for the message box (or anything else) must
   // never approve a step.
-  if (Decision.mayTakeFocus()) (card.querySelector('.btn.gilt:not([hidden])') || card.querySelector('button:not([hidden])')).focus({ preventScroll: true });
+  // (A card that comes back with Deny's note open, as reopening a chat replays it, puts the keyboard in the note,
+  // never on the note's own Deny, where one Enter would send it.)
+  if (Decision.mayTakeFocus()) (card.querySelector('.dec-note:not([hidden]) .dec-why') || card.querySelector('.dec-b:not([hidden]) .btn.gilt:not([hidden])') || card.querySelector('.dec-b:not([hidden]) button:not([hidden])') || card.querySelector('button:not([hidden])')).focus({ preventScroll: true });
 }
 function removePermission(id, src = 'main', at = null) {
   const c = $c('cPending').querySelector(`[data-req="${CSS.escape(`${src}:${id}`)}"]`);

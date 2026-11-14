@@ -96,3 +96,15 @@ test('Always allow, in words', () => {
   assert.equal(alwaysScope([]), null);
   assert.equal(alwaysScope(null), null);
 });
+
+test('Always only saves rules when Claude Code offered it for that request', () => {
+  const { chat, wrote } = claude();
+  const rules = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' }];
+  chat.handleControl({ request_id: 'r1', request: { subtype: 'can_use_tool', tool_name: 'Bash', tool_use_id: 't1', input: { command: 'npm test' }, permission_suggestions: rules, suppress_always_allow_rule: true } });
+  chat.answer('r1', { decision: 'always' });
+  assert.equal(wrote[0].response.response.behavior, 'allow');
+  assert.equal(wrote[0].response.response.updatedPermissions, undefined, 'suppressed: allowed once, no rules saved');
+  chat.handleControl({ request_id: 'r2', request: { subtype: 'can_use_tool', tool_name: 'Bash', tool_use_id: 't2', input: { command: 'npm test' }, permission_suggestions: rules } });
+  chat.answer('r2', { decision: 'always' });
+  assert.deepEqual(wrote[1].response.response.updatedPermissions, rules, 'offered: the rules are saved');
+});

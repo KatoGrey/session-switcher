@@ -133,7 +133,8 @@ const Decision = (() => {
   // stale() (it was answered somewhere else: catch up).
   async function press(el, hooks = {}, as = null) {
     const root = el.closest('[data-dec]'); if (!root || root._decBusy) return;
-    const how = as || el.dataset.p, rid = el.dataset.req || root.dataset.dec;
+    // A button's own data-req is the request id; the card's ("comp:g1" in a chat) names its place, so it falls back to data-dec.
+    const how = as || el.dataset.p, rid = (el !== root && el.dataset.req) || root.dataset.dec;
     const key = (hooks.key && hooks.key()) || root.dataset.decKey;
     let body;
     switch (how) {

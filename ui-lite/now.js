@@ -244,7 +244,7 @@ function triageView() {
     : x.key && x.source === 'app' && !p ? '<button class="btn prime" data-tr="reply">Reply <kbd>r</kbd></button><button class="btn" data-tr="done">Done <kbd>e</kbd></button>' : '<button class="btn" data-tr="done">Done <kbd>e</kbd></button>';
   return `<div class="triage">
     <div class="tr-top"><span>${TR.i + 1} of ${items.length}</span><span class="tr-bar"><i style="width:${Math.round(100 * (TR.handled) / (TR.handled + items.length))}%"></i></span><button class="linkish" data-go="now">Exit <kbd>esc</kbd></button></div>
-    <div class="tr-card">
+    <div class="tr-card" data-k="${esc(trKey(x))}"${p && !p.question && x.key ? ` data-key="${esc(x.key)}" data-req="${esc(p.requestId)}"` : ''}>
       <div class="crumb">${proj ? esc(proj.name) : esc(x.folder || '')}${x.accountName ? ` · ${esc(x.accountName)}` : ''}${x.finishedAt ? ` · ${ago(x.finishedAt)}` : ''}</div>
       <h2 class="tr-title">${esc(titleOf(x))}</h2>
       ${body}
@@ -253,12 +253,21 @@ function triageView() {
     </div></div>`;
 }
 async function triageAct(kind) {
-  const items = trItems(); const x = items[TR.i]; if (!x) return;
-  const p = (x.pending || [])[0];
+  // The card on the screen, not whatever is first in the list now: a request answered somewhere else since it was
+  // drawn must never let a key press answer the next one.
+  const card = document.querySelector('.tr-card');
+  const items = trItems(); const x = (card && items.find(i => trKey(i) === card.dataset.k)) || items[TR.i]; if (!x) return;
   if (kind === 'open') { if (x.sessionId) openChat(x.sessionId); return; }
   if (kind === 'reply') { TR.replying = true; render(); $('trBox')?.focus(); return; }
-  if (['allow', 'always', 'deny'].includes(kind) && p && x.key) {
-    await api('/api/chat/permission', { key: x.key, requestId: p.requestId, decision: kind });
+  if (['allow', 'always', 'deny'].includes(kind)) {
+    const key = card && card.dataset.key, req = card && card.dataset.req;
+    if (!key || !req) return;
+    try { await api('/api/chat/permission', { key, requestId: req, decision: kind }); }
+    catch (err) {
+      if (err.status !== 409) throw err;
+      toast('Already answered somewhere else.');
+      await loadLive().catch(() => {}); render(); return;
+    }
     sfx(kind === 'deny' ? 'shove' : 'chip');
   } else if (kind === 'done') { markSeen(trKey(x)); sfx('slide'); }
   TR.handled++; TR.replying = false;
