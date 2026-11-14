@@ -257,17 +257,37 @@ document.querySelector('.stabs').addEventListener('click', e => { const b = e.ta
 function renderLook() {
   const o = Look.get(), light = Look.isLight();
   const seg = (k, opts) => `<div class="lk-seg" role="radiogroup">${opts.map(([v, l, sub]) => `<button type="button" role="radio" aria-checked="${String(o[k]) === String(v)}" data-look="${k}" data-v="${v}">${l}${sub ? `<small>${sub}</small>` : ''}</button>`).join('')}</div>`;
+  // The five main themes: each is the pick for light or for dark (the app follows the device unless set to one).
+  const mainOn = o.theme === 'auto';
+  const picked = t => mainOn && (t.light ? o.lightTheme : o.darkTheme) === t.id;
+  const mainCard = t => {
+    const c = Look.swatch(t.id, t.light), on = picked(t), now = on && Look.theme().id === t.id;
+    return `<button type="button" class="lk-theme lk-main-card" role="radio" aria-checked="${on}" data-look="theme" data-v="${t.id}" style="--sw-bg:${c.bg};--sw-card:${c.card};--sw-line:${c.line};--sw-ink:${c.ink};--sw-ash:${c.ash};--sw-acc:${c.focus};--sw-emb:${c.claude};--sw-gold:${c.gold};--sw-cx:${c.codex}">
+      <span class="sw" aria-hidden="true"><span class="sw-bar"><i></i><i></i><i></i></span><span class="sw-card"><b></b><em></em><em class="s"></em><span class="sw-btn"></span></span>
+        <span class="sw-models"><i style="background:${c.claude}"></i><i style="background:${c.codex}"></i><i style="background:${c.gemini}"></i></span></span>
+      <span class="lk-tn"><b>${esc(t.name)}${now ? ' <small class="lk-now">showing now</small>' : ''}</b><small>${esc(t.note)}</small></span></button>`;
+  };
   const card = t => {
     const c = Look.swatch(t.id, light);
     return `<button type="button" class="lk-theme${t.family ? ` lk-${t.family}` : ''}" role="radio" aria-checked="${o.theme === t.id}" data-look="theme" data-v="${t.id}" style="--sw-bg:${c.bg};--sw-card:${c.card};--sw-line:${c.line};--sw-ink:${c.ink};--sw-ash:${c.ash};--sw-acc:${c.accent};--sw-emb:${c.ember};--sw-gold:${c.gold};--sw-cx:${c.codex}${t.fonts ? `;--sw-font:${esc(t.fonts.display)}` : ''}">
       <span class="sw" aria-hidden="true"${t.sky ? ` data-sky="${t.sky}"` : ''}><span class="sw-bar"><i></i><i></i><i></i></span><span class="sw-card"><b></b><em></em><em class="s"></em><span class="sw-btn"></span><span class="sw-dot"></span></span></span>
       <span class="lk-tn"><b>${esc(t.name)}</b><small>${esc(t.note)}</small></span></button>`;
   };
+  const main = Look.MAIN || [];
   $('setupBody').innerHTML = `
     <p class="d-h">Light or dark</p>
-    ${seg('mode', [['dark', '☾ Dark'], ['light', '☀ Light'], ['system', '◐ Match device']])}
+    ${seg('mode', [['system', '◐ Match device'], ['light', '☀ Light'], ['dark', '☾ Dark']])}
     <p class="d-h">Theme</p>
-    <div class="lk-themes" role="radiogroup" aria-label="Theme">${Look.THEMES.filter(t => !t.family).map(card).join('')}</div>
+    <p class="lk-saga-note">One theme for light and one for dark. Claude, Codex and Gemini keep their colours in every one.</p>
+    <p class="lk-slot">☀ Light uses</p>
+    <div class="lk-themes lk-main" role="radiogroup" aria-label="Theme for light">${main.filter(t => t.light).map(mainCard).join('')}</div>
+    <p class="lk-slot">☾ Dark uses</p>
+    <div class="lk-themes lk-main" role="radiogroup" aria-label="Theme for dark">${main.filter(t => !t.light && !t.sig).map(mainCard).join('')}</div>
+    <p class="lk-slot lk-sig">☾ Signature darks</p>
+    <div class="lk-themes lk-main" role="radiogroup" aria-label="Signature themes for dark">${main.filter(t => !t.light && t.sig).map(mainCard).join('')}</div>
+    <details class="lk-more" data-preserve="lk-more"${mainOn ? '' : ' open'}><summary>More themes</summary>
+    <p class="d-h">Colours</p>
+    <div class="lk-themes" role="radiogroup" aria-label="More themes">${Look.THEMES.filter(t => !t.family && !t.main).map(card).join('')}</div>
     <p class="d-h">Space saga</p>
     <p class="lk-saga-note">Command your chats like a fleet. These bring their own lettering, a sky behind the hub, short sound cues and a few words of their own.</p>
     <div class="lk-themes" role="radiogroup" aria-label="Space saga themes">${Look.THEMES.filter(t => t.family === 'saga').map(card).join('')}</div>
@@ -277,6 +297,7 @@ function renderLook() {
     <p class="d-h">Anime</p>
     <p class="lk-saga-note">Step into another world. Made for dark mode: each brings a painted scene in the hub that lights up with your chats, its own lettering, a living sky behind the hub, chimes and a few words of its own.</p>
     <div class="lk-themes" role="radiogroup" aria-label="Anime themes">${Look.THEMES.filter(t => t.family === 'anime').map(card).join('')}</div>
+    </details>
     <div class="studio-entry"><div><b>Your worlds</b><p>Describe a place. Paint it with Codex. Make it your workspace.</p></div><button class="btn prime" data-studio-open>Theme Studio</button></div>
     <div class="lk-themes" role="radiogroup" aria-label="Your themes">${Look.THEMES.filter(t => t.family === 'custom').map(card).join('')}</div>
     <p class="d-h">Reading</p>

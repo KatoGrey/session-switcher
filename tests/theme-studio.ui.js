@@ -16,7 +16,7 @@ module.exports = [{ name: 'theme-studio', async run(t) {
   };
   await wire(b);
   await b.eval('openSetup("look"); return 1'); await b.clickOn('[data-studio-open]'); await sleep(300);
-  t.check('Studio opens from Appearance and keeps the current theme', await b.eval('return studioDlg.open && Look.get().theme === "crimson" && !!studioWorld'));
+  t.check('Studio opens from Appearance and keeps the current theme', await b.eval('return studioDlg.open && Look.get().theme === Look.DEFAULTS.theme && !!studioWorld'));
   await b.eval(`studioName.value='Lantern Tide'; studioWorld.value='A quiet seaside town with warm paper lanterns and turquoise water'; studioFont.value='storybook'; window.oldStudioOpen=ChatUI.open; ChatUI.open=async o=>{window.studioBrief=o}; studioForm.requestSubmit(); return 1`); await sleep(1000);
   const draft = await b.eval('return studioBrief');
   t.check('generation prepares a Codex brief in its own workspace without sending a message', draft?.provider === 'codex' && draft?.mode === 'new' && draft?.initialText.includes('theme.json LAST') && draft?.cwd.includes('theme-studio'));
@@ -36,10 +36,10 @@ module.exports = [{ name: 'theme-studio', async run(t) {
   for (const mode of ['dark', 'light']) fs.writeFileSync(path.join(draft.cwd, mode + '.png'), process.env.STUDIO_ART ? fs.readFileSync(path.join(process.env.STUDIO_ART, mode + '.png')) : png);
   fs.writeFileSync(path.join(draft.cwd, 'theme.json'), JSON.stringify({ name: 'Lantern Tide', note: 'Lanterns above a quiet sea, from moonlight to morning.', font: 'storybook', seeds: { accent: 184, sat: .8, surface: 207, surfSat: .7, ink: 190, inkSat: .4, gold: 39, codex: 268 }, copy: { 'Welcome back': 'The shore welcomes you' } }));
   await b.eval('await ThemeStudio.open(); return 1'); await b.clickOn('[data-studio-review]'); await sleep(1200);
-  t.check('both decoded paintings and measured contrast appear before saving', await b.eval(`return document.querySelectorAll('.studio-sample').length===2 && [...document.querySelectorAll('.studio-sample img')].every(i=>i.complete&&i.naturalWidth) && /Small text/.test(studioBody.textContent) && Look.get().theme==='crimson'`));
+  t.check('both decoded paintings and measured contrast appear before saving', await b.eval(`return document.querySelectorAll('.studio-sample').length===2 && [...document.querySelectorAll('.studio-sample img')].every(i=>i.complete&&i.naturalWidth) && /Small text/.test(studioBody.textContent) && Look.get().theme===Look.DEFAULTS.theme`));
   await t.shot(b, 'preview');
   await b.esc();
-  t.check('closing a preview leaves the current theme unchanged', await b.eval('return !studioDlg.open && Look.get().theme === "crimson"'));
+  t.check('closing a preview leaves the current theme unchanged', await b.eval('return !studioDlg.open && Look.get().theme === Look.DEFAULTS.theme'));
   await b.eval(`await ThemeStudio.open();await ThemeStudio.review(${JSON.stringify(j.id)});return 1`);
   await b.clickOn('[data-studio-save]'); await sleep(1000);
   t.check('save applies the theme and writes real WebP assets in the data folder', await b.eval(`return Look.get().theme===${JSON.stringify(j.id)} && (await api('/api/themes')).themes.some(t=>t.id===Look.get().theme)`));
@@ -71,5 +71,5 @@ module.exports = [{ name: 'theme-studio', async run(t) {
   t.check('custom paintings have no perpetual layout animation', (m1.LayoutCount-m0.LayoutCount)/(m1.Timestamp-m0.Timestamp)<6);
   await b.eval(`await api('/api/themes/delete',{id:${JSON.stringify(j.id)}});await ThemeStudio.refresh();return 1`);
   await p.eval('await ThemeStudio.refresh();return 1');
-  t.check('deleting an active theme falls back on both devices', await b.eval('return Look.get().theme==="crimson"') && await p.eval('return Look.get().theme==="crimson"'));
+  t.check('deleting an active theme falls back on both devices', await b.eval('return Look.get().theme===Look.DEFAULTS.theme') && await p.eval('return Look.get().theme===Look.DEFAULTS.theme'));
 } }];

@@ -229,7 +229,7 @@ function palItems(q) {
     ...(miniOK() && !window.REMOTE ? [{ glyph: '◰', t: 'Open the mini window', s: 'what needs you, floating over other apps', run: () => openMini(), alias: 'mini picture in picture float pip always on top small status' }] : []),
     { glyph: '◐', t: Look.isLight() ? 'Switch to dark mode' : 'Switch to light mode', run: () => Look.set({ mode: Look.isLight() ? 'dark' : 'light' }) },
     { glyph: '◉', t: 'Change theme…', s: `now ${Look.theme().name}`, alias: 'theme themes colors colours look skin', page: themePage, pageTitle: 'Themes', placeholder: 'Find a theme…' },
-    ...Look.THEMES.filter(t => t.id !== Look.get().theme).map(t => ({ id: `theme:${t.id}`, glyph: '◉', t: `Theme: ${t.name}`, s: t.note, run: () => Look.set({ theme: t.id }) })),
+    ...Look.THEMES.filter(t => t.id !== Look.theme().id).map(t => ({ id: `theme:${t.id}`, glyph: '◉', t: `Theme: ${t.name}`, s: t.note, run: () => Look.set({ theme: t.id }) })),
     ...Look.FONT_SETS.filter(f => f.id !== Look.get().fontSet).map(f => ({ glyph: '¶', t: `Fonts: ${f.name}`, s: [...new Set([f.head, f.body, f.code])].map(id => Look.FAMILIES.find(x => x.id === id).name).join(' · '), run: () => Look.set({ fontSet: f.id, fBody: '', fHead: '', fCode: '' }), alias: 'font set typeface lettering' })),
     { glyph: '§', t: 'Fonts and licences', s: 'every bundled font and its licence', run: () => fontCredits(), alias: 'font license licence credits attribution ofl' },
     { glyph: '◈', t: 'Check usage for every account', run: () => refreshUsage() },
@@ -310,8 +310,9 @@ function palItems(q) {
 }
 // Pages: the full list of something you'd otherwise pick from many flat items.
 function themePage() {
-  const on = Look.get().theme;
-  return Look.THEMES.map(t => ({ id: `theme:${t.id}`, glyph: t.id === on ? '●' : '○', t: t.name, s: t.id === on ? 'in use' : t.note, text: `${t.name} ${t.note || ''} ${t.family || ''}`, run: () => Look.set({ theme: t.id }) }));
+  // The theme showing now (the light or dark pick when following the device); the five main ones first.
+  const on = Look.theme().id;
+  return [...Look.THEMES.filter(t => t.main), ...Look.THEMES.filter(t => !t.main)].map(t => ({ id: `theme:${t.id}`, glyph: t.id === on ? '●' : '○', t: t.main ? `${t.name} (${t.light ? 'light' : 'dark'})` : t.name, s: t.id === on ? 'in use' : t.note, text: `${t.name} ${t.note || ''} ${t.family || ''}`, run: () => Look.set({ theme: t.id }) }));
 }
 function accountPage() {
   return S.accounts.map(a => ({ id: `acct:${a.id}`, glyph: a.id === S.acct ? '●' : '◆', t: a.name, s: [a.id === S.acct ? 'new chats open as this' : '', a.signedIn ? usageLine(a.id, { short: true }) : 'not signed in'].filter(Boolean).join(' · '), text: `${a.name} ${a.email || ''} ${a.plan || ''}`, run: () => useAccount(a.id) }));

@@ -180,10 +180,58 @@
 
 /* Chat: the hand-over card and the steps line up with the rest. */
 .hub2:not([data-family]) #cFeed :is(.ububble,.handover,.ho-card,.relay-card){border-radius:var(--st-r-lg)}
-.hub2:not([data-family]) .c-head{background:rgb(var(--c-0a090c) / .6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.hub2:not([data-family]) .c-head{background:var(--abyss)}
 
 /* Lists in the side navigation and Recent chats: rounded rows, a clear hover. */
 .hub2:not([data-family]) :is(.nav .proj,.nav .wi,.nav .live-i,.nav-proj,.nav li>button,.rc-row,.recent-row){border-radius:var(--st-r)}
 
 /* Tags and counts: pills. */
 .hub2:not([data-family]) :is(.tag,.count-pill,.badge){border-radius:999px}
+
+/* The five main themes (theme.js PALETTE, html.look-main): work in progress takes the theme's own accent, so it
+   never reads as Claude's clay; Codex is graphite and Gemini blue through --codex/--gemini set by theme.js. */
+.look-main .ember-dot{background:var(--working)}
+.look-main .live-dot{background:var(--working);box-shadow:0 0 8px var(--working-soft)}
+.look-main .omen.working{--edge:var(--working);--accent:var(--working)}
+.look-main .gen-spin{border-top-color:var(--working)}
+
+/* Appearance: the five main themes, one row for light and one for dark; the rest under "More themes". */
+.lk-slot{margin:14px 0 8px;font:600 12px/1.2 var(--f-ui, inherit);color:var(--ash);letter-spacing:.02em}
+.lk-main{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+.lk-main-card .sw{position:relative}
+.sw-models{position:absolute;right:10px;bottom:9px;display:flex;gap:4px}
+.sw-models i{width:9px;height:9px;border-radius:3px;box-shadow:0 0 0 1px rgb(0 0 0 / .18)}
+.lk-now{font:500 11px/1 var(--f-ui, inherit);color:var(--ash);margin-left:6px}
+.lk-more{margin-top:18px;border-top:1px solid var(--seam);padding-top:6px}
+.lk-more>summary{cursor:pointer;padding:10px 0;font:600 13px/1.3 var(--f-ui, inherit);color:var(--parch-2)}
+/* Focus in the main themes is the theme's accent, not Claude's clay. */
+:root.look-main{--st-focus-glow:0 0 0 3px color-mix(in srgb, var(--focus) 26%, transparent)}
+:root.look-main body:not(.aide-panel) .c-box:focus-within{border-color:color-mix(in srgb, var(--focus) 60%, transparent)}
+:root.look-main .hub2 ::selection,:root.look-main ::selection{background:color-mix(in srgb, var(--focus) 30%, transparent)}
+
+/* Errors in the main themes: their own rose-crimson (--error), never Claude's clay. */
+.look-main :is(.hdot.error,.check.error .st,.t-st.err,.cnotice.error .cn-dot,.rn-dot.err,#homeBox .hp-dot.bad){background:var(--error)}
+.look-main :is(.dc-name .lock.bad,.menu button.danger,.menu button.danger .m-g,.t-out.err,.gen-wait.failed,.att.file.err small,.rv-st.err,.cn-st.failed,.pr-dec.bad,.wk-next.bad,.tk-st.err,.pb-check.bad,.gm-st.bad,.sa-err,.btn.danger){color:var(--error-ink)}
+.hub2.look-main .wk-workspace .bad{color:var(--error-ink)}
+.look-main :is(.t-out.err,.cnotice.error,.att.file.err,.task.failed,.pr-dec.bad){border-color:color-mix(in srgb, var(--error) 50%, transparent)}
+.hub2.look-main .btn.danger{border-color:color-mix(in srgb, var(--error) 55%, transparent)}
+.hub2.look-main .btn.danger:hover:not(:disabled){background:var(--error-soft);border-color:var(--error)}
+.hub2.look-main .btn.danger-prime{background:var(--error);border-color:transparent;color:var(--abyss)}
+.hub2.look-main .wk-sig.bad{border-color:color-mix(in srgb, var(--error) 50%, transparent);background:var(--error-soft)}
+.look-main .toast[data-tone="error"]{box-shadow:inset 3px 0 0 var(--error),0 20px 50px -14px rgb(var(--c-000000))}
+.look-main .toast[data-tone="error"] .toast-ic{background:var(--error)}
+
+/* Chrome in the main themes takes the theme's accent, not Claude's clay. */
+.hub2.look-main .nav-i[aria-current="true"] .glyph{color:var(--focus)}
+.hub2.look-main .wk-row.selected{box-shadow:inset 3px 0 0 var(--focus);background:color-mix(in srgb, var(--focus) 9%, transparent)}
+.hub2.look-main .wk-hub-entry{background:linear-gradient(110deg,color-mix(in srgb, var(--focus) 10%, transparent),var(--vellum) 42%)}
+.hub2.look-main .wk-hub-mark{background:color-mix(in srgb, var(--focus) 14%, transparent);color:var(--focus);box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--focus) 28%, transparent)}
+.hub2.look-main .wk-hub-entry p{color:var(--focus)}
+:root.hub2.look-main body{background:radial-gradient(1200px 480px at 70% -14%, color-mix(in srgb, var(--focus) 7%, transparent), transparent 64%), var(--abyss);background-attachment:fixed}
+.hub2.look-main .btn.prime:hover:not(:disabled){background:color-mix(in srgb, var(--parch) 82%, rgb(var(--c-ffffff)))}
+
+/* Garnet: red only as lacquer (undertone and trim), never a signal. */
+:root.hub2.look-main[data-theme="garnet"] body{background:radial-gradient(1200px 520px at 70% -14%, var(--lacquer-soft), transparent 64%), var(--abyss);background-attachment:fixed}
+.hub2.look-main[data-theme="garnet"] .nav-i[aria-current="true"]{background:var(--lacquer-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--lacquer) 60%, transparent)}
+.hub2.look-main[data-theme="garnet"] .ububble{background:var(--lacquer-soft)}
+.lk-sig{margin-top:18px}

@@ -162,9 +162,69 @@
     },
   ];
 
+  /* ---------- the main themes ----------
+     Light, Dark, Paper, Midnight and Sage, plus three signature darks (Gold, Garnet, Crema): each is a palette, not a set of hues. Their backgrounds and text are
+     exactly these values (pal.surf / pal.ink, keyed by the original colors they stand in for); the rest is derived
+     from seeds as for the other themes, with Claude's clay in place of the original crimson (accent), Codex as
+     graphite (codexSat), done as olive (green) and the theme's own accent (violet) for focus and work in progress.
+     Model colors (Claude clay, Codex graphite, Gemini blue) and status colors (needs-you gold, done olive, error
+     crimson) keep the same meaning in all five. Each is light or dark by nature; "auto" (the default) follows the
+     device with one light and one dark pick (lightTheme / darkTheme). The values come from the research on
+     community-favourite palettes (Flexoki for Paper), checked for contrast in tests/palettes.test.js. */
+  const PALETTE = [
+    { id: 'studio-light', name: 'Light', note: 'Off-white and warm greys, ink buttons. The everyday light mode.', main: true, light: true,
+      accent: 15, sat: 1.25, gold: 45, goldSat: 1.05, surface: 60, surfSat: 0.2, ink: 60, codex: 220, codexSat: 0.08, green: 78, greenSat: 0.75, violet: 325,
+      pal: { surf: { '050406': 'e4e3df', '0a090c': 'f5f5f3', '0d0b0f': 'eeeeeb', '141117': 'ffffff', '1a161d': 'ffffff', '221d26': 'f2f2f0', '2c2632': 'e5e4e0', '3d3443': 'd2d1cc' },
+        ink: { '716a63': '6a6964', '9a928a': '4f4e48', 'cfc6b6': '36352f', 'ede6d9': '1c1c1a' },
+        vars: { focus: '#9D3A73', working: '#9D3A73', workingSoft: 'rgb(157 58 115 / .12)', claude: '#B9562F', claudeInk: '#A84C27', claudeSoft: '#F7E6DE', codex: '#55555C', codexInk: '#3A3A40', codexSoft: '#ECECEE', gemini: '#1A73E8', geminiInk: '#1660C9', geminiSoft: '#E3EDFD', error: '#B0174E', errorInk: '#A0144A', errorSoft: '#FBE3EA' } } },
+    { id: 'studio-dark', name: 'Dark', note: 'Cool graphite, never pure black, off-white text. The everyday dark mode.', main: true, light: false,
+      accent: 15, sat: 1.3, gold: 45, goldSat: 1.05, surface: 225, surfSat: 0.25, ink: 220, codex: 220, codexSat: 0.08, green: 78, greenSat: 0.75, violet: 328,
+      pal: { surf: { '050406': '08090b', '0a090c': '0e0f12', '0d0b0f': '121418', '141117': '181a1f', '1a161d': '1f2228', '221d26': '272a31', '2c2632': '272a30', '3d3443': '353941' },
+        ink: { '716a63': '868c95', '9a928a': 'a9aeb6', 'cfc6b6': 'c8ccd2', 'ede6d9': 'e6e8eb' },
+        vars: { focus: '#D774A8', working: '#D774A8', workingSoft: 'rgb(215 116 168 / .15)', claude: '#E2896A', claudeInk: '#E8977A', claudeSoft: 'rgb(226 137 106 / .15)', codex: '#C9CCD2', codexInk: '#D4D6DB', codexSoft: 'rgb(212 214 219 / .11)', gemini: '#7CACF8', geminiInk: '#8FB8F9', geminiSoft: 'rgb(124 172 248 / .15)', error: '#EF5D8B', errorInk: '#F47BA0', errorSoft: 'rgb(239 93 139 / .15)' } } },
+    { id: 'paper', name: 'Paper', note: 'Ink on warm paper: soft, bookish and easy for long reading.', main: true, light: true,
+      accent: 18, sat: 1.35, gold: 47, goldSat: 1.1, surface: 50, surfSat: 0.6, ink: 40, codex: 40, codexSat: 0.06, green: 72, greenSat: 0.85, violet: 322,
+      pal: { surf: { '050406': 'e2e0d5', '0a090c': 'f2f0e5', '0d0b0f': 'eae8dd', '141117': 'fffcf0', '1a161d': 'fffdf5', '221d26': 'efede2', '2c2632': 'dad8ce', '3d3443': 'cecdc3' },
+        ink: { '716a63': '66655f', '9a928a': '4a4946', 'cfc6b6': '33322f', 'ede6d9': '1c1b1a' },
+        vars: { focus: '#A02F6F', working: '#A02F6F', workingSoft: 'rgb(160 47 111 / .12)', claude: '#BC5215', claudeInk: '#A44812', claudeSoft: '#F6E2D3', codex: '#4F4E4B', codexInk: '#3A3936', codexSoft: '#E6E4D9', gemini: '#205EA6', geminiInk: '#1D5596', geminiSoft: '#E1E9F4', error: '#B0244F', errorInk: '#9C1F47', errorSoft: '#F6DFE3' } } },
+    { id: 'midnight', name: 'Midnight', note: 'Deep navy, calm and focused, with an orchid accent.', main: true, light: false,
+      accent: 17, sat: 1.3, gold: 46, goldSat: 1.05, surface: 226, surfSat: 0.9, ink: 222, codex: 222, codexSat: 0.12, green: 78, greenSat: 0.75, violet: 322,
+      pal: { surf: { '050406': '070b16', '0a090c': '0b1020', '0d0b0f': '0f1527', '141117': '151d31', '1a161d': '1b243b', '221d26': '222c46', '2c2632': '232d45', '3d3443': '2f3b58' },
+        ink: { '716a63': '8b95ad', '9a928a': 'aab3c7', 'cfc6b6': 'c9d0de', 'ede6d9': 'e4e8f1' },
+        vars: { focus: '#EC9BD0', working: '#EC9BD0', workingSoft: 'rgb(236 155 208 / .15)', claude: '#E8946F', claudeInk: '#EEA383', claudeSoft: 'rgb(232 148 111 / .15)', codex: '#C7CEDB', codexInk: '#D3D9E4', codexSoft: 'rgb(211 217 228 / .11)', gemini: '#8AB4F8', geminiInk: '#9DC0FA', geminiSoft: 'rgb(138 180 248 / .16)', error: '#F0629A', errorInk: '#F57EAC', errorSoft: 'rgb(240 98 154 / .15)' } } },
+    { id: 'sage', name: 'Sage', note: 'Muted moss and stone, low glare between light and dark, ivory buttons.', main: true, light: false,
+      accent: 19, sat: 1.2, gold: 46, goldSat: 1, surface: 150, surfSat: 0.35, ink: 50, codex: 100, codexSat: 0.05, green: 74, greenSat: 0.8, violet: 318,
+      pal: { surf: { '050406': '1c221f', '0a090c': '232a27', '0d0b0f': '262e2b', '141117': '2d3532', '1a161d': '343d39', '221d26': '3b4541', '2c2632': '3d4843', '3d3443': '4b5751' },
+        ink: { '716a63': 'a4aca4', '9a928a': 'b7bcb0', 'cfc6b6': 'cfcdc0', 'ede6d9': 'e3dfd1' },
+        vars: { focus: '#E0A0CC', working: '#E0A0CC', workingSoft: 'rgb(224 160 204 / .15)', claude: '#E59C74', claudeInk: '#EBAA86', claudeSoft: 'rgb(229 156 116 / .16)', codex: '#D6D8D2', codexInk: '#E0E2DC', codexSoft: 'rgb(224 226 220 / .11)', gemini: '#93B8F2', geminiInk: '#A5C4F5', geminiSoft: 'rgb(147 184 242 / .16)', error: '#F0729E', errorInk: '#F590B5', errorSoft: 'rgb(240 114 158 / .16)' } } },
+    /* Signature darks: three more dark themes with a character of their own. Gold and Garnet split their gold in
+       two: a pale champagne frame (focus, working) and one hot amber/marigold alarm for "Needs your OK" (seeds gold
+       and goldSat), so the meaning never blurs; errors are a rose-crimson clear of Claude's clay. Garnet keeps red to
+       a lacquer undertone and trim (--lacquer), never a signal. Crema is ivory on dark roast with a heather-plum
+       accent, its surfaces nearly neutral so clay and gold don't sink into brown. */
+    { id: 'gold', name: 'Gold', note: 'Black lacquer, ivory type and champagne gold; what needs you glows amber.', main: true, sig: true, light: false,
+      accent: 15, sat: 1.3, gold: 33, goldSat: 1.72, surface: 40, surfSat: 0.2, ink: 40, codex: 220, codexSat: 0.08, green: 92, greenSat: 0.95, violet: 45, violetSat: 0.45,
+      pal: { surf: { '050406': '070706', '0a090c': '0b0b0a', '0d0b0f': '0f0f0e', '141117': '161614', '1a161d': '1c1b19', '221d26': '252421', '2c2632': '2b2925', '3d3443': '3d392f' },
+        ink: { '716a63': '8e877a', '9a928a': 'aca598', 'cfc6b6': 'd5cec1', 'ede6d9': 'efeae0' },
+        vars: { focus: '#E7D6A6', working: '#E7D6A6', workingSoft: 'rgb(231 214 166 / .14)', claude: '#E07F62', claudeInk: '#E88E72', claudeSoft: 'rgb(224 127 98 / .15)', codex: '#B2B7C0', codexInk: '#C2C6CE', codexSoft: 'rgb(194 198 206 / .11)', gemini: '#7AA7F7', geminiInk: '#9CC0FA', geminiSoft: 'rgb(122 167 247 / .16)', needs: '#FDAE50', needsSoft: 'rgb(253 174 80 / .16)', error: '#EC5F93', errorInk: '#F07FA6', errorSoft: 'rgb(236 95 147 / .15)' } } },
+    { id: 'garnet', name: 'Garnet', note: 'Oxblood lacquer and champagne gilt on warm black. Rich and quiet for long days.', main: true, sig: true, light: false,
+      accent: 13, sat: 1.3, gold: 32, goldSat: 1.75, surface: 350, surfSat: 1.1, ink: 38, codex: 225, codexSat: 0.1, green: 95, greenSat: 0.75, violet: 54, violetSat: 0.75,
+      pal: { surf: { '050406': '0c0607', '0a090c': '160d11', '0d0b0f': '1b1115', '141117': '21151a', '1a161d': '291a20', '221d26': '332128', '2c2632': '42262f', '3d3443': '583340' },
+        ink: { '716a63': '9a8a7c', '9a928a': 'b5a596', 'cfc6b6': 'dacdb9', 'ede6d9': 'f2e8d7' },
+        vars: { focus: '#EFDFAB', working: '#EFDFAB', workingSoft: 'rgb(239 223 171 / .14)', claude: '#EB8972', claudeInk: '#F69F87', claudeSoft: 'rgb(235 137 114 / .15)', codex: '#BDC3CD', codexInk: '#CDD3DB', codexSoft: 'rgb(205 211 219 / .11)', gemini: '#8AB4F8', geminiInk: '#9DC0FA', geminiSoft: 'rgb(138 180 248 / .16)', needs: '#FFAB4E', needsSoft: 'rgb(255 171 78 / .16)', error: '#EB5C88', errorInk: '#F879A3', errorSoft: 'rgb(235 92 136 / .14)', lacquer: '#8A2537', lacquerSoft: 'rgb(138 37 55 / .24)' } } },
+    { id: 'crema', name: 'Crema', note: 'Ivory type and buttons on dark roast, a heather-plum accent. Warm, never brown.', main: true, sig: true, light: false,
+      accent: 17, sat: 1.25, gold: 46, goldSat: 1.1, surface: 25, surfSat: 0.3, ink: 42, codex: 215, codexSat: 0.08, green: 76, greenSat: 0.8, violet: 288,
+      pal: { surf: { '050406': '12100e', '0a090c': '1b1816', '0d0b0f': '1f1c19', '141117': '25211e', '1a161d': '2b2724', '221d26': '332f2b', '2c2632': '3a3531', '3d3443': '4b453f' },
+        ink: { '716a63': '9a9183', '9a928a': 'b1a897', 'cfc6b6': 'd3cab6', 'ede6d9': 'e9e0cb' },
+        vars: { focus: '#BE86CC', working: '#BE86CC', workingSoft: 'rgb(190 134 204 / .15)', claude: '#E2906A', claudeInk: '#E99E7B', claudeSoft: 'rgb(226 144 106 / .15)', codex: '#C3C8CF', codexInk: '#D1D5DB', codexSoft: 'rgb(209 213 219 / .11)', gemini: '#8DB3F2', geminiInk: '#A0C0F5', geminiSoft: 'rgb(141 179 242 / .16)', error: '#E8606A', errorInk: '#EF7F86', errorSoft: 'rgb(232 96 106 / .15)' } } },
+  ];
+  // The model and status colors each main theme sets on the page (as CSS variables).
+  const PAL_VARS = { focus: '--focus', working: '--working', workingSoft: '--working-soft', claude: '--claude', claudeInk: '--claude-ink', claudeSoft: '--claude-soft', codex: '--codex', codexInk: '--codex-ink', codexSoft: '--codex-soft', gemini: '--gemini', geminiInk: '--gemini-ink', geminiSoft: '--gemini-soft', needs: '--needs', needsSoft: '--needs-soft', error: '--error', errorInk: '--error-ink', errorSoft: '--error-soft', lacquer: '--lacquer', lacquerSoft: '--lacquer-soft' };
+
   // accent: hue for the main color · sat: its strength · gold: hue for highlights · surface: hue
   // and strength of backgrounds · ink: hue of text · codex: hue that marks Codex.
   const THEMES = [
+    ...PALETTE,
     { id: 'crimson', name: 'Crimson', note: 'The original: wine red and gold on ink.', accent: 4, sat: 1, gold: 45, surface: 270, surfSat: 1, ink: 38, codex: 217 },
     { id: 'sapphire', name: 'Sapphire', note: 'Deep blue with a warm gold.', accent: 218, sat: 1.15, gold: 42, surface: 226, surfSat: 1.3, ink: 215, codex: 172 },
     { id: 'emerald', name: 'Emerald', note: 'Forest green and brass.', accent: 152, sat: 0.95, gold: 48, surface: 165, surfSat: 1, ink: 90, codex: 217 },
@@ -179,7 +239,7 @@
   ];
   // fontSet: a ready-made set from FONT_SETS ('' keeps the theme's own); fBody, fHead and fCode: single
   // picks from FAMILIES that win over the set ('' keeps it, 'system' is the device's own font).
-  const DEFAULTS = { theme: 'crimson', mode: 'dark', text: 100, ui: 100, fontSet: '', fBody: '', fHead: '', fCode: '', liga: false, bold: false, contrast: false };
+  const DEFAULTS = { theme: 'auto', mode: 'system', lightTheme: 'studio-light', darkTheme: 'studio-dark', text: 100, ui: 100, fontSet: '', fBody: '', fHead: '', fCode: '', liga: false, bold: false, contrast: false };
 
   /* ---------- the font pack ----------
      42 families to choose from in Setup, plus five that only themes use. All are under the SIL Open
@@ -347,9 +407,40 @@
         return toRgb(h - 4 + t.accent, s * t.sat, ll);
       }
       case 'gold': return toRgb(h - 45 + t.gold, s * (t.goldSat ?? (t.id === 'graphite' ? 0.7 : 1)), light ? (l > 0.4 ? 0.4 - (l - 0.4) * 0.3 : l) : l);
-      case 'codex': return toRgb(h - 217 + t.codex, s, light ? (l > 0.42 ? 0.42 - (l - 0.42) * 0.4 : l) : l);
-      default: return toRgb(h, s, light ? (l > 0.42 ? 0.4 - (l - 0.42) * 0.4 : l) : l);
+      case 'codex': return toRgb(h - 217 + t.codex, s * (t.codexSat ?? 1), light ? (l > 0.42 ? 0.42 - (l - 0.42) * 0.4 : l) : l);
+      case 'green': if (t.green != null) return toRgb(t.green, s * (t.greenSat ?? 1), light ? (l > 0.42 ? 0.4 - (l - 0.42) * 0.4 : l) : l); break;
+      case 'violet': if (t.violet != null) return toRgb(t.violet, s * (t.violetSat ?? 0.85), light ? (l > 0.42 ? 0.4 - (l - 0.42) * 0.4 : l) : l); break;
+      default: break;
     }
+    return toRgb(h, s, light ? (l > 0.42 ? 0.4 - (l - 0.42) * 0.4 : l) : l);
+  }
+
+  // A main theme's color for one of the original colors: backgrounds and text interpolate between the palette's
+  // own values by the original's lightness (so every in-between step keeps its place); the rest is derived.
+  const hexRgb = h => [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
+  const ANCHORS = new Map();   // theme id + role -> [[original lightness, rgb], ...] sorted
+  function anchors(t, role, contrast) {
+    const k = `${t.id}:${role}:${contrast ? 1 : 0}`;
+    if (ANCHORS.has(k)) return ANCHORS.get(k);
+    const src = role === 'surface' ? t.pal.surf : t.pal.ink;
+    let list = Object.entries(src).map(([orig, val]) => [toHsl(orig)[2], hexRgb(val)]).sort((a, b) => a[0] - b[0]);
+    // Higher contrast: the quieter text steps move toward the main text.
+    if (contrast && role === 'ink') { const top = list[list.length - 1][1]; list = list.map(([l, c], i) => [l, i === list.length - 1 ? c : c.map((v, j) => Math.round(v + (top[j] - v) * 0.4))]); }
+    ANCHORS.set(k, list);
+    return list;
+  }
+  function palAt(list, l) {
+    if (l <= list[0][0]) return list[0][1].slice();
+    for (let i = 1; i < list.length; i++) {
+      if (l <= list[i][0]) { const [l0, a] = list[i - 1], [l1, b] = list[i], f = (l - l0) / (l1 - l0 || 1); return a.map((v, j) => Math.round(v + (b[j] - v) * f)); }
+    }
+    return list[list.length - 1][1].slice();
+  }
+  function palColor(hex, t, contrast) {
+    if (hex === '1a1405') return t.light ? [28, 22, 0] : [26, 20, 5];   // the ink on gold buttons stays dark
+    const r = ROLES[hex];
+    if (r === 'surface' || r === 'ink') return palAt(anchors(t, r, contrast), toHsl(hex)[2]);
+    return derive(hex, t, t.light, contrast);
   }
 
   // Custom themes keep the same surface steps. Only their ink is nudged when a hue would make
@@ -359,6 +450,7 @@
   const READ_SURFACES = ['0a090c', '110e12', '17131a', '1a161d'];
   const ACTION_BACKGROUNDS = ['8d3e37', '6c2e29', '9a463e', '78342e'];
   function color(hex, t, light, contrast = false) {
+    if (t.pal) return palColor(hex, t, contrast);
     const rgb = derive(hex, t, light, contrast);
     if (t.family === 'custom' && ACTION_BACKGROUNDS.includes(hex)) {
       for (let step = 0; step <= 100; step++) {
@@ -382,7 +474,7 @@
       buttons: Math.min(...ACTION_BACKGROUNDS.map(bg => ratio(color(bg, t, light), [246, 236, 226]))),
     }]));
   }
-  if (typeof window === 'undefined') { module.exports = { audit, color, ratio, FAMILIES, FONT_SETS, setFonts }; return; }
+  if (typeof window === 'undefined') { module.exports = { audit, color, ratio, FAMILIES, FONT_SETS, setFonts, PALETTE }; return; }
 
   // Every family's @font-face, plus a scaled copy ("Fit <name>") for the reading and code fonts.
   (function fontFaces() {
@@ -407,20 +499,32 @@
     // The old reading-font choice: Modern was the device's sans for replies, Clean for headings too.
     if (o.font === 'modern' || o.font === 'clean') { o.fBody = o.fBody || 'system'; if (o.font === 'clean') o.fHead = o.fHead || 'system'; }
     delete o.font;
+    // Once: the old default (Crimson) moves to the new one, following the device with Light and Dark.
+    if (!o.v) { if (o.theme === 'crimson') { o.theme = 'auto'; o.mode = 'system'; } o.v = 2; }
+    if (!o.lightTheme) o.lightTheme = DEFAULTS.lightTheme;
+    if (!o.darkTheme) o.darkTheme = DEFAULTS.darkTheme;
     return o;
   }
   let cur = load();
   const isLight = (o = cur) => o.mode === 'light' || (o.mode === 'system' && !!(mq && mq.matches));
-  const themeOf = id => THEMES.find(t => t.id === id) || THEMES[0];
+  const byId = id => THEMES.find(t => t.id === id);
+  // "auto": the main theme picked for light or for dark (lightTheme / darkTheme), as the mode (or the device) says.
+  // An unknown theme (a deleted custom one, say) falls back to Crimson, as before.
+  const themeOf = (id, o = cur) => {
+    if (id === 'auto') { const l = isLight(o); return byId(l ? o.lightTheme : o.darkTheme) || byId(l ? 'studio-light' : 'studio-dark'); }
+    return byId(id) || byId('crimson');
+  };
 
   function apply(o = cur) {
     const root = document.documentElement, st = root.style;
-    const t = themeOf(o.theme), light = isLight(o);
+    const t = themeOf(o.theme, o), light = t.pal ? t.light : isLight(o);
     const original = t.id === 'crimson' && !light && !o.contrast;
     for (const c of COLORS) {
       if (original) st.removeProperty(`--c-${c}`);
       else st.setProperty(`--c-${c}`, color(c, t, light, o.contrast).join(' '));
     }
+    for (const [k, v] of Object.entries(PAL_VARS)) { const val = t.pal && t.pal.vars[k]; if (val) st.setProperty(v, val); else st.removeProperty(v); }
+    root.classList.toggle('look-main', !!t.pal);
     root.dataset.mode = light ? 'light' : 'dark';
     root.dataset.theme = t.id;
     st.colorScheme = light ? 'light' : 'dark';
@@ -459,7 +563,7 @@
   }
   // The seal (logo) takes the theme's emblem; the original is kept to put back.
   let sigil0 = null;
-  function emblem(t = themeOf(cur.theme)) {
+  function emblem(t = themeOf(cur.theme, cur)) {
     const sym = document.getElementById('sigil'); if (!sym) return;
     if (sigil0 === null) sigil0 = sym.innerHTML;
     const want = t.emblem || sigil0;
@@ -468,10 +572,17 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => emblem());
   // The theme's words for a piece of the app's text, or the text itself. {n} and the like fill in from vars.
   function say(text, vars) {
-    const c = themeOf(cur.theme).copy, s = (c && c[text]) ?? text;
+    const c = themeOf(cur.theme, cur).copy, s = (c && c[text]) ?? text;
     return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m)) : s;
   }
   function set(changes) {
+    // Choosing one of the five main themes: it becomes the pick for its half (light or dark), and shows now unless
+    // the app follows the device (then it shows when the device is in that mode).
+    const p = changes.theme && byId(changes.theme);
+    if (p && p.pal) {
+      changes = { ...changes, theme: 'auto', [p.light ? 'lightTheme' : 'darkTheme']: p.id };
+      if (changes.mode === undefined && cur.mode !== 'system') changes.mode = p.light ? 'light' : 'dark';
+    }
     cur = { ...cur, ...changes };
     try { localStorage.setItem('look', JSON.stringify(cur)); } catch { /* private window */ }
     apply();
@@ -480,7 +591,8 @@
   // A few colors of a theme, for its swatch in Setup.
   function swatch(id, light) {
     const t = themeOf(id), c = hex => `rgb(${color(hex, t, light, false).join(',')})`;
-    return { bg: c('0a090c'), card: c('1a161d'), line: c('2c2632'), ink: c('ede6d9'), ash: c('9a928a'), accent: c('a5463f'), ember: c('cf8274'), gold: c('d9bf74'), codex: c('6f97d8') };
+    const v = t.pal && t.pal.vars;
+    return { bg: c('0a090c'), card: c('1a161d'), line: c('2c2632'), ink: c('ede6d9'), ash: c('9a928a'), accent: c('a5463f'), ember: c('cf8274'), gold: c('d9bf74'), codex: v ? v.codex : c('6f97d8'), claude: v ? v.claude : c('cf8274'), gemini: v ? v.gemini : (light ? 'rgb(132 72 170)' : 'rgb(195 138 224)'), focus: v ? v.focus : c('d9bf74') };
   }
   if (mq && mq.addEventListener) mq.addEventListener('change', () => { if (cur.mode === 'system') apply(); });
 
@@ -490,6 +602,6 @@
     if (cur.theme.startsWith('custom-') && !THEMES.some(t => t.id === cur.theme)) set({ theme: DEFAULTS.theme });
     else apply();
   }
-  window.Look = { THEMES, DEFAULTS, FAMILIES, FONT_SETS, stack, setFonts, get: () => ({ ...cur }), set, reset, apply, swatch, isLight, say, custom, audit, color, theme: () => themeOf(cur.theme) };
+  window.Look = { THEMES, DEFAULTS, FAMILIES, FONT_SETS, stack, setFonts, get: () => ({ ...cur }), set, reset, apply, swatch, isLight, say, custom, audit, color, theme: () => themeOf(cur.theme, cur), MAIN: PALETTE };
   apply();
 })();
