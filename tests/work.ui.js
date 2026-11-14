@@ -186,7 +186,10 @@ module.exports = [{
     t.check('larger interface and contrast keep the page inside the window', await large.eval(`return document.documentElement.scrollWidth <= innerWidth + 1`));
     await t.shot(large, 'large-interface');
     // The start-page preference is opt-in, and the same control undoes it.
-    await b.eval(`Look.set({theme:'crimson',mode:'dark'}); document.querySelector('[data-wk="home"]').click(); location.reload(); return 1`); await sleep(1500);
+    await b.eval(`Look.set({theme:'crimson',mode:'dark'}); document.querySelector('[data-wk="home"]').click(); location.reload(); return 1`); await sleep(800);
+    // (Up to 15 s for the reload to finish: GitHub's Macs can take longer than a fixed wait.)
+    let home = false;
+    for (let i = 0; i < 50 && !home; i++) { try { home = await b.eval(`return document.readyState === 'complete' && typeof S !== 'undefined' && S.view === 'work' && !!document.querySelector('[data-wk="home"]')`); } catch { /* still loading */ } if (!home) await sleep(300); }
     t.check('the chosen start page opens after a reload', await b.eval(`return S.view === 'work' && store('start-page') === 'work'`));
     await b.eval(`document.querySelector('[data-wk="home"]').click(); return 1`);
     t.check('the start-page preference can be undone', await b.eval(`return store('start-page') === 'hub'`));

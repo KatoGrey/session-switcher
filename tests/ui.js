@@ -922,7 +922,14 @@ module.exports = [
       st = await state();
       t.check('past about 30% it closes', st.hidden && !st.ran, st);
       r = await open();
-      await drag(r.x, r.top + 40, Math.round(r.h * 0.38), { steps: 3, gap: 0, rest: 0 }); await sleep(450);   // (less than 30% once it's moving)
+      // A flick: made in the page, at a real finger's pace (a few ms between moves), so a slow machine's remote
+      // control (GitHub's Macs) can't turn it into a slow drag. Less than 30% once it's moving, so only its speed closes it.
+      await p.eval(`const m = document.getElementById('menu'), q = m.getBoundingClientRect(), x = q.left + q.width / 2, y0 = q.top + 40, dy = Math.round(q.height * 0.38);
+        const fire = (type, y) => m.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1 }));
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        fire('pointerdown', y0); await wait(16);
+        for (let i = 1; i <= 4; i++) { fire('pointermove', y0 + (dy * i) / 4); await wait(12); }
+        fire('pointerup', y0 + dy); return 1`); await sleep(450);
       t.check('a quick flick closes it too', (await state()).hidden);
       r = await open();
       seen = await drag(r.x, r.top + 40, -220, { peek, rest: 50 }); await sleep(450);
