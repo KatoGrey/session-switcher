@@ -821,6 +821,160 @@ module.exports = [
     },
   },
   {
+    name: 'agent activity',
+    // A running step counts its seconds on one shared clock (nothing else in the feed is redrawn), a long
+    // one keeps its time, a subagent step says which one and on what, and thinking folds once the reply moves on.
+    async run(t) {
+      const b = await t.open();
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      const ago = s => `new Date(Date.now() - ${s * 1000}).toISOString()`;
+      const tool = (id, name, summary, extra = {}) => JSON.stringify({ type: 'tool', id, name, summary, detail: '', detailKind: 'text', meta: null, result: null, ...extra });
+      await b.eval(`handle({ kind: 'assistant', mid: 'act1', at: ${ago(5)}, seq: 700, blocks: [${tool('r1', 'Bash', 'npm test')}] }); return 1`);
+      await sleep(300);
+      await b.eval(`window._muts = []; window._mo = new MutationObserver(l => { for (const m of l) _muts.push(m.target.nodeType === 1 ? m.target : m.target.parentElement); }); _mo.observe(document.getElementById('cFeed'), { subtree: true, childList: true, characterData: true }); return 1`);
+      await sleep(2300);
+      const run = await b.eval(`const d = document.querySelector('.tool[data-tool-id="r1"]'); const tm = d.querySelector('.t-time'); return { text: tm.textContent, live: tm.querySelector('.t-rs')?.getAttribute('aria-live'), timer: !!Steps.timer, n: Steps.running.size, others: _muts.filter(x => !x.closest('.t-time')).map(x => x.className || x.tagName) }`);
+      t.check('a running step counts its seconds', /^Running · ([5-9]|1\d)s$/.test(run.text), run);
+      t.check('its ticking isn’t read out', run.live === 'off', run);
+      t.check('on one shared clock, which only touches the timers', run.timer && run.n === 1 && run.others.length === 0, run);
+      const timer1 = await b.eval(`return Steps.timer`);
+      await b.eval(`handle({ kind: 'assistant', mid: 'act2', at: ${ago(1)}, seq: 701, blocks: [${tool('r2', 'Read', 'a.lua')}] }); return 1`);
+      t.check('a second running step shares that clock', await b.eval(`return Steps.timer === ${timer1} && Steps.running.size === 2`));
+      await b.eval(`_mo.disconnect(); handle({ kind: 'tool_result', toolUseId: 'r1', result: { text: 'ok', isError: false, images: [] }, at: new Date().toISOString(), seq: 702 }); handle({ kind: 'tool_result', toolUseId: 'r2', result: { text: 'ok', isError: false, images: [] }, at: ${ago(0.5)}, seq: 703 }); return 1`);
+      await sleep(1200);
+      const done = await b.eval(`const q = id => document.querySelector('.tool[data-tool-id="' + id + '"] .t-time'); return { long: q('r1').textContent, cls: q('r1').className, short: q('r2').textContent, timer: Steps.timer, n: Steps.running.size }`);
+      t.check('a long step keeps its time, quietly', /^\d+\.\ds$/.test(done.long) && /t-took/.test(done.cls), done);
+      t.check('a quick one says nothing', done.short === '', done);
+      t.check('and the clock stops when nothing runs', done.timer === 0 && done.n === 0, done);
+      // Waiting for your OK: no clock.
+      await b.eval(`handle({ kind: 'assistant', mid: 'act3', at: ${ago(4)}, seq: 704, blocks: [${tool('r3', 'Bash', 'rm -rf build')}] }); handle({ kind: 'permission', requestId: 'pq1', toolName: 'Bash', toolUseId: 'r3', view: { summary: 'rm -rf build', detail: 'rm -rf build', detailKind: 'command' }, canAlways: false, seq: 705 }); return 1`);
+      await sleep(1300);
+      t.check('a step waiting for you says so, without a clock', await b.eval(`return document.querySelector('.tool[data-tool-id="r3"] .t-time').textContent === 'waiting for you'`));
+      await b.eval(`handle({ kind: 'permission_done', requestId: 'pq1', at: ${ago(2)}, seq: 706 }); return 1`); await sleep(1200);
+      t.check('once answered, its clock starts from then', /^Running · [2-4]s$/.test(await b.eval(`return document.querySelector('.tool[data-tool-id="r3"] .t-time').textContent`)));
+      await b.eval(`handle({ kind: 'result', ok: true, errors: [], seq: 707 }); return 1`); await sleep(300);
+      t.check('a reply that ends stops its steps’ clocks', await b.eval(`return Steps.running.size === 0 && document.querySelector('.tool[data-tool-id="r3"] .t-time').textContent === ''`));
+      // Subagents: the call's own model and effort, else the one set for that subagent.
+      await b.eval(`handle({ kind: 'assistant', mid: 'act4', at: new Date().toISOString(), seq: 708, blocks: [
+        ${tool('a1', 'Agent', 'Find the menu code', { meta: { agent: 'session-switcher:scout', model: null, effort: null } })},
+        ${tool('a2', 'Agent', 'Review the change', { meta: { agent: 'session-switcher:reviewer', model: 'sonnet', effort: 'max' } })},
+        ${tool('a3', 'Task', 'Look around', { detail: JSON.stringify({ description: 'Look around', prompt: 'Find "model": "x" in the code', subagent_type: 'Explore', model: 'haiku' }, null, 2), detailKind: 'json' })}] }); return 1`);
+      await sleep(1200);
+      await t.shot(b, 'subagents');
+      const chips = await b.eval(`return ['a1', 'a2', 'a3'].map(id => document.querySelector('.tool[data-tool-id="' + id + '"] .t-agent')?.textContent || null)`);
+      t.check('a subagent step names it, with the model and effort it’s set to', chips[0] === 'scout · Haiku, low', chips);
+      t.check('or the ones the call asked for', chips[1] === 'reviewer · Sonnet, max', chips);
+      t.check('and reads them from a call shown before the PC said so', chips[2] === 'Explore · Haiku', chips);
+      const line = await b.eval(`return document.querySelector('.tool[data-tool-id="a1"]').closest('.tools').querySelector('.tg-sum').textContent`);
+      t.check('the reply’s one line says who it delegated to', /Delegated to scout, reviewer and 1 more/.test(line), line);
+      await b.eval(`handle({ kind: 'result', ok: true, errors: [], seq: 709 }); return 1`);
+      // Thinking: open while it streams, folded once the reply moves on.
+      await b.eval(`handle({ kind: 'stream_start', mid: 'th1', seq: 710 }); handle({ kind: 'delta', mid: 'th1', thinking: true, text: 'Let me look at ', seq: 711 }); handle({ kind: 'delta', mid: 'th1', thinking: true, text: 'the menu code first.', seq: 712 }); return 1`);
+      await sleep(400);
+      const th = () => b.eval(`const p = document.querySelector('.part[data-mid="th1"]'); const ts = [...p.querySelectorAll('.think')]; return { n: ts.length, open: ts.map(x => x.open), live: ts.map(x => x.hasAttribute('data-live')), text: ts.map(x => x.querySelector('.think-t').textContent) }`);
+      let s = await th();
+      t.check('thinking shows as it streams, open', s.n === 1 && s.open[0] && s.live[0] && s.text[0] === 'Let me look at the menu code first.', s);
+      await b.eval(`handle({ kind: 'assistant', mid: 'th1', at: new Date().toISOString(), seq: 713, blocks: [{ type: 'thinking', text: 'Let me look at the menu code first. Found it.' }] }); return 1`); await sleep(100);
+      s = await th();
+      t.check('the whole block takes its place, still open', s.n === 1 && s.open[0] && !s.live[0] && /Found it\.$/.test(s.text[0]), s);
+      await b.eval(`handle({ kind: 'delta', mid: 'th1', text: 'Here is what I found.', seq: 714 }); return 1`); await sleep(200);
+      s = await th();
+      t.check('and folds once the reply moves on', s.n === 1 && !s.open[0], s);
+      // Opened by you, it stays open; a block that arrives whole starts folded.
+      await b.eval(`handle({ kind: 'stream_start', mid: 'th2', seq: 715 }); handle({ kind: 'delta', mid: 'th2', thinking: true, text: 'Hmm.', seq: 716 }); return 1`); await sleep(300);
+      await b.clickOn('.part[data-mid="th2"] .think > summary'); await sleep(150);
+      await b.clickOn('.part[data-mid="th2"] .think > summary'); await sleep(150);
+      await b.eval(`handle({ kind: 'assistant', mid: 'th2', at: new Date().toISOString(), seq: 717, blocks: [{ type: 'thinking', text: 'Hmm. Right.' }, { type: 'text', text: 'Done.' }] }); handle({ kind: 'result', ok: true, errors: [], seq: 718 }); return 1`); await sleep(200);
+      t.check('thinking you opened yourself stays open', await b.eval(`return document.querySelector('.part[data-mid="th2"] .think').open`));
+      await b.eval(`handle({ kind: 'assistant', mid: 'th3', at: new Date().toISOString(), seq: 719, blocks: [{ type: 'thinking', text: 'Quietly.' }, { type: 'text', text: 'Ok.' }] }); return 1`); await sleep(200);
+      t.check('thinking that arrives whole starts folded', await b.eval(`return document.querySelector('.part[data-mid="th3"] .think').open === false`));
+      await t.shot(b, 'activity');
+    },
+  },
+  {
+    name: 'phone sheets',
+    // On a phone, menus and sheets follow a finger dragged down, and close past about 30% or on a flick;
+    // otherwise they spring back. Scrolled content, text boxes and a wide screen are left alone.
+    async run(t) {
+      const p = await t.open({ width: 412, height: 880, mobile: true });
+      const touch = (type, x, y) => p.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+      // A drag from (x, y) by dy, in steps; slow ones rest before letting go.
+      const drag = async (x, y, dy, { steps = 10, gap = 16, rest = 250, peek = null } = {}) => {
+        await touch('touchStart', x, y); await sleep(30);
+        for (let i = 1; i <= steps; i++) { await touch('touchMove', x, y + (dy * i) / steps); await sleep(gap); }
+        const seen = peek ? await p.eval(peek) : null;
+        await sleep(rest); await touch('touchEnd', x, y + dy);
+        return seen;
+      };
+      const items = n => `Array.from({ length: ${n} }, (_, i) => ({ label: 'Item ' + (i + 1), run: () => { window._ran = i + 1; } }))`;
+      const open = async (n = 4) => { await p.eval(`window._ran = 0; showMenu({ x: 200, y: 300 }, ${items(n)}); return 1`); await sleep(350); return p.eval(`const r = document.getElementById('menu').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), top: Math.round(r.top), h: Math.round(r.height) }`); };
+      const peek = `const m = document.getElementById('menu'); return { tf: m.style.transform, back: getComputedStyle(document.getElementById('menuBack')).opacity }`;
+      const state = () => p.eval(`const m = document.getElementById('menu'); return { hidden: m.hidden, tf: m.style.transform, ran: window._ran }`);
+      let r = await open();
+      t.check('a phone menu has a handle', await p.eval(`return getComputedStyle(document.getElementById('menu'), '::before').content !== 'none'`));
+      await t.shot(p, 'menu');
+      let seen = await drag(r.x, r.top + 40, Math.round(r.h * 0.18), { peek });
+      await sleep(450);
+      let st = await state();
+      t.check('dragged down, it follows the finger and the backdrop fades', /translateY\(\d/.test(seen.tf) && +seen.back < 1, seen);
+      t.check('let go early, it springs back, and the item under the finger isn’t pressed', !st.hidden && st.tf === '' && !st.ran, st);
+      await drag(r.x, r.top + 40, Math.round(r.h * 0.45)); await sleep(450);
+      st = await state();
+      t.check('past about 30% it closes', st.hidden && !st.ran, st);
+      r = await open();
+      await drag(r.x, r.top + 40, Math.round(r.h * 0.38), { steps: 3, gap: 0, rest: 0 }); await sleep(450);   // (less than 30% once it's moving)
+      t.check('a quick flick closes it too', (await state()).hidden);
+      r = await open();
+      seen = await drag(r.x, r.top + 40, -220, { peek, rest: 50 }); await sleep(450);
+      const up = Math.abs(parseFloat((seen.tf.match(/-?[\d.]+/) || ['0'])[0]));
+      t.check('dragged up past the top it gives only a little', up > 5 && up < 60 && !(await state()).hidden, seen);
+      await p.eval(`closeMenu(); return 1`); await sleep(200);
+      // A long menu scrolled down scrolls back up instead.
+      r = await open(40);
+      await p.eval(`document.getElementById('menu').scrollTop = 300; return 1`); await sleep(100);
+      seen = await drag(r.x, r.top + 120, 160, { peek }); await sleep(450);
+      st = await state();
+      t.check('content that’s scrolled down scrolls instead of dragging', !st.hidden && seen.tf === '' && await p.eval(`return document.getElementById('menu').scrollTop < 300`), { st, seen });
+      await p.eval(`closeMenu(); return 1`); await sleep(200);
+      // A touch that starts in a text box is the box's.
+      r = await open();
+      const inp = await p.eval(`const m = document.getElementById('menu'); m.insertAdjacentHTML('beforeend', '<input id="tIn" style="width:90%;height:40px">'); const q = document.getElementById('tIn').getBoundingClientRect(); return { x: Math.round(q.left + 20), y: Math.round(q.top + 20) }`);
+      seen = await drag(inp.x, inp.y, 200, { peek }); await sleep(450);
+      t.check('a drag that starts in a text box doesn’t move the sheet', seen.tf === '', seen);
+      await p.eval(`closeMenu(); return 1`); await sleep(200);
+      // Reduced motion: it closes without the slide.
+      await p.eval(`Local.motion = false; applyMotion(); return 1`);
+      r = await open();
+      await drag(r.x, r.top + 40, Math.round(r.h * 0.5), { rest: 50 }); await sleep(60);
+      t.check('with motion off it closes straight away', (await state()).hidden);
+      await p.eval(`Local.motion = true; applyMotion(); return 1`);
+      // The model picker and a chat's details.
+      await p.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      await p.eval(`openPick('main'); return 1`); await sleep(500);
+      const pk = await p.eval(`const r = document.querySelector('#cPick .mp-top').getBoundingClientRect(); return { x: Math.round(r.left + 30), y: Math.round(r.top + r.height / 2), h: document.getElementById('cPick').getBoundingClientRect().height }`);
+      await drag(pk.x, pk.y, Math.round(pk.h * 0.5)); await sleep(450);
+      t.check('the model picker drags shut from its top', await p.eval(`return document.getElementById('cPick').hidden && document.getElementById('pickBack').hidden`));
+      await p.eval(`ChatUI.close(); return 1`); await sleep(800);
+      await p.eval(`const s = S.projects[0].sessions[0], real = api;
+        api = async (u, ...rest) => (String(u).startsWith('/api/session?') ? { session: { ...s, folder: 'X', folderExists: true, updated: Date.now(), sizeKB: 4 }, stats: { prompts: 1, replies: 1, tools: 0, first: null, models: [], version: '' }, messages: Array.from({ length: 12 }, (_, i) => ({ role: i % 2 ? 'claude' : 'you', text: 'Message ' + i + ' with a few words in it.', at: null })), running: false } : real(u, ...rest));
+        await openDrawer(s.id); await new Promise(r => setTimeout(r, 200)); api = real; return 1`); await sleep(500);
+      const dr = await p.eval(`const d = document.getElementById('drawer'); const r = d.querySelector('.d-top').getBoundingClientRect(); return { hidden: d.hidden, x: Math.round(r.left + 40), y: Math.round(r.top + 30), h: d.getBoundingClientRect().height }`);
+      await t.shot(p, 'details');
+      if (!dr.hidden) {
+        await drag(dr.x, dr.y, Math.round(dr.h * 0.4)); await sleep(450);
+        t.check('a chat’s details drag shut from the top', await p.eval(`return document.getElementById('drawer').hidden`));
+      } else t.check('a chat’s details open on a phone', false, dr);
+      // A wide screen: no handle, and a drag does nothing.
+      const w = await t.open();
+      await w.eval(`window._ran = 0; showMenu({ x: 300, y: 200 }, ${items(4)}); return 1`); await sleep(300);
+      const wide = await w.eval(`const m = document.getElementById('menu'); const r = m.getBoundingClientRect(); return { handle: getComputedStyle(m, '::before').content, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 10) }`);
+      for (const [type, y] of [['mouseMoved', wide.y], ['mousePressed', wide.y], ['mouseMoved', wide.y + 60], ['mouseMoved', wide.y + 160], ['mouseReleased', wide.y + 160]]) await w.send('Input.dispatchMouseEvent', { type, x: wide.x, y, button: 'left', clickCount: 1 });
+      await sleep(400);
+      const after = await w.eval(`const m = document.getElementById('menu'); return { hidden: m.hidden, tf: m.style.transform }`);
+      t.check('on a wide screen menus have no handle and don’t drag', wide.handle === 'none' && !after.hidden && after.tf === '', { wide, after });
+    },
+  },
+  {
     name: 'undo',
     // What a reply changed: a bar under it, the changes, and Undo (which the assistant then hears about).
     async run(t) {

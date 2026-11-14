@@ -76,3 +76,18 @@ test('history: an oversized record cannot widen past the scan budget or trap Ear
   }
   assert.deepEqual(seen, ['u-1', 'u-3'], 'complete messages around the oversized record appear once');
 });
+
+test('history: a step knows how long it took, and a subagent step which subagent and model', async t => {
+  const { toolView } = require('../lib/chat');
+  const file = transcript(t, [
+    user(1, 'Check it.'),
+    assistant(1, [{ type: 'tool_use', id: 'tool-a', name: 'Agent', input: { description: 'Find the menu code', prompt: 'Look for it.', subagent_type: 'session-switcher:scout' } }]),
+    { type: 'user', timestamp: new Date(1700000001500 + 4200).toISOString(), message: { content: [{ type: 'tool_result', tool_use_id: 'tool-a', content: 'Found it.' }] } },
+  ]);
+  const page = await readHistory(file, { limit: 20 });
+  const step = page.items.find(it => it.kind === 'assistant').blocks[0];
+  assert.equal(step.ms, 4200);
+  assert.deepEqual(step.meta, { agent: 'session-switcher:scout', model: null, effort: null });
+  assert.deepEqual(toolView('Task', { description: 'x', subagent_type: 'Explore', model: 'haiku', effort: 'low' }).meta, { agent: 'Explore', model: 'haiku', effort: 'low' });
+  assert.equal(toolView('Agent', { description: 'x', prompt: 'y' }).meta, null);
+});

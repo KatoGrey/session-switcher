@@ -1,0 +1,13 @@
+/* Phone sheets you can drag shut (ui/sheets.js): a handle along the top, and touches that are the
+   sheet's to handle. Only on a phone-sized screen; nothing changes on a wider one. Imperial and Rebel
+   keep their sheets as they are (they drag the same, without the drawn handle). */
+@media (max-width:760px){
+  /* A phone's menus are sheets along the bottom (styles.css). Since they became popovers (6.1), the
+     popover reset's inset:auto had moved them to the top-left corner; this puts them back. */
+  .menu:popover-open{right:0;bottom:0;width:auto}
+  :root:not([data-family="saga"]) body:not(.aide-panel) :is(.menu,.drawer,.c-together)::before{content:"";position:absolute;top:5px;left:50%;width:40px;height:4px;margin-left:-20px;border-radius:2px;background:var(--seam-2);pointer-events:none}
+  /* Up and down is the sheet's (its scrolling, and dragging it); its header and handle only drag. */
+  :is(.menu,.c-pick){touch-action:pan-y}
+  :is(.drawer .d-top,.mp-top,.mp-grab){touch-action:none}
+  .sheet-dragging{-webkit-user-select:none;user-select:none}
+}
