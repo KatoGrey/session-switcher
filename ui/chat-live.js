@@ -343,58 +343,31 @@ function handleEvent(ev, src) {
 }
 
 /* ---------- permissions & questions ---------- */
-function verbFor(p) {
-  switch (p.toolName) {
-    case 'Bash': case 'PowerShell': return 'run a command';
-    case 'Edit': case 'MultiEdit': return 'edit a file';
-    case 'Write': return 'create or overwrite a file';
-    case 'WebFetch': return 'open a web page';
-    case 'WebSearch': return 'search the web';
-    default: return (window.CMDR_TOOLS && window.CMDR_TOOLS[p.toolName]) || `use ${p.toolName}`;
-  }
-}
+// Each is the one decision control (ui/decision.js), as on the hub: the same words, default and Deny.
 function addPermission(p, src = 'main') {
   const box = $c('cPending');
   if (box.querySelector(`[data-req="${CSS.escape(`${src}:${p.requestId}`)}"]`)) return;
   const card = document.createElement('div');
-  const name = PROV_NAME[provFor(src)];
-  card.className = `perm ${provFor(src) === 'codex' ? 'codex' : ''}${liveRender ? ' arrive' : ''}`;
-  card.dataset.req = `${src}:${p.requestId}`;
+  const prov = provFor(src);
   card._src = src; card._kind = compKind(src);
-  if (p.questions && p.questions.length) {
-    card.classList.add('ask');
-    card.innerHTML = `<p class="perm-h">${name} has <b>${p.questions.length === 1 ? 'a question' : `${p.questions.length} questions`}</b></p>
-        ${p.questions.map((q, qi) => `<fieldset class="q" data-qi="${qi}"><legend>${q.header ? `<span class="q-h">${esc(q.header)}</span>` : ''}${esc(q.question)}</legend>
-          ${q.options.map((o, oi) => `<label class="opt"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="q${esc(p.requestId)}-${qi}" value="${oi}"><span><b>${esc(o.label)}</b>${o.description ? `<small>${esc(o.description)}</small>` : ''}</span></label>`).join('')}
-          <label class="opt other"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="q${esc(p.requestId)}-${qi}" value="other"><span><b>Other</b><input type="text" class="other-t" placeholder="Type your own answer" aria-label="Your own answer"></span></label></fieldset>`).join('')}
-        <div class="perm-b"><button type="button" class="btn gilt" data-p="answer">Send answers</button><button type="button" class="btn" data-p="deny">Skip</button></div>`;
-  } else {
-    const v = p.view || {};
-    // On a phone it reads as its own screen: whose project, the question, the exact command (with Copy),
-    // and the two answers in thumb reach, Always allow kept small beneath them.
-    const proj = typeof projectOf === 'function' ? projectOf({ cwd: C.info && C.info.cwd, folder: C.folder }) : null;
-    card.innerHTML = `<p class="perm-k">${proj ? crestHtml(proj, 22) : ''}<span>Needs your OK${C.folder ? ` · ${esc(C.folder)}` : ''}</span></p>
-        <p class="perm-h">${name} wants to <b>${esc(verbFor(p))}</b>${v.summary && p.toolName !== 'Bash' ? `: <span class="perm-sum">${esc(v.summary)}</span>` : ''}</p>
-        ${p.title && p.title !== p.toolName ? `<p class="perm-r">${esc(p.title)}</p>` : ''}
-        ${p.description ? `<p class="perm-r">${esc(p.description)}</p>` : ''}
-        ${p.reason ? `<p class="perm-r">Why it’s asking: ${esc(p.reason)}</p>` : ''}
-        ${p.blockedPath ? `<p class="perm-r">Outside your project: ${esc(p.blockedPath)}</p>` : ''}
-        <div class="perm-d">${toolDetail(v)}${v.detailKind === 'command' && v.detail ? `<button type="button" class="ta perm-copy" data-copy="${esc(v.detail)}" title="Copy the command">Copy</button>` : ''}</div>
-        <div class="perm-why" hidden><input type="text" class="why-t" placeholder="Optional: tell ${name} what to do instead" aria-label="What to do instead"></div>
-        <div class="perm-b">
-          <button type="button" class="btn ${p.defaultToNo ? '' : 'gilt'}" data-p="allow">${p.canAlways ? 'Allow once' : 'Allow'}</button>
-          ${p.canAlways ? '<button type="button" class="btn" data-p="always" title="Don’t ask again for this kind of action in this project">Always allow</button>' : ''}
-          <button type="button" class="btn ${p.defaultToNo ? 'gilt' : ''}" data-p="deny">Deny</button>
-        </div>`;
-  }
+  const d = Decision.shape(p, { provider: prov, key: keyOfCard(card, src) || '' });
+  // On a phone it reads as its own screen: whose project, the question, the exact command (with Copy),
+  // and the two answers in thumb reach, Always allow kept small beneath them.
+  const proj = typeof projectOf === 'function' ? projectOf({ cwd: C.info && C.info.cwd, folder: C.folder }) : null;
+  const dec = Decision.parts(d, { density: 'chat', crest: proj ? crestHtml(proj, 22) : '', where: C.folder });
+  card.className = `perm ${prov === 'codex' ? 'codex' : ''}${d.question ? ' ask' : ''}${liveRender ? ' arrive' : ''}`;
+  card.dataset.req = `${src}:${p.requestId}`;
+  card.dataset.dec = d.requestId;
+  if (d.key) card.dataset.decKey = d.key;
+  card.innerHTML = dec.body + dec.foot;
   card._p = p;
   box.appendChild(card);
   const tool = lastTool($c('cFeed'), p.toolUseId);
   if (tool) { stepWait(tool); tool.querySelector('.t-time').className = 't-time'; tool.querySelector('.t-time').textContent = 'waiting for you'; }
   if (nearBottom()) toBottom(); else noteUnseen();
-  // Only take focus if you're not typing: a keystroke meant for the message box must never approve a step.
-  const a = document.activeElement;
-  if (!(a && a.closest && a.closest('input, textarea, select, [contenteditable="true"]'))) (card.querySelector('.btn.gilt') || card.querySelector('button')).focus({ preventScroll: true });
+  // Only when nothing else has the keyboard: a keystroke meant for the message box (or anything else) must
+  // never approve a step.
+  if (Decision.mayTakeFocus()) (card.querySelector('.btn.gilt:not([hidden])') || card.querySelector('button:not([hidden])')).focus({ preventScroll: true });
 }
 function removePermission(id, src = 'main', at = null) {
   const c = $c('cPending').querySelector(`[data-req="${CSS.escape(`${src}:${id}`)}"]`);
@@ -406,34 +379,15 @@ function removePermission(id, src = 'main', at = null) {
 }
 function clearPermissions() { $c('cPending').innerHTML = ''; }
 
-async function answer(card, decision) {
-  const p = card._p;
-  const body = { key: keyOfCard(card, card._src), requestId: p.requestId, decision };
-  if (decision === 'deny' && !p.questions) {
-    // First click asks what Claude should do instead; the second click (or Enter) sends the denial.
-    if (!card._denyArmed) {
-      card._denyArmed = true;
-      card.querySelector('.perm-why').hidden = false;
-      card.querySelector('[data-p="deny"]').textContent = 'Confirm deny';
-      card.querySelector('.why-t').focus();
-      return;
-    }
-    body.message = card.querySelector('.why-t').value.trim();
-  }
-  if (decision === 'answer') {
-    const answers = {};
-    for (const fs of card.querySelectorAll('fieldset.q')) {
-      const q = p.questions[+fs.dataset.qi];
-      const picked = [...fs.querySelectorAll('input:checked')].map(inp => (inp.value === 'other' ? (fs.querySelector('.other-t').value.trim() || 'Other') : q.options[+inp.value].label));
-      if (!picked.length) { toast(`Pick an answer for “${q.question}”.`); return; }
-      answers[q.question] = picked.join(', ');
-    }
-    body.decision = 'allow'; body.answers = answers;
-  }
-  if (decision === 'deny' && p.questions) body.message = 'The user skipped the question.';
-  card.querySelectorAll('button').forEach(b => { b.disabled = true; });
-  try { await api('/api/chat/permission', body); }
-  catch (err) { card.querySelectorAll('button').forEach(b => { b.disabled = false; }); throw err; }
+// What the chat does around a decision on one of its cards: it answers as the card's own assistant (its
+// partner's cards go to the partner), and a request answered somewhere else meanwhile just goes.
+function permHooks(card) {
+  return { key: () => keyOfCard(card, card._src), stale: () => removePermission(card._p.requestId, card._src) };
+}
+// A press on a card's button (or Enter in its note, as 'deny-send').
+function answer(el, as) {
+  const card = el.closest('.perm');
+  return card ? Decision.press(el, permHooks(card), as) : undefined;
 }
 
 /* ---------- context: how full each one's context window is ---------- */

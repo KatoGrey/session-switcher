@@ -629,6 +629,12 @@ html.hub2[data-mode="light"] .ta.rv:not([data-by="claude"]){color:var(--codex-in
 /* A card's buttons keep their words on one line; there's a second row if they need it. */
 :where(.hub2) .o-foot{flex-wrap:wrap}
 :where(.hub2) .o-foot .btn{white-space:nowrap}
+/* A decision on a card (ui/decision.js), on a phone: the same card, every answer a finger's size. */
+@media (max-width:760px){
+  :where(.hub2) .omen[data-dec] .o-foot .btn,:where(.hub2) .dec-note :is(.btn,.dec-why),:where(.hub2) .dec-more{min-height:44px}
+  :where(.hub2) .omen[data-dec] .opt{min-height:44px;align-items:center}
+  :where(.hub2) .omen[data-dec] .opt > input{margin-top:0}
+}
 /* On a phone, what's waiting comes first: your own painted world is a strip. (The anime themes' scenes keep their size: they carry the counts.) */
 @media (max-width:760px){
   .hub2[data-family="custom"] .hero-art.studio-scene{height:76px;min-height:0;margin:0 14px 12px}

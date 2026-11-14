@@ -770,7 +770,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (att) { const list = [...$c('cAtt').querySelectorAll('.att:not(.file):not(.pending) img')].map((im, i) => ({ src: im.src, path: null, cap: `Picture ${i + 1} you’re sending`, noAttach: true })); return openGallery(att.src, null, list); }
     const rmf = t.closest('[data-rmf]'); if (rmf) { const f = C.files.splice(+rmf.dataset.rmf, 1)[0]; if (f && f.xhr && !f.rel) f.xhr.abort(); renderAttachments(); return; }
     if (t.closest('#cEarlier')) return loadEarlier();
-    const pb = t.closest('[data-p]'); if (pb) return answer(pb.closest('.perm'), pb.dataset.p);
+    const pb = t.closest('.perm [data-p]'); if (pb) return answer(pb);
     const rl = t.closest('[data-relay]'); if (rl) { if (rl.dataset.kind) focusMate(rl.dataset.kind); return setTarget(rl.dataset.relay); }
     const bp = t.closest('[data-build]');
     if (bp) return buildPlan(bp).catch(err => toast(err.message));
@@ -886,8 +886,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $c('cText').addEventListener('input', () => { recallReset(); grow(); Slash.moved = false; renderSlash(); saveDraft(); });
   $c('cText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $c('cText')) closeSlash(); }, 120));
   $c('cSlash').addEventListener('mousedown', e => { const li = e.target.closest('[data-si]'); if (!li) return; e.preventDefault(); pickSlash(+li.dataset.si); });
+  // A card's note (ui/decision.js): Enter sends the denial, Esc goes back to the choices.
   $c('cPending').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && e.target.classList.contains('why-t')) { e.preventDefault(); wrap(() => answer(e.target.closest('.perm'), 'deny'))(); }
+    const card = e.target instanceof Element && e.target.closest('.perm');
+    if (card) Decision.key(e, permHooks(card));
   });
   $c('cText').addEventListener('keydown', e => {
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !Slash.open && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing && recallStep(e.key === 'ArrowUp' ? -1 : 1)) { e.preventDefault(); return; }

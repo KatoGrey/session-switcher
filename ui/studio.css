@@ -307,3 +307,23 @@
 .hub2:not([data-family]) :is(.nav-h,.ledger .lg-h) .count{font:500 12px var(--f-ui);letter-spacing:0;color:var(--ash-2)}
 .hub2:not([data-family]) .ledger .lg-h{margin:20px 0 8px}
 .hub2:not([data-family]) .ledger .lg-h:first-child{margin-top:4px}
+
+/* ================= one decision control (ui/decision.js) =================
+   A permission request or a simple question, the same on a hub card and in the chat. In the Studio face: the facts
+   and what Always allow covers read as quiet small print in the interface font, Deny's note is a framed field like
+   the quick replies, and a question's choices get the soft corners. */
+.hub2:not([data-family]) :is(.dec-r,.dec-scope){font:400 12.5px/1.45 var(--f-ui)}
+.hub2:not([data-family]) .dec-scope b{font-weight:600}
+.hub2:not([data-family]) .dec-more{font:600 12.5px/1.3 var(--f-ui);text-decoration-color:rgb(var(--c-ede6d9) / .3)}
+.hub2:not([data-family]) .dec-note .dec-why{border-radius:var(--st-r);background:var(--abyss-2);font:400 14px/1.4 var(--f-ui);padding:7px 11px}
+.hub2:not([data-family]) .omen .opt{border-radius:var(--st-r)}
+.hub2:not([data-family]) .omen .q legend{font:600 14px/1.4 var(--f-ui)}
+.hub2:not([data-family]) .omen .q-h{font-family:var(--f-ui);letter-spacing:.06em}
+/* On a phone every answer is a finger's size, on a hub card (44px) and in the chat (its own 50px), which the Studio
+   buttons' smaller heights would otherwise win over. Always allow stays the small link under Allow and Deny. */
+@media (max-width:760px){
+  .hub2:not([data-family]) .dec-note .dec-why{font-size:16px}
+  .hub2:not([data-family]) :is(.omen[data-dec] .o-foot .btn,.dec-note .btn,.dec-note .dec-why,.dec-more){min-height:44px}
+  .hub2:not([data-family]) :is(.perm-b .btn:not([data-p="always"]),.perm .dec-note .btn){min-height:50px;font-size:16px}
+  .hub2:not([data-family]) .perm-b [data-p="always"]{min-height:36px;border:0;background:none;box-shadow:none;font-size:14.5px;color:var(--parch-2);text-decoration:underline;text-decoration-color:var(--seam-2);text-underline-offset:4px}
+}
