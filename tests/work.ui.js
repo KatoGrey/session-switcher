@@ -47,6 +47,22 @@ function responder(seen = [], controls = {}) {
   };
 }
 module.exports = [{
+  name: 'work: every chat on an issue',
+  // An issue keeps every chat started for it (planning, the work, a review), and its view lists them.
+  async run(t) {
+    const runs = [{ key: 'k-work', sessionId: 's-work', at: Date.now() - 60e3, role: 'start', provider: 'codex' }, { key: null, sessionId: 's-plan', at: Date.now() - 7200e3, role: 'plan', provider: 'claude' }];
+    const base = responder();
+    const b = await t.open({ respond: (p, q, body) => (p === '/api/work' ? { body: { ...fixture, issues: fixture.issues.map((i, n) => (n === 0 ? { ...i, chat: { key: 'k-work', sessionId: 's-work', at: runs[0].at }, runs } : i)) } } : base(p, q, body)) });
+    await sleep(600);
+    await b.eval(`go('work'); return 1`); await sleep(1800);
+    await b.eval(`window._opened = []; ChatUI.openKey = k => { _opened.push(['key', k]); return Promise.resolve(); }; ChatUI.open = o => { _opened.push(['id', o.sessionId]); return Promise.resolve(); }; return 1`);
+    await b.eval(`await Work.openIssue(${JSON.stringify(fixture.issues[0].identifier)}); return 1`); await sleep(900);
+    const list = await b.eval(`const box = document.querySelector('.wk-runs'); return box ? [...box.querySelectorAll('li')].map(li => li.textContent.replace(/\\s+/g, ' ').trim()) : null`);
+    t.check('the issue lists every chat on it, by its part', !!list && list.length === 2 && /^Work · Codex/.test(list[0]) && /open now/.test(list[0]) && /^Plan · Claude/.test(list[1]), list);
+    await b.eval(`[...document.querySelectorAll('.wk-runs button')][1].click(); return 1`); await sleep(300);
+    t.check('and the planning chat opens from there', (await b.eval(`return _opened`)).some(x => x[0] === 'id' && x[1] === 's-plan'));
+  },
+}, {
   name: 'work workspace',
   async run(t) {
     const seen = [], controls = {}, b = await t.open({ respond: responder(seen, controls), width: 1512, height: 1000 });

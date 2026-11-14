@@ -822,6 +822,13 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .rel-note{list-style:none;margin:-2px 0 2px 27px;font-size:12px;color:var(--ash-2)}
 .rel-h{margin:10px 0 4px 6px;font-size:12px;color:var(--ash)}
 .rel-h .count{color:var(--ash-2)}
+/* Your work: every chat on an issue */
+.wk-runs{margin:12px 0 4px}
+.wk-runs-h{margin:0 0 6px;font-size:12px;color:var(--ash)}
+.wk-runs-h .count{color:var(--ash-2)}
+.wk-runs ul{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.wk-runs li{display:flex;align-items:baseline;gap:10px;font-size:13.5px}
+.wk-runs small{margin-left:auto;font-size:12px;color:var(--ash)}
 .lg-i .lg-t > .linkish{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .lg-i .lg-m{flex:none;font:400 10.5px var(--f-label);color:var(--ash-2)}
 .lg-i code{font:12px var(--f-mono);color:var(--parch-2)}

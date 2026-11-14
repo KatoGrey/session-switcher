@@ -207,8 +207,16 @@ const Work = (() => {
       ${!issue ? `<div class="wk-revision"><button data-wk="copy" data-text="${esc(p.head || '')}" title="Copy branch name">${esc(p.head || 'Branch not reported')}</button><span>→ ${esc(p.base || 'base')}</span>${p.headSha ? `<a href="${esc('https://github.com/' + p.repo + '/commit/' + p.headSha)}" target="_blank" rel="noopener noreferrer" title="Revision being reviewed">${esc(p.headSha.slice(0, 7))}</a>` : ''}<button data-wk="refresh-detail" title="Refresh this PR" aria-label="Refresh this PR">↻</button></div>` : ''}
       ${(() => { const live = liveChatOf(p), w = chatWord(live); return w ? `<button class="wk-live-chat ${w[1]}" data-wk="issuechat" data-key="${esc(live.key || '')}" data-id="${esc(live.sessionId || '')}">${live.state === 'waiting' ? '<span class="wk-live-mark" aria-hidden="true">!</span>' : '<i class="wk-pulse" aria-hidden="true"></i>'}<span><b>${esc(w[0])}</b><small>${esc(live.title || 'Its chat')}${live.status ? ' · ' + esc(String(live.status).slice(0, 90)) : ''}</small></span><span aria-hidden="true">Open →</span></button>` : ''; })()}
       <div class="wk-detail-actions">${actions.join('')}</div><div class="wk-detail-links"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Open in ${issue ? 'Linear' : 'GitHub'} ↗</a><button class="linkish" data-wk="copy" data-text="${esc(p.url)}">Copy link</button>${p.preview ? `<a href="${esc(p.preview)}" target="_blank" rel="noopener noreferrer">Preview ↗</a>` : ''}</div>
+      ${issue ? runsHtml(p) : ''}
       ${issue ? '<p class="wk-action-note">Plan investigates first. Start makes a branch, implements the issue, and opens a draft PR.</p>' : `<div class="wk-detail-tabs" aria-label="PR details">${tabs.map(([v, t]) => `<button data-wk="detail-tab" data-value="${v}" aria-pressed="${W.detailTab === v}">${t}</button>`).join('')}</div>`}
       <div class="wk-tab-body" data-tab="${issue ? 'overview' : W.detailTab}">${full?.error ? `<p class="wk-error" role="alert">${esc(full.error)} <button class="linkish" data-wk="retry-detail">Try again</button></p>` : body}</div></div>`;
+  }
+  // Every chat started for an issue (planning, the work, a review), newest first, when there's more than one.
+  function runsHtml(p) {
+    const runs = Array.isArray(p.runs) ? p.runs : [];
+    if (runs.length < 2) return '';
+    const role = { plan: 'Plan', start: 'Work', review: 'Review' };
+    return `<div class="wk-runs"><p class="wk-runs-h">Chats on this issue <span class="count">${runs.length}</span></p><ul>${runs.slice(0, 8).map(r => `<li><button class="linkish" data-wk="issuechat" data-key="${esc(r.key || '')}" data-id="${esc(r.sessionId || '')}">${esc(role[r.role] || 'Chat')} · ${esc(PROV_NAME[r.provider] || 'Claude')}</button><small>${r.key ? 'open now · ' : ''}${esc(ago(r.at))}</small></li>`).join('')}</ul></div>`;
   }
   function overviewHtml(p, issue, full) {
     const props = issue ? [['Priority', p.priorityLabel || 'Not set'], ['Team', p.team?.name || '—'], ...(p.project ? [['Project', p.project]] : [])] : [['Reviewers', (p.reviewers || []).join(', ') || 'None requested'], ['Changes', p.changedFiles == null ? '—' : `${p.changedFiles} files · +${p.additions} −${p.deletions}`]];
