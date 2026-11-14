@@ -237,6 +237,12 @@ async function install(b, { aide = false, desktopStub = null, live = true, state
     if (p === '/api/phone/firewall') return { body: firewall };
     if (p === '/api/claude/install') return { body: { ok: true, how: 'terminal window' } };
     if (p === '/api/health') return { body: { checks: [{ id: 'node', label: 'Node.js', state: 'ok', detail: 'v24' }, { id: 'claude', label: 'Claude Code', state: 'ok', detail: '2.1' }], prefs: { terminal: 'auto', openIn: 'app' }, claudeCommand: 'claude', codex, appVersion: '5.5.0' } };
+    // This PC and connections (Setup, Your work): no clone of Latitude's repo here, and GitHub and Linear as a
+    // co-worker's first start has them (not yet) or signed in. A suite answers these itself to say otherwise.
+    if (p === '/api/work/setup') return { body: { root: null, checks: [] } };
+    if (p === '/api/prs/status') return { body: fresh ? { installed: true, signedIn: false, login: null, accounts: [] } : { installed: true, signedIn: true, login: 'alex-studio', host: 'github.com', accounts: [{ host: 'github.com', login: 'alex-studio', active: true, scopes: ['repo', 'read:org'] }] } };
+    if (p === '/api/linear/status') return { body: fresh ? { connected: false, source: null, keyOwner: null, me: null, shared: false, error: null } : { connected: true, source: 'yours', keyOwner: 'Alex', me: { id: 'u-alex', name: 'Alex', displayName: 'alex' }, shared: false, error: null } };
+    if (p === '/api/connections/mcp') return { body: { accounts: [], flows: [], codexOn: true } };
     if (p === '/api/selfcheck' && method === 'POST') return { body: { running: true, last: selfCheck } };
     if (p === '/api/selfcheck') return { body: { last: selfCheck, running: false } };
     if (p === '/api/whats-new') return { body: { id: 'wn-1', title: 'Faster, and more out of your way', md: '- **Opens instantly.** It draws at once.\n- **Ctrl+Z takes it back.**' } };

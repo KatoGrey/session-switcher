@@ -10,6 +10,14 @@ const confirmOpen = `document.getElementById('confirmDlg')?.open`;
 const promptOpen = `document.getElementById('promptDlg')?.open`;
 const menuOpen = `!document.getElementById('menu').hidden`;
 const typeIntoPrompts = `const t = document.querySelector('#promptDlg textarea, #promptDlg input'); t.focus(); t.value += ' edited'; t.dispatchEvent(new Event('input', { bubbles: true })); return 1`;
+// This PC's checks for a Latitude clone (Your work → This PC, lib/winrepo.js): two to fix, a note, two set up.
+const thisPcFixture = () => ({ root: 'C:\\Latitude', windows: true, checks: [
+  { id: 'longpaths', label: 'Long file paths', state: 'fix', detail: 'Off: some files in this repo have paths longer than Windows allows by default.', fix: 'here' },
+  { id: 'onepass', label: '1Password (AWS and feedback saves)', state: 'fix', detail: 'Missing from .env.local: ONEPASS_TOKEN, ONEPASS_AGENT_TOKEN.', fix: 'onepass', op: true },
+  { id: 'turbo', label: 'Turbo remote cache', state: 'info', detail: 'Not linked. Optional: it makes builds faster.', fix: 'chat' },
+  { id: 'hooks', label: 'Git hooks', state: 'ok', detail: 'Installed (yarn prepare).', fix: null },
+  { id: 'worktrees', label: 'Worktrees', state: 'ok', detail: 'New ones go beside the clone, installed with --copy.', fix: null },
+] });
 const contrast = (a, c) => {
   const lum = s => { const v = s.match(/[\d.]+/g).slice(0, 3).map(Number).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
   const [x, y] = [lum(a), lum(c)].sort((m, n) => n - m);
@@ -2000,7 +2008,9 @@ module.exports = [
     name: 'palette finds',
     // Ctrl+K finds what you'd look for by name, and the chat's own actions while you're in one.
     async run(t) {
-      const b = await t.open();
+      const { responder } = require('./work.ui');
+      const work = responder(), pc = thisPcFixture();
+      const b = await t.open({ respond: (p, q, body) => (p === '/api/work/setup' ? { body: pc } : work(p, q, body)) });
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
       const find = q => b.eval(`openPalette(${JSON.stringify(q)}); await new Promise(r => setTimeout(r, 250)); const t = document.getElementById('palette').textContent; closePalette && closePalette(); return t`);
       const want = { phone: /Phone access/, 'quiet hours': /Alerts and quiet hours/, 'text size': /Text and interface size/, 'theme studio': /Theme Studio/, 'edit prompts': /Edit prompts/, 'mark done': /Mark done/, btw: /Ask a side question/, stop: /Stop this chat/, rename: /Rename chat/, find: /Find in this chat/ };
@@ -2013,6 +2023,120 @@ module.exports = [
       t.check('“codex chat in starfall to make the icons” offers exactly that', /Start a Codex chat in Starfall Tavern: make the icons/.test(say), say.slice(0, 200));
       t.check('“queue … in … tonight” offers a queued task', /Queue in Starfall Tavern: write the patch notes \(tonight\)/.test(await find('queue write the patch notes in starfall tonight')));
       t.check('“race … in …” offers a race', /Race in Starfall Tavern: fixing the save bug/.test(await find('race fixing the save bug in starfall')));
+      // Setup by the words for it: each finds the place it's set up.
+      const setupWords = { '1password': /1Password \(AWS and feedback saves\)/, aws: /1Password \(AWS and feedback saves\)/, secrets: /1Password \(AWS and feedback saves\)/, '.env.local': /1Password \(AWS and feedback saves\)/, worktrees: /Worktrees folder/, 'this pc': /This PC \(Latitude’s repo\)/, 'latitude setup': /This PC \(Latitude’s repo\)/, linear: /Connections/, mcp: /Connections/, 'gemini.md': /Rules and tools/, subagents: /Subagents/, 'home pc': /Your home PC/, notifications: /Phone access/, companion: /Companion/ };
+      const lost = [];
+      for (const [q, re] of Object.entries(setupWords)) if (!re.test(await find(q))) lost.push(q);
+      t.check('Ctrl+K finds setup by the words for it (1Password, AWS, worktrees, This PC, Linear, GEMINI.md…)', !lost.length, lost);
+      const opts = q => b.eval(`openPalette(${JSON.stringify(q)}); await new Promise(r => setTimeout(r, 250)); const g = [...document.querySelectorAll('#palList li')]; return { opts: g.filter(x => x.classList.contains('pal-i')).map(x => x.querySelector('.pi-t').textContent), groups: g.filter(x => x.classList.contains('pal-g')).map(x => x.textContent) }`);
+      let o = await opts('1password');
+      t.check('“1password” puts This PC’s 1Password row first, under Setup', o.opts[0] === '1Password (AWS and feedback saves)' && o.groups.includes('Setup'), o);
+      // Choosing it: Your work, This PC open, the 1Password row lit and its button ready.
+      await b.eval(`window.__lit = []; new MutationObserver(ms => { for (const m of ms) for (const n of [m.target, ...m.addedNodes]) { if (n.nodeType !== 1) continue; for (const x of [n, ...n.querySelectorAll('.cm-flash')]) if (x.classList.contains('cm-flash')) __lit.push(x.dataset.id || x.id || x.className); } }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] }); return 1`);
+      await b.key('Enter', 'Enter', 13); await sleep(1500);
+      const at = await b.eval(`const box = document.querySelector('.wk-setup-box'); return { view: S.view, chat: ChatUI.isOpen(), open: !!box && box.open, lit: __lit.includes('onepass'), focus: document.activeElement.closest('.wk-setup-row')?.dataset.id || document.activeElement.id, inView: (() => { const r = box && box.querySelector('.wk-setup-row[data-id="onepass"]').getBoundingClientRect(); return !!r && r.top >= 0 && r.bottom <= innerHeight; })() }`);
+      t.check('choosing it opens Your work with This PC open, the 1Password row in view, lit, its button focused', at.view === 'work' && !at.chat && at.open && at.lit && at.inView && at.focus === 'onepass', at);
+      await t.shot(b, 'this-pc-1password');
+      o = await opts('aws');
+      t.check('“aws” finds it too', o.opts.slice(0, 3).includes('1Password (AWS and feedback saves)'), o.opts.slice(0, 5));
+      o = await opts('worktrees');
+      t.check('“worktrees” finds the Worktrees row', o.opts[0] === 'Worktrees folder', o.opts.slice(0, 4));
+      await b.key('Enter', 'Enter', 13); await sleep(900);
+      t.check('and choosing it lights that row', await b.eval(`return __lit.includes('worktrees') && document.activeElement.closest('.wk-setup-row')?.dataset.id === 'worktrees'`));
+    },
+  },
+  {
+    name: 'setup you can find',
+    // Setup → This PC and connections, each line with a button to where it's set up; Getting started's GitHub, Linear
+    // and 1Password steps; the Setup button's dot while something needs fixing (in a saga theme too, nothing moved);
+    // plain words when there's no This PC to show; and on a phone, what's only at the PC.
+    async run(t) {
+      const { responder } = require('./work.ui');
+      const work = responder(), calls = [];
+      let pc = thisPcFixture(), gh = { installed: true, signedIn: false, login: null, accounts: [] }, linear = { connected: false, source: null, me: null, error: null };
+      const respond = (p, q, body) => {
+        if (p === '/api/work/setup') { calls.push([p, q.get('fresh')]); return { body: pc }; }
+        if (p === '/api/work/setup-fix') { calls.push([p, body.id]); pc = { ...pc, checks: pc.checks.map(c => (c.id === body.id ? { ...c, state: 'ok', fix: null, detail: 'Done.' } : c)) }; return { body: { done: 'Done.' } }; }
+        if (p === '/api/prs/status') return { body: gh };
+        if (p === '/api/linear/status') return { body: linear };
+        if (p === '/api/work') return { body: { ...work(p, q, body).body, linear } };
+        return work(p, q, body);
+      };
+      const b = await t.open({ respond });
+      await sleep(600);
+      const dot = () => b.eval(`const d = document.getElementById('hdot'), s = document.getElementById('setupBtn'); return { cls: d.className, label: s.getAttribute('aria-label'), title: s.title, bg: getComputedStyle(d).backgroundColor, box: (r => [r.left, r.top, r.width, r.height].map(Math.round).join())(s.getBoundingClientRect()) }`);
+      await b.eval(`await Work.loadSetup(true); return 1`); await sleep(200);
+      let d = await dot();
+      t.check('the Setup button has a dot while This PC has things to fix, and its name says how many', /\bwarn\b/.test(d.cls) && d.bg !== 'rgba(0, 0, 0, 0)' && d.label === 'Setup, 2 things need attention' && /2 things need attention/.test(d.title), d);
+
+      // Setup → This PC and connections, near Health.
+      await b.eval(`await openSetup(); return 1`); await sleep(900);
+      const sec = await b.eval(`const box = document.getElementById('placesBox'); const health = document.getElementById('st-health'); return box && { afterHealth: health.nextElementSibling?.id === 'st-places', toc: [...document.querySelectorAll('.setup-toc a')].map(a => a.getAttribute('href')).indexOf('#st-places'), rows: [...box.querySelectorAll(':scope > li.check b')].map(x => x.firstChild.textContent), more: box.querySelector('.places-more summary')?.textContent, folded: [...box.querySelectorAll('.places-more li.check b')].map(x => x.firstChild.textContent), places: [...box.querySelectorAll('[data-place]')].map(x => x.dataset.place), named: [...box.querySelectorAll('[data-place]')].every(x => (x.getAttribute('aria-label') || '').length > 4), text: box.textContent.replace(/\\s+/g, ' ') }`);
+      t.check('Setup lists This PC and connections right after Health, and its quick link is second', !!sec && sec.afterHealth && sec.toc === 1, sec);
+      t.check('one line per check, the ones to fix first, the set-up ones folded', !!sec && JSON.stringify(sec.rows) === JSON.stringify(['GitHub', 'Linear', 'This PC', 'Long file paths', '1Password (AWS and feedback saves)', 'Turbo remote cache']) && /2 more are set up/.test(sec.more) && JSON.stringify(sec.folded) === JSON.stringify(['Git hooks', 'Worktrees']), sec);
+      t.check('each says its state and has a named button to its place', !!sec && sec.named && ['github', 'linear', 'pc', 'pc:longpaths', 'pc:onepass', 'pc:turbo', 'pc:hooks', 'pc:worktrees'].every(p => sec.places.includes(p)) && /Not signed in/.test(sec.text) && /Not connected/.test(sec.text) && /C:\\Latitude: 2 things to fix/.test(sec.text), sec);
+      await b.eval(`document.getElementById('st-places').scrollIntoView(); return 1`); await sleep(200);
+      await t.shot(b, 'section');
+      // Getting started: GitHub, Linear and, with a clone of Latitude's repo here, 1Password.
+      await b.eval(`localStorage.removeItem('getting-started'); S.firstRun = true; await openSetup(); return 1`); await sleep(900);
+      let gs = await b.eval(`const g = document.querySelector('.gs'); return g && { steps: [...g.querySelectorAll('.gs-step')].map(s => ({ t: s.querySelector('b').textContent, ok: s.classList.contains('ok'), place: s.querySelector('[data-place]')?.dataset.place || null })) }`);
+      const step = (g, re) => g && g.steps.find(s => re.test(s.t));
+      t.check('Getting started has GitHub, Linear and 1Password steps, not done, each with a button to its place', !!gs && step(gs, /GitHub/)?.place === 'github' && step(gs, /Linear/)?.place === 'linear' && step(gs, /1Password/)?.place === 'pc:onepass' && !step(gs, /GitHub/).ok && !step(gs, /1Password/).ok && gs.steps.length === 9, gs);
+      await t.shot(b, 'getting-started');
+      // Its Linear button: Your work's box for a key of your own, lit, the keyboard in it.
+      await b.eval(`window.__lit = []; new MutationObserver(ms => { for (const m of ms) for (const n of [m.target, ...m.addedNodes]) { if (n.nodeType !== 1) continue; for (const x of [n, ...n.querySelectorAll('.cm-flash')]) if (x.classList.contains('cm-flash')) __lit.push(x.dataset.id || x.id || x.className); } }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] }); return 1`);
+      await b.clickOn('.gs [data-place="linear"]'); await sleep(1500);
+      const lin = await b.eval(`return { view: S.view, setup: document.getElementById('setup').open, focus: document.activeElement.id, lit: __lit.some(x => /(^| )wk-setup( |$)/.test(x)) }`);
+      t.check('Linear’s button goes to Your work’s key box, lit, the keyboard in it', lin.view === 'work' && !lin.setup && lin.focus === 'wkKey' && lin.lit, lin);
+      // Its 1Password button: This PC's row.
+      await b.eval(`await openSetup(); return 1`); await sleep(700);
+      await b.clickOn('.gs [data-place="pc:onepass"]'); await sleep(1200);
+      let at = await b.eval(`const box = document.querySelector('.wk-setup-box'); return { view: S.view, setup: document.getElementById('setup').open, open: !!box && box.open, lit: __lit.includes('onepass'), focus: document.activeElement.closest('.wk-setup-row')?.dataset.id || null }`);
+      t.check('1Password’s button goes to This PC on Your work, the row lit and its button focused', at.view === 'work' && !at.setup && at.open && at.lit && at.focus === 'onepass', at);
+      // GitHub's (in the section): Connections, at GitHub, there at once.
+      await b.eval(`await openSetup(); return 1`); await sleep(700);
+      await b.clickOn('#placesBox [data-place="github"]'); await sleep(600);
+      at = await b.eval(`return { open: !!document.getElementById('connDlg')?.open, setup: document.getElementById('setup').open, gh: !!document.getElementById('cnGitHub'), lit: __lit.includes('cnGitHub'), text: document.getElementById('cnGitHub')?.textContent || '' }`);
+      t.check('GitHub’s button opens Connections, GitHub’s row there at once and lit', at.open && !at.setup && at.gh && at.lit && /Sign in to GitHub/.test(at.text), at);
+      await t.shot(b, 'connections');
+      await b.eval(`document.getElementById('connDlg').close(); return 1`);
+
+      // Signed in and fixed: the steps are done and the dot goes.
+      gh = { installed: true, signedIn: true, login: 'alex-studio', accounts: [{ host: 'github.com', login: 'alex-studio', active: true }] };
+      linear = { connected: true, source: 'yours', me: { id: 'u1', name: 'Alex', displayName: 'alex' }, error: null };
+      await b.eval(`await api('/api/work/setup-fix', { id: 'longpaths' }); await api('/api/work/setup-fix', { id: 'onepass' }); await Work.loadSetup(true); return 1`); await sleep(300);
+      d = await dot();
+      t.check('fixed, the dot goes and the button’s name says so', /\bok\b/.test(d.cls) && d.bg === 'rgba(0, 0, 0, 0)' && d.label === 'Setup and health', d);
+      await b.eval(`await openSetup(); return 1`); await sleep(900);
+      gs = await b.eval(`const g = document.querySelector('.gs'); return g && { steps: [...g.querySelectorAll('.gs-step')].map(s => ({ t: s.querySelector('b').textContent, ok: s.classList.contains('ok'), text: s.querySelector('p').textContent })) }`);
+      t.check('and Getting started ticks GitHub, Linear and 1Password off', !!gs && step(gs, /GitHub/)?.ok && /alex-studio/.test(step(gs, /GitHub/).text) && step(gs, /Linear/)?.ok && step(gs, /1Password/)?.ok, gs);
+      t.check('the section says the same', /Signed in as alex-studio/.test(await b.eval(`return document.getElementById('placesBox').textContent`)));
+      await b.eval(`document.getElementById('setup').close(); return 1`);
+
+      // A health check that warns brings the dot back; in Imperial it's the same dot and nothing moves.
+      await b.eval(`Places.health = { checks: [{ id: 'x', label: 'X', state: 'warn', detail: '' }] }; setupDot(); return 1`);
+      d = await dot();
+      t.check('a warning in Health shows the dot too', /\bwarn\b/.test(d.cls) && d.label === 'Setup, 1 thing needs attention', d);
+      await b.eval(`Look.set({ theme: 'imperial' }); await new Promise(r => setTimeout(r, 500)); return 1`);
+      const on = await dot();
+      await b.eval(`Places.health = { checks: [] }; setupDot(); return 1`);
+      const off = await dot();
+      t.check('in Imperial: the same dot, and the Setup button doesn’t move', /\bwarn\b/.test(on.cls) && on.bg !== 'rgba(0, 0, 0, 0)' && on.box === off.box && /\bok\b/.test(off.cls), { on, off });
+      await b.eval(`Look.reset(); return 1`); await sleep(300);
+
+      // No clone of Latitude's repo here: This PC says so plainly, and what to do.
+      pc = { root: null, checks: [] };
+      await b.eval(`await Work.loadSetup(true); document.getElementById('toast').textContent = ''; await openThisPc('onepass'); return 1`); await sleep(300);
+      const none = await b.eval(`return document.getElementById('toast').textContent`);
+      t.check('with no clone of Latitude’s repo, This PC says so and what to do', /No clone of Latitude’s repo/.test(none) && /Start a chat in the folder/.test(none), none);
+
+      // On a phone: what only the PC can set up is said, not just left out.
+      const phone = await t.open({ respond, width: 412, height: 880, mobile: true });
+      await phone.eval(`window.REMOTE = true; await openSetup(); return 1`); await sleep(900);
+      const line = await phone.eval(`const p = document.querySelector('#setupBody .st-pc-only'); return p ? p.textContent : ''`);
+      t.check('on a phone, Setup says which setup can only be done at the PC', /only/i.test(line) && /Gemini/.test(line) && /home PC/.test(line) && /Companion/.test(line) && /Problems/.test(line), line);
+      t.check('and nothing spills sideways', await phone.eval(`const d = document.getElementById('setupBody'); return d.scrollWidth <= d.clientWidth + 1`));
+      await t.shot(phone, 'phone');
     },
   },
   {
@@ -2457,7 +2581,7 @@ module.exports = [
       const b = await t.open({ fresh: true, seen: (p, u, body) => calls.push([p, body]) });
       await b.eval(`localStorage.removeItem('getting-started'); S.firstRun = true; await openSetup(); return 1`); await sleep(800);
       const gs = await b.eval(`const g = document.querySelector('.gs'); return g && { text: g.textContent.replace(/\\s+/g, ' '), steps: g.querySelectorAll('.gs-step').length, done: g.querySelectorAll('.gs-step.ok').length }`);
-      t.check('a first start opens Setup on Getting started', !!gs && gs.steps === 6 && /Two things and you’re ready/.test(gs.text) && /Install Claude Code/.test(gs.text) && /Sign in/.test(gs.text), gs);
+      t.check('a first start opens Setup on Getting started', !!gs && gs.steps === 8 && /Two things and you’re ready/.test(gs.text) && /GitHub/.test(gs.text) && /Linear/.test(gs.text) && /Install Claude Code/.test(gs.text) && /Sign in/.test(gs.text), gs);
       await t.shot(b, 'getting-started');
       await b.clickOn('.gs [data-fix="install-claude"]'); await sleep(500);
       t.check('Install Claude Code runs Anthropic’s installer', calls.some(([p]) => p === '/api/claude/install'));

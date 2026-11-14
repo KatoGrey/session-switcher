@@ -442,6 +442,14 @@ dialog.wide{width:min(780px,calc(calc(100vw / var(--look-ui, 1)) - 32px));paddin
 .check.ok .st{background:rgb(var(--c-7fb79a))}.check.warn .st{background:var(--gilt)}.check.error .st{background:var(--ember)}
 .check b{display:block;font-weight:600;font-size:15px}
 .check .dt{display:block;font-size:14px;color:var(--ash);word-break:break-word}
+/* Setup → This PC and connections: Health's rows, a little tighter; a note's dot is a ring; the set-up ones fold away. */
+.checks.places .check{padding:9px 0}
+.checks.places .check b{font-size:14.5px}
+.checks.places .check .dt{font-size:13.5px}
+.check.info .st{background:transparent;box-shadow:inset 0 0 0 1.5px var(--ash)}
+.places-more>details>summary{cursor:pointer;padding:10px 0;font-size:13.5px;color:var(--ash)}
+.places-more>details>summary:hover{color:var(--parch-2)}
+.places-more .checks{margin:0}
 .prefs{display:flex;flex-direction:column;gap:14px}
 .field label{display:block;font-weight:600;font-size:15px;margin-bottom:6px}
 .field select,.field input{width:100%;background:var(--abyss);border:1px solid var(--seam-2);border-radius:6px;padding:9px 11px;font:15px var(--f-body)}

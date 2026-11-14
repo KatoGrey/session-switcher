@@ -9,7 +9,7 @@ const Work = (() => {
   const W = { data: null, loading: false, err: null, at: 0, open: null, team: null, usersQ: '', users: null, query: '', filter: 'all', repo: 'all', layout: 'list', details: new Map(), external: new Map(), files: new Map(), detailTab: 'overview', wide: true, trail: [] };
   // Runs with: the model and effort each assistant uses for the chats started here (empty: its own default).
   W.run = { claude: { model: '', effort: '' }, codex: { model: '', effort: '' }, gemini: { model: '', effort: '' } }; W.models = null; W.modelsLoading = false;
-  W.setup = null; W.setupLoading = false; W.setupOpen = false;
+  W.setup = null; W.setupLoading = false; W.setupOpen = false; W.lit = null;
   try { const r = JSON.parse(localStorage.getItem('work-run') || 'null'); if (r) for (const p of ['claude', 'codex', 'gemini']) if (r[p]) W.run[p] = { model: String(r[p].model || ''), effort: String(r[p].effort || '') }; } catch { /* the defaults */ }
   try { W.layout = localStorage.getItem('work-layout') === 'board' ? 'board' : 'list'; W.repo = localStorage.getItem('work-repo') || 'all'; W.wide = localStorage.getItem('work-detail-width') !== 'narrow'; } catch {}
 
@@ -272,11 +272,13 @@ const Work = (() => {
 
   /* ---------- this PC's setup (lib/winrepo.js) ---------- */
 
+  // (Setup's dot and its This PC lines hear about each answer through the work-setup event. A fresh check asked for
+  // while another is under way follows it, so a fix is never judged by the answer from before it.)
   function loadSetup(fresh = false) {
-    if (W.setupLoading) return;
-    W.setupLoading = true;
-    api(`/api/work/setup${fresh ? '?fresh=1' : ''}`).then(r => { W.setup = r; }).catch(() => { W.setup = W.setup || { root: null, checks: [] }; })
-      .finally(() => { W.setupLoading = false; if (showing()) render(); });
+    if (W.setupLoading) return fresh ? W.setupLoading.then(() => loadSetup(true)) : W.setupLoading;
+    W.setupLoading = api(`/api/work/setup${fresh ? '?fresh=1' : ''}`).then(r => { W.setup = r; }).catch(() => { W.setup = W.setup || { root: null, checks: [] }; })
+      .finally(() => { W.setupLoading = false; if (showing()) render(); document.dispatchEvent(new Event('work-setup')); });
+    return W.setupLoading;
   }
   // Is this PC's Latitude clone set up the way Latitude's guide asks? A line when it's fine; what to fix when not.
   function setupRow() {
@@ -285,8 +287,10 @@ const Work = (() => {
     const fix = st.checks.filter(c => c.state === 'fix'), info = st.checks.filter(c => c.state === 'info');
     const summary = fix.length ? `${fix.length} thing${fix.length === 1 ? '' : 's'} to fix` : 'Set up';
     const label = { here: 'Fix', chat: 'Fix in a chat…', open: 'Open .env.local', folder: 'Choose folder…', onepass: 'Fill from 1Password' };
-    const row = c => `<li class="wk-setup-row" data-state="${esc(c.state)}"><span class="wk-setup-dot" aria-hidden="true"></span><span class="wk-setup-text"><b>${esc(c.label)}</b><span>${esc(c.detail)}</span></span>${c.fix && !(window.REMOTE && c.fix !== 'chat') ? `<button type="button" class="btn sm ${c.state === 'fix' ? '' : 'quiet'}" data-wk="setup-fix" data-id="${esc(c.id)}" data-how="${esc(c.fix)}"${c.fix === 'chat' ? ' aria-haspopup="menu"' : ''}${c.fix === 'onepass' ? ` data-op="${c.op ? 1 : 0}"` : ''}>${c.fix === 'onepass' && !c.op ? 'Install 1Password…' : label[c.fix]}</button>` : ''}</li>`;
-    return `<details class="wk-setup-box${fix.length ? ' has-fix' : ''}"${W.setupOpen ? ' open' : ''}><summary data-wk="setup-toggle"><span class="wk-run-label">This PC</span><span class="wk-setup-sum" data-state="${fix.length ? 'fix' : 'ok'}">${esc(summary)}</span>${info.length ? `<span class="wk-setup-note">${info.length} note${info.length === 1 ? '' : 's'}</span>` : ''}<span class="wk-setup-where">${esc(st.root)}</span></summary>
+    // Where a jump from Ctrl+K or Setup lands is lit for a moment (showSetup); the ids keep the keyboard there as it redraws.
+    const lit = id => (W.lit && W.lit.id === id && Date.now() < W.lit.until ? ' cm-flash' : '');
+    const row = c => `<li class="wk-setup-row${lit(c.id)}" id="wkSetup-${esc(c.id)}" tabindex="-1" data-id="${esc(c.id)}" data-state="${esc(c.state)}"><span class="wk-setup-dot" aria-hidden="true"></span><span class="wk-setup-text"><b>${esc(c.label)}</b><span>${esc(c.detail)}</span></span>${c.fix && !(window.REMOTE && c.fix !== 'chat') ? `<button type="button" class="btn sm ${c.state === 'fix' ? '' : 'quiet'}" id="wkSetupFix-${esc(c.id)}" data-wk="setup-fix" data-id="${esc(c.id)}" data-how="${esc(c.fix)}"${c.fix === 'chat' ? ' aria-haspopup="menu"' : ''}${c.fix === 'onepass' ? ` data-op="${c.op ? 1 : 0}"` : ''}>${c.fix === 'onepass' && !c.op ? 'Install 1Password…' : label[c.fix]}</button>` : ''}</li>`;
+    return `<details class="wk-setup-box${fix.length ? ' has-fix' : ''}${lit('box')}"${W.setupOpen ? ' open' : ''}><summary data-wk="setup-toggle"><span class="wk-run-label">This PC</span><span class="wk-setup-sum" data-state="${fix.length ? 'fix' : 'ok'}">${esc(summary)}</span>${info.length ? `<span class="wk-setup-note">${info.length} note${info.length === 1 ? '' : 's'}</span>` : ''}<span class="wk-setup-where">${esc(st.root)}</span></summary>
       <ul class="wk-setup-list">${[...fix, ...info, ...st.checks.filter(c => c.state === 'ok')].map(row).join('')}</ul>
       <p class="wk-setup-foot">From Latitude’s guide, docs/developer-setup/local-windows-setup.md. <button type="button" class="linkish" data-wk="setup-recheck">Check again</button></p></details>`;
   }
@@ -308,6 +312,21 @@ const Work = (() => {
     b.disabled = true;
     try { await toast.promise(api('/api/work/setup-fix', { id, root: W.setup && W.setup.root, ...extra }), { loading, success: r => r.done || 'Done.', ms: 9000 }); } finally { b.disabled = false; }
     return loadSetup(true);
+  }
+  // This PC, open, with one of its rows (or the box) in view, lit for a moment and the keyboard on it: where Ctrl+K and
+  // Setup's links go. False when there's no box to show (no clone of Latitude's repo here, or not Windows).
+  async function showSetup(id = null) {
+    if (!W.setup || W.setupLoading) await loadSetup();
+    if (!W.setup || !W.setup.root) return false;
+    W.setupOpen = true; W.lit = { id: id && W.setup.checks.some(c => c.id === id) ? id : 'box', until: Date.now() + 1500 };
+    if (showing()) render(); else await go('work');
+    const box = page().querySelector('.wk-setup-box'); if (!box) return false;
+    const row = W.lit.id === 'box' ? null : $(`wkSetup-${W.lit.id}`);
+    (row || box).scrollIntoView({ block: 'center', behavior: motionOk() ? 'smooth' : 'auto' });
+    ((row && (row.querySelector('button') || row)) || box.querySelector('summary')).focus({ preventScroll: true });
+    // Lit once: after it has played, a redraw doesn't light it again.
+    (row || box).addEventListener('animationend', function done(e) { if (e.animationName === 'cm-flash') { W.lit = null; e.currentTarget.removeEventListener('animationend', done); } });
+    return true;
   }
 
   /* ---------- runs with ---------- */
@@ -601,6 +620,7 @@ const Work = (() => {
   return { render: () => { render(); if (!W.loading && (!W.data || Date.now() - W.at > 60000)) load(false); }, changed: () => { if (showing()) load(true); else W.at = 0; }, count, load, openPr: url => { W.trail = []; return openUrl(url); },
     showPrs: () => { W.filter = 'prs'; W.query = ''; render(); }, commands, recordChanged,
     runPrefs: () => JSON.parse(JSON.stringify(W.run)),
+    setupState: () => W.setup, loadSetup, showSetup,
     modelsFor: prov => (W.models && W.models[prov]) || null,
     openIssue: async id => { if (!item(id)) W.external.set(id, await api(`/api/linear/issue?id=${encodeURIComponent(id)}`)); await select(id); } };
 })();
