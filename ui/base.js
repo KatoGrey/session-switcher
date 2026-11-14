@@ -53,12 +53,12 @@ function togglePin(cwd) {
 const Undo = { run: null, until: 0 };
 function offerUndo(msg, run, ms = 10000) {
   Undo.run = run; Undo.until = Date.now() + ms;
-  toast(msg, ms, { label: 'Undo', run: () => takeBackLast() });
+  toast(msg, ms, { label: 'Undo', run: () => takeBackLast() }, { id: 'undo' });
 }
 async function takeBackLast() {
   if (!Undo.run || Date.now() > Undo.until) return false;
   const run = Undo.run; Undo.run = null;
-  $('toast').classList.remove('show');
+  toast.dismiss('undo');
   await run();
   return true;
 }
@@ -146,21 +146,8 @@ function liveAttach(es) {
   es.addEventListener('error', () => { if (Live.mux) Live.mux = false; else direct(); });
 }
 
-let toastTimer;
-// A short message at the bottom. With an action ({ label, run }), it carries a button, like Undo.
-function toast(msg, ms = 5000, action = null) {
-  const t = $('toast');
-  t.textContent = msg;
-  if (action) {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-act'; b.textContent = action.label;
-    b.onclick = () => { t.classList.remove('show'); wrap(action.run)(); };
-    t.append(' ', b);
-  }
-  t.classList.toggle('has-act', !!action);
-  t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), action ? Math.max(ms, 6000) : ms);
-}
-function wrap(fn) { return async (...args) => { try { return await fn(...args); } catch (err) { if (err.message !== 'Reloading…') toast(err.message, 9000); if (err.reason) reload().catch(() => {}); } return undefined; }; }
+// toast(msg, ms, action, opts): ui/toasts.js. Errors are said at once, and stay a little longer.
+function wrap(fn) { return async (...args) => { try { return await fn(...args); } catch (err) { if (err.message !== 'Reloading…') toast(err.message, 9000, null, { tone: 'error' }); if (err.reason) reload().catch(() => {}); } return undefined; }; }
 
 /* ---------- copying ---------- */
 // Copies text wherever the app runs. The clipboard API only works on a secure page (the PC's own

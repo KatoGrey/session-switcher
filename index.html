@@ -20,6 +20,8 @@
 <link rel="stylesheet" href="/ui/aide.css">
 <link rel="stylesheet" href="/ui/homepc.css">
 <link rel="stylesheet" href="/ui/workspace.css">
+<link rel="stylesheet" href="/ui/toasts.css">
+<link rel="stylesheet" href="/ui/dialogs.css">
 <link rel="stylesheet" href="/ui/shell.css">
 <script src="/theme.js"></script>
 <script>window.TOKEN = '__TOKEN__'; window.REMOTE = __REMOTE__;</script>
@@ -179,11 +181,14 @@
 </dialog>
 
 <button class="livepill" id="livepill" aria-haspopup="menu" aria-expanded="false" title="Live updates and alerts"><span class="lp-seal" aria-hidden="true">✦</span><span class="lp-text" id="lpText">Connecting</span><span class="lp-bell" id="lpBell"></span></button>
-<div id="toast" role="status" aria-live="polite"></div>
+<section id="toaster" aria-label="Notifications (F6)"><ol><li id="toast" class="toast" hidden></li></ol></section>
+<div id="toastSay" class="sr" role="status" aria-live="polite" aria-atomic="true"></div><div id="toastAlarm" class="sr" role="alert" aria-live="assertive" aria-atomic="true"></div>
 <div id="hubLive" class="sr" role="status" aria-live="polite"></div>
 
 <!-- The hub, then the chat window: classic scripts that share one scope, so the order matters. -->
 <script src="/ui/base.js"></script>
+<script src="/ui/dialogs.js"></script>
+<script src="/ui/toasts.js"></script>
 <script src="/ui/shell.js"></script>
 <script src="/ui/hub.js"></script>
 <script src="/ui/create.js"></script>
@@ -246,7 +251,7 @@
   // A page that didn't load fully (a script lost on a patchy connection) would just be broken: it
   // reloads once by itself, and if that doesn't help, says so with a Reload button.
   (function () {
-    var ok = ['wrap', 'renderAll', 'openRun', 'openLaterDialog'].every(function (n) { return typeof window[n] === 'function'; }) && typeof window.ChatUI === 'object';
+    var ok = ['wrap', 'toast', 'renderAll', 'openRun', 'openLaterDialog'].every(function (n) { return typeof window[n] === 'function'; }) && typeof window.ChatUI === 'object';
     var k = 'ss-half-loaded';
     if (ok) { try { sessionStorage.removeItem(k); } catch (e) { /* private mode */ } return; }
     var again = false;

@@ -985,7 +985,7 @@ module.exports = [
     async run(t) {
       // A chat that's running but hasn't saved any history yet (a new one): no "couldn't load" message.
       const b = await t.open({ noHistory: true });
-      await b.eval(`window._toasts = []; new MutationObserver(() => _toasts.push(document.getElementById('toast').textContent)).observe(document.getElementById('toast'), { childList: true, characterData: true, subtree: true }); return 1`);
+      await b.eval(`window._toasts = []; new MutationObserver(() => _toasts.push(document.getElementById('toast').textContent)).observe(document.getElementById('toaster'), { childList: true, characterData: true, subtree: true }); return 1`);
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
       const toasts = await b.eval(`return _toasts`);
       t.check('opening it shows no “couldn’t load earlier messages”', !toasts.some(x => /Couldn’t load earlier/.test(x)), toasts);

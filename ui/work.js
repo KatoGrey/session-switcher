@@ -301,9 +301,9 @@ const Work = (() => {
       if (!folder) return undefined;
       extra = { folder };
     }
-    if (how === 'onepass') toast(b.dataset.op === '1' ? 'Asking 1Password. It may ask you to unlock it on this PC…' : 'Opening the 1Password installer…', 8000);
+    const loading = how !== 'onepass' ? 'Fixing it on this PC…' : b.dataset.op === '1' ? 'Asking 1Password. It may ask you to unlock it on this PC…' : 'Opening the 1Password installer…';
     b.disabled = true;
-    try { const r = await api('/api/work/setup-fix', { id, root: W.setup && W.setup.root, ...extra }); toast(r.done || 'Done.', 9000); } finally { b.disabled = false; }
+    try { await toast.promise(api('/api/work/setup-fix', { id, root: W.setup && W.setup.root, ...extra }), { loading, success: r => r.done || 'Done.', ms: 9000 }); } finally { b.disabled = false; }
     return loadSetup(true);
   }
 
@@ -428,8 +428,11 @@ const Work = (() => {
     if (!p.headSha || W.details.get(kOf(p))?.error) { toast('Refresh this PR before merging so its revision can be checked.'); return; }
     const how = await appChoice(`Merge #${p.number}?\n\n“${p.title}” is squashed into ${p.base || 'its base'}. GitHub still checks that it’s approved, its required checks pass and every review thread is resolved. “When it’s ready” lets GitHub merge it as soon as all of that is true.`, [{ v: 'now', label: 'Merge now', kind: 'prime' }, { v: 'auto', label: 'When it’s ready' }, { v: '', label: 'Cancel', kind: 'quiet' }]);
     if (!how) return;
-    await api('/api/prs/merge', { repo: p.repo, n: p.number, auto: how === 'auto', head: p.headSha });
-    toast(how === 'auto' ? `#${p.number} merges by itself once it’s ready.` : `Merged #${p.number}.`, 5000);
+    const auto = how === 'auto';
+    await toast.promise(api('/api/prs/merge', { repo: p.repo, n: p.number, auto, head: p.headSha }), {
+      loading: auto ? `Asking GitHub to merge #${p.number} once it’s ready…` : `Merging #${p.number}…`,
+      success: auto ? `#${p.number} merges by itself once it’s ready.` : `Merged #${p.number}.`,
+    });
     load(true);
   }
   function more(b, p) {

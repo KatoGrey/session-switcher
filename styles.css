@@ -470,10 +470,7 @@ dialog.wide{width:min(780px,calc(calc(100vw / var(--look-ui, 1)) - 32px));paddin
 .pal-foot{display:flex;gap:16px;padding:10px 16px;border-top:1px solid var(--seam);font:400 11px var(--f-label);color:var(--ash-2);margin:0}
 .pal-empty{padding:18px 14px;font:italic 15px var(--f-body);color:var(--ash)}
 
-/* ---------- toast & the live pill ---------- */
-#toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);z-index:80;max-width:min(620px,calc(calc(100vw / var(--look-ui, 1)) - 32px));padding:12px 18px;border-radius:7px;
-  border:1px solid var(--seam-2);background:rgb(var(--c-1c181f));color:var(--parch);box-shadow:0 20px 50px -14px rgb(var(--c-000000));white-space:pre-line;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;font-size:15px}
-#toast.show{opacity:1;transform:translate(-50%,0)}
+/* ---------- toasts (ui/toasts.css) & the live pill ---------- */
 .livepill{position:fixed;right:20px;bottom:20px;z-index:40;display:inline-flex;align-items:center;gap:10px;padding:10px 16px 10px 12px;border-radius:999px;border:1px solid var(--seam-2);
   background:rgb(var(--c-120f14) / .92);backdrop-filter:blur(6px);box-shadow:0 14px 40px -14px rgb(var(--c-000000));font:600 12px/1 var(--f-caps);letter-spacing:.12em;color:var(--parch-2)}
 .livepill:hover{border-color:var(--ash-2);color:var(--parch)}
@@ -1834,7 +1831,6 @@ button.nav-h.fold[aria-expanded="false"] .fold-c{transform:rotate(-90deg)}
 .c-skel i.u{align-self:flex-end;width:42%;height:38px;border-radius:14px}
 .c-skel i.s{width:48%}
 @keyframes skel{from{background-position:100% 0}to{background-position:-100% 0}}
-#toast.has-act{pointer-events:auto;display:flex;align-items:center;gap:14px}
 .toast-act{border:0;background:none;color:var(--gilt);font:600 14px var(--f-body);padding:2px 4px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .toast-act:hover{color:var(--parch)}
 @media (max-width:760px){
@@ -1896,10 +1892,6 @@ dialog:focus-visible,dialog:focus{outline:none}
   .nav-back{position:fixed;inset:var(--bar-h) 0 0 0;z-index:25;background:rgb(var(--c-000000) / .55)}
 }
 .nav{scrollbar-gutter:stable}
-
-/* Toasts sit above the message box in a chat, and fit a phone */
-body.chat-open #toast{bottom:calc(var(--dock-h, 150px) + 14px)}
-@media (max-width:760px){ #toast,#toast.show{left:12px;right:12px;transform:none;max-width:none;bottom:16px;max-height:calc(40vh / var(--look-ui, 1));overflow:auto} }
 
 /* Recent-chat rows: the folder on its own line; buttons the same width */
 .r-chip{display:block;width:max-content;max-width:100%;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

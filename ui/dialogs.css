@@ -1,0 +1,16 @@
+/* Every dialog opens and closes the same way (ui/dialogs.js keeps the keyboard and the page behind):
+   a short fade with a slight rise, the backdrop with it. Only with animations on (Setup), and never
+   when the system asks for less motion. Nothing here changes a dialog's size, place or look. */
+dialog{overscroll-behavior:contain}
+dialog:not([open]){pointer-events:none}
+body.motion dialog,body.motion dialog::backdrop{transition-property:opacity,transform,overlay,display;transition-duration:.18s;transition-timing-function:cubic-bezier(.2,.8,.2,1);transition-behavior:allow-discrete}
+body.motion dialog:not([open]){opacity:0;transform:translateY(6px) scale(.985)}
+body.motion dialog:not([open])::backdrop{opacity:0}
+@starting-style{
+  body.motion dialog[open]{opacity:0;transform:translateY(6px) scale(.985)}
+  body.motion dialog[open]::backdrop{opacity:0}
+}
+@media (prefers-reduced-motion:reduce){dialog,dialog::backdrop{transition:none!important}}
+
+/* A phone: the page behind a dialog stays where it is. */
+@media (max-width:760px),(hover:none) and (pointer:coarse){html.dlg-open,html.dlg-open body{overflow:hidden}}

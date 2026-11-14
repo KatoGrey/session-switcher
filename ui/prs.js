@@ -43,7 +43,7 @@ async function ghAction(act, b) {
   if (act === 'ghrefresh') { await ghLoad(true); return prsRedraw(); }
   if (act === 'switch') {
     const gh = PRS.gh || {};
-    return showMenu(b, (gh.accounts || []).filter(a => a.host === gh.host).map(a => ({ label: a.login, hint: a.active ? 'in use' : '', disabled: a.active, run: async () => { PRS.gh = await api('/api/prs/switch', { user: a.login }); PRS.data = null; PRS.details.clear(); toast(`Using ${a.login} on GitHub now.`); prsRedraw(); if ($('prDlg') && $('prDlg').open) prsLoad(true); } })));
+    return showMenu(b, (gh.accounts || []).filter(a => a.host === gh.host).map(a => ({ label: a.login, hint: a.active ? 'in use' : '', disabled: a.active, run: async () => { PRS.gh = await toast.promise(api('/api/prs/switch', { user: a.login }), { loading: `Switching GitHub to ${a.login}…`, success: `Using ${a.login} on GitHub now.` }); PRS.data = null; PRS.details.clear(); prsRedraw(); if ($('prDlg') && $('prDlg').open) prsLoad(true); } })));
   }
   return undefined;
 }

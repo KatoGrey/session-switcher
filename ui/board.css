@@ -143,6 +143,3 @@
 .v-find input:focus{outline:none;border-color:var(--gilt)}
 .v-find .count{min-width:52px;text-align:right;font:400 12px var(--f-body);color:var(--ash)}
 .v-find .icon{width:26px;height:26px;font-size:13px}
-
-/* What a button in the viewer says shows above the viewer. */
-body:has(.lightbox:not([hidden])) #toast{z-index:95}

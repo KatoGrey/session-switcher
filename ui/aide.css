@@ -232,7 +232,6 @@ body.aide-panel.ao-pinned .c-main{background:color-mix(in srgb,var(--ao-bg) calc
 .ao-grip.l{left:2px;top:30px;bottom:30px;width:9px;cursor:ew-resize}
 .ao-grip.r{right:2px;top:30px;bottom:30px;width:9px;cursor:ew-resize}
 .ao-grip.b{left:40px;right:40px;bottom:2px;height:9px;cursor:ns-resize}
-body.aide-panel #toast{bottom:16px;max-width:calc(100vw - 60px)}
 body.aide-panel #menu{background:var(--ao-bg)!important;color:var(--ao-text);border:1px solid var(--ao-line);border-radius:0!important;box-shadow:none!important;padding:5px;animation:none!important}
 body.aide-panel #menu button{color:var(--ao-text);font:13px/1.4 var(--ao-font);border-radius:0!important;padding:9px 11px}
 body.aide-panel #menu button:is(:hover,:focus-visible){background:var(--ao-hover);color:var(--ao-text)}

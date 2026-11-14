@@ -39,7 +39,7 @@ const only = process.argv.slice(2);
   const probe = () => b.eval(`
     if (!window._p) {
       window._p = { toasts: [], http: [], calls: 0, opened: 0 };
-      const rt = window.toast; window.toast = function (m, ...a) { _p.toasts.push(String(m)); return rt.call(this, m, ...a); };
+      const rt = window.toast; window.toast = Object.assign(function (m, ...a) { _p.toasts.push(String(m)); return rt.call(this, m, ...a); }, rt);
       // The file viewer can walk out of the pretend computer: nothing that changes anything goes to a path outside it.
       const bs = String.fromCharCode(92), plainPath = x => x.split(bs + bs).join(bs).split('/').join(bs).toLowerCase();
       const inside = plainPath(${JSON.stringify(w.W)});
