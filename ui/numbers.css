@@ -1,0 +1,12 @@
+/* Numbers that roll to a new value (ui/numbers.js). Ryan's saga themes keep their own figures. */
+:root:not([data-family="saga"]) .nf{font-variant-numeric:tabular-nums}
+.nf.rolling{white-space:nowrap}
+/* A changing digit: the real digit, invisible, holds its place and its text; over it, a column of
+   0–9 twice slides past, clipped to one line. */
+.nf-d{position:relative;display:inline-block;vertical-align:baseline;clip-path:inset(0 -.3em)}
+.nf-g{opacity:0}
+.nf-s{position:absolute;top:0;left:0;right:0;text-align:center;white-space:pre;pointer-events:none;will-change:transform}
+.nf-s::before{content:"0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9\A 0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9"}
+/* A digit on its way out has no text of its own; this gives it a line to sit on. */
+.nf-d.out::after{content:"\200B"}
+@media(prefers-reduced-motion:reduce){.nf-s{will-change:auto}}

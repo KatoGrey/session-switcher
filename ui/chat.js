@@ -5,9 +5,10 @@
 function headerAccount(id, fallbackName) {
   const a = id && acctById(id);
   const u = id ? usageOf(id) : null, d = u && u.data && u.data.available ? u.data : null;
-  const pct = (label, w) => { if (!w) return ''; const l = leftOf(w); return `<span class="cu ${hot(l) ? 'hot' : ''}" title="${label}: ${l}% left${w.resetsAt ? `, resets ${esc(when(w.resetsAt))}` : ''}">${label} ${l}%</span>`; };
+  // The numbers roll when usage changes (ui/numbers.js).
+  const pct = (label, w, k) => { if (!w) return ''; const l = leftOf(w); return `<span class="cu ${hot(l) ? 'hot' : ''}" title="${label}: ${l}% left${w.resetsAt ? `, resets ${esc(when(w.resetsAt))}` : ''}">${label} ${Roll.num(`${id}:${k}`, l)}%</span>`; };
   $c('cAcct').hidden = !a && !fallbackName;
-  $c('cAcct').innerHTML = `${id ? miniDial(id, 22) : ''}<span class="ca-n">${esc(a ? a.name : fallbackName || '')}</span>${d ? `${pct('5h', d.fiveHour)}${pct('wk', d.week)}${(d.models || []).filter(m => m.used !== null).map(m => pct(esc(m.name), m)).join('')}` : ''}`;
+  $c('cAcct').innerHTML = `${id ? miniDial(id, 22) : ''}<span class="ca-n">${esc(a ? a.name : fallbackName || '')}</span>${d ? `${pct('5h', d.fiveHour, '5h')}${pct('wk', d.week, 'wk')}${(d.models || []).filter(m => m.used !== null).map(m => pct(esc(m.name), m, `m:${m.name}`)).join('')}` : ''}`;
   $c('cAcct').title = a ? `This chat runs as ${a.name}${a.email ? ` (${a.email})` : ''}` : '';
   const ring = a ? ringById(id) : 'var(--seam-2)';
   $c('chat').style.setProperty('--acct', ring);

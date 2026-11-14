@@ -24,25 +24,28 @@ function renderBar() {
   const chip = $('usechip');
   if (!a) { chip.hidden = !inChat; chip.innerHTML = inChat ? '<span class="ac-who"><small>This chat runs</small><b>Outside the app</b></span>' : ''; chip.style.removeProperty('--ring'); return; }
   const u = usageOf(a.id), d = u && u.data && u.data.available ? u.data : null;
-  const cell = (label, w) => {
+  // The numbers roll when usage changes (ui/numbers.js), keyed by account and window.
+  const left = (k, w) => `${Roll.num(`${a.id}:${k}`, leftOf(w))}% left`;
+  const cell = (label, w, k) => {
     if (!w) return '';
     const l = leftOf(w);
-    return `<span class="ac-win ${hot(l) ? 'hot' : ''}"><small>${label}</small><b>${l}% left</b>${w.resetsAt ? `<i>resets ${esc(when(w.resetsAt))}</i>` : ''}</span>`;
+    return `<span class="ac-win ${hot(l) ? 'hot' : ''}"><small>${label}</small><b>${left(k, w)}</b>${w.resetsAt ? `<i>resets ${esc(when(w.resetsAt))}</i>` : ''}</span>`;
   };
   chip.hidden = false;
   chip.style.setProperty('--ring', ringById(a.id));
   chip.innerHTML = `<span class="ac-ring">${miniDial(a.id, 30)}</span>
     <span class="ac-who"><small>${inChat ? 'This chat runs as' : 'New chats open as'}</small><b>${esc(a.name)}</b></span>
-    ${d ? `<span class="ac-sep" aria-hidden="true"></span>${cell('5-hour window', d.fiveHour)}${cell('This week', d.week)}${(d.models || []).filter(m => m.used !== null).map(m => cell(`${esc(m.name)} this week`, m)).join('')}`
+    ${d ? `<span class="ac-sep" aria-hidden="true"></span>${cell('5-hour window', d.fiveHour, '5h')}${cell('This week', d.week, 'wk')}${(d.models || []).filter(m => m.used !== null).map(m => cell(`${esc(m.name)} this week`, m, `m:${m.name}`)).join('')}`
       : a.gemini ? `<span class="ac-sep" aria-hidden="true"></span>${geminiQuotaCell()}`
       : a.signedIn ? `<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Usage</small><b>${u && (u.error || (u.data && !u.checking)) ? 'Unavailable' : 'Checking…'}</b></span>` : '<span class="ac-sep" aria-hidden="true"></span><span class="ac-win"><small>Account</small><b>Not signed in</b></span>'}`;
   chip.insertAdjacentHTML('beforeend', '<span class="ac-caret" aria-hidden="true">▾</span>');
-  const windows = d ? [['5-hour window', d.fiveHour], ['This week', d.week]].filter(([, w]) => w).sort((a, b) => leftOf(a[1]) - leftOf(b[1])) : [];
+  const windows = d ? [['5-hour window', d.fiveHour, '5h'], ['This week', d.week, 'wk']].filter(([, w]) => w).sort((a, b) => leftOf(a[1]) - leftOf(b[1])) : [];
   const limiting = windows[0];
   const unavailable = a.gemini ? (!geminiReady() && geminiStatus()) : !a.signedIn && 'Not signed in';
   const modelLimits = a.gemini ? geminiLimits() : [];
+  const rolls = !unavailable && !modelLimits.length && limiting;
   const summary = unavailable || (modelLimits.length ? `${plural(modelLimits.length, 'model')} out of quota` : limiting ? `${leftOf(limiting[1])}% left` : a.gemini ? 'Usage details' : u && (u.error || (u.data && !u.checking)) ? 'Usage unavailable' : 'Checking usage…');
-  chip.insertAdjacentHTML('beforeend', `<span class="ac-summary${unavailable || modelLimits.length || (limiting && hot(leftOf(limiting[1]))) ? ' hot' : ''}"${limiting ? ` title="${esc(limiting[0])}${limiting[1].resetsAt ? ` · resets ${esc(when(limiting[1].resetsAt))}` : ''}"` : ''}>${esc(summary)}</span>`);
+  chip.insertAdjacentHTML('beforeend', `<span class="ac-summary${unavailable || modelLimits.length || (limiting && hot(leftOf(limiting[1]))) ? ' hot' : ''}"${limiting ? ` title="${esc(limiting[0])}${limiting[1].resetsAt ? ` · resets ${esc(when(limiting[1].resetsAt))}` : ''}"` : ''}>${rolls ? left(limiting[2], limiting[1]) : esc(summary)}</span>`);
   chip.title = `${inChat ? 'This chat runs as' : 'New chats open as'} ${a.name}${a.email ? ` (${a.email})` : ''}. ${usageLine(a.id) || ''} Click to see all your accounts.`;
 }
 function updateTitle() {
@@ -654,23 +657,24 @@ function dialCard(a) {
   const cur = a.id === S.acct;
   const locked = !!(a.pinnedOrg || a.expectEmail);
   const blocked = locked && !a.lock.ok;
-  return dialShell(a, u, cur, blocked, locked, usageDetail(u, a.signedIn, 'Sign in to see this account’s usage and reset times.'));
+  return dialShell(a, u, cur, blocked, locked, usageDetail(u, a.signedIn, 'Sign in to see this account’s usage and reset times.', a.id));
 }
 const fmtCredits = v => { const n = Number(v); return v === null || v === undefined || v === '' ? 'on' : isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : String(v); };
-function usageDetail(u, signedIn, signedOutText) {
+// id: whose usage it is, so its numbers roll and its bars move when they change (ui/numbers.js).
+function usageDetail(u, signedIn, signedOutText, id) {
   const d = u && u.data && u.data.available ? u.data : null;
-  const win = (name, w) => {
+  const win = (name, w, k) => {
     if (!w) return '';
-    const l = leftOf(w);
-    return `<li><span class="w-n">${name}</span><span class="w-v ${hot(l) ? 'hot' : ''}">${l}% left</span>
-      <span class="w-bar"><i class="${hot(l) ? 'hot' : ''}" style="width:${Math.min(100, Math.max(0, w.used))}%"></i></span>
+    const l = leftOf(w), used = Math.min(100, Math.max(0, w.used));
+    return `<li><span class="w-n">${name}</span><span class="w-v ${hot(l) ? 'hot' : ''}">${id ? Roll.num(`${id}:${k}`, l) : l}% left</span>
+      <span class="w-bar"><i ${id ? Roll.attrs('width', `${id}:${k}:used`, used, hot(l) ? 'hot' : '') : `class="${hot(l) ? 'hot' : ''}"`} style="width:${used}%"></i></span>
       <span class="w-r">${Math.round(w.used)}% used${w.resetsAt ? ` · resets <b>${esc(when(w.resetsAt))}</b>, <span data-until="${Date.parse(w.resetsAt)}">in ${esc(dur(Date.parse(w.resetsAt) - Date.now()))}</span>` : ''}</span></li>`;
   };
   let detail = '';
   if (d) {
     // A model with a weekly limit of its own (Fable, say) gets a row like the week's, with its bar and reset.
     const own = d.models.filter(m => m.used !== null);
-    detail = `<ul class="win">${win('Five-hour window', d.fiveHour, SPAN.fiveHour)}${win('This week', d.week, SPAN.week)}${own.map(m => win(`${esc(m.name)} this week`, m)).join('')}</ul>`;
+    detail = `<ul class="win">${win('Five-hour window', d.fiveHour, '5h')}${win('This week', d.week, 'wk')}${own.map(m => win(`${esc(m.name)} this week`, m, `m:${m.name}`)).join('')}</ul>`;
     const chips = [];
     if (d.extra) chips.push(`<span class="model" title="Extra usage beyond your plan">${d.extra.credits !== undefined && d.extra.used === null ? `Credits <b>${esc(d.extra.unlimited ? 'unlimited' : fmtCredits(d.extra.credits))}</b>` : `Extra usage <b>${d.extra.used !== null ? `${Math.round(d.extra.used)}% of monthly cap` : 'on'}</b>`}</span>`);
     if (chips.length) detail += `<div class="models">${chips.join('')}</div>`;
@@ -697,7 +701,7 @@ function dialShell(a, u, cur, blocked, locked, detail) {
   const lockTitle = locked ? `Locked to ${[a.expectEmail, a.pinnedOrg && a.pinnedOrg.name].filter(Boolean).join(', ')}` : '';
   const checked = [u && u.at ? `Usage checked ${agoL(u.at)}` : '', a.verified ? `sign-in confirmed ${agoL(a.verifiedAt)}` : a.verifyError ? 'couldn’t confirm the sign-in' : ''].filter(Boolean).join(' · ');
   return `<article class="dial-card ${cur ? 'current' : ''} ${blocked ? 'blocked' : ''}" data-acct-card="${esc(a.id)}" style="--ring:${ringOf(a)}">
-    <div class="dial-wrap">${dialSvg(u)}<div class="legend"><span><i class="l5"></i>5 hours</span><span><i class="lw"></i>week</span><span><i class="ln"></i>time passed</span></div></div>
+    <div class="dial-wrap">${dialSvg(u, a.id)}<div class="legend"><span><i class="l5"></i>5 hours</span><span><i class="lw"></i>week</span><span><i class="ln"></i>time passed</span></div></div>
     <div class="dc-body">
       <div class="dc-k">${plan}${org}</div>
       <h3 class="dc-name">${esc(a.name)}${locked ? `<span class="lock ${blocked ? 'bad' : ''}" title="${esc(lockTitle)}">${ICON.lock}<span class="sr">${esc(lockTitle)}</span></span>` : ''}</h3>
@@ -712,14 +716,15 @@ function dialShell(a, u, cur, blocked, locked, detail) {
 
 // Accounts, compact: each one's windows at a glance, with everything else (its dial, sign-in, what used
 // it) a click away on the same card.
-function acctWin(label, long, w) {
+// key: the account and window, so the number rolls and the bar moves when it changes (ui/numbers.js).
+function acctWin(label, long, w, key) {
   if (!w) return '';
-  const l = leftOf(w), reset = w.resetsAt ? `resets ${when(w.resetsAt)}` : '';
-  return `<div class="aw ${hot(l) ? 'hot' : ''}"><div class="aw-top"><span class="aw-n">${esc(label)}</span><span class="aw-v">${l}% left</span></div><div class="aw-bar" role="img" aria-label="${esc(long)}: ${l}% left${reset ? `, ${esc(reset)}` : ''}"><i style="width:${Math.max(0, Math.min(100, l))}%"></i></div>${reset ? `<div class="aw-r">${esc(reset)}</div>` : ''}</div>`;
+  const l = leftOf(w), reset = w.resetsAt ? `resets ${when(w.resetsAt)}` : '', fill = Math.max(0, Math.min(100, l));
+  return `<div class="aw ${hot(l) ? 'hot' : ''}"><div class="aw-top"><span class="aw-n">${esc(label)}</span><span class="aw-v">${key ? Roll.num(key, l) : l}% left</span></div><div class="aw-bar" role="img" aria-label="${esc(long)}: ${l}% left${reset ? `, ${esc(reset)}` : ''}"><i${key ? Roll.attrs('width', `${key}:left`, fill) : ''} style="width:${fill}%"></i></div>${reset ? `<div class="aw-r">${esc(reset)}</div>` : ''}</div>`;
 }
 function acctWins(id, none) {
   const u = usageOf(id), d = u && u.data && u.data.available ? u.data : null;
-  if (d && (d.fiveHour || d.week)) return `<div class="aw-wins">${acctWin('5 hours', 'Five-hour window', d.fiveHour)}${acctWin('This week', 'This week', d.week)}</div>`;
+  if (d && (d.fiveHour || d.week)) return `<div class="aw-wins">${acctWin('5 hours', 'Five-hour window', d.fiveHour, `${id}:5h`)}${acctWin('This week', 'This week', d.week, `${id}:wk`)}</div>`;
   return `<p class="aw-none">${esc(none || (u && u.error) || (u && u.data && !u.data.available ? 'No plan limits to show (an API key, say).' : 'Checking usage…'))}</p>`;
 }
 function acctCard({ key, id, name, sub, on, tag = '', blocked, action = '', body, more, cardAttr = '' }) {
@@ -804,7 +809,7 @@ function codexCard(c = S.codex) {
     acts.push(`<button class="btn prime sm" data-act="codex-new" ${da} aria-haspopup="menu" aria-expanded="false">New Ollama chat</button>`);
     acts.push(`<button class="btn quiet sm" data-act="web" ${da} title="Your ollama.com usage and settings">ollama.com</button>`);
   } else {
-    detail = usageDetail(u, true, '');
+    detail = usageDetail(u, true, '', c.id);
     acts.push(`<button class="btn prime sm" data-act="codex-new" ${da} aria-haspopup="menu" aria-expanded="false">New Codex chat</button>`);
     acts.push(`<button class="btn quiet sm" data-act="usage" ${da} ${u && u.checking ? 'disabled' : ''}>${u && u.checking ? 'Checking…' : 'Check usage'}</button>`);
     acts.push(`<button class="btn quiet sm" data-act="web" ${da} title="Regular ChatGPT, in its own window">chatgpt.com</button>`);
@@ -812,7 +817,7 @@ function codexCard(c = S.codex) {
   acts.push(`<span class="spacer"></span><button class="icon" data-act="codex-more" ${da} aria-haspopup="menu" aria-expanded="false" aria-label="More for ${esc(c.name)}">` + ICON.more + '</button>');
   const checked = [u && u.at ? `Usage checked ${agoL(u.at)}` : '', c.checkedAt ? `sign-in checked ${agoL(c.checkedAt)}` : ''].filter(Boolean).join(' · ');
   return `<article class="dial-card codex-card${on ? ' on' : ''}" style="--ring:${codexRing(c.id)}">
-    <div class="dial-wrap">${dialSvg(c.signedIn && !ollama ? u : null)}<div class="legend"><span><i class="l5"></i>5 hours</span><span><i class="lw"></i>week</span><span><i class="ln"></i>time passed</span></div></div>
+    <div class="dial-wrap">${dialSvg(c.signedIn && !ollama ? u : null, c.id)}<div class="legend"><span><i class="l5"></i>5 hours</span><span><i class="lw"></i>week</span><span><i class="ln"></i>time passed</span></div></div>
     <div class="dc-body">
       <div class="dc-k">${c.plan ? `<span class="tag codex">${esc(c.plan)}</span>` : ''}${on ? '<span class="tag gold">new Codex chats</span>' : ''}<span class="eyebrow">${ollama ? 'Ollama · through Codex' : 'OpenAI'}</span></div>
       <h3 class="dc-name">${esc(c.name || 'Codex')}</h3>

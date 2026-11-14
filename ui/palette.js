@@ -2,13 +2,159 @@
 /* The command palette (Ctrl+K) and the file viewer. */
 
 /* ---------- command palette ---------- */
-const Pal = { items: [], sel: 0 };
-function score(text, q) {
-  const t = String(text || '').toLowerCase();
-  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-  let s = 0;
-  for (const term of terms) { const i = t.indexOf(term); if (i < 0) return -1; s += i === 0 ? 30 : /\W/.test(t[i - 1]) ? 20 : 8; }
-  return s;
+// stack: the pages you've gone into (an item with page: () => items opens a list of its own).
+const Pal = { items: [], sel: 0, stack: [] };
+// Matching, in the spirit of cmdk: the whole title, then its start, a word's start, its initials ("nc"
+// is New chat, "phacc" Phone access), anywhere in it, every word of a longer search, the item's other
+// words (its alias), and last its letters in order. Each match says which letters of the title to mark.
+const PalMatch = (() => {
+  const WORDY = /[\p{L}\p{N}]/u, PLAIN = /^[\p{L}\p{N}]+$/u;
+  // The title, lower-cased; at(i): could a word start there ("GitHub" has two: Git, Hub; a search that
+  // begins with a sign, "#18982", starts wherever a word could). Its words are worked out only if needed.
+  function prep(t) {
+    const tl = t.toLowerCase(), same = tl.length === t.length;
+    const at = i => i === 0 || !WORDY.test(tl[i - 1]) || (same && t[i] !== tl[i] && t[i - 1] === tl[i - 1] && t[i - 1].toUpperCase() !== t[i - 1] && WORDY.test(tl[i]));
+    let list = null;
+    const words = () => {
+      if (list) return list;
+      list = [];
+      let ws = -1;
+      for (let i = 0; i <= tl.length; i++) {
+        const w = i < tl.length && WORDY.test(tl[i]);
+        if (w && ws >= 0 && at(i)) { list.push([ws, i]); ws = i; } else if (w && ws < 0) ws = i; else if (!w && ws >= 0) { list.push([ws, i]); ws = -1; }
+      }
+      return list;
+    };
+    return { t, tl, at, words };
+  }
+  const inOrder = (tl, q, from = 0) => { let p = from; for (const c of q) { p = tl.indexOf(c, p); if (p < 0) return false; p++; } return true; };
+  // Each piece of the search is the start of a word, in order, skipping as few words as it can.
+  function initials(P, q) {
+    const { tl } = P, words = P.words(), W = words.length, memo = new Map();
+    if (W < 2) return null;
+    const go = (qi, wi) => {
+      if (qi === q.length) return { hl: [], skips: 0 };
+      const k = qi * 4096 + wi;
+      if (memo.has(k)) return memo.get(k);
+      let best = null;
+      for (let w = wi; w < W && (!best || w - wi < best.skips); w++) {
+        const [ws, we] = words[w];
+        let n = 0;
+        while (qi + n < q.length && ws + n < we && q[qi + n] === tl[ws + n]) n++;
+        for (let len = n; len >= 1; len--) {
+          const r = go(qi + len, w + 1);
+          if (r) { const c = { hl: [[ws, ws + len], ...r.hl], skips: r.skips + (w - wi) }; if (!best || c.skips < best.skips) best = c; break; }
+        }
+      }
+      memo.set(k, best);
+      return best;
+    };
+    const r = go(0, 0);
+    return r && r.hl.length > 1 ? r : null;
+  }
+  // The letters in order, preferring the starts of words and letters side by side; strewn too far apart doesn't count.
+  function letters(P, q) {
+    const { tl, at } = P, hl = [];
+    let pos = 0, prev = -2, s = 300;
+    for (let qi = 0; qi < q.length; qi++) {
+      let j = tl.indexOf(q[qi], pos);
+      if (j < 0) return null;
+      if (j !== prev + 1 && !at(j)) for (let b = tl.indexOf(q[qi], j + 1); b >= 0; b = tl.indexOf(q[qi], b + 1)) if (at(b)) { if (inOrder(tl, q.slice(qi + 1), b + 1)) j = b; break; }
+      if (prev < 0) s -= Math.min(30, j);
+      else if (j === prev + 1) s += 6;
+      else s -= (j - prev - 1) * 2;
+      if (at(j)) s += 8;
+      if (j === prev + 1 && hl.length) hl[hl.length - 1][1] = j + 1; else hl.push([j, j + 1]);
+      prev = j; pos = j + 1;
+    }
+    return s >= 200 ? { s: Math.min(390, s), hl } : null;
+  }
+  // q: lower-cased, trimmed, single spaces. → { s, hl } (hl: [start, end) pieces of x.t), or null.
+  function item(x, q) {
+    const P = prep(String(x.t || '')), { tl, at } = P;
+    const text = String(x.text || x.t || '').toLowerCase();
+    if (tl === q) return { s: 1200, hl: [[0, q.length]] };
+    if (tl.startsWith(q)) return { s: 900 - Math.min(40, tl.length - q.length) / 4, hl: [[0, q.length]] };
+    let mid = -1;
+    for (let i = tl.indexOf(q); i >= 0; i = tl.indexOf(q, i + 1)) { if (at(i)) return { s: 800 - Math.min(40, i) / 2, hl: [[i, i + q.length]] }; if (mid < 0) mid = i; }
+    const flat = q.replace(/ /g, ''), seq = flat.length > 1 && inOrder(tl, flat);
+    const ac = seq && PLAIN.test(flat) ? initials(P, flat) : null;
+    if (ac) return { s: 700 - ac.skips * 6 - ac.hl.length, hl: ac.hl };
+    if (mid >= 0) return { s: 600 - Math.min(40, mid) / 2, hl: [[mid, mid + q.length]] };
+    const terms = q.split(' ');
+    if (terms.length > 1) {
+      let s = 0, all = true;
+      const hl = [];
+      for (const term of terms) {
+        let j = -1, start = false;
+        for (let i = tl.indexOf(term); i >= 0; i = tl.indexOf(term, i + 1)) { if (at(i)) { j = i; start = true; break; } if (j < 0) j = i; }
+        if (j >= 0) { hl.push([j, j + term.length]); s += start ? 6 : 2; continue; }
+        all = false;
+        const k = text.indexOf(term);
+        if (k < 0) { s = -1; break; }
+        if (k === 0 || !WORDY.test(text[k - 1])) s += 3;
+      }
+      if (s >= 0) return { s: (all ? 500 : 400) + Math.min(40, s), hl };
+    } else {
+      // Its other words: "btw" for Ask a side question, "mcp" for Rules and tools. Inside one of them
+      // ("nc" in preferences) counts for little.
+      let best = -1;
+      for (let k = text.indexOf(q); k >= 0; k = text.indexOf(q, k + 1)) {
+        const start = k === 0 || !WORDY.test(text[k - 1]), whole = start && !WORDY.test(text[k + q.length] || ' ');
+        best = Math.max(best, whole ? 445 : start ? 430 : 210);
+        if (best === 445) break;
+      }
+      if (best >= 0) return { s: best, hl: [] };
+    }
+    return seq ? letters(P, flat) : null;
+  }
+  // The title with its matched letters marked; escaped. A title that changes length when lower-cased isn't marked.
+  function mark(t, hl) {
+    t = String(t || '');
+    if (!hl || !hl.length || t.toLowerCase().length !== t.length) return esc(t);
+    const on = new Uint8Array(t.length);
+    for (const [a, b] of hl) on.fill(1, Math.max(0, a), Math.min(t.length, b));
+    let out = '';
+    for (let i = 0; i < t.length;) {
+      let j = i;
+      while (j < t.length && on[j] === on[i]) j++;
+      out += on[i] ? `<mark class="pal-hit">${esc(t.slice(i, j))}</mark>` : esc(t.slice(i, j));
+      i = j;
+    }
+    return out;
+  }
+  return { item, mark };
+})();
+// What you pick often, and lately, comes first among matches: a decaying count per item, kept for the
+// 80 used most. Keyed by an item's id, else its title.
+const PalFrec = (() => {
+  const KEY = 'palette-frecency', CAP = 80, HALF = 14 * 864e5;
+  let all = null;
+  const bare = o => Object.assign(Object.create(null), o);   // a title like "constructor" is just a key
+  const load = () => { if (!all) { try { all = bare(JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { all = bare({}); } } return all; };
+  const weight = (e, now) => (e && e.n > 0 ? e.n * Math.pow(0.5, Math.max(0, now - e.t) / HALF) : 0);
+  function boost(id) {
+    const w = weight(load()[id], Date.now());
+    return w > 0 ? Math.min(120, Math.round(Math.log2(1 + w) * 40)) : 0;
+  }
+  function note(id) {
+    if (!id) return;
+    const m = load(), now = Date.now();
+    m[id] = { n: weight(m[id], now) + 1, t: now };
+    const keep = Object.entries(m).map(([k, e]) => [k, weight(e, now)]).filter(([, w]) => w >= 0.05).sort((a, b) => b[1] - a[1]).slice(0, CAP);
+    all = bare(Object.fromEntries(keep.map(([k]) => [k, m[k]])));
+    try { localStorage.setItem(KEY, JSON.stringify(all)); } catch { /* full or blocked: it just doesn't remember */ }
+  }
+  return { boost, note };
+})();
+const palId = x => x.id || x.t;
+// Ranked best first; ties keep the order they came in. Each comes back with its marks (hl).
+function palRank(list, q) {
+  const ql = String(q || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!ql) return list.slice();
+  const out = [];
+  list.forEach((x, i) => { const m = PalMatch.item(x, ql); if (m) out.push({ x: { ...x, hl: m.hl }, s: m.s + (x.frec === false ? 0 : PalFrec.boost(palId(x))), i }); });
+  return out.sort((a, b) => b.s - a.s || a.i - b.i).map(r => Object.assign(r.x, { score: r.s }));
 }
 // The project an action is about: the open chat's, else the project page you're on.
 const paletteHere = () => (window.ChatUI && ChatUI.isOpen() && C.info && C.info.cwd) || (S.view === 'folder' ? S.folder : null);
@@ -43,7 +189,8 @@ function sayItems(q) {
     const p = projectNamed(m[3]), split = m[1].toLowerCase() === 'split';
     if (p && racePairs().length) out.push({ glyph: split ? '⑂' : '⚑', t: `${split ? 'Split' : 'Race'} in ${p.name}: ${m[2]}`, s: split ? 'each takes a part' : 'two of them, the same task', run: () => { openRaceDialog(p.cwd, split ? 'split' : 'race'); $('rcText').value = m[2]; } });
   }
-  return out;
+  // Phrases are one-offs: they don't count toward what you use most.
+  return out.map(x => ({ ...x, frec: false }));
 }
 function palItems(q) {
   const out = [];
@@ -81,11 +228,13 @@ function palItems(q) {
     { glyph: '?', t: 'Keyboard shortcuts', run: () => openShortcuts(), alias: 'keys hotkeys help' },
     ...(miniOK() && !window.REMOTE ? [{ glyph: '◰', t: 'Open the mini window', s: 'what needs you, floating over other apps', run: () => openMini(), alias: 'mini picture in picture float pip always on top small status' }] : []),
     { glyph: '◐', t: Look.isLight() ? 'Switch to dark mode' : 'Switch to light mode', run: () => Look.set({ mode: Look.isLight() ? 'dark' : 'light' }) },
-    ...Look.THEMES.filter(t => t.id !== Look.get().theme).map(t => ({ glyph: '◉', t: `Theme: ${t.name}`, s: t.note, run: () => Look.set({ theme: t.id }) })),
+    { glyph: '◉', t: 'Change theme…', s: `now ${Look.theme().name}`, alias: 'theme themes colors colours look skin', page: themePage, pageTitle: 'Themes', placeholder: 'Find a theme…' },
+    ...Look.THEMES.filter(t => t.id !== Look.get().theme).map(t => ({ id: `theme:${t.id}`, glyph: '◉', t: `Theme: ${t.name}`, s: t.note, run: () => Look.set({ theme: t.id }) })),
     ...Look.FONT_SETS.filter(f => f.id !== Look.get().fontSet).map(f => ({ glyph: '¶', t: `Fonts: ${f.name}`, s: [...new Set([f.head, f.body, f.code])].map(id => Look.FAMILIES.find(x => x.id === id).name).join(' · '), run: () => Look.set({ fontSet: f.id, fBody: '', fHead: '', fCode: '' }), alias: 'font set typeface lettering' })),
     { glyph: '§', t: 'Fonts and licences', s: 'every bundled font and its licence', run: () => fontCredits(), alias: 'font license licence credits attribution ofl' },
     { glyph: '◈', t: 'Check usage for every account', run: () => refreshUsage() },
-    ...S.accounts.filter(a => a.id !== S.acct).map(a => ({ glyph: '◆', t: `Work as ${a.name}`, s: usageLine(a.id, { short: true }), run: () => useAccount(a.id) })),
+    ...(S.accounts.length > 1 ? [{ glyph: '◆', t: 'Switch account…', s: `new chats open as ${current().name}`, alias: 'account accounts work as use claude plan usage left', page: accountPage, pageTitle: 'Accounts', placeholder: 'Find an account…' }] : []),
+    ...S.accounts.filter(a => a.id !== S.acct).map(a => ({ id: `acct:${a.id}`, glyph: '◆', t: `Work as ${a.name}`, s: usageLine(a.id, { short: true }), run: () => useAccount(a.id) })),
     ...S.accounts.map(a => ({ glyph: '❖', t: `Open claude.ai as ${a.name}`, s: 'regular Claude chats', run: () => openWeb(a.id) })),
     ...(S.codex && S.codex.enabled ? (S.codex.signedIn ? [{ glyph: '❖', t: 'Open chatgpt.com', s: 'regular ChatGPT', run: () => openWeb(S.codex.id) }, { glyph: '◈', t: 'Check Codex usage', run: () => refreshUsage(S.codex.id) }] : [{ glyph: '✥', t: 'Sign in to Codex with ChatGPT', run: codexSignIn }]) : []),
     { glyph: '✥', t: 'New project', s: 'make a folder and start a chat', run: () => openNewProject() },
@@ -98,16 +247,19 @@ function palItems(q) {
   ].map(x => ({ ...x, text: `${x.t} ${x.alias || ''}` }));
   const claudeNew = canLaunch(current()) ? S.projects.filter(p => p.exists).map(p => ({ glyph: '✦', t: `New Claude chat in ${p.name}`, s: `as ${current().name}`, run: () => ChatUI.open({ cwd: p.cwd, mode: 'new' }), text: `new chat claude ${p.name}` })) : [];
   const pinItems = S.projects.map(p => ({ glyph: '★', t: `${S.pins.has(p.cwd) ? 'Unpin' : 'Pin'} ${p.name}`, s: 'in the sidebar', run: () => togglePin(p.cwd), text: `pin unpin favorite ${p.name}` }));
-  const folders = S.projects.map(p => ({ glyph: glyphFor(p.name), t: p.name, s: `${plural(p.sessions.length, 'chat')}${S.projects.filter(x => x.name === p.name).length > 1 && parentName(p.cwd) ? ` · in ${parentName(p.cwd)}` : ''}`, run: () => go('folder', p.cwd), text: `${p.name} ${p.cwd}` }));
+  const folders = S.projects.map(p => ({ id: `project:${p.cwd}`, glyph: glyphFor(p.name), t: p.name, s: `${plural(p.sessions.length, 'chat')}${S.projects.filter(x => x.name === p.name).length > 1 && parentName(p.cwd) ? ` · in ${parentName(p.cwd)}` : ''}`, run: () => go('folder', p.cwd), text: `${p.name} ${p.cwd}` }));
   const boards = S.projects.filter(p => p.exists).map(p => ({ glyph: '▦', t: `Review pictures in ${p.name}`, s: 'keep or redo, folder by folder', run: () => openBoard(p.cwd), text: `review pictures images gallery board keep redo ${p.name}` }));
-  const chats = allSessions().sort((x, y) => y[0].updated - x[0].updated).map(([s, p]) => ({ glyph: '❝', t: s.title, s: `${p.name} · ${agoL(s.updated)}`, run: () => (liveOf(s.id) ? ChatUI.open({ sessionId: s.id }) : isRunning(s.id) ? ChatUI.watch({ sessionId: s.id, source: 'terminal' }) : inApp() ? ChatUI.open({ sessionId: s.id }) : openDrawer(s.id)), text: `${s.title} ${p.name} ${s.firstPrompt || ''}` }));
+  const chats = allSessions().sort((x, y) => y[0].updated - x[0].updated).map(([s, p]) => ({ id: `chat:${s.id}`, glyph: '❝', t: s.title, s: `${p.name} · ${agoL(s.updated)}`, run: () => (liveOf(s.id) ? ChatUI.open({ sessionId: s.id }) : isRunning(s.id) ? ChatUI.watch({ sessionId: s.id, source: 'terminal' }) : inApp() ? ChatUI.open({ sessionId: s.id }) : openDrawer(s.id)), text: `${s.title} ${p.name} ${s.firstPrompt || ''}` }));
   const cxNew = codexReady() ? S.projects.filter(p => p.exists).map(p => ({ glyph: '✥', t: `New Codex chat in ${p.name}`, s: 'Codex', run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: 'codex' }), text: `codex new ${p.name}` })) : [];
   // Prompts, in the project you're looking at first, then in every project.
   const here = S.view === 'folder' ? S.projects.find(p => p.cwd === S.folder) : null;
   const worldsFor = here ? [here, ...S.projects.filter(p => p !== here)] : S.projects;
   const prompts = worldsFor.filter(p => p.exists).flatMap(p => S.prompts.map(pr => ({ glyph: '❡', t: `${pr.title} in ${p.name}`, s: PROV_NAME[pr.provider] && pr.provider !== 'claude' ? PROV_NAME[pr.provider] : 'prompt', run: () => startWithPrompt(p.cwd, pr), text: `${pr.title} ${p.name} prompt start` })));
-  const docs = Object.values(S.worlds).flatMap(w => { const p = S.projects.find(x => x.cwd === w.cwd); return p ? w.docs.slice(0, 60).map(d => ({ glyph: '❧', t: d.name, s: `${p.name} · ${agoL(d.mtime)}`, run: () => Viewer.open({ path: d.path, cwd: p.cwd }), text: `${d.rel} ${p.name}` })) : []; });
+  const docs = Object.values(S.worlds).flatMap(w => { const p = S.projects.find(x => x.cwd === w.cwd); return p ? w.docs.slice(0, 60).map(d => ({ id: `doc:${d.path}`, glyph: '❧', t: d.name, s: `${p.name} · ${agoL(d.mtime)}`, run: () => Viewer.open({ path: d.path, cwd: p.cwd }), text: `${d.rel} ${p.name}` })) : []; });
   const models = window.ChatUI && ChatUI.modelItems ? ChatUI.modelItems() : [];
+  // The chat's models and efforts, also as a list of their own.
+  const modelPicks = models.filter(x => /^(model switch|effort) /.test(x.text || ''));
+  const modelPage = modelPicks.length ? [{ glyph: '✦', t: 'Switch model…', s: 'the model and effort for this chat', text: 'switch model models effort change this chat', page: () => modelPicks, pageTitle: 'Model', placeholder: 'Find a model or effort…' }] : [];
   // The chat you're in: find, export, pin.
   const inChat = window.ChatUI && ChatUI.isOpen();
   const sid = inChat && ChatUI.sessionId ? ChatUI.sessionId() : null;
@@ -122,6 +274,7 @@ function palItems(q) {
       { glyph: '←', t: `Back to ${Shell.location()}`, s: 'leave the conversation running', run: () => document.querySelector('#chat [data-c="back"]').click() },
       { glyph: '▤', t: 'Files and output', s: 'artifacts, files, commands and tasks', run: () => document.querySelector('#chat [data-c="ledger"]').click() },
       ...chatActs.filter(x => /Find in|Make a pull request/.test(x.t)),
+      ...modelPage,
     ]);
     else if (S.view === 'work') add('Selected work', acts.filter(x => workActs.some(w => w.t === x.t)));
     add('Go to', acts.filter(x => destinations.has(x.t)));
@@ -133,64 +286,179 @@ function palItems(q) {
     add('Actions', acts.filter(x => !destinations.has(x.t) && (inChat || S.view !== 'work' || !workActs.some(w => w.t === x.t))));
     return out;
   }
-  const rank = list => list.map(x => ({ x, s: score(x.text, q) })).filter(r => r.s >= 0).sort((a, b) => b.s - a.s).map(r => r.x);
+  // Each group ranked; the groups ordered by their best match (ties keep this order). Phrases first,
+  // the full-text search last.
+  const rank = list => palRank(list, q);
   add('Do it', sayItems(q));
-  add('This chat', rank(chatActs).slice(0, 3));
-  add('Actions', rank(acts).slice(0, 5));
-  add('Active now', rank(run).slice(0, 5));
-  add('Chats', rank(chats).slice(0, 8));
-  add('Projects', rank(folders).slice(0, 5));
-  add('Review pictures', rank(boards).slice(0, 3));
-  add('Documents', rank(docs).slice(0, 5));
-  add('Start with a prompt', rank(prompts).slice(0, 4));
-  add('Switch model in this chat', rank(models).slice(0, 6));
-  add('Start a chat', rank([...claudeNew, ...cxNew]).slice(0, 4));
-  add('Pin', rank(pinItems).slice(0, 3));
-  out.push({ g: 'Inside every message' }, { glyph: '❝', t: `Search every message for “${q}”`, s: 'full text', run: () => runSearch(q) });
+  const groups = [
+    ['This chat', rank([...chatActs, ...modelPage]).slice(0, 3)],
+    ['Actions', rank(acts).slice(0, 5)],
+    ['Active now', rank(run).slice(0, 5)],
+    ['Chats', rank(chats).slice(0, 8)],
+    ['Projects', rank(folders).slice(0, 5)],
+    ['Review pictures', rank(boards).slice(0, 3)],
+    // Projects' documents load in the background; while they do, the group says so.
+    ['Documents', [...rank(docs).slice(0, 5), ...(palDocsLoading() ? [{ note: 'Still finding documents…', loading: true }] : [])]],
+    ['Start with a prompt', rank(prompts).slice(0, 4)],
+    ['Switch model in this chat', rank(models).slice(0, 6)],
+    ['Start a chat', rank([...claudeNew, ...cxNew]).slice(0, 4)],
+    ['Pin', rank(pinItems).slice(0, 3)],
+  ].map(([g, list], i) => ({ g, list, i, best: Math.max(-1, ...list.map(x => x.score || 0)) }));
+  groups.sort((a, b) => b.best - a.best || a.i - b.i).forEach(x => add(x.g, x.list));
+  out.push({ g: 'Inside every message', tail: true }, { glyph: '❝', t: `Search every message for “${q}”`, s: 'full text', run: () => runSearch(q), frec: false, fallback: true });
   return out;
 }
+// Pages: the full list of something you'd otherwise pick from many flat items.
+function themePage() {
+  const on = Look.get().theme;
+  return Look.THEMES.map(t => ({ id: `theme:${t.id}`, glyph: t.id === on ? '●' : '○', t: t.name, s: t.id === on ? 'in use' : t.note, text: `${t.name} ${t.note || ''} ${t.family || ''}`, run: () => Look.set({ theme: t.id }) }));
+}
+function accountPage() {
+  return S.accounts.map(a => ({ id: `acct:${a.id}`, glyph: a.id === S.acct ? '●' : '◆', t: a.name, s: [a.id === S.acct ? 'new chats open as this' : '', a.signedIn ? usageLine(a.id, { short: true }) : 'not signed in'].filter(Boolean).join(' · '), text: `${a.name} ${a.email || ''} ${a.plan || ''}`, run: () => useAccount(a.id) }));
+}
+const palDocsLoading = () => typeof worldsLoading !== 'undefined' && !!worldsLoading;
+// What can be picked: not the group titles, nor notes like "Loading…".
+const palPickable = x => !x.g && !x.note;
+const palPicks = () => Pal.items.filter(palPickable);
+const palPage = () => Pal.stack[Pal.stack.length - 1] || null;
+// Inside a page: its items, ranked by what you type.
+function pageItems(page, q) {
+  if (page.loading) return [{ note: 'Loading…', loading: true }];
+  if (page.error) return [{ note: page.error }];
+  return q ? palRank(page.items.filter(palPickable), q) : page.items;
+}
+// What changes with the page: the breadcrumb chip by the box, what the box says, the Back hint.
+function palChrome(page) {
+  let chip = $('palCrumb');
+  if (!chip) {
+    $('palQ').insertAdjacentHTML('beforebegin', '<button type="button" class="pal-crumb" id="palCrumb" tabindex="-1" hidden></button>');
+    const escHint = [...$('palette').querySelectorAll('.pal-foot span')].find(x => /^Esc/.test(x.textContent));
+    if (escHint) escHint.id = 'palEscKey';
+    $('palList').insertAdjacentHTML('afterend', '<p class="sr" id="palSay" role="status" aria-live="polite"></p>');
+    chip = $('palCrumb');
+    chip.addEventListener('mousedown', e => e.preventDefault());   // the box keeps the keyboard
+    chip.addEventListener('click', () => palBack());
+  }
+  chip.hidden = !page;
+  if ($('palEscKey')) $('palEscKey').textContent = page ? 'Esc or ⌫ back' : 'Esc close';
+  const box = $('palQ');
+  if (page) {
+    const trail = Pal.stack.map(p => p.title);
+    chip.innerHTML = trail.map(t => `<span>${esc(t)}</span>`).join('<span class="pc-sep" aria-hidden="true">›</span>');
+    chip.title = 'Back (Backspace)';
+    chip.setAttribute('aria-label', `Back from ${trail.join(', ')}`);
+    box.placeholder = page.placeholder || 'Filter…';
+    box.setAttribute('aria-label', `${page.title}: type to filter, Backspace to go back`);
+  } else {
+    box.placeholder = 'Search or run a command…';
+    box.setAttribute('aria-label', 'Search or run a command');
+  }
+}
+let palSayTimer = 0;
 function renderPal() {
-  const q = $('palQ').value.trim();
-  Pal.items = palItems(q);
-  const picks = Pal.items.filter(x => !x.g);
+  const q = $('palQ').value.trim(), page = palPage();
+  Pal.items = page ? pageItems(page, q) : palItems(q);
+  palChrome(page);
+  const picks = palPicks();
   Pal.sel = Math.min(Pal.sel, Math.max(0, picks.length - 1));
-  let n = -1;
-  $('palList').innerHTML = Pal.items.map(x => {
-    if (x.g) return `<li class="pal-g" role="presentation">${esc(x.g)}</li>`;
+  // Nothing found: said plainly, with what to try (the search inside every message still waits below it).
+  const found = picks.filter(x => !x.fallback).length, loading = Pal.items.some(x => x.loading);
+  const empty = q && !found && !(page && page.loading)
+    ? `<li class="pal-empty" role="presentation"><b>Nothing matches “${esc(q)}”${loading ? ' yet' : ''}</b><span>${page ? 'Try fewer letters, or Backspace on an empty box to go back.' : 'Try fewer letters or another word, or press Enter to search inside every message.'}</span></li>`
+    : '';
+  let n = -1, html = '', shown = false;
+  for (const x of Pal.items) {
+    if (x.tail && empty) { html += empty; shown = true; }
+    if (x.g) { html += `<li class="pal-g" role="presentation">${esc(x.g)}</li>`; continue; }
+    if (x.note) { html += `<li class="pal-note${x.loading ? ' loading' : ''}" role="presentation">${esc(x.note)}</li>`; continue; }
     n++;
-    return `<li class="pal-i" role="option" id="pal-${n}" data-n="${n}" aria-selected="${n === Pal.sel}"><span class="glyph" aria-hidden="true">${esc(x.glyph || '·')}</span><span class="pi-t">${esc(x.t)}</span>${x.s ? `<span class="pi-s">${esc(x.s)}</span>` : ''}</li>`;
-  }).join('') || '<li class="pal-empty">Nothing here yet.</li>';
-  $('palQ').setAttribute('aria-activedescendant', `pal-${Pal.sel}`);
+    html += `<li class="pal-i${x.page ? ' has-page' : ''}" role="option" id="pal-${n}" data-n="${n}" aria-selected="${n === Pal.sel}"><span class="glyph" aria-hidden="true">${esc(x.glyph || '·')}</span><span class="pi-t">${PalMatch.mark(x.t, x.hl)}</span>${x.s ? `<span class="pi-s">${esc(x.s)}</span>` : ''}${x.page ? '<span class="pi-more" aria-hidden="true">›</span><span class="sr">, opens a list</span>' : ''}</li>`;
+  }
+  if (empty && !shown) html += empty;
+  $('palList').innerHTML = html || '<li class="pal-empty" role="presentation">Nothing here yet.</li>';
+  if (picks.length) $('palQ').setAttribute('aria-activedescendant', `pal-${Pal.sel}`); else $('palQ').removeAttribute('aria-activedescendant');
   $('palList').querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  // For a screen reader: how many there are, once typing pauses.
+  clearTimeout(palSayTimer);
+  const say = page ? (page.loading ? `${page.title}: loading` : `${page.title}: ${plural(found, 'choice')}`) : q ? (found ? plural(found, 'result') : `Nothing matches ${q}`) : '';
+  palSayTimer = setTimeout(() => { if ($('palSay')) $('palSay').textContent = say; }, 450);
+  // Something still loading: shown again when it's in.
+  if (loading && !page && palDocsLoading() && Pal.waiting !== worldsLoading) {
+    const w = (Pal.waiting = worldsLoading);
+    w.finally(() => { if (Pal.waiting === w) Pal.waiting = null; if (!$('palette').hidden && !palPage()) renderPal(); });
+  }
+}
+// Moving the selection only: no new search, so nothing shifts under you.
+function selectPal(n) {
+  const count = palPicks().length;
+  if (!count) return;
+  Pal.sel = Math.max(0, Math.min(count - 1, n));
+  const list = $('palList');
+  for (const el of list.querySelectorAll('.pal-i[aria-selected="true"]')) el.setAttribute('aria-selected', 'false');
+  const el = document.getElementById(`pal-${Pal.sel}`);
+  if (!el) return;
+  el.setAttribute('aria-selected', 'true');
+  $('palQ').setAttribute('aria-activedescendant', el.id);
+  el.scrollIntoView({ block: 'nearest' });
+}
+function openPage(x) {
+  const page = { title: x.pageTitle || String(x.t).replace(/…$/, ''), placeholder: x.placeholder, items: [], loading: false };
+  Pal.stack.push(page);
+  let got;
+  try { got = x.page(); } catch (err) { page.error = err.message || String(err); }
+  if (got && typeof got.then === 'function') {
+    page.loading = true;
+    got.then(list => { page.items = list || []; }, err => { page.error = (err && err.message) || 'Couldn’t load this list.'; })
+      .finally(() => { page.loading = false; if (palPage() === page && !$('palette').hidden) { Pal.sel = 0; renderPal(); } });
+  } else if (got) page.items = got;
+  $('palQ').value = ''; Pal.sel = 0; renderPal();
+}
+function palBack() {
+  if (!Pal.stack.length) return false;
+  Pal.stack.pop();
+  $('palQ').value = ''; Pal.sel = 0; renderPal();
+  return true;
 }
 let palReturn = null;
 function openPalette(prefill = '') {
   closeMenu();
   if ($('palette').hidden) palReturn = document.activeElement;
+  Pal.stack = [];
   $('palette').hidden = false; $('palQ').value = prefill; Pal.sel = 0; renderPal(); $('palQ').focus();
 }
 function closePalette() {
   if ($('palette').hidden) return;
   $('palette').hidden = true;
+  Pal.stack = [];
   if (palReturn && document.contains(palReturn) && palReturn.focus && !palReturn.closest('[inert]')) palReturn.focus({ preventScroll: true });
   else (window.ChatUI?.isOpen() ? $('cText') : $('seek')).focus({ preventScroll: true });
   palReturn = null;
 }
-function pickPal(n) { const x = Pal.items.filter(i => !i.g)[n]; if (!x) return; closePalette(); wrap(x.run)(); }
+function pickPal(n) {
+  const x = palPicks()[n];
+  if (!x) return;
+  if (x.frec !== false) PalFrec.note(palId(x));
+  if (x.page) { openPage(x); return; }
+  closePalette(); wrap(x.run)();
+}
 $('palQ').addEventListener('input', () => { Pal.sel = 0; renderPal(); });
 $('palQ').addEventListener('keydown', e => {
   // The input owns selection through aria-activedescendant; listbox options are not tab stops.
   if (e.key === 'Tab') { e.preventDefault(); return; }
-  const count = Pal.items.filter(x => !x.g).length;
-  if (e.key === 'ArrowDown') { Pal.sel = (Pal.sel + 1) % Math.max(1, count); renderPal(); e.preventDefault(); }
-  else if (e.key === 'ArrowUp') { Pal.sel = (Pal.sel - 1 + count) % Math.max(1, count); renderPal(); e.preventDefault(); }
+  const count = palPicks().length, plain = !e.altKey && !e.metaKey && !e.shiftKey;
+  const ctrl = e.ctrlKey && plain ? e.key.toLowerCase() : '';
+  if (e.key === 'ArrowDown' || ctrl === 'n') { e.preventDefault(); selectPal((Pal.sel + 1) % Math.max(1, count)); }
+  else if (e.key === 'ArrowUp' || ctrl === 'p') { e.preventDefault(); selectPal((Pal.sel - 1 + count) % Math.max(1, count)); }
+  else if ((e.key === 'Home' || e.key === 'End') && !e.ctrlKey && plain) { e.preventDefault(); selectPal(e.key === 'Home' ? 0 : count - 1); }
   else if (e.key === 'Enter') { e.preventDefault(); pickPal(Pal.sel); }
-  else if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
+  else if (e.key === 'Backspace' && !e.target.value && Pal.stack.length) { e.preventDefault(); palBack(); }
+  // Escape: out of a page first, as in cmdk; at the top it closes and gives the keyboard back.
+  else if (e.key === 'Escape') { e.preventDefault(); if (!palBack()) closePalette(); }
 });
 document.addEventListener('focusin', e => {
   if (!$('palette').hidden && !$('palette').contains(e.target)) $('palQ').focus({ preventScroll: true });
 });
-$('palList').addEventListener('mousemove', e => { const i = e.target.closest('.pal-i'); if (i && +i.dataset.n !== Pal.sel) { Pal.sel = +i.dataset.n; renderPal(); } });
+$('palList').addEventListener('mousemove', e => { const i = e.target.closest('.pal-i'); if (i && +i.dataset.n !== Pal.sel) selectPal(+i.dataset.n); });
 $('palList').addEventListener('click', e => { const i = e.target.closest('.pal-i'); if (i) pickPal(+i.dataset.n); });
 $('palette').addEventListener('mousedown', e => { if (e.target === $('palette')) closePalette(); });
 
