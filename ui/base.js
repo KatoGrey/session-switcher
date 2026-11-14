@@ -385,13 +385,14 @@ const hot = left => left !== null && left <= 15;
 
 // The dials draw themselves once, the first time the hub shows them.
 let dialsDrawn = false;
-function arc(r, frac, cls, width) {
-  const c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac || 0));
-  return `<circle class="track" cx="100" cy="100" r="${r}" stroke-width="${width}"/>${f > 0 ? `<circle class="arc ${cls}${dialsDrawn ? '' : ' draw'}" style="--c:${c.toFixed(2)}" cx="100" cy="100" r="${r}" stroke-width="${width}" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - f)).toFixed(2)}" transform="rotate(-90 100 100)"/>` : ''}`;
+function arc(r, frac, cls, width, key) {
+  const c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac || 0)), k = `arc ${cls}${dialsDrawn ? '' : ' draw'}`;
+  return `<circle class="track" cx="100" cy="100" r="${r}" stroke-width="${width}"/>${f > 0 ? `<circle ${key ? Roll.attrs('arc', key, f.toFixed(4), k) : `class="${k}"`} style="--c:${c.toFixed(2)}" cx="100" cy="100" r="${r}" stroke-width="${width}" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - f)).toFixed(2)}" transform="rotate(-90 100 100)"/>` : ''}`;
 }
 function polar(r, frac) { const a = frac * 2 * Math.PI - Math.PI / 2; return [100 + r * Math.cos(a), 100 + r * Math.sin(a)]; }
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
-function dialSvg(u) {
+// id: whose it is, so its number rolls and its rings sweep when they change (ui/numbers.js).
+function dialSvg(u, id) {
   const d = u && u.data && u.data.available ? u.data : null;
   const f = d && d.fiveHour, w = d && d.week;
   const fl = leftOf(f), wl = leftOf(w);
@@ -401,15 +402,16 @@ function dialSvg(u) {
   for (let i = 0; i < 5; i++) { const [x1, y1] = polar(76.5, i / 5), [x2, y2] = polar(80.5, i / 5); ticks += `<line class="tick" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`; }
   const now = (r, frac) => { if (frac === null) return ''; const [x, y] = polar(r, frac); return `<circle class="now" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.4"/>`; };
   const fe = elapsed(f, SPAN.fiveHour), we = elapsed(w, SPAN.week);
+  const big = (key, v) => (id ? Roll.count(`${id}:${key}`, v) : v);
   const center = fl !== null
-    ? `<text class="lbl" x="100" y="80">five hours</text><text class="big ${hot(fl) ? 'hot' : ''}" x="100" y="113">${fl}%</text><text class="lbl" x="100" y="131">left</text>`
+    ? `<text class="lbl" x="100" y="80">five hours</text><text class="big ${hot(fl) ? 'hot' : ''}" x="100" y="113">${big('5h', fl)}%</text><text class="lbl" x="100" y="131">left</text>`
     : wl !== null
-    ? `<text class="lbl" x="100" y="80">this week</text><text class="big ${hot(wl) ? 'hot' : ''}" x="100" y="113">${wl}%</text><text class="lbl" x="100" y="131">left</text>`
+    ? `<text class="lbl" x="100" y="80">this week</text><text class="big ${hot(wl) ? 'hot' : ''}" x="100" y="113">${big('wk', wl)}%</text><text class="lbl" x="100" y="131">left</text>`
     : `<text class="lbl" x="100" y="96">usage</text><text class="lbl" x="100" y="112">not known yet</text>`;
   return `<svg class="dial ${d ? '' : 'unknown'}" viewBox="-14 -14 228 228" role="img" aria-label="${d ? [fl !== null ? `Five-hour window ${fl}% left` : '', wl !== null ? `week ${wl}% left` : ''].filter(Boolean).join(', ') : 'Usage not known yet'}">
     ${ticks}
-    ${arc(86, w ? w.used / 100 : 0, `week ${hot(wl) ? 'hot' : ''}`, 7)}
-    ${arc(68, f ? f.used / 100 : 0, `five ${hot(fl) ? 'hot' : ''}`, 10)}
+    ${arc(86, w ? w.used / 100 : 0, `week ${hot(wl) ? 'hot' : ''}`, 7, id && `${id}:wk`)}
+    ${arc(68, f ? f.used / 100 : 0, `five ${hot(fl) ? 'hot' : ''}`, 10, id && `${id}:5h`)}
     <circle class="face" cx="100" cy="100" r="58"/>
     ${now(86, we)}${now(68, fe)}
     ${center}
@@ -418,8 +420,9 @@ function dialSvg(u) {
 // A small two-ring dial: inner is the five-hour window, outer is the week.
 function miniDial(id, size = 22) {
   const u = usageOf(id), d = u && u.data && u.data.available ? u.data : null;
-  const ring = (r, frac, color, width) => { const c = 2 * Math.PI * r; const f = Math.max(0, Math.min(1, frac || 0)); return `<circle cx="20" cy="20" r="${r}" fill="none" style="stroke:rgb(var(--c-2a242e))" stroke-width="${width}"/>${f > 0 ? `<circle cx="20" cy="20" r="${r}" fill="none" style="stroke:${color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - f)).toFixed(2)}" transform="rotate(-90 20 20)"/>` : ''}`; };
-  return `<svg width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true">${ring(16.5, d && d.week ? d.week.used / 100 : 0, 'rgb(var(--c-7a3530))', 4.5)}${ring(9.5, d && d.fiveHour ? d.fiveHour.used / 100 : 0, 'rgb(var(--c-d08072))', 5)}</svg>`;
+  // Each ring sweeps to a new value when it changes (ui/numbers.js).
+  const ring = (r, frac, color, width, key) => { const c = 2 * Math.PI * r; const f = Math.max(0, Math.min(1, frac || 0)); return `<circle cx="20" cy="20" r="${r}" fill="none" style="stroke:rgb(var(--c-2a242e))" stroke-width="${width}"/>${f > 0 ? `<circle${Roll.attrs('arc', `${id}:${key}`, f.toFixed(4))} cx="20" cy="20" r="${r}" fill="none" style="stroke:${color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - f)).toFixed(2)}" transform="rotate(-90 20 20)"/>` : ''}`; };
+  return `<svg width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true">${ring(16.5, d && d.week ? d.week.used / 100 : 0, 'rgb(var(--c-7a3530))', 4.5, 'wk')}${ring(9.5, d && d.fiveHour ? d.fiveHour.used / 100 : 0, 'rgb(var(--c-d08072))', 5, '5h')}</svg>`;
 }
 // One line for headers: "36% left of the five-hour window, resets 6:12 PM".
 function usageLine(id, { short = false } = {}) {

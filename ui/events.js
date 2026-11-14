@@ -38,8 +38,9 @@ $('usechip').addEventListener('click', e => { e.stopPropagation(); return $('acc
 function acctBars(id) {
   const u = usageOf(id), d = u && u.data && u.data.available ? u.data : null;
   if (!d) return `<span class="ap-none">${u && u.error ? 'Usage unavailable' : u && u.checking ? 'Checking…' : 'No usage yet'}</span>`;
-  const bar = (label, w) => { if (!w) return ''; const l = leftOf(w); return `<span class="ap-bar ${hot(l) ? 'hot' : ''}" title="${esc(label)}: ${l}% left${w.resetsAt ? `, resets ${esc(when(w.resetsAt))}` : ''}"><small>${label}</small><i><b style="width:${l}%"></b></i><em>${l}%</em></span>`; };
-  return bar('5h', d.fiveHour) + bar('Week', d.week);
+  // The numbers roll and the bars move when usage changes (ui/numbers.js).
+  const bar = (label, w, k) => { if (!w) return ''; const l = leftOf(w); return `<span class="ap-bar ${hot(l) ? 'hot' : ''}" title="${esc(label)}: ${l}% left${w.resetsAt ? `, resets ${esc(when(w.resetsAt))}` : ''}"><small>${label}</small><i><b${Roll.attrs('width', `${id}:${k}:left`, l)} style="width:${l}%"></b></i><em>${Roll.num(`${id}:${k}`, l)}%</em></span>`; };
+  return bar('5h', d.fiveHour, '5h') + bar('Week', d.week, 'wk');
 }
 function openAcctPop() {
   const pop = $('acctPop');
@@ -604,6 +605,7 @@ function openShortcuts() {
       <div class="keys-body">${[
         ['Anywhere', [['Ctrl K', 'Search chats, projects, documents, prompts and actions'], ['N', 'Start a new chat, in any project'], ['Alt 1 … 9', 'Open one of your open chats, in the order they’re listed'], ['?', 'This list'], ['Right-click', 'Options for whatever you clicked (Shift for the browser’s menu)'], ['Esc', 'Close what’s open']]],
         ['In a chat', [['Enter', 'Send'], ['Shift Enter', 'New line'], ['↑', 'In an empty box: what you last sent here'], ['Ctrl F', 'Find in this chat'], ['Ctrl \\', 'Focus mode: just the conversation'], ['Ctrl .', 'Write to Claude or Codex'], ['@codex', 'Send one message to Codex'], ['/model sonnet', 'Switch model'], ['/effort high', 'Switch effort'], ['/', 'Pick a saved prompt'], ['Esc twice', 'Stop the one you’re writing to'], ['Alt ↑ Alt ↓', 'Switch between open chats'], ['Alt Shift ↑ ↓', 'Move the chat you’re in up or down the list'], ['End', 'Jump to the latest message']]],
+        ['Search and commands', [['↑ ↓', 'Move through the results (Ctrl N and Ctrl P too; Home and End for its ends)'], ['Enter', 'Open it, or go into its list (the ones with ›)'], ['Backspace', 'In an empty box: back out of a list'], ['Esc', 'Back out of a list, then close']]],
         ['Your work', [['/', 'Search issues and pull requests'], ['↑ ↓', 'Move through the list (Home and End for its ends)'], ['Enter', 'Open the focused item'], ['Esc', 'Close details and return to the item']]],
         ['In the sidebar', [['↑ ↓', 'Move through it (Home and End for its ends)']]],
         ['Pictures', [['← →', 'Step through a project’s pictures'], ['K', 'Keep the picture you’re on'], ['R', 'Redo it, and say why'], ['U', 'Take the mark back'], ['N', 'Add a note to it'], ['C', 'Side by side with the same name in another folder']]],
@@ -632,7 +634,7 @@ window.__mobileBack = () => {
   if ($('cLight') && closeLightbox()) return true;
   if (!$('menu').hidden) { closeMenu(); return true; }
   if (!$('acctPop').hidden) { closeAcctPop(); return true; }
-  if (!$('palette').hidden) { closePalette(); return true; }
+  if (!$('palette').hidden) { if (!palBack()) closePalette(); return true; }   // out of a page of Ctrl+K first
   for (const d of document.querySelectorAll('dialog[open]')) { d.close(); return true; }
   if (!$('drawer').hidden) { closeDrawer(); return true; }
   if (window.ChatUI && ChatUI.back()) return true;
