@@ -41,12 +41,12 @@ function taskDialog() {
   document.body.insertAdjacentHTML('beforeend', `<dialog id="taskDlg" class="wide task-dlg" aria-labelledby="tkTitle"><form method="dialog" id="tkForm">
     <div class="setup-head"><h3 id="tkTitle">Queue a task</h3><button type="button" class="icon" data-tk="close" aria-label="Close">✕</button></div>
     <div class="tk-body">
-      <p class="rd-intro">It starts as a new chat when its time comes and an account has room, so you can line work up for when a limit resets, or for later.</p>
+      <p class="rd-intro">It starts as a new chat when its time comes and an account has room: line work up for when a limit resets, for a time, on a repeat, or for when something new comes in.</p>
       <div class="tk-grid">
         <label>Project<select id="tkProject"></select></label>
         <label>Who<select id="tkWho"></select></label>
         <label id="tkAcctWrap">Account<select id="tkAcct"></select></label>
-        <label>When<select id="tkWhen"><option value="now">As soon as there’s room</option><option value="at">Not before…</option></select></label>
+        <label>When<select id="tkWhen"><option value="now">As soon as there’s room</option><option value="at">Not before…</option><option value="watch">When something new comes in…</option></select></label>
         <label id="tkAtWrap" hidden>Time<input type="datetime-local" id="tkAt"></label>
         <label id="tkRepWrap" hidden title="A repeating task becomes a routine (on the Routines page)">Repeat<select id="tkRepeat"><option value="">Just once</option><option value="daily">Every day</option><option value="weekdays">Every weekday</option><option value="weekly">Every week</option></select></label>
       </div>
@@ -57,7 +57,7 @@ function taskDialog() {
   d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-tk="close"]')) d.close(); });
   d.addEventListener('change', e => {
     if (e.target.id === 'tkWho') $('tkAcctWrap').hidden = e.target.value !== 'claude';
-    if (e.target.id === 'tkWhen') $('tkAtWrap').hidden = $('tkRepWrap').hidden = e.target.value !== 'at';
+    if (e.target.id === 'tkWhen') { $('tkAtWrap').hidden = $('tkRepWrap').hidden = e.target.value !== 'at'; $('tkGo').textContent = e.target.value === 'watch' ? 'Next: what to watch' : 'Queue it'; }
     if (e.target.id === 'tkFrom' && e.target.value) {
       const pr = S.prompts.find(x => x.id === e.target.value);
       const p = S.projects.find(x => x.cwd === $('tkProject').value);
@@ -72,6 +72,14 @@ function taskDialog() {
   $('tkForm').addEventListener('submit', wrap(async e => {
     e.preventDefault();
     const when = $('tkWhen').value;
+    // When something new comes in (a Slack channel, a command's output): that's a routine's watch, so the routine
+    // editor takes over, with the project, who and what already filled in.
+    if (when === 'watch') {
+      const text = $('tkText').value, prov = $('tkWho').value;
+      d.close();
+      return Routines.edit(null, { name: (text.split('\n').find(l => l.trim()) || 'New routine').trim().slice(0, 60), cwd: $('tkProject').value, prompt: text,
+        account: prov === 'claude' ? ($('tkAcct').value === 'auto' ? null : $('tkAcct').value) : prov === 'codex' ? (S.codex && S.codex.id) || null : 'gemini', trigger: { type: 'watch', source: { type: 'slack', every: 2 } } });
+    }
     const task = { cwd: $('tkProject').value, provider: $('tkWho').value, accountId: $('tkAcct').value, prompt: $('tkText').value, when, at: when === 'at' && $('tkAt').value ? new Date($('tkAt').value).toISOString() : null, repeat: when === 'at' ? $('tkRepeat').value || null : null };
     const r = await api('/api/tasks', { action: 'add', task });
     S.tasks = r.tasks; renderQueue();
@@ -91,7 +99,7 @@ function openTaskDialog(cwd = null, text = '') {
   $('tkAcct').innerHTML = `<option value="auto">Whichever has the most room</option>${S.accounts.filter(canLaunch).map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}`;
   $('tkFrom').innerHTML = `<option value="">Start from a saved prompt…</option>${S.prompts.map(pr => `<option value="${esc(pr.id)}">${esc(pr.title)}</option>`).join('')}`;
   $('tkFrom').hidden = !S.prompts.length;
-  $('tkWhen').value = 'now'; $('tkAtWrap').hidden = true; $('tkRepWrap').hidden = true; $('tkRepeat').value = ''; $('tkAcctWrap').hidden = false; $('tkText').value = '';
+  $('tkWhen').value = 'now'; $('tkGo').textContent = 'Queue it'; $('tkAtWrap').hidden = true; $('tkRepWrap').hidden = true; $('tkRepeat').value = ''; $('tkAcctWrap').hidden = false; $('tkText').value = '';
   const soon = new Date(Date.now() + 3600e3); soon.setMinutes(0, 0, 0);
   $('tkAt').value = new Date(soon - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   if (text) $('tkText').value = text;

@@ -769,6 +769,13 @@ module.exports = [
       t.check('✕ takes it off the list', (await rows()).length === 2 && !(await rows()).some(x => /512px app icon/.test(x)));
       const items = await b.eval(`return projectItems(${JSON.stringify(demo.projects[0].cwd)}).filter(x => x !== '-').map(x => x.label)`);
       t.check('a project’s menu can queue a task there', items.includes('Queue a task here…'), items);
+      // "When something new comes in" is a routine's watch: the routine editor takes over, with what was typed.
+      await b.eval(`openTaskDialog(${JSON.stringify(demo.projects[0].cwd)}); tkWhen.value = 'watch'; tkWhen.dispatchEvent(new Event('change', { bubbles: true })); tkText.value = 'Triage the new bug reports\\nand label them'; return 1`); await sleep(150);
+      t.check('Later can wait for something new to come in', await b.eval(`return document.getElementById('tkGo').textContent === 'Next: what to watch'`));
+      await b.eval(`document.getElementById('tkGo').click(); return 1`); await sleep(400);
+      const rt = await b.eval(`const d = document.getElementById('rtDlg'); return { open: !!d && d.open, task: document.getElementById('taskDlg').open, name: document.getElementById('rtName')?.value, prompt: document.getElementById('rtPrompt')?.value, watch: !!d && d.querySelector('[data-rte-kind="watch"]').classList.contains('on') }`);
+      t.check('which opens a routine that watches, with the project, name and prompt filled in', rt.open && !rt.task && rt.watch && rt.name === 'Triage the new bug reports' && /label them/.test(rt.prompt), rt);
+      await b.eval(`document.getElementById('rtDlg').close(); return 1`);
     },
   },
   {
