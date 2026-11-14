@@ -178,7 +178,7 @@ async function connEverywhere() {
 async function connNext() {
   const next = Conn.queue.shift();
   if (!next) { Conn.qFlow = null; connRender(); return; }
-  try { Conn.qFlow = (await connSignIn(next)).id; } catch (err) { Conn.queue = []; Conn.qFlow = null; toast(err.message, 8000); }
+  try { Conn.qFlow = (await connSignIn(next)).id; } catch (err) { Conn.queue = []; Conn.qFlow = null; toast(err.message, 8000, null, { tone: 'error' }); }
   connRender();
 }
 async function connAdd(name, to) {

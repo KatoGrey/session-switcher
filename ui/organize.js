@@ -145,7 +145,7 @@ async function continueFresh() {
   const cwd = C.info && C.info.cwd, acct = prov === 'claude' && C.info ? C.info.accountId || null : null;
   toast(`Asking ${name} for a handoff… The new chat opens with it when it’s ready.`, 9000);
   let r;
-  try { r = await api('/api/chat/handoff', { key: C.key }); } catch (err) { toast(`Couldn’t get a handoff: ${err.message}`, 8000); return; }
+  try { r = await api('/api/chat/handoff', { key: C.key }); } catch (err) { toast(`Couldn’t get a handoff: ${err.message}`, 8000, null, { tone: 'error' }); return; }
   const text = `Continuing from “${title}”, an earlier chat in this folder. Its handoff:\n\n${r.text}\n\nPick up from the next steps.`;
   await ChatUI.open({ cwd, mode: 'new', provider: prov, accountId: acct, parent: id, initialText: text });
   toast('The handoff is in the message box: read it, change anything, then send.', 7000);

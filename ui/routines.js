@@ -32,7 +32,7 @@ const Routines = (() => {
 
   /* ---------- the page ---------- */
   function render() {
-    if (!R.loaded) { $('page').innerHTML = '<p class="loading">Reading your routines…</p>'; load().then(render).catch(err => toast(err.message)); return; }
+    if (!R.loaded) { $('page').innerHTML = '<p class="loading">Reading your routines…</p>'; load().then(render).catch(err => toast(err.message, 9000, null, { tone: 'error', retry: () => load().then(() => { if (S.view === 'routines') render(); }) })); return; }
     const page = $('page');
     if (page.dataset.page !== 'routines' || !$('rtList')) {
       page.dataset.page = 'routines'; delete page.dataset.worldPage;
@@ -101,7 +101,7 @@ const Routines = (() => {
     const r = card ? R.list.find(x => x.id === card.dataset.id) : null;
     const act = b.dataset.rt;
     if (act === 'new') return edit(null);
-    if (act === 'template') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : showMenu(b, R.templates.map(t => ({ label: t.name, hint: t.blurb, run: () => edit(null, t) })));
+    if (act === 'template') return b.getAttribute('aria-expanded') === 'true' ? closeMenu() : showMenu(b, R.templates.map(t => ({ label: t.name, hint: t.blurb, run: () => edit(null, t) })), { empty: 'No templates came with this copy of Session Switcher.', action: { label: 'Make your own', hint: 'New routine', run: () => edit(null) } });
     if (act === 'use-template') return edit(null, R.templates.find(t => t.id === b.dataset.tpl));
     if (!r) return undefined;
     if (act === 'run') {

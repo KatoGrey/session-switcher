@@ -116,7 +116,12 @@ document.addEventListener('click', async e => {
       HomePc.st = await api('/api/homepc/forget', {});
     } else if (what === 'show-pc' || what === 'show-laptop') { if (window.desktop) await window.desktop.set({ home: what === 'show-pc' ? 'pc' : 'laptop' }); return; }
     renderHomeBox();
-  } catch (err) { toast(err.message, 8000); loadHomeBox(); }
+  } catch (err) {
+    // A copy that couldn't start can be started again, from the toast or later from Setup → Problems.
+    const copy = what === 'down' || what === 'up' ? { dir: what, all: b.dataset.all === '1', force: b.dataset.force === '1' } : null;
+    toast(err.message, 8000, null, { tone: 'error', retry: copy && (async () => { HomePc.st = await api('/api/homepc/copy', copy); renderHomeBox(); }) });
+    loadHomeBox();
+  }
 });
 document.addEventListener('change', async e => {
   const t = e.target;
@@ -126,14 +131,14 @@ document.addEventListener('change', async e => {
       if (t.checked && !(await appConfirm('Let a laptop of yours copy your work from this computer?\n\nAny device you’ve paired through Phone access can then copy your projects and your Claude, Codex and Gemini chats and settings from here, and put changed files back. Your sign-ins are never copied. Turn it on only on the computer you leave at home; you can turn it off again here at any time.', { ok: 'Turn it on' }))) { t.checked = false; return; }
       HomePc.st = await api('/api/homepc/share', { on: t.checked });
       renderHomeBox();
-    } catch (err) { toast(err.message); loadHomeBox(); }
+    } catch (err) { toast(err.message, 8000, null, { tone: 'error' }); loadHomeBox(); }
     return;
   }
   if (!t.matches('#homeBox [data-hp="use"]')) return;
   try {
     HomePc.st = await api('/api/homepc/use', { use: t.checked ? 'pc' : 'laptop' });
     if (window.desktop) await window.desktop.set({ home: t.checked ? 'pc' : 'laptop' });
-  } catch (err) { toast(err.message); }
+  } catch (err) { toast(err.message, 8000, null, { tone: 'error' }); }
 });
 
 // The line at the top while this laptop stands in for a PC that stopped answering. Only a laptop paired
@@ -153,25 +158,32 @@ async function homeBanner() {
     ? `<span><b>Your home PC is back.</b> Send what you did here to it, then carry on there.</span><button class="btn prime sm" data-hb="send">Send my work and switch</button><button class="btn sm" data-hb="switch">Just switch</button><button class="btn quiet sm" data-hb="hide" aria-label="Hide">✕</button>`
     : `<span><b>Your home PC isn’t answering</b>, so you’re on this laptop’s own copy${copied}. Your chats on the PC are safe there.</span><button class="btn quiet sm" data-hb="hide" aria-label="Hide">✕</button>`;
 }
+// Sends what you did here to the PC, then switches to it. If sending fails or stops partway, it says so, with the way
+// to see why, and it can be tried again (the toast, or Setup → Problems).
+async function homeSendSwitch(b) {
+  if (b) { b.disabled = true; b.textContent = 'Sending…'; }
+  try {
+    await api('/api/homepc/copy', { dir: 'up' });
+    for (let i = 0; i < 7200; i++) {
+      const st = await api('/api/homepc');
+      if (!st.job || st.job.state !== 'running') {
+        if (st.job && st.job.state !== 'done') { toast('Sending your work to the PC stopped partway.', 12000, { label: 'See why', run: () => openSetupAt('st-home') }, { tone: 'error', retry: () => homeSendSwitch(null) }); return; }
+        break;
+      }
+      if (b) b.textContent = `Sending… ${hpFiles(st.job.done)}`;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  } finally { if (b) { b.disabled = false; b.textContent = 'Send my work and switch'; } }
+  if (window.desktop) await window.desktop.set({ home: 'pc' });
+}
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-hb]');
   if (!b) return;
   if (b.dataset.hb === 'hide') { HomePc.hidden = true; $('homeBanner')?.remove(); return; }
+  const send = b.dataset.hb === 'send';
   try {
-    if (b.dataset.hb === 'send') {
-      b.disabled = true; b.textContent = 'Sending…';
-      await api('/api/homepc/copy', { dir: 'up' });
-      for (let i = 0; i < 7200; i++) {
-        const st = await api('/api/homepc');
-        if (!st.job || st.job.state !== 'running') {
-          if (st.job && st.job.state !== 'done') { toast('Sending stopped partway. Open Setup → Your home PC to see why.', 9000); return; }
-          break;
-        }
-        b.textContent = `Sending… ${hpFiles(st.job.done)}`;
-        await new Promise(r => setTimeout(r, 1500));
-      }
-    }
-    if (window.desktop) await window.desktop.set({ home: 'pc' });
-  } catch (err) { toast(err.message, 8000); }
+    if (send) await homeSendSwitch(b);
+    else if (window.desktop) await window.desktop.set({ home: 'pc' });
+  } catch (err) { toast(err.message, 8000, null, { tone: 'error', retry: send ? () => homeSendSwitch(null) : null }); }
 });
 if (!window.REMOTE) setTimeout(homeBanner, 4000);

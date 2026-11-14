@@ -307,3 +307,9 @@
 .hub2:not([data-family]) :is(.nav-h,.ledger .lg-h) .count{font:500 12px var(--f-ui);letter-spacing:0;color:var(--ash-2)}
 .hub2:not([data-family]) .ledger .lg-h{margin:20px 0 8px}
 .hub2:not([data-family]) .ledger .lg-h:first-child{margin-top:4px}
+
+/* No dead ends: a menu with nothing in it explains itself in the interface face, and the card of a race you've just
+   started lights up in the theme's accent rather than gold. */
+.hub2:not([data-family]) .menu .m-empty{font:400 var(--st-t-body)/1.45 var(--f-ui);color:var(--parch-2)}
+.hub2:not([data-family]) .race{--flash:var(--focus)}
+.hub2:not([data-family]) .tk-note{font-family:var(--f-ui)}

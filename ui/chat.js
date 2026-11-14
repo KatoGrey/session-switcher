@@ -478,7 +478,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
     $c('cFeed').insertAdjacentHTML('beforeend', '<div class="c-skel" aria-hidden="true"><i class="u"></i><i></i><i class="s"></i><i class="u"></i><i></i></div>');
     try { await loadHistory(); } catch (err) {
       // A chat that's running but hasn't saved any history yet (a new one) simply has nothing earlier.
-      if (!(err.status === 404 && C.key && C.state !== 'ended')) toast(`Couldn’t load earlier messages: ${err.message}`);
+      if (!(err.status === 404 && C.key && C.state !== 'ended')) toast(`Couldn’t load earlier messages: ${err.message}`, 8000, null, { tone: 'error' });
     }
     if (gen !== C.gen) return;
     $c('cFeed').querySelector('.c-skel')?.remove();
@@ -592,7 +592,7 @@ async function watch({ sessionId, source = 'terminal' }) {
     : '<p><b>Read-only.</b> This chat was last used in another app, like the desktop app. Continue it here if it’s closed there.</p><button type="button" class="btn prime" data-c="takeover">Continue it here</button><button type="button" class="btn quiet" data-c="fork">Open a copy</button>';
   show();
   const gen = C.gen;
-  try { const h = await loadHistory(); if (gen !== C.gen) return; C.watchSig = sigOf(h); } catch (err) { toast(`Couldn’t read this chat: ${err.message}`); }
+  try { const h = await loadHistory(); if (gen !== C.gen) return; C.watchSig = sigOf(h); } catch (err) { toast(`Couldn’t read this chat: ${err.message}`, 8000, null, { tone: 'error' }); }
   if (gen !== C.gen) return;
   syncFav();
   toBottom();

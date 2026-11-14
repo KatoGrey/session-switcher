@@ -889,8 +889,8 @@ async function codexInstall() {
 // Pick the folder a new Codex chat works in.
 function codexNewMenu(anchor) {
   const folders = S.projects.filter(p => p.exists).slice(0, 14);
-  if (!folders.length) return toast('There are no folders yet. Open a folder in Claude Code or Codex once and it appears here.');
-  showMenu(anchor, folders.map(p => ({ label: p.name, hint: p.cwd, run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: 'codex' }) })));
+  showMenu(anchor, folders.map(p => ({ label: p.name, hint: p.cwd, run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: 'codex' }) })),
+    { empty: 'No projects yet. Open a folder in Claude Code or Codex once and it appears here, or make one.', action: { label: 'New project', run: openNewProject } });
 }
 async function addCodexAccount(kind) {
   const name = ((await ask(kind === 'ollama' ? 'Add an Ollama account' : 'Add a Codex account', kind === 'ollama' ? 'A name for it, as it shows on its card.' : 'A name for it, as it shows on its card, for example “Work” or “Personal”.', kind === 'ollama' ? 'Ollama' : '', 'Add account')) || '').trim();

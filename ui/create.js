@@ -42,7 +42,8 @@ function openPromptEditor() {
           S.prompts = (await api('/api/prompts', { addSet: st.id })).prompts;
           // What you're in the middle of editing stays: the new ones join the list under it.
           if ($('promptDlg').dataset.dirty === '1') $('pdList').insertAdjacentHTML('beforeend', S.prompts.filter(p => !had.has(p.id)).map(promptRow).join('')); else renderPromptEditor();
-          toast(S.prompts.length > n0 ? `Added ${plural(S.prompts.length - n0, 'prompt')} from ${st.title}.` : `You already have every prompt in ${st.title}.`, 3000); } })));
+          toast(S.prompts.length > n0 ? `Added ${plural(S.prompts.length - n0, 'prompt')} from ${st.title}.` : `You already have every prompt in ${st.title}.`, 3000); } })),
+          { empty: 'No ready-made sets came with this copy of Session Switcher.', action: { label: 'Add prompts from a file…', run: importPrompts } });
       }
       if (act === 'save') {
         const list = [...$('pdList').querySelectorAll('.pd-item')].map(el => ({ id: el.dataset.id, title: el.querySelector('.pd-t').value, text: el.querySelector('.pd-x').value, provider: ['codex', 'gemini'].includes(el.querySelector('.pd-p').value) ? el.querySelector('.pd-p').value : undefined }));

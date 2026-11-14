@@ -13,7 +13,7 @@ const both = r => racersOf(r).every(([w]) => ((r.racers[w] || {}).files || []).l
 const racerState = x => (x.state === 'busy' || x.state === 'starting' ? 'working' : x.state === 'waiting' ? 'needs your OK' : x.state === 'ended' ? (x.sessionId ? 'paused' : 'stopped') : 'done');
 function raceCard(r) {
   const head = `<p class="race-h"><span class="glyph" aria-hidden="true">${r.split ? '⑂' : '⚑'}</span><b>${r.split ? 'Split' : 'Race'}</b> in ${esc(r.folder || base(r.cwd))}<small>${esc(stamp(Date.parse(r.createdAt)))}</small></p>${r.split && r.prompt === racersOf(r).map(([w]) => r.split[w]).join(' · ') ? '' : `<p class="race-p">${esc(r.prompt.split('\n')[0].slice(0, 200))}</p>`}`;
-  if (r.state !== 'running') return `<li class="race over">${head}<p class="race-end">${r.state === 'kept' ? (r.kept === 'both' ? 'Kept both sets of changes.' : r.kept === 'files' ? 'Kept the files you picked from each.' : `Kept ${RACE_NAME[r.kept] || 'its'}’s changes.`) : 'Discarded.'}</p></li>`;
+  if (r.state !== 'running') return `<li class="race over" data-race="${esc(r.id)}" tabindex="-1">${head}<p class="race-end">${r.state === 'kept' ? (r.kept === 'both' ? 'Kept both sets of changes.' : r.kept === 'files' ? 'Kept the files you picked from each.' : `Kept ${RACE_NAME[r.kept] || 'its'}’s changes.`) : 'Discarded.'}</p></li>`;
   const col = ([who, name]) => {
     const x = r.racers[who] || {};
     const f = x.files;
@@ -24,15 +24,50 @@ function raceCard(r) {
       <p class="rc-b">${x.key ? `<button class="btn quiet sm" data-act="race-open" data-key="${esc(x.key)}">Open chat</button>` : x.sessionId ? `<button class="btn quiet sm" data-act="race-open" data-sid="${esc(x.sessionId)}" data-who="${who}" title="Starts it again where it left off">Open chat</button>` : ''}${f && f.length ? `<button class="btn quiet sm" data-act="race-diff" data-id="${esc(r.id)}" data-who="${who}">See changes</button>` : ''}</p>
       <button class="btn${f && f.length && !r.split ? ' gilt' : ''} sm" data-act="race-keep" data-id="${esc(r.id)}" data-who="${who}" ${f && f.length ? '' : 'disabled'}>Keep ${name}’s</button></div>`;
   };
-  return `<li class="race">${head}<div class="race-cols">${racersOf(r).map(col).join('')}</div>${r.judge ? `<p class="race-j"><span class="glyph" aria-hidden="true">⚖</span><b>Judge</b> ${esc(racerState(r.judge))}${r.judge.key ? ` <button class="btn quiet sm" data-act="race-open" data-key="${esc(r.judge.key)}">Read its verdict</button>` : r.judge.sessionId ? ` <button class="btn quiet sm" data-act="race-open" data-sid="${esc(r.judge.sessionId)}" data-who="${esc(r.judge.provider || 'claude')}">Read its verdict</button>` : ''}</p>` : ''}<p class="race-b">${both(r) ? `${r.judge ? '' : `<button class="btn quiet sm" data-act="race-judge" data-id="${esc(r.id)}" title="A chat that can only look compares both and says which to keep">Ask a judge</button>`}<button class="btn quiet sm" data-act="race-files" data-id="${esc(r.id)}">Pick files…</button>` : ''}<button class="btn quiet sm" data-act="race-discard" data-id="${esc(r.id)}">Discard both</button>${r.split ? `<button class="btn gilt sm" data-act="race-both" data-id="${esc(r.id)}" ${racersOf(r).some(([w]) => (r.racers[w] || {}).files && r.racers[w].files.length) ? '' : 'disabled'}>Keep both</button>` : ''}</p></li>`;
+  return `<li class="race${flashing(r) ? ' race-flash' : ''}" data-race="${esc(r.id)}" tabindex="-1">${head}<div class="race-cols">${racersOf(r).map(col).join('')}</div>${r.judge ? `<p class="race-j"><span class="glyph" aria-hidden="true">⚖</span><b>Judge</b> ${esc(racerState(r.judge))}${r.judge.key ? ` <button class="btn quiet sm" data-act="race-open" data-key="${esc(r.judge.key)}">Read its verdict</button>` : r.judge.sessionId ? ` <button class="btn quiet sm" data-act="race-open" data-sid="${esc(r.judge.sessionId)}" data-who="${esc(r.judge.provider || 'claude')}">Read its verdict</button>` : ''}</p>` : ''}<p class="race-b">${both(r) ? `${r.judge ? '' : `<button class="btn quiet sm" data-act="race-judge" data-id="${esc(r.id)}" title="A chat that can only look compares both and says which to keep">Ask a judge</button>`}<button class="btn quiet sm" data-act="race-files" data-id="${esc(r.id)}">Pick files…</button>` : ''}<button class="btn quiet sm" data-act="race-discard" data-id="${esc(r.id)}">Discard both</button>${r.split ? `<button class="btn gilt sm" data-act="race-both" data-id="${esc(r.id)}" ${racersOf(r).some(([w]) => (r.racers[w] || {}).files && r.racers[w].files.length) ? '' : 'disabled'}>Keep both</button>` : ''}</p></li>`;
 }
 function renderRaces() {
   const sec = $('secRaces'), list = $('raceList');
   if (!sec || !list) return;
   const races = S.races || [];
   sec.hidden = !races.length;
-  list.innerHTML = races.map(raceCard).join('');
+  // Drawn again only when something changed, and the keyboard stays where it was: on a card, or on its button.
+  const h = races.map(raceCard).join('');
+  if (list._h !== h) {
+    const a = list.contains(document.activeElement) ? document.activeElement : null, card = a && a.closest('[data-race]');
+    const at = card && `[data-race="${CSS.escape(card.dataset.race)}"]${a === card ? '' : ` [data-act="${CSS.escape(a.dataset.act || '')}"]${a.dataset.who ? `[data-who="${CSS.escape(a.dataset.who)}"]` : ''}`}`;
+    list.innerHTML = h; list._h = h;
+    if (at) list.querySelector(at)?.focus({ preventScroll: true });
+  }
   setSecCount('races', races.length); renderJump();
+}
+// The card of a race you've just started lights up for a moment, so you can see which it is.
+const RaceFlash = { id: null, until: 0, timer: 0 };
+const flashing = r => RaceFlash.id === r.id && Date.now() < RaceFlash.until;
+// Takes you to a race's card on the hub: brought into view, lit up for a moment, and the keyboard on it.
+async function showRace(id) {
+  if (S.view !== 'hub' || (window.ChatUI && ChatUI.isOpen())) await go('hub');
+  const card = () => document.querySelector(`#raceList [data-race="${CSS.escape(id)}"]`);
+  for (let i = 0; i < 40 && !card(); i++) await new Promise(r => setTimeout(r, 50));   // (the hub may still be drawing)
+  if (!card()) return;
+  if ($('secRaces').classList.contains('folded')) toggleSec('races', true);
+  clearTimeout(RaceFlash.timer);
+  Object.assign(RaceFlash, { id, until: Date.now() + 2400 });
+  renderRaces();
+  RaceFlash.timer = setTimeout(renderRaces, 2500);
+  card().scrollIntoView({ behavior: motionOk() ? 'smooth' : 'auto', block: 'center' });
+  card().focus({ preventScroll: true });
+}
+// A race needs two assistants: when there aren't, where to set up the next one (the first that isn't ready).
+function raceSetup() {
+  const claude = S.accounts.some(canLaunch), ready = [claude, codexReady(), geminiReady()].filter(Boolean).length;
+  const say = `A race needs two assistants, and ${ready ? 'only one is' : 'none is'} ready yet.`;
+  if (!claude) return { say: `${say} Sign in to Claude${ready ? '' : ', then set up Codex or Gemini too'}.`, label: 'Sign in to Claude', run: () => openSetupAt('st-health') };
+  const say2 = `${say} Set up Codex or Gemini beside Claude.`;
+  // Gemini first only when it's turned on and Codex isn't; Codex turned on but not signed in signs in with the
+  // checks at the top of Setup.
+  if (S.gemini && S.gemini.enabled && !(S.codex && S.codex.enabled)) return { say: say2, label: 'Set up Gemini', run: () => openSetupAt('st-gemini') };
+  return { say: say2, label: 'Set up Codex', run: () => openSetupAt(S.codex && S.codex.enabled ? 'st-health' : 'st-codex') };
 }
 
 function raceDialog() {
@@ -67,7 +102,11 @@ function raceDialog() {
       const who = $('rcWho').value.split('+');
       const r = await api('/api/race', { action: 'start', who, cwd: $('rcProject').value, accountId: $('rcAcct').value, prompt: $('rcText').value, ...(split ? { split: { [who[0]]: $('rcClaude').value, [who[1]]: $('rcCodex').value } } : {}) });
       S.races = r.races; renderRaces(); d.close();
-      toast(split ? 'They’re on it, each on its own part. Both are under At work; keep both on the card when they’re done.' : 'The race is on. Both are under At work; compare them on the race’s card.', 6000);
+      // On the hub its card is brought into view; anywhere else, the toast offers to take you there.
+      const here = S.view === 'hub' && !(window.ChatUI && ChatUI.isOpen()) && !!$('raceList');
+      const card = here ? 'this card' : 'its card on the hub';
+      toast(split ? `They’re on it, each on its own part, both under At work. Keep both on ${card} when they’re done.` : `The race is on, both under At work. Compare them on ${card}.`, 7000, here || !r.id ? null : { label: 'Show it', run: () => showRace(r.id) });
+      if (here && r.id) showRace(r.id);
     } finally { go.disabled = false; go.textContent = label; }
   }));
   return d;
@@ -97,9 +136,10 @@ function raceWho() {
 }
 function openRaceDialog(cwd = null, mode = 'race', who = null) {
   const pairs = racePairs();
-  if (!pairs.length) { toast('A race needs two assistants: set up Codex or Gemini too (Setup), beside Claude.'); return; }
-  const d = raceDialog();
+  if (!pairs.length) { const fix = raceSetup(); toast(fix.say, 9000, fix); return; }
   const projects = S.projects.filter(p => p.exists).slice().sort((a, b) => a.name.localeCompare(b.name));
+  if (!projects.length) { toast('A race works in a copy of a project, and there’s no project yet.', 7000, { label: 'New project', run: openNewProject }); return; }
+  const d = raceDialog();
   const pick = cwd || (S.view === 'folder' ? S.folder : null) || (projects[0] && projects[0].cwd);
   $('rcProject').innerHTML = projects.map(p => `<option value="${esc(p.cwd)}"${p.cwd === pick ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
   const want = who && pairs.find(p => p.join('+') === who) ? who : pairs[0].join('+');
