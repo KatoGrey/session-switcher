@@ -260,6 +260,13 @@
   :root.hub2:not([data-family]) body:not(.aide-panel) #cCompose .c-crew.duo ~ .c-ib span{display:inline}
 }
 :root.hub2:not([data-family]) body:not(.aide-panel) .c-hint{margin:8px 20px 0}
+/* A short screen (a laptop at 680px, say) keeps its height for the conversation: the same side gutters, less above
+   and below. */
+@media (max-height:760px){
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-box{padding-top:10px;padding-bottom:6px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-box textarea{margin-bottom:8px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-hint{margin-top:5px}
+}
 @media (max-width:760px){
   :root.hub2:not([data-family]) body:not(.aide-panel) .c-box{padding:12px 16px 8px}
   :root.hub2:not([data-family]) body:not(.aide-panel) .c-hint{margin:6px 16px 0}
