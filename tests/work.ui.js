@@ -47,6 +47,26 @@ function responder(seen = [], controls = {}) {
   };
 }
 module.exports = [{
+  name: 'work: the shared picker in its menus',
+  // Your work's and a pull request's who-menus offer the shared picker's choices: each account, whichever has the
+  // most room, Codex and Gemini; and a PR's menu runs on Your work's default model for each.
+  async run(t) {
+    const seen = [], base = responder(seen);
+    const b = await t.open({ gemini: true, respond: (p, q, body) => { if (p === '/api/prs/act') { seen.push({ p, body }); return { body: { key: 'k-pr' } }; } return base(p, q, body); } });
+    await sleep(600);
+    await b.eval(`go('work'); return 1`); await sleep(1800);
+    await b.eval(`await Work.openIssue(${JSON.stringify(fixture.issues[0].identifier)}); return 1`); await sleep(700);
+    await b.eval(`document.querySelector('.wk-detail-actions [data-wk="start"]').click(); return 1`); await sleep(400);
+    const labels = await b.eval(`return [...document.querySelectorAll('#menu [role="menuitem"]')].map(x => x.querySelector('.m-l')?.firstChild?.textContent.trim() || x.textContent.trim())`);
+    t.check('Your work’s menu offers the shared choices: most room, each account, Codex and Gemini', labels.some(x => /^Claude · whichever has the most room/.test(x)) && labels.filter(x => /^Claude · /.test(x)).length >= 3 && labels.includes('Codex') && labels.includes('Gemini'), labels);
+    await b.eval(`closeMenu(); return 1`);
+    const pr = await b.eval(`const items = prWhoItems({ repo: 'o/r', number: 7, chat: null, clones: ['C:\\\\Repos\\\\r'] }, 'review'); return items.map(i => i.label)`);
+    t.check('a pull request’s menu offers the same, Gemini too', pr.some(x => /^Claude · whichever has the most room/.test(x)) && pr.includes('Codex') && pr.includes('Gemini'), pr);
+    await b.eval(`window.ChatUI.openKey = () => Promise.resolve(); const items = prWhoItems({ repo: 'o/r', number: 7, chat: null, clones: ['C:\\\\Repos\\\\r'] }, 'review'); await items.find(i => i.label === 'Gemini').run(); return 1`); await sleep(300);
+    const sent = seen.filter(x => x.p === '/api/prs/act').pop();
+    t.check('and starts with the one picked', !!sent && sent.body.provider === 'gemini' && sent.body.fresh === true, sent && sent.body);
+  },
+}, {
   name: 'work: every chat on an issue',
   // An issue keeps every chat started for it (planning, the work, a review), and its view lists them.
   async run(t) {

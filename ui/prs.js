@@ -172,19 +172,22 @@ function prDetailHtml(d) {
     ${d.clones.length ? '' : `<p class="rd-state">No folder on this computer has ${esc(d.repo)}, so Claude and Codex can’t work on it here. Clone it and open it once in a chat, then check again.</p>`}
     <div class="lm-b">${acts.join('')}</div>`;
 }
-// Claude as one of your accounts, or Codex: who does it.
+// Who does it: the shared picker's choices (pickwho.js), as on Your work, each on Your work's default model for it.
+// With the chat that made it, Claude carries on there, and a new chat is offered too.
 function prWhoItems(d, action) {
-  const items = [];
-  const reuse = action !== 'review' && d.chat;
-  for (const a of (S.accounts || []).filter(x => canLaunch(x))) items.push({ glyph: '✦', label: `Claude · ${a.name}`, hint: reuse ? `in “${d.chat.title || 'the chat that made it'}”` : 'a new chat', run: () => prGo(d, action, 'claude', a.id) });
-  if (reuse && canLaunch(current())) items.push({ glyph: '✦', label: 'Claude, in a new chat', hint: `as ${current().name}`, run: () => prGo(d, action, 'claude', current().id, true) });
-  if (codexOK()) items.push({ glyph: '◆', label: 'Codex', hint: 'a new chat', run: () => prGo(d, action, 'codex', (S.codex && S.codex.id) || 'codex') });
+  const reuse = action !== 'review' && d.chat, glyph = { claude: '✦', codex: '◆', gemini: '✧' };
+  const said = prov => (typeof Work !== 'undefined' && Work.runLabel ? ` · ${Work.runLabel(prov)}` : '');
+  const items = Who.options().filter(o => o.ok).map(o => {
+    const inChat = reuse && o.provider === 'claude';
+    return { glyph: glyph[o.provider] || '•', label: o.label, hint: `${inChat ? `in “${d.chat.title || 'the chat that made it'}”` : 'a new chat'}${said(o.provider)}`, run: () => prGo(d, action, o.provider, Who.accountFor(o.value), !inChat) };
+  });
+  if (reuse && canLaunch(current())) items.splice(items.filter(i => i.glyph === '✦').length, 0, { glyph: '✦', label: 'Claude, in a new chat', hint: `as ${current().name}${said('claude')}`, run: () => prGo(d, action, 'claude', current().id, true) });
   // Nobody can start it: the menu says so, with where to sign in.
   return Object.assign(items, { ifEmpty: NO_WHO });
 }
 async function prGo(d, action, provider, account, fresh = false) {
   toast(action === 'review' ? `Fetching #${d.number} and starting the review…` : 'Starting…', 4000);
-  const r = await api('/api/prs/act', { action, repo: d.repo, n: d.number, provider, account, fresh, cwd: d.clones[0] });
+  const r = await api('/api/prs/act', { action, repo: d.repo, n: d.number, provider, account, fresh, cwd: d.clones[0], ...(typeof Work !== 'undefined' && Work.runFor ? Work.runFor(provider) : {}) });
   if ($('prDlg')) $('prDlg').close();
   if ($('connDlg')) $('connDlg').close();
   await ChatUI.openKey(r.key);

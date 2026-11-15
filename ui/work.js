@@ -343,7 +343,7 @@ const Work = (() => {
   function loadModels(fresh = false) {
     if (W.modelsLoading) return;
     W.modelsLoading = true;
-    api(`/api/work/models${fresh ? '?fresh=1' : ''}`).then(m => { W.models = m || {}; }).catch(() => { W.models = W.models || {}; })
+    Who.loadModels(fresh).then(m => { W.models = m || {}; }).catch(() => { W.models = W.models || {}; })
       .finally(() => { W.modelsLoading = false; if (showing()) render(); });
   }
   const listOf = prov => (W.models && W.models[prov]) || null;
@@ -385,11 +385,16 @@ const Work = (() => {
   /* ---------- buttons ---------- */
 
   const find = (repo, n) => { const k = kOf({ repo, number: n }); const p = item(k); return p ? { ...p, ...(W.details.get(k)?.error ? {} : W.details.get(k)) } : null; };
+  // Who does it: the shared picker's choices (pickwho.js: each account, whichever has the most room, Codex, Gemini),
+  // each saying what it runs on (the Defaults above). With a chat that made it, Claude carries on there, and a new
+  // chat is offered too.
   function whoItems(run, { chat = null, review = false } = {}) {
-    const items = (S.accounts || []).filter(a => canLaunch(a)).map(a => ({ glyph: '✦', label: `Claude · ${a.name}`, hint: `${chat && !review ? `in “${chat.title || 'its chat'}”` : 'a new chat'} · ${runLabel('claude')}`, run: () => run('claude', a.id, false) }));
-    if (chat && !review && canLaunch(current())) items.push({ glyph: '✦', label: 'Claude, in a new chat', hint: `as ${current().name} · ${runLabel('claude')}`, run: () => run('claude', current().id, true) });
-    if (codexOK()) items.push({ glyph: '◆', label: 'Codex', hint: `a new chat · ${runLabel('codex')}`, run: () => run('codex', (S.codex && S.codex.id) || 'codex', true) });
-    if (typeof geminiReady === 'function' && geminiReady()) items.push({ glyph: '✧', label: 'Gemini', hint: `a new chat · ${runLabel('gemini')}`, run: () => run('gemini', 'gemini', true) });
+    const carry = chat && !review, glyph = { claude: '✦', codex: '◆', gemini: '✧' };
+    const items = Who.options().filter(o => o.ok).map(o => {
+      const inChat = carry && o.provider === 'claude';
+      return { glyph: glyph[o.provider] || '•', label: o.label, hint: `${inChat ? `in “${chat.title || 'its chat'}”` : 'a new chat'} · ${runLabel(o.provider)}`, run: () => run(o.provider, Who.accountFor(o.value), !inChat) };
+    });
+    if (carry && canLaunch(current())) items.splice(items.filter(i => i.glyph === '✦').length, 0, { glyph: '✦', label: 'Claude, in a new chat', hint: `as ${current().name} · ${runLabel('claude')}`, run: () => run('claude', current().id, true) });
     // Nobody can start it: the menu says so, with where to sign in.
     return Object.assign(items, { ifEmpty: NO_WHO });
   }
@@ -630,6 +635,7 @@ const Work = (() => {
     runPrefs: () => JSON.parse(JSON.stringify(W.run)),
     setupState: () => W.setup, loadSetup, showSetup,
     modelsFor: prov => (W.models && W.models[prov]) || null,
+    runFor: prov => runFor(prov), runLabel: prov => runLabel(prov),
     openIssue: async id => { if (!item(id)) W.external.set(id, await api(`/api/linear/issue?id=${encodeURIComponent(id)}`)); await select(id); } };
 })();
 
