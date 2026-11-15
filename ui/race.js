@@ -79,6 +79,8 @@ function raceDialog() {
       <div class="rc-mode seg" role="radiogroup" aria-label="How they work"><label><input type="radio" name="rcMode" value="race" checked> Race: the same task</label><label><input type="radio" name="rcMode" value="split"> Split the work</label></div>
       <p class="rd-intro">Both take the same task, each in its own copy of the project (your uncommitted work included; ignored files like node_modules aren’t copied). Your project isn’t touched until you keep one. Needs a git project.</p>
       <div class="tk-grid"><label>Project<select id="rcProject"></select></label><label>Who<select id="rcWho"></select></label><label id="rcAcctWrap">Claude’s account<select id="rcAcct"></select></label></div>
+      <div class="tk-grid rc-run" id="rcRun"></div>
+      <p class="tk-note" id="rcNote" role="alert" hidden></p>
       <label class="tk-prompt">The task<select id="rcFrom" aria-label="Start from a saved prompt"><option value="">Start from a saved prompt…</option></select><textarea id="rcText" rows="7" aria-label="The task" placeholder="Fix the save-file bug on Steam Deck, and add a test that shows it’s fixed."></textarea></label>
       <div class="rc-parts" hidden><label class="tk-prompt"><span id="rcPartA">Claude’s part</span><textarea id="rcClaude" rows="3" placeholder="The save code: find why it fails on Steam Deck and fix it."></textarea></label><label class="tk-prompt"><span id="rcPartB">Codex’s part</span><textarea id="rcCodex" rows="3" placeholder="A test that shows the bug, in tests/save.test.js."></textarea></label></div>
       <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-rc="close">Cancel</button><button type="submit" class="btn prime">Start the race</button></div>
@@ -88,6 +90,14 @@ function raceDialog() {
   d.addEventListener('change', e => {
     if (e.target.name === 'rcMode') return raceMode(e.target.value);
     if (e.target.id === 'rcWho') return raceWho();
+    const side = e.target.closest('[data-side]');
+    if (side && e.target.dataset.rcRun) {
+      const st = RaceRun[side.dataset.side];
+      st[e.target.dataset.rcRun] = e.target.value;
+      // A new model has its own efforts: back to its usual one.
+      if (e.target.dataset.rcRun === 'model') { st.effort = ''; raceRunDraw(); }
+      return undefined;
+    }
     if (e.target.id !== 'rcFrom' || !e.target.value) return;
     const pr = S.prompts.find(x => x.id === e.target.value), p = S.projects.find(x => x.cwd === $('rcProject').value);
     if (pr) $('rcText').value = fillPrompt(pr.text, p ? p.name : '');
@@ -100,7 +110,9 @@ function raceDialog() {
     const go = d.querySelector('[type="submit"]'), label = go.textContent; go.disabled = true; go.textContent = 'Making the copies…';
     try {
       const who = $('rcWho').value.split('+');
-      const r = await api('/api/race', { action: 'start', who, cwd: $('rcProject').value, accountId: $('rcAcct').value, prompt: $('rcText').value, ...(split ? { split: { [who[0]]: $('rcClaude').value, [who[1]]: $('rcCodex').value } } : {}) });
+      const run = await raceRuns(who);
+      if (!run) return;
+      const r = await api('/api/race', { action: 'start', who, cwd: $('rcProject').value, accountId: $('rcAcct').value, prompt: $('rcText').value, run, ...(split ? { split: { [who[0]]: $('rcClaude').value, [who[1]]: $('rcCodex').value } } : {}) });
       S.races = r.races; renderRaces(); d.close();
       // On the hub its card is brought into view; anywhere else, the toast offers to take you there.
       const here = S.view === 'hub' && !(window.ChatUI && ChatUI.isOpen()) && !!$('raceList');
@@ -133,6 +145,46 @@ function raceWho() {
   $('rcTitle').textContent = split ? `Split the work: ${RACE_NAME[a]} and ${RACE_NAME[b]}` : `Race ${RACE_NAME[a]} and ${RACE_NAME[b]}`;
   $('rcPartA').textContent = `${RACE_NAME[a]}’s part`; $('rcPartB').textContent = `${RACE_NAME[b]}’s part`;
   $('rcAcctWrap').hidden = ![a, b].includes('claude');
+  raceRunDraw();
+}
+// Claude's account: the shared picker's choices and words (ui/pickwho.js). "Most room" goes to the server as "auto",
+// so it's worked out as the race starts; it's what's picked when it's offered.
+function raceAccounts() {
+  const opts = Who.options({ providers: ['claude'] }), val = o => (o.account === 'room' ? 'auto' : o.account);
+  const pick = opts.find(o => o.account === 'room') || opts.find(o => o.ok && o.account === S.acct) || opts.find(o => o.ok) || {};
+  $('rcAcct').innerHTML = opts.map(o => `<option value="${esc(val(o))}"${o === pick ? ' selected' : ''}${o.ok ? '' : ' disabled'}${o.account === 'room' ? ' title="Whichever has the most left when the race starts"' : ''}>${esc(o.short)}${o.ok ? '' : ` · ${esc(o.why.charAt(0).toLowerCase() + o.why.slice(1))}`}</option>`).join('');
+}
+// Each side's model and effort, with the shared picker's lists: as last time, a preset (Quick, Balanced, Deep, Max),
+// or any model it has, and an effort when that model offers a choice. Kept for each assistant while the dialog is
+// open, so changing who races keeps what you picked for the one that stays.
+const RaceRun = {};
+function raceRunDraw() {
+  const box = $('rcRun'); if (!box) return;
+  $('rcNote').hidden = true;   // (what it said was about the choice before)
+  const was = box.contains(document.activeElement) ? document.activeElement.id : null;
+  box.innerHTML = ($('rcWho').value || 'claude+codex').split('+').map(w => {
+    const st = RaceRun[w] || (RaceRun[w] = { model: '', effort: '' }), name = RACE_NAME[w] || w;
+    const choices = Who.modelChoices(w);
+    if (!choices.some(c => c.value === st.model)) st.model = '';
+    const efforts = Who.effortChoices(w, st.model);
+    if (!efforts.includes(st.effort)) st.effort = '';
+    return `<div class="rc-side" data-side="${esc(w)}"><label>${esc(name)}’s model<select id="rcModel-${esc(w)}" data-rc-run="model">${choices.map(c => `<option value="${esc(c.value)}"${c.value === st.model ? ' selected' : ''} title="${esc(c.title || '')}">${esc(c.label)}</option>`).join('')}</select></label>`
+      + (efforts.length ? `<label>${esc(name)}’s effort<select id="rcEffort-${esc(w)}" data-rc-run="effort"><option value="">Its usual</option>${efforts.map(e => `<option value="${esc(e)}"${e === st.effort ? ' selected' : ''}>${esc(e)}</option>`).join('')}</select></label>` : '')
+      + '</div>';
+  }).join('');
+  if (was && $(was)) $(was).focus();
+}
+// What each side starts on ({ claude: { model, effort }, … }; nothing for "as last time"). A preset is placed on one
+// of the assistant's models now; when it can't be, it says why and gives null (the race doesn't start).
+async function raceRuns(who) {
+  if (who.some(w => /^preset:/.test((RaceRun[w] || {}).model || ''))) await Who.loadModels();
+  const run = {};
+  for (const w of who) {
+    const st = RaceRun[w] || {}, r = Who.runOf(w, st.model, st.effort);
+    if (r.preset) { $('rcNote').textContent = Who.presetMiss(w, r.preset); $('rcNote').hidden = false; $(`rcModel-${w}`)?.focus(); return null; }
+    if (r.model) run[w] = r;
+  }
+  return run;
 }
 function openRaceDialog(cwd = null, mode = 'race', who = null) {
   const pairs = racePairs();
@@ -144,7 +196,10 @@ function openRaceDialog(cwd = null, mode = 'race', who = null) {
   $('rcProject').innerHTML = projects.map(p => `<option value="${esc(p.cwd)}"${p.cwd === pick ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
   const want = who && pairs.find(p => p.join('+') === who) ? who : pairs[0].join('+');
   $('rcWho').innerHTML = pairs.map(p => `<option value="${p.join('+')}"${p.join('+') === want ? ' selected' : ''}>${RACE_NAME[p[0]]} and ${RACE_NAME[p[1]]}</option>`).join('');
-  $('rcAcct').innerHTML = `<option value="auto">Whichever has the most room</option>${S.accounts.filter(canLaunch).map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}`;
+  raceAccounts();
+  // Each side starts as last time until you pick otherwise; the models come from the server, and are drawn once known.
+  for (const k of Object.keys(RaceRun)) delete RaceRun[k];
+  Who.loadModels().then(() => { if (d.open) raceRunDraw(); });
   $('rcFrom').innerHTML = `<option value="">Start from a saved prompt…</option>${S.prompts.map(pr => `<option value="${esc(pr.id)}">${esc(pr.title)}</option>`).join('')}`;
   $('rcFrom').hidden = !S.prompts.length;
   $('rcText').value = ''; $('rcClaude').value = ''; $('rcCodex').value = '';

@@ -2694,6 +2694,17 @@ body.solo .c-head .icon.c-backm{display:none}
 .rc-parts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .rc-parts[hidden]{display:none}
 @media (max-width:640px){.rc-parts{grid-template-columns:1fr}}
+/* Each side's model and effort, a half each like their parts: the model wider than its effort, or the whole half alone. */
+.rc-run{grid-template-columns:repeat(2,minmax(0,1fr))}
+.rc-side{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:8px;min-width:0}
+.rc-side > label{min-width:0}
+.rc-side > label:only-child{grid-column:1/-1}
+.rc-side select{width:100%;min-width:0;box-sizing:border-box}
+@media (max-width:640px){.rc-run{grid-template-columns:1fr}}
+/* Claude's account reads in the shared picker's words, which can be long ("whichever has the most room (now …)"):
+   it keeps to its column in every theme, cut short there rather than widening the dialog. */
+#rcAcctWrap{min-width:0}
+#rcAcct{width:100%;min-width:0;box-sizing:border-box}
 .race.over{opacity:.7}
 .race-end{margin:0;color:var(--ash)}
 /* The race you've just started: its card lights up for a moment (it glows and fades only with animations on). */

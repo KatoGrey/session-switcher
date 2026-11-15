@@ -120,6 +120,14 @@ const Who = (() => {
     if (/^preset:/.test(model)) { const id = model.slice(7), r = preset(prov, id); return r ? { model: r.model, ...(r.effort ? { effort: r.effort } : {}) } : { preset: id }; }
     return { model, ...(effort ? { effort } : {}) };
   }
+  // Why a preset can't be placed on a model, in words, for work that has to name its model when it's sent (a race, a
+  // routine): the assistant's models aren't known yet, or none of them fits it. '' when it can.
+  function presetMiss(prov, id) {
+    if (preset(prov, id)) return '';
+    const p = ((typeof PRESETS === 'object' && PRESETS[prov]) || []).find(x => x.id === id), name = p ? p.name : 'That preset', L = listOf(prov);
+    return L && L.models && L.models.length ? `${name} doesn’t match any of ${nameOf(prov)}’s models. Pick one of them, or As last time.`
+      : `${nameOf(prov)}’s models aren’t known yet, so ${name} can’t be used. Pick As last time, or try again in a moment.`;
+  }
 
   /* ---------- in a form: who, model and effort, each a <select> ---------- */
   // root: an element to fill. value: { who, model, effort } to start from. Calls onChange after any change.
@@ -172,6 +180,6 @@ const Who = (() => {
     return Object.assign(items, { ifEmpty: typeof NO_WHO !== 'undefined' ? NO_WHO : null });
   }
 
-  return { loadModels, listOf, nameOf, options, parse, accountFor, preset, modelChoices, effortChoices, runOf, mount, read, menuItems, roomiest };
+  return { loadModels, listOf, nameOf, options, parse, accountFor, preset, modelChoices, effortChoices, runOf, presetMiss, mount, read, menuItems, roomiest };
 })();
 window.Who = Who;

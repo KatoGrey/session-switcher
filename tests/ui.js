@@ -711,7 +711,7 @@ module.exports = [
       t.check('then keeps Claude’s', calls.some(([p, body]) => p === '/api/race' && body.action === 'keep' && body.who === 'claude' && body.force === true) && /Kept Claude’s changes/.test((await card()).text));
       // Starting one.
       await b.eval(`openRaceDialog(${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}); return 1`); await sleep(300);
-      t.check('Race Claude and Codex asks for the project, account and task', await b.eval(`return raceDlg.open && rcProject.selectedOptions[0].textContent === 'Starfall Tavern' && rcAcct.options[0].textContent === 'Whichever has the most room'`));
+      t.check('Race Claude and Codex asks for the project, account and task', await b.eval(`return raceDlg.open && rcProject.selectedOptions[0].textContent === 'Starfall Tavern' && /^Whichever has the most room \\(now .*, \\d+% left\\)$/.test(rcAcct.options[0].textContent) && rcAcct.value === 'auto'`));
       await b.eval(`rcText.value = 'Add a Lullaby cooldown.'; return 1`);
       await b.clickOn('#rcForm [type="submit"]'); await sleep(600);
       t.check('Start the race starts it', calls.some(([p, body]) => p === '/api/race' && body.action === 'start' && body.prompt === 'Add a Lullaby cooldown.') && /Add a Lullaby cooldown/.test((await card()).text));
@@ -842,6 +842,195 @@ module.exports = [
       await b.clickOn('#tkNote [data-tk="signin"]'); await sleep(900);
       t.check('Sign in opens Setup over the dialog, keeping it', await b.eval(`return document.getElementById('setup').open && taskDlg.open`));
       t.check('signed in, there’s no note', await b.eval(`document.getElementById('setup').close(); taskDlg.close(); openTaskDialog(); const hidden = document.getElementById('tkNote').hidden; taskDlg.close(); return hidden`));
+    },
+  },
+  {
+    name: 'race: who and on what',
+    // Race and Split on the shared picker (ui/pickwho.js): Claude's account in its words, "most room" sent as "auto",
+    // and each side's model and effort, which go with the start.
+    async run(t) {
+      const all = ['low', 'medium', 'high', 'xhigh', 'max'];
+      const models = {
+        claude: { defaultModel: 'Opus 5.5', defaultEffort: 'high', efforts: all, models: [{ value: 'opus', label: 'Opus', note: '', efforts: all }, { value: 'sonnet', label: 'Sonnet', note: '', efforts: ['low', 'medium', 'high'] }, { value: 'haiku', label: 'Haiku', note: '', efforts: [] }] },
+        codex: { defaultModel: 'GPT-6', defaultEffort: 'medium', efforts: ['low', 'medium', 'high'], models: [{ value: 'gpt-6', label: 'GPT-6', note: '', efforts: ['low', 'medium', 'high', 'xhigh'] }, { value: 'gpt-6-mini', label: 'GPT-6 mini', note: '', efforts: ['low', 'medium'] }] },
+        gemini: { defaultModel: 'Gemini 4 Argon (Medium)', defaultEffort: null, efforts: [], models: [{ value: 'gemini-4-argon-medium', label: 'Gemini 4 Argon (Medium)', note: '', efforts: [] }, { value: 'gemini-4-argon-high', label: 'Gemini 4 Argon (High)', note: '', efforts: [] }] },
+      };
+      const calls = [];
+      const respond = p => (p === '/api/work/models' ? { body: models } : null);
+      const b = await t.open({ gemini: true, respond, seen: (p, u, body) => calls.push([p, body]) });
+      await sleep(600);
+      const tavern = JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd);
+      const form = (br = b) => br.eval(`const el = id => document.getElementById(id), opts = id => el(id) ? [...el(id).options].map(o => ({ v: o.value, t: o.textContent, off: o.disabled })) : null, val = id => el(id) ? el(id).value : null;
+        return { title: rcTitle.textContent, acct: opts('rcAcct'), acctValue: rcAcct.value, labels: [...document.querySelectorAll('#rcRun label')].map(l => l.firstChild.textContent.trim()), claude: opts('rcModel-claude'), codex: opts('rcModel-codex'), gemini: opts('rcModel-gemini'), ce: opts('rcEffort-claude'), xe: opts('rcEffort-codex'), ge: opts('rcEffort-gemini'), cm: val('rcModel-claude'), xm: val('rcModel-codex'), gm: val('rcModel-gemini'), cev: val('rcEffort-claude') }`);
+      const pick = (id, v, br = b) => br.eval(`const e = document.getElementById(${JSON.stringify(id)}); e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
+      const started = () => (calls.filter(([p, body]) => p === '/api/race' && body.action === 'start').pop() || [])[1];
+      const presets = ',preset:quick,preset:balanced,preset:deep,preset:max';
+      await b.eval(`openRaceDialog(${tavern}); return 1`); await sleep(400);
+      let f = await form();
+      t.check('Claude’s account offers the shared words: most room first, sent as “auto”, then each account', /^Whichever has the most room \(now .*, \d+% left\)$/.test(f.acct[0].t) && f.acct[0].v === 'auto' && f.acctValue === 'auto' && f.acct.slice(1).map(o => o.v).join() === 'studio,personal' && /^Studio/.test(f.acct[1].t) && /^Personal/.test(f.acct[2].t), f.acct);
+      t.check('each side has a model, named for it', f.labels.join() === 'Claude’s model,Codex’s model', f.labels);
+      t.check('as last time, the presets, then every model each has', f.claude.map(o => o.v).join() === `${presets},opus,sonnet,haiku` && f.codex.map(o => o.v).join() === `${presets},gpt-6,gpt-6-mini` && f.claude[0].t === 'As last time' && f.cm === '' && f.xm === '', { claude: f.claude, codex: f.codex });
+      t.check('no effort until a model offers a choice', !f.ce && !f.xe, f);
+      await pick('rcModel-claude', 'sonnet'); await pick('rcModel-codex', 'gpt-6-mini'); await sleep(100);
+      f = await form();
+      t.check('a model with a choice of effort offers it, for its own side', f.labels.join() === 'Claude’s model,Claude’s effort,Codex’s model,Codex’s effort' && f.ce.map(o => o.v).join() === ',low,medium,high' && f.xe.map(o => o.v).join() === ',low,medium', f);
+      await pick('rcEffort-claude', 'low'); await pick('rcEffort-codex', 'medium');
+      await t.shot(b, 'models');
+      const fit = await b.eval(`const r = id => document.getElementById(id).getBoundingClientRect(), d = document.getElementById('raceDlg'); return { a: r('rcEffort-claude').right, b: r('rcModel-codex').left, row: Math.abs(r('rcModel-claude').top - r('rcModel-codex').top) < 2, over: d.scrollWidth - d.clientWidth }`);
+      t.check('the two sides share a row, and nothing spills out of the dialog', fit.a <= fit.b && fit.row && fit.over <= 1, fit);
+      // The saga themes have no hub.css: the account's longer words still keep to their column there.
+      const saga = await b.eval(`const out = {}; for (const theme of ['imperial', 'rebel']) { Look.set({ theme, mode: 'dark' }); await new Promise(r => setTimeout(r, 300)); const d = document.getElementById('raceDlg'), a = rcAcct.getBoundingClientRect(); out[theme] = { over: d.scrollWidth - d.clientWidth, inside: a.right <= d.getBoundingClientRect().right }; } Look.reset(); await new Promise(r => setTimeout(r, 300)); return out`);
+      t.check('in Imperial and Rebel too, nothing spills out of the dialog', Object.values(saga).every(x => x.over <= 1 && x.inside), saga);
+      // Changing who races: the side that stays keeps its choice.
+      await pick('rcWho', 'claude+gemini'); await sleep(100);
+      f = await form();
+      t.check('changing who races keeps the choice of the side that stays', f.title === 'Race Claude and Gemini' && f.cm === 'sonnet' && f.cev === 'low' && f.labels.includes('Gemini’s model') && f.gemini.map(o => o.v).join() === `${presets},gemini-4-argon-medium,gemini-4-argon-high`, f);
+      await pick('rcModel-gemini', 'gemini-4-argon-high'); await sleep(100);
+      t.check('Gemini has no effort to pick (it’s in its models’ names)', !(await form()).ge);
+      await b.eval(`rcText.value = 'Make the lanterns flicker.'; return 1`);
+      await b.clickOn('#rcForm [type="submit"]'); await sleep(700);
+      let s = started();
+      t.check('starting sends each side’s model and effort, and most room as “auto”', s && s.who.join() === 'claude,gemini' && s.accountId === 'auto' && JSON.stringify(s.run) === JSON.stringify({ claude: { model: 'sonnet', effort: 'low' }, gemini: { model: 'gemini-4-argon-high' } }), s);
+      t.check('and the card shows, as before', await b.eval(`return !raceDlg.open && !!document.querySelector('#raceList [data-race="race2"]') && /The race is on/.test(document.getElementById('toast').textContent)`));
+      // Opened again: as last time for each, and a preset goes as the model and effort it stands for.
+      await b.eval(`openRaceDialog(${tavern}); return 1`); await sleep(300);
+      f = await form();
+      t.check('opened again, each side starts as last time', f.title === 'Race Claude and Codex' && f.cm === '' && f.xm === '' && !f.ce, f);
+      await pick('rcModel-claude', 'preset:deep'); await pick('rcAcct', 'personal'); await sleep(50);
+      t.check('a preset has no effort of its own to pick', !(await form()).ce);
+      await b.eval(`rcText.value = 'Another go.'; return 1`);
+      await b.clickOn('#rcForm [type="submit"]'); await sleep(700);
+      s = started();
+      t.check('a preset goes as its model and effort, a side left as last time sends none, and a picked account goes as itself', s && s.accountId === 'personal' && s.prompt === 'Another go.' && JSON.stringify(s.run) === JSON.stringify({ claude: { model: 'opus', effort: 'high' } }), s);
+      // A preset that can't be placed says why, in the dialog, and nothing starts.
+      await b.eval(`openRaceDialog(${tavern}); return 1`); await sleep(300);
+      await pick('rcModel-codex', 'preset:balanced');
+      calls.length = 0;
+      await b.eval(`rcText.value = 'Third go.'; return 1`);
+      await b.clickOn('#rcForm [type="submit"]'); await sleep(400);
+      let miss = await b.eval(`return { open: raceDlg.open, note: rcNote.hidden ? '' : rcNote.textContent, focus: document.activeElement.id }`);
+      t.check('a preset none of its models fits says so in the dialog, and nothing starts', miss.open && /^Balanced doesn’t match any of Codex’s models\./.test(miss.note) && miss.focus === 'rcModel-codex' && !started(), miss);
+      await t.shot(b, 'no-preset');
+      miss = await b.eval(`window._api = api; api = async (u, body) => (String(u).startsWith('/api/work/models') ? {} : _api(u, body)); await Who.loadModels(true);
+        openRaceDialog(${tavern}); const m = document.getElementById('rcModel-codex'); m.value = 'preset:deep'; m.dispatchEvent(new Event('change', { bubbles: true })); rcText.value = 'Fourth go.';
+        document.querySelector('#rcForm [type="submit"]').click(); await new Promise(r => setTimeout(r, 400)); return { open: raceDlg.open, note: rcNote.hidden ? '' : rcNote.textContent }`);
+      t.check('…or that its models aren’t known yet', miss.open && /^Codex’s models aren’t known yet, so Deep can’t be used\./.test(miss.note) && !started(), miss);
+      await b.eval(`api = _api; await Who.loadModels(true); raceDlg.close(); return 1`);
+      // Split: each its part, and each side its model.
+      await b.eval(`openRaceDialog(${tavern}, 'split'); return 1`); await sleep(300);
+      await pick('rcModel-codex', 'gpt-6'); await pick('rcEffort-codex', 'xhigh');
+      await b.eval(`rcClaude.value = 'The rally math.'; rcCodex.value = 'A test for it.'; return 1`);
+      await b.clickOn('#rcForm [type="submit"]'); await sleep(700);
+      s = started();
+      t.check('Split sends each its part, and each side’s model', s && s.split && s.split.claude === 'The rally math.' && s.split.codex === 'A test for it.' && JSON.stringify(s.run) === JSON.stringify({ codex: { model: 'gpt-6', effort: 'xhigh' } }), s);
+      // On a phone: each side takes the width.
+      const phone = await t.open({ gemini: true, respond, width: 390, height: 844, mobile: true });
+      await sleep(600);
+      await phone.eval(`openRaceDialog(${tavern}); return 1`); await sleep(400);
+      await pick('rcModel-claude', 'sonnet', phone); await sleep(100);
+      const pfit = await phone.eval(`const d = document.getElementById('raceDlg'), r = id => document.getElementById(id).getBoundingClientRect(); return { over: d.scrollWidth - d.clientWidth, stacked: r('rcModel-codex').top > r('rcModel-claude').bottom, inside: r('rcEffort-claude').right <= d.getBoundingClientRect().right }`);
+      t.check('on a phone each side takes the width, and nothing spills out', pfit.over <= 1 && pfit.stacked && pfit.inside, pfit);
+      await t.shot(phone, 'phone');
+    },
+  },
+  {
+    name: 'routines: who and on what',
+    // The routine editor on the shared picker (ui/pickwho.js): who runs it in the shared words, stored as before, and
+    // what it runs on (as last time, a preset, or any model, with its effort), saved with it.
+    async run(t) {
+      const all = ['low', 'medium', 'high', 'xhigh', 'max'];
+      const models = {
+        claude: { defaultModel: 'Opus 5.5', defaultEffort: 'high', efforts: all, models: [{ value: 'opus', label: 'Opus', note: '', efforts: all }, { value: 'sonnet', label: 'Sonnet', note: '', efforts: ['low', 'medium', 'high'] }, { value: 'haiku', label: 'Haiku', note: '', efforts: [] }] },
+        codex: { defaultModel: 'GPT-6', defaultEffort: 'medium', efforts: ['low', 'medium', 'high'], models: [{ value: 'gpt-6', label: 'GPT-6', note: '', efforts: ['low', 'medium', 'high', 'xhigh'] }, { value: 'gpt-6-mini', label: 'GPT-6 mini', note: '', efforts: ['low', 'medium'] }] },
+        gemini: { defaultModel: 'Gemini 4 Argon (Medium)', defaultEffort: null, efforts: [], models: [{ value: 'gemini-4-argon-medium', label: 'Gemini 4 Argon (Medium)', note: '', efforts: [] }, { value: 'gemini-4-argon-high', label: 'Gemini 4 Argon (High)', note: '', efforts: [] }] },
+      };
+      const saved = [];
+      const respond = (p, q, body, method) => {
+        if (p === '/api/work/models') return { body: models };
+        if (p === '/api/routines' && method === 'POST') { saved.push(body); return { body: { routine: { ...body, id: body.id || 'rt-new', triggerText: 'Every day at 9:00 AM', state: { nextAt: Date.now() + 3600e3 }, history: [] } } }; }
+        return null;
+      };
+      const b = await t.open({ gemini: true, respond });
+      await sleep(600);
+      const tavern = demo.projects.find(p => p.name === 'Starfall Tavern').cwd;
+      const ed = () => b.eval(`const el = id => document.getElementById(id), opts = id => [...el(id).options].map(o => ({ v: o.value, t: o.textContent, off: o.disabled }));
+        return { open: el('rtDlg').open, acct: opts('rtAcct'), acctValue: el('rtAcct').value, models: opts('rtModel'), model: el('rtModel').value, effortShown: !el('rtEffortBox').hidden, efforts: opts('rtEffort'), effort: el('rtEffort').value, err: el('rtErr').hidden ? '' : el('rtErr').textContent }`);
+      const pick = (id, v) => b.eval(`const e = document.getElementById(${JSON.stringify(id)}); e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
+      const fill = name => b.eval(`rtName.value = ${JSON.stringify(name)}; rtCwd.value = ${JSON.stringify(tavern)}; rtPrompt.value = 'Look over the tavern.'; return 1`);
+      const save = async () => { const n = saved.length; await b.clickOn('#rtGo'); await sleep(500); return saved.length > n ? saved[saved.length - 1] : null; };
+      const presets = ',preset:quick,preset:balanced,preset:deep,preset:max';
+      await b.eval(`Routines.edit(null); return 1`); await sleep(300);
+      let e = await ed();
+      const before = await b.eval(`return { ids: [...S.accounts.map(a => a.id), ...codexAccts().map(x => x.id), 'gemini'], cur: current().id }`);
+      t.check('Runs as stores the same values as before: each account’s id, and gemini', e.acct.map(o => o.v).join() === before.ids.join() && e.acctValue === before.cur, { got: e.acct.map(o => o.v), want: before });
+      t.check('in the shared picker’s words, with no “most room” (a routine runs as one account)', /^Claude · Studio/.test(e.acct[0].t) && /^Claude · Personal/.test(e.acct[1].t) && e.acct[2].t === 'Codex' && e.acct[3].t === 'Gemini' && !e.acct.some(o => /most room/i.test(o.t)), e.acct);
+      t.check('the model: as last time, the presets, then every model; no effort yet', e.models.map(o => o.v).join() === `${presets},opus,sonnet,haiku` && e.model === '' && !e.effortShown, e.models);
+      await pick('rtModel', 'sonnet'); await sleep(50);
+      e = await ed();
+      t.check('a model with a choice of effort offers it', e.effortShown && e.efforts.map(o => o.v).join() === ',low,medium,high', e.efforts);
+      await pick('rtEffort', 'high');
+      await t.shot(b, 'editor');
+      const fit = await b.eval(`const d = document.getElementById('rtForm'), r = id => document.getElementById(id).getBoundingClientRect(); return { over: d.scrollWidth - d.clientWidth, row: Math.abs(r('rtModel').top - r('rtEffort').top) < 2, under: r('rtModel').top > r('rtAcct').bottom && r('rtModel').bottom < r('rtPrompt').top }`);
+      t.check('Model and Effort sit side by side under Runs as, and fit', fit.over <= 1 && fit.row && fit.under, fit);
+      await fill('Morning look');
+      let s = await save();
+      t.check('Save stores who as before, with the model and effort its runs start on', s && s.account === before.cur && s.model === 'sonnet' && s.effort === 'high' && !(await b.eval(`return rtDlg.open`)), s);
+      // A preset is placed on its model now: the runs start later, on a model.
+      await b.eval(`Routines.edit(null); return 1`); await sleep(200);
+      await pick('rtModel', 'preset:deep'); await sleep(50);
+      t.check('a preset has no effort of its own to pick', !(await ed()).effortShown);
+      await fill('Deep look');
+      s = await save();
+      t.check('a preset is saved as the model and effort it stands for', s && s.model === 'opus' && s.effort === 'high', s);
+      // Another assistant: its own models.
+      await b.eval(`Routines.edit(null); return 1`); await sleep(200);
+      await pick('rtModel', 'opus'); await pick('rtAcct', 'codex'); await sleep(50);
+      e = await ed();
+      t.check('picking another assistant shows its models, back at as last time', e.model === '' && e.models.map(o => o.v).join() === `${presets},gpt-6,gpt-6-mini`, e.models);
+      await pick('rtAcct', 'gemini'); await pick('rtModel', 'gemini-4-argon-high'); await sleep(50);
+      e = await ed();
+      t.check('Gemini: its models, and no effort (it’s in their names)', e.model === 'gemini-4-argon-high' && !e.effortShown, e);
+      await fill('Gemini look');
+      s = await save();
+      t.check('stored as gemini, with its model', s && s.account === 'gemini' && s.model === 'gemini-4-argon-high' && s.effort === null && s.permissionMode === 'accept-edits', s);
+      // An account that can't start yet can still be picked (the runs wait for it), and says why.
+      const off = await b.eval(`const a = S.accounts[1], was = a.signedIn; a.signedIn = false; Routines.edit(null); const o = [...rtAcct.options].find(x => x.value === a.id), r = { t: o.textContent, off: o.disabled }; a.signedIn = was; rtDlg.close(); return r`);
+      t.check('an account that can’t start yet can still be picked, and says why', !off.off && /^Claude · Personal.* · not signed in$/.test(off.t), off);
+      // Editing one keeps what it was saved with, even a model the list doesn't have (set in Switcher Lite, say).
+      const old = { id: 'rt-old', name: 'Night watch', cwd: tavern, account: 'codex', provider: 'codex', model: 'gpt-5-old', effort: 'xhigh', permissionMode: 'agent', prompt: 'Watch the night.', chat: { mode: 'new' }, limit: 90, trigger: { type: 'schedule', schedule: { kind: 'daily', time: '22:00' } }, history: [], state: {} };
+      await b.eval(`Routines.edit(${JSON.stringify(old)}); return 1`); await sleep(300);
+      e = await ed();
+      t.check('editing one shows what it was saved with, even a model the list doesn’t have', e.acctValue === 'codex' && e.model === 'gpt-5-old' && e.effortShown && e.effort === 'xhigh', e);
+      s = await save();
+      t.check('and saving it as it was keeps them', s && s.id === 'rt-old' && s.account === 'codex' && s.model === 'gpt-5-old' && s.effort === 'xhigh' && s.permissionMode === 'agent', s);
+      // A preset none of its models fits: it says so, and nothing is saved.
+      await b.eval(`Routines.edit(null); return 1`); await sleep(200);
+      await pick('rtAcct', 'codex'); await pick('rtModel', 'preset:balanced');
+      await fill('Balanced look');
+      s = await save();
+      e = await ed();
+      t.check('a preset none of its models fits says so, and nothing is saved', !s && e.open && /^Balanced doesn’t match any of Codex’s models\./.test(e.err), e.err);
+      await b.eval(`rtDlg.close(); return 1`);
+      // A handover (Queue a task) can bring the model and effort too.
+      await b.eval(`Routines.edit(null, { name: 'Triage', cwd: ${JSON.stringify(tavern)}, prompt: 'Triage it.', account: 'personal', model: 'preset:balanced', trigger: { type: 'watch', source: { type: 'slack', every: 2 } } }); return 1`); await sleep(250);
+      e = await ed();
+      t.check('a handover can bring the model: a preset…', e.acctValue === 'personal' && e.model === 'preset:balanced', e);
+      await b.eval(`rtDlg.close(); Routines.edit(null, { name: 'Triage', cwd: ${JSON.stringify(tavern)}, prompt: 'Triage it.', account: 'codex', model: 'gpt-6', effort: 'high', trigger: { type: 'watch', source: { type: 'slack', every: 2 } } }); return 1`); await sleep(250);
+      e = await ed();
+      t.check('…or a model and its effort', e.acctValue === 'codex' && e.model === 'gpt-6' && e.effort === 'high', e);
+      await b.eval(`rtDlg.close(); Routines.edit(null, { name: 'Triage', cwd: ${JSON.stringify(tavern)}, prompt: 'Triage it.', account: 'codex:codex', model: 'gpt-6-mini', trigger: { type: 'watch', source: { type: 'slack', every: 2 } } }); return 1`); await sleep(250);
+      e = await ed();
+      t.check('…and can name who as the shared picker does', e.acctValue === 'codex' && e.model === 'gpt-6-mini', e);
+      await b.eval(`rtDlg.close(); Routines.edit(null, { name: 'Triage', cwd: ${JSON.stringify(tavern)}, prompt: 'Triage it.', account: 'claude:room', model: 'preset:quick', trigger: { type: 'watch', source: { type: 'slack', every: 2 } } }); return 1`); await sleep(250);
+      e = await ed();
+      t.check('“most room” starts as the account you’re on (a routine runs as one account)', e.acctValue === before.cur && e.model === 'preset:quick', e);
+      await b.eval(`rtDlg.close(); return 1`);
+      // Queue a task's "When something new comes in…" still hands over to the editor, filled in.
+      await b.eval(`openTaskDialog(${JSON.stringify(tavern)}); tkWhen.value = 'watch'; tkWhen.dispatchEvent(new Event('change', { bubbles: true })); tkText.value = 'Triage the new bug reports\\nand label them'; return 1`); await sleep(150);
+      await b.eval(`document.getElementById('tkGo').click(); return 1`); await sleep(400);
+      const hand = await b.eval(`return { open: rtDlg.open, task: taskDlg.open, name: rtName.value, prompt: rtPrompt.value, cwd: rtCwd.value, acct: rtAcct.value, valid: [...rtAcct.options].some(o => o.value === rtAcct.value), watch: rtDlg.querySelector('[data-rte-kind="watch"]').classList.contains('on'), model: rtModel.value }`);
+      t.check('Queue a task’s “When something new comes in…” still fills the editor', hand.open && !hand.task && hand.name === 'Triage the new bug reports' && /label them/.test(hand.prompt) && hand.cwd === tavern && hand.valid && hand.watch && hand.model === '', hand);
+      await b.eval(`rtDlg.close(); return 1`);
     },
   },
   {
