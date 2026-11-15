@@ -73,6 +73,24 @@ test('routines: update preserves model, limit, permissionMode, and crew chat.to 
   assert.equal(updated.chat.to, 'parallel', 'crew chat.to preserved when omitted');
 });
 
+test('routines: one runs on its model and effort, kept when an editor leaves them out, until it moves to another assistant', async () => {
+  const seen = [];
+  const { dir, rt } = makeEnv({
+    startChat: async opts => { seen.push(opts); return { key: 'k-run', sessionId: 'sess-run', state: 'ready', title: opts.title, activity: {}, pending: new Map(), clients: new Set(), send: () => {} }; },
+    accountInfo: id => (id === 'main' ? { id, provider: 'claude', name: 'Main', modes: ['default', 'plan'] } : id === 'codex' ? { id, provider: 'codex', name: 'Codex', modes: ['agent', 'read-only'] } : null),
+  });
+  const daily = { type: 'schedule', schedule: { kind: 'daily', time: '03:00' } };
+  const r = rt.create({ name: 'Nightly tidy', cwd: dir, account: 'main', model: 'opus', effort: 'max', prompt: 'Tidy up.', trigger: daily });
+  assert.deepEqual([r.model, r.effort], ['opus', 'max']);
+  assert.equal(rt.create({ name: 'Odd one', cwd: dir, account: 'main', effort: 'extreme', prompt: 'x', trigger: daily }).effort, null, 'only a real effort');
+  await rt.runNow(r.id);
+  assert.deepEqual([seen[0].model, seen[0].effort], ['opus', 'max'], 'its chat starts on them');
+  const edited = rt.update(r.id, { name: 'Nightly tidy', cwd: dir, account: 'main', prompt: 'Tidy up, gently.', trigger: daily });
+  assert.deepEqual([edited.model, edited.effort], ['opus', 'max'], 'an editor that leaves them out keeps them');
+  const moved = rt.update(r.id, { name: 'Nightly tidy', cwd: dir, account: 'codex', prompt: 'Tidy up.', trigger: daily });
+  assert.deepEqual([moved.model, moved.effort], [null, null], 'on another assistant they go: its models aren’t the same');
+});
+
 test('routines: runNow reports started: false when skipped by usage limit or busy chat, and routes crew sends (R6)', async () => {
   let busy = true;
   const { dir, rt, sent } = makeEnv({

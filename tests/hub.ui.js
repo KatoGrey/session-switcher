@@ -235,9 +235,108 @@ module.exports = [
       t.check('Race: a long project name stays in its box', race.project <= race.who, race);
       t.check('Race or Split read on one line', race.picks.every(p => p.h < 44), race);
       await b.eval(`for (const d of document.querySelectorAll('dialog[open]')) d.close(); openTaskDialog(S.projects[0].cwd, ''); return 1`); await sleep(400);
-      const task = await b.eval(`const box = id => document.getElementById(id).getBoundingClientRect(); return { project: box('tkProject').right, who: box('tkWho').left }`);
+      const task = await b.eval(`const box = id => document.getElementById(id).getBoundingClientRect(); return { project: box('tkProject').right, who: box('tkWho-who').left }`);
       t.check('Queue a task: the same', task.project <= task.who, task);
       await b.eval(`for (const d of document.querySelectorAll('dialog[open]')) d.close(); return 1`);
+    },
+  },
+  {
+    name: 'queue on a model',
+    // Queue a task and Do this later pick who does it and on what with the shared picker (ui/pickwho.js), and the
+    // tasks carry the model and effort. "Most room" is left for the server to decide as each task starts.
+    async run(t) {
+      const all = ['low', 'medium', 'high', 'xhigh', 'max'];
+      const models = {
+        claude: { defaultModel: 'Opus 5.5', defaultEffort: 'high', efforts: all, models: [{ value: 'opus', label: 'Opus 5.5', note: '', efforts: all }, { value: 'sonnet', label: 'Sonnet 5.5', note: '', efforts: ['low', 'medium', 'high'] }, { value: 'haiku', label: 'Haiku 5.5', note: '', efforts: [] }] },
+        codex: { defaultModel: 'GPT-6-Astra', defaultEffort: 'medium', efforts: ['low', 'medium', 'high'], models: [{ value: 'gpt-6-astra', label: 'GPT-6-Astra', note: '', efforts: ['low', 'medium', 'high', 'xhigh'] }, { value: 'gpt-6-sol', label: 'GPT-6-Sol', note: '', efforts: ['low', 'medium'] }] },
+      };
+      const calls = [];
+      const b = await t.open({ seen: (p, u, body) => calls.push([p, body]), respond: (p, q, body) => (p === '/api/work/models' ? { body: models } : p === '/api/routines' && body && body.name ? { body: { routine: { ...body, id: 'rt-new', state: {} } } } : null) });
+      await sleep(500);
+      const tavern = demo.projects.find(x => x.name === 'Starfall Tavern').cwd;
+      const adds = () => calls.filter(([p, body]) => p === '/api/tasks' && body.action === 'add').map(([, body]) => body.task);
+      const pick = (id, v) => b.eval(`const e = document.getElementById(${JSON.stringify(id)}); e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
+      const form = (root = 'tkWho') => b.eval(`const o = id => { const e = document.getElementById(id); return e ? [...e.options].map(x => x.value) : null; };
+        const who = document.getElementById('${root}-who');
+        return { who: o('${root}-who'), whoText: [...who.options].map(x => x.textContent), picked: who.value, model: o('${root}-model'), effort: o('${root}-effort'), labels: [...document.querySelectorAll('#${root} label')].map(l => l.firstChild.textContent) }`);
+      const queue = async text => { await b.eval(`document.getElementById('tkText').value = ${JSON.stringify(text)}; return 1`); await b.clickOn('#tkGo'); await sleep(500); return adds().pop(); };
+
+      await b.eval(`openTaskDialog(${JSON.stringify(tavern)}); return 1`); await sleep(400);
+      let f = await form();
+      t.check('Queue a task offers the shared choices: who, then the model (as last time, the presets, every model)', f.labels.join() === 'Who,Model' && f.who[0] === 'claude:room' && ['claude:studio', 'claude:personal', 'codex:codex'].every(v => f.who.includes(v)) && f.model.slice(0, 5).join() === ',preset:quick,preset:balanced,preset:deep,preset:max' && ['opus', 'sonnet', 'haiku'].every(v => f.model.includes(v)) && !f.effort, f);
+      t.check('it starts as whichever account has the most room when it starts, saying who that is now', f.picked === 'claude:room' && f.whoText[0] === 'Claude · whichever has the most room when it starts (now Personal, 73% left)', f.whoText);
+      const fit = await b.eval(`const d = document.getElementById('taskDlg').getBoundingClientRect(); return [...document.querySelectorAll('#tkWho select')].map(s => { const r = s.getBoundingClientRect(), l = s.closest('label').getBoundingClientRect(); return r.left >= d.left && r.right <= d.right && r.right <= l.right + 1; })`);
+      t.check('its fields sit in the dialog’s grid and keep to their boxes', fit.length === 2 && fit.every(Boolean), fit);
+      await t.shot(b, 'queue');
+      await pick('tkWho-who', 'claude:studio'); await pick('tkWho-model', 'sonnet'); await sleep(100);
+      f = await form();
+      t.check('a model with a choice of effort offers it', f.labels.join() === 'Who,Model,Effort' && f.effort && f.effort.join() === ',low,medium,high', f);
+      await pick('tkWho-effort', 'high');
+      let a = await queue('Rebalance the bard’s encore.');
+      t.check('a task queued on a model and effort sends them, as the account picked', a && a.provider === 'claude' && a.accountId === 'studio' && a.model === 'sonnet' && a.effort === 'high', a);
+      const row = await b.eval(`return [...document.querySelectorAll('#queueList .task')].map(li => li.textContent.replace(/\\s+/g, ' ')).find(x => /encore/.test(x)) || ''`);
+      t.check('and the queue says what it runs on', /Claude as Studio · Sonnet 5\.5, high effort/.test(row), row);
+
+      await b.eval(`openTaskDialog(${JSON.stringify(tavern)}); return 1`); await sleep(300);
+      f = await form();
+      t.check('opened again, it starts afresh: most room, on what it used last', f.picked === 'claude:room' && (await b.eval(`return document.getElementById('tkWho-model').value`)) === '', f.picked);
+      await pick('tkWho-model', 'preset:deep');
+      a = await queue('Write the release notes.');
+      t.check('“most room” is queued as auto, for the server to decide as it starts; a preset goes as its model and effort', a && a.accountId === 'auto' && a.model === 'opus' && a.effort === 'high', a);
+      a = await (async () => { await b.eval(`openTaskDialog(${JSON.stringify(tavern)}); return 1`); await sleep(200); return queue('Sweep the TODOs.'); })();
+      t.check('“as last time” sends no model, so the chat starts on what it used last', a && a.accountId === 'auto' && !('model' in a) && !('effort' in a), a);
+      const unknown = await b.eval(`const keep = S.usage; S.usage = {}; try { openTaskDialog(${JSON.stringify(tavern)}); const s = document.getElementById('tkWho-who'); return { first: s.options[0].textContent, value: s.value, now: Who.options().some(o => o.account === 'room') }; } finally { S.usage = keep; document.getElementById('taskDlg').close(); }`);
+      t.check('with usage not known yet it’s still offered (a new chat, starting now, can’t offer it)', unknown.value === 'claude:room' && unknown.first === 'Claude · whichever has the most room when it starts' && !unknown.now, unknown);
+
+      // Codex: its own models, and the account it names.
+      await b.eval(`openTaskDialog(${JSON.stringify(tavern)}); return 1`); await sleep(200);
+      await pick('tkWho-who', 'codex:codex'); await sleep(100);
+      f = await form();
+      t.check('Codex offers its own models', f.model.includes('gpt-6-sol') && !f.model.includes('opus'), f.model);
+      await pick('tkWho-model', 'gpt-6-sol'); await pick('tkWho-effort', 'low');
+      a = await queue('Make the app icon.');
+      t.check('and a Codex task goes as that account, on that model and effort', a && a.provider === 'codex' && a.accountId === 'codex' && a.model === 'gpt-6-sol' && a.effort === 'low', a);
+
+      // When something new comes in: the routine editor takes over, and the routine runs on the model picked.
+      await b.eval(`openTaskDialog(${JSON.stringify(tavern)}); return 1`); await sleep(200);
+      await pick('tkWho-model', 'opus'); await pick('tkWho-effort', 'max');
+      await b.eval(`tkWhen.value = 'watch'; tkWhen.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('tkText').value = 'Triage the new bug reports'; document.getElementById('tkGo').click(); return 1`); await sleep(500);
+      t.check('when something new comes in, the routine editor takes over', await b.eval(`return document.getElementById('rtDlg')?.open === true && !document.getElementById('taskDlg').open`));
+      await b.eval(`document.getElementById('rtChan').value = 'C0123ABCD'; document.getElementById('rtGo').click(); return 1`); await sleep(500);
+      const rt = (calls.filter(([p, body]) => p === '/api/routines' && body && body.name).pop() || [])[1];
+      t.check('and the routine it makes runs on that model and effort', rt && rt.model === 'opus' && rt.effort === 'max' && rt.trigger.type === 'watch' && /Triage/.test(rt.prompt), rt);
+      await b.eval(`for (const d of document.querySelectorAll('dialog[open]')) d.close(); return 1`);
+
+      // Do this later: the same picker, starting with the reply's own assistant.
+      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
+      await b.eval(`document.querySelector('#cFeed .turn[data-prov="claude"] [data-c="turnmore"]').click(); [...document.querySelectorAll('#menu button')].find(x => x.textContent.includes('Do this later')).click(); return 1`); await sleep(500);
+      f = await form('ltWho');
+      t.check('Do this later picks who and on what with the same picker, starting with the reply’s assistant', f.picked === 'claude:room' && f.labels.join() === 'Who,Model' && f.model.includes('preset:deep') && f.model.includes('opus'), f);
+      await t.shot(b, 'later');
+      await b.eval(`document.getElementById('ltOwn').value = 'Add a co-op test for four bards'; document.getElementById('ltOwn').dispatchEvent(new Event('input', { bubbles: true })); return 1`);
+      await pick('ltWho-model', 'opus'); await pick('ltWho-effort', 'max');
+      await b.clickOn('#ltGo'); await sleep(800);
+      a = adds().pop();
+      t.check('and its tasks carry the model and effort, as whichever account has the most room when each starts', a && a.prompt === 'Add a co-op test for four bards' && a.provider === 'claude' && a.accountId === 'auto' && a.model === 'opus' && a.effort === 'max' && a.from && a.from.id === demo.ID['s-bard'], a);
+      const cx = await b.eval(`const t = document.createElement('div'); t.className = 'turn'; t.dataset.prov = 'codex'; openLaterDialog(t); await new Promise(r => setTimeout(r, 200)); const v = document.getElementById('ltWho-who').value; document.getElementById('laterDlg').close(); return v`);
+      t.check('from a Codex reply it starts with Codex', cx === 'codex:codex', cx);
+
+      // The look stays the dialogs' own, in every face (Imperial and Rebel too): the picker's labels and boxes read
+      // like the fields beside them.
+      const style = `const st = el => { const c = getComputedStyle(el); return [c.fontFamily, c.fontSize, c.fontWeight, c.textTransform, c.letterSpacing, c.color].join('|'); };`;
+      for (const theme of ['imperial', 'rebel', 'crimson']) {
+        await b.eval(`Look.set({ theme: '${theme}' }); return 1`); await sleep(500);
+        const q = await b.eval(`${style} openTaskDialog(${JSON.stringify(tavern)}); await new Promise(r => setTimeout(r, 200));
+          const r = { label: st(document.getElementById('tkProject').closest('label')) === st(document.querySelector('#tkWho label')), box: st(document.getElementById('tkProject')) === st(document.getElementById('tkWho-who')), wide: document.getElementById('taskDlg').scrollWidth <= document.getElementById('taskDlg').clientWidth + 1 };
+          return r`);
+        await t.shot(b, `queue-${theme}`);
+        await b.eval(`document.getElementById('taskDlg').close(); const t = document.createElement('div'); t.className = 'turn'; openLaterDialog(t); return 1`); await sleep(300);
+        const l = await b.eval(`${style} return { label: st(document.querySelector('.lt-k')) === st(document.querySelector('#ltWho label')), row: document.querySelector('#ltWho label').getBoundingClientRect().top < document.querySelector('.lt-when').getBoundingClientRect().top }`);
+        await t.shot(b, `later-${theme}`);
+        await b.eval(`document.getElementById('laterDlg').close(); return 1`);
+        t.check(`${theme}: the picker’s fields look like the dialogs’ own, and fit`, q.label && q.box && q.wide && l.label && l.row, { q, l });
+      }
+      await b.eval(`Look.reset(); return 1`);
     },
   },
   {

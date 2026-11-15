@@ -1013,6 +1013,36 @@ test('tasks: one from "Do this later" remembers the chat and reply it came from'
   assert.equal(tasks.validTask({ cwd: 'C:\\p', prompt: 'x', from: { id: '../../etc' } }, ctx).from, null, 'only a real chat id');
 });
 
+test('tasks: one carries the model and effort it starts on, and who: an account it names, or the roomiest as it starts', () => {
+  const ctx = { projectAt: () => ({ cwd: 'C:\\p', name: 'P', exists: true }), accounts: [{ id: 'main' }], codex: [{ id: 'codex' }, { id: 'codex-second' }], codexActive: 'codex-second' };
+  const t = tasks.validTask({ cwd: 'C:\\p', prompt: 'Tidy the save code', provider: 'claude', accountId: 'auto', model: ' sonnet ', effort: 'high' }, ctx);
+  assert.equal(t.accountId, 'auto', 'most room stays “auto”: decided as it starts');
+  assert.deepEqual([t.model, t.effort], ['sonnet', 'high']);
+  const junk = tasks.validTask({ cwd: 'C:\\p', prompt: 'x', model: 'opus; rm -rf /', effort: 'extreme' }, ctx);
+  assert.deepEqual([junk.model, junk.effort], [null, null], 'only names that look like a model and an effort');
+  assert.deepEqual((({ model, effort }) => [model, effort])(tasks.validTask({ cwd: 'C:\\p', prompt: 'x' }, ctx)), [null, null], 'none picked: what it used last');
+  // Codex: the account it names (the first one too), whichever has the most room, or (none named) the one in use.
+  const cx = extra => tasks.validTask({ cwd: 'C:\\p', prompt: 'x', provider: 'codex', ...extra }, ctx).accountId;
+  assert.deepEqual([cx({ accountId: 'codex' }), cx({ accountId: 'auto' }), cx({})], ['codex', 'auto', 'codex-second']);
+  assert.throws(() => cx({ accountId: 'codex-gone' }), /Codex account isn’t in the switcher/);
+  assert.equal(tasks.validTask({ cwd: 'C:\\p', prompt: 'x', provider: 'gemini', accountId: 'main', model: 'gemini-3-pro' }, ctx).accountId, 'gemini');
+  // A routine's next run keeps them.
+  const n = tasks.nextOf({ ...t, repeat: 'daily', at: new Date(Date.now() - 3600e3).toISOString(), state: 'started' });
+  assert.deepEqual([n.model, n.effort], ['sonnet', 'high']);
+  // Starting: the Codex account it names, or the one with the most room (the one in use, listed first, when they're level).
+  const u = (five, week) => ({ data: { available: true, fiveHour: { used: five }, week: { used: week } } });
+  const codex = [{ id: 'codex-second', usable: true }, { id: 'codex', usable: true }];
+  const task = { ...t, provider: 'codex', accountId: 'auto', model: 'gpt-6-sol' };
+  assert.equal(tasks.readyAccount(task, { accounts: [], codex, usage: {} }).account.id, 'codex-second', 'level: the one in use');
+  assert.equal(tasks.readyAccount(task, { accounts: [], codex, usage: { codex: u(10, 10), 'codex-second': u(80, 20) } }).account.id, 'codex', 'else the one with the most left');
+  assert.equal(tasks.readyAccount({ ...task, accountId: 'codex' }, { accounts: [], codex, usage: { codex: u(99, 10), 'codex-second': u(0, 0) } }).why, 'room', 'one it names waits for its own room');
+  assert.equal(tasks.readyAccount(task, { accounts: [], codex: codex.map(a => ({ ...a, usable: false })), usage: {} }).why, 'account', 'nobody signed in: it waits');
+  // Most room keeps to one kind of Codex account: an Ollama one (usage unknown) isn't taken for a ChatGPT one that's low.
+  const mixed = [{ id: 'codex', usable: true }, { id: 'codex-ollama', kind: 'ollama', usable: true }];
+  assert.equal(tasks.readyAccount({ ...task, model: null }, { accounts: [], codex: mixed, usage: { codex: u(80, 30) } }).account.id, 'codex', 'the kind in use');
+  assert.equal(tasks.readyAccount({ ...task, model: 'qwen3:32b' }, { accounts: [], codex: mixed, usage: {} }).account.id, 'codex-ollama', 'the kind its model is for');
+});
+
 test('background work keeps a chat from being stopped for idling; it shows, and goes when done', () => {
   const { LiveChat, idleStop } = require('../lib/chat');
   const chat = new LiveChat({ cfg: {}, account: { id: 'main', name: 'Main' }, cwd: tmp(), log: () => {} });

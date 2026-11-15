@@ -1,6 +1,7 @@
 'use strict';
-/* Queued tasks: a prompt for a project, for Claude or Codex, that starts as a new chat when its time
-   comes and an account has room (the server starts them). The hub lists them under "Queued". */
+/* Queued tasks: a prompt for a project, for Claude, Codex or Gemini, that starts as a new chat (on the model and
+   effort picked for it) when its time comes and an account has room (the server starts them). The hub lists them
+   under "Queued". */
 
 async function loadTasks() { S.tasks = (await api('/api/tasks')).tasks || []; renderQueue(); if (window.ChatUI && ChatUI.isOpen()) laterMarks(); }
 
@@ -15,15 +16,27 @@ function whenText(iso) {
 }
 const taskWaiting = t => (t.why === 'time' ? `Starts ${whenText(t.at)}`
   : t.why === 'room' ? 'Waiting for an account with room' : t.why === 'account' ? 'Waiting for a signed-in account' : 'Starting…');
+// Who it runs as: the account it started on or names, or whichever has room. (Codex names one only when there are several.)
+function taskWho(t) {
+  if (t.provider === 'gemini') return 'Gemini';
+  if (t.provider === 'codex') return codexAccts().length < 2 ? 'Codex' : t.accountName ? `Codex as ${t.accountName}` : t.accountId === 'auto' ? 'Codex, whichever account has room' : `Codex as ${(codexAcct(t.accountId) || {}).name || t.accountId}`;
+  return t.accountName || (t.accountId === 'auto' ? 'Claude, whichever account has room' : `Claude as ${(S.accounts.find(a => a.id === t.accountId) || {}).name || t.accountId}`);
+}
+// What it runs on, when that was picked: the model (by its name once the assistant's models are known) and effort.
+function taskModel(t) {
+  if (!t.model) return '';
+  const m = ((Who.listOf(t.provider) || {}).models || []).find(x => x.value === t.model);
+  return `${m ? m.label : t.model}${t.effort ? `, ${t.effort} effort` : ''}`;
+}
 function taskRow(t) {
   const first = t.prompt.split('\n').find(l => l.trim()) || t.prompt;
-  const who = t.provider === 'codex' ? 'Codex' : t.provider === 'gemini' ? 'Gemini' : t.accountName || (t.accountId === 'auto' ? 'Claude, whichever account has room' : `Claude as ${(S.accounts.find(a => a.id === t.accountId) || {}).name || t.accountId}`);
+  const who = taskWho(t), model = taskModel(t);
   const st = t.state === 'started' ? '<span class="tk-st ok">▶ Started</span>' : t.state === 'failed' ? `<span class="tk-st err" title="${esc(t.error || '')}">✕ Couldn’t start: ${esc(t.error || 'unknown error')}</span>` : `<span class="tk-st">${esc(taskWaiting(t))}</span>`;
   const btns = t.state === 'queued'
     ? `<button class="btn sm" data-act="task-start" data-id="${esc(t.id)}">Start now</button><button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Remove from the queue" title="Remove">✕</button>`
     : t.state === 'started' && t.key ? `<button class="btn sm" data-act="task-open" data-key="${esc(t.key)}">Open it</button><button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Clear" title="Clear">✕</button>`
       : `<button class="icon" data-act="task-remove" data-id="${esc(t.id)}" aria-label="Remove" title="Remove">✕</button>`;
-  return `<li class="task ${t.state}" data-task="${esc(t.id)}"><div class="tk-in"><b class="tk-p">${esc(first.slice(0, 160))}</b><small>${esc(t.folder)} · ${esc(who)}${t.from && t.from.title ? ` · <span class="tk-from" title="It starts knowing that chat’s latest messages">from “${esc(t.from.title.slice(0, 50))}”</span>` : ''}${t.repeat ? ` · <span class="tk-rep" title="A routine: each time it starts, the next one is queued">↻ ${esc(REPEAT_LABEL[t.repeat] || t.repeat)}</span>` : ''}</small>${st}</div><div class="tk-b">${btns}</div></li>`;
+  return `<li class="task ${t.state}" data-task="${esc(t.id)}"><div class="tk-in"><b class="tk-p">${esc(first.slice(0, 160))}</b><small>${esc(t.folder)} · ${esc(who)}${model ? ` · ${esc(model)}` : ''}${t.from && t.from.title ? ` · <span class="tk-from" title="It starts knowing that chat’s latest messages">from “${esc(t.from.title.slice(0, 50))}”</span>` : ''}${t.repeat ? ` · <span class="tk-rep" title="A routine: each time it starts, the next one is queued">↻ ${esc(REPEAT_LABEL[t.repeat] || t.repeat)}</span>` : ''}</small>${st}</div><div class="tk-b">${btns}</div></li>`;
 }
 function renderQueue() {
   const sec = $('secQueue'), list = $('queueList');
@@ -44,8 +57,7 @@ function taskDialog() {
       <p class="rd-intro">It starts as a new chat when its time comes and an account has room: line work up for when a limit resets, for a time, on a repeat, or for when something new comes in.</p>
       <div class="tk-grid">
         <label>Project<select id="tkProject"></select></label>
-        <label>Who<select id="tkWho"></select></label>
-        <label id="tkAcctWrap">Account<select id="tkAcct"></select></label>
+        <div class="who-fields" id="tkWho"></div>
         <label>When<select id="tkWhen"><option value="now">As soon as there’s room</option><option value="at">Not before…</option><option value="watch">When something new comes in…</option></select></label>
         <label id="tkAtWrap" hidden>Time<input type="datetime-local" id="tkAt"></label>
         <label id="tkRepWrap" hidden title="A repeating task becomes a routine (on the Routines page)">Repeat<select id="tkRepeat"><option value="">Just once</option><option value="daily">Every day</option><option value="weekdays">Every weekday</option><option value="weekly">Every week</option></select></label>
@@ -61,15 +73,15 @@ function taskDialog() {
     if (e.target.closest('[data-tk="signin"]')) openSetupAt('st-health');
   });
   d.addEventListener('change', e => {
-    if (e.target.id === 'tkWho') { $('tkAcctWrap').hidden = e.target.value !== 'claude'; taskNote(); }
     if (e.target.id === 'tkWhen') { $('tkAtWrap').hidden = $('tkRepWrap').hidden = e.target.value !== 'at'; $('tkGo').textContent = e.target.value === 'watch' ? 'Next: what to watch' : 'Queue it'; }
     if (e.target.id === 'tkFrom' && e.target.value) {
       const pr = S.prompts.find(x => x.id === e.target.value);
       const p = S.projects.find(x => x.cwd === $('tkProject').value);
       if (pr) {
         $('tkText').value = fillPrompt(pr.text, p ? p.name : '');
-        if (pr.provider === 'codex' && codexReady()) { $('tkWho').value = 'codex'; $('tkAcctWrap').hidden = true; }
-        else if (pr.provider === 'gemini' && geminiReady()) { $('tkWho').value = 'gemini'; $('tkAcctWrap').hidden = true; }
+        // A prompt written for Codex or Gemini: that assistant does it, if it can.
+        const who = pr.provider === 'codex' || pr.provider === 'gemini' ? Who.pickFor(pr.provider, { later: true }) : null;
+        if (who) taskWhoMount({ who });
         taskNote();
       }
       e.target.value = '';
@@ -77,27 +89,51 @@ function taskDialog() {
   });
   $('tkForm').addEventListener('submit', wrap(async e => {
     e.preventDefault();
-    const when = $('tkWhen').value;
-    // When something new comes in (a Slack channel, a command's output): that's a routine's watch, so the routine
-    // editor takes over, with the project, who and what already filled in.
-    if (when === 'watch') {
-      const text = $('tkText').value, prov = $('tkWho').value;
+    if ($('tkGo').disabled) return undefined;
+    $('tkGo').disabled = true;
+    try {
+      const when = $('tkWhen').value, run = await taskRunOf($('tkWho'));
+      // When something new comes in (a Slack channel, a command's output): that's a routine's watch, so the routine
+      // editor takes over, with the project, who, model and what already filled in. (A routine runs as one account:
+      // "whichever has the most room" leaves it to the editor, or is the Codex account in use.)
+      if (when === 'watch') {
+        const text = $('tkText').value;
+        const account = run.provider === 'gemini' ? 'gemini' : run.accountId !== 'auto' ? run.accountId : run.provider === 'codex' ? (S.codex && S.codex.id) || null : null;
+        d.close();
+        return Routines.edit(null, { name: (text.split('\n').find(l => l.trim()) || 'New routine').trim().slice(0, 60), cwd: $('tkProject').value, prompt: text,
+          account, provider: run.provider, model: run.model || null, effort: run.effort || null, trigger: { type: 'watch', source: { type: 'slack', every: 2 } } });
+      }
+      const task = { cwd: $('tkProject').value, ...run, prompt: $('tkText').value, when, at: when === 'at' && $('tkAt').value ? new Date($('tkAt').value).toISOString() : null, repeat: when === 'at' ? $('tkRepeat').value || null : null };
+      const r = await api('/api/tasks', { action: 'add', task });
+      S.tasks = r.tasks; renderQueue();
       d.close();
-      return Routines.edit(null, { name: (text.split('\n').find(l => l.trim()) || 'New routine').trim().slice(0, 60), cwd: $('tkProject').value, prompt: text,
-        account: prov === 'claude' ? ($('tkAcct').value === 'auto' ? null : $('tkAcct').value) : prov === 'codex' ? (S.codex && S.codex.id) || null : 'gemini', trigger: { type: 'watch', source: { type: 'slack', every: 2 } } });
-    }
-    const task = { cwd: $('tkProject').value, provider: $('tkWho').value, accountId: $('tkAcct').value, prompt: $('tkText').value, when, at: when === 'at' && $('tkAt').value ? new Date($('tkAt').value).toISOString() : null, repeat: when === 'at' ? $('tkRepeat').value || null : null };
-    const r = await api('/api/tasks', { action: 'add', task });
-    S.tasks = r.tasks; renderQueue();
-    d.close();
-    if (r.routine) { toast(`Made a routine: ${r.routine.name}, ${(r.routine.triggerText || 'on its schedule').toLowerCase()}. It’s on the Routines page.`, 6000); return; }
-    toast(r.task.when === 'at' ? `Queued. It starts ${whenText(r.task.at)}, once an account has room.` : 'Queued. It starts as soon as an account has room.', 5000);
+      if (r.routine) { toast(`Made a routine: ${r.routine.name}, ${(r.routine.triggerText || 'on its schedule').toLowerCase()}. It’s on the Routines page.`, 6000); return undefined; }
+      toast(r.task.when === 'at' ? `Queued. It starts ${whenText(r.task.at)}, once an account has room.` : 'Queued. It starts as soon as an account has room.', 5000);
+      return undefined;
+    } finally { $('tkGo').disabled = false; }
   }));
   return d;
 }
+// Who does it and on what: the shared picker (pickwho.js), its fields in the dialog's grid. "Whichever has the most
+// room" is decided as the task starts.
+const taskWhoMount = value => Who.mount($('tkWho'), { value, later: true, onChange: taskNote });
+// What a queue picker says, as a task's fields: { provider, accountId ('auto': whichever has the most room when it
+// starts), model, effort }. A preset is named as its model, from the assistant's list of models (fetched if need be).
+async function taskRunOf(el) {
+  let w = Who.read(el);
+  if (w && w.preset) { await Who.loadModels(); w = Who.read(el); }
+  if (!w) throw new Error('Choose who should do it.');
+  if (w.preset) {
+    const p = ((typeof PRESETS === 'object' && PRESETS[w.provider]) || []).find(x => x.id === w.preset);
+    throw new Error(`Couldn’t tell which of ${Who.nameOf(w.provider)}’s models ${p ? p.name : 'that'} is. Pick a model, or “As last time”.`);
+  }
+  return { provider: w.provider, accountId: w.account, ...(w.model ? { model: w.model } : {}), ...(w.effort ? { effort: w.effort } : {}) };
+}
 // Nobody signed in can start it: it still queues, and waits for a sign-in. The dialog says so, with where to sign in.
 function taskNote() {
-  const who = $('tkWho').value, ready = who === 'codex' ? codexReady() : who === 'gemini' ? geminiReady() : S.accounts.some(canLaunch);
+  const w = Who.read($('tkWho')) || { provider: 'claude', account: 'auto' }, who = w.provider;
+  const any = (list, ok) => list.some(x => ok(x) && (w.account === 'auto' || x.id === w.account));
+  const ready = who === 'codex' ? any(codexAccts(), x => x.signedIn) : who === 'gemini' ? geminiReady() : any(S.accounts, canLaunch);
   $('tkNote').hidden = ready;
   if (!ready) $('tkNote').innerHTML = `${who === 'claude' ? 'No Claude account is signed in yet, so it waits until one is.' : `${esc(PROV_NAME[who] || who)} isn’t signed in yet, so it waits until it is.`} <button type="button" class="linkish" data-tk="signin">Sign in</button>`;
 }
@@ -107,11 +143,11 @@ function openTaskDialog(cwd = null, text = '') {
   if (!projects.length) { toast('A task starts as a chat in a project, and there’s no project yet.', 7000, { label: 'New project', run: openNewProject }); return; }
   const pick = cwd || (S.view === 'folder' ? S.folder : null) || (projects[0] && projects[0].cwd);
   $('tkProject').innerHTML = projects.map(p => `<option value="${esc(p.cwd)}"${p.cwd === pick ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
-  $('tkWho').innerHTML = `<option value="claude">Claude</option>${S.codex && S.codex.enabled ? `<option value="codex"${codexReady() ? '' : ' disabled'}>Codex</option>` : ''}${S.gemini && S.gemini.enabled ? `<option value="gemini"${geminiReady() ? '' : ' disabled'}>Gemini</option>` : ''}`;
-  $('tkAcct').innerHTML = `<option value="auto">Whichever has the most room</option>${S.accounts.filter(canLaunch).map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}`;
+  // Claude, as whichever account has the most room when it starts, on the model it used last here, unless you pick.
+  taskWhoMount({ who: 'claude:room' });
   $('tkFrom').innerHTML = `<option value="">Start from a saved prompt…</option>${S.prompts.map(pr => `<option value="${esc(pr.id)}">${esc(pr.title)}</option>`).join('')}`;
   $('tkFrom').hidden = !S.prompts.length;
-  $('tkWhen').value = 'now'; $('tkGo').textContent = 'Queue it'; $('tkAtWrap').hidden = true; $('tkRepWrap').hidden = true; $('tkRepeat').value = ''; $('tkAcctWrap').hidden = false; $('tkText').value = '';
+  $('tkWhen').value = 'now'; $('tkGo').textContent = 'Queue it'; $('tkAtWrap').hidden = true; $('tkRepWrap').hidden = true; $('tkRepeat').value = ''; $('tkText').value = '';
   taskNote();
   const soon = new Date(Date.now() + 3600e3); soon.setMinutes(0, 0, 0);
   $('tkAt').value = new Date(soon - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -129,6 +165,6 @@ async function taskAction(act, b) {
   const r = await api('/api/tasks', { action: act === 'task-start' ? 'start' : 'remove', id: b.dataset.id });
   S.tasks = r.tasks; renderQueue();
   if (act === 'task-start') toast('Started. It’s under At work.', 3000);
-  else if (t && t.state === 'queued' && !t.repeat) offerUndo('Removed from the queue.', async () => { const u = await api('/api/tasks', { action: 'add', task: { cwd: t.cwd, provider: t.provider, accountId: t.accountId, prompt: t.prompt, when: t.when, at: t.at, from: t.from || null } }); S.tasks = u.tasks; renderQueue(); });
+  else if (t && t.state === 'queued' && !t.repeat) offerUndo('Removed from the queue.', async () => { const u = await api('/api/tasks', { action: 'add', task: { cwd: t.cwd, provider: t.provider, accountId: t.accountId, model: t.model || null, effort: t.effort || null, prompt: t.prompt, when: t.when, at: t.at, from: t.from || null } }); S.tasks = u.tasks; renderQueue(); });
   return undefined;
 }
