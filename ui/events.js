@@ -29,7 +29,7 @@ $('nav').addEventListener('keydown', e => {
 });
 $('nav').addEventListener('input', e => { if (e.target.id === 'navQ') { S.navQ = e.target.value; renderNav(); } });
 $('newChat').addEventListener('click', () => openNewChat());
-$('skipLink').addEventListener('click', e => { e.preventDefault(); const c = window.ChatUI && ChatUI.isOpen() ? $('cText') : $('page'); c.focus(); });
+$('skipLink').addEventListener('click', e => { e.preventDefault(); const c = window.ChatUI && ChatUI.isOpen() ? Shell.intoChat() : $('page'); if (c) c.focus(); });
 $('brand').addEventListener('click', () => go('hub'));
 $('pulse').addEventListener('click', () => hubTo(awaiting().length ? 'secAwait' : 'secWork'));
 $('usechip').addEventListener('click', e => { e.stopPropagation(); return $('acctPop').hidden ? openAcctPop() : closeAcctPop(); });

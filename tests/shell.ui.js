@@ -185,4 +185,129 @@ module.exports = [{
     await phone.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 900, deviceScaleFactor: 1, mobile: false }); await sleep(250);
     t.check('Fold-sized chat still keeps controls inside its pane', await phone.eval(`return document.documentElement.scrollWidth <= innerWidth + 1 && document.getElementById('cSend').getBoundingClientRect().right <= innerWidth`));
   },
+}, {
+  name: 'setup scrolls',
+  // Setup scrolls in its body only, in both layouts and at a bigger interface size. With more Health lines than the
+  // demo has (as on a real PC), This PC and connections' "(set up)" words for a screen reader came below the dialog's
+  // edge, reached out of the body to the dialog and gave it a second scroll bar: the wheel slid the head away and left
+  // a blank space under the sheet. The jump list and the group tabs stay at the top while it scrolls, uncut.
+  async run(t) {
+    const b = await t.open({ width: 1280, height: 1000, respond: responder() });
+    await sleep(600);
+    // Fourteen more Health lines, as on a PC with several accounts and assistants.
+    const open = next => b.eval(`Shell.setNext(${next}); await openSetup(); await new Promise(r => setTimeout(r, 900));
+      const j = Places.health; renderSetup({ ...j, checks: [...j.checks, ...Array.from({ length: 14 }, (_, i) => ({ id: 'more-' + i, state: 'ok', label: 'Account ' + (i + 1), detail: 'Signed in, with room this week.' }))] });
+      if (${next}) showSetupGroup('health', false); return 1`);
+    // Anything placed (position: absolute) inside the body that isn't kept to it.
+    const loose = () => b.eval(`const body = document.getElementById('setupBody');
+      return [...body.querySelectorAll('*')].filter(el => el.getClientRects().length && getComputedStyle(el).position === 'absolute' && !(el.offsetParent && (el.offsetParent === body || body.contains(el.offsetParent)))).map(el => el.tagName.toLowerCase() + '.' + el.className)`);
+    const state = () => b.eval(`const d = document.getElementById('setup'), body = document.getElementById('setupBody'), head = d.querySelector('.setup-head'), top = body.getBoundingClientRect().top;
+      const bar = body.querySelector('.setup-toc, .st-groups'), first = bar && bar.querySelector('a, [role="tab"]');
+      return { dialogScroll: d.scrollHeight - d.clientHeight, dialogAt: d.scrollTop, headIn: head.getBoundingClientRect().top >= d.getBoundingClientRect().top - 1,
+        end: body.scrollTop + body.clientHeight >= body.scrollHeight - 2, bodyAt: Math.round(body.scrollTop),
+        bar: bar ? Math.round(bar.getBoundingClientRect().top - top) : null, firstIn: first ? first.getBoundingClientRect().top >= top - 0.5 : null }`);
+    const wheel = async dy => {
+      const p = await b.eval(`const q = document.getElementById('setupBody').getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]`);
+      for (let i = 0; i < 30; i++) { await b.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: p[0], y: p[1], deltaX: 0, deltaY: dy }); await sleep(30); }
+      await sleep(700);
+    };
+    for (const next of [false, true]) {
+      for (const ui of [100, 120]) {
+        const tag = `${next ? 'new layout' : 'as before'}, ${ui}%`;
+        await b.eval(`Look.set({ ui: ${ui} }); return 1`); await sleep(200);
+        await open(next);
+        let gone = await loose();
+        if (next) for (const k of await b.eval(`return [...document.querySelectorAll('#setupBody [data-sg-tab]')].map(x => x.dataset.sgTab)`)) { await b.eval(`showSetupGroup(${JSON.stringify(k)}, false); return 1`); gone = gone.concat(await loose()); }
+        if (next) await b.eval(`showSetupGroup('health', false); return 1`);
+        t.check(`${tag}: nothing inside Setup reaches out of its body`, !gone.length, gone);
+        let s = await state();
+        t.check(`${tag}: the dialog has no scroll of its own`, s.dialogScroll <= 1, s);
+        await wheel(400);
+        s = await state();
+        t.check(`${tag}: the wheel takes the body to its end, and the dialog and its head stay put`, s.end && s.dialogAt === 0 && s.headIn, s);
+        t.check(`${tag}: the ${next ? 'group tabs stay' : 'jump list stays'} at the top, uncut`, s.bar !== null && s.bar >= -1 && s.bar <= 7 && s.firstIn, s);
+        await t.shot(b, `${next ? 'new' : 'before'}-${ui}-scrolled`);
+        await wheel(-400);
+        s = await state();
+        t.check(`${tag}: and back to the top`, s.bodyAt === 0 && s.dialogAt === 0 && s.headIn, s);
+        await b.eval(`document.getElementById('setup').close(); return 1`); await sleep(350);
+      }
+    }
+    await b.eval(`Look.set({ ui: 100 }); Shell.setNext(false); return 1`);
+
+    // The dialogs Setup opens keep their insides to their scrolling bodies too (Subagents has a hidden "Name" on
+    // each card).
+    for (const [name, opener, id] of [['Subagents', 'openSubagents()', 'subsDlg'], ['Connections', 'openConnections()', 'connDlg'], ['Rules and tools', 'openRules()', 'rulesDlg']]) {
+      const r = await b.eval(`await ${opener}; await new Promise(r => setTimeout(r, 1200)); const d = document.getElementById(${JSON.stringify(id)}) || document.querySelector('dialog[open]');
+        if (!d || !d.open) return { open: false };
+        const scroller = el => { for (let p = el.parentElement; p && p !== d; p = p.parentElement) if (/auto|scroll|hidden/.test(getComputedStyle(p).overflowY)) return p; return null; };
+        const loose = [...d.querySelectorAll('*')].filter(el => { if (!el.getClientRects().length || getComputedStyle(el).position !== 'absolute') return false; const s = scroller(el); return s && !(el.offsetParent && (el.offsetParent === s || s.contains(el.offsetParent))); }).map(el => el.tagName.toLowerCase() + '.' + el.className);
+        const out = { open: true, id: d.id, loose, dialogScroll: d.scrollHeight - d.clientHeight }; d.close(); return out`);
+      t.check(`${name}: nothing inside reaches out of its scrolling body`, r.open && !r.loose.length && r.dialogScroll <= 1, r);
+      await sleep(300);
+    }
+
+    // A phone: Setup fills the screen, the body scrolls to its last button and the dialog doesn't move.
+    const phone = await t.open({ width: 390, height: 844, mobile: true, respond: responder() });
+    await sleep(600);
+    await phone.eval(`await openSetup(); await new Promise(r => setTimeout(r, 900)); const body = document.getElementById('setupBody'); body.scrollTop = body.scrollHeight; return 1`); await sleep(400);
+    const p = await phone.eval(`const d = document.getElementById('setup'), body = document.getElementById('setupBody'), last = [...body.querySelectorAll('.app-actions .btn')].pop();
+      return { dialogScroll: d.scrollHeight - d.clientHeight, dialogAt: d.scrollTop, end: body.scrollTop + body.clientHeight >= body.scrollHeight - 2, lastIn: !!last && last.getBoundingClientRect().bottom <= innerHeight + 1 }`);
+    t.check('phone: the body scrolls to its last button and the dialog stays put', p.dialogScroll <= 1 && p.dialogAt === 0 && p.end && p.lastIn, p);
+
+    // Ctrl+K's list keeps its lines' hidden words to itself as well.
+    await b.eval(`openPalette(); return 1`); await sleep(500);
+    const pal = await b.eval(`const list = document.getElementById('palList'); return [...list.querySelectorAll('.sr')].filter(el => el.getClientRects().length && !(el.offsetParent === list || list.contains(el.offsetParent))).length`);
+    t.check('Ctrl+K: nothing in its list reaches out of it', pal === 0, pal);
+    await b.eval(`closePalette(); return 1`);
+  },
+}, {
+  name: 'what a chat covers',
+  // What an open chat sits over can't be reached with Tab or a screen reader: the page under it, and the sidebar
+  // unless it's beside the chat (the new layout). On a phone the chat's list of open chats is slid off to the side
+  // until its button shows it, and can't be reached until then; Tab stays in the chat.
+  async run(t) {
+    const id = JSON.stringify(demo.ID['s-bard']);
+    const b = await t.open({ width: 1440, height: 900, state: 'busy', respond: responder() });
+    await sleep(600);
+    const st = () => b.eval(`return { page: document.getElementById('page').inert, nav: document.getElementById('nav').inert, rail: document.getElementById('cRail').inert, skip: document.getElementById('skipLink').textContent }`);
+    for (const next of [false, true]) {
+      const tag = next ? 'new layout' : 'as before';
+      await b.eval(`Shell.setNext(${next}); await ChatUI.open({ sessionId: ${id} }); return 1`); await sleep(1200);
+      let s = await st();
+      t.check(`${tag}: the page under a chat can't be reached`, s.page && /conversation/.test(s.skip), s);
+      t.check(next ? `${tag}: the sidebar beside the chat can` : `${tag}: nor the sidebar it covers`, s.nav === !next, s);
+      t.check(`${tag}: the chat's own list can`, !s.rail, s);
+      await b.eval(`toggleFocus(true); return 1`); await sleep(300);
+      t.check(`${tag}: focus mode tucks the list away`, (await st()).rail);
+      await b.eval(`toggleFocus(false); ChatUI.close(); return 1`); await sleep(600);
+      s = await st();
+      t.check(`${tag}: closed, everything can be reached again`, !s.page && !s.nav && /page/.test(s.skip), s);
+      // Opened from a button on the page, focus goes into the chat, not lost with the page; and going somewhere else
+      // from the chat lands on that page.
+      await b.eval(`await go('work'); return 1`); await sleep(500);
+      await b.eval(`const btn = document.querySelector('#page button'); btn.focus(); await ChatUI.open({ sessionId: ${id} }); return 1`); await sleep(1200);
+      t.check(`${tag}: opened from the page, focus is in the chat`, await b.eval(`return document.getElementById('chat').contains(document.activeElement)`), await b.eval(`return document.activeElement.tagName + '#' + document.activeElement.id`));
+      await b.eval(`await go('hub'); return 1`); await sleep(700);
+      t.check(`${tag}: going to another page from a chat lands focus on it`, await b.eval(`return !ChatUI.isOpen() && !document.getElementById('page').inert && document.activeElement === document.getElementById('page')`), await b.eval(`return document.activeElement.tagName + '#' + document.activeElement.id`));
+      // A chat you only watch has no message box: focus still goes into it, and so does the skip link.
+      await b.eval(`document.querySelector('#page button').focus(); await ChatUI.watch({ sessionId: ${id}, source: 'terminal' }); return 1`); await sleep(1200);
+      const w = await b.eval(`const inChat = () => document.getElementById('chat').contains(document.activeElement); const a = inChat(); document.body.focus(); document.getElementById('skipLink').click(); return { compose: !!document.getElementById('cText').getClientRects().length, opened: a, skip: inChat(), at: document.activeElement.tagName + '.' + document.activeElement.className }`);
+      t.check(`${tag}: watching a chat (no message box), focus and the skip link go into it`, !w.compose && w.opened && w.skip, w);
+      await b.eval(`ChatUI.close(); return 1`); await sleep(500);
+    }
+    await b.eval(`Shell.setNext(false); return 1`);
+
+    const phone = await t.open({ width: 390, height: 844, mobile: true, state: 'busy', respond: responder() });
+    await sleep(600);
+    await phone.eval(`await ChatUI.open({ sessionId: ${id} }); return 1`); await sleep(1200);
+    t.check('phone: the open chats list is out of reach while slid away', await phone.eval(`return document.getElementById('cRail').inert && document.getElementById('page').inert`));
+    const where = [];
+    for (let i = 0; i < 40; i++) { await phone.key('Tab', 'Tab', 9); where.push(await phone.eval(`const a = document.activeElement; return a.closest('#cRail') ? 'list' : a.closest('#page') ? 'page' : a.closest('#nav') ? 'sidebar' : 'ok'`)); }
+    t.check('phone: Tab stays out of the page, the sidebar and the hidden list', !where.some(w => w !== 'ok'), where.join(' '));
+    await phone.clickOn('#chat [data-c="rail"]'); await sleep(400);
+    t.check('phone: its button shows the list, and it can be reached', await phone.eval(`return document.getElementById('chat').classList.contains('show-rail') && !document.getElementById('cRail').inert`));
+    await phone.eval(`document.querySelector('#cRail .rail-back, #cRail button').focus(); document.querySelector('#chat [data-c="rail"]').click(); return 1`); await sleep(400);
+    t.check('phone: slid away again with focus in it, focus goes back to its button', await phone.eval(`return document.getElementById('cRail').inert && document.activeElement === document.querySelector('#chat [data-c="rail"]')`));
+  },
 }];

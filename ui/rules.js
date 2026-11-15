@@ -88,7 +88,7 @@ function renderRules() {
   box.innerHTML = `${scope}
     <p class="rd-intro">${reads} Write your rules once: they’re saved to ${targets.length > 2 || !rulesGemini() ? whom : 'both files'}, so ${whom} work the same way${RulesUI.cwd ? ' in this project' : ' everywhere'}.</p>
     <p class="rd-state" id="rdState"></p>${extra}
-    <textarea id="rdText" class="rd-text" spellcheck="false" placeholder="${RulesUI.cwd ? 'How this project works: how to run and test it, conventions, what not to touch…' : 'How you like to work, in every project: style, tone, tools, what to always or never do…'}"></textarea>
+    <textarea id="rdText" class="rd-text" spellcheck="false" aria-label="${RulesUI.cwd ? 'This project’s rules' : 'Your rules for every project'}" placeholder="${RulesUI.cwd ? 'How this project works: how to run and test it, conventions, what not to touch…' : 'How you like to work, in every project: style, tone, tools, what to always or never do…'}"></textarea>
     <div class="d-row"><span class="rd-paths">${targets.map(k => esc(r[k].path)).join('<br>')}</span><span class="spacer"></span><button class="btn" data-rd="close">Close</button><button class="btn prime" data-rd="save">Save to ${targets.length > 2 ? 'all three' : 'both'}</button></div>`;
   // Back from the Tools tab: what you were writing is still there, unsaved.
   const draft = RulesUI.draft; RulesUI.draft = null;

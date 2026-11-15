@@ -8,15 +8,34 @@ const Shell = (() => {
   let returnPoint = null;
   const location = () => S.view === 'folder' ? (S.projects.find(p => p.cwd === S.folder)?.name || 'Project')
     : ({ hub: 'The hub', work: 'Your work', recent: 'Recent chats', search: 'Search results', routines: 'Routines', aide: 'Companion' }[S.view] || 'The hub');
+  // Where focus goes in an open chat: its message box, or (a chat you're only watching has none) the first button in
+  // its header.
+  const intoChat = () => [$('cText'), ...$('chat').querySelectorAll('.c-head button')].find(x => x && x.getClientRects().length && !x.closest('[inert]')) || null;
   function sync() {
     const wide = desktop.matches, compact = standard() && wide && collapsed;
     const inChat = !!(window.ChatUI && ChatUI.isOpen());
     const chatFocus = inChat && $('chat').classList.contains('focus');
     document.body.classList.toggle('nav-collapsed', compact);
     const open = wide ? !compact : document.body.classList.contains('nav-open');
-    const nav = $('nav'), toggle = $('navToggle');
-    nav.inert = !open;
-    if ($('cRail')) $('cRail').inert = compact || chatFocus;
+    const nav = $('nav'), toggle = $('navToggle'), chat = $('chat'), rail = $('cRail');
+    // What an open chat sits over can't be reached with Tab or a screen reader either: the page under it, and the
+    // sidebar unless it's beside the chat (the new layout). (Not Companion's own window, where the chat is all there is.)
+    const covers = inChat && !document.body.matches('.aide-panel, .aide-pane');
+    // (Where they're laid out, not where an opening chat's animation has it for the moment.)
+    const navCovered = covers && open && nav.offsetWidth > 0 && chat.offsetLeft < nav.offsetLeft + nav.offsetWidth - 1;
+    const was = document.activeElement;
+    nav.inert = !open || navCovered;
+    $('page').inert = covers;
+    $('skipLink').textContent = inChat ? 'Skip to the conversation' : 'Skip to the page';   // (where it goes: Shell.intoChat)
+    // Focus on what the chat has just covered goes into the chat, not lost.
+    if (covers && was && ($('page').contains(was) || (navCovered && nav.contains(was)))) intoChat()?.focus({ preventScroll: true });
+    // The chat's own list: tucked away in focus mode or with the sidebar collapsed, and on a narrow screen slid off
+    // to the side until its button shows it. (Focus in it goes to that button, or into the chat.)
+    if (rail) {
+      const away = compact || chatFocus || (!wide && !chat.classList.contains('show-rail'));
+      if (away && rail.contains(was)) [chat.querySelector('[data-c="rail"]'), intoChat()].find(x => x && x.getClientRects().length)?.focus({ preventScroll: true });
+      rail.inert = away;
+    }
     toggle.setAttribute('aria-expanded', String(open && !chatFocus));
     toggle.setAttribute('aria-label', wide && standard() ? (compact || chatFocus ? 'Show sidebar' : 'Hide sidebar') : (open ? 'Hide folders and views' : 'Show folders and views'));
     toggle.title = wide && standard() ? (compact || chatFocus ? 'Show sidebar' : 'Hide sidebar') : 'Folders and views';
@@ -46,6 +65,12 @@ const Shell = (() => {
     el.focus({ preventScroll: true }); window.scrollTo({ top: p.y, behavior: 'instant' });
   }
   desktop.addEventListener('change', () => { document.body.classList.remove('nav-open'); sync(); });
+  // A chat opening or closing, its list sliding in or out, and focus mode change what can be reached.
+  let chatWas = '';
+  new MutationObserver(() => {
+    const c = $('chat'), now = `${c.hidden}|${c.classList.contains('show-rail')}|${c.classList.contains('focus')}`;
+    if (now !== chatWas) { chatWas = now; sync(); }
+  }).observe($('chat'), { attributes: true, attributeFilter: ['class', 'hidden'] });
   document.addEventListener('lookchange', sync);
   document.addEventListener('click', e => {
     const view = e.target.closest('[data-shell-view]');
@@ -66,7 +91,7 @@ const Shell = (() => {
     sync();
   }
   document.documentElement.classList.toggle('layout-next', next());
-  return { sync, toggle, location, captureReturn, restoreReturn, canCollapse: () => desktop.matches && standard(), next, setNext };
+  return { sync, toggle, location, captureReturn, restoreReturn, canCollapse: () => desktop.matches && standard(), next, setNext, intoChat };
 })();
 function setNavOpen(on, restoreFocus = false) {
   document.body.classList.toggle('nav-open', on);

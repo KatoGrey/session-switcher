@@ -436,6 +436,12 @@ dialog.wide{width:min(780px,calc(calc(100vw / var(--look-ui, 1)) - 32px));paddin
 .setup-head{display:flex;align-items:center;justify-content:space-between;padding:20px 24px 14px;border-bottom:1px solid var(--seam)}
 .setup-head h3{margin:0}
 .setup-body{padding:6px 24px 26px;overflow-y:auto;max-height:calc(calc(100vh / var(--look-ui, 1)) - 120px)}
+/* Setup scrolls in its body only. Anything placed inside the body (a line's "(set up)" for a screen reader, say)
+   keeps to it, instead of reaching out to the dialog and giving it a second scroll bar that slides the head away;
+   and the dialog never scrolls itself: the head stays put and the body has the room that's left. */
+#setup[open]{display:flex;flex-direction:column;overflow:hidden}
+#setup > .setup-head{flex:none}
+#setupBody{position:relative;flex:1 1 auto;min-height:0;overscroll-behavior:contain}
 .checks{list-style:none;margin:10px 0 6px;padding:0}
 .check{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--seam)}
 .check .st{width:9px;height:9px;border-radius:50%;background:var(--ash-2);justify-self:center}
@@ -471,7 +477,7 @@ dialog.wide{width:min(780px,calc(calc(100vw / var(--look-ui, 1)) - 32px));paddin
 .pal-in .glyph{color:var(--crimson);font-size:15px}
 .pal-in input{flex:1;background:none;border:0;outline:none;padding:17px 0;font:italic 19px var(--f-body);color:var(--parch)}
 .pal-in input::placeholder{color:var(--ash-2)}
-.pal-list{list-style:none;margin:0;padding:6px;max-height:min(460px,calc(58vh / var(--look-ui, 1)));overflow-y:auto}
+.pal-list{list-style:none;margin:0;padding:6px;max-height:min(460px,calc(58vh / var(--look-ui, 1)));overflow-y:auto;position:relative}   /* (positioned: a line's hidden words scroll with it) */
 .pal-g{font:500 10px/1 var(--f-label);letter-spacing:.22em;text-transform:uppercase;color:var(--ember);padding:12px 12px 6px}
 .pal-i{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:6px;cursor:pointer;color:var(--parch-2)}
 .pal-i .glyph{width:16px;text-align:center;color:var(--ash-2);flex:none}
@@ -1966,7 +1972,7 @@ dialog:focus-visible,dialog:focus{outline:none}
 }
 
 /* Setup: a quick way around the Options tab; Quit looks like what it is */
-.setup-toc{position:sticky;top:-24px;z-index:3;display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 10px;padding:10px 0 8px;background:linear-gradient(180deg,rgb(var(--c-1a161d)) 75%,transparent)}
+.setup-toc{position:sticky;top:-6px;z-index:3;display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 10px;padding:10px 0 8px;background:linear-gradient(180deg,rgb(var(--c-1a161d)) 75%,transparent)}
 @media (max-width:640px){.setup-toc{background:rgb(var(--c-1a161d));flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.setup-toc a{flex:none}}
 .setup-toc a{font:500 12px var(--f-label);letter-spacing:.06em;color:var(--ash);text-decoration:none;padding:5px 10px;border:1px solid var(--seam);border-radius:999px}
 .setup-toc a:hover{color:var(--parch);border-color:var(--ash-2)}
@@ -2318,7 +2324,9 @@ details.shared[open] summary{margin-bottom:6px}
 
 /* ---------- rules and tools, shared by Claude and Codex ---------- */
 .rules-dlg{width:min(880px,calc(calc(100vw / var(--look-ui, 1)) - 32px))}
-.rd-body{padding:4px 22px 18px;max-height:calc(calc(100vh / var(--look-ui, 1)) - 150px);overflow:auto}
+/* (Positioned, so what's placed inside it, like a Subagents card's hidden "Name", scrolls with it instead of
+   giving the dialog a second scroll bar.) */
+.rd-body{padding:4px 22px 18px;max-height:calc(calc(100vh / var(--look-ui, 1)) - 150px);overflow:auto;position:relative}
 /* Rules and tools fills the dialog however tall its title gets: the body scrolls, its buttons stay in it. */
 #rulesDlg[open]{display:flex;flex-direction:column}
 #rulesDlg .rd-body{flex:1 1 auto;min-height:0;max-height:none}

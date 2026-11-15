@@ -354,8 +354,9 @@
 .hub2:not([data-family]) :is(.hdot.warn,.hdot.error){box-shadow:0 0 0 2px var(--abyss)}
 
 /* Try the new layout: Setup's Options in groups (setup.js groupSetup). The groups sit in a row of tabs along the top
-   of the sheet; one shows at a time. */
-.hub2:not([data-family]) .st-groups{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 18px;padding:4px;border:1px solid var(--st-line);border-radius:var(--st-r-lg);background:var(--abyss-2);position:sticky;top:0;z-index:2}
+   of the sheet; one shows at a time. Scrolled, a band of the dialog's own colour round the row keeps what passes
+   under it from showing in the gap above it or at its corners. */
+.hub2:not([data-family]) .st-groups{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 18px;padding:4px;border:1px solid var(--st-line);border-radius:var(--st-r-lg);background:var(--abyss-2);position:sticky;top:0;z-index:2;box-shadow:0 0 0 6px var(--vellum)}
 .hub2:not([data-family]) .st-groups [role="tab"]{padding:7px 13px;border:0;border-radius:var(--st-r);background:none;color:var(--parch-2);font:550 13px/1.2 var(--f-ui);cursor:pointer}
 .hub2:not([data-family]) .st-groups [role="tab"]:hover{color:var(--parch);background:var(--vellum-2)}
 .hub2:not([data-family]) .st-groups [role="tab"][aria-selected="true"]{background:var(--vellum-3);color:var(--parch);box-shadow:var(--st-hi),inset 0 0 0 1px var(--seam)}
