@@ -1053,7 +1053,7 @@ async function openChatInner(c, body) {
     const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: inst.ACCOUNT.kind === 'ollama' ? 'ollama' : 'codex' });
     const last = threadId && mode !== 'new' && !body.model && !pref.model ? await codexStartedOn(threadId) : null;
     const model = [body.model, pref.model, last && last.model].find(m => m && modelFits(inst, m)) || null;
-    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: aide.isHere(cwd) ? 'read-only' : body.permissionMode || pref.mode, model, fast: body.fast === true || pref.fast === 'on', effort: pref.effort || (last && model === last.model ? last.effort : null) || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : art ? `Paint ${art.name}` : 'New Codex chat'), folder });
+    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: aide.isHere(cwd) ? 'read-only' : body.permissionMode || pref.mode, model, fast: body.fast === true || pref.fast === 'on', effort: (typeof body.effort === 'string' && body.effort) || pref.effort || (last && model === last.model ? last.effort : null) || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : art ? `Paint ${art.name}` : 'New Codex chat'), folder });
     chat.aide = aide.isHere(cwd);
     if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
     log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
@@ -1093,7 +1093,7 @@ async function openChatInner(c, body) {
   if (sessionId) { try { title = sessions.find(sessionId).session.title; } catch { /* untitled */ } }
   if (mode === 'fork' && title) title = `${title} (copy)`;
   const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: pref.effort || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : 'New chat'), folder, extraArgs: aide.isHere(cwd) ? aide.claudeArgs() : chatArgs(cwd) });
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: (typeof body.effort === 'string' && body.effort) || pref.effort || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : 'New chat'), folder, extraArgs: aide.isHere(cwd) ? aide.claudeArgs() : chatArgs(cwd) });
   chat.aide = aide.isHere(cwd);
   if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
   log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
@@ -3846,7 +3846,7 @@ async function handleChat(req, res, url, body, c, remote = false) {
       // The Commander's own chat reopens through its own route (it needs its tools).
       if ((body.mode || 'resume') === 'resume' && isCommanderId(body.sessionId)) return send(res, 200, await openCommander(c, {}));
       const info = await openChat(c, body);
-      if (body.mode === 'new' && body.model && info?.key) remember(chats.get(info.key), { model: body.model });
+      if (body.mode === 'new' && (body.model || body.effort) && info?.key) remember(chats.get(info.key), { ...(body.model ? { model: body.model } : {}), ...(typeof body.effort === 'string' && body.effort ? { effort: body.effort } : {}) });
       // A sub-session remembers the chat it was started from once it has an id (see onSession).
       if (body.mode === 'new' && body.parent && info && info.key) { try { chats.get(info.key).parentSession = parentFor(body.parent); } catch { /* it ended already */ } }
       let mate = null, crew = {};

@@ -498,7 +498,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
 // Opening takes a moment, and the replies can come back in any order: the chat you clicked last is the
 // one that opens, and you're not moved away from what you've started in the meantime.
 let openSeq = 0;
-async function openChatView({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false, parent = null } = {}) {
+async function openChatView({ sessionId = null, cwd = null, mode = 'resume', force = false, accountId = null, provider = null, initialText = '', separate = false, parent = null, model = null, effort = null } = {}) {
   const seq = ++openSeq;
   const a = (accountId && S.accounts.find(x => x.id === accountId)) || current();
   if (sessionId) speedMark('chat');
@@ -532,7 +532,7 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
   }
   let info;
   try {
-    info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov, parent: mode === 'new' ? parent : null });
+    info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov, parent: mode === 'new' ? parent : null, ...(mode === 'new' && model ? { model } : {}), ...(mode === 'new' && effort ? { effort } : {}) });
   } catch (err) {
     if (seq !== openSeq) return undefined;
     if (['codex-signin', 'codex-missing', 'gemini-signin', 'gemini-missing'].includes(err.reason)) { toast(err.message, 9000); return undefined; }

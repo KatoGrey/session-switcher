@@ -1838,7 +1838,7 @@ module.exports = [
       const state = () => b.eval(`const s = document.getElementById('ncAs'); return { prov: NC.prov, value: s.value, options: [...s.options].map(o => o.textContent), pressed: document.querySelector('[data-nc-who][aria-pressed="true"]').textContent }`);
       await b.eval(`openNewChat({ cwd: ${JSON.stringify(tavern)} }); return 1`); await sleep(200);
       let s = await state();
-      t.check('the account with the most left is offered', /^Most room: .* \(\d+% left\)$/.test(s.options[0]), s.options);
+      t.check('the account with the most left is offered, in the shared words', /^Whichever has the most room \(now .*, \d+% left\)$/.test(s.options[0]), s.options);
       t.check('without being picked for you', s.value !== ':room', s.value);
       await b.eval(`const a = document.getElementById('ncAs'); a.value = ':room'; a.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ncGo').click(); return 1`); await sleep(250);
       const best = await b.eval(`const list = S.accounts.filter(canLaunch).map(a => [a.id, binding(usageOf(a.id))]).filter(x => x[1]).sort((x, y) => y[1].left - x[1].left); return { best: list[0][0], current: S.acct, call: _open[0] }`);
@@ -1880,20 +1880,39 @@ module.exports = [
       // The model, picked as you start: the same presets as the chat's own picker, put on once the chat knows its models.
       await b.eval(`openNewChat({ cwd: ${JSON.stringify(tavern)} }); document.querySelector('[data-nc-who="claude"]').click(); return 1`); await sleep(150);
       const models = await b.eval(`return [...document.getElementById('ncModel').options].map(o => o.value)`);
-      t.check('New chat offers the model: as last time, or Quick, Balanced, Deep and Max', models.join() === ',quick,balanced,deep,max', models);
+      t.check('New chat offers the model: as last time, or Quick, Balanced, Deep and Max', models.slice(0, 5).join() === ',preset:quick,preset:balanced,preset:deep,preset:max', models);
       await b.eval(`window._model = []; const orig = api; window._origApi = orig;
         api = async (u, body) => { if (u === '/api/chat/model') { _model.push(body); return { ...C.mi.main, model: body.model, effort: body.effort }; } return orig(u, body); };
         ChatUI.isOpen = () => true;
         ChatUI.open = o => { _open.push(o); C.key = 'k-model'; C.mi.main = { model: 'sonnet', effort: 'medium', efforts: ['low', 'medium', 'high', 'max'], models: [{ value: 'haiku', label: 'Haiku' }, { value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus', isDefault: true }] }; return Promise.resolve(); };
-        const m = document.getElementById('ncModel'); m.value = 'deep'; m.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ncGo').click(); return 1`); await sleep(400);
+        const m = document.getElementById('ncModel'); m.value = 'preset:deep'; m.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ncGo').click(); return 1`); await sleep(400);
       const picked = await b.eval(`return { calls: _model, left: C.startPreset }`);
       t.check('Deep goes on as the chat starts: its strongest everyday model, high effort', picked.calls.length === 1 && picked.calls[0].model === 'opus' && picked.calls[0].effort === 'high' && !picked.left, picked);
       await b.eval(`openNewChat({ cwd: ${JSON.stringify(tavern)} }); return 1`); await sleep(150);
-      t.check('and New chat remembers it for the project', await b.eval(`return document.getElementById('ncModel').value === 'deep'`));
+      t.check('and New chat remembers it for the project', await b.eval(`return document.getElementById('ncModel').value === 'preset:deep'`));
       await b.eval(`document.querySelector('[data-nc-who="gemini"]').click(); return 1`); await sleep(100);
       const gem = await b.eval(`return [...document.getElementById('ncModel').options].map(o => o.value)`);
-      t.check('Gemini offers its own presets', gem.join() === ',quick,balanced,deep,max', gem);
+      t.check('Gemini offers its own presets', gem.slice(0, 5).join() === ',preset:quick,preset:balanced,preset:deep,preset:max', gem);
       await b.eval(`document.querySelector('[data-nc="close"]').click(); api = _origApi; ChatUI.open = _realOpen; ChatUI.isOpen = _isOpen; C.key = null; return 1`);
+
+      // With the assistants' models known: any model, and its effort, and the chat starts on them.
+      await b.eval(`window._open2 = []; const orig = api; window._api2 = orig;
+        api = async (u, body) => { if (u.startsWith('/api/work/models')) return { claude: { defaultModel: 'Opus', efforts: ['low', 'medium', 'high', 'max'], models: [{ value: 'opus', label: 'Opus', note: '', efforts: ['low', 'medium', 'high', 'max'] }, { value: 'sonnet', label: 'Sonnet', note: '', efforts: ['low', 'medium', 'high'] }, { value: 'haiku', label: 'Haiku', note: '', efforts: [] }] } }; return orig(u, body); };
+        await Who.loadModels(true);
+        ChatUI.isOpen = () => true; ChatUI.open = o => { _open2.push(o); C.key = 'k-specific'; return Promise.resolve(); };
+        openNewChat({ cwd: ${JSON.stringify(tavern)} }); document.querySelector('[data-nc-who="claude"]').click(); return 1`); await sleep(250);
+      const listed = await b.eval(`return { models: [...document.getElementById('ncModel').options].map(o => o.value), effort: !document.getElementById('ncEffortWrap').hidden }`);
+      t.check('every model it has is offered after the presets', ['opus', 'sonnet', 'haiku'].every(x => listed.models.includes(x)) && !listed.effort, listed);
+      await b.eval(`const m = document.getElementById('ncModel'); m.value = 'sonnet'; m.dispatchEvent(new Event('change', { bubbles: true })); return 1`); await sleep(100);
+      const eff = await b.eval(`return { shown: !document.getElementById('ncEffortWrap').hidden, options: [...document.getElementById('ncEffort').options].map(o => o.value) }`);
+      t.check('a model with a choice of effort offers it', eff.shown && eff.options.join() === ',low,medium,high', eff);
+      await b.eval(`const e = document.getElementById('ncEffort'); e.value = 'low'; e.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ncGo').click(); return 1`); await sleep(300);
+      const started = await b.eval(`return _open2[0]`);
+      t.check('and the chat starts on that model and effort', started && started.model === 'sonnet' && started.effort === 'low', started);
+      await b.eval(`openNewChat({ cwd: ${JSON.stringify(tavern)} }); return 1`); await sleep(150);
+      const deep = await b.eval(`const m = document.getElementById('ncModel'); m.value = 'preset:deep'; m.dispatchEvent(new Event('change', { bubbles: true })); _open2.length = 0; document.getElementById('ncGo').click(); await new Promise(r => setTimeout(r, 250)); return _open2[0]`);
+      t.check('a preset whose model is known starts on it straight away', deep && deep.model === 'opus' && deep.effort === 'high', deep);
+      await b.eval(`api = _api2; ChatUI.open = _realOpen; ChatUI.isOpen = _isOpen; C.key = null; return 1`);
 
       // A project's own New chat menu: Gemini too, and the whole New chat on that project.
       const items = await b.eval(`return worldNewItems(${JSON.stringify(tavern)}).filter(x => x !== '-').map(x => x.label)`);

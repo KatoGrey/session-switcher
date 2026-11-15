@@ -271,17 +271,8 @@ function ncRecall() {
   NC.with = m && Array.isArray(m.with) ? m.with.slice() : [];
   NC.how = (m && m.how) || 'turns';
   NC.model = (m && m.model) || '';
-}
-// Of the accounts that can start a chat, the one with the most left, when that's known for at least two.
-function ncRoom(opts) {
-  let best = null, known = 0;
-  for (const o of opts) {
-    if (!o.ok) continue;
-    const b = binding(usageOf(o.id)); if (!b) continue;
-    known++;
-    if (!best || b.left > best.left) best = { ...o, left: b.left };
-  }
-  return known >= 2 ? best : null;
+  if (/^(quick|balanced|deep|max)$/.test(NC.model)) NC.model = `preset:${NC.model}`;
+  NC.effort = (m && m.effort) || '';
 }
 const ncProjects = () => S.projects.filter(p => p.exists !== false && p.cwd !== cmdrSet().cwd).sort((a, b) => projLast(b) - projLast(a));
 const ncWho = () => [
@@ -300,7 +291,8 @@ function openNewChat({ cwd = null, text = '' } = {}) {
         <ul class="nc-list" id="ncList" role="listbox" aria-label="Projects"></ul></div>
       <div class="nc-who"><div><span class="nc-l" id="ncWhoL">With</span><div class="nc-seg" id="ncSeg" role="group" aria-labelledby="ncWhoL"></div></div>
         <div class="nc-as" id="ncAsWrap" hidden><label class="nc-l" for="ncAs">As</label><select id="ncAs"></select></div>
-        <div class="nc-as nc-model"><label class="nc-l" for="ncModel">Model</label><select id="ncModel"></select></div></div>
+        <div class="nc-as nc-model"><label class="nc-l" for="ncModel">Model</label><select id="ncModel"></select></div>
+        <div class="nc-as nc-effort" id="ncEffortWrap" hidden><label class="nc-l" for="ncEffort">Effort</label><select id="ncEffort"></select></div></div>
       <div class="nc-crew" id="ncCrew" hidden></div>
       <div><label class="nc-l" for="ncText">First message <small>(optional; it waits in the box for you to send)</small></label><textarea id="ncText" rows="2"></textarea></div>
       <div class="nc-foot"><button type="button" class="btn quiet" data-nc="project">New project…</button><span class="spacer"></span><button type="button" class="btn" data-nc="close">Cancel</button><button type="submit" class="btn prime" id="ncGo">Start chat</button></div>
@@ -328,7 +320,8 @@ function openNewChat({ cwd = null, text = '' } = {}) {
       if (next) { NC.cwd = next.cwd; ncRecall(); ncRenderWho(); ncRenderList(); }
     });
     $('ncAs').addEventListener('change', () => { NC.as = $('ncAs').value; });
-    $('ncModel').addEventListener('change', () => { NC.model = $('ncModel').value; });
+    $('ncModel').addEventListener('change', () => { NC.model = $('ncModel').value; ncRenderModel(); });
+    $('ncEffort').addEventListener('change', () => { NC.effort = $('ncEffort').value; });
   }
   const list = ncProjects();
   const here = cwd || (typeof paletteHere === 'function' ? paletteHere() : null);
@@ -336,6 +329,7 @@ function openNewChat({ cwd = null, text = '' } = {}) {
   NC.q = ''; $('ncQ').value = ''; $('ncText').value = text;
   ncRecall();
   ncRenderList(); ncRenderWho();
+  Who.loadModels().then(() => { if ($('ncDlg').open) ncRenderModel(); });
   $('ncDlg').showModal();
   $('ncQ').focus();
 }
@@ -356,22 +350,27 @@ function ncRenderWho() {
   const pick = who.find(w => w.v === NC.prov && w.on) || who.find(w => w.on) || who[0];
   NC.prov = pick.v;
   $('ncSeg').innerHTML = who.map(w => `<button type="button" data-nc-who="${w.v}" aria-pressed="${w.v === NC.prov}" ${w.on ? '' : `disabled title="${esc(w.why)}"`}>${esc(w.name)}</button>`).join('');
-  // Which account, when there's a choice.
-  const opts = NC.prov === 'claude' ? S.accounts.map(a => ({ id: a.id, name: a.name, ok: canLaunch(a), label: `${a.name}${usageLine(a.id, { short: true }) ? ` · ${usageLine(a.id, { short: true })}` : ''}${a.signedIn ? '' : ' · not signed in'}` }))
-    : NC.prov === 'codex' ? codexAccts().map(x => ({ id: x.id, name: x.name, ok: !!x.signedIn, label: `${x.name || 'Codex'}${usageLine(x.id, { short: true }) ? ` · ${usageLine(x.id, { short: true })}` : ''}${x.signedIn ? '' : ' · not signed in'}` })) : [];
-  $('ncAsWrap').hidden = opts.length < 2;
-  const room = ncRoom(opts);
-  const had = NC.as === ':room' ? (room ? ':room' : null) : opts.some(o => o.id === NC.as && o.ok) ? NC.as : null;
-  const was = had || (NC.prov === 'claude' ? (canLaunch(current()) ? S.acct : (opts.find(o => o.ok) || {}).id) : S.codex && S.codex.id);
-  $('ncAs').innerHTML = `${room ? `<option value=":room" ${was === ':room' ? 'selected' : ''} title="Whichever has the most left when the chat starts">Most room: ${esc(room.name || 'Codex')} (${room.left}% left)</option>` : ''}${opts.map(o => `<option value="${esc(o.id)}" ${o.id === was ? 'selected' : ''} ${o.ok ? '' : 'disabled'}>${esc(o.label)}</option>`).join('')}`;
+  // Which account, when there's a choice: the shared picker's (pickwho.js), so it reads as it does everywhere.
+  const opts = NC.prov === 'gemini' ? [] : Who.options({ providers: [NC.prov] }).filter(o => o.provider === NC.prov);
+  const val = o => (o.account === 'room' ? ':room' : o.account);
+  $('ncAsWrap').hidden = opts.filter(o => o.account !== 'room').length < 2;
+  const had = opts.some(o => val(o) === NC.as && o.ok) ? NC.as : null;
+  const was = had || (NC.prov === 'claude' ? (canLaunch(current()) ? S.acct : (opts.find(o => o.ok && o.account !== 'room') || {}).account) : S.codex && S.codex.id);
+  $('ncAs').innerHTML = opts.map(o => `<option value="${esc(val(o))}" ${val(o) === was ? 'selected' : ''} ${o.ok ? '' : 'disabled'}${o.account === 'room' ? ' title="Whichever has the most left when the chat starts"' : ''}>${esc(o.short)}${o.ok ? '' : ` · ${esc(o.why.toLowerCase())}`}</option>`).join('');
   ncRenderModel();
   ncRenderCrew();
   ncSync();
 }
 function ncRenderModel() {
-  const presets = (typeof PRESETS === 'object' && PRESETS[NC.prov]) || [];
-  if (!presets.some(p => p.id === NC.model)) NC.model = '';
-  $('ncModel').innerHTML = `<option value="">As last time</option>${presets.map(p => `<option value="${p.id}" ${p.id === NC.model ? 'selected' : ''} title="${esc(p.note)}">${esc(p.name)}: ${esc(p.note.toLowerCase())}</option>`).join('')}`;
+  // As last time, the presets (Quick, Balanced, Deep, Max), then every model it has (pickwho.js), with an effort for a
+  // model that offers a choice.
+  const choices = Who.modelChoices(NC.prov);
+  if (!choices.some(c => c.value === NC.model)) NC.model = '';
+  $('ncModel').innerHTML = choices.map(c => `<option value="${esc(c.value)}" ${c.value === NC.model ? 'selected' : ''} title="${esc(c.title || '')}">${esc(c.label)}</option>`).join('');
+  const efforts = Who.effortChoices(NC.prov, NC.model);
+  if (!efforts.includes(NC.effort)) NC.effort = '';
+  $('ncEffortWrap').hidden = !efforts.length;
+  $('ncEffort').innerHTML = `<option value="">Its usual</option>${efforts.map(e => `<option value="${esc(e)}" ${e === NC.effort ? 'selected' : ''}>${esc(e)}</option>`).join('')}`;
 }
 // Bring the others in from the start: they join with your first message, as Together does in a chat.
 function ncRenderCrew() {
@@ -388,18 +387,17 @@ async function ncStart() {
   if ($('ncGo').disabled) return;
   const cwd = NC.cwd, prov = NC.prov, chosen = $('ncAsWrap').hidden ? null : $('ncAs').value, initialText = $('ncText').value;
   // Most room: worked out now, whatever it was when the dialog opened.
-  const room = chosen === ':room' ? ncRoom(prov === 'claude' ? S.accounts.map(a => ({ id: a.id, ok: canLaunch(a) })) : codexAccts().map(x => ({ id: x.id, ok: !!x.signedIn }))) : null;
-  const as = chosen === ':room' ? (room && room.id) : chosen;
+  const as = chosen === ':room' ? Who.accountFor(`${prov}:room`) : chosen;
   store('nc-prov', prov);
   const crew = NC.with.slice(), how = NC.how;
-  const model = $('ncModel').value;
-  store(`nc:${cwd}`, JSON.stringify({ prov, as: chosen, with: crew, how, model }));
+  const model = $('ncModel').value, effort = $('ncEffortWrap').hidden ? '' : $('ncEffort').value, run = Who.runOf(prov, model, effort);
+  store(`nc:${cwd}`, JSON.stringify({ prov, as: chosen, with: crew, how, model, effort }));
   $('ncDlg').close();
   if (prov === 'codex' && as && S.codex && as !== S.codex.id) await setCodexActive(as);
   const was = C.key;
-  await ChatUI.open({ cwd, mode: 'new', ...(prov === 'claude' ? (as && as !== S.acct ? { accountId: as } : {}) : { provider: prov }), initialText });
-  // The model picked here: put on as soon as the new chat knows its models (chat-live.js applyStartPreset).
-  if (model && ChatUI.isOpen() && C.key !== was) { C.startPreset = { key: C.key, id: model }; applyStartPreset(); }
+  await ChatUI.open({ cwd, mode: 'new', ...(prov === 'claude' ? (as && as !== S.acct ? { accountId: as } : {}) : { provider: prov }), ...(run.model ? { model: run.model } : {}), ...(run.effort ? { effort: run.effort } : {}), initialText });
+  // A preset whose model wasn't known yet: put on as soon as the new chat knows its models (chat-live.js applyStartPreset).
+  if (run.preset && ChatUI.isOpen() && C.key !== was) { C.startPreset = { key: C.key, id: run.preset }; applyStartPreset(); }
   if (crew.length && ChatUI.isOpen() && C.key !== was) {
     C.group = { kinds: [prov, ...crew], how };
     store('together', JSON.stringify(C.group));
