@@ -326,7 +326,7 @@ function renderLedger() {
   const about = sec('This chat', 0, `${a ? `<div class="lg-use">${miniDial(id, 34)}<span class="lu-t"><b>${esc(a.name)}</b><small class="${b && hot(b.left) ? 'hot' : ''}">${esc(usageLine(id) || (a.plan || ''))}</small></span></div>` : ''}
       <dl class="lg-about">
         ${C.watch ? `<dt>Running</dt><dd>${C.watch.source === 'terminal' ? 'In a terminal' : C.watch.source === 'openclaw' ? 'In OpenClaw' : 'In another app'}</dd>` : ''}
-        ${C.model ? `<dt>Model</dt><dd><button class="linkish" data-c="model-pick" title="Change the model or effort for the next replies">${esc(C.model)}${C.mi.main && C.mi.main.effort ? ` · ${esc(C.mi.main.effort)} effort` : ''}</button></dd>` : ''}
+        ${C.model ? `<dt>Model</dt><dd>${C.key && !C.watch && C.provider !== 'openclaw' ? `<button class="linkish" data-c="model-pick" title="Change the model or effort for the next replies">${esc(C.model)}${C.mi.main && C.mi.main.effort ? ` · ${esc(C.mi.main.effort)} effort` : ''}</button>` : `${esc(C.model)}${C.mi.main && C.mi.main.effort ? ` · ${esc(C.mi.main.effort)} effort` : ''}`}</dd>` : ''}
         ${C.ctx.main ? `<dt>Context</dt><dd>${esc(ctxLine('main'))}</dd>` : ''}
         ${crewKinds({ inChat: true }).map(k => withComp(k, () => (C.comp && C.mi.comp ? `<dt>With ${PROV_NAME[k]}</dt><dd>${esc(modelLabel(C.mi.comp))}${C.mi.comp.effort ? ` · ${esc(C.mi.comp.effort)}` : ''}</dd>` : ''))).join('')}
         ${C.info && C.info.permissionMode ? `<dt>Mode</dt><dd>${esc(($c('cMode').selectedOptions[0] || {}).textContent || $c('cMode').value)}</dd>` : ''}

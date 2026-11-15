@@ -911,7 +911,7 @@ module.exports = [
       let miss = await b.eval(`return { open: raceDlg.open, note: rcNote.hidden ? '' : rcNote.textContent, focus: document.activeElement.id }`);
       t.check('a preset none of its models fits says so in the dialog, and nothing starts', miss.open && /^Balanced doesn’t match any of Codex’s models\./.test(miss.note) && miss.focus === 'rcModel-codex' && !started(), miss);
       await t.shot(b, 'no-preset');
-      miss = await b.eval(`window._api = api; api = async (u, body) => (String(u).startsWith('/api/work/models') ? {} : _api(u, body)); await Who.loadModels(true);
+      miss = await b.eval(`window._api = api; api = async (u, body) => (String(u).startsWith('/api/work/models') ? { claude: null, codex: null, gemini: null } : _api(u, body)); await Who.loadModels(true);
         openRaceDialog(${tavern}); const m = document.getElementById('rcModel-codex'); m.value = 'preset:deep'; m.dispatchEvent(new Event('change', { bubbles: true })); rcText.value = 'Fourth go.';
         document.querySelector('#rcForm [type="submit"]').click(); await new Promise(r => setTimeout(r, 400)); return { open: raceDlg.open, note: rcNote.hidden ? '' : rcNote.textContent }`);
       t.check('…or that its models aren’t known yet', miss.open && /^Codex’s models aren’t known yet, so Deep can’t be used\./.test(miss.note) && !started(), miss);

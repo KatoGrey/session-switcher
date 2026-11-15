@@ -10,19 +10,35 @@
 
 const Who = (() => {
   /* ---------- the assistants' models (asked of each CLI by the server, which keeps them a while) ---------- */
-  let models = null, loading = null;
-  function loadModels(fresh = false) {
-    if (models && !fresh) return Promise.resolve(models);
+  // Kept a few minutes, like the server keeps them. A failed or partial answer (an assistant still signing in) isn't
+  // kept: the next ask, or a pick that needs the missing list, asks again.
+  let models = null, loading = null, at = 0, whole = false;
+  const KEEP_MS = 5 * 60000;
+  function loadModels(fresh = false, need = null) {
+    const stale = !models || !whole || Date.now() - at > KEEP_MS || (need && !(models && models[need]));
+    if (!fresh && !stale) return Promise.resolve(models);
     if (!loading) {
       loading = api(`/api/work/models${fresh ? '?fresh=1' : ''}`)
-        .then(m => { models = m && typeof m === 'object' ? m : {}; return models; })
-        .catch(() => { models = models || {}; return models; })
+        .then(m => {
+          const got = m && typeof m === 'object' ? m : {};
+          // What came is kept; an assistant it says nothing about keeps the list it had; one it sends as empty (not
+          // known now) is dropped, so it's asked for again.
+          models = { ...(models || {}) };
+          for (const [k, v] of Object.entries(got)) { if (v) models[k] = v; else delete models[k]; }
+          whole = !!got.claude && (!(S.codex && S.codex.enabled) || !!got.codex) && (!(S.gemini && S.gemini.enabled) || !!got.gemini);
+          at = Date.now();
+          return models;
+        })
+        .catch(() => { models = models || {}; whole = false; return models; })
         .finally(() => { loading = null; });
     }
     return loading;
   }
   const listOf = prov => (models && models[prov]) || null;
-  const nameOf = prov => ({ claude: 'Claude', codex: 'Codex', gemini: 'Gemini' }[prov] || prov);
+  // Which list an account's models come from: an Ollama Codex account has its own (and no presets, which are the
+  // ChatGPT family's); every other one, its assistant's.
+  const kindOf = (prov, account) => (prov === 'codex' && account && (codexAccts().find(x => x.id === account) || {}).kind === 'ollama' ? 'ollama' : prov);
+  const nameOf = prov => ({ claude: 'Claude', codex: 'Codex', ollama: 'Ollama', gemini: 'Gemini' }[prov] || prov);
 
   /* ---------- who ---------- */
   // The account with the most left, among those that can start, when that's known for two or more.
@@ -155,7 +171,7 @@ const Who = (() => {
     const draw = () => {
       const opts = options({ auto, providers, later });
       if (!opts.some(o => o.value === st.who && o.ok)) { const first = opts.find(o => o.ok); st.who = first ? first.value : (opts[0] || {}).value || null; }
-      const prov = parse(st.who).provider, choices = withModel ? modelChoices(prov) : [];
+      const w0 = parse(st.who), prov = kindOf(w0.provider, w0.account), choices = withModel ? modelChoices(prov) : [];
       if (!choices.some(c => c.value === st.model)) st.model = '';
       const efforts = withModel ? effortChoices(prov, st.model) : [];
       if (!efforts.includes(st.effort)) st.effort = '';
@@ -175,29 +191,16 @@ const Who = (() => {
     };
     draw();
     // The models come from the server: redrawn once they're known (what's chosen stays).
-    if (withModel && !models) loadModels().then(() => { if (root.isConnected && root._who === st) draw(); });
+    if (withModel) loadModels().then(() => { if (root.isConnected && root._who === st) draw(); });
   }
   // What a mounted picker says: { who, provider, account (resolved at this moment), model, effort, preset }. For work
   // that starts later, "most room" stays account 'auto': the server picks the account as it starts.
   function read(root) {
     const st = root && root._who; if (!st || !st.who) return null;
     const w = parse(st.who);
-    return { who: st.who, provider: w.provider, account: st.later && w.account === 'room' ? 'auto' : accountFor(st.who), ...runOf(w.provider, st.model, st.effort) };
+    return { who: st.who, provider: w.provider, account: st.later && w.account === 'room' ? 'auto' : accountFor(st.who), ...runOf(kindOf(w.provider, w.account), st.model, st.effort) };
   }
 
-  /* ---------- in a menu (showMenu items) ---------- */
-  // Who can do it, as menu items. run(provider, account, { fresh }) starts it. modelOf(provider): the words for what
-  // it'll run on (shown under each). extra: items for this place to add first (carry on in its chat, say).
-  function menuItems(run, { auto = true, providers, modelOf = null, extra = [], hint = 'a new chat' } = {}) {
-    const glyph = { claude: '✦', codex: '◆', gemini: '✧' };
-    const items = [...extra, ...options({ auto, providers }).filter(o => o.ok).map(o => ({
-      glyph: glyph[o.provider] || '•', label: o.label,
-      hint: `${hint}${modelOf ? ` · ${modelOf(o.provider)}` : ''}`,
-      run: () => run(o.provider, accountFor(o.value), { fresh: true }),
-    }))];
-    return Object.assign(items, { ifEmpty: typeof NO_WHO !== 'undefined' ? NO_WHO : null });
-  }
-
-  return { loadModels, listOf, nameOf, options, parse, accountFor, pickFor, preset, modelChoices, effortChoices, runOf, presetMiss, mount, read, menuItems, roomiest };
+  return { loadModels, kindOf, listOf, nameOf, options, parse, accountFor, pickFor, preset, modelChoices, effortChoices, runOf, presetMiss, mount, read, roomiest };
 })();
 window.Who = Who;

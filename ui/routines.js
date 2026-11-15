@@ -366,7 +366,7 @@ const Routines = (() => {
     try {
       // Its runs start later, each on a model: a preset is placed on one of the assistant's models now.
       let run = Who.runOf(R.mprov, R.model, R.effort);
-      if (run.preset) { await Who.loadModels(); run = Who.runOf(R.mprov, R.model, R.effort); }
+      if (run.preset) { await Who.loadModels(true); run = Who.runOf(R.mprov, R.model, R.effort); }
       if (run.preset) { $('rtErr').innerHTML = `<span>${esc(Who.presetMiss(R.mprov, run.preset))}</span>`; $('rtErr').hidden = false; $('rtModel').focus(); return; }
       Object.assign(body, { model: run.model || null, effort: run.effort || null });
       const j = await api('/api/routines', body);

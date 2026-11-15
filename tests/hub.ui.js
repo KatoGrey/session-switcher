@@ -2009,8 +2009,15 @@ module.exports = [
       const started = await b.eval(`return _open2[0]`);
       t.check('and the chat starts on that model and effort', started && started.model === 'sonnet' && started.effort === 'low', started);
       await b.eval(`openNewChat({ cwd: ${JSON.stringify(tavern)} }); return 1`); await sleep(150);
-      const deep = await b.eval(`const m = document.getElementById('ncModel'); m.value = 'preset:deep'; m.dispatchEvent(new Event('change', { bubbles: true })); _open2.length = 0; document.getElementById('ncGo').click(); await new Promise(r => setTimeout(r, 250)); return _open2[0]`);
-      t.check('a preset whose model is known starts on it straight away', deep && deep.model === 'opus' && deep.effort === 'high', deep);
+      // A preset goes on once the chat knows its own models (that account's, whatever this window's list says).
+      const deep = await b.eval(`window._model2 = []; const was = api; api = async (u, body) => { if (u === '/api/chat/model') { _model2.push(body); return { ...C.mi.main, model: body.model, effort: body.effort }; } return was(u, body); };
+        ChatUI.open = o => { _open2.push(o); C.key = 'k-deep'; C.mi.main = { model: 'sonnet', effort: 'medium', efforts: ['low', 'medium', 'high', 'max'], models: [{ value: 'haiku', label: 'Haiku' }, { value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus', isDefault: true }] }; return Promise.resolve(); };
+        const m = document.getElementById('ncModel'); m.value = 'preset:deep'; m.dispatchEvent(new Event('change', { bubbles: true })); _open2.length = 0; document.getElementById('ncGo').click(); await new Promise(r => setTimeout(r, 300)); api = was; return { open: _open2[0], model: _model2 }`);
+      t.check('a preset is put on as the chat knows its own models, not sent ahead', deep.open && !deep.open.model && deep.model.length === 1 && deep.model[0].model === 'opus' && deep.model[0].effort === 'high', deep);
+      // A remembered model that isn't on the list yet stays chosen until the list comes.
+      const remembered = await b.eval(`store('nc:' + ${JSON.stringify(tavern)}, JSON.stringify({ prov: 'gemini', model: 'gemini-3.5-pro' })); openNewChat({ cwd: ${JSON.stringify(tavern)} }); return document.getElementById('ncModel').value`);
+      t.check('a model remembered for the project isn’t dropped while its list isn’t known yet', remembered === 'gemini-3.5-pro', remembered);
+      await b.eval(`document.querySelector('[data-nc="close"]').click(); return 1`);
       await b.eval(`api = _api2; ChatUI.open = _realOpen; ChatUI.isOpen = _isOpen; C.key = null; return 1`);
 
       // A project's own New chat menu: Gemini too, and the whole New chat on that project.

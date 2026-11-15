@@ -65,6 +65,24 @@ module.exports = [{
     await b.eval(`window.ChatUI.openKey = () => Promise.resolve(); const items = prWhoItems({ repo: 'o/r', number: 7, chat: null, clones: ['C:\\\\Repos\\\\r'] }, 'review'); await items.find(i => i.label === 'Gemini').run(); return 1`); await sleep(300);
     const sent = seen.filter(x => x.p === '/api/prs/act').pop();
     t.check('and starts with the one picked', !!sent && sent.body.provider === 'gemini' && sent.body.fresh === true, sent && sent.body);
+    // An Ollama Codex account gets its own models (no ChatGPT ones, no presets); a failed list isn't kept.
+    const ol = await b.eval(`const was = S.codex, wasApi = api; let asks = 0;
+      S.codex = { ...(S.codex || {}), enabled: true, installed: true, signedIn: true, id: 'cx1', accounts: [{ id: 'cx1', name: 'ChatGPT', signedIn: true }, { id: 'ol1', name: 'Ollama', kind: 'ollama', signedIn: true }] };
+      api = async (u, body) => { if (u.startsWith('/api/work/models')) { asks++; if (asks === 1) throw new Error('not yet'); return { claude: { defaultModel: 'Opus', efforts: [], models: [{ value: 'opus', label: 'Opus', efforts: [] }] }, codex: { defaultModel: 'GPT-6', efforts: ['low', 'high'], models: [{ value: 'gpt-6', label: 'GPT-6', efforts: ['low', 'high'] }] }, ollama: { defaultModel: 'qwen', efforts: [], models: [{ value: 'qwen3:cloud', label: 'qwen3', efforts: [] }] } }; } return wasApi(u, body); };
+      await Who.loadModels(true).catch(() => {});
+      const afterFail = !!Who.listOf('codex');
+      await Who.loadModels();
+      const retried = !!Who.listOf('codex');
+      const box = document.createElement('div'); box.id = 'olTest'; document.body.append(box);
+      Who.mount(box, { value: { who: 'codex:ol1' } }); await new Promise(r => setTimeout(r, 50));
+      const onOllama = [...box.querySelectorAll('[data-who="model"] option')].map(o => o.value);
+      box.querySelector('[data-who="who"]').value = 'codex:cx1'; box.querySelector('[data-who="who"]').dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 50));
+      const onChatGpt = [...box.querySelectorAll('[data-who="model"] option')].map(o => o.value);
+      box.remove(); S.codex = was; api = wasApi;
+      return { afterFail, retried, onOllama, onChatGpt, asks }`);
+    t.check('a failed model list isn’t kept: the next ask gets it', !ol.afterFail && ol.retried && ol.asks >= 2, ol);
+    t.check('an Ollama Codex account is offered its own models, not ChatGPT’s or the presets', ol.onOllama.join() === ',qwen3:cloud', ol.onOllama);
+    t.check('a ChatGPT Codex account gets the presets and its models', ol.onChatGpt.includes('preset:deep') && ol.onChatGpt.includes('gpt-6') && !ol.onChatGpt.includes('qwen3:cloud'), ol.onChatGpt);
   },
 }, {
   name: 'work: every chat on an issue',
