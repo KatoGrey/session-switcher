@@ -1,10 +1,12 @@
 'use strict';
 /* Session Switcher: the Routines page and its editor. Routines are chats that start on their own, on a
    schedule or when a watched source has something new (lib/routines.js). Uses the hub's helpers from
-   app.js: S, $, api, esc, toast, wrap, patch, showMenu, closeMenu, appConfirm, renderNav, ChatUI. */
+   app.js: S, $, api, esc, toast, wrap, patch, showMenu, closeMenu, appConfirm, renderNav, ChatUI, and the shared
+   picker (Who, ui/pickwho.js) for who runs it and on what. */
 
 const Routines = (() => {
-  const R = { list: [], templates: [], secrets: {}, loaded: false, hist: new Set(), editing: null };
+  // (model, effort: what the editor has picked, for the assistant mprov; keep: what the routine was saved with.)
+  const R = { list: [], templates: [], secrets: {}, loaded: false, hist: new Set(), editing: null, model: '', effort: '', mprov: null, keep: null };
   const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Bypass permissions' };
   const CODEX_MODES = [['agent', 'Agent'], ['ask', 'Ask before acting'], ['read-only', 'Read only'], ['full', 'Full access']];
   const GEMINI_MODES = [['accept-edits', 'Edit files'], ['plan', 'Plan only'], ['full', 'Full access']];
@@ -169,6 +171,10 @@ const Routines = (() => {
           <div><label class="np-f" for="rtAcct"><span>Runs as</span></label><select id="rtAcct"></select></div>
           <div><label class="np-f" for="rtMode"><span>Permissions</span></label><select id="rtMode"></select></div>
         </div>
+        <div class="rt-two">
+          <div><label class="np-f" for="rtModel"><span>Model</span></label><select id="rtModel"></select></div>
+          <div id="rtEffortBox" hidden><label class="np-f" for="rtEffort"><span>Effort</span></label><select id="rtEffort"></select></div>
+        </div>
         <label class="np-f" for="rtPrompt"><span>What to do</span></label>
         <div class="rt-row rt-pick"><select id="rtSaved" aria-label="Saved prompt"></select></div>
         <textarea id="rtPrompt" class="pd-x" rows="6" placeholder="What to ask. {project} and {date} fill in automatically."></textarea>
@@ -202,7 +208,10 @@ const Routines = (() => {
     for (const id of ['rtTime', 'rtEvery', 'rtCron']) $(id).addEventListener('input', fillSched);
     $('rtDay').addEventListener('change', fillSched);
     $('rtSrc').addEventListener('change', fillSrc);
-    $('rtAcct').addEventListener('change', () => { fillModes(); fillChats(); });
+    $('rtAcct').addEventListener('change', () => { fillModes(); fillChats(); fillModels(); });
+    // A new model has its own efforts: back to its usual one.
+    $('rtModel').addEventListener('change', () => { R.model = $('rtModel').value; R.effort = ''; fillModels(); });
+    $('rtEffort').addEventListener('change', () => { R.effort = $('rtEffort').value; });
     $('rtCwd').addEventListener('change', fillChats);
     $('rtSaved').addEventListener('change', () => {
       const p = S.prompts.find(x => x.id === $('rtSaved').value);
@@ -253,12 +262,33 @@ const Routines = (() => {
     toast('Saved the Slack token in the Keychain.', 3000);
     fillToken();
   }
+  // Who runs it: the shared picker's choices and words (ui/pickwho.js), each kept as routines store it (the account's
+  // id, or 'gemini'). No "most room": a routine runs as one account. One that can't start yet can still be picked,
+  // and says why; its runs wait for it.
   function fillAccounts(sel) {
-    const claude = S.accounts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}${a.signedIn ? '' : ' (not signed in)'}</option>`).join('');
-    const cx = S.codex && S.codex.enabled ? codexAccts().map(c => `<option value="${esc(c.id)}">${esc(c.name || 'Codex')}${c.kind === 'ollama' ? ' (Ollama)' : ''}${c.signedIn ? '' : ' (not signed in)'}</option>`).join('') : '';
-    const gm = S.gemini && S.gemini.enabled ? `<option value="gemini">Gemini (your Google AI plan)${S.gemini.signedIn ? '' : ' (not signed in)'}</option>` : '';
-    $('rtAcct').innerHTML = `<optgroup label="Claude">${claude}</optgroup>${cx ? `<optgroup label="Codex">${cx}</optgroup>` : ''}${gm ? `<optgroup label="Gemini">${gm}</optgroup>` : ''}`;
+    const ollama = id => (codexAcct(id) || {}).kind === 'ollama';
+    $('rtAcct').innerHTML = Who.options({ auto: false }).map(o => `<option value="${esc(o.account)}">${esc(o.label)}${ollama(o.account) ? ' (Ollama)' : ''}${o.ok ? '' : ` · ${esc(o.why.charAt(0).toLowerCase() + o.why.slice(1))}`}</option>`).join('');
     $('rtAcct').value = sel && [...$('rtAcct').options].some(o => o.value === sel) ? sel : current().id;
+  }
+  // The models an account's runs pick from: Claude's, Codex's or Gemini's (an Ollama account has its own).
+  const modelProv = id => (id === 'gemini' ? 'gemini' : codexAcct(id) ? (codexAcct(id).kind === 'ollama' ? 'ollama' : 'codex') : 'claude');
+  // What it runs on, with the shared picker's lists: as last time, a preset (Quick, Balanced, Deep, Max) or any model
+  // the assistant has, and an effort when that model offers a choice. What the routine was saved with stays on the
+  // lists even when they don't have it (not known yet, or set in Switcher Lite), so saving never drops it.
+  function fillModels() {
+    const prov = modelProv($('rtAcct').value), keep = R.keep || {};
+    if (prov !== R.mprov) { R.mprov = prov; R.model = keep.prov === prov ? keep.model : ''; R.effort = keep.prov === prov ? keep.effort : ''; }
+    const choices = Who.modelChoices(prov);
+    if (keep.prov === prov && keep.model && !choices.some(c => c.value === keep.model) && !/^preset:/.test(keep.model)) choices.push({ value: keep.model, label: keep.model.replace(/:cloud$/, ''), title: keep.model });
+    if (!choices.some(c => c.value === R.model)) { R.model = ''; R.effort = ''; }
+    $('rtModel').innerHTML = choices.map(c => `<option value="${esc(c.value)}" title="${esc(c.title || '')}">${esc(c.label)}</option>`).join('');
+    $('rtModel').value = R.model;
+    const efforts = Who.effortChoices(prov, R.model).slice();
+    if (keep.prov === prov && R.model === keep.model && keep.effort && !efforts.includes(keep.effort)) efforts.push(keep.effort);
+    if (!efforts.includes(R.effort)) R.effort = '';
+    $('rtEffortBox').hidden = !efforts.length;
+    $('rtEffort').innerHTML = `<option value="">Its usual</option>${efforts.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('')}`;
+    $('rtEffort').value = R.effort;
   }
   function fillModes(sel) {
     const kind = kindOfAcct($('rtAcct').value);
@@ -295,8 +325,16 @@ const Routines = (() => {
     $('rtChan').value = w.channel || ''; $('rtCommand').value = w.command || ''; $('rtFilter').value = w.filter || '';
     $('rtCwd').value = src.cwd || (S.view === 'folder' && S.folder) || (S.projects[0] && S.projects[0].cwd) || '';
     $('rtPlaces').innerHTML = S.projects.filter(p => p.exists).map(p => `<option value="${esc(p.cwd)}">`).join('');
-    fillAccounts(src.account);
+    // A handover may name who as the shared picker does ('claude:<account>', 'codex:<account>'). "Most room" isn't
+    // one a routine can keep, so then it starts as the account you're on.
+    const acct = typeof src.account === 'string' && src.account.includes(':') ? (w => (w.account === 'room' ? null : w.account))(Who.parse(src.account)) : src.account;
+    fillAccounts(acct);
     fillModes(src.permissionMode);
+    // The model and effort it was saved with (or that Queue a task handed over), for the assistant they belong to.
+    R.keep = { prov: acct && $('rtAcct').value !== acct ? null : modelProv($('rtAcct').value), model: src.model || '', effort: src.effort || '' };
+    R.mprov = null;
+    fillModels();
+    Who.loadModels().then(() => { if (d.open) fillModels(); });
     fillChats(src.chat ? (src.chat.mode === 'continue' ? (src.chat.sessionId ? `s:${src.chat.sessionId}` : 'continue') : 'new') : 'new');
     $('rtTo').value = src.chat && ['turns', 'parallel', 'both', 'all'].includes(src.chat.to) ? (src.chat.to === 'parallel' ? 'parallel' : 'turns') : '';
     $('rtHours').value = src.untilAt && src.untilAt > Date.now() ? String(Math.max(0.5, Math.round(((src.untilAt - Date.now()) / 3600e3) * 2) / 2)) : '';
@@ -326,6 +364,11 @@ const Routines = (() => {
     };
     $('rtGo').disabled = true;
     try {
+      // Its runs start later, each on a model: a preset is placed on one of the assistant's models now.
+      let run = Who.runOf(R.mprov, R.model, R.effort);
+      if (run.preset) { await Who.loadModels(); run = Who.runOf(R.mprov, R.model, R.effort); }
+      if (run.preset) { $('rtErr').innerHTML = `<span>${esc(Who.presetMiss(R.mprov, run.preset))}</span>`; $('rtErr').hidden = false; $('rtModel').focus(); return; }
+      Object.assign(body, { model: run.model || null, effort: run.effort || null });
       const j = await api('/api/routines', body);
       $('rtDlg').close();
       toast(R.editing ? `Saved ${j.routine.name}.` : `${j.routine.name} is on. ${j.routine.trigger.type === 'watch' ? 'Its first look only notes what’s already there.' : `Next run ${when(new Date(j.routine.state.nextAt).toISOString())}.`}`, 5000);

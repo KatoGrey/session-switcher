@@ -216,7 +216,7 @@ Routines are chats that start on their own. Open **Routines** in the sidebar, th
   - **A command's output:** runs a command in the routine's folder every few minutes, and each new line starts a run. It covers a Discord bot, a CLI or a database query you already have. A line can be JSON, like `{"id": "123", "text": "…", "link": "https://…"}`; otherwise the line is the text, and its first web address is the link.
   - An optional filter keeps only items that mention a word, or match a `/pattern/`.
   - The first look only notes what's already there, so turning a watcher on doesn't start a chat for every old post. Items are remembered by id, so nothing runs twice. A watcher starts at most six chats an hour; the rest wait their turn.
-- Each routine has a folder, an account (any Claude or Codex account, including Ollama, or Gemini), a prompt (or a saved prompt; `{project}` and `{date}` work), a permission mode, and whether each run starts a new chat or continues one chat.
+- Each routine has a folder, an account (any Claude or Codex account, including Ollama, or Gemini), the model and effort its runs start on (as last time, **Quick**, **Balanced**, **Deep** or **Max**, or any model the assistant has; a preset is saved as the model and effort it stands for), a prompt (or a saved prompt; `{project}` and `{date}` work), a permission mode, and whether each run starts a new chat or continues one chat.
 - Runs happen in the app's own chat window, so they show under **At work** and **Awaiting you** like any chat. A watcher's run gets the new item's text and link in its first message.
 - Each routine keeps a history: when it ran, how it went, the last thing the chat said, and **Open chat**.
 - A run that was due while the Mac slept or the app was closed runs once when it's back, not once for every time it missed.
@@ -473,6 +473,8 @@ Give Claude and Codex the same task and keep the better result. **Race Claude an
 1. Each one works in its own copy of the project (a git worktree in your temp folder, with your uncommitted work; ignored folders like `node_modules` aren't copied), so neither touches your project or the other's work.
 2. The race's card, under **Races** on the hub, shows what each has changed. **See changes** shows the diff; **Open chat** shows how it got there.
 3. **Keep Claude's** or **Keep Codex's** brings that one's changes into your project, all or nothing. **Discard both** throws both away. Either way both copies are deleted.
+
+The dialog also picks Claude's account (or whichever has the most room when the race starts) and each one's model and effort: as last time, **Quick**, **Balanced**, **Deep** or **Max**, or any model it has. Each starts on its own, and keeps them when its chat is opened again from the card.
 
 **Ask a judge** gives both copies' changes to a chat that can only look; it says which to keep (or which files from each) and why, and its verdict is on the card. **Pick files…** keeps file by file: tick what to take from each copy (a file both changed comes from one of them), and they come in together. A race's chats stay reachable after a restart or an idle stop.
 

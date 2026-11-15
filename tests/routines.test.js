@@ -143,6 +143,41 @@ test('routines: onActivity records stopped when chat ends and startup cleans up 
   assert.equal(rt.list()[0].running, false);
 });
 
+test('routines: a routine’s model and effort reach its chat start, and the effort goes with its model', async () => {
+  const started = [];
+  const { dir, rt } = makeEnv({
+    startChat: async opts => { started.push(opts); return { key: `k${started.length}`, sessionId: `sess-${started.length}`, state: 'ready', title: opts.title, activity: {}, pending: new Map(), clients: new Set(), send: () => {} }; },
+    accountInfo: id => (id === 'main' ? { id: 'main', provider: 'claude', name: 'Main', modes: ['default', 'acceptEdits', 'plan'] } : id === 'codex' ? { id: 'codex', provider: 'codex', name: 'Codex', modes: ['agent', 'read-only'] } : id === 'gemini' ? { id: 'gemini', provider: 'gemini', name: 'Gemini', modes: ['accept-edits', 'plan', 'full'] } : null),
+  });
+  const base = { name: 'Deep look', cwd: dir, account: 'main', prompt: 'Look deeply.', chat: { mode: 'new' }, trigger: { type: 'schedule', schedule: { kind: 'daily', time: '09:00' } } };
+  const on = x => [x.model, x.effort];
+  const r = rt.create({ ...base, model: 'opus', effort: 'high' });
+  assert.deepEqual(on(r), ['opus', 'high']);
+  await rt.runNow(r.id);
+  assert.equal(started.length, 1);
+  assert.deepEqual([started[0].account, ...on(started[0])], ['main', 'opus', 'high'], 'the run starts on the routine’s model and effort');
+
+  // An editor that leaves both out (Switcher Lite's, say), or keeps the model, keeps the effort.
+  assert.deepEqual(on(rt.update(r.id, base)), ['opus', 'high']);
+  assert.deepEqual(on(rt.update(r.id, { ...base, model: 'opus' })), ['opus', 'high']);
+  // A new model drops the old one's effort; one picked with it stays.
+  assert.deepEqual(on(rt.update(r.id, { ...base, model: 'sonnet' })), ['sonnet', null]);
+  assert.deepEqual(on(rt.update(r.id, { ...base, model: 'sonnet', effort: 'low' })), ['sonnet', 'low']);
+  // No effort without a model (as last time), none that no assistant has, and none for Gemini (it's in the model's name).
+  assert.deepEqual(on(rt.update(r.id, { ...base, model: null, effort: 'low' })), [null, null]);
+  assert.deepEqual(on(rt.update(r.id, { ...base, model: 'opus', effort: 'loud' })), ['opus', null]);
+  assert.deepEqual(on(rt.update(r.id, { ...base, account: 'gemini', model: 'gemini-4-argon-high', effort: 'high' })), ['gemini-4-argon-high', null]);
+  // Codex: its model and effort, through to the start.
+  const cx = rt.update(r.id, { ...base, account: 'codex', model: 'gpt-6-sol', effort: 'xhigh' });
+  assert.deepEqual([cx.provider, ...on(cx)], ['codex', 'gpt-6-sol', 'xhigh']);
+  await rt.runNow(r.id);
+  assert.deepEqual([started[1].account, ...on(started[1])], ['codex', 'gpt-6-sol', 'xhigh']);
+  // As last time: the run names neither.
+  rt.update(r.id, { ...base, model: null, effort: null });
+  await rt.runNow(r.id);
+  assert.deepEqual(on(started[2]), [null, null]);
+});
+
 test('routines: timed crew mission stores chat.kinds and untilAt, clears chat.to with null, and un-pauses cleanly', () => {
   const { dir, rt } = makeEnv();
   const future = Date.now() + 8 * 3600000;

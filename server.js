@@ -842,7 +842,8 @@ const MODE_FOLLOW = {
 };
 const followMode = (fromKind, mode, toKind) => ((MODE_FOLLOW[fromKind] || {})[toKind] || {})[mode] || null;
 const racePair = who => (Array.isArray(who) && who.length === 2 && who[0] !== who[1] && who.every(w => RACE_NAMES[w]) ? who.slice() : ['claude', 'codex']);
-async function startRace({ cwd, prompt, accountId, split, who }) {
+// run: the model and effort for each side, as picked in the race dialog (lib/race.js racerOpen).
+async function startRace({ cwd, prompt, accountId, split, who, run }) {
   const p = projectAt(cwd);
   if (!p || !p.exists) throw fail(404, 'Pick one of your projects.');
   const pair = racePair(who);
@@ -861,9 +862,14 @@ async function startRace({ cwd, prompt, accountId, split, who }) {
   try {
     for (const who of pair) {
       const other = pair.find(w => w !== who);
-      const info = await openChat(c, { account: who === 'claude' ? account.id : null, cwd: r.copies[who].cwd, mode: 'new', provider: who });
+      const open = raceLib.racerOpen(r, who, { account: account ? account.id : null, run });
+      const info = await openChat(c, open);
       r.keys[who] = info.key;
       const chat = chats.get(info.key);
+      // Its model and effort stay with this chat (not as a default for its copy's folder), so opened again from
+      // the card it carries on with them.
+      const choice = { ...(open.model ? { model: open.model } : {}), ...(open.effort ? { effort: open.effort } : {}) };
+      if (Object.keys(choice).length) { if (chat.sessionId) chatPrefs.set({ sessionId: chat.sessionId }, choice); else chat.choices = { ...(chat.choices || {}), ...choice }; }
       chat.title = parts ? `Split: ${parts[who].split('\n')[0].slice(0, 60)}` : `Race: ${text.split('\n')[0].slice(0, 60)}`;
       await waitReady(chat, 45000);
       chat.send(parts ? splitText(text, parts[who], parts[other], RACE_NAMES[other]) : text, []);
