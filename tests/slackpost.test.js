@@ -80,15 +80,19 @@ test('slack post: asked once with no tools or settings, and a slow or failed ans
   const spawn = (job, a) => { const c = program(job.reply, job.opts); spawned.push({ a, c }); return c; };
   const killed = [];
   const d = createDrafter({ spawn, kill: c => killed.push(c), timeout: 300 });
-  const text = await d.draft({ pr, kind: 'review', reply: 'Could someone review my world list cache?' });
-  assert.equal(text, `Could someone review my world list cache?\n${pr.url}`);
-  assert.deepEqual(spawned[0].a, args());
-  for (const flag of ['-p', '--no-session-persistence', '--tools=', '--setting-sources=', '--strict-mcp-config']) assert.ok(spawned[0].a.includes(flag), flag);
-  assert.match(spawned[0].c.input, /Cache the world list per user/);
-  assert.equal(await d.draft({ pr, reply: 'A post that failed.', opts: { code: 1 } }), null);
-  assert.equal(await d.draft({ pr, reply: '', opts: { hang: true } }), null);
-  assert.equal(killed.length, 1);
-  assert.equal(await createDrafter({ spawn: () => { throw new Error('no claude'); } }).draft({ pr }), null);
+  // (The drafter's own timer doesn't keep Node running, by design; this does, while the hung one waits it out.)
+  const held = setInterval(() => {}, 50);
+  try {
+    const text = await d.draft({ pr, kind: 'review', reply: 'Could someone review my world list cache?' });
+    assert.equal(text, `Could someone review my world list cache?\n${pr.url}`);
+    assert.deepEqual(spawned[0].a, args());
+    for (const flag of ['-p', '--no-session-persistence', '--tools=', '--setting-sources=', '--strict-mcp-config']) assert.ok(spawned[0].a.includes(flag), flag);
+    assert.match(spawned[0].c.input, /Cache the world list per user/);
+    assert.equal(await d.draft({ pr, reply: 'A post that failed.', opts: { code: 1 } }), null);
+    assert.equal(await d.draft({ pr, reply: '', opts: { hang: true } }), null);
+    assert.equal(killed.length, 1);
+    assert.equal(await createDrafter({ spawn: () => { throw new Error('no claude'); } }).draft({ pr }), null);
+  } finally { clearInterval(held); }
 });
 
 test('slack post: Claude chats get it as a skill in the app’s plugin, with the same rules', () => {
