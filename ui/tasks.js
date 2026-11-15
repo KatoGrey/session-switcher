@@ -121,7 +121,7 @@ const taskWhoMount = value => Who.mount($('tkWho'), { value, later: true, onChan
 // starts), model, effort }. A preset is named as its model, from the assistant's list of models (fetched if need be).
 async function taskRunOf(el) {
   let w = Who.read(el);
-  if (w && w.preset) { await Who.loadModels(); w = Who.read(el); }
+  if (w && w.preset) { await Who.loadModels(true); w = Who.read(el); }
   if (!w) throw new Error('Choose who should do it.');
   if (w.preset) {
     const p = ((typeof PRESETS === 'object' && PRESETS[w.provider]) || []).find(x => x.id === w.preset);

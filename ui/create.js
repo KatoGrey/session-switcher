@@ -319,7 +319,7 @@ function openNewChat({ cwd = null, text = '' } = {}) {
       const next = list[Math.max(0, Math.min(list.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
       if (next) { NC.cwd = next.cwd; ncRecall(); ncRenderWho(); ncRenderList(); }
     });
-    $('ncAs').addEventListener('change', () => { NC.as = $('ncAs').value; });
+    $('ncAs').addEventListener('change', () => { NC.as = $('ncAs').value; ncRenderModel(); });
     $('ncModel').addEventListener('change', () => { NC.model = $('ncModel').value; ncRenderModel(); });
     $('ncEffort').addEventListener('change', () => { NC.effort = $('ncEffort').value; });
   }
@@ -361,14 +361,17 @@ function ncRenderWho() {
   ncRenderCrew();
   ncSync();
 }
+// The account a new chat would start as (Codex's Ollama accounts have their own models).
+const ncAccount = () => (NC.prov === 'codex' ? (NC.as && NC.as !== ':room' ? NC.as : S.codex && S.codex.id) : NC.prov === 'claude' ? (NC.as && NC.as !== ':room' ? NC.as : S.acct) : 'gemini');
 function ncRenderModel() {
   // As last time, the presets (Quick, Balanced, Deep, Max), then every model it has (pickwho.js), with an effort for a
-  // model that offers a choice.
-  const choices = Who.modelChoices(NC.prov);
-  if (!choices.some(c => c.value === NC.model)) NC.model = '';
+  // model that offers a choice. Until the models are known, a remembered one stays as it is.
+  const kind = Who.kindOf(NC.prov, ncAccount()), known = !!Who.listOf(kind);
+  const choices = Who.modelChoices(kind);
+  if (NC.model && !choices.some(c => c.value === NC.model)) { if (known) NC.model = ''; else choices.push({ value: NC.model, label: NC.model, title: 'As chosen last time in this project' }); }
   $('ncModel').innerHTML = choices.map(c => `<option value="${esc(c.value)}" ${c.value === NC.model ? 'selected' : ''} title="${esc(c.title || '')}">${esc(c.label)}</option>`).join('');
-  const efforts = Who.effortChoices(NC.prov, NC.model);
-  if (!efforts.includes(NC.effort)) NC.effort = '';
+  const efforts = Who.effortChoices(kind, NC.model).slice();
+  if (NC.effort && !efforts.includes(NC.effort)) { if (known) NC.effort = ''; else efforts.push(NC.effort); }
   $('ncEffortWrap').hidden = !efforts.length;
   $('ncEffort').innerHTML = `<option value="">Its usual</option>${efforts.map(e => `<option value="${esc(e)}" ${e === NC.effort ? 'selected' : ''}>${esc(e)}</option>`).join('')}`;
 }
@@ -390,7 +393,10 @@ async function ncStart() {
   const as = chosen === ':room' ? Who.accountFor(`${prov}:room`) : chosen;
   store('nc-prov', prov);
   const crew = NC.with.slice(), how = NC.how;
-  const model = $('ncModel').value, effort = $('ncEffortWrap').hidden ? '' : $('ncEffort').value, run = Who.runOf(prov, model, effort);
+  // A preset is put on once the chat knows its own models (the account's own, whatever list this window had); any
+  // other model goes from the start.
+  const model = $('ncModel').value, effort = $('ncEffortWrap').hidden ? '' : $('ncEffort').value;
+  const run = /^preset:/.test(model) ? { preset: model.slice(7) } : Who.runOf(Who.kindOf(prov, ncAccount()), model, effort);
   store(`nc:${cwd}`, JSON.stringify({ prov, as: chosen, with: crew, how, model, effort }));
   $('ncDlg').close();
   if (prov === 'codex' && as && S.codex && as !== S.codex.id) await setCodexActive(as);

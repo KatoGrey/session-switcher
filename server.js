@@ -882,8 +882,7 @@ async function startRace({ cwd, prompt, accountId, split, who, run }) {
       const chat = chats.get(info.key);
       // Its model and effort stay with this chat (not as a default for its copy's folder), so opened again from
       // the card it carries on with them.
-      const choice = { ...(open.model ? { model: open.model } : {}), ...(open.effort ? { effort: open.effort } : {}) };
-      if (Object.keys(choice).length) { if (chat.sessionId) chatPrefs.set({ sessionId: chat.sessionId }, choice); else chat.choices = { ...(chat.choices || {}), ...choice }; }
+      keepForChat(chat, { model: open.model || null, effort: open.effort || null });
       chat.title = parts ? `Split: ${parts[who].split('\n')[0].slice(0, 60)}` : `Race: ${text.split('\n')[0].slice(0, 60)}`;
       await waitReady(chat, 45000);
       chat.send(parts ? splitText(text, parts[who], parts[other], RACE_NAMES[other]) : text, []);
@@ -1013,6 +1012,7 @@ async function openChatNow(c, body) {
   return info;
 }
 async function openChatInner(c, body) {
+  const START_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];   // the efforts a new chat can be asked to start on
   // The effort to use if none was chosen for this chat or its project (Companion's quick questions).
   const orEffort = /^(minimal|low|medium|high|xhigh|max|ultra)$/.test(String(body.defaultEffort || '')) ? body.defaultEffort : null;
   if (body.provider === 'gemini' || (body.mode !== 'new' && isGeminiId(body.sessionId))) {
@@ -1073,7 +1073,7 @@ async function openChatInner(c, body) {
     const pref = chatPrefs.get({ sessionId: threadId, cwd, provider: inst.ACCOUNT.kind === 'ollama' ? 'ollama' : 'codex' });
     const last = threadId && mode !== 'new' && !body.model && !pref.model ? await codexStartedOn(threadId) : null;
     const model = [body.model, pref.model, last && last.model].find(m => m && modelFits(inst, m)) || null;
-    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: aide.isHere(cwd) ? 'read-only' : body.permissionMode || pref.mode, model, fast: body.fast === true || pref.fast === 'on', effort: (typeof body.effort === 'string' && body.effort) || pref.effort || (last && model === last.model ? last.effort : null) || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : art ? `Paint ${art.name}` : 'New Codex chat'), folder });
+    const chat = inst.open({ cfg: c, cwd, threadId, fork: mode === 'fork', mode: aide.isHere(cwd) ? 'read-only' : body.permissionMode || pref.mode, model, fast: body.fast === true || pref.fast === 'on', effort: (START_EFFORTS.includes(body.effort) && body.effort) || pref.effort || (last && model === last.model ? last.effort : null) || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : art ? `Paint ${art.name}` : 'New Codex chat'), folder });
     chat.aide = aide.isHere(cwd);
     if (threadId && mode === 'resume') sessions.recordLaunch(threadId, inst.ACCOUNT, 'app');
     log(`Codex chat window: ${mode} ${threadId || '(new)'}`);
@@ -1113,7 +1113,7 @@ async function openChatInner(c, body) {
   if (sessionId) { try { title = sessions.find(sessionId).session.title; } catch { /* untitled */ } }
   if (mode === 'fork' && title) title = `${title} (copy)`;
   const folder = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
-  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: (typeof body.effort === 'string' && body.effort) || pref.effort || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : 'New chat'), folder, extraArgs: aide.isHere(cwd) ? aide.claudeArgs() : chatArgs(cwd) });
+  const chat = chats.open({ cfg: c, account: a, cwd, sessionId, fork: mode === 'fork', permissionMode, model: body.model || pref.model, effort: (START_EFFORTS.includes(body.effort) && body.effort) || pref.effort || orEffort, title: title || (aide.isHere(cwd) ? 'A question' : 'New chat'), folder, extraArgs: aide.isHere(cwd) ? aide.claudeArgs() : chatArgs(cwd) });
   chat.aide = aide.isHere(cwd);
   if (sessionId && mode === 'resume') sessions.recordLaunch(sessionId, a, 'app');
   log(`Chat window: ${mode} ${sessionId || '(new)'} as ${a.name}${permissionMode ? ` (${permissionMode})` : ''}`);
@@ -2237,7 +2237,7 @@ async function handleApi(req, res, url, remote = false) {
       const def = list.find(x => x.isDefault) || null;
       gem = list.length ? { defaultModel: def ? def.label : null, defaultEffort: null, efforts: [], models: list.slice(0, 30).map(x => ({ value: x.value, label: String(x.label || x.value).slice(0, 60), note: String(x.description || '').slice(0, 120), efforts: [] })) } : null;
     }
-    return send(res, 200, { claude: view(m.claude), codex: config().codex.enabled ? view(m.codex) : null, gemini: gem });
+    return send(res, 200, { claude: view(m.claude), codex: config().codex.enabled ? view(m.codex) : null, ollama: config().codex.enabled && m.ollama ? view(m.ollama) : null, gemini: gem });
   }
   if (route === 'GET /api/linear/issue') return send(res, 200, await linear.issue(String(url.searchParams.get('id') || '')));
   if (route === 'GET /api/linear/status') return send(res, 200, await linear.status({ fresh: url.searchParams.get('fresh') === '1' }));
@@ -3866,7 +3866,7 @@ async function handleChat(req, res, url, body, c, remote = false) {
       // The Commander's own chat reopens through its own route (it needs its tools).
       if ((body.mode || 'resume') === 'resume' && isCommanderId(body.sessionId)) return send(res, 200, await openCommander(c, {}));
       const info = await openChat(c, body);
-      if (body.mode === 'new' && (body.model || body.effort) && info?.key) remember(chats.get(info.key), { ...(body.model ? { model: body.model } : {}), ...(typeof body.effort === 'string' && body.effort ? { effort: body.effort } : {}) });
+      if (body.mode === 'new' && (body.model || body.effort) && info?.key) { const ch = chats.get(info.key); remember(ch, { ...(body.model ? { model: body.model } : {}), ...(body.effort && ch.effort ? { effort: ch.effort } : {}) }); }
       // A sub-session remembers the chat it was started from once it has an id (see onSession).
       if (body.mode === 'new' && body.parent && info && info.key) { try { chats.get(info.key).parentSession = parentFor(body.parent); } catch { /* it ended already */ } }
       let mate = null, crew = {};

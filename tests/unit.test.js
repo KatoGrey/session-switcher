@@ -1109,3 +1109,13 @@ test('“carry on when it’s back” keeps a chat from being stopped as idle un
   assert.equal(idleStop(chat, now), false, 'waiting to carry on');
   assert.equal(idleStop(chat, now + 2 * 3600e3), true, 'and idle as usual after');
 });
+
+test('tasks: an effort belongs to a model, as for routines and races (none alone, none for Gemini)', () => {
+  const projectAt = cwd => (cwd === 'C:\Proj' ? { cwd: 'C:\Proj', name: 'Proj', exists: true } : null);
+  const ctx = { projectAt, accounts: [{ id: 'main', usable: true }] };
+  assert.equal(tasks.validTask({ cwd: 'C:\Proj', provider: 'claude', accountId: 'auto', prompt: 'x', effort: 'high' }, ctx).effort, null, 'no model: no effort');
+  const both = tasks.validTask({ cwd: 'C:\Proj', provider: 'claude', accountId: 'auto', prompt: 'x', model: 'opus', effort: 'high' }, ctx);
+  assert.equal(both.model, 'opus'); assert.equal(both.effort, 'high');
+  assert.equal(tasks.validTask({ cwd: 'C:\Proj', provider: 'claude', accountId: 'auto', prompt: 'x', model: 'opus', effort: 'loud' }, ctx).effort, null, 'only a known effort');
+  assert.equal(tasks.validTask({ cwd: 'C:\Proj', provider: 'gemini', prompt: 'x', model: 'gemini-3-pro', effort: 'high' }, ctx).effort, null, 'Gemini: none');
+});

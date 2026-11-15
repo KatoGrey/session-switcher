@@ -158,15 +158,17 @@ function raceAccounts() {
 // or any model it has, and an effort when that model offers a choice. Kept for each assistant while the dialog is
 // open, so changing who races keeps what you picked for the one that stays.
 const RaceRun = {};
+// The list a side's models come from: Codex's side runs as the Codex account in use, which may be an Ollama one.
+const raceKind = w => Who.kindOf(w, w === 'codex' ? (S.codex && S.codex.id) : null);
 function raceRunDraw() {
   const box = $('rcRun'); if (!box) return;
   $('rcNote').hidden = true;   // (what it said was about the choice before)
   const was = box.contains(document.activeElement) ? document.activeElement.id : null;
   box.innerHTML = ($('rcWho').value || 'claude+codex').split('+').map(w => {
     const st = RaceRun[w] || (RaceRun[w] = { model: '', effort: '' }), name = RACE_NAME[w] || w;
-    const choices = Who.modelChoices(w);
+    const choices = Who.modelChoices(raceKind(w));
     if (!choices.some(c => c.value === st.model)) st.model = '';
-    const efforts = Who.effortChoices(w, st.model);
+    const efforts = Who.effortChoices(raceKind(w), st.model);
     if (!efforts.includes(st.effort)) st.effort = '';
     return `<div class="rc-side" data-side="${esc(w)}"><label>${esc(name)}’s model<select id="rcModel-${esc(w)}" data-rc-run="model">${choices.map(c => `<option value="${esc(c.value)}"${c.value === st.model ? ' selected' : ''} title="${esc(c.title || '')}">${esc(c.label)}</option>`).join('')}</select></label>`
       + (efforts.length ? `<label>${esc(name)}’s effort<select id="rcEffort-${esc(w)}" data-rc-run="effort"><option value="">Its usual</option>${efforts.map(e => `<option value="${esc(e)}"${e === st.effort ? ' selected' : ''}>${esc(e)}</option>`).join('')}</select></label>` : '')
@@ -177,11 +179,11 @@ function raceRunDraw() {
 // What each side starts on ({ claude: { model, effort }, … }; nothing for "as last time"). A preset is placed on one
 // of the assistant's models now; when it can't be, it says why and gives null (the race doesn't start).
 async function raceRuns(who) {
-  if (who.some(w => /^preset:/.test((RaceRun[w] || {}).model || ''))) await Who.loadModels();
+  if (who.some(w => /^preset:/.test((RaceRun[w] || {}).model || ''))) await Who.loadModels(true);
   const run = {};
   for (const w of who) {
-    const st = RaceRun[w] || {}, r = Who.runOf(w, st.model, st.effort);
-    if (r.preset) { $('rcNote').textContent = Who.presetMiss(w, r.preset); $('rcNote').hidden = false; $(`rcModel-${w}`)?.focus(); return null; }
+    const st = RaceRun[w] || {}, r = Who.runOf(raceKind(w), st.model, st.effort);
+    if (r.preset) { $('rcNote').textContent = Who.presetMiss(raceKind(w), r.preset); $('rcNote').hidden = false; $(`rcModel-${w}`)?.focus(); return null; }
     if (r.model) run[w] = r;
   }
   return run;
