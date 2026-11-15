@@ -817,6 +817,8 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'chip': { const pr = S.prompts.find(x => x.id === c.dataset.pid); if (pr) insertPrompt(pr, true); return undefined; }
       case 'stop': if (C.provider === 'openclaw') return; C.interruptedAt = Date.now(); return Promise.all(targetsNow().filter(x => x.key && (x.state === 'busy' || x.state === 'waiting')).map(x => api('/api/chat/interrupt', { key: x.key })));
       case 'compact': return compactNow(c.dataset.src || 'main', c.dataset.kind);
+      // The model line in the side panel: the same picker as the model in the message box.
+      case 'model-pick': if (ledgerDrawer()) chat.classList.remove('show-ledger'); return openPick('main');
       case 'chgview': return viewChanges(c.closest('.chg'));
       case 'allchg': return viewAllChanges();
       // Its project's page; the chat carries on, and it's a click away in the sidebar.

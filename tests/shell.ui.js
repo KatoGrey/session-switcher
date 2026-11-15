@@ -3,6 +3,40 @@ const demo = require('./demo');
 const { responder } = require('./work.ui');
 
 module.exports = [{
+  name: 'model in the chat',
+  // A chat's model and effort can be changed from where you are in it, in either layout: the model in the message
+  // box, the Model line in its side panel, Ctrl+K's Switch model…, and /model. (The shared picker for starting work
+  // doesn't replace any of these.)
+  async run(t) {
+    const b = await t.open({ state: 'busy', width: 1440, height: 900, respond: responder() });
+    await sleep(600);
+    const id = JSON.stringify(demo.ID['s-bard']);
+    for (const next of [false, true]) {
+      const tag = next ? 'new layout' : 'as before';
+      await b.eval(`Shell.setNext(${next}); ChatUI.open({ sessionId: ${id} }); return 1`); await sleep(2200);
+      await b.eval(`C.mi.main = { model: 'sonnet', effort: 'medium', efforts: ['low', 'medium', 'high'], models: [{ value: 'opus', label: 'Opus' }, { value: 'sonnet', label: 'Sonnet', isDefault: true }, { value: 'haiku', label: 'Haiku' }] }; C.model = 'Sonnet'; renderCrew(); renderLedger(); window._model = []; window._api0 = api; api = async (u, body) => { if (u === '/api/chat/model') { _model.push(body); return { ...C.mi.main, ...(body.model ? { model: body.model } : {}), ...(body.effort ? { effort: body.effort } : {}) }; } return _api0(u, body); }; return 1`);
+      // The model in the message box.
+      await b.clickOn('[data-crew="main"]'); await sleep(500);
+      t.check(`${tag}: the model in the message box opens the picker`, await b.eval(`return !document.getElementById('cPick').hidden`));
+      await b.eval(`const o = [...document.querySelectorAll('#cPick [data-model]')].find(x => x.dataset.model === 'opus'); if (o) o.click(); return 1`); await sleep(300);
+      t.check(`${tag}: picking a model there switches it`, await b.eval(`return _model.some(x => x.model === 'opus')`), await b.eval(`return _model`));
+      await b.eval(`closePick(); return 1`); await sleep(150);
+      // The Model line in the side panel.
+      await b.eval(`if (document.getElementById('chat').classList.contains('no-ledger')) document.querySelector('[data-c="ledger"]').click(); const d = document.querySelector('#cLedgerBody details'); if (d) d.open = true; renderLedger(); return 1`); await sleep(300);
+      const line = await b.eval(`const btn = document.querySelector('#cLedgerBody [data-c="model-pick"]'); if (!btn) return null; btn.click(); return btn.textContent`); await sleep(400);
+      t.check(`${tag}: the Model line in the side panel opens the same picker`, !!line && await b.eval(`return !document.getElementById('cPick').hidden`), line);
+      await b.eval(`closePick(); return 1`);
+      // Ctrl+K.
+      const pal = await b.eval(`openPalette(); document.getElementById('palQ').value = 'model'; document.getElementById('palQ').dispatchEvent(new Event('input', { bubbles: true })); await new Promise(r => setTimeout(r, 300)); const t = document.getElementById('palList').textContent; closePalette(); return t`);
+      t.check(`${tag}: Ctrl+K offers Switch model…`, /Switch model/.test(pal), pal.slice(0, 200));
+      // /model in the message box.
+      await b.eval(`_model.length = 0; await quickSwitch('model', 'haiku'); return 1`); await sleep(200);
+      t.check(`${tag}: /model switches it too`, await b.eval(`return _model.some(x => x.model === 'haiku')`), await b.eval(`return _model`));
+      await b.eval(`api = _api0; ChatUI.close(); return 1`); await sleep(400);
+    }
+    await b.eval(`Shell.setNext(false); return 1`);
+  },
+}, {
   name: 'setup in groups',
   // With the new layout, Setup's Options show one group at a time; a link to a section opens its group. Subagents
   // and Switcher Lite have a place in Setup in every layout.
