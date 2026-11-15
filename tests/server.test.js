@@ -158,6 +158,73 @@ cx.createCodex = ({account, chats, getConfig}) => {
   } finally { await s.stop(); }
 });
 
+test('tasks: a queued task’s chat starts on its model and effort, as the account it names, and keeps them for that chat', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-task-model-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const home = path.join(dir, 'home'), cwd = path.join(dir, 'work'), projects = path.join(home, '.claude', 'projects', 'work');
+  fs.mkdirSync(projects, { recursive: true }); fs.mkdirSync(cwd);
+  fs.writeFileSync(path.join(projects, 'aaaaaaaa-1111-4222-8333-444444444446.jsonl'), JSON.stringify({ type: 'user', cwd, timestamp: new Date().toISOString(), message: { content: 'A model test project' } }) + '\n');
+  fs.writeFileSync(path.join(dir, 'accounts.json'), JSON.stringify({ claudeCommand: path.join(dir, 'no-claude-here'), codexActive: 'codex-second', codexAccounts: [{ id: 'codex-second', name: 'Second' }] }));
+  // Queued before a task could name its Codex account: its 'codex' meant the one in use. One since names the first.
+  const later = new Date(Date.now() + 3600e3).toISOString(), old = { cwd, folder: 'work', provider: 'codex', accountId: 'codex', prompt: 'Queued a while ago', when: 'at', at: later, state: 'queued', createdAt: new Date().toISOString() };
+  fs.writeFileSync(path.join(dir, 'tasks.json'), JSON.stringify({ tasks: [{ ...old, id: 'old1' }, { ...old, id: 'new1', model: null, effort: null }] }));
+  // A pretend Codex that notes which account each chat opens as, on what model and effort.
+  const calls = path.join(dir, 'calls.jsonl'), preload = path.join(dir, 'fake-codex.cjs');
+  fs.writeFileSync(preload, `
+const fs = require('fs'), cx = require(${JSON.stringify(path.join(APP, 'lib/codex.js'))});
+const { LiveChat } = require(${JSON.stringify(path.join(APP, 'lib/chat.js'))});
+require(${JSON.stringify(path.join(APP, 'lib/snapshots.js'))}).warm = () => {};
+class TestChat extends LiveChat {
+  start() { this.provider = 'codex'; this.sessionId = require('crypto').randomUUID(); this.setState('ready'); }
+  async beforeTurn() {}
+  send(text, images) { this.emit({kind:'user', text, images}); this.emit({kind:'result', ok:true}); }
+  stop() { this.end(0); return this.exited; }
+}
+cx.createCodex = ({account, chats, getConfig}) => {
+  const state = () => ({id:account.id, name:account.name, provider:'codex', enabled:true, checked:true, installed:true, signedIn:true});
+  return { ACCOUNT:account, publicState:state, refreshAccount:async()=>state(), refreshUsage:async()=>{},
+    list:async()=>[], cached:()=>[], known:()=>null, models:async()=>[], stop:()=>{}, config:getConfig,
+    open:opts=>{ const chat = chats.open({...opts, account, Chat:TestChat}); fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify({id:account.id, model:opts.model || null, effort:opts.effort || null, session:chat.sessionId}) + '\\n'); return chat; }
+  };
+};`);
+  const s = await startServer(dir, { home, preload });
+  const startedAs = async id => {
+    let task;
+    for (let i = 0; i < 60; i++) { task = (await s.call('/api/tasks')).json.tasks.find(x => x.id === id); if (task && task.state !== 'queued') break; await new Promise(r => setTimeout(r, 50)); }
+    return task;
+  };
+  const opened = () => fs.readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
+  try {
+    const before = (await s.call('/api/tasks')).json.tasks;
+    assert.deepEqual(before.map(x => [x.id, x.accountId]), [['old1', 'codex-second'], ['new1', 'codex']], 'an older Codex task still runs as the one in use');
+    for (const x of before) await s.call('/api/tasks', { action: 'remove', id: x.id });
+    const add = await s.call('/api/tasks', { action: 'add', task: { cwd, provider: 'codex', accountId: 'codex', model: 'gpt-6-sol', effort: 'high', prompt: 'A safe fake task', when: 'now' } });
+    assert.equal(add.status, 200, JSON.stringify(add.json));
+    assert.deepEqual([add.json.task.accountId, add.json.task.model, add.json.task.effort], ['codex', 'gpt-6-sol', 'high'], 'stored as sent');
+    assert.equal((await startedAs(add.json.task.id)).state, 'started');
+    const first = opened()[0];
+    assert.deepEqual([first.id, first.model, first.effort], ['codex', 'gpt-6-sol', 'high'], 'as the account it names (not the one in use), on its model and effort');
+    // Kept for that chat (it resumes on them), not as the project's default for new chats.
+    await new Promise(r => setTimeout(r, 700));
+    const prefs = JSON.parse(fs.readFileSync(path.join(dir, 'chat-prefs.json'), 'utf8'));
+    const mine = prefs.chats[first.session.toLowerCase()] || {};
+    assert.deepEqual([mine.model, mine.effort], ['gpt-6-sol', 'high'], JSON.stringify(prefs));
+    assert.ok(!Object.values(prefs.projects || {}).some(p => p.codex && (p.codex.model || p.codex.effort)), 'not the project’s default');
+    // "Whichever has the most room" is decided as it starts: with nothing to tell them apart, the one in use.
+    const auto = await s.call('/api/tasks', { action: 'add', task: { cwd, provider: 'codex', accountId: 'auto', prompt: 'Another safe fake task', when: 'now' } });
+    assert.equal(auto.json.task.accountId, 'auto');
+    assert.equal((await startedAs(auto.json.task.id)).state, 'started');
+    assert.deepEqual(opened().slice(1).map(x => [x.id, x.model]), [['codex-second', null]], 'the one in use, on what it used last');
+    // A model its account doesn't have (an Ollama one, on ChatGPT) isn't used, nor kept for the chat.
+    const odd = await s.call('/api/tasks', { action: 'add', task: { cwd, provider: 'codex', accountId: 'codex', model: 'qwen3:32b', prompt: 'A third safe fake task', when: 'now' } });
+    assert.equal((await startedAs(odd.json.task.id)).state, 'started');
+    const third = opened()[2];
+    await new Promise(r => setTimeout(r, 700));
+    assert.deepEqual([third.id, third.model, (JSON.parse(fs.readFileSync(path.join(dir, 'chat-prefs.json'), 'utf8')).chats[third.session.toLowerCase()] || {}).model], ['codex', null, undefined]);
+    assert.equal((await s.call('/api/tasks', { action: 'add', task: { cwd, provider: 'codex', accountId: 'codex-gone', prompt: 'x' } })).status, 400, 'a Codex account that isn’t there');
+  } finally { await s.stop(); }
+});
+
 test('chat window: a partner opened twice at once opens inside its lead both times', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
@@ -290,6 +357,11 @@ test('tasks: queued for a project, waiting while no account can start them, and 
     assert.ok(g.json.routine && g.json.routine.account === 'gemini' && g.json.routine.trigger.schedule.kind === 'daily', JSON.stringify(g.json));
     assert.ok(['accept-edits', 'plan', 'full'].includes(g.json.routine.permissionMode), 'with one of Gemini’s own modes');
     assert.equal((await s.call('/api/routines/remove', { id: g.json.routine.id })).status, 200);
+    // Repeating on a model and effort: its routine runs on them too.
+    const c = await s.call('/api/tasks', { action: 'add', task: { cwd: proj, provider: 'claude', accountId: 'auto', model: 'opus', effort: 'max', prompt: 'Tidy the notes.', when: 'at', at, repeat: 'weekdays' } });
+    assert.equal(c.status, 200, JSON.stringify(c.json));
+    assert.deepEqual([c.json.routine.account, c.json.routine.model, c.json.routine.effort], ['main', 'opus', 'max'], JSON.stringify(c.json.routine));
+    assert.equal((await s.call('/api/routines/remove', { id: c.json.routine.id })).status, 200);
     assert.equal((await s.call('/api/gemini/settings', { enabled: false })).status, 200);
     assert.equal((await s.call('/api/tasks', { action: 'remove', id })).status, 200);
     list = (await s.call('/api/tasks')).json.tasks;

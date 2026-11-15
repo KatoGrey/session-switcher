@@ -4,7 +4,7 @@
    app.js: S, $, api, esc, toast, wrap, patch, showMenu, closeMenu, appConfirm, renderNav, ChatUI. */
 
 const Routines = (() => {
-  const R = { list: [], templates: [], secrets: {}, loaded: false, hist: new Set(), editing: null };
+  const R = { list: [], templates: [], secrets: {}, loaded: false, hist: new Set(), editing: null, runOn: null };
   const MODE_LABELS = { default: 'Ask before acting', acceptEdits: 'Accept edits', plan: 'Plan only', auto: 'Auto', bypassPermissions: 'Bypass permissions' };
   const CODEX_MODES = [['agent', 'Agent'], ['ask', 'Ask before acting'], ['read-only', 'Read only'], ['full', 'Full access']];
   const GEMINI_MODES = [['accept-edits', 'Edit files'], ['plan', 'Plan only'], ['full', 'Full access']];
@@ -284,6 +284,8 @@ const Routines = (() => {
     const src = r || tpl || {};
     R.editing = r && r.id ? r.id : null;
     R.kinds = src.chat && Array.isArray(src.chat.kinds) ? src.chat.kinds : null;
+    // A new one handed a model and effort (from Queue a task, or a copy) runs on them while it stays on that assistant.
+    R.runOn = !R.editing && src.model ? { kind: src.provider || kindOfAcct(src.account), model: src.model, effort: src.effort || null } : null;
     $('rtTitle').textContent = R.editing ? `Edit ${r.name}` : tpl ? tpl.name : 'New routine';
     $('rtName').value = src.name || '';
     const t = src.trigger || { type: 'schedule', schedule: { kind: 'daily', time: '09:00' } };
@@ -320,6 +322,7 @@ const Routines = (() => {
       name: $('rtName').value, cwd: $('rtCwd').value.trim(), account: $('rtAcct').value, permissionMode: $('rtMode').value,
       prompt: $('rtPrompt').value, limit: Number($('rtLimit').value) || 90, untilAt,
       chat: { ...(chatSel.startsWith('s:') ? { mode: 'continue', sessionId: chatSel.slice(2) } : { mode: chatSel === 'continue' ? 'continue' : 'new' }), to: chatTo, ...(chatTo && R.kinds ? { kinds: R.kinds } : {}) },
+      ...(R.runOn && kindOfAcct($('rtAcct').value) === R.runOn.kind ? { model: R.runOn.model, effort: R.runOn.effort } : {}),
       trigger: k === 'watch'
         ? { type: 'watch', source: { type: $('rtSrc').value, channel: $('rtChan').value, command: $('rtCommand').value, filter: $('rtFilter').value, every: Number($('rtWEvery').value) } }
         : { type: 'schedule', schedule: ['hours', 'minutes'].includes(sk) ? { kind: 'every', every: Number($('rtEvery').value), unit: sk } : sk === 'cron' ? { kind: 'cron', cron: $('rtCron').value } : { kind: sk, time: $('rtTime').value, ...(sk === 'weekly' ? { day: Number($('rtDay').value) } : {}) } },

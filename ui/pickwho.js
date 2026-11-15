@@ -1,8 +1,8 @@
 'use strict';
 /* Who does it, and on what: the one picker for starting work. New chat, Your work, a pull request's actions, Queue a
    task, Race and Split, Routines and "Do this later" all offer the same choices, in the same order and words:
-   - who: Claude as each of your accounts (or whichever has the most room, when that's known for two or more),
-     Codex as each of its accounts, Gemini;
+   - who: Claude as each of your accounts (or whichever has the most room, when that's known for two or more; for
+     queued work, always, decided as it starts), Codex as each of its accounts, Gemini;
    - on what: as last time, a preset (Quick, Balanced, Deep, Max: the same ones as a chat's own model picker), or any
      model the assistant has, with its effort.
    A chat's own model picker (the model chip in the message box, Ctrl+K → Switch model…, /model, /effort) stays as it
@@ -33,15 +33,22 @@ const Who = (() => {
     const best = known.sort((x, y) => y.b.left - x.b.left)[0];
     return { id: best.a.id, name: best.a.name, left: best.b.left };
   }
+  // "Whichever has the most room", saying who that is now when it's known. Work that starts later (later) has it
+  // decided as it starts, and says so.
+  const roomOpt = (prov, room, later, ok = true, why = '') => {
+    const short = `Whichever has the most room${later ? ' when it starts' : ''}${room ? ` (now ${room.name}, ${room.left}% left)` : ''}`;
+    return { value: `${prov}:room`, provider: prov, account: 'room', label: `${nameOf(prov)} · ${short[0].toLowerCase()}${short.slice(1)}`, short, ok, why };
+  };
   // Every one who could start work here, signed in or not (those that can't say why). Each:
   // { value, provider, account, label, short, ok, why }. value is 'claude:<account>', 'claude:room', 'codex:<account>',
   // 'codex:room' or 'gemini'; short is the label without the assistant's name. auto: offer "most room". providers:
-  // which assistants this place can use.
-  function options({ auto = true, providers = ['claude', 'codex', 'gemini'] } = {}) {
+  // which assistants this place can use. later: the work waits to start (a queued task), so "most room" is on offer
+  // even before usage is known (with nobody signed in yet, Claude's waits for a sign-in).
+  function options({ auto = true, providers = ['claude', 'codex', 'gemini'], later = false } = {}) {
     const out = [];
     if (providers.includes('claude')) {
       const room = auto ? roomiest() : null;
-      if (room) out.push({ value: 'claude:room', provider: 'claude', account: 'room', label: `Claude · whichever has the most room (now ${room.name}, ${room.left}% left)`, short: `Whichever has the most room (now ${room.name}, ${room.left}% left)`, ok: true, why: '' });
+      if (room || (auto && later)) out.push(roomOpt('claude', room, later));
       for (const a of S.accounts || []) {
         const ok = canLaunch(a), use = usageLine(a.id, { short: true }), short = `${a.name}${use ? ` · ${use}` : ''}`;
         out.push({ value: `claude:${a.id}`, provider: 'claude', account: a.id, label: `Claude · ${short}`, short, ok, why: ok ? '' : a.lockMessage || 'Not signed in' });
@@ -49,7 +56,8 @@ const Who = (() => {
     }
     if (providers.includes('codex') && S.codex && S.codex.enabled) {
       const all = codexAccts(), room = auto && all.length > 1 ? roomiest('codex') : null;
-      if (room) out.push({ value: 'codex:room', provider: 'codex', account: 'room', label: `Codex · whichever has the most room (now ${room.name}, ${room.left}% left)`, short: `Whichever has the most room (now ${room.name}, ${room.left}% left)`, ok: true, why: '' });
+      const any = S.codex.installed !== false && all.some(x => x.signedIn);
+      if (room || (auto && later && all.length > 1)) out.push(roomOpt('codex', room, later, any, any ? '' : 'Sign in to Codex first'));
       for (const x of all) {
         const ok = S.codex.installed !== false && !!x.signedIn, use = usageLine(x.id, { short: true }), short = `${x.name || 'Codex'}${use ? ` · ${use}` : ''}`;
         out.push({ value: `codex:${x.id}`, provider: 'codex', account: x.id, label: all.length > 1 ? `Codex · ${short}` : 'Codex', short, ok, why: ok ? '' : S.codex.installed === false ? 'Install Codex first (Setup → Assistants)' : 'Sign in to Codex first' });
@@ -72,6 +80,14 @@ const Who = (() => {
     const w = parse(value);
     if (w.account === 'room') { const r = roomiest(w.provider); return r ? r.id : w.provider === 'codex' ? (S.codex && S.codex.id) || null : (current() && current().id) || null; }
     return w.account;
+  }
+  // Who to start with when only the assistant is known (a saved prompt's, the reply's): whichever of its accounts has
+  // the most room, if that's on offer, else the one in use, else the first that can start; null if none of them can.
+  // opts: as for options().
+  function pickFor(prov, opts = {}) {
+    const mine = options(opts).filter(o => o.provider === prov && o.ok);
+    const inUse = prov === 'codex' ? S.codex && S.codex.id : prov === 'claude' ? S.acct : prov;
+    return (mine.find(o => o.account === 'room') || mine.find(o => o.account === inUse) || mine[0] || {}).value || null;
   }
 
   /* ---------- on what ---------- */
@@ -122,13 +138,14 @@ const Who = (() => {
   }
 
   /* ---------- in a form: who, model and effort, each a <select> ---------- */
-  // root: an element to fill. value: { who, model, effort } to start from. Calls onChange after any change.
-  function mount(root, { value = {}, auto = true, providers, model: withModel = true, labels = {}, onChange = null } = {}) {
+  // root: an element to fill. value: { who, model, effort } to start from. Calls onChange after any change. later: the
+  // work waits to start (a queued task): "most room" is always offered, and decided as it starts (see read).
+  function mount(root, { value = {}, auto = true, providers, model: withModel = true, labels = {}, onChange = null, later = false } = {}) {
     if (!root) return;
-    const st = { who: value.who || null, model: value.model || '', effort: value.effort || '' };
+    const st = { who: value.who || null, model: value.model || '', effort: value.effort || '', later };
     root._who = st;
     const draw = () => {
-      const opts = options({ auto, providers });
+      const opts = options({ auto, providers, later });
       if (!opts.some(o => o.value === st.who && o.ok)) { const first = opts.find(o => o.ok); st.who = first ? first.value : (opts[0] || {}).value || null; }
       const prov = parse(st.who).provider, choices = withModel ? modelChoices(prov) : [];
       if (!choices.some(c => c.value === st.model)) st.model = '';
@@ -152,11 +169,12 @@ const Who = (() => {
     // The models come from the server: redrawn once they're known (what's chosen stays).
     if (withModel && !models) loadModels().then(() => { if (root.isConnected && root._who === st) draw(); });
   }
-  // What a mounted picker says: { who, provider, account (resolved at this moment), model, effort, preset }.
+  // What a mounted picker says: { who, provider, account (resolved at this moment), model, effort, preset }. For work
+  // that starts later, "most room" stays account 'auto': the server picks the account as it starts.
   function read(root) {
     const st = root && root._who; if (!st || !st.who) return null;
     const w = parse(st.who);
-    return { who: st.who, provider: w.provider, account: accountFor(st.who), ...runOf(w.provider, st.model, st.effort) };
+    return { who: st.who, provider: w.provider, account: st.later && w.account === 'room' ? 'auto' : accountFor(st.who), ...runOf(w.provider, st.model, st.effort) };
   }
 
   /* ---------- in a menu (showMenu items) ---------- */
@@ -172,6 +190,6 @@ const Who = (() => {
     return Object.assign(items, { ifEmpty: typeof NO_WHO !== 'undefined' ? NO_WHO : null });
   }
 
-  return { loadModels, listOf, nameOf, options, parse, accountFor, preset, modelChoices, effortChoices, runOf, mount, read, menuItems, roomiest };
+  return { loadModels, listOf, nameOf, options, parse, accountFor, pickFor, preset, modelChoices, effortChoices, runOf, mount, read, menuItems, roomiest };
 })();
 window.Who = Who;

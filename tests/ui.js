@@ -811,8 +811,8 @@ module.exports = [
       t.check('the hub lists queued tasks, and what each waits for', r.length === 2 && /Write patch notes for 1\.5 ?Tidecaller · Claude, whichever account has room ?Waiting for an account with room/.test(r[0]) && /Make a 512px app icon.*Neon Courier · Codex ?Starts /.test(r[1]), r);
       await t.shot(b, 'list');
       await b.clickOn('[data-act="task-new"]'); await sleep(400);
-      const form = await b.eval(`return { open: taskDlg.open, projects: [...tkProject.options].map(o => o.textContent), who: [...tkWho.options].map(o => o.textContent), acct: [...tkAcct.options].map(o => o.textContent) }`);
-      t.check('“Queue a task” asks for the project, who, account, when and what', form.open && form.projects.includes('Starfall Tavern') && form.who.join() === 'Claude,Codex' && form.acct[0] === 'Whichever has the most room' && form.acct.includes('Personal'), form);
+      const form = await b.eval(`const who = document.getElementById('tkWho-who'); return { open: taskDlg.open, projects: [...tkProject.options].map(o => o.textContent), who: [...who.options].map(o => o.textContent), picked: who.value, model: [...document.getElementById('tkWho-model').options].map(o => o.textContent) }`);
+      t.check('“Queue a task” asks for the project, who (as which account, or whichever has the most room), the model, when and what', form.open && form.projects.includes('Starfall Tavern') && /^Claude · whichever has the most room when it starts/.test(form.who[0]) && form.picked === 'claude:room' && form.who.some(x => /^Claude · Personal/.test(x)) && form.who.includes('Codex') && form.model[0] === 'As last time', form);
       await b.eval(`tkProject.value = ${JSON.stringify(demo.projects.find(p => p.name === 'Starfall Tavern').cwd)}; tkWhen.value = 'at'; tkWhen.dispatchEvent(new Event('change', { bubbles: true })); tkText.value = 'Playtest the Harvest Festival quests and list what breaks.'; return 1`);
       t.check('“Not before…” shows a time to pick', !(await b.eval(`return tkAtWrap.hidden`)));
       await t.shot(b, 'dialog');

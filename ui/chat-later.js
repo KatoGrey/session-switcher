@@ -42,7 +42,7 @@ function laterDialog() {
       <p class="rd-intro" id="ltIntro"></p>
       <div class="lt-steps" id="ltSteps"></div>
       <label class="tk-prompt">Something else<textarea id="ltOwn" rows="2" placeholder="Anything else to do later, in your words."></textarea></label>
-      <div class="lt-row"><label>Who<select id="ltWho"></select></label>
+      <div class="lt-row"><div class="who-fields" id="ltWho"></div>
         <div class="lt-when" role="radiogroup" aria-label="When"><span class="lt-k">When</span>${[['now', 'When there’s room'], ['tonight', 'Tonight'], ['morning', 'Tomorrow morning'], ['at', 'Pick a time']].map(([v, l], i) => `<label class="lt-chip"><input type="radio" name="ltWhen" value="${v}"${i ? '' : ' checked'}> ${l}</label>`).join('')}<input type="datetime-local" id="ltAt" hidden aria-label="Time"></div></div>
       <div class="d-row"><span class="spacer"></span><button type="button" class="btn" data-lt="close">Cancel</button><button type="submit" class="btn prime" id="ltGo">Queue it</button></div>
     </div></form></dialog>`);
@@ -75,8 +75,10 @@ async function openLaterDialog(turn) {
     ? `<p class="lt-h">${picked ? 'What you selected' : 'Next steps from this reply'}</p>${steps.map((x, i) => `<label class="lt-step"><input type="checkbox" ${picked || i === 0 ? 'checked' : ''}><textarea rows="1" aria-label="Step ${i + 1}">${esc(x)}</textarea></label>`).join('')}`
     : '<p class="lt-none">This reply doesn’t list next steps. Write what to do below (or select part of the reply first).</p>';
   $('ltOwn').value = '';
-  $('ltWho').innerHTML = `<option value="claude">Claude</option>${S.codex && S.codex.enabled ? `<option value="codex"${codexReady() ? '' : ' disabled'}>Codex</option>` : ''}${S.gemini && S.gemini.enabled ? `<option value="gemini"${geminiReady() ? '' : ' disabled'}>Gemini</option>` : ''}`;
-  $('ltWho').value = turn.dataset.prov === 'codex' && codexReady() ? 'codex' : turn.dataset.prov === 'gemini' && geminiReady() ? 'gemini' : 'claude';
+  // Who does it and on what (the shared picker, pickwho.js): the reply's own assistant to begin with, as whichever of
+  // its accounts has the most room when each one starts (or Claude, if that assistant can't start any now).
+  const prov = ['codex', 'gemini'].includes(turn.dataset.prov) ? turn.dataset.prov : 'claude';
+  Who.mount($('ltWho'), { value: { who: Who.pickFor(prov, { later: true }) }, later: true });
   d.querySelector('[name="ltWhen"][value="now"]').checked = true; $('ltAt').hidden = true;
   const soon = new Date(Date.now() + 3600e3); soon.setMinutes(0, 0, 0);
   $('ltAt').value = new Date(soon - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -85,13 +87,20 @@ async function openLaterDialog(turn) {
   d.showModal();
   for (const ta of d.querySelectorAll('.lt-step textarea')) ta.style.height = `${ta.scrollHeight}px`;
   const mid = [...turn.querySelectorAll('.part[data-mid]')].map(p => p.dataset.mid).pop() || null;
-  const done = await new Promise(res => {
+  // Who and on what, as each task's fields; a choice that can't be used yet (a preset whose model isn't known) says
+  // so, and the dialog stays open.
+  const run = await new Promise(res => {
     const form = $('ltForm');
-    const go = e => { e.preventDefault(); res(true); };
-    form.addEventListener('submit', go, { once: true });
-    d.addEventListener('close', () => { form.removeEventListener('submit', go); res(false); }, { once: true });
+    const go = async e => {
+      e.preventDefault();
+      if ($('ltGo').disabled) return;
+      $('ltGo').disabled = true;
+      try { res(await taskRunOf($('ltWho'))); } catch (err) { toast(err.message, 9000, null, { tone: 'error' }); } finally { laterCount(); }
+    };
+    form.addEventListener('submit', go);
+    d.addEventListener('close', () => { form.removeEventListener('submit', go); res(null); }, { once: true });
   });
-  if (!done) return;
+  if (!run) return;
   const items = [...d.querySelectorAll('.lt-step')].filter(l => l.querySelector('input').checked).map(l => l.querySelector('textarea').value.trim()).filter(Boolean);
   if ($('ltOwn').value.trim()) items.push($('ltOwn').value.trim());
   const when = d.querySelector('[name="ltWhen"]:checked').value;
@@ -99,7 +108,7 @@ async function openLaterDialog(turn) {
   const from = { id: C.sessionId, title: $c('cTitle').textContent || '', mid };
   d.close();
   let r = null;
-  for (const text of items) r = await api('/api/tasks', { action: 'add', task: { cwd: proj.cwd, provider: $('ltWho').value, accountId: 'auto', prompt: text, when: at ? 'at' : 'now', at, from } });
+  for (const text of items) r = await api('/api/tasks', { action: 'add', task: { cwd: proj.cwd, ...run, prompt: text, when: at ? 'at' : 'now', at, from } });
   if (r) { S.tasks = r.tasks; renderQueue(); }
   laterMarks();
   const startText = at ? whenText(at) : 'as soon as an account has room';

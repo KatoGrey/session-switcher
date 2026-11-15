@@ -738,7 +738,14 @@ function codexFind(id) {
 const isCodexId = id => !!codexFind(id);
 // ---------- queued tasks: started as new chats when their time comes and an account has room ----------
 const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
-let taskList = (() => { const j = store.loadOwnJson(TASKS_FILE, null, log); return j && Array.isArray(j.tasks) ? j.tasks : []; })();
+let taskList = (() => {
+  const j = store.loadOwnJson(TASKS_FILE, null, log), list = j && Array.isArray(j.tasks) ? j.tasks : [];
+  // A Codex task from before a task could name its Codex account (and carry a model) said 'codex' for whichever
+  // account was in use: it still runs as that one, not as the first Codex account.
+  const inUse = isCodexAccount(config().codexActive) ? config().codexActive : 'codex';
+  for (const t of list) if (t.provider === 'codex' && t.accountId === 'codex' && !('model' in t)) t.accountId = inUse;
+  return list;
+})();
 let queueRunning = null;   // the pass that is running, as a promise
 function saveTasks() {
   taskList = tasksLib.tidy(taskList);
@@ -748,8 +755,11 @@ function saveTasks() {
 function queueContext() {
   const c = config();
   const accounts = c.accounts.map(a => { const p = acc.publicAccount(c, a); return { id: a.id, name: a.name, usable: !!(p.signedIn && p.lock && p.lock.ok) }; });
-  const snap = usage.snapshot();
-  return { accounts, usage: { ...snap, codex: snap[codexActive().ACCOUNT.id] || snap.codex } };
+  // Each Codex account (a task can name one, or take whichever has the most room), the one in use first, so it's
+  // picked when they're level.
+  const inUse = codexActive();
+  const codexList = c.codex.enabled ? [inUse, ...codexAll().filter(x => x !== inUse)].map(x => { const st = x.publicState(); return { id: x.ACCOUNT.id, name: x.ACCOUNT.name, kind: x.ACCOUNT.kind || 'chatgpt', usable: !!(st.signedIn && st.installed !== false) }; }) : [];
+  return { accounts, codex: codexList, usage: usage.snapshot() };
 }
 // Each task with why it's waiting (a queued one), for the page.
 function tasksView() {
@@ -758,8 +768,12 @@ function tasksView() {
 }
 const waitReady = (chat, ms) => new Promise(res => { const t0 = Date.now(); const tick = () => (chat.state !== 'starting' || Date.now() - t0 > ms ? res() : setTimeout(tick, 250)); tick(); });
 async function startTask(t, account) {
-  const info = await openChat(config(), { account: t.provider === 'codex' ? codexActive().ACCOUNT.id : account.id, cwd: t.cwd, mode: 'new', provider: t.provider });
+  // On the model and effort it was queued with, if any (else what that assistant used last in the project). They stay
+  // with its chat, not as the project's default, so it picks up on them again.
+  const info = await openChat(config(), { account: account.id, cwd: t.cwd, mode: 'new', provider: t.provider, ...(t.model ? { model: t.model } : {}), ...(t.effort ? { effort: t.effort } : {}) });
   const chat = chats.get(info.key);
+  // (Only what it took: an Ollama account, say, has none of ChatGPT's models.)
+  keepForChat(chat, { model: t.model && chat.model === t.model ? t.model : null, effort: t.effort && chat.effort === t.effort ? t.effort : null });
   await waitReady(chat, 45000);
   await chat.beforeTurn();
   // From "Do this later": the chat it came from, as background (its latest messages).
@@ -1936,15 +1950,16 @@ const routines = routinesLib.createRoutines({
   },
 });
 // One kind of routine: a task set to repeat becomes a routine (lib/routines.js), on the same project,
-// account and time, starting a new chat each time. Repeating tasks from before are moved over once.
+// account, model, effort and time, starting a new chat each time. Repeating tasks from before are moved over once.
 function routineFromTask(t) {
   const c = config();
   const at = new Date(t.at), pad2 = n => String(n).padStart(2, '0');
-  const account = t.provider === 'gemini' ? 'gemini' : t.provider === 'codex' ? (c.codexActive || 'codex') : t.accountId && t.accountId !== 'auto' ? t.accountId : (mainAccount() || c.accounts[0] || {}).id;
+  // (A routine runs as one account: "whichever has the most room" becomes your main Claude account, or the Codex one in use.)
+  const account = t.provider === 'gemini' ? 'gemini' : t.provider === 'codex' ? (isCodexAccount(t.accountId) ? t.accountId : c.codexActive || 'codex') : t.accountId && t.accountId !== 'auto' ? t.accountId : (mainAccount() || c.accounts[0] || {}).id;
   const permissionMode = t.provider === 'gemini' ? 'accept-edits' : t.provider === 'codex' ? c.prefs.codexMode : c.prefs.claudeMode;
   const first = (String(t.prompt).split('\n').find(l => l.trim()) || 'Routine').trim();
   return routines.create({
-    name: first.length > 60 ? `${first.slice(0, 59)}…` : first, cwd: t.cwd, account, permissionMode, prompt: t.prompt, chat: { mode: 'new' }, nextAt: Date.parse(t.at),
+    name: first.length > 60 ? `${first.slice(0, 59)}…` : first, cwd: t.cwd, account, permissionMode, model: t.model || null, effort: t.effort || null, prompt: t.prompt, chat: { mode: 'new' }, nextAt: Date.parse(t.at),
     trigger: { type: 'schedule', schedule: { kind: t.repeat, time: `${pad2(at.getHours())}:${pad2(at.getMinutes())}`, ...(t.repeat === 'weekly' ? { day: at.getDay() } : {}) } },
   });
 }
@@ -2000,8 +2015,7 @@ const liteRoutes = createLiteRoutes({
     if (chat.state === 'ended') throw new Error('The chat stopped as it started.');
     if (!chat.title || chat.title === 'New chat') chat.title = title;
     // Kept for this chat (not as the project's default), so it resumes on the same model and effort.
-    const choice = { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
-    if (Object.keys(choice).length) { if (chat.sessionId) chatPrefs.set({ sessionId: chat.sessionId, provider: chat.provider || 'claude' }, choice); else chat.choices = { ...(chat.choices || {}), ...choice }; }
+    keepForChat(chat, { model, effort });
     chat.send(prompt);
     return chat;
   },
@@ -2464,7 +2478,7 @@ async function handleApi(req, res, url, remote = false) {
     }
     case '/api/tasks': {
       if (body.action === 'add') {
-        const t = tasksLib.validTask(body.task || {}, { projectAt, accounts: config().accounts });
+        const t = tasksLib.validTask(body.task || {}, { projectAt, accounts: config().accounts, codex: codexAll().map(x => ({ id: x.ACCOUNT.id })), codexActive: codexActive().ACCOUNT.id });
         if (t.repeat) { const routine = routineFromTask(t); return send(res, 200, { routine, tasks: tasksView() }); }
         taskList.push(t); saveTasks();
         runQueue(t.id).catch(() => {});
@@ -4112,6 +4126,14 @@ function attachedInfo(chat) {
 function remember(chat, changes) {
   chat.choices = { ...(chat.choices || {}), ...changes };
   chatPrefs.set({ sessionId: chat.sessionId, cwd: chat.cwd, provider: chat.provider || 'claude' }, changes);
+}
+// Remembers a model and effort for this chat only (not as its project's default), so it resumes on them: now if it
+// has an id, else once it has one (see onSession). Empty ones are left out.
+function keepForChat(chat, choice) {
+  const keep = Object.fromEntries(Object.entries(choice).filter(([, v]) => v));
+  if (!chat || !Object.keys(keep).length) return;
+  if (chat.sessionId) chatPrefs.set({ sessionId: chat.sessionId, provider: chat.provider || 'claude' }, keep);
+  else chat.choices = { ...(chat.choices || {}), ...keep };
 }
 
 function chatEvents(req, res, url) {

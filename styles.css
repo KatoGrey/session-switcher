@@ -2559,6 +2559,11 @@ body.solo .c-head .icon.c-backm{display:none}
 /* Nobody signed in to start it yet: it still queues, and this says what it waits for. */
 .tk-note{margin:-4px 0 12px;color:var(--parch-2);font-size:13.5px;line-height:1.45}
 .tk-note[hidden]{display:none}
+/* Who does it and on what (ui/pickwho.js): its fields are the form's own, in its grid or row, and keep to their box
+   (an account's name and usage can be long). */
+.who-fields{display:contents}
+.who-fields > label{min-width:0}
+.who-fields select{width:100%;min-width:0;box-sizing:border-box}
 
 
 /* Phones: Claude and Codex each show their name over their model, so the model fits; Both takes only its own width */
@@ -2638,7 +2643,8 @@ body.solo .c-head .icon.c-backm{display:none}
 .lt-step textarea{width:100%;box-sizing:border-box;resize:none;overflow:hidden;field-sizing:content;min-height:1.5em;border:0;background:transparent;color:var(--parch);font:400 14.5px/1.45 var(--f-body);padding:2px 0}
 .lt-none{margin:0 0 8px;color:var(--ash);font-size:14px}
 .lt-row{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:end;margin:6px 0 12px}
-.lt-row > label{display:grid;gap:5px;font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ash)}
+.lt-row > label,.lt-row > .who-fields > label{display:grid;gap:5px;font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ash)}
+.lt-row > .who-fields > label{flex:1 1 200px}
 .lt-row select{font:400 14px var(--f-body);letter-spacing:0;text-transform:none;padding:7px 9px;border:1px solid var(--seam-2);border-radius:7px;background:rgb(var(--c-100e12));color:var(--parch)}
 .lt-when{flex:1 1 360px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .lt-k{width:100%;font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ash)}
