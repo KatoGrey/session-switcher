@@ -292,6 +292,7 @@ function relatedHtml(R) {
     const state = /merged/i.test(p.state || '') ? 'Merged' : /closed/i.test(p.state || '') ? 'Closed' : p.draft ? 'Draft' : '';
     rows.push(`<li class="lg-i rel-row"><span class="glyph" aria-hidden="true">⇄</span><span class="lg-t"><button class="linkish" data-rel="pr" data-url="${esc(p.url || `https://github.com/${p.repo}/pull/${p.number}`)}" title="Open the pull request in Your work">#${p.number}</button>${p.title ? ` <span class="rel-sub" title="${esc(p.title)}">${esc(p.title)}</span>` : ''}</span>${checks}${state || review ? `<small class="rel-st">${esc(state || review)}</small>` : ''}</li>`);
     if (p.guess) rows.push('<li class="rel-note">Found by the branch this chat is on.</li>');
+    rows.push('<li class="rel-note rel-slack"><button type="button" class="linkish" data-rel="slack">Slack post…</button> to ask for a review or let people know</li>');
   }
   if (R.branch) rows.push(`<li class="lg-i rel-row"><span class="glyph" aria-hidden="true">⑂</span><span class="lg-t"><button class="linkish rel-mono" data-copy="${esc(R.branch)}" title="Copy the branch name">${esc(R.branch)}</button></span></li>`);
   if (R.origin) {
@@ -309,6 +310,7 @@ async function relatedAction(b) {
   const a = b.dataset.rel;
   if (a === 'issue') { await go('work'); return Work.openIssue(b.dataset.id); }
   if (a === 'pr') return openWorkPr(b.dataset.url);
+  if (a === 'slack') return slackFromChat();
   if (a === 'chat') return b.dataset.key ? openKey(b.dataset.key) : ChatUI.open({ sessionId: b.dataset.sid });
   if (a === 'routine') return go('routines');
   if (a === 'task') { await go('hub'); const q = document.getElementById('secQueue'); if (q) q.scrollIntoView({ block: 'start', behavior: motionOk() ? 'smooth' : 'auto' }); }

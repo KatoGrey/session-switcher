@@ -198,6 +198,7 @@ const Work = (() => {
       if (state.action) actions.push(button(state.action, primary[state.action], 'prime'));
       actions.push(button('cross-review', 'Cross-model review ↗'), button('prchat', 'New chat…'), button('more', 'More…'));
     }
+    if (!issue) actions.push(button('slack', 'Slack post…', 'quiet'));
     if (p.chat) actions.push(issue ? `<button class="btn quiet sm" data-wk="issuechat" data-key="${esc(p.chat.key || '')}" data-id="${esc(p.chat.sessionId || '')}">Continue its chat ↗</button>` : `<button class="btn quiet sm" data-wk="chat" data-id="${esc(p.chat.sessionId)}">Continue its chat ↗</button>`);
     const body = !issue && W.detailTab === 'threads' ? threadsHtml(p) : !issue && W.detailTab === 'checks' ? WorkDetail.checks(p) : !issue && W.detailTab === 'files' ? WorkDetail.files(p, W.files.get(W.open)) : !issue && W.detailTab === 'record' ? WorkRecord.render(p) : overviewHtml(p, issue, full);
     const tabs = [['overview', 'Overview'], ['threads', 'Feedback' + (p.open ? ' · ' + p.open : '')], ['checks', 'Checks'], ['files', 'Files' + (p.changedFiles != null ? ' · ' + p.changedFiles : '')], ['record', 'Journal']];
@@ -491,6 +492,12 @@ const Work = (() => {
     items.push({ glyph: '↗', label: 'Open on GitHub', run: () => window.open(p.url, '_blank', 'noopener') });
     return showMenu(b, items);
   }
+  // A Slack post about it (ui/slack-post.js), from its details and the chat working on it (its own, or its issue's).
+  function slackPost(p) {
+    const issueChat = p.issue && (W.data?.issues || []).find(i => i.identifier === p.issue)?.chat;
+    const sessionId = (p.chat && p.chat.sessionId) || (liveChatOf(p) && liveChatOf(p).sessionId) || (issueChat && issueChat.sessionId) || null;
+    return openSlackPost(p, { sessionId, mine: typeof p.mine === 'boolean' ? p.mine : null });
+  }
   async function readyNow(p) {
     if (!(await appConfirm(`Mark #${p.number} ready for review?\n\nIt leaves draft, and its reviewers are asked to look.`, { ok: 'Ready for review' }))) return;
     await api('/api/prs/ready', { repo: p.repo, n: p.number });
@@ -540,6 +547,7 @@ const Work = (() => {
     if (a === 'retry-detail') return detailLoad(W.open);
     if (a === 'copy') { if (await copyText(b.dataset.text, null)) toast(b.dataset.text.startsWith('https://') ? 'Link copied.' : 'Branch copied.'); return; }
     if (a === 'cross-review') return openCrossReview(b.dataset.repo ? find(b.dataset.repo, b.dataset.n) || {} : {});
+    if (a === 'slack') { const p = find(b.dataset.repo, b.dataset.n); return p ? slackPost(p) : undefined; }
     if (a === 'open-pr') { const url = await ask('Open a pull request', 'Paste its GitHub URL. Its checks, feedback, and actions open here.', '', 'Open PR'); if (url) await openUrl(url); return; }
     if (a === 'linked') { if (W.open) W.trail.push(W.open); return openUrl(b.dataset.url); }
     if (a === 'issue-link') { const id = b.dataset.id; if (!item(id)) W.external.set(id, await api(`/api/linear/issue?id=${encodeURIComponent(id)}`)); if (W.open) W.trail.push(W.open); return select(id); }

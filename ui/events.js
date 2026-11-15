@@ -330,11 +330,12 @@ window.addEventListener('focus', () => { watchActivity(); renderLive(); });
 // Asks before something that's hard to undo. The first paragraph is the question; the rest explains.
 // Enter does a dialog's main thing wherever the cursor is: in a name box, on a checkbox, or nowhere in
 // particular (and Ctrl+Enter from a box where Enter starts a new line). Buttons and links keep their own
-// Enter, so Enter on Cancel still cancels. A dialog with more than one main button (Setup) is left be.
+// Enter, so Enter on Cancel still cancels, and so does a box marked data-own-enter (Slack post's note writes it again).
+// A dialog with more than one main button (Setup) is left be.
 document.addEventListener('keydown', e => {
   if (e.key !== 'Enter' || e.isComposing || e.shiftKey || e.altKey || e.defaultPrevented) return;
   const t = e.target, d = t instanceof Element ? t.closest('dialog[open]') : null;
-  if (!d || t.closest('button, a[href], summary, select, [contenteditable="true"], [role="menu"], input[type="range"], input[type="file"]')) return;
+  if (!d || t.closest('button, a[href], summary, select, [contenteditable="true"], [role="menu"], input[type="range"], input[type="file"], [data-own-enter]')) return;
   if (t.matches('textarea') && !(e.ctrlKey || e.metaKey)) return;
   const scope = t.closest('form') || d;
   const go = [...scope.querySelectorAll('.btn.prime, .btn.danger-prime, [data-primary]')].filter(b => !b.disabled && b.offsetParent && b.closest('dialog') === d);

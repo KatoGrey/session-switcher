@@ -1,4 +1,17 @@
-# One connected workspace: answer from anywhere, chats that know their work, one way to start anything, and a new layout to try
+# Slack posts for your pull requests, Setup that scrolls smoothly, and a keyboard that stays in the chat
+
+**A Slack post about a pull request, written for you.** When a PR needs a review, or you want people to know about it, **Slack post…** writes a few plain sentences with its link, from the PR and the chat that did the work. Choose **Ask for a review** or **Let people know**, add anything it should say (who should look, what to look at first, by when), change what you like, and **Copy** it into Slack. Nothing is sent from the app.
+- **Where:** a pull request in Your work, in Pull requests, under This work in a chat's side panel, or type **/slack** in a chat (with what it should say after it, if you like).
+- **In a Claude chat,** ask for a Slack post about the PR and the chat writes one itself, with everything it knows, ready to copy (the session-switcher:slack-post skill).
+
+**Setup scrolls smoothly.** Scrolling Setup's options could give the sheet a second scroll bar, slide its title off the top and leave a blank space underneath. Now only the sheet scrolls, and its jump list (or the new layout's tabs) stays at the top, whole. Subagents and Ctrl+K's list had the same fault, and are fixed too.
+
+**The keyboard stays in the chat.** With a chat open, Tab and a screen reader no longer wander into the page underneath it, or into the sidebar when the chat covers it; the new layout's sidebar beside a chat can still be reached. On a phone, the list of open chats can only be reached once you show it. A chat you're only watching gets the focus too, and **Skip to the conversation** takes you there.
+
+- **Fixed:** reopening a Codex chat straight after stopping it could say the chat was gone.
+- **Fixed:** Rules and tools' text box had no name for a screen reader.
+
+## Earlier in 6.13.0: one connected workspace, answering from anywhere, chats that know their work, one way to start anything, and a new layout to try
 
 **Answering is the same everywhere.** A request to run a command or change a file looks and works the same on the hub, in the chat and on your phone. It shows what it wants, why it's asking, and exactly what Always allow would let through from now on.
 - **Allow once, Always allow, Deny.** Deny can carry a note telling it what to do instead, everywhere. When Claude Code suggests No as the safe answer, Deny is the one that stands out.

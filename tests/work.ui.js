@@ -412,6 +412,63 @@ module.exports = [{
     await b.clickOn('#menu .m-next'); await sleep(900);
     t.check('which opens Setup at the sign-ins', await b.eval(`return document.getElementById('setup').open && !!document.getElementById('st-health')`));
   },
+}, {
+  name: 'work: slack post',
+  // A pull request's Slack post (ui/slack-post.js): Your work's button, a chat's side panel and /slack
+  // open it. It drafts at once (asking for a review while the PR waits for one), again for the other kind or with a
+  // note, keeps what you changed until you ask for a new one, and Copy copies it and closes.
+  async run(t) {
+    const demo = require('./demo');
+    const seen = [], base = responder(seen);
+    let n = 0;
+    const b = await t.open({ respond: (p, q, body) => {
+      if (p === '/api/prs/slack-post') { seen.push({ p, body }); n++; return { body: { text: `Draft ${n} (${body.kind}${body.note ? `, ${body.note}` : ''})\nhttps://github.com/${body.repo}/pull/${body.n}`, url: `https://github.com/${body.repo}/pull/${body.n}`, withChat: !!body.sessionId } }; }
+      return base(p, q, body);
+    } });
+    await sleep(600);
+    const posts = () => seen.filter(x => x.p === '/api/prs/slack-post');
+    const st = () => b.eval(`const d = document.getElementById('spDlg'); return d ? { open: d.open, text: document.getElementById('spText').value, kind: (d.querySelector('input[name="spKind"]:checked') || {}).value, status: document.getElementById('spStatus').textContent, note: document.getElementById('spNote').value } : { open: false }`);
+    await b.eval(`await openWorkPr(${JSON.stringify(fixture.prs[0].url)}); return 1`); await sleep(1200);
+    await t.shot(b, 'slack-post-button');
+    await b.clickOn('.wk-detail-actions [data-wk="slack"]'); await sleep(700);
+    let s = await st();
+    let last = posts().pop();
+    await t.shot(b, 'slack-post');
+    t.check('Your work: Slack post… opens it and drafts at once, asking for a review', s.open && /^Draft 1 \(review\)/.test(s.text) && s.kind === 'review', s);
+    t.check('for that pull request, as yours, with no chat it doesn’t have', last && last.body.repo === fixture.prs[0].repo && last.body.n === fixture.prs[0].number && last.body.mine === true && last.body.kind === 'review', last && last.body);
+    await b.clickOn('#spDlg input[name="spKind"][value="fyi"]'); await sleep(600);
+    s = await st();
+    t.check('Let people know drafts a new one of that kind', /^Draft 2 \(fyi\)/.test(s.text) && posts().pop().body.kind === 'fyi', s);
+    await b.eval(`const i = document.getElementById('spNote'); i.focus(); i.value = 'ask Sam to look'; return 1`);
+    await b.key('Enter', 'Enter', 13); await sleep(600);
+    s = await st();
+    t.check('Enter in the note drafts again with it (not Copy)', s.open && /^Draft 3 \(fyi, ask Sam to look\)/.test(s.text) && posts().pop().body.note === 'ask Sam to look', s);
+    await b.eval(`const x = document.getElementById('spText'); x.value = 'My own words https://example.test'; x.dispatchEvent(new Event('input', { bubbles: true })); return 1`);
+    const before = posts().length;
+    await b.clickOn('#spDlg input[name="spKind"][value="review"]'); await sleep(500);
+    s = await st();
+    t.check('what you changed stays when you switch kinds, and it says how to get a new one', s.text === 'My own words https://example.test' && posts().length === before && /Write it again/.test(s.status), s);
+    await b.clickOn('#spAgain'); await sleep(600);
+    s = await st();
+    t.check('Write it again makes a new one', /^Draft 4 \(review, ask Sam to look\)/.test(s.text), s);
+    await b.eval(`window._copied = null; window.copyText = async text => { window._copied = text; return true; }; return 1`);
+    await b.clickOn('#spCopy'); await sleep(400);
+    t.check('Copy copies the post and closes', await b.eval(`return !document.getElementById('spDlg').open && /^Draft 4/.test(window._copied || '')`));
+
+    // From a chat: its side panel's pull request, and /slack (with what to say).
+    const id = demo.ID['s-bard'];
+    await b.eval(`await ChatUI.open({ sessionId: ${JSON.stringify(id)} }); return 1`); await sleep(1200);
+    await b.eval(`if (document.getElementById('chat').classList.contains('no-ledger')) document.querySelector('[data-c="ledger"]').click(); C.related = { pr: { repo: 'latitudegames/latitude', number: 19014, title: 'Keep adventure settings', url: 'https://github.com/latitudegames/latitude/pull/19014', state: 'OPEN', draft: false, review: 'REVIEW_REQUIRED' } }; renderLedger(); return 1`); await sleep(400);
+    await b.eval(`document.querySelector('#cLedgerBody [data-rel="slack"]').click(); return 1`); await sleep(700);
+    s = await st(); last = posts().pop();
+    await b.eval(`document.getElementById('spDlg').close(); return 1`); await sleep(300); await t.shot(b, 'slack-post-side-panel'); await b.eval(`document.getElementById('spDlg').showModal(); return 1`);
+    t.check('a chat’s side panel: Slack post… drafts from its pull request and its chat', s.open && /pull\/19014/.test(s.text) && last.body.n === 19014 && last.body.sessionId === (await b.eval(`return C.sessionId`)) && last.body.mine === null, last && last.body);
+    await b.eval(`document.getElementById('spDlg').close(); document.getElementById('cText').value = '/slack the settings migration needs a look'; await sendMessage(); return 1`); await sleep(700);
+    s = await st(); last = posts().pop();
+    t.check('/slack with words opens it with them as the note', s.open && s.note === 'the settings migration needs a look' && last.body.note === 'the settings migration needs a look' && await b.eval(`return document.getElementById('cText').value === ''`), s);
+    await b.eval(`document.getElementById('spDlg').close(); C.related = null; slackFromChat(); return 1`); await sleep(400);
+    t.check('a chat with no pull request says so, and opens nothing', !(await st()).open && /no pull request yet/i.test(await b.eval(`return document.getElementById('toast').textContent`)));
+  },
 }];
 module.exports.fixture = fixture;
 module.exports.responder = responder;

@@ -2564,6 +2564,22 @@ body.solo .c-head .icon.c-backm{display:none}
 .tk-grid select,.tk-grid input,.tk-prompt select{font:400 14px var(--f-body);letter-spacing:0;text-transform:none;padding:7px 9px;border:1px solid var(--seam-2);border-radius:7px;background:rgb(var(--c-100e12));color:var(--parch)}
 .tk-prompt textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--seam-2);border-radius:8px;background:rgb(var(--c-100e12));color:var(--parch);font:400 14.5px/1.5 var(--f-body);letter-spacing:0;text-transform:none;resize:vertical}
 .tk-prompt select{justify-self:start}
+/* Slack post (ui/slack-post.js): what it's for, a note, the post, and Copy. */
+dialog.sp-dlg{width:min(620px,calc(calc(100vw / var(--look-ui, 1)) - 32px))}
+.sp-dlg .tk-body{display:grid;gap:12px}
+.sp-dlg .rd-intro{margin:6px 0 0}
+.sp-kind{display:inline-flex;flex-wrap:wrap;justify-self:start;gap:4px;padding:3px;border:1px solid var(--seam);border-radius:999px}
+.sp-kind label{position:relative;cursor:pointer}
+.sp-kind input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.sp-kind span{display:block;padding:6px 14px;border-radius:999px;font:500 13.5px var(--f-body);color:var(--ash)}
+.sp-kind label:hover span{color:var(--parch)}
+.sp-kind input:checked + span{background:var(--vellum-3);color:var(--parch)}
+.sp-kind input:focus-visible + span{outline:2px solid var(--gilt);outline-offset:1px}
+.sp-dlg #spNote{font:400 14px var(--f-body);letter-spacing:0;text-transform:none;padding:8px 10px;border:1px solid var(--seam-2);border-radius:7px;background:rgb(var(--c-100e12));color:var(--parch)}
+.sp-dlg #spText{min-height:140px}
+.sp-busy #spText{opacity:.55}
+.sp-status{margin:0;min-height:1.3em;font-size:13px;color:var(--ash)}
+.sp-dlg .d-row{margin-top:0}
 /* Nobody signed in to start it yet: it still queues, and this says what it waits for. */
 .tk-note{margin:-4px 0 12px;color:var(--parch-2);font-size:13.5px;line-height:1.45}
 .tk-note[hidden]{display:none}

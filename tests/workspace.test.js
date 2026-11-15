@@ -37,7 +37,7 @@ const put = (root, rel, data = PNG) => { const f = path.join(root, rel); fs.mkdi
 test('workspace: bundled review assets and new routes reach the real server', async () => {
   const w = await startServer();
   try {
-    for (const asset of ['/ui/workspace.css', '/ui/work-model.js', '/ui/work-detail.js', '/ui/work-record.js', '/ui/pr-review.js']) {
+    for (const asset of ['/ui/workspace.css', '/ui/work-model.js', '/ui/work-detail.js', '/ui/work-record.js', '/ui/pr-review.js', '/ui/slack-post.js']) {
       const r = await fetch(w.base + asset); assert.equal(r.status, 200); assert.ok((await r.text()).length > 100);
     }
     const invalid = await w.call('/api/prs/act', { action: 'cross-review', url: 'https://elsewhere.test/a/b/pull/1' });
@@ -57,6 +57,9 @@ test('workspace: bundled review assets and new routes reach the real server', as
     assert.equal(listed.json.entries[0].notes, saved.json.entry.notes);
     assert.equal((await w.call('/api/prs/record-remove', { repo: 'a/b', n: 1, id: record.id })).status, 200);
     assert.equal((await w.call('/api/prs/record?repo=a/b&n=1')).json.entries.length, 0);
+    // A Slack post about a pull request that can't be one says so before anything is asked.
+    const post = await w.call('/api/prs/slack-post', { repo: 'not a repo', n: 1, kind: 'review' });
+    assert.equal(post.status, 400, JSON.stringify(post.json)); assert.match(post.json.error, /GitHub repo name/);
     // A fresh chat about a PR, and This PC's setup check (no model starts).
     const chat = await w.call('/api/prs/open-chat', { repo: 'not a repo', n: 1, provider: 'gemini' });
     assert.equal(chat.status, 400); assert.match(chat.json.error, /GitHub repo name/);

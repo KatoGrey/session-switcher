@@ -145,6 +145,12 @@ const namer = require('./lib/namer').createNamer({
     await renameChat(job.id, name);
   },
 });
+// Slack posts about a pull request (lib/slackpost.js), drafted as your first signed-in Claude account.
+const slackPost = require('./lib/slackpost').createDrafter({
+  spawn: (job, args, cwd) => sys.spawnClaude(config(), job.account, cwd, args),
+  kill: child => sys.killTree(child),
+  log,
+});
 const board = require('./lib/board').createBoard({ dataDir: DATA_DIR, log, allowed: filesLib.allowed, broad: projectsLib.isBroad, newest: root => projectInfo.info(root).images });
 const themeStudio = themeStudioLib.createStudio(DATA_DIR);
 // Companion (lib/aide.js): quick questions over a game or anything else, from a key.
@@ -678,7 +684,12 @@ function projectAt(cwd) {
 // A Codex chat by id, with its folder, or null for anything else.
 // Another chat's latest messages, for one that brings it in with "@chat[…]" (shown there as a fold-out).
 async function otherChatBlock(ref) {
-  const id = String((ref && ref.id) || '');
+  const { title, folder, keep } = await chatLatest(String((ref && ref.id) || ''));
+  const attr = v => String(v).replace(/["<>\n]/g, ' ').slice(0, 120);
+  return `<other-chat title="${attr(title)}" folder="${attr(folder)}" items="${keep.length}">\nFrom the user’s other chat “${title}”${folder ? ` (in ${folder})` : ''}, its latest messages, for context (that chat carries on separately):\n\n${(keep.join('\n\n') || '(Nothing in it yet.)').replace(/<\/other-chat>/gi, '</other‑chat>')}\n</other-chat>\n\n`;
+}
+// A chat's latest messages (up to a dozen, about 9,000 characters), as "User: …" and "Claude: …" lines.
+async function chatLatest(id) {
   let items = [], title = 'another chat', folder = '', who = 'Claude';
   try {
     const cx = codexFind(id);
@@ -696,8 +707,7 @@ async function otherChatBlock(ref) {
   const keep = [];
   let total = 0;
   for (let i = lines.length - 1; i >= 0 && keep.length < 12; i--) { if (keep.length && total + lines[i].length > 9000) break; total += lines[i].length; keep.unshift(lines[i]); }
-  const attr = v => String(v).replace(/["<>\n]/g, ' ').slice(0, 120);
-  return `<other-chat title="${attr(title)}" folder="${attr(folder)}" items="${keep.length}">\nFrom the user’s other chat “${title}”${folder ? ` (in ${folder})` : ''}, its latest messages, for context (that chat carries on separately):\n\n${(keep.join('\n\n') || '(Nothing in it yet.)').replace(/<\/other-chat>/gi, '</other‑chat>')}\n</other-chat>\n\n`;
+  return { title, folder, keep };
 }
 // The model and effort a Codex chat started on, read from its own log, so picking it up again
 // doesn't drop it to Codex's default. A chat a routine started never had its choice saved, and
@@ -1389,6 +1399,26 @@ async function prOpenChat(body) {
   const text = `About pull request #${pr.number} in ${pr.repo}: “${pr.title}”${pr.author ? ` by ${pr.author}` : ''} (${pr.url}; branch ${pr.head} → ${pr.base}${state ? `; ${state}` : ''}).\n\n`;
   log(`PRs: a new ${provider} chat about ${pr.repo}#${pr.number}.`);
   return { key: chat.key, text };
+}
+// A Slack post about a pull request, to ask for a review or let people know (lib/slackpost.js): from the PR, the chat
+// that did the work (sessionId, when there is one) and a note of what you want said. Yours to edit and copy.
+async function prSlackPost(body) {
+  const kind = body.kind === 'fyi' ? 'fyi' : 'review';
+  const pr = await prs.detail(body.repo, body.n, { fresh: false });
+  const account = namingAccount(null);
+  if (!account) throw fail(409, 'Sign in to a Claude account first: it writes the post.');
+  // The chat that did the work: the one asked about, or else the one on the PR's branch here.
+  let chat = '';
+  const sid = String(body.sessionId || (pr.chat && pr.chat.sessionId) || '');
+  if (sid) { try { chat = (await chatLatest(sid)).keep.join('\n\n'); } catch { /* the PR alone, then */ } }
+  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 600) : '';
+  // Whose it is, when the caller doesn't know (a chat's side panel): yours unless GitHub says someone else opened it.
+  let mine = typeof body.mine === 'boolean' ? body.mine : pr.mine ? true : null;
+  if (mine === null) { const me = (await prs.status({ fresh: false }).catch(() => null) || {}).login; mine = !me || !pr.author || me.toLowerCase() === pr.author.toLowerCase(); }
+  const text = await slackPost.draft({ account, kind, pr, chat, note, mine });
+  if (!text) throw fail(502, 'Claude didn’t write a post this time. Try again in a moment.');
+  log(`PRs: drafted a Slack post (${kind}) for ${pr.repo}#${pr.number}${chat ? ', with its chat' : ''}.`);
+  return { text, url: pr.url, withChat: !!chat };
 }
 async function prAction(body) {
   const action = String(body.action || '');
@@ -2455,6 +2485,7 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/prs/switch': { const st = await prs.switchTo(String(body.user || '')); broadcast('prs', {}); return send(res, 200, st); }
     case '/api/prs/act': return send(res, 200, await prAction(body));
     case '/api/prs/open-chat': return send(res, 200, await prOpenChat(body));
+    case '/api/prs/slack-post': return send(res, 200, await prSlackPost(body));
     case '/api/prs/record': {
       const entry = await prRecords.save(body, async t => (await prs.detail(t.repo, t.n, { fresh: true })).headSha);
       broadcast('pr-record', { repo: body.repo, n: body.n }); return send(res, 200, { entry });

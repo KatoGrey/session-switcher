@@ -161,6 +161,7 @@ function prDetailHtml(d) {
     if (d.mine && d.open) acts.push(`${who('fix-comments')}Fix ${d.open} comment${d.open === 1 ? '' : 's'}…</button>`);
     if (d.mine && c.failed.length) acts.push(`${who('fix-checks')}Fix the failing check${c.failed.length === 1 ? '' : 's'}…</button>`);
   }
+  acts.push(`<button type="button" class="btn quiet sm" data-pr="slack" data-repo="${esc(d.repo)}" data-n="${d.number}">Slack post…</button>`);
   acts.push(`<a class="btn quiet sm" href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">Open on GitHub</a>`);
   if (d.preview) acts.push(`<a class="btn quiet sm" href="${esc(d.preview)}" target="_blank" rel="noopener noreferrer">Its preview</a>`);
   return `<p class="pr-line">+${d.additions} −${d.deletions} in ${d.changedFiles} file${d.changedFiles === 1 ? '' : 's'} · <code>${esc(d.head)}</code> → <code>${esc(d.base)}</code>${d.author ? ` · by ${esc(d.author)}` : ''}${d.mergeable === 'CONFLICTING' ? ' · <span class="cn-bad">has conflicts</span>' : ''}</p>
@@ -195,6 +196,7 @@ async function prGo(d, action, provider, account, fresh = false) {
 }
 async function prAction(act, b) {
   if (act === 'cross-review') return openCrossReview(PRS.details.get(prKey(b.dataset.repo, b.dataset.n)) || {});
+  if (act === 'slack') { const d = PRS.details.get(prKey(b.dataset.repo, b.dataset.n)); return d ? openSlackPost(d, { sessionId: d.chat && d.chat.sessionId, mine: typeof d.mine === 'boolean' ? d.mine : null }) : undefined; }
   if (act === 'close') return $('prDlg').close();
   if (act === 'refresh') { PRS.details.clear(); return prsLoad(true); }
   if (act === 'open') { if ($('connDlg')) $('connDlg').close(); return openPrs(); }
