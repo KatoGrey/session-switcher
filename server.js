@@ -1054,7 +1054,10 @@ async function openChatInner(c, body) {
     const mode = ['resume', 'fork', 'new'].includes(body.mode) ? body.mode : 'resume';
     let cwd, threadId = null, title = null;
     if (mode !== 'new') {
-      const cx = codexFind(body.sessionId);
+      let cx = codexFind(body.sessionId);
+      // A chat started moments ago may not be in Codex's list yet (it's kept a few seconds): asked afresh before
+      // saying it's gone, so stopping a new chat and reopening it straight away works.
+      if (!cx && body.sessionId) { await codex.list({ maxAgeMs: 0, lastOpened: sessions.lastOpened }).catch(() => {}); cx = codexFind(body.sessionId); }
       if (!cx) throw fail(404, 'That Codex chat isn’t in the list any more.');
       // A worktree that's gone: asked to, it carries on in the repo it came from (Codex takes a new folder on resume).
       const home = !cx.exists && body.inRepo ? repoForGone(cx.cwd) : null;
