@@ -1,4 +1,50 @@
-# Chats that look the part: pictures that fit, a roomier message box, and calmer labels
+# One connected workspace: answer from anywhere, chats that know their work, one way to start anything, and a new layout to try
+
+**Answering is the same everywhere.** A request to run a command or change a file looks and works the same on the hub, in the chat and on your phone. It shows what it wants, why it's asking, and exactly what Always allow would let through from now on.
+- **Allow once, Always allow, Deny.** Deny can carry a note telling it what to do instead, everywhere. When Claude Code suggests No as the safe answer, Deny is the one that stands out.
+- **It answers the request you're looking at.** If that request was answered somewhere else meanwhile, it says Already answered instead of answering the next one. A failed answer keeps its buttons working and says why.
+- **Simple questions can be answered right on the hub card**, and "+N more waiting" shows when there are several.
+
+**A chat knows its work.** A chat's side panel starts with **This work**: the Linear issue it's for, its pull request with checks and review, the branch, what started it (a routine or a queued task) and the other chats on the same work, each one click away. An issue now keeps every chat started for it (planning, the work, a review), and Your work lists them. A pull request found only by the branch a chat is on says so.
+
+**One way to start anything, on the model you want.** New chat, Your work, a pull request's actions, Queue a task, Race and Split, Routines and "Do this later" offer the same choices in the same words:
+- **Who:** each Claude account or whichever has the most room, each Codex account, Gemini.
+- **Model:** as last time, Quick, Balanced, Deep or Max, or any model it has, with its effort.
+
+What that means in each place:
+- **New chat** can start on any model and effort, and remembers your pick for each project. A project's own New chat now offers Gemini too, and the full New chat.
+- **Race:** each side runs on its own model.
+- **Queued tasks, "Do this later" and routines** start on the model you picked. For queued work, "most room" is decided when it actually starts.
+- **In a chat** nothing is taken away: the model in the message box, Ctrl+K → Switch model…, /model and /effort all switch it. The Model line in the chat's side panel now opens the same picker.
+
+**Setup you can find.**
+- **Ctrl+K:** type what you need (1Password, AWS, worktrees, This PC, GitHub, Linear) and land on the exact row.
+- **Setup** lists This PC and your connections near the top. Getting started covers GitHub, Linear and 1Password.
+- **The Setup button** shows a dot when something needs fixing.
+- **Subagents and Switcher Lite** have a place in Setup.
+- **On a phone**, Setup says what can only be done at the PC.
+
+**No dead ends.**
+- Empty menus and pages say what to do next.
+- Errors stay findable in Setup → Problems, with Try again.
+- A race shows its card once it starts.
+- Connections says which project's tools it lists.
+- A shared picture that couldn't be sent is kept.
+
+**Queue a task can wait for something new to come in** (a Slack channel, or a command's output). It hands over to a routine, with what you wrote already filled in.
+
+**Try the new layout** (Setup → Appearance):
+- The sidebar stays beside a chat, so the hub, Your work and your projects are one click away.
+- The hub keeps to what needs you and what's running.
+- Setup's options come in tabs: Health, General, Assistants, Connections, Devices, Companion and About.
+
+It's for the main themes. Imperial, Rebel and the other theme families keep their layout.
+
+- **Fixed:** the hub could answer a different request from the one its card showed if the waiting list changed meanwhile. Switcher Lite's keyboard answers had the same gap.
+- **Fixed:** Always allow saved its rules even when Claude Code said not to offer Always for that request.
+- **Fixed:** a note typed for one request's Deny could carry over to the next request.
+
+## Earlier in 6.12.3: chats that look the part, with pictures that fit, a roomier message box, and calmer labels
 
 **Pictures in a chat fit.** Screenshots and pictures you send, and ones a chat makes or opens, show whole, in their own proportions, in a frame that fits them. No more empty black strip beside a small preview. Wide screenshots get room to be read, several pictures wrap to fit a narrow chat or a phone, and a picture is never stretched or cropped.
 
