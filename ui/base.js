@@ -296,14 +296,29 @@ function isDoneChat(s) {
   const days = (S.prefs && S.prefs.autoDone) || 0;
   return !!days && Date.now() - Math.max(s.updated || 0, m.undone || 0) > days * 864e5;
 }
-// Any chats at all, done ones included.
-const hasChats = p => !!((p.sessions || []).length || (p.done || []).length);
+// Headless runs: chats a script or another agent started (`claude -p`, the Agent SDK, `codex exec`; the PC
+// marks them, lib/headless.js). Unless Setup says otherwise they're out of every list but their own (the
+// sidebar's Headless runs and its page, ui/headless.js) and each project's, where they're folded away. (Imperial and
+// Rebel keep their sidebar and pages as they are: there, they stay with your chats.)
+const headlessApart = () => !(S.prefs && S.prefs.headlessApart === false) && !(typeof Look === 'object' && Look.theme().family === 'saga');
+// A running one that isn't open in this app (it's working or finished somewhere else): not on Active now,
+// and never "your turn"; one that needs your OK still shows.
+const tucked = x => !!(x && x.headless && x.source !== 'app' && headlessApart());
+// Any chats at all, done ones and headless runs included.
+const hasChats = p => !!((p.sessions || []).length || (p.done || []).length || (p.headless || []).length);
+// Each project's chats in three: yours (sessions), done, and headless runs (empty when they stay with yours).
 function sortDone() {
+  const apart = headlessApart();
+  S.hlApart = apart;   // as the lists are sorted now (ui/headless.js sorts them again when the look changes family)
   for (const p of S.projects) {
-    const all = (p.sessions || []).concat(p.done || []).sort((a, b) => (b.updated || 0) - (a.updated || 0));
-    p.done = all.filter(isDoneChat); p.sessions = all.filter(x => !isDoneChat(x));
+    const all = (p.sessions || []).concat(p.done || [], p.headless || []).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    p.done = all.filter(isDoneChat);
+    p.headless = apart ? all.filter(x => x.headless && !isDoneChat(x)) : [];
+    p.sessions = all.filter(x => !isDoneChat(x) && !(apart && x.headless));
   }
 }
+// Every headless run that isn't done, newest first, each with its project.
+function allHeadless() { const all = []; for (const p of S.projects) for (const s of p.headless || []) all.push([s, p]); return all.sort((a, b) => (b[0].updated || 0) - (a[0].updated || 0)); }
 async function setChatDone(id, done, quiet = false) {
   const r = await api('/api/chat/done', { id, done });
   S.doneMarks = r.doneMarks || {};
@@ -320,12 +335,12 @@ function sessionById(id) {
   const want = String(id || '').toLowerCase();
   if (byId.of !== S.projects) {
     const map = new Map();
-    for (const p of S.projects) for (const s of p.sessions.concat(p.done || [])) { const k = String(s.id).toLowerCase(); if (!map.has(k)) map.set(k, [s, p]); }
+    for (const p of S.projects) for (const s of p.sessions.concat(p.done || [], p.headless || [])) { const k = String(s.id).toLowerCase(); if (!map.has(k)) map.set(k, [s, p]); }
     byId = { of: S.projects, map };
   }
   const hit = byId.map.get(want);
-  if (hit && S.projects.includes(hit[1]) && (hit[1].sessions.includes(hit[0]) || (hit[1].done || []).includes(hit[0]))) return hit;
-  for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; }
+  if (hit && S.projects.includes(hit[1]) && (hit[1].sessions.includes(hit[0]) || (hit[1].done || []).includes(hit[0]) || (hit[1].headless || []).includes(hit[0]))) return hit;
+  for (const p of S.projects) { const s = p.sessions.concat(p.done || [], p.headless || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; }
   return [null, null];
 }
 const lastLine = t => { const parts = String(t || '').trim().split(/\n\s*\n/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean); return parts.length ? parts[parts.length - 1] : ''; };
@@ -464,10 +479,14 @@ const NEEDS = new Set(['approve', 'question', 'terminal-wait']);
 const waitsOnYou = x => NEEDS.has(ownStatus(x)) || ownStatus(x) === 'reply';
 // Waiting on you: each one that asks (a partner too: its card has its question); at work and quiet:
 // each chat once, with its partner.
-const awaiting = () => S.activity.filter(waitsOnYou)
+// (A headless run somewhere else is on its own list, ui/headless.js: here only when it needs your OK.)
+const awaiting = () => S.activity.filter(x => waitsOnYou(x) && (!tucked(x) || NEEDS.has(ownStatus(x))))
   .sort((a, b) => (NEEDS.has(ownStatus(b)) - NEEDS.has(ownStatus(a))) || ((b.finishedAt || b.lastEventAt || 0) - (a.finishedAt || a.lastEventAt || 0)));
-const atWork = () => S.activity.filter(x => !x.parentKey && !waitsOnYou(x) && statusOf(x) === 'working');
-const quietOpen = () => S.activity.filter(x => !x.parentKey && !waitsOnYou(x) && (statusOf(x) === 'quiet' || statusOf(x) === 'ended'));
+// On the everyday lists of what's open (Active now, the chat window's side list, a project's Now): a headless
+// run somewhere else only while it needs you, or while you're looking at it.
+const onLists = x => !tucked(x) || NEEDS.has(ownStatus(x)) || !!(window.ChatUI && ChatUI.isOpen() && ChatUI.isViewing && ChatUI.isViewing(x));
+const atWork = () => S.activity.filter(x => !x.parentKey && !tucked(x) && !waitsOnYou(x) && statusOf(x) === 'working');
+const quietOpen = () => S.activity.filter(x => !x.parentKey && !tucked(x) && !waitsOnYou(x) && (statusOf(x) === 'quiet' || statusOf(x) === 'ended'));
 const asked = x => /\?["”’)\]]*\s*$/.test(lastLine(x.lastText));
 const VERB_NOW = { Bash: 'Running', PowerShell: 'Running', Read: 'Reading', Write: 'Writing', Edit: 'Editing', MultiEdit: 'Editing', NotebookEdit: 'Editing', Glob: 'Finding', Grep: 'Searching', WebFetch: 'Fetching', WebSearch: 'Searching', Agent: 'Delegating', Task: 'Delegating', TodoWrite: 'Planning', TaskCreate: 'Planning', TaskUpdate: 'Planning', Artifact: 'Publishing', AskUserQuestion: 'Asking' };
 function wantsTo(p) {

@@ -375,6 +375,74 @@ test('workspace: a Gemini chat has its own terminal and command, on the real ser
   } finally { await w.done(); }
 });
 
+test('workspace: headless runs on the real server: marked, kept so when opened here, sorted by hand, done in a batch', { skip: process.platform !== 'win32' || !!process.versions.electron ? 'Windows only, and it’s not for the installed app’s self-check' : false }, async () => {
+  const { build } = require('./fake-world');
+  const w = await build();
+  try {
+    const token = (await (await fetch(w.base)).text()).match(/TOKEN = '([a-f0-9]+)'/)[1];
+    const call = async (p, body) => { const r = await fetch(w.base + p.slice(1), { method: body ? 'POST' : 'GET', headers: { 'x-switcher-token': token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, json: await r.json().catch(() => null) }; };
+    const until = async (what, fn, ms = 20000) => { const t0 = Date.now(); for (;;) { const v = await fn(); if (v) return v; assert.ok(Date.now() - t0 < ms, `timed out: ${what}`); await new Promise(r => setTimeout(r, 250)); } };
+    const chatsNow = async () => { const out = {}; for (const p of (await call('/api/sessions')).json.projects) for (const s of p.sessions) out[s.id] = s; return out; };
+    // A new chat started here (Claude Code says sdk-cli for it too) isn't one. (And from then on, the app's history speaks for
+    // the chats used since.)
+    const opened = await call('/api/chat/open', { account: 'main', cwd: w.tavern, mode: 'new' });
+    assert.equal(opened.status, 200, JSON.stringify(opened.json));
+    assert.equal((await call('/api/chat/send', { key: opened.json.key, text: 'Plan the harvest quests' })).status, 200);
+    const mine = await until('the new chat has its id', async () => (await call('/api/chat/attach', { key: opened.json.key })).json.sessionId);
+    let s = await until('the new chat is listed, with its launch', async () => { const c = await chatsNow(); return c[mine] && c[mine].lastOpened ? c : null; });
+    assert.equal(s[mine].entrypoint, 'sdk-cli');
+    assert.equal(s[mine].lastOpened.born, 'app');
+    assert.equal(s[mine].headless, undefined, 'started here: one of yours');
+    await call('/api/chat/stop', { key: opened.json.key });
+
+    // A review a script ran with `claude -p` in the tavern just now, finished.
+    const run = 'eeeeeeee-1111-4222-8333-444444444444', stamp = new Date().toISOString();
+    const dir = path.join(w.home, '.claude', 'projects', w.tavern.replace(/[^a-zA-Z0-9]/g, '-'));
+    fs.writeFileSync(path.join(dir, `${run}.jsonl`), [
+      { type: 'user', entrypoint: 'sdk-cli', cwd: w.tavern, sessionId: run, timestamp: stamp, uuid: 'u1', message: { role: 'user', content: 'Review PR 42: the queen’s dialogue' } },
+      { type: 'assistant', entrypoint: 'sdk-cli', cwd: w.tavern, sessionId: run, timestamp: stamp, uuid: 'u2', message: { id: 'msg_r1', role: 'assistant', model: 'claude-fake', content: [{ type: 'text', text: 'Two findings.' }] } },
+    ].map(e => JSON.stringify(e)).join('\n') + '\n');
+    s = await until('the run is listed', async () => { const c = await chatsNow(); return c[run] ? c : null; });
+    assert.equal(s[run].headless, true, 'a script’s run, never opened here');
+    assert.equal(s[w.ids.quest].headless, undefined, 'a chat of yours isn’t');
+    const row = (await call('/api/activity')).json.list.find(x => x.sessionId === run);
+    assert.ok(row && row.headless, `just finished, it's on the activity list, marked: ${JSON.stringify(row)}`);
+
+    // Opened here, the run stays a run.
+    const resumed = await call('/api/chat/open', { account: 'main', sessionId: run, mode: 'resume' });
+    assert.equal(resumed.status, 200, JSON.stringify(resumed.json));
+    // (The list is reused for a second, so its record may take a moment to show.)
+    s = await until('the run’s launch is recorded', async () => { const c = await chatsNow(); return c[run] && c[run].lastOpened ? c : null; });
+    assert.equal(s[run].lastOpened.born, 'outside');
+    assert.equal(s[run].headless, true, 'opening it here doesn’t make it one of yours');
+    await call('/api/chat/stop', { key: resumed.json.key });
+
+    // Sorted by hand: back with your chats, into the runs, and back to how each began.
+    assert.equal((await call('/api/chats/headless', { ids: [run], on: false })).status, 200);
+    assert.equal((await chatsNow())[run].headless, undefined);
+    assert.equal((await call('/api/chats/headless', { ids: [w.ids.art], on: true })).status, 200);
+    assert.equal((await chatsNow())[w.ids.art].headless, true);
+    assert.equal((await call('/api/chats/headless', { ids: [run, w.ids.art], on: null })).status, 200);
+    s = await chatsNow();
+    assert.deepEqual([s[run].headless, s[w.ids.art].headless], [true, undefined]);
+    assert.equal((await call('/api/chats/headless', { ids: [run], on: 'yes' })).status, 400);
+    assert.equal((await call('/api/chats/headless', { ids: ['../x'], on: true })).status, 400);
+
+    // Done, several at once, and back.
+    const done = await call('/api/chats/done', { ids: [run, w.ids.save], done: true });
+    assert.equal(done.status, 200, JSON.stringify(done.json));
+    assert.ok(done.json.doneMarks[run].done > 0 && done.json.doneMarks[w.ids.save].done > 0);
+    const back = await call('/api/chats/done', { ids: [run, w.ids.save], done: false });
+    assert.ok(back.json.doneMarks[run].undone > 0 && !back.json.doneMarks[run].done);
+    assert.equal((await call('/api/chats/done', { ids: [], done: true })).status, 400);
+    assert.equal((await call('/api/chats/done', { ids: [run], done: 'false' })).status, 400, 'done is true or false, not words');
+    assert.equal((await call('/api/chats/headless', { ids: [12345678], on: true })).status, 400, 'ids are words');
+    const was = await call('/api/chats/headless', { ids: [run], on: false });
+    assert.deepEqual(was.json.was, { [run]: null }, 'it says what was said before, for Undo');
+    assert.deepEqual((await call('/api/chats/headless', { ids: [run], on: true })).json.was, { [run]: false });
+  } finally { await w.done(); }
+});
+
 test('workspace: Mark done reaches the server', async () => {
   const s = await startServer();
   try {

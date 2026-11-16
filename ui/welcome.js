@@ -33,7 +33,7 @@ window.addEventListener('pagehide', noteSeen);
 function welcomeHtml() {
   const w = Welcome.card; if (!w) return '';
   const since = w.since;
-  const replies = S.activity.filter(x => ownStatus(x) === 'reply' && (x.finishedAt || 0) >= since);
+  const replies = S.activity.filter(x => ownStatus(x) === 'reply' && !tucked(x) && (x.finishedAt || 0) >= since);
   const needs = S.activity.filter(x => NEEDS.has(ownStatus(x)));
   const approvals = needs.filter(x => ownStatus(x) === 'approve');
   const attention = needs.length - approvals.length;

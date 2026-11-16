@@ -17,7 +17,8 @@ const orgShape = o => ({ groups: [], parents: {}, commander: {}, ...(o && typeof
 async function loadOrganize() { try { S.org = orgShape(await api('/api/organize')); } catch { /* keep */ } }
 const actOf = id => S.activity.find(y => y.sessionId && lowId(y.sessionId) === lowId(id)) || null;
 // 'await' (needs you or replied), 'work' (at work) or null.
-function chatMood(id) { const x = actOf(id); if (!x) return null; const st = statusOf(x); return NEEDS.has(st) || st === 'reply' ? 'await' : st === 'working' ? 'work' : null; }
+// (A headless run that's finished somewhere else isn't waiting on you, ui/base.js tucked: in a group it just rests.)
+function chatMood(id) { const x = actOf(id); if (!x) return null; const st = statusOf(x); return NEEDS.has(st) || (st === 'reply' && !tucked(x)) ? 'await' : st === 'working' ? 'work' : null; }
 const moodDot = id => { const m = chatMood(id); return m === 'await' ? '<span class="gilt-dot nav-dot" title="Waiting for you"></span>' : m === 'work' ? '<span class="ember-dot nav-dot" title="At work"></span>' : ''; };
 const groupOfChat = id => S.org.groups.find(g => g.chats.some(c => lowId(c) === lowId(id))) || null;
 const parentOfChat = id => S.org.parents[lowId(id)] || null;

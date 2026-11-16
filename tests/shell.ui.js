@@ -407,10 +407,10 @@ module.exports = [{
     await b.eval(`[...document.querySelectorAll('#menu [role="menuitem"]')].find(x => x.textContent.includes('back as it was')).click(); return 1`); await sleep(400);
     t.check('the usual order comes back, and nothing is kept', (await order()).join() === first.join() && await b.eval(`return !localStorage.getItem('nav-order')`), await order());
 
-    // A section that's empty now keeps its place for when it's back.
-    await b.eval(`localStorage.setItem('nav-order', JSON.stringify(['recent', 'pinned', 'tools', 'projects', 'active', 'groups', 'subs'])); document.getElementById('nav')._h = ''; renderNav(); return 1`); await sleep(200);
+    // A section that's empty now keeps its place for when it's back (Pinned and Headless runs, here).
+    await b.eval(`localStorage.setItem('nav-order', JSON.stringify(['recent', 'headless', 'pinned', 'tools', 'projects', 'active', 'groups', 'subs'])); document.getElementById('nav')._h = ''; renderNav(); return 1`); await sleep(200);
     await b.eval(`moveNavSec('groups', 'top'); return 1`); await sleep(200);
-    t.check('moving one around keeps an empty section’s place among the rest', await b.eval(`return JSON.parse(localStorage.getItem('nav-order')).join()`) === 'groups,pinned,recent,tools,projects,active,subs', await b.eval(`return localStorage.getItem('nav-order')`));
+    t.check('moving one around keeps an empty section’s place among the rest', await b.eval(`return JSON.parse(localStorage.getItem('nav-order')).join()`) === 'groups,headless,pinned,recent,tools,projects,active,subs', await b.eval(`return localStorage.getItem('nav-order')`));
     await t.shot(b, 'sidebar-order');
 
     // A later version's section, unknown to this one, stays in the saved order after the one it followed.

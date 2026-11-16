@@ -80,7 +80,7 @@ function renderNav() {
 }
 // What's open and what's pinned, in the order the chat window's side list has them. (At the very start
 // the chat window's script may not have loaded yet: then what's open, in the order it came.)
-const navLists = () => (typeof railRows === 'function' ? railRows() : { pinned: [], active: S.activity.filter(x => !x.parentKey) });
+const navLists = () => (typeof railRows === 'function' ? railRows() : { pinned: [], active: S.activity.filter(x => !x.parentKey && onLists(x)) });
 // One open chat's state: a dot, and the same in words (so it isn't said by color alone).
 function chatState(x) {
   const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;
@@ -123,7 +123,7 @@ function navHtml() {
     <button type="button" class="nav-i nav-subagents" data-shell-subagents><span class="glyph" aria-hidden="true">⋔</span><span class="ni-t">Subagents</span></button>
     </div>
     <div class="nav-scroll">
-    ${navSections({ tools: `<div class="nav-tools">${navCommanderHtml()}${routinesNav()}${aideNav()}</div>`, pinned: pinnedHtml, projects: navProjectsHtml(), active: activeHtml, recent: recentHtml, groups: navGroupsHtml(), subs: navFamiliesHtml() })}
+    ${navSections({ tools: `<div class="nav-tools">${navCommanderHtml()}${routinesNav()}${aideNav()}</div>`, pinned: pinnedHtml, projects: navProjectsHtml(), active: activeHtml, recent: recentHtml, headless: typeof navHeadlessHtml === 'function' ? navHeadlessHtml(viewing) : '', groups: navGroupsHtml(), subs: navFamiliesHtml() })}
     <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p></div>`;
 }
 // Projects: one list, whichever assistant their chats are with. The ones in use lately, then the rest
@@ -919,7 +919,8 @@ function codexMenu(anchor) {
   ]);
 }
 
-function rowHtml(s, folderName, hit) {
+// opts.pick: a tick to select it (true or false: ticked or not), opts.state: { k, word } what it's doing (ui/headless.js).
+function rowHtml(s, folderName, hit, opts = {}) {
   const a = current(); const cx = isCodex(s), oc = isOpenClaw(s), gm = isGemini(s);
   const ok = oc || (cx ? codexReady() : gm ? geminiReady() : canLaunch(a));
   const why = gm ? 'Sign in to Gemini first (Setup → Gemini)' : cx ? (S.codex && S.codex.installed === false ? 'Install Codex first (Setup)' : 'Sign in to Codex first') : !a.signedIn ? `Sign in to ${a.name} first` : !a.lock.ok ? (a.lockMessage || 'Not on its locked account') : '';
@@ -940,10 +941,12 @@ function rowHtml(s, folderName, hit) {
     : inApp() ? `<button class="btn sm" data-chat="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Open</button>`
     : `<button class="btn sm" data-open="${esc(s.id)}" ${ok ? '' : `disabled title="${esc(why)}"`}>Resume</button>`;
   const opened = s.lastOpened ? `<span class="r-as" style="--ring:${ringById(s.lastOpened.account)}" title="Last opened from here as ${esc(s.lastOpened.accountName)}, ${esc(agoL(s.lastOpened.at))}"><i></i>as ${esc(s.lastOpened.accountName)}</span>` : '';
-  return `<li class="row ${S.drawerId === s.id ? 'current' : ''}" data-row="${esc(s.id)}" draggable="true">
+  const tick = typeof opts.pick === 'boolean' ? `<label class="r-pick"><input type="checkbox" data-hpick="${esc(s.id)}" ${opts.pick ? 'checked' : ''}><span class="sr">Select ${esc(s.title)}</span></label>` : '';
+  const doing = opts.state && opts.state.word ? `<span class="tag ${opts.state.k === 'needs' ? 'gilt' : opts.state.k === 'working' ? 'violet' : 'line'}">${esc(opts.state.word)}</span>` : '';
+  return `<li class="row ${S.drawerId === s.id ? 'current' : ''}${tick ? ' picking' : ''}${opts.pick ? ' picked' : ''}" data-row="${esc(s.id)}" draggable="true">${tick}
     <div class="r-when"><span class="r-ago">${esc(ago(s.updated))}</span><span class="r-date">${esc(stamp(s.updated))}</span>${opened}</div>
     <div class="r-what">
-      <div class="r-top"><button class="r-title" data-preview="${esc(s.id)}" title="${esc(s.title)}. Details and latest messages">${hit ? highlight(s.title, S.q) : esc(s.title)}</button>${draftTag(s.id)}${flags ? `<span class="r-flags">${flags}</span>` : ''}</div>
+      <div class="r-top"><button class="r-title" data-preview="${esc(s.id)}" title="${esc(s.title)}. Details and latest messages">${hit ? highlight(s.title, S.q) : esc(s.title)}</button>${draftTag(s.id)}${flags || doing ? `<span class="r-flags">${doing}${flags}</span>` : ''}</div>
       ${hit && hit.snippet ? `<p class="r-snip">${highlight(hit.snippet, S.q)}</p>` : (sub ? `<p class="r-sub">${esc(sub)}</p>` : '')}
       ${folderName ? `<span class="r-chip">${esc(folderName)}</span>` : ''}
     </div>

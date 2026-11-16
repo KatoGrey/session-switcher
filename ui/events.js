@@ -476,6 +476,7 @@ function backFromRestart() {
   if (!r || !(Date.now() - r.at < 180000)) return;
   if (r.view === 'folder' && r.folder && S.projects.some(p => p.cwd === r.folder)) go('folder', r.folder);
   else if (r.view === 'recent') go('recent');
+  else if (r.view === 'headless') go('headless');
   if (r.chat) setTimeout(() => ChatUI.open({ sessionId: r.chat }).catch(() => {}), 600);
   toast(r.chat ? 'Restarted. Your chats are back, and here’s where you were.' : 'Restarted. Your chats are back.', 3500);
 }
@@ -574,7 +575,7 @@ function contextItems(t) {
   // The chat window knows its own pieces (replies, code, pictures, files, the crew).
   if (window.ChatUI && ChatUI.isOpen() && t.closest('#chat')) { const it = ChatUI.contextItems(t, Ctx.at); if (it) return it; }
   const pic = t.closest('.bd-t'); if (pic) return boardTileItems(pic.dataset.rel);
-  const withFav = id => [favItem(id), ...orgItems(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
+  const withFav = id => [favItem(id), ...orgItems(id), '-', ...chatItems(id), ...hlItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
   // A sidebar section's heading, or the Commander and Routines: where the section goes (ui/nav-order.js).
   const sec = t.closest('#nav .nav-sec > .nav-h, #nav .nav-sec > .nav-hrow, #nav .nav-sec > .nav-tools');
   if (sec && !t.closest('[data-cmdr]')) return navSecItems(sec.closest('.nav-sec').dataset.navsec);

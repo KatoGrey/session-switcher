@@ -49,6 +49,7 @@ function renderSetup(j) {
         </select></div>
       <div class="field"><label for="prefAutoDone">Tidy up: chats with nothing new count as done after</label>
         <select id="prefAutoDone" data-pref="autoDone">${[[0, 'Never (only the ones I mark done)'], [3, '3 days'], [7, 'A week'], [14, 'Two weeks'], [30, 'A month']].map(([v, l]) => `<option value="${v}" ${(p.autoDone || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <label class="toggle" id="prefHeadless"><input type="checkbox" data-pref="headlessApart" ${p.headlessApart !== false ? 'checked' : ''}><span><b>Keep headless runs on their own list</b><span>Chats a script or another agent started (<code>claude -p</code>, the Agent SDK, <code>codex exec</code>) stay out of Recent, Active now and your projects’ lists, and don’t count as waiting on you. They’re under Headless runs in the sidebar, and folded away in each project.</span></span></label>
       <div class="field"><label for="prefTerminal">Terminal chats open in</label>
         <select id="prefTerminal" data-pref="terminal">
           ${(S.platform === 'darwin' ? [['auto', 'Terminal'], ['iterm', 'iTerm']] : [['auto', 'Windows Terminal tab when available, otherwise a console window'], ['wt-tab', 'Windows Terminal, new tab'], ['wt-window', 'Windows Terminal, new window'], ['console', 'Classic console window']]).map(([v, l]) => `<option value="${v}" ${p.terminal === v ? 'selected' : ''}>${l}</option>`).join('')}
@@ -636,7 +637,7 @@ $('setupBody').addEventListener('change', wrap(async e => {
   const el = e.target.closest('[data-pref]'); if (!el) return;
   const k = el.dataset.pref;
   const r = await api('/api/prefs', { [k]: el.type === 'checkbox' ? el.checked : el.value });
-  S.prefs = r.prefs; toast('Saved.', 1500); if (k === 'autoDone') { sortDone(); renderAll(); } else renderPage();
+  S.prefs = r.prefs; toast('Saved.', 1500); if (k === 'autoDone' || k === 'headlessApart') { sortDone(); renderAll(); if (k === 'headlessApart' && !el.checked && S.view === 'headless') go('hub'); } else renderPage();
 }));
 $('setupBody').addEventListener('click', wrap(async e => {
   const ph = e.target.closest('button[data-phone]');
@@ -847,7 +848,8 @@ function watchActivity() {
     if (viewing && st === 'reply') { markSeen(x); continue; }
     if (!Alerts.primed || viewing) continue;
     if (NEEDS.has(st) && (!was || !NEEDS.has(was.st) || (pend && pend !== was.pend))) notify('needs', x);
-    else if (st === 'reply' && (!was || was.fin !== x.finishedAt) && (!was || was.st !== 'reply' || was.fin !== x.finishedAt)) { if (was) notify('reply', x); }
+    // (A headless run finishing somewhere else isn't your turn: it's on its own list.)
+    else if (st === 'reply' && !tucked(x) && (!was || was.fin !== x.finishedAt) && (!was || was.st !== 'reply' || was.fin !== x.finishedAt)) { if (was) notify('reply', x); }
   }
   Alerts.seen = next; Alerts.primed = true;
 }

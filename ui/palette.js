@@ -207,7 +207,7 @@ function palItems(q) {
   const out = [];
   const add = (g, list) => { if (list.length) out.push({ g }, ...list); };
   const workActs = typeof Work !== 'undefined' ? Work.commands() : [];
-  const run = S.activity.filter(x => !x.parentKey).map(x => ({ glyph: NEEDS.has(statusOf(x)) || statusOf(x) === 'reply' ? '✦' : '◉', t: x.title || 'New chat', s: `${{ approve: 'needs your OK', question: 'has a question', 'terminal-wait': 'waiting in its terminal', reply: 'your turn', working: 'at work', quiet: 'open', ended: 'stopped' }[statusOf(x)]}${x.folder ? ` · ${x.folder}` : ''}`, run: () => openActivity(x), text: `${x.title} ${x.folder}` }));
+  const run = S.activity.filter(x => !x.parentKey && onLists(x)).map(x => ({ glyph: NEEDS.has(statusOf(x)) || statusOf(x) === 'reply' ? '✦' : '◉', t: x.title || 'New chat', s: `${{ approve: 'needs your OK', question: 'has a question', 'terminal-wait': 'waiting in its terminal', reply: 'your turn', working: 'at work', quiet: 'open', ended: 'stopped' }[statusOf(x)]}${x.folder ? ` · ${x.folder}` : ''}`, run: () => openActivity(x), text: `${x.title} ${x.folder}` }));
   const acts = [
     { glyph: '+', t: 'New chat', s: 'in any project, with any of them', run: () => openNewChat(), alias: 'start chat new claude codex gemini' },
     { glyph: '◈', t: 'Phone access', s: 'pair a phone, notifications', run: () => openSetupAt('st-phone'), alias: 'phone android iphone pair mobile notifications push tailscale', setup: true },
@@ -217,6 +217,7 @@ function palItems(q) {
     { glyph: '❡', t: 'Edit prompts', run: () => openPromptEditor(), alias: 'prompts saved slash templates' },
     { glyph: '✦', t: 'Go to the hub', run: () => go('hub') },
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
+    ...(headlessApart() ? [{ glyph: '⚙', t: 'Headless runs', s: 'chats scripts and other agents started', run: () => go('headless'), alias: 'headless scripts claude -p sdk codex exec automation runs reviews bots' }] : []),
     { glyph: '✎', t: 'Chats with drafts', s: 'pick up an unsent message', alias: 'drafts unsent unfinished messages', pageTitle: 'Chats with drafts', placeholder: 'Find a draft by chat or project…', page: async () => {
       await window.ChatDrafts?.refresh(true);
       const list = window.ChatDrafts?.items() || [];
@@ -274,7 +275,8 @@ function palItems(q) {
   const pinItems = S.projects.map(p => ({ glyph: '★', t: `${S.pins.has(p.cwd) ? 'Unpin' : 'Pin'} ${p.name}`, s: 'in the sidebar', run: () => togglePin(p.cwd), text: `pin unpin favorite ${p.name}` }));
   const folders = S.projects.map(p => ({ id: `project:${p.cwd}`, glyph: glyphFor(p.name), t: p.name, s: `${plural(p.sessions.length, 'chat')}${S.projects.filter(x => x.name === p.name).length > 1 && parentName(p.cwd) ? ` · in ${parentName(p.cwd)}` : ''}`, run: () => go('folder', p.cwd), text: `${p.name} ${p.cwd}` }));
   const boards = S.projects.filter(p => p.exists).map(p => ({ glyph: '▦', t: `Review pictures in ${p.name}`, s: 'keep or redo, folder by folder', run: () => openBoard(p.cwd), text: `review pictures images gallery board keep redo ${p.name}` }));
-  const chats = allSessions().sort((x, y) => y[0].updated - x[0].updated).map(([s, p]) => ({ id: `chat:${s.id}`, glyph: '❝', t: s.title, s: `${p.name} · ${agoL(s.updated)}`, run: () => (liveOf(s.id) ? ChatUI.open({ sessionId: s.id }) : isRunning(s.id) ? ChatUI.watch({ sessionId: s.id, source: 'terminal' }) : inApp() ? ChatUI.open({ sessionId: s.id }) : openDrawer(s.id)), text: `${s.title} ${p.name} ${s.firstPrompt || ''}` }));
+  // (Headless runs, ui/headless.js, after your own chats: found when you type, not in the way when you don't.)
+  const chats = [...allSessions().sort((x, y) => y[0].updated - x[0].updated), ...allHeadless()].map(([s, p]) => ({ id: `chat:${s.id}`, glyph: s.headless && headlessApart() ? '⚙' : '❝', t: s.title, s: `${s.headless && headlessApart() ? 'Headless run · ' : ''}${p.name} · ${agoL(s.updated)}`, run: () => (liveOf(s.id) ? ChatUI.open({ sessionId: s.id }) : isRunning(s.id) ? ChatUI.watch({ sessionId: s.id, source: 'terminal' }) : inApp() ? ChatUI.open({ sessionId: s.id }) : openDrawer(s.id)), text: `${s.title} ${p.name} ${s.firstPrompt || ''}${s.headless ? ' headless' : ''}` }));
   const cxNew = codexReady() ? S.projects.filter(p => p.exists).map(p => ({ glyph: '✥', t: `New Codex chat in ${p.name}`, s: 'Codex', run: () => ChatUI.open({ cwd: p.cwd, mode: 'new', provider: 'codex' }), text: `codex new ${p.name}` })) : [];
   // Prompts, in the project you're looking at first, then in every project.
   const here = S.view === 'folder' ? S.projects.find(p => p.cwd === S.folder) : null;

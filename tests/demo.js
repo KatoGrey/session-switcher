@@ -82,6 +82,28 @@ const withOpenClaw = list => {
   out.push({ cwd: ocSessions[1].cwd, name: 'clawd', exists: true, notes: 0, updated: ocSessions[1].updated, sessions: [ocSessions[1]] });
   return out;
 };
+// Headless runs (with the headless option): reviews a script ran with `claude -p`, one still working, one just
+// finished, the rest from earlier; marked as the server marks them (lib/headless.js).
+const hlSpec = [
+  ['h-pr41', 'Review PR 41: rally stacking', 'Starfall Tavern', 2],
+  ['h-pr42', 'Review PR 42: the queen’s dialogue', 'Starfall Tavern', 6],
+  ['h-pr43', 'Review PR 43: save migration', 'Orbital Garden', 25],
+  ['h-pr44', 'Review PR 44: rain shader', 'Neon Courier', 90],
+  ['h-pr45', 'Review PR 45: HUD spacing', 'Neon Courier', 240],
+  ['h-pr46', 'Review PR 46: patch notes', 'Tidecaller', 600],
+];
+const hlSessions = hlSpec.map(([k, title, proj, ago]) => { ID[k] = uuid(k); return { id: ID[k], cwd: P(proj), autoTitle: title, firstPrompt: `${title}. Read the diff and list what’s wrong.`, lastPrompt: null, branch: 'main', title, renamed: false, updated: min(ago), active: ago < 3, sizeKB: 60, lastOpened: null, entrypoint: 'sdk-cli', headless: true }; });
+const hlActivity = [
+  { source: 'elsewhere', provider: 'claude', key: null, sessionId: ID['h-pr41'], title: 'Review PR 41: rally stacking', folder: 'Starfall Tavern', cwd: P('Starfall Tavern'), accountId: null, accountName: null, state: 'busy', phase: 'tool', tool: 'Read', detail: 'scripts/bard/songs.lua', lastText: '', lastPrompt: '', steps: 4, turnStartedAt: null, lastEventAt: min(0.2), finishedAt: null, ok: true, pending: [], pids: null, spark: [], headless: true },
+  { source: 'elsewhere', provider: 'claude', key: null, sessionId: ID['h-pr42'], title: 'Review PR 42: the queen’s dialogue', folder: 'Starfall Tavern', cwd: P('Starfall Tavern'), accountId: null, accountName: null, state: 'ready', phase: 'idle', tool: null, detail: null, lastText: 'Two findings: a typo, and a missing line.', lastPrompt: '', steps: 6, turnStartedAt: null, lastEventAt: min(6), finishedAt: min(6), ok: true, pending: [], pids: null, spark: [], headless: true },
+];
+// What you've said about a chat (POST /api/chats/headless): true, false, or nothing.
+const hlSaid = new Map();
+const withHeadless = list => list.map(p => {
+  const runs = hlSessions.filter(x => x.cwd === p.cwd);
+  const mark = s => { const said = hlSaid.get(s.id.toLowerCase()); const on = said === undefined ? !!s.entrypoint && hlSessions.includes(s) : said; return on === !!s.headless ? s : { ...s, headless: on || undefined }; };
+  return { ...p, sessions: [...p.sessions, ...runs].map(mark).sort((a, b) => b.updated - a.updated) };
+});
 const ocHistory = [
   { kind: 'user', text: 'Which quests still need dialogue?', at: iso(min(8)) },
   { kind: 'assistant', mid: 'oc:2', blocks: [{ type: 'text', text: 'Three: **The Lost Lute**, **Cellar Rats** and **Harvest Moon**.' }], at: iso(min(7)) },
@@ -179,7 +201,7 @@ const AIDE_GROUPS = () => [
   { key: 'elden-ring', name: 'Elden Ring', updated: NOW - 2 * 864e5, chats: [{ id: 'aide-4', title: 'Where do I go after Liurnia?', provider: 'claude', updated: NOW - 2 * 864e5 }] },
   { key: 'general', name: 'General', updated: NOW - 4 * 3600e3, chats: [{ id: 'aide-5', title: 'Convert 5 km to miles', provider: 'claude', updated: NOW - 4 * 3600e3 }, { id: 'aide-6', title: 'What does this error mean?', provider: 'codex', updated: NOW - 3 * 864e5 }] },
 ];
-async function install(b, { aide = false, desktopStub = null, live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false, gemini = false, crew = false, respond = null } = {}) {
+async function install(b, { aide = false, desktopStub = null, live = true, state = 'ready', seen = null, context = null, events = [], noHistory = false, reopen = [], openclaw = false, extras = null, fresh = false, gemini = false, crew = false, headless = false, respond = null } = {}) {
   // Windows Firewall, as a fresh PC has it: nothing let in, the Wi-Fi set as public.
   let firewall = { known: true, program: 'C:\\Program Files\\nodejs\\node.exe', port: 4788, firewallOn: true, allowed: false, blocked: true, network: 'Public' };
   const info = { ...chatInfo, ...(context ? { context } : {}), ...(crew ? { crew: CREW, mate: 'codex' } : {}) };
@@ -225,8 +247,10 @@ async function install(b, { aide = false, desktopStub = null, live = true, state
     if (p === '/api/reopen') { const out = { reopened: body.action === 'reopen' ? reopen.map(c => c.sessionId) : [], failed: [] }; reopen = []; return { body: out }; }
     if (p === '/api/state') return { body: { gemini: gemini ? GEMINI_STATE : null, reopen, accounts, prefs: { terminal: 'auto', syncSettings: true, syncState: true, cleanEnv: true, appWindow: true, openIn: 'app' }, claudeCommand: 'claude', dryRun: false, appVersion: '6.0.0', platform: 'win32', index: { done: 18, total: 18, ready: true }, codex } };
     if (p === '/api/chat/done') { if (body.done) doneMarks[String(body.id).toLowerCase()] = { done: Date.now(), undone: 0 }; else doneMarks[String(body.id).toLowerCase()] = { done: 0, undone: Date.now() }; return { body: { doneMarks } }; }
-    if (p === '/api/sessions') return { body: { doneMarks, projects: (l => (gemini ? withGemini(l) : l))(openclaw ? withOpenClaw(projects) : projects), skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
-    if (p === '/api/activity') return { body: { list: activity, at: NOW } };
+    if (p === '/api/chats/done') { for (const id of body.ids || []) doneMarks[String(id).toLowerCase()] = body.done ? { done: Date.now(), undone: 0 } : { done: 0, undone: Date.now() }; return { body: { doneMarks } }; }
+    if (p === '/api/chats/headless') { const was = {}; for (const id of body.ids || []) { const k = String(id).toLowerCase(); was[id] = hlSaid.has(k) ? hlSaid.get(k) : null; if (body.on === null) hlSaid.delete(k); else hlSaid.set(k, !!body.on); } return { body: { ok: true, changed: (body.ids || []).length, was } }; }
+    if (p === '/api/sessions') return { body: { doneMarks, projects: (l => (headless ? withHeadless(l) : l))((l => (gemini ? withGemini(l) : l))(openclaw ? withOpenClaw(projects) : projects)), skipped: 0, root: 'C:\\Users\\alex\\.claude\\projects', running: { [ID['s-route'].toLowerCase()]: [4120] }, live: { [ID['s-bard'].toLowerCase()]: { key: 'k-bard', accountId: 'studio', accountName: 'Studio' } } } };
+    if (p === '/api/activity') return { body: { list: headless ? activity.concat(hlActivity) : activity, at: NOW } };
     // The day at a glance: bursts of messages through the last few hours.
     if (p === '/api/problems' && body.message) { problemList.unshift({ id: `pb${problemList.length}`, where: 'Page', message: body.message, stack: body.stack || '', at: new Date(NOW).toISOString(), count: 1 }); return { body: { ok: true } }; }
     if (p === '/api/problems' && body.clear) { problemList = body.clear === 'all' ? [] : problemList.filter(x => x.id !== body.clear); return { body: { ok: true } }; }

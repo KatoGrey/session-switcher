@@ -1,4 +1,12 @@
-# A PC check-up, the sidebar your way, chats that open where you left off, and word when your pull requests change
+# Headless runs get a list of their own
+
+**Headless runs, out of your way.** Chats a script or another agent starts (`claude -p`, the Claude Agent SDK, `codex exec`), like a pipeline of review runs, no longer fill Recent, Active now, your projects' lists or the hub. They're under **Headless runs** in the sidebar, the ones working first, and each project keeps its own folded away under its chats, like Done. A run that finishes isn't "your turn" and doesn't notify you; one that needs your OK still does.
+- **The Headless runs page** (the sidebar, or Ctrl+K → Headless runs): every run, the ones working on top, with a filter and a folder picker. Tick several, or **Select all shown**, then **Mark done**, **Move to group…** (a new group takes them all) or **Back with my chats**.
+- Opening a run here doesn't make it one of yours: it stays a run until you say otherwise. Right-click any chat for **Move to Headless runs** or **Back with my chats**.
+- How it tells: Claude Code notes how each chat was started, and Session Switcher now remembers which chats it started itself. Runs from before this version that you'd already opened here stay with your chats; right-click one to move it. Imperial and Rebel keep runs among your chats, as before.
+- **Setup → Preferences → Keep headless runs on their own list** turns it off. The Commander sees which chats are runs too.
+
+## Earlier in 6.15: a PC check-up, the sidebar your way, chats that open where you left off, and word when your pull requests change
 
 **PC check-up.** **Setup → PC check-up** (or Ctrl+K → PC check-up) looks at what's running and what's taking space on this PC: the programs using the most memory or CPU, any that have stopped responding, and space you can free (old temporary files, Session Switcher's own test leftovers, package caches, crash dumps, the Recycle Bin, big downloads you haven't opened in months). Claude says in a few words what each one is and whether it's safe to close or clear. Tick what you want gone and confirm; nothing happens before that.
 - Programs are asked to close as their own close button would, so one with unsaved work can ask you first. **Force close** is a separate step.

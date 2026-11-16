@@ -197,7 +197,8 @@ function codexChatItems(s) {
     doneItem(s.id),
   ];
 }
-function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, '-', ...keepItem(s.id), favItem(s.id), ...orgItems(s.id)]); }
+const hlItems = id => (typeof headlessItem === 'function' ? headlessItem(id) : []);
+function codexChatMenu(anchor, s) { const items = codexChatItems(s); if (items && items.length) showMenu(anchor, [...items, ...hlItems(s.id), '-', ...keepItem(s.id), favItem(s.id), ...orgItems(s.id)]); }
 // Gemini's: its own terminal, and no copies (Antigravity can't start one from an old conversation).
 function geminiChatItems(s) {
   const ok = geminiReady(), why = 'Sign in to Gemini first (Setup → Gemini)';
@@ -253,7 +254,7 @@ function chatItems(id) {
     doneItem(id),
   ];
 }
-function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, '-', ...keepItem(id), favItem(id), ...orgItems(id)]); }
+function chatMenu(anchor, id) { const items = chatItems(id); if (items && items.length) showMenu(anchor, [...items, ...hlItems(id), '-', ...keepItem(id), favItem(id), ...orgItems(id)]); }
 // A chat that's open can be kept working from its row too.
 const keepItem = id => { const live = liveOf(id), [s] = sessionById(id); if (!live || !live.key || !s || isCommander(id)) return []; return [{ glyph: '⟳', label: keepOf(live.key) ? 'Keep working: change or turn off…' : 'Keep it working until…', hint: 'told to carry on when it goes quiet', run: () => openKeepDialog({ key: live.key, title: s.title }) }]; };
 const doneItem = id => { const [s] = sessionById(id); const d = s && isDoneChat(s); return { glyph: d ? '↺' : '✓', label: d ? 'Not done' : 'Mark done', hint: d ? 'back on the lists' : 'off the lists until it’s used again', run: () => setChatDone(id, !d) }; };

@@ -1,11 +1,11 @@
 'use strict';
 /* The sidebar in your order: its sections (the Commander and Routines, Pinned, Your projects, Active now, Recent,
-   Groups and Sub-sessions) go where you put them, by dragging a section by its heading or from its right-click menu
+   Headless runs, Groups and Sub-sessions) go where you put them, by dragging a section by its heading or from its right-click menu
    (a long press on a phone), and any you don't use can be hidden from the same menu. Kept on this device. The block at the top (New chat, the hub, Your work…) stays where it
    is, and Imperial and Rebel keep their own sidebar. */
 
-const NAV_SECS = ['tools', 'pinned', 'projects', 'active', 'recent', 'groups', 'subs'];
-const navSecName = k => ({ tools: aideOn() ? 'Commander, Routines and Companion' : 'Commander and Routines', pinned: 'Pinned', projects: voice('Your projects'), active: voice('Active now'), recent: voice('Recent'), groups: 'Groups', subs: 'Sub-sessions' }[k] || k);
+const NAV_SECS = ['tools', 'pinned', 'projects', 'active', 'recent', 'headless', 'groups', 'subs'];
+const navSecName = k => ({ tools: aideOn() ? 'Commander, Routines and Companion' : 'Commander and Routines', pinned: 'Pinned', projects: voice('Your projects'), active: voice('Active now'), recent: voice('Recent'), headless: 'Headless runs', groups: 'Groups', subs: 'Sub-sessions' }[k] || k);
 
 // The order kept on this device, with any section it doesn't mention (a later version's) after the one before it.
 function navOrder() {

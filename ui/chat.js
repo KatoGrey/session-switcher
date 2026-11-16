@@ -57,7 +57,7 @@ function followPins(open) {
   if (moved) store('favChats', JSON.stringify([...S.favs]));
 }
 function railRows() {
-  const open = S.activity.filter(x => !x.parentKey);
+  const open = S.activity.filter(x => !x.parentKey && onLists(x));
   followPins(open);
   const pinnedOpen = open.filter(railPinned), rest = open.filter(x => !railPinned(x));
   const closed = [];
@@ -206,7 +206,7 @@ function railSettle(d, keep) {
 }
 
 /* ---------- open / close ---------- */
-function findSession(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
+function findSession(id) { const want = String(id || '').toLowerCase(); for (const p of S.projects) { const s = p.sessions.concat(p.done || [], p.headless || []).find(x => x.id.toLowerCase() === want); if (s) return [s, p]; } return [null, null]; }
 
 // A chat's latest page, fetched a moment early (you hovered it, or it's next with Alt+↓), so opening
 // it is instant. Kept for twenty seconds; only the plain first page (no paging, no live replay).

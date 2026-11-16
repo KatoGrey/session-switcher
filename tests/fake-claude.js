@@ -18,7 +18,9 @@ const out = o => process.stdout.write(`${JSON.stringify(o)}\n`);
 const cwd = process.cwd();
 const dir = path.join(os.homedir(), '.claude', 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'));
 const file = path.join(dir, `${session}.jsonl`);
-const write = o => { try { fs.mkdirSync(dir, { recursive: true }); fs.appendFileSync(file, `${JSON.stringify({ sessionId: session, cwd, timestamp: new Date().toISOString(), uuid: crypto.randomUUID(), ...o })}\n`); } catch { /* fine */ } };
+// (Run the way Session Switcher runs it, it says so in each record, as the real one does: sdk-cli.)
+const entry = args.includes('--input-format') ? { entrypoint: 'sdk-cli' } : {};
+const write = o => { try { fs.mkdirSync(dir, { recursive: true }); fs.appendFileSync(file, `${JSON.stringify({ sessionId: session, cwd, timestamp: new Date().toISOString(), uuid: crypto.randomUUID(), ...entry, ...o })}\n`); } catch { /* fine */ } };
 readline.createInterface({ input: process.stdin }).on('line', line => {
   let m; try { m = JSON.parse(line); } catch { return; }
   if (m.type === 'control_request') {

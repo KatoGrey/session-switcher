@@ -317,6 +317,19 @@ A chat goes by its first words until it has a name, and a first message is rarel
 
 **Mark done** (a chat's right-click menu, or the chat's **⋯**) takes it off every list; it waits under **Done** at the bottom of its project's chats, and comes back by itself if it's used again (**Not done** brings it back by hand). Setup → Preferences → **Tidy up** can do it for you: chats with nothing new for 3 days, a week, two weeks or a month count as done.
 
+### Headless runs
+
+Chats a script or another agent starts and runs without anyone typing in them (`claude -p`, the Claude Agent SDK, `codex exec`), like a pipeline of review runs, are kept out of the everyday lists: Recent, Active now, your projects' chats, the hub and the welcome-back card. A run that finishes isn't "your turn" and doesn't notify you; one that needs your OK still does.
+
+- **Headless runs** in the sidebar shows the ones working or needing you first, then the latest. Like the other sections, it can be moved or hidden.
+- **The Headless runs page** (from the sidebar, or `Ctrl+K` → Headless runs) lists every one, the ones working on top. Narrow it with the filter (names and first words) or by folder, tick several (or **Select all shown**), then **Mark done**, **Move to group…** (a new group takes them all) or **Back with my chats**. With one ticked, **Open** opens it.
+- Each project keeps its own runs folded away under its chats, like Done. `Ctrl+K` finds them too, marked *Headless run*.
+- **How it tells:** Claude Code writes how each chat was started (`sdk-cli` for `claude -p`, `sdk-ts` or `sdk-py` for the Agent SDK), but Session Switcher's own chats say `sdk-cli` too. So the app remembers which chats it started itself, and a chat it first heard of when you opened it here stays a run. Codex marks `codex exec` threads itself. When the app has no record of a chat, it goes by when: one used since its oldest record was never opened here, and one from before then stays with your chats (its record may simply be gone). Runs from before 6.16 that you'd already opened here stay with your chats too.
+- Sorted wrongly? Right-click any chat: **Move to Headless runs** or **Back with my chats**. Chats you type in another app built on the Agent SDK count as runs; move them back the same way.
+- Imperial and Rebel keep their sidebar and pages as they are, with runs among your chats.
+- The Commander sees which chats are runs (`headless: true`), and doesn't count a finished one as waiting on you.
+- **Setup → Preferences → Keep headless runs on their own list** turns all of this off.
+
 ## Codex (OpenAI)
 
 If you have Codex, the OpenAI coding agent, and a ChatGPT plan, Session Switcher works with it the same way:

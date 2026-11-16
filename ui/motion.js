@@ -27,6 +27,7 @@ function renderLive(force) {
   if (typeof renderKeep === 'function') renderKeep();
   if (typeof renderPicturesBack === 'function') renderPicturesBack();
   if (S.view === 'folder' && typeof renderProjectNow === 'function') renderProjectNow();
+  if (S.view === 'headless' && typeof renderHeadless === 'function') renderHeadless();
   if (S.view !== 'hub' || !$('awaitList')) return;
   const A = awaiting(), W = atWork(), Q = quietOpen();
   // The clock ticks on its own, so a new minute alone doesn't redraw the hero (and restart its scene).
@@ -172,9 +173,15 @@ function renderWorldBody() {
     $('wbTop').hidden = !seg && !canFilter;
     const lb = $('wbList');
     const done = q ? [] : (p.done || []).filter(x => !prov || provOf(x) === prov);
+    // Headless runs (ui/headless.js), folded away like Done.
+    const runs = q ? [] : (p.headless || []).filter(x => !prov || provOf(x) === prov);
     if (q && !list.length) { lb.innerHTML = '<p class="empty-line">No chat here has that in its name or its messages’ first lines.</p>'; return; }
-    if (!list.length && !done.length) { lb.innerHTML = emptyArt('chats', `No ${prov === 'codex' ? 'Codex chats' : prov === 'claude' ? 'Claude Code chats' : 'chats'} in this project yet. Start one above, or start with a prompt.`); return; }
-    if (!lb.querySelector(':scope > ul.rows')) lb.innerHTML = '<ul class="rows"></ul><details class="done-chats"><summary></summary><ul class="rows"></ul></details>';
+    if (!list.length && !done.length && !runs.length) { lb.innerHTML = emptyArt('chats', `No ${prov === 'codex' ? 'Codex chats' : prov === 'claude' ? 'Claude Code chats' : 'chats'} in this project yet. Start one above, or start with a prompt.`); return; }
+    if (!lb.querySelector(':scope > ul.rows') || !lb.querySelector('.headless-chats')) lb.innerHTML = '<ul class="rows"></ul><details class="headless-chats"><summary></summary><ul class="rows"></ul></details><details class="done-chats"><summary></summary><ul class="rows"></ul></details>';
+    const hz = lb.querySelector('.headless-chats');
+    hz.hidden = !runs.length;
+    hz.querySelector('summary').textContent = `Headless runs · ${runs.length}`;
+    patch(hz.querySelector('ul.rows'), runs, s => s.id, s => rowHtml(s, null));
     const dz = lb.querySelector('.done-chats');
     dz.hidden = !done.length;
     dz.querySelector('summary').textContent = `Done · ${done.length}`;
@@ -242,6 +249,7 @@ function renderSearch() {
 function renderPage() {
   if (S.view === 'hub') renderHub();
   else if (S.view === 'recent') renderRecent();
+  else if (S.view === 'headless') renderHeadless();
   else if (S.view === 'folder') renderFolder();
   else if (S.view === 'search') renderSearch();
   else if (S.view === 'routines') Routines.render();
@@ -270,7 +278,7 @@ function go(view, folder, prov) {
     renderNav(); renderPage(); renderBar(); window.scrollTo({ top: 0 });
     $('page').focus({ preventScroll: true });
     // Said to a screen reader, as a new page would be.
-    announce(view === 'hub' ? voice('The hub') : view === 'recent' ? voice('Recent chats') : view === 'routines' ? voice('Routines') : view === 'work' ? voice('Your work') : view === 'folder' ? (S.projects.find(p => p.cwd === S.folder) || {}).name || '' : '');
+    announce(view === 'hub' ? voice('The hub') : view === 'recent' ? voice('Recent chats') : view === 'headless' ? 'Headless runs' : view === 'routines' ? voice('Routines') : view === 'work' ? voice('Your work') : view === 'folder' ? (S.projects.find(p => p.cwd === S.folder) || {}).name || '' : '');
     // Coming back from a project: its banner settles back into its card.
     if (view === 'hub' && from && motionOk()) {
       const art = document.querySelector(`#atlas > [data-k="${CSS.escape(from)}"] .w-art`);

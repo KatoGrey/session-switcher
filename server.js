@@ -35,6 +35,7 @@ const store = require('./lib/store');
 const { listFiles } = require('./lib/filelist');
 const tasksLib = require('./lib/tasks');
 const raceLib = require('./lib/race');
+const headlessLib = require('./lib/headless');
 const pairsLib = require('./lib/pairs');
 const handover = require('./lib/handover');
 const routinesLib = require('./lib/routines');
@@ -377,7 +378,10 @@ const chats = chatLib.createChatManager({
     // A side question is set aside as done as soon as it has an id: it never sits in the lists.
     if (chat.aside && chat.sessionId) chatPrefs.setDone(chat.sessionId, true);
     if (chat.provider === 'gemini') { gemini.noteChat(chat.sessionId, { cwd: chat.cwd, title: chat.title }); geminiRows.at = 0; }
-    if (chat.provider !== 'codex') sessions.recordLaunch(chat.sessionId, chat.account, chat.fork ? 'fork' : 'app');
+    // A conversation began here unless it's the very one the chat was opened on: a new chat, a copy, or a
+    // new conversation in the same chat (/clear) did (lib/headless.js goes by it).
+    const reopened = chat.startedAs && !chat.fork && String(chat.startedAs).toLowerCase() === String(chat.sessionId).toLowerCase();
+    if (chat.provider !== 'codex') sessions.recordLaunch(chat.sessionId, chat.account, chat.fork ? 'fork' : 'app', reopened ? null : 'app');
     // A copy is named "<original> (copy)" everywhere (its own first words would read as just another chat).
     if (chat.fork && chat.provider === 'claude' && /\(copy\)$/.test(chat.title || '')) sessions.nameIfUnnamed(chat.sessionId, chat.title);
     // Choices made before the chat had an id, a partner paired before then, and when it last caught
@@ -596,7 +600,11 @@ function sessionsWithCodex() {
       return { ...p, sessions: list.sort((a, b) => b.updated - a.updated) };
     }) };
   }
-  value = { ...value, projects: value.projects.map(p => { const art = themeStudio.project(p.cwd); return art ? { ...p, name: `Theme Studio · ${art.name}` } : p; }) };
+  // Headless runs (lib/headless.js: started by a script or another agent), as you've sorted them where you have.
+  const said = chatPrefs.headlessMarks(), since = sessions.historySince();
+  const runOf = s => headlessLib.isHeadless(s, said.get(s.id.toLowerCase()), since);
+  const flag = list => (list.some(runOf) ? list.map(s => (runOf(s) ? { ...s, headless: true } : s)) : list);
+  value = { ...value, projects: value.projects.map(p => { const art = themeStudio.project(p.cwd), sessions = flag(p.sessions); return art || sessions !== p.sessions ? { ...p, sessions, ...(art ? { name: `Theme Studio · ${art.name}` } : {}) } : p; }) };
   mergedMemo = { at: Date.now(), value };
   return value;
 }
@@ -1768,6 +1776,7 @@ function activityList() {
   // to resume a conversation too): a conversation the app runs, or ran in the last minute, is never
   // "in a terminal" as well.
   const ownIds = new Set();
+  const said = chatPrefs.headlessMarks(), since = sessions.historySince();
   for (const c of chats.chats.values()) if (c.state !== 'ended' || now - (c.lastAt || 0) < 60000) for (const id of [c.sessionId, c.fork ? null : c.startedAs]) if (id) ownIds.add(String(id).toLowerCase());
   for (const p of projects) {
     for (const s of p.sessions) {
@@ -1788,6 +1797,7 @@ function activityList() {
       if (age > 25000 && (phase === 'thinking' || phase === 'tool')) phase = pids && phase === 'tool' ? 'waiting-terminal' : 'idle';
       out.push({
         source: pids ? 'terminal' : 'elsewhere', key: null, sessionId: s.id, title: s.title, folder: p.name, cwd: p.cwd, leftover: leftovers.has(String(s.id).toLowerCase()),
+        ...(headlessLib.isHeadless(s, said.get(id), since) ? { headless: true } : {}),
         accountId: s.lastOpened ? s.lastOpened.account : null, accountName: s.lastOpened ? s.lastOpened.accountName : null,
         state: phase === 'idle' ? 'ready' : 'busy', phase, tool: t.tool, detail: t.detail, lastText: t.lastText, lastPrompt: t.lastPrompt, steps: t.steps,
         turnStartedAt: null, lastEventAt: s.updated, finishedAt: phase === 'idle' ? s.updated : null, ok: true, pending: [], pids, spark: [],
@@ -3113,12 +3123,29 @@ async function handleApi(req, res, url, remote = false) {
       if (body.done) keepWorking.stop(String(body.id));   // done means done
       return send(res, 200, { doneMarks: chatPrefs.doneMarks() });
     }
+    case '/api/chats/done': {
+      // Several at once (the Headless runs page): each done, or each back.
+      const ids = chatIdsOf(body);
+      if (typeof body.done !== 'boolean') throw fail(400, 'Done or not?');
+      for (const id of ids) { chatPrefs.setDone(id, body.done); if (body.done) keepWorking.stop(id); }
+      return send(res, 200, { doneMarks: chatPrefs.doneMarks() });
+    }
+    case '/api/chats/headless': {
+      // Into Headless runs (on: true), back with your chats (false), or back to how each began (null). `was` is what
+      // you'd said about each before, for Undo.
+      const ids = chatIdsOf(body);
+      if (![true, false, null].includes(body.on)) throw fail(400, 'In or out?');
+      const was = chatPrefs.headlessSaid(ids);
+      for (const id of ids) chatPrefs.setHeadless(id, body.on);
+      forgetMerged(); broadcast('sessions'); scheduleActivity();
+      return send(res, 200, { ok: true, changed: ids.length, was });
+    }
     case '/api/prefs': {
       const p = c.prefs;
       // Tidy up: chats with nothing new for this many days count as done (0: never).
       if (body.autoDone !== undefined) { const d = Number(body.autoDone); if (![0, 3, 7, 14, 30].includes(d)) throw fail(400, 'Unknown choice.'); p.autoDone = d; }
       if (body.terminal !== undefined) { if (!acc.TERMINALS.includes(body.terminal)) throw fail(400, 'Unknown terminal choice.'); p.terminal = body.terminal; }
-      for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow', 'autoSwitch', 'autoReview', 'nightlyCheck', 'autoName', 'latitudeReadsClaude', 'latitudeReadsCodex', 'prNotices']) if (typeof body[k] === 'boolean') p[k] = body[k];
+      for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow', 'autoSwitch', 'autoReview', 'nightlyCheck', 'autoName', 'latitudeReadsClaude', 'latitudeReadsCodex', 'prNotices', 'headlessApart']) if (typeof body[k] === 'boolean') p[k] = body[k];
       if (body.autoName === true) setImmediate(() => namer.resume());
       if (body.openIn !== undefined) { if (!['app', 'terminal'].includes(body.openIn)) throw fail(400, 'Unknown choice.'); p.openIn = body.openIn; }
       if (body.claudeMode !== undefined) { if (!chatLib.MODES.includes(body.claudeMode)) throw fail(400, 'Unknown mode.'); p.claudeMode = body.claudeMode; }
@@ -3292,7 +3319,9 @@ Your tools (from the \`switcher\` MCP server):
 
 - \`list_sessions\`: every chat that's running or recently used, with its state (working, needs
   approval, has a question, idle, waiting in its terminal, not running), group, parent chat and
-  last line. Start here.
+  last line. Start here. \`headless: true\` marks a run a script or another agent started
+  (\`claude -p\`, the Agent SDK, \`codex exec\`): unless the user has turned it off, those are on a
+  list of their own, so don't count a finished one as waiting on them.
 - \`read_session\`: a chat's latest messages. Read before you nudge.
 - \`search_chats\`: every chat that mentions something, Claude's, Codex's and Gemini's, by what was said in it. For "which chat
   was it where we...?". Then \`read_session\` the one you want.
@@ -3397,10 +3426,12 @@ function commanderSessions(filter = 'active', groupName = '') {
   if (filter === 'all' || filter === 'archived') [...known.values()].sort((a, b) => b.s.updated - a.s.updated).slice(0, 40).forEach(f => addKnown(f.s.id));
   // Chats archived in Switcher Lite are out of every list, the Commander's included (unless it asks for 'archived').
   let archivedLite = {}; try { archivedLite = (liteStore.get().archived || {}).chats || {}; } catch { /* none */ }
-  let out = [...rows.values()].filter(r => (filter === 'archived') === !!archivedLite[r.id]).map(r => ({ ...r, group: groupName_(r.id), parent: organize.parentOf(r.id), subSessions: organize.childrenOf(r.id) }));
+  // headless: started by a script or another agent (lib/headless.js), on the page's Headless runs list.
+  let out = [...rows.values()].filter(r => (filter === 'archived') === !!archivedLite[r.id]).map(r => { const f = known.get(String(r.id).toLowerCase()); return { ...r, ...(f && f.s.headless ? { headless: true } : {}), group: groupName_(r.id), parent: organize.parentOf(r.id), subSessions: organize.childrenOf(r.id) }; });
   const WAIT = ['needs approval', 'has a question', 'waiting in its terminal', 'idle'];
   if (filter === 'working') out = out.filter(r => r.state === 'working');
-  else if (filter === 'waiting') out = out.filter(r => WAIT.includes(r.state) && r.state !== 'not running');
+  // (A headless run that's finished isn't waiting on anyone: only one that needs approval or has a question is.)
+  else if (filter === 'waiting') out = out.filter(r => WAIT.includes(r.state) && r.state !== 'not running' && !(r.headless && r.state === 'idle'));
   else if (filter === 'idle') out = out.filter(r => r.state === 'idle' || r.state === 'not running');
   if (groupName) out = out.filter(r => r.group && r.group.toLowerCase() === String(groupName).toLowerCase());
   const rank = r => (['needs approval', 'has a question', 'waiting in its terminal'].includes(r.state) ? 0 : r.state === 'idle' ? 1 : r.state === 'working' ? 2 : 3);
@@ -3914,6 +3945,12 @@ function validImages(images) {
   });
 }
 
+// Chat ids for the routes that take several (up to 2,000): strings, each a chat id.
+function chatIdsOf(body) {
+  const list = Array.isArray(body.ids) ? body.ids : [];
+  if (!list.length || list.length > 2000 || list.some(id => typeof id !== 'string' || !/^[\w-]{8,80}$/.test(id))) throw fail(400, 'Which chats?');
+  return [...new Set(list)];
+}
 // handleChat has the /api/chat/ addresses, but for these, and these others. (tests/workspace.test.js checks each is reachable.)
 const NOT_IN_HANDLE_CHAT = ['/api/chat/rename', '/api/chat/done'];
 const IN_HANDLE_CHAT = ['/api/run'];

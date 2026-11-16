@@ -42,7 +42,7 @@ function nowDetails(cwd, g) {
 function projectNowHtml(p) {
   if (sagaLook()) return '';
   const here = p.cwd.toLowerCase(), inside = `${here.replace(/\\/g, '/').replace(/\/+$/, '')}/`;
-  const open = S.activity.filter(x => !x.parentKey && x.cwd && x.cwd.toLowerCase() === here && !isCommander(x.sessionId));
+  const open = S.activity.filter(x => !x.parentKey && onLists(x) && x.cwd && x.cwd.toLowerCase() === here && !isCommander(x.sessionId));
   const chats = open.map(x => { const s = chatState(x); return `<button class="wn-chat" data-now-open="${esc(keyOf(x))}" title="${esc(x.title || 'New chat')}"><span class="${s.dot}" aria-hidden="true"></span><span class="wn-t">${esc(x.title || 'New chat')}</span><span class="wn-s">${esc(s.word)}</span></button>`; }).join('');
   const clash = typeof clashList === 'function' ? clashList().filter(r => r.file.toLowerCase().replace(/\\/g, '/').startsWith(inside)) : [];
   const n = Now[p.cwd] && Now[p.cwd].r, g = n && n.git;

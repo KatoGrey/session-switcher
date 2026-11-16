@@ -7,7 +7,7 @@ const Shell = (() => {
   let collapsed = store('sidebar-collapsed') === 'true';
   let returnPoint = null;
   const location = () => S.view === 'folder' ? (S.projects.find(p => p.cwd === S.folder)?.name || 'Project')
-    : ({ hub: 'The hub', work: 'Your work', recent: 'Recent chats', search: 'Search results', routines: 'Routines', aide: 'Companion' }[S.view] || 'The hub');
+    : ({ hub: 'The hub', work: 'Your work', recent: 'Recent chats', headless: 'Headless runs', search: 'Search results', routines: 'Routines', aide: 'Companion' }[S.view] || 'The hub');
   // Where focus goes in an open chat: its message box, or (a chat you're only watching has none) the first button in
   // its header.
   const intoChat = () => [$('cText'), ...$('chat').querySelectorAll('.c-head button')].find(x => x && x.getClientRects().length && !x.closest('[inert]')) || null;
