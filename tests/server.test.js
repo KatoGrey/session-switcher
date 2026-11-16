@@ -96,6 +96,59 @@ test('reopen: restarting with no open chats preserves older offers instead of st
   }
 });
 
+test('reopen: after an update, the open chats come back by themselves even when the installer took minutes', async () => {
+  for (const forUpdate of [true, false]) {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-update-reopen-'));
+    const home = path.join(dataDir, 'home'); fs.mkdirSync(home);
+    // (no Claude Code to start: reopening it fails quietly, which doesn't matter here)
+    fs.writeFileSync(path.join(dataDir, 'accounts.json'), JSON.stringify({ claudeCommand: path.join(dataDir, 'no-claude-here') }));
+    fs.writeFileSync(path.join(dataDir, 'open-chats.json'), JSON.stringify({ at: Date.now(), chats: [{ sessionId: '00000000-1111-4222-8333-555555555555', provider: 'claude', accountId: 'main', title: 'Open before the update' }] }));
+    fs.writeFileSync(path.join(dataDir, 'restart.json'), JSON.stringify({ at: Date.now() - 5 * 60000, forUpdate }));
+    const s = await startServer(dataDir, { home });
+    try {
+      const offered = (await s.call('/api/state')).json.reopen.map(c => c.title);
+      if (forUpdate) assert.deepEqual(offered, [], 'an update five minutes ago: reopened, not offered');
+      else assert.deepEqual(offered, ['Open before the update'], 'a restart five minutes ago is too old: offered instead');
+    } finally { await s.stop(); }
+  }
+});
+
+test('pr watch: the first look says nothing, the next says what changed, kept for the welcome-back card; off in Setup, nothing', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-prwatch-'));
+  const home = path.join(dataDir, 'home'); fs.mkdirSync(home);
+  fs.writeFileSync(path.join(dataDir, 'accounts.json'), JSON.stringify({ claudeCommand: path.join(dataDir, 'no-claude-here') }));
+  const pr = extra => ({ repo: 'o/r', number: 7, title: 'Faster lists', url: 'https://github.com/o/r/pull/7', mine: true, roles: ['authored'], state: 'OPEN', reviews: [], open: 0, checks: { failed: [], pending: 1, passed: 3 }, ...extra });
+  const s = await startServer(dataDir, { home });
+  try {
+    const since = Date.now() - 1000;
+    assert.deepEqual((await s.call('/api/prs/watch', { prs: [pr()] })).json.events, [], 'the first look only remembers');
+    const second = (await s.call('/api/prs/watch', { prs: [pr({ checks: { failed: [{ name: 'Lint' }], pending: 0, passed: 3 } })] })).json.events;
+    assert.deepEqual(second.map(e => e.kind), ['checks-failed']);
+    assert.equal(second[0].title, 'Checks failed on #7');
+    const away = (await s.call(`/api/away?since=${since}`)).json;
+    assert.deepEqual(away.prs.map(e => [e.kind, e.action]), [['checks-failed', 'See what failed']], 'the welcome-back card has it, with its button');
+    await s.call('/api/prefs', { prNotices: false });
+    assert.deepEqual((await s.call('/api/prs/watch', { prs: [pr({ reviewDecision: 'APPROVED' })] })).json.events, [], 'turned off in Setup: nothing');
+  } finally { await s.stop(); }
+});
+
+test('drafts: the list says which chats have an unsent message and since when, never its words', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-drafts-'));
+  const home = path.join(dataDir, 'home'); fs.mkdirSync(home);
+  fs.writeFileSync(path.join(dataDir, 'accounts.json'), JSON.stringify({ claudeCommand: path.join(dataDir, 'no-claude-here') }));
+  const s = await startServer(dataDir, { home });
+  try {
+    const id = '00000000-1111-4222-8333-555555555555';
+    assert.deepEqual((await s.call('/api/drafts')).json, { drafts: [] });
+    await s.call('/api/draft', { id, text: 'A secret half-written message', at: 1000 });
+    const listed = (await s.call('/api/drafts')).json;
+    assert.deepEqual(listed, { drafts: [{ id, at: 1000 }] });
+    assert.ok(!JSON.stringify(listed).includes('secret'), 'the words stay out of the list');
+    await s.call('/api/draft', { id, text: '   ', at: 2000 });
+    assert.deepEqual((await s.call('/api/drafts')).json, { drafts: [] }, 'sent (or emptied): gone from the list');
+  } finally { await s.stop(); }
+});
+
 test('Codex routing: default new chats, queued tasks and sign-in actions use the active account', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-codex-routing-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));

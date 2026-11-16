@@ -366,7 +366,7 @@ module.exports = [
     async run(t) {
       const b = await t.open();
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
-      const rail = () => b.eval(`return [...document.querySelectorAll('#cRailList .ri-n')].map(x => x.textContent.trim().slice(0, 24))`);
+      const rail = () => b.eval(`return [...document.querySelectorAll('#cRailList .ri-n')].map(x => [...x.childNodes].filter(n => !(n.classList && n.classList.contains('draft-badge'))).map(n => n.textContent).join('').trim().slice(0, 24))`);
       const push = list => b.eval(`es.dispatchEvent(new MessageEvent('activity', { data: JSON.stringify({ list: ${JSON.stringify(list)} }) })); await new Promise(r => setTimeout(r, 300)); return 1`);
       const now = await b.eval(`return S.activity.map(x => ({ ...x }))`);
       const before = await rail();
@@ -396,7 +396,8 @@ module.exports = [
       const calls = [];
       const b = await t.open({ seen: (p, url, body) => calls.push([p, body]) });
       await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2500);
-      const names = list => b.eval(`return [...document.querySelectorAll('#${list} .ri-n')].map(x => x.textContent.trim().slice(0, 18))`);
+      // (A row's name, without the Draft label that sits beside it, hidden when there's no draft.)
+      const names = list => b.eval(`return [...document.querySelectorAll('#${list} .ri-n')].map(x => [...x.childNodes].filter(n => !(n.classList && n.classList.contains('draft-badge'))).map(n => n.textContent).join('').trim().slice(0, 18))`);
       const push = list => b.eval(`es.dispatchEvent(new MessageEvent('activity', { data: JSON.stringify({ list: ${JSON.stringify(list)} }) })); await new Promise(r => setTimeout(r, 300)); return 1`);
       const at = (list, i) => b.eval(`const q = document.querySelectorAll('#${list} .ri')[${i}].getBoundingClientRect(); return [q.left + q.width / 2, q.top + q.height / 2]`);
       const find = async (list, re) => at(list, (await names(list)).findIndex(n => re.test(n)));
@@ -415,7 +416,7 @@ module.exports = [
       await mouse('mouseMoved', from[0], from[1], 0); await mouse('mousePressed', from[0], from[1], 1);
       for (let i = 1; i <= 10; i++) { await mouse('mouseMoved', from[0], from[1] + (to[1] - 14 - from[1]) * i / 10, 1); await sleep(30); }
       await sleep(250);
-      const mid = await b.eval(`const lis = [...document.querySelectorAll('#cRailList > li')]; return { order: lis.map(li => li.querySelector('.ri-n').textContent.trim().slice(0, 18)), lifted: lis.some(li => li.classList.contains('dragging') && /translateY/.test(li.style.transform)), room: lis.filter(li => !li.classList.contains('dragging') && /translateY/.test(li.style.transform)).length }`);
+      const mid = await b.eval(`const lis = [...document.querySelectorAll('#cRailList > li')]; return { order: lis.map(li => (x => [...x.childNodes].filter(n => !(n.classList && n.classList.contains('draft-badge'))).map(n => n.textContent).join(''))(li.querySelector('.ri-n')).trim().slice(0, 18)), lifted: lis.some(li => li.classList.contains('dragging') && /translateY/.test(li.style.transform)), room: lis.filter(li => !li.classList.contains('dragging') && /translateY/.test(li.style.transform)).length }`);
       t.check('while dragging, the chat follows the pointer and the others make room', JSON.stringify(mid.order) === JSON.stringify(before) && mid.lifted && mid.room === before.length - 1, mid);
       await t.shot(b, 'dragging');
       await mouse('mouseReleased', from[0], to[1] - 14, 0); await sleep(700);
@@ -447,7 +448,7 @@ module.exports = [
       t.check('so there’s no second list while it’s open', await b.eval(`return document.getElementById('cPinH').hidden`));
       await t.shot(b, 'pinned');
       await push(now.filter(x => x.key !== 'k-brawl'));
-      const pin = () => b.eval(`const el = document.querySelector('#cPinList .ri'); return el && { n: el.querySelector('.ri-n').textContent, s: el.querySelector('.ri-s').textContent }`);
+      const pin = () => b.eval(`const el = document.querySelector('#cPinList .ri'); return el && { n: (x => [...x.childNodes].filter(n => !(n.classList && n.classList.contains('draft-badge'))).map(n => n.textContent).join(''))(el.querySelector('.ri-n')), s: el.querySelector('.ri-s').textContent }`);
       const p1 = await pin();
       t.check('when it’s no longer running, it waits under “Pinned, not open”', !!p1 && /^Tavern brawl/.test(p1.n) && /^Closed/.test(p1.s) && await b.eval(`return !document.getElementById('cPinH').hidden && /Pinned, not open/.test(document.getElementById('cPinH').textContent)`), p1);
 
@@ -2881,7 +2882,8 @@ module.exports = [
     // A long chat divides into chapters after breaks, named after what you said; old ones fold.
     async run(t) {
       const b = await t.open();
-      await b.eval(`ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2200);
+      // (No reading place kept from before: the chat opens at its end, and nothing older loads in while the feed below is made up.)
+      await b.eval(`localStorage.removeItem('chat-reading-v1'); ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(2200);
       const r = await b.eval(`const feed = document.getElementById('cFeed');
         for (const el of [...feed.children]) if (el.id !== 'cEarlier') el.remove();
         const t0 = Date.parse('2026-10-10T09:00:00Z'), topics = ['Plan the tavern brawl', 'Balance the bard songs', 'Paint the festival banner'];

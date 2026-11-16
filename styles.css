@@ -196,6 +196,28 @@ mark{background:rgb(var(--c-d9bf74) / .26);color:var(--parch);border-radius:2px;
 .nav-i:hover{background:linear-gradient(90deg,rgb(var(--c-a5463f) / .07),transparent 80%);color:var(--parch)}
 .nav-i[aria-current="true"]{border-left-color:var(--crimson);background:linear-gradient(90deg,rgb(var(--c-8c3a34) / .28),rgb(var(--c-8c3a34) / .04) 85%);color:var(--parch)}
 .nav-i .glyph{width:16px;text-align:center;color:var(--crimson);font-size:13px;flex:none}
+/* The sidebar in your order (ui/nav-order.js): each section is a box of its own (an ordinary one, so the sidebar
+   looks just as it did), dragged by its heading; the others make room. */
+.nav-sec-dragging{position:relative;z-index:5;border-radius:10px;background:rgb(var(--c-1a161d));box-shadow:0 18px 40px -14px rgb(var(--c-000000) / .7),inset 0 0 0 1px var(--seam-2)}
+.hub2:not([data-family]) .nav-sec-dragging{background:var(--vellum);box-shadow:var(--st-shadow-lg),inset 0 0 0 1px var(--seam-2)}
+body.motion .nav-sec-room,body.motion .nav-sec-settling{transition:transform .2s cubic-bezier(.2,.8,.2,1)}
+body.nav-dragging,body.nav-dragging *{cursor:grabbing!important;user-select:none}
+/* A section with a heading moved to the top doesn't bring its dividing line and gap with it. */
+.nav-scroll > .nav-sec:first-child > .nav-h,.nav-scroll > .nav-sec:first-child > .nav-hrow > .nav-h{border-top-color:transparent;margin-top:4px}
+/* The sidebar's width, dragged at its edge (ui/nav-order.js): wide screens only, wherever the sidebar shows; not in
+   Imperial and Rebel, which keep theirs. */
+.nav-size{display:none}
+@media (min-width:981px){
+  :root.nav-sized:not([data-family="saga"]){--nav-w:var(--nav-w-user)!important}
+  .nav-size{position:fixed;top:var(--bar-h);bottom:0;left:calc(var(--nav-w) - 4px);width:8px;z-index:25;cursor:col-resize;touch-action:none}
+  /* Shown beside the sidebar: not over a chat that covers it (only the new layout keeps it beside one). */
+  :root:not([data-family="saga"]) body:not(.pane):not(.solo):not(.aide-panel):not(.aide-pane):not(.nav-collapsed):not(.chat-open) .nav-size,
+  html.layout-next.hub2:not([data-family]) body.chat-open:not(.pane):not(.solo):not(.nav-collapsed) .nav-size{display:block}
+  .nav-size::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:2px;border-radius:2px;background:transparent;transition:background .15s}
+  .nav-size:hover::after,.nav-size:focus-visible::after,body.nav-sizing .nav-size::after{background:var(--gilt)}
+  .nav-size:focus-visible{outline:none}
+}
+body.nav-sizing,body.nav-sizing *{cursor:col-resize!important;user-select:none}
 .nav-i[aria-current="true"] .glyph{color:var(--ember-soft)}
 .nav-i .ni-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nav-i .tag{margin-left:2px}
@@ -2580,6 +2602,36 @@ dialog.sp-dlg{width:min(620px,calc(calc(100vw / var(--look-ui, 1)) - 32px))}
 .sp-busy #spText{opacity:.55}
 .sp-status{margin:0;min-height:1.3em;font-size:13px;color:var(--ash)}
 .sp-dlg .d-row{margin-top:0}
+/* PC check-up (ui/pccheck.js): a list with a tick on each line, what it is and the facts; the body scrolls, the
+   buttons stay. */
+dialog.pck-dlg{width:min(760px,calc(calc(100vw / var(--look-ui, 1)) - 32px))}
+dialog.pck-dlg[open]{display:flex;flex-direction:column;overflow:hidden}
+.pck-dlg > form{display:flex;flex-direction:column;min-height:0;max-height:calc(calc(100vh / var(--look-ui, 1)) - 40px)}
+.pck-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;position:relative;padding:6px 22px 14px}
+.pck-drives{margin:0 0 6px;font-size:12.5px;color:var(--ash)}
+.pck-h{margin:18px 0 6px;font:600 12px/1.3 var(--f-label);letter-spacing:.08em;text-transform:uppercase;color:var(--ash)}
+.pck-list{list-style:none;margin:0;padding:0}
+.pck-row{border-bottom:1px solid var(--seam)}
+.pck-row label{display:flex;align-items:flex-start;gap:12px;padding:10px 4px;cursor:pointer}
+.pck-row.locked label{cursor:default;opacity:.62}
+.pck-row input{flex:none;width:16px;height:16px;margin:2px 0 0;padding:0}
+.pck-t{flex:1 1 auto;display:grid;gap:3px;min-width:0}
+.pck-n{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px}
+.pck-t b{font-weight:600}
+.pck-t small{color:var(--ash);font-size:12px}
+.pck-w{color:var(--parch-2);font-size:13.5px;line-height:1.4}
+.pck-f{color:var(--ash);font-size:12.5px}
+.pck-flag{display:inline-block;white-space:nowrap;padding:1px 7px;border-radius:999px;font:500 11.5px/1.5 var(--f-body);color:var(--ash);border:1px solid var(--seam)}
+.pck-flag.ok{color:rgb(var(--c-7fb79a));border-color:rgb(var(--c-7fb79a) / .4)}
+.pck-flag.warn{color:var(--gilt);border-color:color-mix(in srgb,var(--gilt) 40%,transparent)}
+.pck-flag.bad{color:var(--ember-soft);border-color:color-mix(in srgb,var(--ember-soft) 45%,transparent)}
+.pck-none{padding:10px 4px;color:var(--ash)}
+.pck-still{margin:14px 0 0;color:var(--parch-2)}
+.pck-foot{display:flex;align-items:center;gap:8px;padding:12px 22px 16px;border-top:1px solid var(--seam)}
+.pck-status{margin:0;font-size:13px;color:var(--ash);min-width:0}
+.sp-where{margin:-4px 0 0;font-size:12.5px;color:var(--ash)}
+.sp-where:empty{display:none}
+.sp-before{color:var(--parch-2)}
 /* Nobody signed in to start it yet: it still queues, and this says what it waits for. */
 .tk-note{margin:-4px 0 12px;color:var(--parch-2);font-size:13.5px;line-height:1.45}
 .tk-note[hidden]{display:none}

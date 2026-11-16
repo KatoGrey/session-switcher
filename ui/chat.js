@@ -22,8 +22,9 @@ function isViewing(x) {
   return !!(sid && x.sessionId && x.sessionId.toLowerCase() === String(sid).toLowerCase());
 }
 function railItem(x) {
+  const draft = window.ChatDrafts?.badge(x.sessionId || x.startedAs) || '';
   // A pinned chat that isn't running: it stays listed, and a click opens it again.
-  if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${draft}${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
   const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;   // w: the one the status is about
   const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (w.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
   const doing = x.keep && !WORKING.has(w.phase) ? 'Keeps working' : w.phase === 'tool' && (w.detail || w.tool) ? `${VERB_NOW[w.tool] || 'Using'} ${w.detail || w.tool}` : w.phase === 'writing' ? 'Writing…' : w.phase === 'starting' ? 'Starting…' : 'Thinking…';
@@ -32,7 +33,7 @@ function railItem(x) {
   else if (x.partner && (st === 'quiet' || st === 'reply')) sub += ` · with ${PROV_NAME[x.partner.provider || 'claude']}`;
   const pin = railPinned(x) ? '<span class="ri-pin" title="Pinned" aria-label="Pinned">★</span>' : '';
   const outside = x.source !== 'app' ? ` title="${x.source === 'terminal' ? 'Running in a terminal window, not in this app: click to watch it here' : 'Used in another app (like the desktop app) in the last few minutes'}"` : '';
-  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}${x.source !== 'app' ? ' outside' : ''}${window.Split && Split.shows(x) ? ' beside' : ''}" aria-current="${isViewing(x)}"${outside}>${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${pin}${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}${x.source !== 'app' ? ' outside' : ''}${window.Split && Split.shows(x) ? ' beside' : ''}" aria-current="${isViewing(x)}"${outside}>${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${draft}${pin}${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
 }
 // The rail: chats you pinned (they stay, running or not), then the rest of what's open, each list in
 // the order you dragged it into. Chats it hasn't placed yet keep their places after those.
@@ -360,11 +361,12 @@ function connect() {
   C.es = liveChat(key, C.lastSeq);
   C.es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); C.info = { ...C.info, ...info }; C.sessionId = info.sessionId || C.sessionId; headerAccount(info.accountId, info.accountName); if (info.permissionMode) setMode(info.permissionMode); if (info.context) setCtx('main', info.context); } catch { /* ignore */ } });
   C.es.addEventListener('chat', e => { if (C.key !== key) return; try { feedIn(JSON.parse(e.data), 'main'); } catch (err) { console.error(err); } });
-  C.es.addEventListener('replayed', () => { if (C.key === key) replayed('main'); });
+  C.es.addEventListener('replayed', () => { if (C.key === key) { replayed('main'); window.ChatReading?.replayed(); } });
   C.es.onerror = () => { if (C.state === 'ended' && C.es) { C.es.close(); C.es = null; } };
 }
 
 function reset() {
+  window.ChatReading?.leave();
   mergeStart(false);
   C.compHist = {}; C.extras = []; C.chatRefs = new Map();
   // Nothing from the chat you were in carries over: its side question ends, its run panel and the
@@ -437,6 +439,7 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
   C.related = null; setTimeout(loadRelated, 0);
   C.background = info.background || [];
   C.provider = info.provider || 'claude';
+  window.ChatReading?.start();
   C.mate = info.mate && info.mate !== C.provider ? info.mate : null;
   if (C.provider === 'claude' && !cmdsFresh()) loadCommands();   // so the first "/" already lists them
   if (info.modes) modeOptions(info.modes);
@@ -486,9 +489,10 @@ async function begin(info, { mode = 'resume', sessionId = null, cwd = null, pare
   }
   if (mode === 'new' && !(S.org && S.org.commander && (info.cwd || cwd) === S.org.commander.cwd)) welcome(info.cwd || cwd);
   restoreDraft();
-  toBottom();
   connect();
-  settle().then(() => { if (gen === C.gen && !unseen) toBottom(); });
+  if (window.ChatReading) await ChatReading.restore();
+  else { toBottom(); settle().then(() => { if (gen === C.gen && !unseen) toBottom(); }); }
+  if (gen !== C.gen) return;
   markSeen(findActivity(info.key) || { key: info.key, sessionId: C.sessionId, finishedAt: Date.now() });
   renderRail(); renderLedgerSoon(); syncFav();
   $c('cText').focus();
@@ -569,6 +573,7 @@ async function watch({ sessionId, source = 'terminal' }) {
   C.watch = { sessionId, source }; C.sessionId = sessionId;
   const [s, p] = findSession(sessionId);
   C.provider = s && ['codex', 'gemini', 'openclaw'].includes(s.provider) ? s.provider : 'claude';
+  window.ChatReading?.start();
   const oc = C.provider === 'openclaw';
   if (oc) PROV_NAME.openclaw = String(s.agentName || 'OpenClaw').replace(/[<>&"']/g, '');   // it's shown as HTML
   $c('chat').classList.toggle('openclaw', oc);
@@ -596,7 +601,8 @@ async function watch({ sessionId, source = 'terminal' }) {
   try { const h = await loadHistory(); if (gen !== C.gen) return; C.watchSig = sigOf(h); } catch (err) { toast(`Couldn’t read this chat: ${err.message}`, 8000, null, { tone: 'error' }); }
   if (gen !== C.gen) return;
   syncFav();
-  toBottom();
+  if (window.ChatReading) await ChatReading.restore(); else toBottom();
+  if (gen !== C.gen) return;
   markSeen(findActivity(`s:${sessionId}`) || { sessionId, finishedAt: Date.now() });
   renderRail(); renderLedgerSoon();
   clearInterval(C.watchTimer);
@@ -632,6 +638,7 @@ async function refreshWatch() {
 }
 
 function closeChatView(silent) {
+  window.ChatReading?.leave();
   ++openSeq; C.gen = (C.gen || 0) + 1;   // anything still opening or loading is for a chat you've left
   if (C.es) { C.es.close(); C.es = null; }
   for (const c of Object.values(C.comps)) if (c && c.es) { c.es.close(); c.es = null; }
@@ -1199,6 +1206,7 @@ window.ChatUI = {
   contextItems: chatContextItems, modelName,
   // (From a search: it's in there somewhere, so it goes and looks.)
   find: q => {
+    window.ChatReading?.cancel();
     openFind(q); Find.auto = !Find.hits.length;
     if (!Find.auto) return undefined;
     if (findMore()) return findFurtherBack();

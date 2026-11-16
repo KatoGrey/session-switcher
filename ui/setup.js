@@ -16,7 +16,7 @@ function renderSetup(j) {
   const p = j.prefs, R = window.REMOTE;
   const t = (k, label, text, local) => `<label class="toggle"><input type="checkbox" ${local ? `data-local="${k}"` : `data-pref="${k}"`} ${(local ? Local[k] : p[k]) ? 'checked' : ''}><span><b>${label}</b><span>${text}</span></span></label>`;
   $('setupBody').innerHTML = `
-    <nav class="setup-toc" aria-label="Sections"><a href="#st-health">Health</a><a href="#st-places">${S.platform === 'win32' ? 'This PC and connections' : 'Connections'}</a><a href="#st-alerts">Alerts</a><a href="#st-prefs">Preferences</a>${R ? '' : '<a href="#st-companion">Companion</a>'}<a href="#st-codex">Codex</a>${R ? '' : '<a href="#st-gemini">Gemini</a><a href="#st-home">Home PC</a>'}<a href="#st-phone">Phone</a>${window.desktop ? '<a href="#st-desktop">Desktop app</a>' : ''}${R ? '' : '<a href="#st-problems">Problems</a>'}<a href="#st-app">App</a></nav>
+    <nav class="setup-toc" aria-label="Sections"><a href="#st-health">Health</a><a href="#st-places">${S.platform === 'win32' ? 'This PC and connections' : 'Connections'}</a><a href="#st-alerts">Alerts</a><a href="#st-prefs">Preferences</a>${R ? '' : '<a href="#st-companion">Companion</a>'}<a href="#st-codex">Codex</a>${R ? '' : '<a href="#st-gemini">Gemini</a><a href="#st-home">Home PC</a>'}<a href="#st-phone">Phone</a>${window.desktop ? '<a href="#st-desktop">Desktop app</a>' : ''}${R ? '' : '<a href="#st-pccheck">PC check-up</a><a href="#st-problems">Problems</a>'}<a href="#st-app">App</a></nav>
     ${R ? `<p class="ph-note st-pc-only">Some setup can only be done on the PC itself: ${S.platform === 'win32' ? 'Gemini, Your home PC, Companion, Problems and speed, and most of This PC’s fixes' : 'Gemini, Your home PC, Companion, and Problems and speed'}. Open Setup there for those.</p>` : ''}
     ${startHtml(j)}
     <ul class="checks" id="st-health">${j.checks.map(c => `<li class="check ${c.state}"><span class="st" aria-label="${c.state}"></span><span><b>${esc(c.label)}</b><span class="dt">${esc(c.detail)}</span></span>
@@ -26,6 +26,7 @@ function renderSetup(j) {
     <div class="prefs">
       ${t('sound', 'Chime when a chat needs you or replies', 'A soft bell. It doesn’t play for the chat you’re looking at.', true)}
       ${t('notify', 'Desktop notifications', `Shows a ${S.platform === 'darwin' ? 'macOS' : 'Windows'} notification when a chat needs you or replies while this window is in the background.`, true)}
+      <label class="toggle"><input type="checkbox" data-pref="prNotices" ${p.prNotices !== false ? 'checked' : ''}><span><b>Tell me when my pull requests change</b><span>Checks failing or passing, an approval, changes asked for or new comments on yours, and someone asking for your review: a notice here (a notification while this window is in the background), on your phone if it’s paired, and on the welcome-back card. GitHub is looked at every few minutes.</span></span></label>
       ${(q => `<label class="toggle"><input type="checkbox" data-quiet="on" ${q.on ? 'checked' : ''}><span><b>Quiet hours</b><span>No chimes or notifications from <input type="time" data-quiet="from" value="${esc(q.from)}" aria-label="Quiet from"> to <input type="time" data-quiet="to" value="${esc(q.to)}" aria-label="Quiet until">; the hub still shows everything. Each chat’s ⋯ menu can also quiet just that chat.</span></span></label>`)({ from: '22:00', to: '08:00', on: false, ...(quietHours() || {}) })}
       ${t('petals', esc(voice('Drifting petals')), `${esc(voice('A few slow petals behind the hub.'))} ${esc(voice('Turned off automatically if Windows is set to reduce motion.'))}`, true)}
       ${t('motion', 'Animations', 'World banners that open into their pages, cards that rise in, dials that draw themselves. Turned off automatically if Windows is set to reduce motion.', true)}
@@ -84,6 +85,7 @@ function renderSetup(j) {
     ${window.REMOTE ? '' : aideSetupHtml()}
     ${window.desktop ? '<p class="d-h" id="st-desktop">Desktop app</p><div class="prefs" id="deskBox"><p class="loading">Checking…</p></div>' : ''}
     ${window.REMOTE ? '' : '<p class="d-h" id="st-lite">Switcher Lite</p><div class="prefs"><div class="field"><label>A lighter Session Switcher</label><div class="row2"><span class="rd-hint">Buckets, stages and plans for your chats, made for a phone or a small window. It shares your chats and accounts with this app.</span><button class="btn" data-fix="lite">Open Switcher Lite</button></div></div></div>'}
+    ${window.REMOTE ? '' : '<p class="d-h" id="st-pccheck">PC check-up</p><div class="prefs"><div class="field"><label>What’s running and taking space</label><div class="row2"><span class="rd-hint">Programs using the most memory or CPU, any that have stopped responding, and space you can free, with Claude’s word on each. Tick what to close or clear: nothing happens until you confirm.</span><button class="btn" data-fix="pccheck">Check my PC…</button></div></div></div>'}
     ${window.REMOTE ? '<p class="d-h" id="st-problems">Problems</p><div class="prefs" id="problemsBox"></div>' : '<p class="d-h" id="st-problems">Problems and speed</p><div class="prefs" id="problemsBox"><p class="loading">Checking…</p></div>'}
     <p class="d-h" id="st-app">App</p>
     <div class="app-actions">
@@ -103,7 +105,7 @@ function renderSetup(j) {
 // (its st-… heading and everything after it, up to the next one) belongs to a group; a link to a section (Ctrl+K,
 // the Setup dot, Try again) opens its group first. Off, the sheet is as it was.
 const SETUP_GROUPS = [
-  ['health', 'Health', ['st-health', 'st-problems']],
+  ['health', 'Health', ['st-health', 'st-pccheck', 'st-problems']],
   ['general', 'General', ['st-alerts', 'st-prefs']],
   ['assistants', 'Assistants', ['st-codex', 'st-gemini', 'st-helpers']],
   ['connections', 'Connections', ['st-places']],
@@ -654,6 +656,7 @@ $('setupBody').addEventListener('click', wrap(async e => {
   if (what === 'set-claude-path') { $('prefClaude').focus(); return; }
   if (what === 'rules') { $('setup').close(); return openRules(null); }
   if (what === 'subagents') { $('setup').close(); return openSubagents(); }
+  if (what === 'pccheck') { $('setup').close(); return openPcCheck(); }
   if (what === 'lite') { window.open(new URL('/lite', location.href).href, 'ss-lite'); return undefined; }
   if (what === 'tour') { $('setup').close(); return startTour(); }
   if (what === 'name-older') {

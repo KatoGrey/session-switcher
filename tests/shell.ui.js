@@ -310,4 +310,309 @@ module.exports = [{
     await phone.eval(`document.querySelector('#cRail .rail-back, #cRail button').focus(); document.querySelector('#chat [data-c="rail"]').click(); return 1`); await sleep(400);
     t.check('phone: slid away again with focus in it, focus goes back to its button', await phone.eval(`return document.getElementById('cRail').inert && document.activeElement === document.querySelector('#chat [data-c="rail"]')`));
   },
+}, {
+  name: 'sidebar order',
+  // The sidebar's sections go where you put them (ui/nav-order.js): dragged by a heading with the mouse, or from the
+  // heading's right-click menu; kept on this device; Esc puts a drag back, a plain click still folds, and the block at
+  // the top doesn't move. Imperial keeps its own sidebar.
+  async run(t) {
+    const b = await t.open({ width: 1440, height: 1500, state: 'busy', respond: responder() });   // (room for the whole sidebar)
+    await sleep(800);
+    const order = () => b.eval(`return [...document.querySelectorAll('#nav .nav-sec')].map(el => el.dataset.navsec)`);
+    const head = k => b.eval(`const el = document.querySelector('#nav .nav-sec[data-navsec="${k}"] > .nav-h, #nav .nav-sec[data-navsec="${k}"] > .nav-hrow > .nav-h, #nav .nav-sec[data-navsec="${k}"] > .nav-tools'); const r = el.getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2]`);
+    const mouse = (type, x, y) => b.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
+    const drag = async (from, toY, { cancel = false } = {}) => {
+      const [x, y] = await head(from);
+      await mouse('mousePressed', x, y);
+      for (let i = 1; i <= 12; i++) { await mouse('mouseMoved', x, y + (toY - y) * i / 12); await sleep(25); }
+      if (cancel) await b.key('Escape', 'Escape', 27);
+      await mouse('mouseReleased', x, toY); await sleep(600);
+    };
+    const first = await order();
+    t.check('the usual order to start with', first.join() === ['tools', 'projects', 'active', 'recent', 'groups'].join(), first);
+    t.check('the block at the top isn’t one of them', await b.eval(`return !document.querySelector('.nav-destinations').closest('.nav-sec') && !document.querySelector('.nav-sec .nav-newchat')`));
+
+    // Recent, dragged above everything.
+    const folded = await b.eval(`return document.querySelector('[data-fold="recent"]').getAttribute('aria-expanded')`);
+    await drag('recent', await b.eval(`return document.querySelector('#nav .nav-sec').getBoundingClientRect().top + 4`));
+    let now = await order();
+    t.check('dragging Recent by its heading puts it at the top', now[0] === 'recent' && now.length === first.length, now);
+    t.check('the drag doesn’t also fold it', await b.eval(`return document.querySelector('[data-fold="recent"]').getAttribute('aria-expanded')`) === folded);
+    t.check('the order is kept on this device', await b.eval(`return JSON.parse(localStorage.getItem('nav-order'))[0] === 'recent'`));
+    t.check('a heading at the top doesn’t bring its dividing line', await b.eval(`const h = document.querySelector('[data-fold="recent"]'), c = getComputedStyle(h).borderTopColor; return c === 'transparent' || /, 0\\)$/.test(c)`));
+
+    // Pressed while a working chat redraws the sidebar, then dragged: it still goes where the pointer is.
+    {
+      const [x, y] = await head('projects');
+      const target = await b.eval(`return document.querySelector('#nav .nav-sec').getBoundingClientRect().top + 4`);
+      await mouse('mousePressed', x, y);
+      await b.eval(`document.getElementById('nav')._h = ''; renderNav(); return 1`);
+      for (let i = 1; i <= 12; i++) { await mouse('mouseMoved', x, y + (target - y) * i / 12); await sleep(25); }
+      await mouse('mouseReleased', x, target); await sleep(600);
+      now = await order();
+      t.check('a redraw while it’s pressed doesn’t send it to the wrong place', now[0] === 'projects', now);
+    }
+
+    // The Commander and Routines, the tallest block, dragged by a row below the last (short) section.
+    await drag('tools', await b.eval(`const all = document.querySelectorAll('#nav .nav-sec'); return all[all.length - 1].getBoundingClientRect().bottom + 6`));
+    now = await order();
+    t.check('the Commander and Routines go to the bottom, below a short last section', now[now.length - 1] === 'tools', now);
+    // Esc mid-drag puts it back.
+    const before = await order();
+    await drag('groups', (await head('recent'))[1] - 20, { cancel: true });
+    t.check('Esc while dragging puts it back', (await order()).join() === before.join(), await order());
+    // Esc, then let go a while later back on the heading it started on: it doesn't fold.
+    {
+      const [x, y] = await head('recent'), was = await b.eval(`return document.querySelector('[data-fold="recent"]').getAttribute('aria-expanded')`);
+      await mouse('mousePressed', x, y);
+      for (let i = 1; i <= 6; i++) { await mouse('mouseMoved', x, y + i * 12); await sleep(25); }
+      await b.key('Escape', 'Escape', 27); await sleep(700);
+      await mouse('mouseMoved', x, y); await mouse('mouseReleased', x, y); await sleep(400);
+      t.check('letting go long after Esc doesn’t fold it', await b.eval(`return document.querySelector('[data-fold="recent"]').getAttribute('aria-expanded')`) === was);
+    }
+    // Groups' + gives the section's menu (its heading has nothing else to focus).
+    await b.eval(`const p = document.querySelector('#nav .nav-sec[data-navsec="groups"] [data-gact="new"]'); p.focus(); p.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); return 1`); await sleep(300);
+    t.check('Groups’ + opens its menu', await b.eval(`return [...document.querySelectorAll('#menu [role="menuitem"]')].some(x => /Move Groups/.test(x.textContent))`));
+    await b.eval(`closeMenu(); return 1`);
+
+    // A plain click still folds a section.
+    await b.clickOn('[data-fold="open"]'); await sleep(300);
+    t.check('a click on a heading still folds it', await b.eval(`return document.querySelector('[data-fold="open"]').getAttribute('aria-expanded') === 'false'`));
+    await b.clickOn('[data-fold="open"]'); await sleep(300);
+
+    // While it's being dragged, the sidebar isn't redrawn under it.
+    const [hx, hy] = await head('projects');
+    await mouse('mousePressed', hx, hy); for (let i = 1; i <= 6; i++) { await mouse('mouseMoved', hx, hy + i * 30); await sleep(40); }
+    await sleep(250); await t.shot(b, 'sidebar-dragging');
+    const held = await b.eval(`const el = document.querySelector('.nav-sec-dragging'); document.getElementById('nav')._h = ''; renderNav(); return !!el && el.isConnected && el.classList.contains('nav-sec-dragging')`);
+    await b.key('Escape', 'Escape', 27); await mouse('mouseReleased', hx, hy + 180); await sleep(600);
+    t.check('a section being dragged isn’t redrawn away mid-drag, and the sidebar catches up after', held && !(await b.eval(`return !!document.querySelector('.nav-sec-dragging')`)) && (await order()).join() === before.join());
+
+    // From the heading's menu (the keyboard's way too: the menu key or Shift+F10 on a heading).
+    await b.eval(`const h = document.querySelector('[data-fold="recent"]'); h.focus(); h.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); return 1`); await sleep(300);
+    const items = await b.eval(`return [...document.querySelectorAll('#menu [role="menuitem"]')].map(x => x.textContent.trim())`);
+    t.check('its heading’s menu moves it up, down, to the top or the bottom, hides it, or puts the sidebar back', ['Move Recent up', 'Move Recent to the top', 'Move Recent down', 'Move Recent to the bottom', 'Hide Recent', 'Put the sidebar back as it was'].every(w => items.some(x => x.includes(w))), items);
+    await b.eval(`[...document.querySelectorAll('#menu [role="menuitem"]')].find(x => x.textContent.includes('Move Recent to the top')).click(); return 1`); await sleep(400);
+    now = await order();
+    t.check('Move to the top does it, and says so', now[0] === 'recent' && /Recent moved to the top/.test(await b.eval(`return document.getElementById('hubLive').textContent`)), now);
+    t.check('focus stays on its heading', await b.eval(`return document.activeElement === document.querySelector('[data-fold="recent"]')`));
+
+    // After a reload, the same order.
+    const saved = await order();
+    await b.eval(`location.reload(); return 1`); await sleep(2500);
+    t.check('after a reload it’s the same', (await order()).join() === saved.join(), await order());
+
+    // Back to the usual order.
+    await b.eval(`const h = document.querySelector('[data-fold="recent"]'); h.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 50, clientY: 300 })); return 1`); await sleep(300);
+    await b.eval(`[...document.querySelectorAll('#menu [role="menuitem"]')].find(x => x.textContent.includes('back as it was')).click(); return 1`); await sleep(400);
+    t.check('the usual order comes back, and nothing is kept', (await order()).join() === first.join() && await b.eval(`return !localStorage.getItem('nav-order')`), await order());
+
+    // A section that's empty now keeps its place for when it's back.
+    await b.eval(`localStorage.setItem('nav-order', JSON.stringify(['recent', 'pinned', 'tools', 'projects', 'active', 'groups', 'subs'])); document.getElementById('nav')._h = ''; renderNav(); return 1`); await sleep(200);
+    await b.eval(`moveNavSec('groups', 'top'); return 1`); await sleep(200);
+    t.check('moving one around keeps an empty section’s place among the rest', await b.eval(`return JSON.parse(localStorage.getItem('nav-order')).join()`) === 'groups,pinned,recent,tools,projects,active,subs', await b.eval(`return localStorage.getItem('nav-order')`));
+    await t.shot(b, 'sidebar-order');
+
+    // A later version's section, unknown to this one, stays in the saved order after the one it followed.
+    await b.eval(`localStorage.setItem('nav-order', JSON.stringify(['recent', 'later-thing', 'tools', 'projects', 'active', 'groups'])); document.getElementById('nav')._h = ''; renderNav(); moveNavSec('groups', 'top'); return 1`); await sleep(200);
+    t.check('a later version’s section isn’t lost', await b.eval(`const o = JSON.parse(localStorage.getItem('nav-order')); return o.indexOf('later-thing') === o.indexOf('recent') + 1 && o[0] === 'groups'`), await b.eval(`return localStorage.getItem('nav-order')`));
+
+    // Hiding a section, and showing it again (from a heading, or the sidebar's empty space).
+    await b.eval(`localStorage.removeItem('nav-order'); document.getElementById('nav')._h = ''; renderNav(); return 1`); await sleep(200);
+    await b.eval(`const h = document.querySelector('#nav .nav-sec[data-navsec="groups"] > .nav-h'); h.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 400 })); return 1`); await sleep(300);
+    await b.eval(`[...document.querySelectorAll('#menu [role="menuitem"]')].find(x => x.textContent.includes('Hide Groups')).click(); return 1`); await sleep(400);
+    t.check('Hide takes a section out of the sidebar, and says how to bring it back', !(await order()).includes('groups') && /Groups is hidden/.test(await b.eval(`return document.getElementById('toast').textContent`)), await order());
+    await b.eval(`const foot = document.querySelector('#nav .nav-foot'); foot.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 800 })); return 1`); await sleep(300);
+    const back = await b.eval(`return [...document.querySelectorAll('#menu [role="menuitem"]')].map(x => x.textContent.trim())`);
+    t.check('the sidebar’s empty space offers it back', back.some(x => /Show Groups again/.test(x)), back);
+    await b.eval(`[...document.querySelectorAll('#menu [role="menuitem"]')].find(x => /Show Groups again/.test(x.textContent)).click(); return 1`); await sleep(400);
+    t.check('and it’s back in its place', (await order()).join() === first.join() && await b.eval(`return !localStorage.getItem('nav-hidden')`), await order());
+
+    // The sidebar's width: dragged at its edge, the arrow keys there, and a double-click to put it back.
+    const w0 = await b.eval(`return Math.round(document.getElementById('nav').getBoundingClientRect().width)`);
+    const edge = await b.eval(`const r = document.getElementById('navSize').getBoundingClientRect(); return r.width ? [r.left + r.width / 2, r.top + 200] : null`);
+    t.check('the sidebar has an edge to drag', !!edge, edge);
+    if (edge) {
+      await mouse('mousePressed', edge[0], edge[1]);
+      for (let i = 1; i <= 8; i++) { await mouse('mouseMoved', edge[0] + i * 10, edge[1]); await sleep(30); }
+      await mouse('mouseReleased', edge[0] + 80, edge[1]); await sleep(400);
+      const w1 = await b.eval(`return Math.round(document.getElementById('nav').getBoundingClientRect().width)`);
+      t.check('dragging its edge makes it wider, and it’s kept on this device', w1 >= w0 + 70 && Number(await b.eval(`return localStorage.getItem('nav-width')`)) === w1, { w0, w1 });
+      await b.eval(`document.getElementById('navSize').focus(); return 1`); await b.key('ArrowLeft', 'ArrowLeft', 37); await sleep(200);
+      t.check('the left arrow on its edge makes it narrower', Number(await b.eval(`return localStorage.getItem('nav-width')`)) === w1 - 16);
+      await b.eval(`location.reload(); return 1`); await sleep(2500);
+      t.check('after a reload it’s the same width', Math.round(await b.eval(`return document.getElementById('nav').getBoundingClientRect().width`)) === w1 - 16);
+      const e2 = await b.eval(`const r = document.getElementById('navSize').getBoundingClientRect(); return [r.left + r.width / 2, r.top + 200]`);
+      await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: e2[0], y: e2[1], button: 'left', clickCount: 1 }); await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: e2[0], y: e2[1], button: 'left', clickCount: 1 });
+      await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: e2[0], y: e2[1], button: 'left', clickCount: 2 }); await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: e2[0], y: e2[1], button: 'left', clickCount: 2 }); await sleep(400);
+      t.check('a double-click puts it back to its usual width', Math.round(await b.eval(`return document.getElementById('nav').getBoundingClientRect().width`)) === w0 && !(await b.eval(`return localStorage.getItem('nav-width')`)));
+      await b.eval(`await ChatUI.open({ sessionId: ${JSON.stringify(demo.ID['s-bard'])} }); return 1`); await sleep(1000);
+      t.check('with a chat over the sidebar (as before), its edge isn’t there to grab', await b.eval(`return !document.getElementById('navSize').getClientRects().length`));
+      await b.eval(`Shell.setNext(true); return 1`); await sleep(300);
+      t.check('in the new layout, beside a chat, it is', await b.eval(`return document.getElementById('navSize').getClientRects().length > 0`));
+      await b.eval(`Shell.setNext(false); ChatUI.close(); return 1`); await sleep(400);
+    }
+
+    // Imperial keeps its own sidebar.
+    await b.eval(`Look.set({ theme: 'imperial' }); renderNav(); return 1`); await sleep(300);
+    t.check('Imperial’s sidebar is left as it is, with no edge to drag', await b.eval(`return !document.querySelector('#nav .nav-sec') && !document.getElementById('navSize').getClientRects().length`));
+    await b.eval(`Look.set({ theme: '' }); localStorage.removeItem('nav-order'); return 1`);
+  },
+}, {
+  name: 'short window chat',
+  // On a short window (a laptop's), the chat's header, its relay and the hint under the message box take less height,
+  // so more of the conversation shows; a tall window is as it was.
+  async run(t) {
+    const id = JSON.stringify(demo.ID['s-bard']);
+    const size = async (w, h) => {
+      const b = await t.open({ width: w, height: h, state: 'busy', respond: responder() });
+      await sleep(600);
+      await b.eval(`await ChatUI.open({ sessionId: ${id} }); return 1`); await sleep(1200);
+      const r = await b.eval(`const g = s => { const el = document.querySelector(s); return el && el.getClientRects().length ? Math.round(el.getBoundingClientRect().height) : 0; }; return { head: g('#chat .c-head'), relay: g('#cRelay'), scroll: g('#cScroll'), title: !!document.getElementById('cTitle').textContent.trim(), back: document.querySelector('.c-return').getClientRects().length > 0, mode: document.getElementById('cMode').getClientRects().length > 0 }`);
+      b.close();
+      return r;
+    };
+    const short = await size(1366, 680), tall = await size(1440, 900);
+    t.check('a short window gives the conversation more room (header and relay slimmer)', short.head <= 95 && short.relay <= 32 && short.scroll >= 340, short);
+    t.check('with the title, the way back and the mode all still there', short.title && short.back && short.mode, short);
+    t.check('a tall window keeps its header as it was', tall.head >= 120 && tall.relay >= 40, tall);
+  },
+}, {
+  name: 'layout watch',
+  // On your own data, a dialog that opens with a layout fault (two scroll bars, something reaching out of its scrolling
+  // box, too wide) is noted in Setup → Problems once (ui/problems.js); a sound one isn't.
+  async run(t) {
+    const b = await t.open({ width: 1280, height: 900, respond: responder() });
+    await sleep(600);
+    await b.eval(`window._slips = []; const a0 = api; api = async (u, body) => { if (u === '/api/problems' && body && body.message) _slips.push(body.message); return a0(u, body); }; return 1`);
+    await b.eval(`await openSetup(); return 1`); await sleep(4200);
+    t.check('a sound Setup notes nothing', (await b.eval(`return _slips`)).length === 0, await b.eval(`return _slips`));
+    await b.eval(`document.getElementById('setup').close(); return 1`); await sleep(400);
+    // 6.13's fault, put back on purpose: the sheet no longer holds what's placed in it, the dialog scrolls itself, and the
+    // connections come far down.
+    await b.eval(`const st = document.createElement('style'); st.id = 'broken'; st.textContent = '#setupBody{position:static!important} #setup[open]{display:block!important;overflow:auto!important}'; document.head.append(st); return 1`);
+    await b.eval(`await openSetup(); await new Promise(r => setTimeout(r, 600)); const sp = document.createElement('div'); sp.style.height = '1600px'; document.getElementById('st-places').before(sp); return 1`); await sleep(4200);
+    const got = await b.eval(`return _slips`);
+    t.check('with 6.13’s fault put back, it’s noted in Problems: two scroll bars, around the sheet', got.some(m => m.startsWith('Layout: setup: it scrolls itself around div#setupBody')), got);
+    await b.eval(`document.getElementById('broken').remove(); document.getElementById('setup').close(); return 1`);
+  },
+}, {
+  name: 'slack post: open slack',
+  // Copy and open Slack: the first time it asks for your team's channel (kept on this device), then copies the post
+  // and opens Slack at it (straight into the app from a Slack web address, by way of the browser from a copied link). A
+  // PR you've copied one for says so next time.
+  async run(t) {
+    const base = responder();
+    const b = await t.open({ respond: (p, q, body) => (p === '/api/prs/slack-post' ? { body: { text: `A draft about #${body.n}
+https://github.com/${body.repo}/pull/${body.n}`, withChat: false } } : base(p, q, body)) });
+    await sleep(600);
+    await b.eval(`window._asked = []; window._opened = []; window._copied = []; window.ask = async (...a) => { _asked.push(a); return window._answer; }; window.copyText = async x => { _copied.push(x); return true; }; openSlackLink = (u) => { _opened.push(u); }; return 1`);
+    const pr = JSON.stringify({ repo: 'latitudegames/latitude', number: 19079, title: 'S3 deadlines', url: 'https://github.com/latitudegames/latitude/pull/19079', state: 'OPEN' });
+    await b.eval(`openSlackPost(${pr}); return 1`); await sleep(600);
+    t.check('with no channel yet, it says it’ll ask', await b.eval(`return document.getElementById('spOpen').textContent === 'Copy and open Slack…' && !document.getElementById('spWhere').textContent`));
+    await b.eval(`window._answer = 'https://app.slack.com/client/T0ABC123/C0DEF456'; document.getElementById('spOpen').click(); return 1`); await sleep(500);
+    let r = await b.eval(`return { asked: _asked.length, maxLength: (_asked[0] || [])[4]?.maxLength, opened: _opened, copied: _copied, open: document.getElementById('spDlg').open, kept: localStorage.getItem('slack-channel'), posted: localStorage.getItem('slack-posted') }`);
+    t.check('the first time it asks for the channel’s link (room for a whole link), and keeps it', r.asked === 1 && r.maxLength >= 200 && r.kept === 'https://app.slack.com/client/T0ABC123/C0DEF456', r);
+    t.check('then copies the post, closes, and opens the Slack app at the channel', r.copied.length === 1 && /A draft about #19079/.test(r.copied[0]) && !r.open && r.opened[0] === 'slack://channel?team=T0ABC123&id=C0DEF456', r);
+    t.check('it remembers that you copied one for this PR', (r.posted || '').includes('latitudegames/latitude#19079'), r.posted);
+    await b.eval(`openSlackPost(${pr}); return 1`); await sleep(600);
+    r = await b.eval(`return { intro: document.getElementById('spIntro').textContent, where: document.getElementById('spWhere').textContent, button: document.getElementById('spOpen').textContent }`);
+    t.check('next time it says so, and where Copy and open Slack goes', /You copied a review request for it/.test(r.intro) && /the channel C0DEF456/.test(r.where) && r.button === 'Copy and open Slack', r);
+    await b.eval(`_asked.length = 0; _opened.length = 0; document.getElementById('spOpen').click(); return 1`); await sleep(400);
+    t.check('with a channel kept, it doesn’t ask again', await b.eval(`return _asked.length === 0 && _opened[0] === 'slack://channel?team=T0ABC123&id=C0DEF456'`));
+    // A link copied in Slack (no workspace id in it): by way of the browser.
+    await b.eval(`openSlackPost(${pr}); return 1`); await sleep(500);
+    await b.eval(`window._answer = 'https://latitude.slack.com/archives/C0DEF456'; document.querySelector('[data-sp="channel"]').click(); return 1`); await sleep(300);
+    t.check('Change takes a link copied in Slack, which goes by way of the browser', await b.eval(`return /by way of your browser/.test(document.getElementById('spWhere').textContent)`));
+    await b.eval(`_opened.length = 0; document.getElementById('spOpen').click(); return 1`); await sleep(400);
+    t.check('and opens it', await b.eval(`return _opened[0] === 'https://latitude.slack.com/archives/C0DEF456'`));
+    // Not a Slack link: it says so and keeps the channel it had.
+    await b.eval(`openSlackPost(${pr}); return 1`); await sleep(500);
+    await b.eval(`window._answer = 'https://example.com/not-slack'; document.querySelector('[data-sp="channel"]').click(); return 1`); await sleep(300);
+    t.check('a link that isn’t Slack’s is turned down, and the channel stays', await b.eval(`return localStorage.getItem('slack-channel') === 'https://latitude.slack.com/archives/C0DEF456' && /isn’t a Slack channel’s link/.test(document.getElementById('toast').textContent)`));
+    await b.eval(`document.getElementById('spDlg').close(); return 1`);
+  },
+}, {
+  name: 'pr notices',
+  // What changed on your pull requests (from the PC's watcher): a notice with a button to the PR in Your work, several
+  // at once as one notice, and the welcome-back card's own line and buttons. Setup has the switch, on to start with.
+  async run(t) {
+    const base = responder();
+    const ev = (kind, n, title, body, action) => ({ id: `${kind}:${n}`, kind, at: Date.now() - 60000, repo: 'o/r', number: n, url: `https://github.com/o/r/pull/${n}`, title, body, action });
+    const away = [ev('checks-failed', 7, 'Checks failed on #7', 'Faster lists · 1 failing (Lint)', 'See what failed'), ev('approved', 8, '#8 was approved', 'sam approved Cache it', 'Open it')];
+    const b = await t.open({ respond: (p, q, body) => (p === '/api/away' ? { body: { files: 0, reviews: [], kept: [], prs: away } } : base(p, q, body)) });
+    await sleep(600);
+    await b.eval(`window._opened = []; openWorkPr = async u => { _opened.push(u); }; return 1`);
+    await b.eval(`prEventsArrived([${JSON.stringify(away[0])}]); return 1`); await sleep(400);
+    const one = await b.eval(`const t = document.getElementById('toaster'); return { text: t.textContent, button: [...t.querySelectorAll('button')].map(x => x.textContent.trim()).find(x => x === 'See what failed') || null }`);
+    t.check('a change on your PR is a notice saying what happened, with its button', one.text.includes('Checks failed on #7: Faster lists · 1 failing (Lint)') && one.button === 'See what failed', one);
+    await b.eval(`[...document.querySelectorAll('#toaster button')].find(x => x.textContent.trim() === 'See what failed').click(); return 1`); await sleep(300);
+    t.check('which opens that PR in Your work', (await b.eval(`return _opened`))[0] === 'https://github.com/o/r/pull/7');
+    await b.eval(`prEventsArrived(${JSON.stringify([...away, ev('comments', 9, '2 new comments on #9', 'Lists', 'See the comments')])}); return 1`); await sleep(400);
+    t.check('several at once are one notice', /3 changes on your pull requests/.test(await b.eval(`return document.getElementById('toaster').textContent`)));
+
+    // Back after a while: the welcome-back card says so, with a button for each.
+    await b.eval(`await go('hub'); store('seen-at', String(Date.now() - 3600000)); Welcome.card = null; checkAway(); return 1`); await sleep(1200);
+    const card = await b.eval(`const w = document.querySelector('.welcome'); return w ? { text: w.textContent.replace(/\\s+/g, ' '), chips: [...w.querySelectorAll('[data-welcome="pr"]')].map(x => x.textContent.trim()) } : null`);
+    t.check('the welcome-back card counts them and has a button for each', !!card && /2 things happened on your pull requests/.test(card.text) && card.chips.join('|') === 'Checks failed on #7|#8 was approved', card);
+    await b.eval(`_opened.length = 0; document.querySelector('.welcome [data-welcome="pr"]').click(); return 1`); await sleep(400);
+    t.check('a button there opens the PR, and the card goes', (await b.eval(`return _opened`))[0] === 'https://github.com/o/r/pull/7' && await b.eval(`return !document.querySelector('.welcome')`));
+
+    await b.eval(`await openSetup(); return 1`); await sleep(800);
+    t.check('Setup has the switch, on to start with', await b.eval(`const c = document.querySelector('#setupBody input[data-pref="prNotices"]'); return !!c && c.checked`));
+    await b.eval(`document.getElementById('setup').close(); return 1`);
+  },
+}, {
+  name: 'open a pull request link',
+  // Your work's Open a pull request takes a whole GitHub link (they're longer than a name box's 40 characters).
+  async run(t) {
+    const b = await t.open({ respond: responder() });
+    await sleep(600);
+    await b.eval(`await go('work'); return 1`); await sleep(1500);
+    await b.eval(`openWorkPr(); return 1`); await sleep(400);
+    const r = await b.eval(`const i = document.getElementById('dlgInput'); return { open: document.getElementById('dlg').open, max: i.maxLength }`);
+    t.check('its box takes a whole PR link', r.open && r.max >= 200, r);
+    await b.eval(`document.getElementById('dlg').close(); return 1`);
+  },
+}, {
+  name: 'pc check-up',
+  // PC check-up from Setup: what's running and what's taking space, Claude's word on each, a tick on each that can be
+  // closed or cleared (Windows' own and Session Switcher's can't), and only what's ticked goes, after a confirmation. A
+  // program that's still open after being asked can be forced, after another confirmation. (The PC's answers are stood
+  // in for here: nothing is closed.)
+  async run(t) {
+    const base = responder(), acts = [];
+    const scan = { supported: true, at: Date.now(), memGB: 32, drives: [{ id: 'C:', sizeGB: 950, freeGB: 120.5 }],
+      processes: [
+        { id: 'p:slack.exe', kind: 'process', name: 'Slack.exe', label: 'Slack', memMB: 1800, cpu: 0, count: 7, since: Date.now() - 3 * 864e5, hung: false, protected: null },
+        { id: 'p:frozen.exe', kind: 'process', name: 'Frozen.exe', label: 'Frozen Tool', memMB: 300, cpu: 0, count: 1, since: Date.now() - 3600e3, hung: true, protected: null },
+        { id: 'p:svchost.exe', kind: 'process', name: 'svchost.exe', label: '', memMB: 2500, cpu: 4, count: 99, since: 0, hung: false, protected: 'Windows needs this' },
+      ],
+      space: [{ id: 's:tests', label: 'Session Switcher’s test leftovers', note: 'folders its tests left', how: 'delete', bytes: 2.5 * 1024 ** 3, newest: Date.now() - 7 * 864e5, count: 3604, partial: true }] };
+    const notes = { 'p:slack.exe': { what: 'Slack, the chat app', advice: 'careful', why: 'Idle for days' }, 's:tests': { what: 'Old test folders', advice: 'close', why: '' } };
+    let still = true;
+    const b = await t.open({ respond: (p, q, body) => {
+      if (p === '/api/pc/scan') return { body: scan };
+      if (p === '/api/pc/explain') return { body: { notes, signedIn: true } };
+      if (p === '/api/pc/act') { acts.push(body); const close = (body.close || []).map(id => ({ id, name: id, ok: !!body.force || !still, still: body.force ? 0 : 1, said: body.force ? 'closed' : 'asked to close, still open (a Save prompt, maybe)' })); return { body: { results: [...close, ...(body.free || []).map(id => ({ id, name: id, ok: true, said: 'cleared' }))], freed: (body.free || []).length ? 2.5 * 1024 ** 3 : 0 } }; }
+      return base(p, q, body);
+    } });
+    await sleep(600);
+    await b.eval(`await openSetup(); return 1`); await sleep(800);
+    await b.eval(`document.querySelector('#setupBody [data-fix="pccheck"]').click(); return 1`); await sleep(1500);
+    const r = await b.eval(`const d = document.getElementById('pcDlg'); return { open: d.open, rows: [...d.querySelectorAll('.pck-row')].map(x => x.textContent.replace(/\\s+/g, ' ').trim()), locked: [...d.querySelectorAll('.pck-row.locked input')].map(i => i.disabled), heads: [...d.querySelectorAll('.pck-h')].map(h => h.textContent), go: document.getElementById('pcGo').disabled }`);
+    t.check('Setup’s Check my PC opens it, with what’s not responding first, then programs and space', r.open && r.heads.join('|') === 'Not responding|Programs using the most|Space you can free', r.heads);
+    t.check('each line says what it is (Claude’s word), the facts, and what to do', r.rows.some(x => /Slack.*Save your work first.*Slack, the chat app. Idle for days.*1.8 GB.*7 processes/.test(x)) && r.rows.some(x => /test leftovers.*Safe to clear.*over 2.5 GB.*deleted for good/.test(x)), r.rows);
+    t.check('Windows’ own can’t be ticked, and nothing is ticked to start with', r.locked.length === 1 && r.locked[0] === true && r.go === true, r);
+    await b.eval(`window.appConfirm = async () => true; document.querySelector('[data-pick="p:slack.exe"]').click(); document.querySelector('[data-pick="s:tests"]').click(); return 1`); await sleep(200);
+    t.check('the button says what it’ll do', await b.eval(`return document.getElementById('pcGo').textContent`) === 'Close 1 and clear 2.5 GB…');
+    await b.eval(`document.getElementById('pcGo').click(); return 1`); await sleep(1500);
+    t.check('only what was ticked is sent', JSON.stringify(acts[0]) === JSON.stringify({ close: ['p:slack.exe'], free: ['s:tests'], at: scan.at }), acts[0]);
+    t.check('one still open after being asked can be forced', await b.eval(`return !!document.querySelector('#pcDlg [data-pc="force"]')`));
+    await b.eval(`document.querySelector('#pcDlg [data-pc="force"]').click(); return 1`); await sleep(1500);
+    t.check('Force close sends that one, forced', JSON.stringify(acts[1]) === JSON.stringify({ close: ['p:slack.exe'], force: true, at: scan.at }), acts[1]);
+    await t.shot(b, 'pc-checkup');
+    await b.eval(`document.getElementById('pcDlg').close(); openPalette(); document.getElementById('palQ').value = 'free up space'; document.getElementById('palQ').dispatchEvent(new Event('input', { bubbles: true })); return 1`); await sleep(400);
+    t.check('Ctrl+K finds it', /PC check-up/.test(await b.eval(`const t = document.getElementById('palList').textContent; closePalette(); return t`)));
+  },
 }];

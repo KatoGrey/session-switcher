@@ -26,9 +26,8 @@ test('slack post: the question says what it’s for, whose it is, and only the f
   const review = promptFor({ kind: 'review', pr, chat: 'User: make it faster\nClaude: Added a cache.', note: 'ask Sam' });
   assert.match(review, /asking my team to review it/);
   assert.match(review, /Opened by: KatoGrey \(that’s me\)/);
-  assert.match(review, /Size: 7 files, \+214 −61/);
-  assert.match(review, /Checks: 1 failing/);
-  assert.match(review, /Linear issue: VOY-123/);
+  // Nothing to pad a short post with: no size, checks or issue.
+  assert.doesNotMatch(review, /Size:|Checks:|Linear issue:|\+214/);
   assert.match(review, /What I want it to say too: “ask Sam”/);
   assert.match(review, /Claude: Added a cache\./);
   for (const r of RULES) assert.ok(review.includes(r), r);

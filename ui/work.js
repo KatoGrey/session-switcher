@@ -12,6 +12,9 @@ const Work = (() => {
   W.setup = null; W.setupLoading = false; W.setupOpen = false; W.lit = null;
   try { const r = JSON.parse(localStorage.getItem('work-run') || 'null'); if (r) for (const p of ['claude', 'codex', 'gemini']) if (r[p]) W.run[p] = { model: String(r[p].model || ''), effort: String(r[p].effort || '') }; } catch { /* the defaults */ }
   try { W.layout = localStorage.getItem('work-layout') === 'board' ? 'board' : 'list'; W.repo = localStorage.getItem('work-repo') || 'all'; W.wide = localStorage.getItem('work-detail-width') !== 'narrow'; } catch {}
+  const filters = new Set(['all', 'attention', 'chats', 'prs', 'issues', 'merged']);
+  const savedFilter = store('work-filter');
+  if (filters.has(savedFilter)) W.filter = savedFilter;
 
   const kOf = p => `${String(p.repo).toLowerCase()}#${p.number}`;
   const page = () => $('page');
@@ -528,9 +531,9 @@ const Work = (() => {
       if (next) { W.trail = []; await select(rowKey(next)); $('wkInspector')?.querySelector(`[data-wk="${a}"]:not(:disabled)`)?.focus({ preventScroll: true }); }
       return;
     }
-    if (a === 'filter') { W.filter = b.dataset.value; render(); return; }
+    if (a === 'filter') { if (filters.has(b.dataset.value)) { W.filter = b.dataset.value; store('work-filter', W.filter); render(); } return; }
     if (a === 'layout') { W.layout = b.dataset.value; try { localStorage.setItem('work-layout', W.layout); } catch {} render(); return; }
-    if (a === 'reset') { W.filter = 'all'; W.query = ''; W.repo = 'all'; store('work-repo', 'all'); render(); return; }
+    if (a === 'reset') { W.filter = 'all'; W.query = ''; W.repo = 'all'; store('work-filter', 'all'); store('work-repo', 'all'); render(); return; }
     if (a === 'close-detail') { const key = W.open; W.open = null; render(); [...page().querySelectorAll('.wk-row')].find(e => e.dataset.key === key)?.focus({ preventScroll: true }); return; }
     if (a === 'detail-tab') {
       W.detailTab = b.dataset.value;
@@ -548,7 +551,7 @@ const Work = (() => {
     if (a === 'copy') { if (await copyText(b.dataset.text, null)) toast(b.dataset.text.startsWith('https://') ? 'Link copied.' : 'Branch copied.'); return; }
     if (a === 'cross-review') return openCrossReview(b.dataset.repo ? find(b.dataset.repo, b.dataset.n) || {} : {});
     if (a === 'slack') { const p = find(b.dataset.repo, b.dataset.n); return p ? slackPost(p) : undefined; }
-    if (a === 'open-pr') { const url = await ask('Open a pull request', 'Paste its GitHub URL. Its checks, feedback, and actions open here.', '', 'Open PR'); if (url) await openUrl(url); return; }
+    if (a === 'open-pr') { const url = await ask('Open a pull request', 'Paste its GitHub URL. Its checks, feedback, and actions open here.', '', 'Open PR', { maxLength: 300 }); if (url) await openUrl(url); return; }
     if (a === 'linked') { if (W.open) W.trail.push(W.open); return openUrl(b.dataset.url); }
     if (a === 'issue-link') { const id = b.dataset.id; if (!item(id)) W.external.set(id, await api(`/api/linear/issue?id=${encodeURIComponent(id)}`)); if (W.open) W.trail.push(W.open); return select(id); }
     if (a === 'plan') return showMenu(b, whoItems((pv, acct) => startIssue(b.dataset.id, pv, acct, 'plan'), { review: true }));
@@ -653,7 +656,7 @@ function workNav() {
   return `<button class="nav-i" data-view="work" aria-current="${S.view === 'work'}"><span class="glyph" aria-hidden="true">⇄</span><span class="ni-t">${esc(voice('Your work'))}</span>${n ? `<span class="tag gilt">${n}</span>` : ''}</button>`;
 }
 async function openWorkPr(url) {
-  if (!url) url = await ask('Open a pull request', 'Paste its GitHub URL to view checks, feedback, and actions in your workspace.', '', 'Open PR');
+  if (!url) url = await ask('Open a pull request', 'Paste its GitHub URL to view checks, feedback, and actions in your workspace.', '', 'Open PR', { maxLength: 300 });
   if (!url) return;
   await go('work'); await Work.openPr(url);
 }

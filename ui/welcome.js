@@ -47,13 +47,15 @@ function welcomeHtml() {
   // Resume my day: the chats from the last day you worked (not done), newest first.
   const dayOf = new Date(since).toDateString();
   const yday = w.morning ? allSessions().filter(([s]) => new Date(s.updated).toDateString() === dayOf && !isDoneChat(s) && !(last && s.id === last.sessionId) && ![...needs, ...replies].some(x => x.sessionId === s.id)).sort((a, b) => b[0].updated - a[0].updated).slice(0, 4) : [];
-  if (!replies.length && !needs.length && !working.length && !lastOk && !away.files && !away.reviews.length && !yday.length && !kept.length) return '';
+  const prs = (away.prs || []).slice(0, 12);
+  if (!replies.length && !needs.length && !working.length && !lastOk && !away.files && !away.reviews.length && !yday.length && !kept.length && !prs.length) return '';
   const bits = [];
   if (away.files) bits.push(`<b>${away.files}</b> ${away.files === 1 ? 'file was changed' : 'files were changed'}`);
   if (away.reviews.length) {
     const found = away.reviews.reduce((n, r) => n + r.findings, 0);
     bits.push(away.reviews.length === 1 ? `a review came back ${found ? `with <b>${found}</b> finding${found === 1 ? '' : 's'}` : 'clean'}` : `<b>${away.reviews.length}</b> reviews came back${found ? ` with <b>${found}</b> findings` : ', all clean'}`);
   }
+  if (prs.length) bits.push(`<b>${prs.length}</b> ${prs.length === 1 ? 'thing happened' : 'things happened'} on your pull requests`);
   if (replies.length) bits.push(`<b>${replies.length}</b> ${replies.length === 1 ? 'reply came in' : 'replies came in'}`);
   if (approvals.length) bits.push(`<b>${approvals.length}</b> ${approvals.length === 1 ? 'needs your OK' : 'need your OK'}`);
   if (attention) bits.push(`<b>${attention}</b> ${attention === 1 ? 'needs your attention' : 'need your attention'}`);
@@ -64,6 +66,7 @@ function welcomeHtml() {
       <p class="eyebrow">${esc(voice(w.morning ? (new Date().getHours() < 12 ? 'Good morning' : 'Welcome back') : 'Welcome back'))} · away ${esc(dur(w.at - since))}</p>
       <p class="wb-h">${bits.length ? `While you were away, ${bits.join(', ').replace(/, ([^,]*)$/, ' and $1')}.` : 'Nothing changed while you were away.'}</p>
       ${chips ? `<div class="wb-chips">${chips}</div>` : ''}
+      ${prs.length ? `<p class="wb-sub">On your pull requests:</p><div class="wb-chips">${prs.slice(0, 4).map(e => `<button class="wb-chip ${/failed|changes/.test(e.kind) ? 'needs' : ''}" data-welcome="pr" data-url="${esc(e.url)}" title="${esc(e.body)}">${esc(e.title)}</button>`).join('')}</div>` : ''}
       ${kept.length ? `<p class="wb-sub">Kept at it while you were away:</p><div class="wb-chips">${kept.slice(-4).map(e => `<button class="wb-chip" data-welcome="continue" data-sid="${esc(e.s.id)}" title="${esc(`${e.nudges} check-in${e.nudges === 1 ? '' : 's'}${e.detail ? `. ${e.detail}` : ''}`)}">${esc(e.s.title || 'Untitled chat')} <small>${esc({ time: 'its time came', done: 'says it’s finished', nothing: 'ran out of things to do', trouble: 'stopped by trouble' }[e.why] || 'stopped')}</small></button>`).join('')}${keptIn.map(p => `<button class="wb-chip" data-welcome="changes" data-cwd="${esc(p.cwd)}">What changed in ${esc(p.name)}</button>`).join('')}</div>` : ''}
       ${yday.length ? `<p class="wb-sub">Also from ${new Date(since).toDateString() === new Date(Date.now() - 864e5).toDateString() ? 'yesterday' : esc(new Date(since).toLocaleDateString(undefined, { weekday: 'long' }))}:</p><div class="wb-chips">${yday.map(([s, p]) => `<button class="wb-chip" data-welcome="continue" data-sid="${esc(s.id)}" title="${esc(p.name)}">${esc(s.title || 'Untitled chat')}</button>`).join('')}</div>` : ''}
     </div>
@@ -95,6 +98,7 @@ document.addEventListener('click', wrap(async e => {
   const b = e.target.closest('[data-welcome]'); if (!b) return;
   const what = b.dataset.welcome;
   if (what === 'dismiss') return dropWelcome();
+  if (what === 'pr') { dropWelcome(); return openWorkPr(b.dataset.url); }
   if (what === 'continue') { dropWelcome(); return ChatUI.open({ sessionId: b.dataset.sid }); }
   if (what === 'changes') { dropWelcome(); S.worldTab = 'changes'; await go('folder', b.dataset.cwd); S.worldTab = 'changes'; return renderFolder(); }
   if (what === 'open') {
@@ -104,3 +108,19 @@ document.addEventListener('click', wrap(async e => {
   }
   return undefined;
 }));
+
+/* ---------- your pull requests changed (lib/prwatch.js, from the PC) ---------- */
+// A notice for each (several at once become one), with a button to the PR in Your work; a notification while this
+// window's in the background (as your alert settings and quiet hours say); the welcome-back card keeps them too.
+function prEventsArrived(events) {
+  if (SOLO || !Array.isArray(events) || !events.length) return;
+  if (events.length === 1) { const e = events[0]; toast(`${e.title}: ${e.body}`, 9000, { label: e.action || 'Open it', run: () => openWorkPr(e.url) }); }
+  else toast(`${events.length} changes on your pull requests: ${events.slice(0, 3).map(e => e.title).join('; ')}${events.length > 3 ? '…' : ''}`, 9000, { label: 'Your work', run: () => go('work') });
+  if (!Local.notify || inQuietHours() || !('Notification' in window) || Notification.permission !== 'granted' || !(document.hidden || !document.hasFocus())) return;
+  for (const e of events.slice(0, 3)) {
+    try {
+      const n = new Notification(e.title, { body: e.body, tag: `pr:${e.repo}#${e.number}`, silent: true });
+      n.onclick = () => { if (window.desktop) desktop.show(); else window.focus(); openWorkPr(e.url); n.close(); };
+    } catch { /* notifications unavailable */ }
+  }
+}

@@ -712,7 +712,7 @@ function renderItem(root, it, live) {
 /* ---------- scrolling ---------- */
 const scroller = () => $c('cScroll');
 const nearBottom = () => { const s = scroller(); return s.scrollHeight - s.scrollTop - s.clientHeight < 140; };
-const toBottom = () => { const s = scroller(); s.scrollTop = s.scrollHeight; };
+const toBottom = () => { if (window.ChatReading?.holding()) return; const s = scroller(); s.scrollTop = s.scrollHeight; };
 function withStick(fn) { const stick = nearBottom(); fn(); if (stick) toBottom(); else noteUnseen(); }
 // "Jump to latest": shown while you're reading further up; counts what arrived meanwhile.
 let unseen = 0, jumpRaf = 0;
@@ -726,7 +726,7 @@ function syncJump() {
   b.innerHTML = `<span aria-hidden="true">↓</span>${unseen ? `${unseen} new` : 'Latest'}`;
   b.classList.toggle('has-new', unseen > 0);
 }
-function jumpLatest() { const s = scroller(); s.scrollTo({ top: s.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); unseen = 0; syncJump(); }
+function jumpLatest() { window.ChatReading?.cancel(); const s = scroller(); s.scrollTo({ top: s.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); unseen = 0; syncJump(); }
 
 /* ---------- export to Markdown ---------- */
 function chatMarkdown() {

@@ -145,6 +145,15 @@ const namer = require('./lib/namer').createNamer({
     await renameChat(job.id, name);
   },
 });
+// PC check-up (lib/pccheck.js): what's running and taking space, when asked; Claude's word on each; and closing or
+// clearing only what was ticked. Session Switcher's own processes (this server, the desktop app, its chats) are kept.
+const pcCheck = require('./lib/pccheck').createPcCheck({
+  runPowerShell: sys.runPowerShell,
+  spawnClaude: (account, args, cwd) => sys.spawnClaude(config(), account, cwd, args),
+  kill: child => sys.killTree(child),
+  selfPids: () => new Set([process.pid, process.ppid]),
+  log,
+});
 // Slack posts about a pull request (lib/slackpost.js), drafted as your first signed-in Claude account.
 const slackPost = require('./lib/slackpost').createDrafter({
   spawn: (job, args, cwd) => sys.spawnClaude(config(), job.account, cwd, args),
@@ -213,14 +222,14 @@ try {
     fs.unlinkSync(OPEN_FILE);
   }
 } catch { /* nothing to offer */ }
-// Started by Restart (in the last two minutes): the chats that were open are reopened straight away,
-// not offered, and nothing is left to offer.
+// Started by Restart (in the last two minutes, or ten for an update, whose installer takes a while on a slow PC): the
+// chats that were open are reopened straight away, not offered, and nothing is left to offer.
 const RESTART_FILE = path.join(DATA_DIR, 'restart.json');
 const restarted = (() => {
   try {
     const j = JSON.parse(fs.readFileSync(RESTART_FILE, 'utf8'));
     fs.unlinkSync(RESTART_FILE);
-    if (!j || !(Date.now() - j.at < 120000)) return null;
+    if (!j || !(Date.now() - j.at < (j.forUpdate ? 600000 : 120000))) return null;
     // The ones that were open come back now. Any older offer stays an offer, not a pile of chats starting.
     const list = openAtClose || [];
     const rest = toReopen().filter(c => !list.some(x => String(x.sessionId).toLowerCase() === String(c.sessionId).toLowerCase()));
@@ -2147,6 +2156,8 @@ async function handleApi(req, res, url, remote = false) {
     try { tail = fs.readFileSync(LOG_FILE, 'utf8').split(/\r?\n/).slice(-40).join('\n'); } catch { /* no log yet */ }
     return send(res, 200, { problems: problems.map(({ key, ...p }) => p), appDir: APP_DIR, log: tail });
   }
+  // Which chats have an unsent message, and since when (never its words): the Draft labels and Ctrl+K's Chats with drafts.
+  if (route === 'GET /api/drafts') return send(res, 200, { drafts: Object.entries(drafts).filter(([, d]) => d && typeof d.text === 'string' && d.text.trim()).map(([id, d]) => ({ id, at: Number(d.at) || 0 })) });
   if (route === 'GET /api/draft') { const d = drafts[String(url.searchParams.get('id') || '').toLowerCase()]; return send(res, 200, d || { text: '', at: 0 }); }
   if (route === 'GET /api/chat/extras') return send(res, 200, { extras: chatExtras.list(url.searchParams.get('id') || '', url.searchParams.get('until') || null) });
   if (route === 'GET /api/chat/diff') {
@@ -2183,7 +2194,8 @@ async function handleApi(req, res, url, remote = false) {
         if (e.kind === 'review' && e.state === 'done') reviews.push({ by: e.by || 'codex', findings: (e.findings || []).length });
       }
     }
-    return send(res, 200, { files: files.size, reviews, kept: only ? [] : keepWorking.endedSince(Date.parse(since)) });
+    const prsMeanwhile = only ? [] : ((prWatch && prWatch.events) || []).filter(e => e.at >= Date.parse(since)).map(e => ({ ...e, action: prWatchLib.ACTION[e.kind] }));
+    return send(res, 200, { files: files.size, reviews, kept: only ? [] : keepWorking.endedSince(Date.parse(since)), prs: prsMeanwhile });
   }
   // What used each account's window: tokens per chat over the last five hours and the week, counted
   // while this app runs (kept after a chat closes).
@@ -2486,6 +2498,18 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/prs/act': return send(res, 200, await prAction(body));
     case '/api/prs/open-chat': return send(res, 200, await prOpenChat(body));
     case '/api/prs/slack-post': return send(res, 200, await prSlackPost(body));
+    // PC check-up: look (from a phone too), Claude's word on what was found, and close or clear what was ticked (at the PC
+    // only; the test copy never does).
+    case '/api/pc/scan': return send(res, 200, await pcCheck.scan());
+    case '/api/pc/explain': { const account = namingAccount(null); return send(res, 200, { notes: account ? await pcCheck.explain(account) : {}, signedIn: !!account }); }
+    case '/api/pc/act': {
+      if (remote) throw fail(403, 'Close programs and free space at the PC itself.');
+      if (sys.DRY_RUN) throw fail(409, 'The test copy of the app doesn’t close or delete anything.');
+      const ids = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string').slice(0, 50) : []);
+      return send(res, 200, await pcCheck.act({ close: ids(body.close), free: ids(body.free), force: body.force === true, at: typeof body.at === 'number' ? body.at : null }));
+    }
+    // (The test copy only: compare these PRs with the last ones given, as the watcher does every few minutes.)
+    case '/api/prs/watch': { if (!sys.DRY_RUN) throw fail(404, 'Not found.'); return send(res, 200, { events: await watchPrs({ board: Array.isArray(body.prs) ? body.prs : [], login: typeof body.login === 'string' ? body.login : null }) }); }
     case '/api/prs/record': {
       const entry = await prRecords.save(body, async t => (await prs.detail(t.repo, t.n, { fresh: true })).headSha);
       broadcast('pr-record', { repo: body.repo, n: body.n }); return send(res, 200, { entry });
@@ -3094,7 +3118,7 @@ async function handleApi(req, res, url, remote = false) {
       // Tidy up: chats with nothing new for this many days count as done (0: never).
       if (body.autoDone !== undefined) { const d = Number(body.autoDone); if (![0, 3, 7, 14, 30].includes(d)) throw fail(400, 'Unknown choice.'); p.autoDone = d; }
       if (body.terminal !== undefined) { if (!acc.TERMINALS.includes(body.terminal)) throw fail(400, 'Unknown terminal choice.'); p.terminal = body.terminal; }
-      for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow', 'autoSwitch', 'autoReview', 'nightlyCheck', 'autoName', 'latitudeReadsClaude', 'latitudeReadsCodex']) if (typeof body[k] === 'boolean') p[k] = body[k];
+      for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow', 'autoSwitch', 'autoReview', 'nightlyCheck', 'autoName', 'latitudeReadsClaude', 'latitudeReadsCodex', 'prNotices']) if (typeof body[k] === 'boolean') p[k] = body[k];
       if (body.autoName === true) setImmediate(() => namer.resume());
       if (body.openIn !== undefined) { if (!['app', 'terminal'].includes(body.openIn)) throw fail(400, 'Unknown choice.'); p.openIn = body.openIn; }
       if (body.claudeMode !== undefined) { if (!chatLib.MODES.includes(body.claudeMode)) throw fail(400, 'Unknown mode.'); p.claudeMode = body.claudeMode; }
@@ -3157,7 +3181,7 @@ async function handleApi(req, res, url, remote = false) {
       send(res, 200, { ok: true });
       log('Quit from the app.');
       // For an update, the open chats come back when the new version starts, as after a restart.
-      if (body.forUpdate) { try { writeOpenChats(); store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid }); handOver(); } catch (err) { log(`Couldn’t keep the open chats for the update: ${err.message}`); } }
+      if (body.forUpdate) { try { writeOpenChats(); store.writeJsonAtomic(RESTART_FILE, { at: Date.now(), from: process.pid, forUpdate: true }); handOver(); } catch (err) { log(`Couldn’t keep the open chats for the update: ${err.message}`); } }
       else toShell({ type: 'quit' });
       // Replaced by a newer copy (lib/handover.js): chats the keeper holds carry on into it.
       if (body.handOver && !body.forUpdate) { await settleForHandover(2000); handOver(); }
@@ -4386,6 +4410,47 @@ liteRoutes.usePush(async msg => {
   return sent + out.filter(o => o.status >= 200 && o.status < 300).length;
 });
 pushes.keepDevices(phone.status().devices.map(d => d.id));
+// Your pull requests, watched (lib/prwatch.js): every four minutes while GitHub is signed in, what changed on yours and
+// who asked for your review is told to the window (a notification there), kept two days for the welcome-back card, and
+// sent to a paired phone. Setup can turn it off. The test copy of the app doesn't look by itself (/api/prs/watch, in a
+// dry run only, gives it what to compare).
+const prWatchLib = require('./lib/prwatch');
+const PRWATCH_FILE = path.join(DATA_DIR, 'pr-watch.json');
+let prWatch = store.loadOwnJson(PRWATCH_FILE, null, () => {});
+let prWatching = false;
+async function watchPrs({ board = null, login = null } = {}) {
+  // Off: what was kept goes too, so turning it on again later starts afresh rather than telling days of changes.
+  if (config().prefs.prNotices === false) { if (prWatch) { prWatch = null; try { fs.unlinkSync(PRWATCH_FILE); } catch { /* none */ } } return []; }
+  if (prWatching) return [];
+  prWatching = true;
+  try {
+    let list, me = login;
+    try {
+      if (board) list = board;
+      else { const b = await prs.board({ fresh: true }); if (b.partial) return []; list = b.prs; me = b.login; }   // half an answer isn't the whole list
+    } catch { return []; }   // GitHub not signed in, or offline: next time
+    const snap = prWatchLib.snapshot(list, me), now = Date.now();
+    // Review requests already told (two weeks), so one that drops out of GitHub's list and comes back isn't told again.
+    const asked = Object.fromEntries(Object.entries((prWatch && prWatch.asked) || {}).filter(([, at]) => now - at < 14 * 864e5));
+    const events = prWatch && prWatch.snap ? prWatchLib.changes(prWatch.snap, snap, now, new Set(Object.keys(asked))) : [];
+    for (const e of events) if (e.kind === 'review-asked') asked[`${e.repo.toLowerCase()}#${e.number}`] = now;
+    for (const [k, st] of Object.entries(snap)) if (st.review && !asked[k] && !(prWatch && prWatch.snap)) asked[k] = now;   // (the first look: the ones already asked)
+    const kept = [...events, ...((prWatch && prWatch.events) || [])].filter(e => now - e.at < 2 * 864e5).slice(0, 40);
+    prWatch = { at: now, snap, events: kept, asked };
+    try { store.writeJsonAtomic(PRWATCH_FILE, prWatch); } catch (err) { log(`Couldn’t save pr-watch.json: ${err.message}`); }
+    if (events.length) {
+      log(`PRs: ${events.map(e => e.title).join('; ')}.`);
+      broadcast('pr-events', { events: events.map(e => ({ ...e, action: prWatchLib.ACTION[e.kind] })) });
+      for (const e of events) {
+        const msg = { kind: 'pr', id: e.id, tag: `pr:${e.repo}#${e.number}`, title: e.title, body: e.body, at: e.at, ttl: 6 * 3600 };
+        for (const w of appWatchers) { const pf = pushes.appPrefs(w.device.id); if (pushLib.wants(pf, { kind: 'pr' }) && !holdForDigest(`app:${w.device.id}`, pf, msg)) toApp(w, msg); }
+        if (pushes.count()) await pushes.notify(msg, (pf, sb) => pushLib.wants(pf, { kind: 'pr' }) && !holdForDigest(`web:${sb.endpoint}`, pf, msg)).catch(() => {});
+      }
+    }
+    return events;
+  } finally { prWatching = false; }
+}
+if (!sys.DRY_RUN) { const t = setTimeout(() => { watchPrs(); const i = setInterval(watchPrs, 4 * 60e3); if (i.unref) i.unref(); }, 90e3); if (t.unref) t.unref(); }
 const pushSeen = { map: new Map(), primed: false };
 // Allow/Deny on a notification: one-time tokens, each for one request, for an hour.
 const pushActs = new Map();

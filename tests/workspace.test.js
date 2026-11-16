@@ -37,7 +37,7 @@ const put = (root, rel, data = PNG) => { const f = path.join(root, rel); fs.mkdi
 test('workspace: bundled review assets and new routes reach the real server', async () => {
   const w = await startServer();
   try {
-    for (const asset of ['/ui/workspace.css', '/ui/work-model.js', '/ui/work-detail.js', '/ui/work-record.js', '/ui/pr-review.js', '/ui/slack-post.js']) {
+    for (const asset of ['/ui/workspace.css', '/ui/work-model.js', '/ui/work-detail.js', '/ui/work-record.js', '/ui/pr-review.js', '/ui/slack-post.js', '/ui/pccheck.js']) {
       const r = await fetch(w.base + asset); assert.equal(r.status, 200); assert.ok((await r.text()).length > 100);
     }
     const invalid = await w.call('/api/prs/act', { action: 'cross-review', url: 'https://elsewhere.test/a/b/pull/1' });

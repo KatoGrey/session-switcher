@@ -319,6 +319,7 @@ function connectLive() {
   // Your home PC (ui/homepc.js): paired, forgotten, or the window moved between the PC and this laptop.
   es.addEventListener('homepc', () => { if (typeof homeBanner === 'function') homeBanner(); });
   es.addEventListener('mcp', e => { try { mcpFlowsChanged(JSON.parse(e.data).flows); } catch { /* invalid event */ } });
+  es.addEventListener('pr-events', e => { let d = {}; try { d = JSON.parse(e.data); } catch { return; } prEventsArrived(d.events); });
   es.addEventListener('prs', e => { let d = {}; try { d = JSON.parse(e.data); } catch { /* invalid event */ } prsChanged(d).catch(() => {}); if (typeof Work !== 'undefined') Work.changed(); });
   es.addEventListener('pr-record', e => { try { Work.recordChanged(JSON.parse(e.data)).catch(() => {}); } catch { /* invalid event */ } if (window.ChatUI && ChatUI.isOpen()) loadRelated(); });
   es.addEventListener('usage', e => { try { S.usage = JSON.parse(e.data) || {}; } catch { return; } renderLive(); renderNav(); if (window.ChatUI && ChatUI.refreshUsage) ChatUI.refreshUsage(); });
@@ -574,9 +575,14 @@ function contextItems(t) {
   if (window.ChatUI && ChatUI.isOpen() && t.closest('#chat')) { const it = ChatUI.contextItems(t, Ctx.at); if (it) return it; }
   const pic = t.closest('.bd-t'); if (pic) return boardTileItems(pic.dataset.rel);
   const withFav = id => [favItem(id), ...orgItems(id), '-', ...chatItems(id), '-', { label: 'Copy chat ID', run: () => copyText(id) }];
+  // A sidebar section's heading, or the Commander and Routines: where the section goes (ui/nav-order.js).
+  const sec = t.closest('#nav .nav-sec > .nav-h, #nav .nav-sec > .nav-hrow, #nav .nav-sec > .nav-tools');
+  if (sec && !t.closest('[data-cmdr]')) return navSecItems(sec.closest('.nav-sec').dataset.navsec);
+  // The sidebar's empty space (or its foot): hidden sections back, and the sidebar as it was.
+  if (t.closest('#nav .nav-scroll') && !t.closest('.nav-sec')) { const it = navSidebarItems(); if (it.length) return [...it, '-', ...appItems()]; if (t.closest('.nav-foot')) return null; }
   const gh = t.closest('[data-group], [data-gcard]'); if (gh && !t.closest('[data-gchat]')) return groupItems(gh.dataset.group || gh.dataset.gcard);
   const gc = t.closest('[data-gchat]'); if (gc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(gc.dataset.gchat) }, ...withFav(gc.dataset.gchat)];
-  if (t.closest('[data-cmdr]')) return [{ glyph: '✪', label: 'Open the Commander', run: () => openCommander() }, { label: 'Commander settings…', run: commanderSetup }, ...(cmdrSet().sessionId ? [{ label: 'Start a fresh Commander chat', run: () => openCommander({ fresh: true }) }] : [])];
+  if (t.closest('[data-cmdr]')) return [{ glyph: '✪', label: 'Open the Commander', run: () => openCommander() }, { label: 'Commander settings…', run: commanderSetup }, ...(cmdrSet().sessionId ? [{ label: 'Start a fresh Commander chat', run: () => openCommander({ fresh: true }) }] : []), ...(t.closest('#nav .nav-sec') ? ['-', ...navSecItems('tools')] : [])];
   const nc = t.closest('[data-navchat]'); if (nc) return [{ glyph: '❝', label: 'Open', run: () => openChatFromNav(nc.dataset.navchat) }, ...withFav(nc.dataset.navchat)];
   const row = t.closest('[data-row]'); if (row) return withFav(row.dataset.row);
   const pv = t.closest('[data-preview], [data-continue]'); if (pv) return withFav(pv.dataset.preview || pv.dataset.continue);
@@ -598,7 +604,7 @@ document.addEventListener('contextmenu', e => {
   if (!(t instanceof Element) || t.closest('input, textarea, select, [contenteditable="true"]')) return;
   const coarse = matchMedia('(pointer: coarse)').matches;
   // On a phone, a long press on text is for selecting it; only cards, pictures and controls get a menu.
-  if (coarse && !t.closest('[data-row], [data-k], [data-world], [data-gchat], [data-gcard], [data-group], .world, .gen, .thumb, .crew, .ri, .af-file, .umsg, .turn .who, .tool > summary, .nav-i, .bd-t')) return;
+  if (coarse && !t.closest('[data-row], [data-k], [data-world], [data-gchat], [data-gcard], [data-group], .world, .gen, .thumb, .crew, .ri, .af-file, .umsg, .turn .who, .tool > summary, .nav-i, .nav-sec > .nav-h, .nav-sec > .nav-hrow, .nav-foot, .bd-t')) return;
   if (e.button !== 2 && !e.clientX && !e.clientY) { const r = t.getBoundingClientRect(); Ctx.at = { x: r.left + Math.min(24, r.width / 2), y: r.top + Math.min(r.height, 28) }; }
   else Ctx.at = { x: e.clientX, y: e.clientY };
   const items = contextItems(t);

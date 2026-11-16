@@ -1,4 +1,31 @@
-# Slack posts for your pull requests, Setup that scrolls smoothly, and a keyboard that stays in the chat
+# A PC check-up, the sidebar your way, chats that open where you left off, and word when your pull requests change
+
+**PC check-up.** **Setup → PC check-up** (or Ctrl+K → PC check-up) looks at what's running and what's taking space on this PC: the programs using the most memory or CPU, any that have stopped responding, and space you can free (old temporary files, Session Switcher's own test leftovers, package caches, crash dumps, the Recycle Bin, big downloads you haven't opened in months). Claude says in a few words what each one is and whether it's safe to close or clear. Tick what you want gone and confirm; nothing happens before that.
+- Programs are asked to close as their own close button would, so one with unsaved work can ask you first. **Force close** is a separate step.
+- Windows' own processes, Session Switcher's, any Claude Code or Codex chat, and a terminal or editor one of them runs in can't be ticked. Each program is checked again right before it's closed.
+- A download only goes to the Recycle Bin if the bin will take it. One too big for it is left for you to delete yourself.
+- Claude is told each program's name, publisher and folder: never its command line or its window's title.
+- Caches and temporary files are deleted for good (they come back as needed); downloads go to the Recycle Bin.
+- Windows only, for now. A phone can look, but closing and clearing happen at the PC.
+
+**The sidebar, arranged your way.** Drag a section by its heading (Pinned, Your projects, Active now, Recent, Groups) to put it where you want it, or right-click a heading: move it up, down, to the top or the bottom, or hide it. Drag the sidebar's edge to make it wider or narrower; a double-click puts it back. It's kept on this device, and **Put the sidebar back as it was** undoes it all. Imperial and Rebel keep their own sidebar.
+
+**Pick up where you left off.**
+- A chat opens where you were reading, even after a restart or a resized window. **Latest** still jumps to the end.
+- A chat with an unsent message shows a **Draft** label, and **Ctrl+K → Chats with drafts** takes you back to it, drafts from your other devices included.
+- Your work opens on the filter you left it on.
+
+**Word when your pull requests change.** Checks failing or passing, an approval, changes asked for, new review threads, a merge it did by itself, and someone asking you by name for a review: a notice with a button to the PR in Your work, a notification while the window is in the background, on your phone if it's paired, and on the welcome-back card. GitHub is looked at every few minutes. **Setup → Tell me when my pull requests change** turns it off.
+
+**Shorter Slack posts.** About twenty words and the link: what the change does, and nothing to pad it. **Copy and open Slack** copies it and opens your team's channel (it asks for the channel's link once).
+
+**More to read on a laptop.** On a short window, a chat's header and the Claude–Codex bar take less height, so about a quarter more of the conversation shows.
+
+- After an update, your chats come back by themselves even when the installer takes a few minutes.
+- A dialog that's laid out wrong (two scroll bars, something spilling out of it) is noted in **Setup → Problems**, with Ask Claude to fix this.
+- **Fixed:** Your work's **Open a pull request** cut a pasted link off at 40 characters.
+
+## Earlier in 6.14: Slack posts for your pull requests, Setup that scrolls smoothly, and a keyboard that stays in the chat
 
 **A Slack post about a pull request, written for you.** When a PR needs a review, or you want people to know about it, **Slack post…** writes a few plain sentences with its link, from the PR and the chat that did the work. Choose **Ask for a review** or **Let people know**, add anything it should say (who should look, what to look at first, by when), change what you like, and **Copy** it into Slack. Nothing is sent from the app.
 - **Where:** a pull request in Your work, in Pull requests, under This work in a chat's side panel, or type **/slack** in a chat (with what it should say after it, if you like).

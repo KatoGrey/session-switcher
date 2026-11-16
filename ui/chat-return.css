@@ -1,0 +1,4 @@
+/* Small draft labels use the current theme's text and surface colours. */
+.draft-badge{display:inline-block;flex:none;margin-inline:4px;padding:1px 5px;border:1px solid var(--seam-2);border-radius:4px;background:var(--abyss);color:var(--parch);font:500 10px/1.4 var(--f-body);letter-spacing:normal;text-transform:none;vertical-align:middle;white-space:nowrap}
+.draft-badge[hidden]{display:none}
+.ri-n:has(>.draft-badge:not([hidden])),.nc-t:has(>.draft-badge:not([hidden])){overflow:hidden}

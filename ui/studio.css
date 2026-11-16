@@ -265,7 +265,17 @@
 @media (max-height:760px){
   :root.hub2:not([data-family]) body:not(.aide-panel) .c-box{padding-top:10px;padding-bottom:6px}
   :root.hub2:not([data-family]) body:not(.aide-panel) .c-box textarea{margin-bottom:8px}
-  :root.hub2:not([data-family]) body:not(.aide-panel) .c-hint{margin-top:5px}
+  /* A short window (a laptop's): the chat's header and its relay take less height, so more of the conversation shows;
+     everything in them is still there. The line of shortcuts under the message box is left out (? lists them all). */
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-head{min-height:0;padding-top:7px;padding-bottom:7px;row-gap:3px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-return{padding:1px 0}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-title{font-size:18px;line-height:1.2;margin-top:1px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-crest{zoom:.8}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-mode{min-height:24px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-acct{padding-top:2px;padding-bottom:2px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-relay{padding-top:3px;padding-bottom:3px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .cr-side{padding-top:2px;padding-bottom:2px}
+  :root.hub2:not([data-family]) body:not(.aide-panel) .c-hint{display:none}
 }
 @media (max-width:760px){
   :root.hub2:not([data-family]) body:not(.aide-panel) .c-box{padding:12px 16px 8px}

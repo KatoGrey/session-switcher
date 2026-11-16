@@ -129,10 +129,12 @@ function saveBounds() {
 }
 
 // Any of the app's windows: links that go elsewhere open in your browser, never inside the app.
-// popout: a popped-out chat, which may itself pop out nothing but the browser.
+// popout: a popped-out chat, which may itself pop out nothing but the browser. (A slack: link opens the Slack app at a
+// channel: Slack post's Copy and open Slack.)
+const EXTERNAL = /^(https?|mailto):|^slack:\/\/(channel|open)\?/i;
 function guard(wc, popout = false) {
-  if (popout) wc.setWindowOpenHandler(({ url }) => { if (/^(https?|mailto):/i.test(url) && !ours(url)) shell.openExternal(url); return { action: 'deny' }; });
-  wc.on('will-navigate', (e, url) => { if (!ours(url) && !url.startsWith('data:')) { e.preventDefault(); if (/^https?:/i.test(url)) shell.openExternal(url); } });
+  if (popout) wc.setWindowOpenHandler(({ url }) => { if (EXTERNAL.test(url) && !ours(url)) shell.openExternal(url); return { action: 'deny' }; });
+  wc.on('will-navigate', (e, url) => { if (!ours(url) && !url.startsWith('data:')) { e.preventDefault(); if (EXTERNAL.test(url)) shell.openExternal(url); } });
 }
 const ours = u => u.startsWith(URL_BASE) || u.startsWith(`http://localhost:${PORT}/`) || (u.startsWith(`http://127.0.0.1:${HOME_PORT}/`) && home.paired());
 const iconFile = () => path.join(APP_FILES, IS_MAC ? 'macos/icon.icns' : 'icon.ico');
@@ -173,7 +175,7 @@ function createWindow(hidden = false) {
       return { action: 'allow', overrideBrowserWindowOptions: { width: m.width || 340, height: m.height || 320, x: m.x, y: m.y, minWidth: 260, minHeight: 180, alwaysOnTop: true, minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, title: 'Session Switcher', backgroundColor: '#0a090c', autoHideMenuBar: true, icon: iconFile() } };
     }
     if (ours(url)) return { action: 'allow', overrideBrowserWindowOptions: { width: 900, height: 860, backgroundColor: '#0a090c', autoHideMenuBar: true, icon: iconFile(), webPreferences: { contextIsolation: true, sandbox: true, spellcheck: true, preload: path.join(__dirname, 'shell', 'preload.js') } } };
-    if (/^(https?|mailto):/i.test(url)) shell.openExternal(url);
+    if (EXTERNAL.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
   // The page asks before it's closed while something is unsaved; the desktop window just goes to the tray.

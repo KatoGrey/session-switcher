@@ -437,13 +437,18 @@ function welcome(cwd) {
 // What you were typing stays with each chat, even if you switch away or close the window.
 const draftKey = () => (C.sessionId ? `draft:${C.sessionId}` : C.info && C.info.cwd ? `draft:new:${C.provider}:${C.info.cwd}` : null);
 let draftTimer = null;
+function syncDraft(id, text, at = Date.now()) {
+  if (!id) return;
+  const revision = window.ChatDrafts?.changed(id, text, at);
+  api('/api/draft', { id, text, at }).then(() => window.ChatDrafts?.acknowledged(id, text, at, revision)).catch(() => {});
+}
 function writeDraft() {
     draftTimer = null;
     const k = draftKey(); if (!k) return;
     const v = $c('cText').value, at = Date.now();
     try { if (v.trim()) { localStorage.setItem(k, v); localStorage.setItem(`${k}:at`, String(at)); } else { localStorage.removeItem(k); localStorage.removeItem(`${k}:at`); } } catch { /* full or private */ }
     // The PC keeps it too, for your other devices.
-    if (C.sessionId) api('/api/draft', { id: C.sessionId, text: v, at }).catch(() => {});
+    syncDraft(C.sessionId, v, at);
 }
 function saveDraft() {
   clearTimeout(draftTimer);
@@ -460,10 +465,12 @@ function restoreDraft() {
     if (gen !== C.gen || !d || !d.text || d.at <= mine || d.text === $c('cText').value || $c('cText').value !== had) return;
     $c('cText').value = d.text; grow();
     try { localStorage.setItem(k, d.text); localStorage.setItem(`${k}:at`, String(d.at)); } catch { /* fine */ }
+    window.ChatDrafts?.changed(id, d.text, d.at);
+    window.ChatDrafts?.acknowledged(id, d.text, d.at);
     toast('Picked up what you were writing on your other device.', 3500);
   }).catch(() => {});
 }
-function clearDraft() { clearTimeout(draftTimer); draftTimer = null; const k = draftKey(); if (C.sessionId) api('/api/draft', { id: C.sessionId, text: '', at: Date.now() }).catch(() => {}); try { if (k) { localStorage.removeItem(k); localStorage.removeItem(`${k}:at`); } if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
+function clearDraft() { clearTimeout(draftTimer); draftTimer = null; const k = draftKey(); syncDraft(C.sessionId, ''); try { if (k) { localStorage.removeItem(k); localStorage.removeItem(`${k}:at`); } if (C.info && C.info.cwd) localStorage.removeItem(`draft:new:${C.provider}:${C.info.cwd}`); } catch { /* fine */ } }
 
 async function sendMessage() {
   // An OpenClaw session: the message becomes a follow-up turn in that session (through
@@ -501,7 +508,7 @@ async function sendMessage() {
   const clear = () => {
     if (C.key !== key0) {
       // You've moved to another chat since: what was sent mustn't come back as that chat's draft.
-      try { if (localStorage.getItem(draft0) === typed) { localStorage.removeItem(draft0); localStorage.removeItem(`${draft0}:at`); if (id0) api('/api/draft', { id: id0, text: '', at: Date.now() }).catch(() => {}); } } catch { /* fine */ }
+      try { if (localStorage.getItem(draft0) === typed) { localStorage.removeItem(draft0); localStorage.removeItem(`${draft0}:at`); syncDraft(id0, ''); } } catch { /* fine */ }
       const p = Parked.get(draft0);
       if (p) {
         for (const a of sentImgs) if (a.url) URL.revokeObjectURL(a.url);
@@ -624,7 +631,11 @@ async function outboxFlush() {
       try { await api('/api/chat/send', { key: m.key, text: m.text }); } catch (err) {
         if (err.offline) break;   // still away: try again later
         // The chat closed meanwhile: the words go back into its message box, not lost.
-        if (m.sessionId) store(`draft:${m.sessionId}`, m.text);
+        if (m.sessionId) {
+          const at = Date.now();
+          store(`draft:${m.sessionId}`, m.text); store(`draft:${m.sessionId}:at`, String(at));
+          window.ChatDrafts?.changed(m.sessionId, m.text, at);
+        }
         toast(`Your waiting message to “${m.title || 'a chat'}” couldn’t go (${err.message}). It’s back in that chat’s message box.`, 8000);
       }
       store('outbox', JSON.stringify(outboxAll().filter(x => !(x.at === m.at && x.text === m.text))));

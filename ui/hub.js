@@ -62,6 +62,8 @@ const sagaLook = () => Look.theme().family === 'saga';
 const projLast = p => Math.max((p.sessions[0] && p.sessions[0].updated) || 0, p.updated || 0);
 const parentName = cwd => String(cwd || '').split(/[\\/]+/).filter(Boolean).slice(-2, -1)[0] || '';
 function renderNav() {
+  // Not while a section is being dragged into a new place (ui/nav-order.js): it's drawn once it's let go.
+  if (navDragHolds()) { NavDrag.held = true; return; }
   const html = sagaLook() ? navSagaHtml() : navHtml();
   // Only when something would look different (it's asked for several times a second while chats work).
   if ($('nav')._h === html) return;
@@ -86,6 +88,8 @@ function chatState(x) {
   const word = { approve: 'Needs your OK', question: 'Has a question', 'terminal-wait': 'Waiting in its terminal', reply: 'Your turn', working: x.leftover ? 'Finishing' : w.source === 'terminal' ? 'Working in a terminal' : x.keep && !WORKING.has(x.phase) ? 'Keeps working' : 'Working', quiet: x.source === 'terminal' ? 'In a terminal' : x.source === 'elsewhere' ? 'In another app' : 'Ready', ended: 'Stopped' }[st] || '';
   return { st, dot, word: w !== x ? `${PROV_TITLE[w.provider || 'claude']}: ${word}` : word };
 }
+// A chat's Draft label (ui/chat-drafts.js shows or hides it as its unsent message comes and goes).
+const draftTag = id => (window.ChatDrafts && id ? ChatDrafts.badge(id) : '');
 function navHtml() {
   const A = awaiting().length, W = atWork().length;
   const total = S.projects.reduce((n, p) => n + p.sessions.length, 0);
@@ -97,18 +101,18 @@ function navHtml() {
   const provCls = c => (provOf(c) === 'claude' ? '' : provOf(c));
   // Open now: what each is doing, in words, one click from opening.
   const activeHtml = active.length ? `${fold('open', voice('Active now'), active.length, 'open')}
-    ${S.navFold.has('open') ? '' : active.map(x => { const s = chatState(x), p = projectOf(x); return `<button class="nav-i nav-chat ${x.provider && x.provider !== 'claude' ? x.provider : ''}" data-navopen="${esc(keyOf(x))}" title="${esc(x.title || 'New chat')}${x.folder ? ` · ${esc(x.folder)}` : ''}" aria-current="${!!(viewing && lowId(x.sessionId) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t"><span class="nc-t">${esc(x.title || 'New chat')}</span><small>${esc(s.word)}${x.folder ? ` · ${esc(x.folder)}` : ''}</small></span><span class="${s.dot} nav-dot" aria-hidden="true"></span></button>`; }).join('')}` : '';
+    ${S.navFold.has('open') ? '' : active.map(x => { const s = chatState(x), p = projectOf(x); return `<button class="nav-i nav-chat ${x.provider && x.provider !== 'claude' ? x.provider : ''}" data-navopen="${esc(keyOf(x))}" title="${esc(x.title || 'New chat')}${x.folder ? ` · ${esc(x.folder)}` : ''}" aria-current="${!!(viewing && lowId(x.sessionId) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${draftTag(x.sessionId)}<span class="nc-t">${esc(x.title || 'New chat')}</span><small>${esc(s.word)}${x.folder ? ` · ${esc(x.folder)}` : ''}</small></span><span class="${s.dot} nav-dot" aria-hidden="true"></span></button>`; }).join('')}` : '';
   // Pinned: projects, and chats that aren't open just now (open ones are in the list above).
   const pinnedP = [...S.pins].map(cwd => S.projects.find(p => p.cwd === cwd)).filter(Boolean);
   const pinnedC = closedPins.map(x => sessionById(x.sessionId)).filter(([c]) => c);
   const pinnedHtml = pinnedP.length || pinnedC.length ? `${fold('pinned', 'Pinned', pinnedP.length + pinnedC.length, 'pinned')}
     ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd && !S.prov}" title="${esc(p.cwd)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
-      + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat one ${provCls(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(viewing && lowId(c.id) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t"><span class="nc-t">${esc(c.title)}</span><span class="sr"> in ${esc(p.name)}${provWord(c)}</span></span></button>`).join('')}` : '';
+      + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat one ${provCls(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(viewing && lowId(c.id) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${draftTag(c.id)}<span class="nc-t">${esc(c.title)}</span><span class="sr"> in ${esc(p.name)}${provWord(c)}</span></span></button>`).join('')}` : '';
   // Recent: the latest chats that aren't listed above; every one on the Recent chats page.
   const listed = new Set([...active.flatMap(x => [x.sessionId, x.startedAs]), ...pinnedC.map(([c]) => c.id)].filter(Boolean).map(lowId));
   const recentC = allSessions().filter(([c, p]) => p.cwd !== cmdrSet().cwd && !listed.has(lowId(c.id))).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6);
   const recentHtml = total ? `${fold('recent', voice('Recent'), recentC.length, 'recent')}
-    ${S.navFold.has('recent') ? '' : recentC.map(([c, p]) => `<button class="nav-i nav-chat ${provCls(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(viewing && lowId(c.id) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)} · ${esc(agoL(c.updated))}${provWord(c)}</small></span></button>`).join('')}` : '';
+    ${S.navFold.has('recent') ? '' : recentC.map(([c, p]) => `<button class="nav-i nav-chat ${provCls(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(viewing && lowId(c.id) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${draftTag(c.id)}<span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)} · ${esc(agoL(c.updated))}${provWord(c)}</small></span></button>`).join('')}` : '';
   return `
     <div class="nav-destinations" aria-label="Workspace">
     <button type="button" class="nav-i nav-newchat" data-newchat><span class="glyph" aria-hidden="true">+</span><span class="ni-t">New chat</span></button>
@@ -119,17 +123,7 @@ function navHtml() {
     <button type="button" class="nav-i nav-subagents" data-shell-subagents><span class="glyph" aria-hidden="true">⋔</span><span class="ni-t">Subagents</span></button>
     </div>
     <div class="nav-scroll">
-    <div class="nav-tools">
-    ${navCommanderHtml()}
-    ${routinesNav()}
-    ${aideNav()}
-    </div>
-    ${pinnedHtml}
-    ${navProjectsHtml()}
-    ${activeHtml}
-    ${recentHtml}
-    ${navGroupsHtml()}
-    ${navFamiliesHtml()}
+    ${navSections({ tools: `<div class="nav-tools">${navCommanderHtml()}${routinesNav()}${aideNav()}</div>`, pinned: pinnedHtml, projects: navProjectsHtml(), active: activeHtml, recent: recentHtml, groups: navGroupsHtml(), subs: navFamiliesHtml() })}
     <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p></div>`;
 }
 // Projects: one list, whichever assistant their chats are with. The ones in use lately, then the rest
@@ -949,7 +943,7 @@ function rowHtml(s, folderName, hit) {
   return `<li class="row ${S.drawerId === s.id ? 'current' : ''}" data-row="${esc(s.id)}" draggable="true">
     <div class="r-when"><span class="r-ago">${esc(ago(s.updated))}</span><span class="r-date">${esc(stamp(s.updated))}</span>${opened}</div>
     <div class="r-what">
-      <div class="r-top"><button class="r-title" data-preview="${esc(s.id)}" title="${esc(s.title)}. Details and latest messages">${hit ? highlight(s.title, S.q) : esc(s.title)}</button>${flags ? `<span class="r-flags">${flags}</span>` : ''}</div>
+      <div class="r-top"><button class="r-title" data-preview="${esc(s.id)}" title="${esc(s.title)}. Details and latest messages">${hit ? highlight(s.title, S.q) : esc(s.title)}</button>${draftTag(s.id)}${flags ? `<span class="r-flags">${flags}</span>` : ''}</div>
       ${hit && hit.snippet ? `<p class="r-snip">${highlight(hit.snippet, S.q)}</p>` : (sub ? `<p class="r-sub">${esc(sub)}</p>` : '')}
       ${folderName ? `<span class="r-chip">${esc(folderName)}</span>` : ''}
     </div>

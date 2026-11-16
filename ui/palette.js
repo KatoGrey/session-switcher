@@ -217,6 +217,11 @@ function palItems(q) {
     { glyph: '❡', t: 'Edit prompts', run: () => openPromptEditor(), alias: 'prompts saved slash templates' },
     { glyph: '✦', t: 'Go to the hub', run: () => go('hub') },
     { glyph: '✧', t: 'Recent chats', run: () => go('recent') },
+    { glyph: '✎', t: 'Chats with drafts', s: 'pick up an unsent message', alias: 'drafts unsent unfinished messages', pageTitle: 'Chats with drafts', placeholder: 'Find a draft by chat or project…', page: async () => {
+      await window.ChatDrafts?.refresh(true);
+      const list = window.ChatDrafts?.items() || [];
+      return list.length ? list : [{ note: 'No unsent messages. Start writing in a chat and its draft will appear here.' }];
+    } },
     ...(Shell.canCollapse() ? [{ glyph: '◫', t: document.body.classList.contains('nav-collapsed') ? 'Show sidebar' : 'Hide sidebar', s: 'more room for your current work', run: () => Shell.toggle(), alias: 'focus sidebar collapse expand navigation' }] : []),
     { glyph: '⟳', t: 'Routines', s: 'chats that start on a schedule or when something new turns up', run: () => go('routines'), alias: 'schedule watch automation cron' },
     { glyph: '⚙', t: 'Setup and health', run: openSetup, alias: 'settings options preferences config health', setup: true },
@@ -227,6 +232,7 @@ function palItems(q) {
     { glyph: '⑂', t: 'Split the work', s: 'two of them each take a part, in their own copies; keep both', run: () => openRaceDialog(paletteHere(), 'split'), alias: 'split divide parallel share both halves worktree' },
     { glyph: '⏳', t: 'Queue a task', s: 'starts as a new chat when an account has room, or at a time', run: () => openTaskDialog(paletteHere()), alias: 'queue later schedule task when limit resets' },
     { glyph: '§', t: 'Rules and tools', s: 'CLAUDE.md, AGENTS.md and MCP servers, one set for all of them', run: () => openRules(paletteHere()), alias: 'claude.md agents.md gemini.md mcp servers tools rules instructions memory', setup: true },
+    { glyph: '⌁', t: 'PC check-up', s: 'What’s running and taking space on this PC: tick what to close or clear', run: () => openPcCheck(), alias: 'pc computer ram memory cpu hung frozen not responding disk space free up clean temp cache processes task manager slow' },
     { glyph: '⋔', t: 'Subagents', s: 'The model and effort of the helpers Claude starts, and your own named ones', run: () => openSubagents(), alias: 'subagent agents agent model effort reasoning haiku sonnet opus fable scout reviewer delegate helpers task', setup: true },
     { glyph: '⚿', t: 'Connections', s: 'GitHub, Linear and tools like Latitude’s, for every Claude and Codex account', run: () => openConnections(paletteHere()), alias: 'mcp sign in login oauth authenticate connect latitude tools accounts github gh linear key api', setup: true },
     // Setup by what it's for, found by the words you'd use for it, each opening the exact place (ui/setup.js).
@@ -288,7 +294,7 @@ function palItems(q) {
     text: `${it.label} ${it.hint || ''} ${/done/i.test(it.label) ? 'done archive finish tidy' : /side question/i.test(it.label) ? 'btw aside quick question' : /Summarize/.test(it.label) ? 'compact summarize context' : /Stop/.test(it.label) ? 'stop end quit chat' : /Find/.test(it.label) ? 'find search' : ''}`,
   })) : [];
   if (!q) {
-    const destinations = new Set(['New chat', 'Go to the hub', 'Your work', 'Recent chats', 'Connections', 'Routines', 'Setup and health']);
+    const destinations = new Set(['New chat', 'Go to the hub', 'Your work', 'Recent chats', 'Chats with drafts', 'Connections', 'Routines', 'Setup and health']);
     if (inChat) add('This chat', [
       { glyph: '←', t: `Back to ${Shell.location()}`, s: 'leave the conversation running', run: () => document.querySelector('#chat [data-c="back"]').click() },
       { glyph: '▤', t: 'Files and output', s: 'artifacts, files, commands and tasks', run: () => document.querySelector('#chat [data-c="ledger"]').click() },

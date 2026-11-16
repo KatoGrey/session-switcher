@@ -211,3 +211,52 @@ function speedHtml() {
   }).join('');
   return `<table class="speed"><tbody>${rows}</tbody></table><p class="pb-none">Typical times on this device this week (the middle of each), kept on this device.</p>`;
 }
+
+/* ---------- layout faults, on your own data ---------- */
+// When a dialog opens (and again once its insides have loaded), it's checked for what makes a sheet feel broken: the
+// dialog scrolling itself around a box that scrolls too (two scroll bars, as Setup's did in 6.13), something placed
+// inside a scrolling box that reaches out of it, or the dialog wider than its space. One found is noted here once, as
+// a slip, with Ask Claude to fix this. Nothing is opened, moved or changed to look. (tests/audit.ui.js does the same
+// across every page and dialog, on stand-in data.)
+function layoutFaults(d) {
+  const out = [];
+  const shown = el => el.getClientRects().length > 0 && (el.checkVisibility ? el.checkVisibility({ visibilityProperty: true }) : true);
+  const name = el => el.tagName.toLowerCase() + (el.id ? `#${el.id}` : typeof el.className === 'string' && el.className.trim() ? `.${el.className.trim().split(/\s+/)[0]}` : '');
+  const scrolls = el => /auto|scroll/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight + 2;
+  const clips = el => { const s = getComputedStyle(el); return /auto|scroll|hidden|clip/.test(s.overflowY) || /auto|scroll|hidden|clip/.test(s.overflowX); };
+  const all = [...d.querySelectorAll('*')].filter(shown);
+  if (scrolls(d)) { const inner = all.find(el => scrolls(el) && el.clientHeight > d.clientHeight * 0.4); if (inner) out.push(`it scrolls itself around ${name(inner)}, which scrolls too (two scroll bars)`); }
+  if (d.scrollWidth > d.clientWidth + 2) out.push(`it's ${d.scrollWidth - d.clientWidth}px wider than its space`);
+  for (const el of all) {
+    if (getComputedStyle(el).position !== 'absolute') continue;
+    let s = null; for (let p = el.parentElement; p && p !== d; p = p.parentElement) if (clips(p)) { s = p; break; }
+    if (!s) continue;
+    const op = el.offsetParent; if (op && (op === s || s.contains(op))) continue;
+    const r = el.getBoundingClientRect(), q = s.getBoundingClientRect();
+    // (Words only a screen reader hears, 1px and clipped, harm nothing unless they make the dialog scroll, caught above.)
+    if (r.width <= 2 && r.height <= 2) continue;
+    if (r.bottom > q.bottom + 1 || r.top < q.top - 1 || r.right > q.right + 1 || r.left < q.left - 1) { out.push(`${name(el)} reaches out of ${name(s)}`); break; }
+  }
+  return out;
+}
+// Each fault once per dialog (named by its id, so a dialog titled by a PR or a chat counts once), and a few at most,
+// with their own allowance: they mustn't crowd out the page's real slips.
+const LayoutSeen = new Set();
+function checkDialogLayout(d) {
+  if (!d.open || !d.isConnected) return;
+  const name = d.id || (d.querySelector('h3, h2')?.textContent || 'A dialog').trim().slice(0, 40);
+  for (const f of layoutFaults(d)) {
+    const m = `Layout: ${name}: ${f}.`;
+    if (LayoutSeen.has(m) || LayoutSeen.size >= 5) continue;
+    LayoutSeen.add(m);
+    api('/api/problems', { message: m, stack: '' }).catch(() => {});
+  }
+}
+new MutationObserver(list => {
+  for (const m of list) {
+    const d = m.target;
+    if (d.tagName !== 'DIALOG' || !d.open) continue;
+    setTimeout(() => checkDialogLayout(d), 900);
+    setTimeout(() => checkDialogLayout(d), 3500);
+  }
+}).observe(document.body, { attributes: true, attributeFilter: ['open'], subtree: true });
