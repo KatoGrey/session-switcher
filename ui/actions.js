@@ -78,9 +78,9 @@ function showMenu(anchor, items, ifEmpty = null) {
       ? `<p class="m-empty" id="menuEmpty" aria-hidden="true">${say}</p><button role="menuitem" data-i="0" class="m-next" aria-describedby="menuEmpty"><span class="m-g" aria-hidden="true">→</span><span class="m-l">${esc(act.label)}${act.hint ? `<span class="hint">${esc(act.hint)}</span>` : ''}</span></button>`
       : `<p class="m-empty" role="menuitem" aria-disabled="true" tabindex="-1">${say}</p>`;
   } else {
-    // Labels line up whether or not an item has an icon.
+    // Labels line up whether or not an item has an icon. { head } is a heading over the rows under it.
     const glyphs = items.some(it => it !== '-' && it.glyph);
-    m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${it.glyph || glyphs ? `<span class="m-g" aria-hidden="true">${esc(it.glyph || '')}</span>` : ''}<span class="m-l">${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</span>${it.keys ? `<kbd class="m-k">${esc(it.keys)}</kbd>` : ''}${it.more ? '<span class="m-more" aria-hidden="true">›</span>' : ''}`}</button>`)).join('');
+    m.innerHTML = items.map((it, i) => (it === '-' ? '<hr>' : it.head ? `<p class="m-h" role="presentation">${esc(it.head)}</p>` : `<button role="${it.checked !== undefined ? 'menuitemradio' : 'menuitem'}" ${it.checked !== undefined ? `aria-checked="${!!it.checked}"` : ''} data-i="${i}" ${it.disabled ? `disabled title="${esc(it.why || '')}"` : ''} class="${it.danger ? 'danger' : ''} ${it.html ? 'm-acct' : ''}">${it.html || `${it.glyph || glyphs ? `<span class="m-g" aria-hidden="true">${esc(it.glyph || '')}</span>` : ''}<span class="m-l">${esc(it.label)}${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</span>${it.keys ? `<kbd class="m-k">${esc(it.keys)}</kbd>` : ''}${it.more ? '<span class="m-more" aria-hidden="true">›</span>' : ''}`}</button>`)).join('');
   }
   menuReturn = document.activeElement;
   $('menuBack').hidden = false;

@@ -1,4 +1,25 @@
-# Headless runs get a list of their own
+# A browser in the app, playtests with a goal, and a chat's account switched in place
+
+**A browser built into Session Switcher.** Claude and Codex chats can now open web pages in the app itself, beside the chat, and use them: look, click, type, read the page as text, run a script, check the console and network. You watch as it happens (a ring shows where it clicked, and a line says what it's doing), and you can use the same tabs yourself at any time: sign in, click around, type. No Chrome, no extension, and no matching claude.ai sign-in: any chat on any account can use it, and its usage goes on that chat's account.
+- **The browser button** in a chat's header opens it beside the chat (or over it, in a narrow window). It opens by itself the first time the chat's assistant uses it. Each chat has its own tabs; the one you pick is the one the chat uses next.
+- **Sign in once.** Sign-ins you make in it (voyage.io, say) are kept for every chat, apart from your Chrome.
+- **Page size:** Desktop, Laptop, Wide, Tablet or Phone (the last two act as a touch screen with a phone browser), from the bar or by the chat itself.
+- **Keeps working out of sight:** tabs draw off screen, so a chat can carry on with the window in the tray. A page's own boxes (alerts, "Are you sure?") are answered inside it (Cancel, unless you say otherwise) and noted, never popped up over your screen. Downloads go to your Downloads folder.
+- **Your Chrome too.** Chats still get Claude in Chrome (the extension) as well, for when you want your own Chrome and its sign-ins: it works when the extension is signed in to claude.ai as the same account the chat runs as. **Setup → Preferences → The browser chats use** chooses both (the default), just the built-in one (a couple of thousand tokens a chat cheaper), just your Chrome, or none.
+- **In Plan mode** (or Codex's read-only) the browser only reads: it opens pages, looks and reads, but doesn't click, type or run scripts.
+- Tabs nobody has used or looked at for 45 minutes close by themselves, and the app's own address can't be opened from a tab.
+
+**Voyage, played as text.** On voyage.io the chat gets tools that read the story and play a turn without pictures: where the game is (the setup step, openings and characters, whether the action box is ready), the latest turns as text, **take a turn** (types the action, submits it, skips through the dialogue and waits for the turn to finish), skip dialogue, and **start a game** (past the mature-content notice, the opening by name, a saved character or a new one). Far cheaper and quicker than clicking through screenshots.
+
+**Playtest.** A **Playtest** button on a Voyage world's project (and Ctrl+K → Playtest a Voyage world…, and **Playtest…** in a chat's ⋯ menu) starts a chat that plays your world in the built-in browser and writes a report.
+- **A goal and the specs:** what it should find out (or a quick start: fights and companions, the opening, NPCs, quests, try to break it, a new player's first 15 minutes, check the latest patch notes), how many turns, the opening, the character, how to play (new player, careful, aggressive fighter, talker, chaos), desktop or phone size, whether to stop and ask when something looks broken, pictures of key moments, and what the report covers.
+- **Who plays:** Claude or Codex, the account, model and effort.
+- **Presets:** save a setup for a world and run it again in one click; the world's links (live, test version) are kept too.
+- **The report** goes in the world's folder, under `playtests`, with the setup, the answer to the goal, bugs with the turn and the game's own words, rules not followed, and what to fix first.
+
+**Switch the account a chat runs as.** Click the account at the top right of a chat to carry the same conversation on as another of your accounts (Claude or Codex), with how much room each has. While it's replying, choose **Switch when this reply finishes** or **Stop it and switch now** (your last message goes back in the box). In a chat where Claude and Codex work together, the other one keeps going.
+
+## Earlier in 6.16: headless runs get a list of their own
 
 **Headless runs, out of your way.** Chats a script or another agent starts (`claude -p`, the Claude Agent SDK, `codex exec`), like a pipeline of review runs, no longer fill Recent, Active now, your projects' lists or the hub. They're under **Headless runs** in the sidebar, the ones working first, and each project keeps its own folded away under its chats, like Done. A run that finishes isn't "your turn" and doesn't notify you; one that needs your OK still does.
 - **The Headless runs page** (the sidebar, or Ctrl+K → Headless runs): every run, the ones working on top, with a filter and a folder picker. Tick several, or **Select all shown**, then **Mark done**, **Move to group…** (a new group takes them all) or **Back with my chats**.

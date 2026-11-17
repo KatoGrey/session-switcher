@@ -1,0 +1,47 @@
+/* Playtest (ui/playtest.js): the sheet that starts an agent playing a Voyage world. Built from the app's own pieces
+   (dialog.wide, .tk-body, .lt-chip, .chip, .toggle, the shared who picker); this only lays them out. On a phone,
+   dialog.wide fills the screen, and the rows here stack. */
+dialog.pt-dlg{width:min(760px,calc(calc(100vw / var(--look-ui, 1)) - 32px))}
+dialog.pt-dlg[open]{display:flex;flex-direction:column}
+.pt-dlg form{display:flex;flex-direction:column;min-height:0;flex:1}
+.pt-body{display:grid;gap:12px;overflow:auto;min-height:0}
+.pt-body .rd-intro{margin:10px 0 0}
+.pt-body .rd-intro code,.pt-note code{font:400 12.5px var(--f-mono);color:var(--gilt)}
+.pt-body input:not([type="radio"]):not([type="checkbox"]),.pt-body select{font:400 14.5px var(--f-body);letter-spacing:0;text-transform:none;padding:8px 10px;border:1px solid var(--seam-2);border-radius:7px;background:rgb(var(--c-100e12));color:var(--parch);width:100%;box-sizing:border-box}
+.pt-body input:focus-visible,.pt-body select:focus-visible,.pt-body textarea:focus-visible{border-color:var(--ash-2);outline:none}
+#ptProjWrap select{max-width:420px}
+.pt-warn{margin:0;padding:8px 12px;border:1px solid var(--seam-2);border-radius:8px;color:var(--parch-2);font-size:14px}
+.pt-warn.bad{border-color:var(--crimson);color:var(--parch)}
+.pt-note{margin:-4px 0 0;color:var(--ash);font-size:13.5px;line-height:1.5}
+.pt-saved{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:-4px}
+.pt-link{display:inline-flex;align-items:center;gap:0}
+.pt-link .chip{font-size:13.5px;padding:4px 11px}
+.pt-link.on .chip,.pt-chips .chip.on{border-color:var(--gilt);color:var(--parch)}
+.pt-mini{width:26px;height:26px;font-size:12px}
+.pt-mini:hover{color:var(--parch);border-color:var(--seam-2)}
+.pt-chips{margin-top:-4px;gap:6px}
+.pt-chips .chip{font-size:13.5px;padding:5px 12px}
+.pt-chips .chip:disabled{opacity:.5;cursor:default}
+.pt-specs{border:1px solid var(--seam);border-radius:10px;margin:0;padding:6px 14px 14px;display:grid;gap:12px;min-width:0}
+.pt-specs legend{padding:0 6px;margin:0}
+.pt-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.pt-line > span:not(.lt-k){display:contents}
+.pt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.pt-specs .toggle b{font-size:14.5px}
+.pt-specs .toggle span span{font-size:13.5px}
+.pt-who{margin:0}
+.pt-quick{display:grid;gap:4px}
+.pt-quick .lt-h{margin:4px 0 2px}
+.pt-qs{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.pt-q{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border:1px solid var(--seam);border-radius:8px}
+.pt-q-t{flex:1;min-width:0;display:grid}
+.pt-q-t b{font-weight:600;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pt-q-t small{color:var(--ash);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pt-brief{margin:0;max-height:320px;overflow:auto;padding:12px 14px;border:1px solid var(--seam);border-radius:8px;background:rgb(var(--c-100e12));color:var(--parch-2);font:400 12.5px/1.55 var(--f-mono);white-space:pre-wrap;word-break:break-word}
+.pt-acts{flex-wrap:wrap;margin-top:4px}
+@media (max-width:760px){
+  .pt-q{flex-wrap:wrap}
+  .pt-q-t{flex-basis:100%}
+  .pt-acts .btn{flex:1 1 auto}
+  .pt-acts .spacer{display:none}
+}

@@ -9,7 +9,8 @@ function headerAccount(id, fallbackName) {
   const pct = (label, w, k) => { if (!w) return ''; const l = leftOf(w); return `<span class="cu ${hot(l) ? 'hot' : ''}" title="${label}: ${l}% left${w.resetsAt ? `, resets ${esc(when(w.resetsAt))}` : ''}">${label} ${Roll.num(`${id}:${k}`, l)}%</span>`; };
   $c('cAcct').hidden = !a && !fallbackName;
   $c('cAcct').innerHTML = `${id ? miniDial(id, 22) : ''}<span class="ca-n">${esc(a ? a.name : fallbackName || '')}</span>${d ? `${pct('5h', d.fiveHour, '5h')}${pct('wk', d.week, 'wk')}${(d.models || []).filter(m => m.used !== null).map(m => pct(esc(m.name), m, `m:${m.name}`)).join('')}` : ''}`;
-  $c('cAcct').title = a ? `This chat runs as ${a.name}${a.email ? ` (${a.email})` : ''}` : '';
+  $c('cAcct').title = a ? `This chat runs as ${a.name}${a.email ? ` (${a.email})` : ''}. Switch the account this chat runs as` : '';
+  if (typeof showSwitchNote === 'function') showSwitchNote();
   const ring = a ? ringById(id) : 'var(--seam-2)';
   $c('chat').style.setProperty('--acct', ring);
   if (typeof renderBar === 'function') renderBar();
@@ -536,7 +537,8 @@ async function openChatView({ sessionId = null, cwd = null, mode = 'resume', for
   }
   let info;
   try {
-    info = await api('/api/chat/open', { account: a.id, sessionId, cwd, mode, force, provider: prov, parent: mode === 'new' ? parent : null, ...(mode === 'new' && model ? { model } : {}), ...(mode === 'new' && effort ? { effort } : {}) });
+    // A Codex chat asked for as one of your Codex accounts (its account menu) runs as that one.
+    info = await api('/api/chat/open', { account: prov === 'codex' && accountId && codexAcct(accountId) ? accountId : a.id, sessionId, cwd, mode, force, provider: prov, parent: mode === 'new' ? parent : null, ...(mode === 'new' && model ? { model } : {}), ...(mode === 'new' && effort ? { effort } : {}) });
   } catch (err) {
     if (seq !== openSeq) return undefined;
     if (['codex-signin', 'codex-missing', 'gemini-signin', 'gemini-missing'].includes(err.reason)) { toast(err.message, 9000); return undefined; }
@@ -809,6 +811,8 @@ document.addEventListener('DOMContentLoaded', () => {
     switch (c.dataset.c) {
       case 'back': if (PANE) return parent.splitFromPane(window, 'close'); if (SOLO) { window.close(); return undefined; } return closeChatView();
       case 'split': return c.getAttribute('aria-expanded') === 'true' ? closeMenu() : splitMenu(c);
+      case 'acct': return c.getAttribute('aria-expanded') === 'true' ? closeMenu() : acctMenu(c);
+      case 'acctcancel': return cancelSwitch();
       case 'paneclose': return parent.splitFromPane(window, 'close');
       case 'paneswap': return parent.splitFromPane(window, 'swap');
       case 'rail': return chat.classList.toggle('show-rail');
@@ -1043,6 +1047,8 @@ function chatHeadItems() {
     ...(reviewAvailable() || claudeReviewOK() ? ['-'] : []),
     ...(canPopOut() && !C.watch ? [{ glyph: '⧉', label: 'Open in a new window', hint: 'side by side', disabled: !id, why: 'Send a message first', run: () => { const sid = id; closeChatView(); popOutChat(sid); } }] : []),
     ...(C.info && C.info.cwd && !C.watch ? [{ glyph: '▶', label: 'Run the project', hint: 'its dev server or start script, with its output', run: () => openRun() }] : []),
+    // Playtest a Voyage world (ui/playtest.js): in this chat (as its next message) or a new one.
+    ...(C.info && C.info.cwd && !C.watch && window.openPlaytest ? [{ glyph: '▶', label: 'Playtest…', hint: 'a Voyage world, in the browser, with a report', run: () => openPlaytest({ cwd: C.info.cwd, key: C.key && C.state !== 'ended' && !C.aide ? C.key : null }) }] : []),
     ...(C.key && !C.watch ? [{ glyph: '❦', label: 'Ask a side question', hint: '/btw · doesn’t derail this chat', run: () => openAside() }] : []),
     // The same conversation on your other account, the one with more left, before it runs out.
     ...(C.key && !C.watch && id && C.provider === 'claude' && !isCommander(id) ? roomyAccounts(C.info && C.info.accountId).slice(0, 3).map(x => ({ glyph: '⇄', label: `Carry on as ${x.a.name}`, hint: x.left !== null ? `the same conversation · ${x.left}% left` : 'the same conversation', disabled: C.state !== 'ready', why: 'Wait for the reply to finish', run: () => continueAs(x.a.id, { outOfUsage: false }) })) : []),

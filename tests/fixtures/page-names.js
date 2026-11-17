@@ -18,7 +18,7 @@ const BROWSER = new Set(`window document navigator location history screen conso
   Error TypeError RangeError SyntaxError ReferenceError AggregateError undefined NaN Infinity isNaN isFinite parseInt parseFloat encodeURIComponent decodeURIComponent encodeURI decodeURI escape unescape
   Uint8Array Uint8ClampedArray Uint16Array Uint32Array Int8Array Int16Array Int32Array Float32Array Float64Array ArrayBuffer SharedArrayBuffer DataView Atomics TextEncoder TextDecoder
   URL URLSearchParams Blob File FileReader FormData Headers Request Response AbortController AbortSignal EventSource WebSocket XMLHttpRequest BroadcastChannel MessageChannel
-  Event CustomEvent KeyboardEvent MouseEvent PointerEvent ClipboardItem DataTransfer ResizeObserver MutationObserver IntersectionObserver PerformanceObserver
+  Event CustomEvent KeyboardEvent MouseEvent PointerEvent InputEvent ClipboardItem DataTransfer ResizeObserver MutationObserver IntersectionObserver PerformanceObserver
   Element HTMLElement HTMLInputElement HTMLTextAreaElement HTMLImageElement HTMLCanvasElement HTMLVideoElement HTMLAnchorElement Node NodeList Text Range DOMParser DocumentFragment CSS CSSStyleSheet
   Image Audio AudioContext webkitAudioContext OffscreenCanvas createImageBitmap ImageBitmap Notification PushManager ServiceWorker Worker Option getSelection SpeechSynthesisUtterance SpeechRecognition webkitSpeechRecognition
   Highlight NodeFilter documentPictureInPicture scrollX scrollY pageXOffset pageYOffset
@@ -87,6 +87,6 @@ const out = {
   'ui-lite': group([...js('ui-lite'), 'ui-lite/index.html'], BROWSER),
 };
 // The server's and the desktop app's own code: each file is a module with its own names.
-for (const f of ['server.js', ...js('lib'), ...js('bin'), 'desktop/main.js', ...js('desktop/shell')]) out[f] = group([f], /aide-region-ui\.js$/.test(f) ? BROWSER : /preload\.js$/.test(f) ? new Set([...NODE, ...BROWSER]) : NODE);   // (the region selector is a renderer; a preload runs in the page)
+for (const f of ['server.js', ...js('lib'), ...js('bin'), 'desktop/main.js', ...js('desktop/shell')]) out[f] = group([f], /aide-region-ui\.js$/.test(f) ? BROWSER : /preload\.js$|browser-scripts\.js$/.test(f) ? new Set([...NODE, ...BROWSER]) : NODE);   // (the region selector is a renderer; a preload, and the browser tools' page scripts, run in a page)
 for (const k of Object.keys(out)) if (!Object.keys(out[k]).length) delete out[k];
 console.log(JSON.stringify({ missing: out }));

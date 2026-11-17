@@ -441,6 +441,9 @@ body.nav-sizing,body.nav-sizing *{cursor:col-resize!important;user-select:none}
 .menu .m-acct .m-t small{font-size:12.5px;color:var(--ash);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .menu .m-acct .m-u{font:500 11.5px var(--f-label);color:var(--ash)}
 .menu .m-acct[aria-checked="true"]{background:rgb(var(--c-8c3a34) / .16)}
+.menu .m-acct .m-t small.m-out{color:var(--ember-soft)}
+/* A heading over the rows under it ({ head } in showMenu). */
+.menu .m-h{margin:0;padding:7px 11px 5px;font:500 10.5px/1.2 var(--f-label);letter-spacing:.16em;text-transform:uppercase;color:var(--ash)}
 /* A menu with nothing in it says why, with the next step under it. */
 .menu .m-empty{margin:0;padding:8px 11px 6px;color:var(--parch-2);font:400 14px/1.45 var(--f-body);overflow-wrap:anywhere}
 .menu .m-empty[tabindex]:focus{outline:none}
@@ -597,6 +600,14 @@ body.rail-dragging,body.rail-dragging *{user-select:none;cursor:grabbing !import
 .c-acct .cu{font:500 11px var(--f-label);color:var(--ash)}
 .c-acct .cu + .cu::before{content:'·';margin-right:6px;color:var(--ash-2)}
 .c-acct .cu.hot{color:var(--ember-soft)}
+/* The chip is a button: it opens the menu that switches the account this chat runs as (ui/chat-limits.js acctMenu). */
+button.c-acct{background:none;text-align:left;line-height:inherit;transition:border-color .15s}
+button.c-acct:hover,button.c-acct[aria-expanded="true"]{border-color:var(--seam-2)}
+button.c-acct:hover .ca-n,button.c-acct[aria-expanded="true"] .ca-n{color:var(--gilt)}
+/* "Switching to Personal after this reply · Cancel" */
+.c-switchnote{font:italic 12.5px/1.3 var(--f-body);color:var(--ash);white-space:nowrap}
+.c-switchnote b{font-style:normal;color:var(--parch-2)}
+.c-switchnote .linkish{padding:0;font:inherit}
 .c-state{display:inline-flex;align-items:center;gap:8px;font:500 10.5px/1 var(--f-label);letter-spacing:.16em;text-transform:uppercase;color:var(--ash);white-space:nowrap}
 .c-state::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ash-2)}
 .c-state.busy{color:var(--ember)}.c-state.busy::before{background:var(--crimson);animation:glint 1.6s ease-in-out infinite}
@@ -1714,6 +1725,7 @@ dialog.fonts-dlg[open]{display:flex;flex-direction:column}
   .c-acct{padding:3px 10px 3px 4px;gap:7px;flex:none}
   .c-acct .cu{display:none}
   .c-acct .ca-n{font-size:12px}
+  .c-switchnote{flex:none;font-size:11.5px}
   .c-state{font-size:9.5px;flex:none}
   .c-mode{padding:4px 6px;font-size:13px;max-width:170px;flex:none}
   .c-icons .icon{width:40px;height:40px}

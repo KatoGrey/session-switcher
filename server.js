@@ -59,6 +59,8 @@ const linearLib = require('./lib/linear');
 const winrepo = require('./lib/winrepo');
 const onepass = require('./lib/onepass');
 const subagentsLib = require('./lib/subagents');
+const browserLib = require('./lib/browser');
+const playtestLib = require('./lib/playtest');
 const { ownText } = require('./lib/shared');
 
 const APP_VERSION = '6.16.1';
@@ -361,13 +363,17 @@ function saveDrafts() { clearTimeout(draftsTimer); draftsTimer = setTimeout(() =
 const runner = runnerLib.createRunner({ dataDir: DATA_DIR, log, onChange: cwd => broadcast('run', { cwd }) });
 const chats = chatLib.createChatManager({
   envFor: opts => subagents.envFor({ work: !!opts.work }),
+  // The built-in browser's tools (lib/browser.js), given to each Claude and Codex chat as it's made. (Companion's
+  // own chats keep to their few tools; they're known by their folder, before they start.)
+  prepare: (chat, restored) => { if (!aide.isHere(chat.cwd)) browser.prepare(chat, restored); },
   log,
   extras: chatExtras,
   onChange: chat => {
     nameAfterFirstReply(chat);
     if (chat && chat.state === 'ready' && !chat.aide) mcpAuth.watchChat(chat);
     // A partner doesn't outlive its chat: it would be left running with no window to show it.
-    if (chat && chat.state === 'ended' && !chat.parentKey && (chat.companionKey || chat.crew)) for (const p of pairs.crewOf(chat)) if (p.state !== 'ended') p.stop();
+    // (Switching accounts, it carries on with the chat once that resumes: /api/chat/stop.)
+    if (chat && chat.state === 'ended' && !chat.parentKey && !chat.switchingAway && (chat.companionKey || chat.crew)) for (const p of pairs.crewOf(chat)) if (p.state !== 'ended') p.stop();
     if (chat && chat.state === 'ended') routines.onActivity(chat);
     broadcast('live', chats.live()); scheduleActivity(); schedulePush(); saveOpenChats();
     if (chat && chat.aide) { clearTimeout(aideTimer); aideTimer = setTimeout(() => broadcast('aide'), 1500); }   // its list says what was asked last
@@ -409,6 +415,14 @@ const chats = chatLib.createChatManager({
   },
   onRateLimit: (chat, info) => usage.fromRateLimit(chat.account.id, info),
 });
+
+// ---------- the built-in browser (lib/browser.js; its tabs are the desktop app's, desktop/shell/browser.js) ----------
+const browser = browserLib.createBrowser({
+  log, dataDir: DATA_DIR, port: PORT, runAsNode: RUN_AS_NODE, appDir: APP_DIR, shell: SHELL,
+  getPrefs: () => config().prefs,
+  chatByKey: k => chats.chats.get(String(k || '')) || null,
+});
+if (SHELL) process.on('message', m => { browser.onMessage(m); });
 
 // ---------- Claude and Codex in one chat (lib/pairs.js; what each is told: lib/duo.js) ----------
 const pairs = pairsLib.createPairs({
@@ -1012,7 +1026,8 @@ function showsPicturesArgs(extra = '') {
 }
 showsPicturesArgs();
 // Claude in Chrome: chats here can use your Chrome (through the Claude extension) like a terminal
-// session started with /chrome can. Off with prefs.chromeInChats = false.
+// session started with /chrome can, when Setup's browser choice (prefs.browser) is Chrome or both. In the
+// desktop app the default is its own browser; elsewhere it's Chrome, unless prefs.chromeInChats is false.
 // cwd: the chat's folder, for what it should know about it (Latitude's repo on Windows).
 // What the Subagents page shows: the saved choices, and what can be chosen.
 const subagentsView = v => ({ ...v, models: subagentsLib.MODELS.map(m => ({ value: m, label: subagentsLib.MODEL_LABEL[m] })), efforts: subagentsLib.EFFORTS, codexEfforts: subagentsLib.CODEX_EFFORTS, engines: subagentsLib.ENGINES.map(e => ({ value: e, label: subagentsLib.ENGINE_LABEL[e] })), starters: subagentsLib.STARTERS });
@@ -1022,7 +1037,9 @@ function subagentArgs() {
   const arg = dir && dir.replace(/\\/g, '/');
   return arg && /^[\w.:=\/-]+$/.test(arg) ? ['--plugin-dir', arg] : [];
 }
-const chatArgs = (cwd = null) => [...showsPicturesArgs(winrepo.noteFor(cwd)), ...subagentArgs(), ...(config().prefs.chromeInChats === false ? [] : ['--chrome'])];
+// Which browser chats get (lib/browser.js browserPref): the app's own (its tools come in prepare, below), your
+// Chrome through the extension (--chrome), both, or neither.
+const chatArgs = (cwd = null) => [...showsPicturesArgs(winrepo.noteFor(cwd)), ...subagentArgs(), ...(['chrome', 'both'].includes(browserLib.browserPref(config().prefs, !!SHELL)) ? ['--chrome'] : [])];
 async function openChatNow(c, body) {
   // A partner's conversation opens inside the chat it belongs to.
   const lead = (!body.mode || body.mode === 'resume') && body.sessionId ? chatPrefs.parentOf(body.sessionId) : null;
@@ -1075,6 +1092,21 @@ async function openChatInner(c, body) {
     if ((!body.mode || body.mode === 'resume') && body.sessionId && !body.account) {
       const owners = await Promise.all(codexAll().filter(x => modelFits(x, body.model)).map(async x => await x.hasLoadedThread(body.sessionId) ? x : null));
       inst = owners.find(Boolean) || inst;
+    }
+    // Carried on as another Codex account (the chat's account menu): the one it ran as lets go of the
+    // conversation first, so two never write to it at once. If it still has it after ten seconds (or can't say),
+    // the chat stays on that one, and the page says it couldn't move yet.
+    if ((!body.mode || body.mode === 'resume') && body.sessionId && codexById(body.account) === inst && !chats.bySession(body.sessionId)) {
+      const others = codexAll().filter(x => x !== inst);
+      let holder = null;
+      for (let i = 0; i < 20; i++) {
+        const held = await Promise.all(others.map(x => x.hasLoadedThread(body.sessionId)));
+        const k = held.findIndex(h => h !== false);   // (null: it couldn't say, so it may still have it)
+        holder = k >= 0 ? others[k] : null;
+        if (!holder) break;
+        await new Promise(r => setTimeout(r, 500));
+      }
+      if (holder) { log(`Codex: ${body.sessionId} is still held by another Codex account; it stays there.`); inst = holder; }
     }
     inst = await codexChecked(inst);
     requireCodexSignedIn(inst);
@@ -1416,6 +1448,74 @@ async function prOpenChat(body) {
   const text = `About pull request #${pr.number} in ${pr.repo}: “${pr.title}”${pr.author ? ` by ${pr.author}` : ''} (${pr.url}; branch ${pr.head} → ${pr.base}${state ? `; ${state}` : ''}).\n\n`;
   log(`PRs: a new ${provider} chat about ${pr.repo}#${pr.number}.`);
   return { key: chat.key, text };
+}
+
+// ---------- playtests (lib/playtest.js) ----------
+// An agent plays a Voyage world in the browser with a goal and specs, and writes its report into the project's
+// playtests/ folder. Its links, presets and recent runs are kept per project in playtests.json.
+const playtests = playtestLib.createPlaytests({ dataDir: DATA_DIR, log });
+// Which browser chats get (Setup): the one built into the app, Claude in Chrome, both, or none.
+// (lib/browser.js decides: outside the desktop app there's no built-in browser, and an old "no Chrome" still holds.)
+const browserPref = () => browserLib.browserPref(config().prefs || {}, !!SHELL);
+function playtestProject(cwd) {
+  const p = projectAt(cwd);
+  if (!p) throw fail(404, 'That folder isn’t in the list.');
+  if (!p.exists) throw fail(409, 'That project’s folder no longer exists.');
+  return p;
+}
+async function playtestView(cwd, fresh = false) {
+  const p = playtestProject(cwd);
+  return { ...(await playtests.view(p.cwd, { fresh })), browser: browserPref() };
+}
+// The first message for a spec, and where its report goes.
+function playtestBrief(p, spec, provider, at = new Date()) {
+  const browser = browserPref();
+  if (browser === 'off') throw fail(409, 'Chats don’t get a browser now (Setup → Browser is set to Off). Turn it on, then start the playtest.');
+  // Who can use which browser: Gemini has none here; the Chrome extension is Claude's own.
+  if (provider === 'gemini') throw fail(400, 'Gemini can’t use a browser here. Choose Claude or Codex to playtest.');
+  if (provider === 'codex' && browser === 'chrome') throw fail(409, 'Codex can’t use your Chrome (the extension is Claude’s). Choose Claude, or set Setup → The browser chats use to the built-in one.');
+  const reportPath = playtestLib.reportPathFor(p.cwd, spec, at, playtests.reportPaths(p.cwd));
+  // Patch notes only from inside the project, links followed.
+  const patchNotes = (spec.patchNotes || []).map(f => path.join(p.cwd, f)).filter(f => fs.existsSync(f) && playtestLib.inside(p.cwd, f));
+  return { reportPath, brief: playtestLib.composeBrief(spec, { cwd: p.cwd, reportPath, provider, browser, at, patchNotes }) };
+}
+// Starts one: in a new chat (who and on what as asked, the way Your work starts its chats), or as the next message
+// in a chat that's open (where: 'this', key).
+async function startPlaytest(body) {
+  const spec = playtestLib.cleanSpec(body.spec);
+  const title = playtestLib.titleFor(spec);
+  const where = body.where === 'this' ? 'this' : 'new';
+  let chat, p, made;
+  if (where === 'this') {
+    chat = chats.get(body.key);
+    if (chat.aide) throw fail(400, 'Companion’s chats can’t playtest. Start it in a new chat.');
+    if (chat.state === 'ended') throw fail(409, 'That chat has stopped. Start it again, or playtest in a new chat.');
+    p = playtestProject(chat.cwd);
+    made = playtestBrief(p, spec, chat.provider || 'claude');
+    await pairs.send(chat, made.brief);
+  } else {
+    p = playtestProject(body.cwd);
+    const provider = agentOf(body.provider);
+    made = playtestBrief(p, spec, provider);
+    chat = await startPrChat({ provider, account: body.account, model: body.model, effort: body.effort, cwd: p.cwd, text: made.brief, title });
+  }
+  playtests.saveLink(p.cwd, { url: spec.url, used: true });
+  // (Who played, so "Run again" starts the same way.)
+  const who = where === 'new' ? { provider: chat.provider || 'claude', account: (chat.account && chat.account.id) || body.account || null, model: body.model || null, effort: body.effort || null } : null;
+  const run = playtests.noteRun(p.cwd, { spec, title, where, provider: chat.provider || 'claude', who, key: chat.key, sessionId: chat.sessionId || null, reportPath: made.reportPath });
+  if (where === 'new') namePlaytest(chat, title, p.cwd, run.at);
+  log(`Playtest: ${chat.provider || 'claude'} playtests ${spec.url} in ${where === 'new' ? 'a new chat' : 'an open chat'} (${p.cwd}); report at ${made.reportPath}.`);
+  return { key: chat.key, sessionId: chat.sessionId || null, provider: chat.provider || 'claude', title, reportPath: made.reportPath, cwd: p.cwd, where };
+}
+// A new playtest chat is named for it once it has an id (as routines name theirs), and its run remembers that id.
+async function namePlaytest(chat, title, cwd, at) {
+  for (const t0 = Date.now(); !chat.sessionId && chat.state !== 'ended' && Date.now() - t0 < 120000;) await new Promise(r => setTimeout(r, 500));
+  if (!chat.sessionId) return;
+  try { playtests.updateRun(cwd, at, { sessionId: chat.sessionId }); } catch (err) { log(`Playtest: ${err.message}`); }
+  chat.title = title;
+  try {
+    if (chat.provider === 'codex') { await (codexById(chat.account.id) || codex).rename(chat.sessionId, title); codexSessions(0); } else await renameChat(chat.sessionId, title);
+  } catch (err) { log(`Playtest: couldn’t name the chat: ${err.message}`); }
 }
 // A Slack post about a pull request, to ask for a review or let people know (lib/slackpost.js): from the PR, the chat
 // that did the work (sessionId, when there is one) and a note of what you want said. Yours to edit and copy.
@@ -2379,6 +2479,8 @@ async function handleApi(req, res, url, remote = false) {
     return send(res, 200, await projectNow.soFar(c.key, [c, ...[...chats.chats.values()].filter(x => x.parentKey === c.key)]));
   }
   if (route === 'GET /api/chat/so-far-diff') return send(res, 200, { diff: await projectNow.soFarDiff(url.searchParams.get('key'), url.searchParams.get('path')) });
+  // Playtest (lib/playtest.js): a project's saved links, presets and recent runs, and what its files say.
+  if (route === 'GET /api/playtest') return send(res, 200, await playtestView(url.searchParams.get('cwd'), !!url.searchParams.get('fresh')));
   if (route === 'GET /api/project/now') {
     const p = projectAt(url.searchParams.get('cwd'));
     if (!p) throw fail(404, 'That folder isn’t in the list.');
@@ -2535,6 +2637,22 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/prs/reviewers': return send(res, 200, await prs.requestReviewers(body.repo, body.n, body.users));
     case '/api/prs/preview': return send(res, 200, await prs.askPreview(body.repo, body.n));
     case '/api/work/start': return send(res, 200, await startWork(body));
+    // Playtest: start one, see its brief first, and a project's saved links and presets.
+    case '/api/playtest/start': return send(res, 200, await startPlaytest(body));
+    case '/api/playtest/brief': {
+      const p = playtestProject(body.cwd), spec = playtestLib.cleanSpec(body.spec);
+      return send(res, 200, { ...playtestBrief(p, spec, agentOf(body.provider)), title: playtestLib.titleFor(spec) });
+    }
+    case '/api/playtest/link': {
+      const p = playtestProject(body.cwd);
+      if (body.forget) playtests.forgetLink(p.cwd, String(body.url || '')); else playtests.saveLink(p.cwd, { url: body.url, label: typeof body.label === 'string' ? body.label : undefined });
+      return send(res, 200, await playtestView(p.cwd));
+    }
+    case '/api/playtest/preset': {
+      const p = playtestProject(body.cwd);
+      if (body.forget) playtests.forgetPreset(p.cwd, String(body.id || '')); else playtests.savePreset(p.cwd, { name: body.name, spec: body.spec, id: body.id || null });
+      return send(res, 200, await playtestView(p.cwd));
+    }
     case '/api/work/setup-fix': return send(res, 200, await setupFix(body, remote));
     case '/api/subagents': return send(res, 200, subagentsView(subagents.save(body)));
     case '/api/linear/me': return send(res, 200, await linear.setMe(String(body.id || '')));
@@ -3148,6 +3266,8 @@ async function handleApi(req, res, url, remote = false) {
       for (const k of ['syncSettings', 'syncState', 'cleanEnv', 'appWindow', 'autoSwitch', 'autoReview', 'nightlyCheck', 'autoName', 'latitudeReadsClaude', 'latitudeReadsCodex', 'prNotices', 'headlessApart']) if (typeof body[k] === 'boolean') p[k] = body[k];
       if (body.autoName === true) setImmediate(() => namer.resume());
       if (body.openIn !== undefined) { if (!['app', 'terminal'].includes(body.openIn)) throw fail(400, 'Unknown choice.'); p.openIn = body.openIn; }
+      // Which browser chats get (lib/browser.js browserPref).
+      if (body.browser !== undefined) { if (!['app', 'chrome', 'both', 'off'].includes(body.browser)) throw fail(400, 'Unknown choice.'); p.browser = body.browser; }
       if (body.claudeMode !== undefined) { if (!chatLib.MODES.includes(body.claudeMode)) throw fail(400, 'Unknown mode.'); p.claudeMode = body.claudeMode; }
       if (body.codexMode !== undefined) { if (!codexLib.MODES.some(m => m.value === body.codexMode)) throw fail(400, 'Unknown mode.'); p.codexMode = body.codexMode; }
       if (body.claudeCommand !== undefined) {
@@ -4166,7 +4286,14 @@ async function handleChat(req, res, url, body, c, remote = false) {
       const chat = chats.get(body.key);
       // Carrying on as another account stops it too, to start again: that's still keeping at it.
       if (!body.switching) keepWorking.stop(keepOwnId(pairs.leadOf(chat)), 'stop');
-      if (!chat.parentKey) for (const p of pairs.crewOf(chat)) { try { await p.stop(); } catch { /* already gone */ } }
+      // Switching accounts changes the main one only: its partner keeps running and is its partner again
+      // once it resumes (openChatNow, pairs.adopt). Not taken up again within a minute, it stops after all.
+      if (!chat.parentKey && !body.switching) for (const p of pairs.crewOf(chat)) { try { await p.stop(); } catch { /* already gone */ } }
+      if (!chat.parentKey && body.switching) {
+        chat.switchingAway = true;
+        const crew = pairs.crewOf(chat);
+        if (crew.length) setTimeout(() => { for (const p of crew) if (p.state !== 'ended' && p.parentKey === chat.key) p.stop(); }, 60000).unref();
+      }
       await chat.stop();
       return send(res, 200, { ok: true });
     }
@@ -4353,6 +4480,11 @@ async function handleRequest(req, res, { remote = false } = {}) {
       // A laptop of yours copying your work (lib/mirror.js): its pairing is what lets it in, and the
       // header (which a web page elsewhere can't send without asking first) shows it's the app itself.
       if (remote && req.device && url.pathname.startsWith('/api/mirror/') && req.headers['x-switcher-mirror'] === '1') return await mirrorApi(req, res, url);
+      // A chat's browser tools (lib/browser-mcp.js): the chat's own key lets them reach its own tabs, and nothing else.
+      if (!remote && req.method === 'POST' && url.pathname === '/api/browser/tool' && req.headers['x-switcher-browser']) {
+        const b = await readBody(req, 256 * 1024);
+        return send(res, 200, await browser.callTool(String(req.headers['x-switcher-browser']), b.name, b.arguments));
+      }
       const pushAct = remote && req.device && ((req.method === 'POST' && (url.pathname === '/api/push/act' || url.pathname === '/api/push/reply')) || (req.method === 'GET' && url.pathname === '/api/notify/stream'));
       if (req.headers['x-switcher-token'] !== TOKEN && !imageGet && !pushAct) return send(res, 403, { error: 'This page is out of date. Reload it.', reason: 'stale' });
       return await handleApi(req, res, url, remote);

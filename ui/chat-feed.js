@@ -422,6 +422,9 @@ function images(list) {
     : im.url ? `<a class="thumb-link" href="${esc(im.url)}" target="_blank" rel="noopener noreferrer">Image link</a>` : im.dropped ? '<span class="thumb-missing">A picture (it’s in the chat’s history; reopen the chat to see it)</span>' : '<span class="thumb-missing">Image too large to preview</span>')).join('')}</div>`;
 }
 const TOOL_VERBS = { Bash: 'Ran', PowerShell: 'Ran', Read: 'Read', Write: 'Wrote', Edit: 'Edited', MultiEdit: 'Edited', NotebookEdit: 'Edited', Glob: 'Found', Grep: 'Searched', WebFetch: 'Fetched', WebSearch: 'Searched', Agent: 'Delegated', Task: 'Delegated', TodoWrite: 'Tasks', TaskCreate: 'Task', TaskUpdate: 'Task', Artifact: 'Artifact', AskUserQuestion: 'Asked' };
+// The built-in browser's tools (lib/browser-tools.js): mcp__app-browser__<tool> in a step reads as what it did.
+const BROWSER_VERBS = { tabs: 'Browser · tabs', open_tab: 'Browser · new tab', close_tab: 'Browser · closed a tab', navigate: 'Browser · opened', screenshot: 'Browser · looked', click: 'Browser · clicked', type: 'Browser · typed', key: 'Browser · pressed', scroll: 'Browser · scrolled', read_page: 'Browser · read', find: 'Browser · found', page_text: 'Browser · read', form_input: 'Browser · filled in', wait_for: 'Browser · waited', javascript: 'Browser · ran a script', console: 'Browser · console', network: 'Browser · requests', viewport: 'Browser · page size', dialogs: 'Browser · boxes', batch: 'Browser · steps', voyage_status: 'Voyage · looked', voyage_start: 'Voyage · started a game', voyage_act: 'Voyage · took a turn', voyage_continue: 'Voyage · skipped dialogue', voyage_story: 'Voyage · read the story' };
+const toolVerb = n => { if (TOOL_VERBS[n]) return TOOL_VERBS[n]; const m = /^mcp__app-browser__(\w+)$/.exec(n || ''); return m ? BROWSER_VERBS[m[1]] || null : null; };
 function toolDetail(view) {
   if (view.detailKind === 'diff' && view.detail) return `<div class="diff"><pre class="del">${esc(view.detail.old || '')}</pre><pre class="add">${esc(view.detail.new || '')}</pre></div>`;
   if (!view.detail) return '';
@@ -439,8 +442,8 @@ function toolEl(b, live) {
   const st = b.result ? (b.result.isError ? 'err' : 'ok') : (live ? 'run' : '');
   const filePath = (b.meta && b.meta.path) || (b.name === 'Read' ? b.summary : null);
   const agent = agentOf(b);   // a subagent: which one, on what (ui/chat-steps.js)
-  d.innerHTML = `<summary><span class="t-st ${st}" aria-hidden="true"></span><span class="t-name">${esc(TOOL_VERBS[b.name] || b.name)}</span>${agentChip(agent)}<span class="t-sum">${esc(b.summary || '')}</span><span class="t-time"></span></summary>
-      <div class="t-body">${b.name && !TOOL_VERBS[b.name] ? `<p class="t-tool">Tool: ${esc(b.name)}</p>` : ''}${agent && agent.type ? `<p class="t-tool">Subagent: ${esc(agent.type)}</p>` : ''}${filePath ? `<button type="button" class="btn quiet sm t-open" data-file="${esc(filePath)}">Open ${esc(base(filePath))}</button>` : ''}${toolDetail(b)}<div class="t-res">${toolResultHtml(b.result)}</div></div>`;
+  d.innerHTML = `<summary><span class="t-st ${st}" aria-hidden="true"></span><span class="t-name">${esc(toolVerb(b.name) || b.name)}</span>${agentChip(agent)}<span class="t-sum">${esc(b.summary || '')}</span><span class="t-time"></span></summary>
+      <div class="t-body">${b.name && !toolVerb(b.name) ? `<p class="t-tool">Tool: ${esc(b.name)}</p>` : ''}${agent && agent.type ? `<p class="t-tool">Subagent: ${esc(agent.type)}</p>` : ''}${filePath ? `<button type="button" class="btn quiet sm t-open" data-file="${esc(filePath)}">Open ${esc(base(filePath))}</button>` : ''}${toolDetail(b)}<div class="t-res">${toolResultHtml(b.result)}</div></div>`;
   if (b.result && b.ms >= STEP_LONG) stepTookMark(d.querySelector('.t-time'), b.ms);
   d._view = b;
   ledgerTool(b);

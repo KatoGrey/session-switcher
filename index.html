@@ -30,6 +30,8 @@
 <link rel="stylesheet" href="/ui/chat-content.css">
 <link rel="stylesheet" href="/ui/studio.css">
 <link rel="stylesheet" href="/ui/chat-return.css">
+<link rel="stylesheet" href="/ui/playtest.css">
+<link rel="stylesheet" href="/ui/browser.css">
 <script src="/theme.js"></script>
 <script>window.TOKEN = '__TOKEN__'; window.REMOTE = __REMOTE__;</script>
 </head>
@@ -94,7 +96,8 @@
       <button type="button" class="icon c-backm" data-c="rail" aria-label="Show open chats"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       <div class="c-titles"><span class="c-crest" id="cCrest"></span><div class="c-tt"><p class="eyebrow c-folder"><button type="button" class="c-return" data-c="back"><span aria-hidden="true">←</span><span data-return-label>The hub</span></button><span class="c-return-sep" aria-hidden="true">/</span><button type="button" class="c-folder-b" id="cFolder" data-c="project" title="Go to this project: its documents, pictures and changes"></button><span class="c-crumb" id="cCrumb" hidden></span></p><h1 class="c-title" id="cTitle"></h1></div></div>
       <div class="c-meta">
-        <span class="c-acct" id="cAcct"></span>
+        <button type="button" class="c-acct" id="cAcct" data-c="acct" aria-haspopup="menu" aria-expanded="false"></button>
+        <span class="c-switchnote" id="cSwitchNote" hidden></span>
         <span class="c-state" id="cState" aria-live="polite"></span>
         <label class="sr" for="cMode" id="cModeL">What it may do without asking</label>
         <select id="cMode" class="c-mode" title="What it may do without asking"></select>
@@ -267,6 +270,8 @@
 <script src="/ui/doc-notes.js"></script>
 <script src="/ui/many.js"></script>
 <script src="/ui/routines.js"></script>
+<script src="/ui/playtest.js"></script>
+<script src="/ui/browser.js"></script>
 <script>
   // A page that didn't load fully (a script lost on a patchy connection) would just be broken: it
   // reloads once by itself, and if that doesn't help, says so with a Reload button.

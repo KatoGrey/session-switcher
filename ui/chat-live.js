@@ -179,6 +179,7 @@ function setState(s) {
   pill.className = `c-state ${s}${bg ? ' bg' : ''}`;
   pill.title = bg ? `Still running: ${C.background.map(t => t.description).join('; ')}. It carries on with the result when that's done; the chat stays open for it.` : '';
   syncSend();
+  if (typeof switchWhenIdle === 'function') switchWhenIdle();   // an account switch waiting for this reply (chat-limits.js)
 }
 // Stop, the typing dots and Send/Queue follow whichever one your next message goes to.
 function syncSend() {
@@ -312,6 +313,8 @@ function handleEvent(ev, src) {
     case 'permission': addPermission(ev, src); break;
     case 'permission_cancel': case 'permission_done': removePermission(ev.requestId, src, ev.at); break;
     case 'result':
+      // When its last reply finished: what you sent after it hasn't been answered (ui/chat-limits.js unansweredToClaude).
+      if (src === 'main') C.lastResult = { key: C.key, at: Date.parse(ev.at) || Date.now() };
       setStatus(src, '');
       settleThink();
       foldSteps(src);

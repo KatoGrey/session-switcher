@@ -1927,6 +1927,110 @@ module.exports = [
     },
   },
   {
+    name: 'switch account from the header',
+    // The account at the top right switches who the open chat runs as: now when it's quiet; when it's
+    // replying, after the reply (or stop it and switch now). A Codex chat, among your Codex accounts.
+    async run(t) {
+      const seen = [];
+      const b = await t.open({ demo: false });
+      await demo.install(b, { seen: (p, url, body) => { if (['/api/chat/stop', '/api/chat/open'].includes(p)) seen.push([p, body]); } });
+      await b.eval('location.reload(); return 1'); await sleep(3000);
+      const id = demo.ID['s-bard'];
+      const reopen = async () => { await b.eval(`await ChatUI.open({ sessionId: ${JSON.stringify(id)} }); return 1`); await sleep(1500); };
+      await reopen();
+      const me = await b.eval(`return C.info.accountId`);
+      const otherName = me === 'studio' ? 'Personal' : 'Studio';
+      const chip = await b.eval(`const c = document.getElementById('cAcct'); return { tag: c.tagName, popup: c.getAttribute('aria-haspopup'), title: c.title }`);
+      t.check('the account at the top right is a button that opens a menu', chip.tag === 'BUTTON' && chip.popup === 'menu' && /Switch the account this chat runs as/.test(chip.title), chip);
+      const menu = async () => {
+        await b.eval(`closeMenu(); document.getElementById('cAcct').click(); return 1`); await sleep(200);
+        return b.eval(`const m = document.getElementById('menu'); return { open: !m.hidden, expanded: document.getElementById('cAcct').getAttribute('aria-expanded'), head: m.querySelector('.m-h')?.textContent || '', empty: m.querySelector('.m-empty')?.textContent || '', next: m.querySelector('.m-next')?.textContent || '', rows: [...m.querySelectorAll('button.m-acct')].map(x => ({ t: x.textContent.replace(/\\s+/g, ' ').trim(), on: x.getAttribute('aria-checked') === 'true', off: x.disabled })) }`);
+      };
+      const choose = name => b.eval(`[...document.querySelectorAll('#menu button.m-acct')].find(x => x.textContent.includes(${JSON.stringify(name)})).click(); return 1`);
+      let m = await menu();
+      t.check('it lists who this chat can run as, under a heading', m.open && m.expanded === 'true' && m.head === 'Run this chat as' && m.rows.length === demo.accounts.length, m);
+      t.check('its own account is marked as this chat’s', m.rows.filter(x => x.on).length === 1 && /this chat/.test(m.rows.find(x => x.on).t), m.rows);
+      t.check('each with its 5-hour and weekly room', m.rows.every(x => /5h \d+% left · week \d+% left/.test(x.t)), m.rows);
+
+      // Quiet: it switches now, the same conversation.
+      seen.length = 0;
+      await choose(otherName); await sleep(1500);
+      let stop = seen.find(x => x[0] === '/api/chat/stop'), open = seen.find(x => x[0] === '/api/chat/open');
+      t.check('choosing another while it’s quiet resumes the same conversation as that one', stop && stop[1].switching === true && open && open[1].sessionId === id && open[1].mode === 'resume' && open[1].account !== me && seen.indexOf(stop) < seen.indexOf(open), seen);
+      t.check('and says so', new RegExp(`Now running as ${otherName}`).test(await b.eval(`return document.getElementById('toast').innerText`)));
+
+      // Busy: it asks; "after this reply" waits, says so by the header, and can be called off.
+      await reopen();
+      seen.length = 0;
+      await b.eval(`setState('busy'); return 1`);
+      await menu(); await choose(otherName); await sleep(300);
+      const ask = await b.eval(`return document.getElementById('confirmDlg')?.open ? { q: cfQ.textContent, yes: cfYes.textContent, no: cfNo.textContent } : null`);
+      t.check('while it’s replying, it asks: after this reply, or stop and switch now', ask && /is still replying/.test(ask.q) && ask.yes === 'Switch when this reply finishes' && ask.no === 'Stop it and switch now', ask);
+      await b.clickOn('#cfYes'); await sleep(200);
+      const note = () => b.eval(`const n = document.getElementById('cSwitchNote'); return n.hidden ? '' : n.textContent.replace(/\\s+/g, ' ').trim()`);
+      t.check('“after this reply” shows a note by the header, and nothing stops yet', new RegExp(`^Switching to ${otherName} after this reply · Cancel$`).test(await note()) && !seen.length, { note: await note(), seen });
+      await b.clickOn('#cSwitchNote [data-c="acctcancel"]'); await sleep(100);
+      await b.eval(`setState('ready'); return 1`); await sleep(1300);
+      t.check('Cancel takes it back: the reply finishes and it stays as it was', !(await note()) && !seen.length, seen);
+      await b.eval(`setState('busy'); return 1`);
+      await menu(); await choose(otherName); await sleep(300); await b.clickOn('#cfYes'); await sleep(200);
+      await b.eval(`setState('ready'); return 1`); await sleep(1500);
+      open = seen.find(x => x[0] === '/api/chat/open');
+      t.check('otherwise it switches once the reply has finished', seen.some(x => x[0] === '/api/chat/stop' && x[1].switching) && open && open[1].sessionId === id && open[1].account !== me && !(await note()), seen);
+
+      // "Stop it and switch now": it stops at once, and your last message is back in the box.
+      await reopen();
+      await b.eval(`document.getElementById('cText').value = ''; clearDraft(); setState('busy'); return 1`);
+      const last = await b.eval(`return lastToClaude()`);
+      seen.length = 0;
+      await menu(); await choose(otherName); await sleep(300); await b.clickOn('#cfNo'); await sleep(1500);
+      t.check('“Stop it and switch now” stops it and resumes as the other at once', seen.some(x => x[0] === '/api/chat/stop' && x[1].switching) && seen.some(x => x[0] === '/api/chat/open' && x[1].account !== me), seen);
+      t.check('with your last message back in the box', !!last && (await b.eval(`return document.getElementById('cText').value`)).includes(last.slice(0, 30)), { last });
+
+      // A Codex chat: your Codex accounts. With one, it says so and how to add another.
+      await reopen();
+      await b.eval(`document.getElementById('cText').value = ''; clearDraft(); C.provider = 'codex'; C.info.accountId = 'codex'; return 1`);
+      m = await menu();
+      t.check('a Codex chat with one Codex account says so, with how to add another', !m.rows.length && /your only Codex account/.test(m.empty) && /Add a Codex account/.test(m.next), m);
+      await b.eval(`closeMenu(); S.codex.accounts = [{ ...S.codex }, { ...S.codex, id: 'codex-work', name: 'Work' }, { ...S.codex, id: 'codex-old', name: 'Old', signedIn: false }]; return 1`);
+      m = await menu();
+      t.check('with more, it lists them; one that can’t be used says why', m.rows.length === 3 && m.rows.find(x => /Work/.test(x.t)) && !m.rows.find(x => /Work/.test(x.t)).off && m.rows.find(x => /Old/.test(x.t)).off && /Not signed in/.test(m.rows.find(x => /Old/.test(x.t)).t), m.rows);
+      seen.length = 0;
+      await choose('Work'); await sleep(1500);
+      open = seen.find(x => x[0] === '/api/chat/open');
+      t.check('choosing one resumes the Codex conversation as that Codex account', open && open[1].provider === 'codex' && open[1].account === 'codex-work' && open[1].sessionId === id, seen);
+
+      // Not offered where it can't work: it says why instead.
+      await reopen();
+      await b.eval(`C.watch = { sessionId: C.sessionId, source: 'terminal' }; return 1`);
+      m = await menu();
+      t.check('watching a terminal chat, it explains instead', !m.rows.length && /running in a terminal/.test(m.empty), m);
+      await b.eval(`closeMenu(); C.watch = null; return 1`);
+
+      // A chat beside this one (the same page in a frame) switches from its own header.
+      await reopen();
+      await b.eval(`openBeside({ sessionId: ${JSON.stringify(demo.ID['s-brawl'])} }); return 1`); await sleep(3500);
+      seen.length = 0;
+      const pane = await b.eval(`const f = document.querySelector('#cSplit iframe'), w = f.contentWindow, d = f.contentDocument;
+        d.getElementById('cAcct').click(); await new Promise(r => setTimeout(r, 300));
+        const m = d.getElementById('menu'), rows = [...m.querySelectorAll('button.m-acct')];
+        const out = { open: !m.hidden, head: m.querySelector('.m-h')?.textContent || '', rows: rows.length, me: w.ChatUI.accountId() };
+        rows.find(x => x.getAttribute('aria-checked') !== 'true').click(); await new Promise(r => setTimeout(r, 1500));
+        return out`);
+      t.check('in a chat beside it, its own account menu switches it', pane.open && pane.head === 'Run this chat as' && pane.rows === demo.accounts.length && seen.some(x => x[0] === '/api/chat/stop' && x[1].switching) && seen.some(x => x[0] === '/api/chat/open' && x[1].mode === 'resume' && x[1].account !== pane.me), { pane, seen });
+      await b.eval(`closeSplit(); return 1`).catch(() => null);
+
+      // On a phone: the chip is there in the header's slim row, and its menu fits the screen.
+      const p = await t.open({ width: 390, height: 844, mobile: true });
+      await sleep(800);
+      await p.eval(`await ChatUI.open({ sessionId: ${JSON.stringify(id)} }); return 1`); await sleep(1500);
+      const ph = await p.eval(`const c = document.getElementById('cAcct'); const r = c.getBoundingClientRect(); c.click(); await new Promise(r => setTimeout(r, 300));
+        const m = document.getElementById('menu'), mr = m.getBoundingClientRect();
+        return { chip: r.width > 20 && r.height > 10, open: !m.hidden, rows: m.querySelectorAll('button.m-acct').length, inside: mr.left >= 0 && mr.right <= innerWidth + 1 }`);
+      t.check('on a phone, the chip opens the same menu, on screen', ph.chip && ph.open && ph.rows === demo.accounts.length && ph.inside, ph);
+    },
+  },
+  {
     name: 'new chat memory',
     // Who you last started with in a project, and the account with the most left.
     async run(t) {

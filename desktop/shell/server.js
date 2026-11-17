@@ -39,7 +39,8 @@ function post(pathname, body = {}) {
   });
 }
 
-function createServer({ appFiles, dataDir, env = {}, log = () => {}, onQuit = () => {}, onTrouble = () => {} }) {
+// onBrowser(op, args): the server's chats using the app's built-in browser (shell/browser.js); answered on the same channel.
+function createServer({ appFiles, dataDir, env = {}, log = () => {}, onQuit = () => {}, onTrouble = () => {}, onBrowser = null }) {
   let child = null, wanted = 'run', crashes = [], again = null;
   function start() {
     // Stopping (a quit, an update) wins over a start that was waiting.
@@ -58,6 +59,11 @@ function createServer({ appFiles, dataDir, env = {}, log = () => {}, onQuit = ()
       if (!m || typeof m !== 'object') return;
       if (m.type === 'restart') wanted = 'restart';
       if (m.type === 'quit') { wanted = 'quit'; onQuit(); }
+      if (m.type === 'browser' && onBrowser) {
+        Promise.resolve().then(() => onBrowser(m.op, m.args || {}))
+          .then(result => ({ ok: true, result }), err => ({ ok: false, error: (err && err.message) || String(err) }))
+          .then(r => { try { if (me.connected) me.send({ type: 'browser:result', id: m.id, ...r }); } catch { /* it's gone */ } });
+      }
     });
     const me = child;
     child.on('exit', async code => {

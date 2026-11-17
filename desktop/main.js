@@ -11,6 +11,7 @@ const { offerImport, notes, setNotes } = require('./shell/data');
 const { createUpdates } = require('./shell/updates');
 const { contextMenu, keys, createDesk } = require('./shell/desk');
 const { createAideWindow } = require('./shell/aide');
+const { createBrowserHost } = require('./shell/browser');
 
 const APP_ID = 'com.katogrey.sessionswitcher';
 const IS_MAC = process.platform === 'darwin';
@@ -97,8 +98,17 @@ function syncAide() {
   if (!aide) return;
   if (desk.opt().aideOn) { aide.prepare(); aide.create(); } else aide.stop();
 }
+// The built-in browser: tabs the chats (and you) use, drawn off screen (shell/browser.js). It never opens the app's
+// own pages (they belong in its windows).
+const appAddress = u => {
+  try { const x = new URL(u); return ['127.0.0.1', 'localhost', '[::1]'].includes(x.hostname) && [PORT, HOME_PORT].includes(Number(x.port || (x.protocol === 'https:' ? 443 : 80))); } catch { return false; }
+};
+const browser = createBrowserHost({ log, blocked: appAddress });
+ipcMain.handle('browser:call', (e, op, args) => (fromUs(e) ? browser.forPage(e.sender, String(op), args && typeof args === 'object' ? args : {}) : null));
+ipcMain.on('browser:input', (e, id, ev) => { if (fromUs(e)) browser.input(String(id), ev); });
 const server = createServer({
   appFiles: APP_FILES, dataDir: DATA_DIR, env: { ...shellPath(), SWITCHER_HOME_PORT: String(HOME_PORT) }, log,
+  onBrowser: (op, args) => browser.forServer(op, args),
   onQuit: () => { quitting = true; app.quit(); },   // Quit in the app quits the app
   // A home PC says so and keeps trying (true: try again); anywhere else, a box, and the app closes.
   onTrouble: err => {
@@ -259,6 +269,7 @@ app.on('before-quit', e => {
   quitting = true;
   desk.stop();
   if (aide) aide.stop();
+  browser.stop();
   if (!server.running()) return;
   e.preventDefault();
   saveBounds();
