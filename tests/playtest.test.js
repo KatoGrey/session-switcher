@@ -48,7 +48,7 @@ test('playtest: names, file names and where the report goes', () => {
 
 test('playtest: the brief says what to do, how, and where the report goes', () => {
   const spec = pt.cleanSpec({ ...SPEC, turns: 'goal', opening: 'The Hollow Court', character: { kind: 'saved', name: 'Kato' }, style: 'fighter', screen: 'phone', stopAsk: false, pictures: true, report: ['bugs', 'log', 'score'], extra: 'Skip the tutorial.', patchNotes: ['PATCH-NOTES-9.md'] });
-  const reportPath = path.join('C:\\W', 'playtests', 'r.md');
+  const reportPath = path.win32.join('C:\\W', 'playtests', 'r.md');   // (a Windows path on a Mac too)
   const b = pt.composeBrief(spec, { cwd: 'C:\\W', reportPath, provider: 'claude', browser: 'app', at: new Date(2026, 10, 17, 14, 5), patchNotes: ['C:\\W\\PATCH-NOTES-9.md'] });
   for (const want of [/^# Playtest: Do companions help in fights/, /## The goal\n\nDo companions help in fights\?/, /Link: https:\/\/voyage\.io\/world\/abc123/, /“The Hollow Court”/, /saved character “Kato”/,
     /mcp__app-browser__voyage_act/, /`voyage_start`/, /`voyage_story`/, /set a phone size with `viewport`/, /until you can answer the goal \(at most 40 turns\)/, /aggressive fighter/,
