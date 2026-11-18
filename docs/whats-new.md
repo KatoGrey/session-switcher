@@ -2,6 +2,8 @@
 
 **Keep a chat in sight.** Right-click a chat and choose **Keep in focus**, or use the focus button in its header. It stays above the scrolling list, even after it finishes or closes. The row shows what the agent is asking, which tool it is using, or what its latest unread reply says. The same selection appears in Switcher Lite and on your paired devices.
 
+**Choose when to switch accounts.** If a chat is busy and you choose an account that is out of usage, the app asks two questions. Accepting the account warning leaves the timing choice open so you can wait for the reply, switch immediately, or press Escape to keep the current account.
+
 **See what GitHub checked.** Open a PR in **Your work** to see the commit behind its checks, which checks GitHub marks as required, and which results are still pending. Review decisions, requested reviewers, unresolved threads, and the merge queue each have their own status. Review summaries and comments link back to GitHub.
 
 **Keep your place during a review.** If a new commit arrives while you page through changed files, the inspector asks you to refresh. A failed refresh leaves the last successful read visible with a label. Chat links identify work started from the PR and label a branch match as a suggestion.

@@ -21,7 +21,7 @@ async function openWorkWithModels(b, extra = []) {
 async function reloadWork(b) {
   const before = await b.eval(`return performance.timeOrigin`);
   await b.send('Page.reload');
-  if (!await waitUntil(() => b.eval(`return performance.timeOrigin !== ${before} && typeof go === 'function'`).catch(() => false))) {
+  if (!await waitUntil(() => b.eval(`return performance.timeOrigin !== ${before} && document.readyState === 'complete'`).catch(() => false))) {
     throw new Error('The page did not finish reloading.');
   }
 }

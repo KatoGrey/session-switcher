@@ -370,11 +370,21 @@ function appConfirm(text, { ok = 'OK', cancel = 'Cancel', danger = false, escape
   if (!d) {
     document.body.insertAdjacentHTML('beforeend', `<dialog id="confirmDlg" class="confirm-dlg"><form method="dialog"><h3 id="cfQ"></h3><p id="cfX"></p><div class="d-row"><button class="btn" value="cancel" id="cfNo"></button><button class="btn prime" value="ok" id="cfYes"></button></div></form></dialog>`);
     d = $('confirmDlg');
-    // The answer is taken the moment it's given, so a question asked right after can't pick up this one's.
-    const answer = v => { const r = d._resolve; d._resolve = null; if (r) r(v); };
-    d.querySelector('form').addEventListener('submit', e => answer(e.submitter?.value === 'ok'));
+    // Close before resolving so a follow-up question opens on a fresh dialog.
+    const answer = (v, closeWith) => {
+      const resolve = d._resolve;
+      d._resolve = null;
+      if (d.open && closeWith !== undefined) d.close(closeWith);
+      if (resolve) resolve(v);
+    };
+    d.querySelector('form').addEventListener('submit', e => {
+      e.preventDefault();
+      const yes = e.submitter?.value === 'ok';
+      answer(yes, yes ? 'ok' : 'cancel');
+    });
     // Esc answers this question only, never the dialog underneath it.
-    d.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); answer(d._escape); d.close('cancel'); } });
+    d.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); answer(d._escape, 'cancel'); } });
+    d.addEventListener('cancel', e => { e.preventDefault(); answer(d._escape, 'cancel'); });
     d.addEventListener('close', () => { if (!d.open) answer(d.returnValue === 'ok'); });
   }
   const [q, ...rest] = String(text).split(/\n\n/);

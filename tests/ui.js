@@ -55,21 +55,40 @@ module.exports = [
       t.check('confirm: dangerous ones start on Cancel', d.focus === 'cfNo' && /danger-prime/.test(d.cls), d);
       await b.esc();
       t.check('confirm: Esc answers no', (await b.eval(`return window._r`)) === false);
+      const waitForConfirm = when => b.eval(`const state = () => ({ open: !!(${confirmOpen}), focus: document.activeElement.id,
+        question: document.getElementById('cfQ')?.textContent, first: window._firstConfirm, result: window._r });
+        const deadline = performance.now() + 5000;
+        let s = state();
+        while (!(${when}) && performance.now() < deadline) { await new Promise(resolve => setTimeout(resolve, 25)); s = state(); }
+        return s`);
       // Asked right after another: the answer belongs to this question only.
       await b.eval(`window._r = 'pending'; appConfirm('Go?', { ok: 'Go' }).then(v => window._r = v); return 1`); await sleep(150);
       await b.clickOn('#cfYes');
-      t.check('confirm: OK answers yes', (await b.eval(`return window._r`)) === true);
+      const clickAnswer = await waitForConfirm('!s.open && s.result !== "pending"');
+      t.check('confirm: OK answers yes', !clickAnswer.open && clickAnswer.result === true, clickAnswer);
       // Enter confirms: an ordinary question, and a box asking for a name (it used to land on Cancel).
-      const enter = async () => { await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' }); await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); await sleep(200); };
-      await b.eval(`window._r = 'pending'; appConfirm('Go on?', { ok: 'Go on' }).then(v => window._r = v); return 1`); await sleep(150);
+      const enter = async () => { await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' }); await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); };
+      await b.eval(`window._r = 'pending'; appConfirm('Go on?', { ok: 'Go on' }).then(v => window._r = v); return 1`);
+      const beforeEnter = await waitForConfirm('s.open && s.focus === "cfYes"');
+      const ready = beforeEnter.open && beforeEnter.focus === 'cfYes';
+      if (ready) await enter();
+      const enterAnswer = ready ? await waitForConfirm('!s.open && s.result !== "pending"') : beforeEnter;
+      t.check('confirm: Enter answers yes', ready && !enterAnswer.open && enterAnswer.result === true, { before: beforeEnter, after: enterAnswer });
+      await b.eval(`window._r = 'pending'; window._firstConfirm = 'pending';
+        appConfirm('First question?').then(v => { window._firstConfirm = v; return appConfirm('One more question?', { escape: null }); }).then(v => window._r = v); return 1`);
+      await waitForConfirm('s.open && s.question === "First question?" && s.focus === "cfYes"');
       await enter();
-      t.check('confirm: Enter answers yes', (await b.eval(`return window._r`)) === true);
+      const next = await waitForConfirm('s.question === "One more question?" && (s.open || s.result !== "pending")');
+      t.check('confirm: the next question needs its own answer', next.open && next.focus === 'cfYes' && next.first === true && next.result === 'pending', next);
+      if (next.open) await b.esc();
+      const escaped = await waitForConfirm('!s.open && s.result !== "pending"');
+      t.check('confirm: Esc answers only the second question', !escaped.open && escaped.first === true && escaped.result === null, escaped);
       await b.eval(`window._r = 'pending'; ask('Rename chat', 'A new name.', 'Old name', 'Rename', { maxLength: 120 }).then(v => window._r = v); return 1`); await sleep(150);
       await b.send('Input.insertText', { text: 'New name' }); await sleep(50);
-      await enter();
+      await enter(); await sleep(200);
       t.check('rename: Enter renames', (await b.eval(`return window._r`)) === 'New name', await b.eval(`return window._r`));
       await b.eval(`window._r = 'pending'; ask('Rename chat', 'A new name.', '', 'Rename').then(v => window._r = v); return 1`); await sleep(150);
-      await enter();
+      await enter(); await sleep(200);
       t.check('rename: Enter on an empty name keeps asking', (await b.eval(`return window._r === 'pending' && document.getElementById('dlg').open`)));
       await b.clickOn('#dlg [data-close-dlg]'); await sleep(200);
       t.check('rename: Cancel still cancels', (await b.eval(`return window._r === null && !document.getElementById('dlg').open`)));
@@ -2172,9 +2191,23 @@ module.exports = [
           t.check(`${name}: the message box shows both models’ names in full`, crew.length === 2 && crew.every(x => !x.cut), crew);
           await t.shot(b, `${name.replace(/\W+/g, '-')}-crew`);
         }
-        await b.eval(`closeMenu(); ChatUI.close(); openTaskDialog(); return 1`); await sleep(400);
-        const d = await b.eval(`const d = document.getElementById('taskDlg'), r = d.getBoundingClientRect(); const go = d.querySelector('[type="submit"]'); go.scrollIntoView({ block: 'nearest' }); const g = go.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), right: Math.round(r.right), w: innerWidth, h: innerHeight, goVisible: g.bottom <= innerHeight + 1 && g.top >= 0 }`);
-        t.check(`${name}: a dialog fits the screen, with its button reachable`, d.top >= -1 && d.bottom <= d.h + 1 && d.right <= d.w + 1 && d.goVisible, d);
+        await b.eval(`closeMenu(); ChatUI.close(); openTaskDialog(); return 1`);
+        const d = await b.eval(`const d = document.getElementById('taskDlg'), go = d.querySelector('[type="submit"]');
+          let r = d.getBoundingClientRect(), settled = false;
+          const deadline = performance.now() + 3000;
+          // The opening transition can still be pending on the first rendered frame.
+          while (performance.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, 40));
+            const next = d.getBoundingClientRect();
+            const moving = d.getAnimations().some(a => a.pending || a.playState === 'running');
+            settled = d.open && !moving && next.top === r.top && next.bottom === r.bottom && next.right === r.right;
+            r = next;
+            if (settled) break;
+          }
+          go.scrollIntoView({ block: 'nearest' });
+          const g = go.getBoundingClientRect();
+          return { settled, top: Math.round(r.top), bottom: Math.round(r.bottom), right: Math.round(r.right), w: innerWidth, h: innerHeight, goVisible: g.bottom <= innerHeight + 1 && g.top >= 0 }`);
+        t.check(`${name}: a dialog fits the screen, with its button reachable`, d.settled && d.top >= -1 && d.bottom <= d.h + 1 && d.right <= d.w + 1 && d.goVisible, d);
         await t.shot(b, name.replace(/\W+/g, '-'));
         await b.eval(`document.getElementById('taskDlg').close(); return 1`);
       }
