@@ -20,7 +20,7 @@ const WORKING = new Set(['thinking', 'writing', 'tool', 'starting']);
 const $ = id => document.getElementById(id);
 const S = {
   accounts: [], projects: [], running: {}, live: {}, acct: null, view: 'hub', folder: null, dryRun: false,
-  pins: new Set(), prefs: {}, hits: null, q: '', index: null, drawerId: null,
+  pins: new Set(), focused: new Map(), prefs: {}, hits: null, q: '', index: null, drawerId: null,
   activity: [], usage: {}, connected: false, seen: {}, codex: null, worlds: {}, prompts: [], worldTab: 'chats',
 };
 const inApp = () => S.prefs.openIn !== 'terminal';
@@ -79,9 +79,31 @@ function toggleFav(id) {
 }
 const isFav = id => !!id && S.favs.has(String(id).toLowerCase());
 window.toggleFav = toggleFav; window.isFav = isFav;
+const isChatFocused = id => !!id && S.focused.has(String(id).toLowerCase());
+function readChatFocus(view, cached = false) {
+  if (!Array.isArray(view?.ids) || view.revision < S.chatFocus?.revision) return false;
+  S.focused = new Map(view.ids.map(id => [id.toLowerCase(), id]));
+  if (!cached) S.chatFocus = view;
+  return true;
+}
+function refreshChatFocus(view) {
+  if (!readChatFocus(view)) return;
+  if (Boot.raw.state) Boot.raw.state.chatFocus = view;
+  renderNav();
+  window.ChatUI?.refreshFav();
+  window.ChatUI?.renderRail();
+}
+async function setChatFocus(id, on, undo = true) {
+  const savedId = S.focused.get(String(id).toLowerCase()) || id;
+  const { chatFocus } = await api('/api/lite/chats', { ids: [savedId], patch: { focus: on } });
+  if (!chatFocus) throw new Error('The server didn’t confirm the focus change. Reload the app and try again.');
+  refreshChatFocus(chatFocus);
+  if (undo) offerUndo(on ? 'Chat added to In focus.' : 'Chat removed from In focus.', () => setChatFocus(savedId, !on, false));
+}
 function openChatFromNav(id) {
-  const [s] = sessionById(id); if (!s) return toast('That chat isn’t in the list any more.');
-  if (liveOf(s.id)) return ChatUI.open({ sessionId: s.id });
+  const [s] = sessionById(id), live = liveOf(id);
+  if (!s) return live?.key && live.state !== 'ended' ? ChatUI.openKey(live.key) : toast('That chat isn’t in the list any more.');
+  if (live) return ChatUI.open({ sessionId: s.id });
   if (isRunning(s.id)) return ChatUI.watch({ sessionId: s.id, source: 'terminal' });
   return inApp() ? ChatUI.open({ sessionId: s.id }) : openDrawer(s.id);
 }
@@ -500,6 +522,22 @@ function wantsTo(p) {
     default: return window.CMDR_TOOLS && CMDR_TOOLS[p.toolName] ? `Wants to ${CMDR_TOOLS[p.toolName]}` : `Wants to use ${p.toolName}`;
   }
 }
+function focusPreview(w, state) {
+  let text = '';
+  if (state === 'question') {
+    const p = w.pending?.find(request => request.question);
+    text = p?.questions?.[0]?.question || p?.title || '';
+  } else if (state === 'approve') {
+    const p = w.pending?.[0];
+    text = p?.detail || p?.summary || p?.title || '';
+  } else if (state === 'working' && w.phase === 'tool' && (w.tool || w.detail)) {
+    text = (VERB_NOW[w.tool] || 'Using') + ' ' + (w.detail || w.tool);
+  } else if (state === 'reply') {
+    text = plainMd(lastLine(w.lastText));
+  }
+  const line = String(text).replace(/\s+/g, ' ').trim();
+  return line ? '<small class="focus-preview">' + esc(line.length > 160 ? line.slice(0, 159) + '…' : line) + '</small>' : '';
+}
 function whereOf(x) {
   const as = x.accountId ? `<span class="ring" style="--ring:${ringById(x.accountId)}"></span>as ${esc(x.accountName || '')}` : '';
   const place = x.leftover ? 'finishing from before the restart' : x.source === 'terminal' ? 'in a terminal' : x.source === 'elsewhere' ? 'in another app' : '';
@@ -568,6 +606,7 @@ const Boot = { raw: {} };
 async function loadState(pre) {
   const j = pre || await api('/api/state');
   Boot.raw.state = j;
+  if (!readChatFocus(j.chatFocus, !!pre) && S.chatFocus) Boot.raw.state.chatFocus = S.chatFocus;
   S.accounts = j.accounts; S.dryRun = j.dryRun; S.platform = j.platform; S.prefs = j.prefs; S.index = j.index; S.appVersion = j.appVersion; S.shell = j.shell || null; S.firstRun = !!j.firstRun; S.codex = j.codex || null; S.gemini = j.gemini || null; S.reopen = j.reopen || []; S.restart = j.restart || { pending: false }; S.update = !!j.update; S.pid = j.pid || null;
   const saved = store('acct');
   if (!S.accounts.some(a => a.id === S.acct)) S.acct = S.accounts.some(a => a.id === saved) ? saved : S.accounts[0].id;

@@ -379,6 +379,9 @@ const chats = chatLib.createChatManager({
     if (chat && chat.aide) { clearTimeout(aideTimer); aideTimer = setTimeout(() => broadcast('aide'), 1500); }   // its list says what was asked last
   },
   onSession: chat => {
+    if (!chat.fork && chat.startedAs && chat.sessionId) {
+      try { liteStore.moveFocus(chat.startedAs, chat.sessionId); } catch (err) { log(`Couldn’t move chat focus: ${err.message}`); }
+    }
     if (chat.prRecord && chat.sessionId) { try { const r = chat.prRecord; prRecords.bindSession(r.repo, r.n, r.id, chat.sessionId); } catch (err) { log(`PR journal: ${err.message}`); } }
     if (chat.aide && chat.sessionId) { aide.note(chat.sessionId, chat.aideGroup); broadcast('aide'); }
     // A side question is set aside as done as soon as it has an id: it never sits in the lists.
@@ -1245,14 +1248,30 @@ const mcpAuth = mcpAuthLib.createMcpAuth({
   openUrl: url => sys.openUrl(url),
   onChange: () => broadcast('mcp', { flows: mcpAuth.flows() }),
 });
-// Pull requests (lib/prs.js), through gh as whoever is signed in to it here. Each one's folders here are your
-// projects that have its repo; the chat that worked on its branch is found by the branch its chats were on.
+// Pull requests (lib/prs.js), through gh as whoever is signed in to it here.
+const prSessions = () => sessionsWithCodex().projects.flatMap(p => p.sessions.map(x => ({ ...x, cwd: x.cwd || p.cwd })));
 const prs = prsLib.createPrs({
   log,
   projects: () => sessionsWithCodex().projects.map(p => ({ cwd: p.cwd, exists: p.exists, updated: Math.max(0, ...(p.sessions || []).map(x => x.updated || 0)) })),
-  sessions: () => sessions.scan().projects.flatMap(p => p.sessions.map(x => ({ id: x.id, cwd: p.cwd, branch: x.branch || null, updated: x.updated || 0, title: x.title || null }))),
+  sessions: prSessions,
 });
 const prRecords = require('./lib/pr-records').createPrRecords({ dataDir: DATA_DIR, log });
+function prChatLinks(entries, indexed = prSessions()) {
+  return relatedLib.prChatLinks(entries, ({ key, sessionId, provider }) => {
+    let live = sessionId ? chats.bySession(sessionId) : null;
+    if (!live && key) { try { const c = chats.get(key); if (c.state !== 'ended') live = c; } catch { /* closed */ } }
+    if (live) return { key: live.key, sessionId: live.sessionId || null, provider: live.provider || provider, title: live.title || null, cwd: live.cwd };
+    const row = sessionId && indexed.find(s => s.id.toLowerCase() === sessionId.toLowerCase());
+    if (row && row.folderExists !== false && fs.existsSync(row.cwd)) return { key: null, sessionId: row.id, provider: row.provider || provider, title: row.title || null, cwd: row.cwd };
+    return null;
+  });
+}
+async function prDetail(repo, n, options) {
+  const p = await prs.detail(repo, n, options), record = prRecords.list(p.repo, p.number);
+  const linked = prChatLinks(record);
+  if (linked.resumeChat && !p.clones.some(c => normCwd(c) === normCwd(linked.resumeChat.cwd))) linked.resumeChat = null;
+  return { ...p, ...linked, record };
+}
 function notePrRun(pr, kind, chat) {
   try {
     const entry = prRecords.started(pr, kind, chat);
@@ -1260,6 +1279,10 @@ function notePrRun(pr, kind, chat) {
     broadcast('pr-record', { repo: pr.repo, n: pr.number });
     return null;
   } catch (err) { log(`PR journal: ${err.message}`); return 'The chat started, but its journal entry could not be saved.'; }
+}
+function prUpdated(repo, n) {
+  invalidateRelatedBoard();
+  broadcast('pr-updated', { repo, n: Number(n) });
 }
 // Linear (lib/linear.js): the issues assigned to you, for the work board. Its key: your own, saved here, or the one
 // Latitude's agents keep in a Latitude clone's .env.local.
@@ -1273,21 +1296,30 @@ function noteWorkChat(issue, chat, role = 'start') {
   all[issue] = relatedLib.addRun(all[issue], { key: chat.key, sessionId: chat.sessionId || null, at: Date.now(), role, provider: chat.provider || 'claude' });
   try { store.writeJsonAtomic(WORK_FILE, all); } catch (err) { log(`Work board: couldn’t note the chat for ${issue}: ${err.message}`); }
 }
-// The work board: your Linear issues, and your pull requests (and the ones linked to your issues, whoever made
-// them, and the ones waiting on your review), each matched to its issue and to the chat on its branch.
+// The board and chat panels share the last completed read. A late response can't replace a newer snapshot.
+let relatedBoard = { at: 0, value: null }, workBoardRequest = 0, relatedBoardLoading = null;
+function invalidateRelatedBoard() { workBoardRequest++; relatedBoard = { at: 0, value: null }; relatedBoardLoading = null; }
 async function workBoard(fresh) {
+  const request = ++workBoardRequest;
   const [gh, lin] = await Promise.all([prs.status({ fresh }).catch(err => ({ installed: null, signedIn: false, error: err.message })), linear.status({ fresh }).catch(err => ({ connected: false, error: err.message }))]);
-  let issues = [], issuesError = null;
-  if (lin.connected && lin.me) { try { issues = await linear.myIssues({ fresh }); } catch (err) { issuesError = err.message; } }
-  let list = [], prsError = null;
-  if (gh.signedIn) { try { list = (await prs.board({ extra: issues.flatMap(i => i.prs), fresh })).prs; } catch (err) { prsError = err.message; } }
+  let issues = [], issuesError = lin.error || null;
+  if (lin.connected && lin.me) { try { issues = (await linear.myIssues({ fresh })).map(i => ({ ...i })); } catch (err) { issuesError = err.message; } }
+  let list = [], prsAt = null, prsError = gh.error || null, prsPartial = false;
+  if (gh.signedIn) {
+    try {
+      const b = await prs.board({ extra: issues.flatMap(i => i.prs || []), fresh });
+      if (b.login?.toLowerCase() !== gh.login?.toLowerCase()) throw fail(409, 'The active GitHub account changed while refreshing. Check again.');
+      list = b.prs.map(p => ({ ...p })); prsAt = b.at || null; prsPartial = !!b.partial;
+      if (b.partial) prsError = b.partialReason || 'GitHub returned an incomplete PR list.';
+    } catch (err) { prsError = err.message; }
+  }
   const key = (repo, n) => `${String(repo).toLowerCase()}#${n}`;
   const byKey = new Map(list.map(p => [key(p.repo, p.number), p]));
-  for (const i of issues) for (const l of i.prs) { const p = byKey.get(key(l.repo, l.number)); if (p && !p.issue) p.issue = i.identifier; }
+  for (const i of issues) for (const l of i.prs || []) { const p = byKey.get(key(l.repo, l.number)); if (p && !p.issue) p.issue = i.identifier; }
   for (const p of list) if (!p.issue) { const m = /\[([A-Z][A-Z0-9]{1,9}-\d{1,7})\]/.exec(p.title) || /(?:^|\/)([a-z][a-z0-9]{1,9}-\d{1,7})(?:-|$)/.exec(p.head || ''); if (m) p.issue = m[1].toUpperCase(); }
-  // The Claude chat on each PR's branch, and the chat started for each issue (still running, or by its id).
-  const folders = new Map(await Promise.all([...new Set(list.map(p => p.repo))].map(async repo => [repo, (await prs.clonesOf(repo)).map(c => c.cwd)])));
-  for (const p of list) { p.cwds = folders.get(p.repo) || []; const c = prs.chatOn(p.head, p.cwds); p.chat = c ? { sessionId: c.id, title: c.title, cwd: c.cwd } : null; }
+  const folders = new Map(await Promise.all([...new Set(list.map(p => p.repo))].map(async repo => [repo, (await prs.clonesOf(repo).catch(() => [])).map(c => c.cwd)])));
+  const indexed = list.length ? prSessions() : [];
+  for (const p of list) { p.cwds = folders.get(p.repo) || []; Object.assign(p, prChatLinks(prRecords.list(p.repo, p.number), indexed)); }
   const started = workChats();
   let notes = false;
   for (const i of issues) {
@@ -1301,29 +1333,42 @@ async function workBoard(fresh) {
     i.runs = relatedLib.runsOf(w).map(r => { let c = null; try { c = r.key && chats.get(r.key); } catch { /* ended */ } return { ...r, key: c && c.state !== 'ended' ? c.key : null }; });
   }
   if (notes) { try { store.writeJsonAtomic(WORK_FILE, started); } catch { /* next time */ } }
-  return { gh: { installed: gh.installed, signedIn: !!gh.signedIn, login: gh.login || null, error: gh.error || null }, linear: lin, issues, issuesError, prs: list, prsError, at: Date.now() };
+  const result = { gh: { installed: gh.installed, signedIn: !!gh.signedIn, login: gh.login || null, error: gh.error || null }, linear: lin, issues, issuesError, prs: list, prsError, prsPartial, prsAt, at: Date.now() };
+  if (request === workBoardRequest) relatedBoard = { at: result.at, value: result };
+  return result;
 }
 // What a chat belongs to (lib/related.js), for its side panel: its issue, its PR, the other chats on that work,
-// and what started it. From the work board as last fetched, so opening a chat never waits on GitHub.
-let relatedBoard = { at: 0, value: null };
+// and what started it. A journal entry can name a PR that isn't on the board anymore.
 async function relatedOf({ key = null, sessionId = null }) {
   let live = null; if (key) { try { live = chats.get(key); } catch { /* ended */ } }
   const sid = sessionId || (live && live.sessionId) || null;
   if (!key && !sid) throw fail(400, 'Which chat?');
-  const scanned = sid ? sessionsWithCodex().projects.flatMap(p => (p.sessions || []).map(x => ({ ...x, cwd: p.cwd }))).find(x => x.id === sid) : null;
+  const scanned = sid ? prSessions().find(x => x.id === sid) : null;
   const chat = { key: key || null, sessionId: sid, cwd: (live && live.cwd) || (scanned && scanned.cwd) || null, branch: (scanned && scanned.branch) || null };
+  let board = relatedBoard.value;
   if (!relatedBoard.value || Date.now() - relatedBoard.at > 60000) {
-    relatedBoard = { at: Date.now(), value: await workBoard(false).catch(() => ({ issues: [], prs: [] })) };
+    if (!relatedBoardLoading) {
+      const pending = workBoard(false).catch(() => null).finally(() => { if (relatedBoardLoading === pending) relatedBoardLoading = null; });
+      relatedBoardLoading = pending;
+    }
+    await relatedBoardLoading;
+    board = relatedBoard.value;
+  }
+  board ||= { issues: [], prs: [] };
+  const records = prRecords.findByChat({ key: chat.key, sessionId: chat.sessionId });
+  const rec = records[0];
+  if (rec && !board.prs.some(p => p.repo.toLowerCase() === rec.repo.toLowerCase() && p.number === rec.n)) {
+    const p = await prs.detail(rec.repo, rec.n).catch(() => null);
+    if (p) board = { ...board, prs: [...board.prs, { ...p, cwds: p.clones }] };
   }
   const origins = [
     ...routines.list().flatMap(r => (r.history || []).filter(h => h.key || h.sessionId).map(h => ({ kind: 'routine', id: r.id, name: r.name, key: h.key || null, sessionId: h.sessionId || null }))),
     ...taskList.filter(t => t.key).map(t => ({ kind: 'task', id: t.id, name: t.title || String(t.prompt || '').slice(0, 60), key: t.key, sessionId: null })),
   ];
   return relatedLib.relatedFor({
-    chat, board: relatedBoard.value, work: workChats(), origins,
-    records: prRecords.findByChat({ key: chat.key, sessionId: chat.sessionId }),
+    chat, board, work: workChats(), origins, records,
     journal: (repo, n) => { try { return prRecords.list(repo, n); } catch { return []; } },
-    prChats: p => (p.head ? prs.chatsOn(p.head, p.cwds || []) : []).slice(0, 12),
+    prChats: p => (p.head && p.headRepo?.toLowerCase() === p.repo.toLowerCase() ? prs.chatsOn(p.head, p.cwds || []) : []).slice(0, 12),
   });
 }
 // The setup check on Your work: is this PC's Latitude clone set up the way its Windows guide asks (lib/winrepo.js)?
@@ -1438,7 +1483,7 @@ async function openPrChat({ provider, account, cwd, sessionId = null, title, per
 // A chat about a pull request with no task given: opened in its repo with your defaults, its details ready in the
 // message box for you to say what you want.
 async function prOpenChat(body) {
-  const pr = await prs.detail(body.repo, body.n, { fresh: false });
+  const pr = await prDetail(body.repo, body.n, { fresh: true });
   const cwd = (body.cwd && pr.clones.find(x => normCwd(x) === normCwd(body.cwd))) || pr.clones[0];
   if (!cwd) throw fail(409, `No folder on this computer has ${pr.repo}. Clone it, open it once in a chat here, then try again.`);
   const provider = agentOf(body.provider);
@@ -1447,7 +1492,7 @@ async function prOpenChat(body) {
   const state = [pr.isDraft ? 'a draft' : null, pr.open ? `${pr.open} open review thread${pr.open === 1 ? '' : 's'}` : null, c.failed && c.failed.length ? `${c.failed.length} failing check${c.failed.length === 1 ? '' : 's'}` : null].filter(Boolean).join(', ');
   const text = `About pull request #${pr.number} in ${pr.repo}: “${pr.title}”${pr.author ? ` by ${pr.author}` : ''} (${pr.url}; branch ${pr.head} → ${pr.base}${state ? `; ${state}` : ''}).\n\n`;
   log(`PRs: a new ${provider} chat about ${pr.repo}#${pr.number}.`);
-  return { key: chat.key, text };
+  return { key: chat.key, text, recordWarning: notePrRun(pr, 'discussion', chat) };
 }
 
 // ---------- playtests (lib/playtest.js) ----------
@@ -1521,7 +1566,7 @@ async function namePlaytest(chat, title, cwd, at) {
 // that did the work (sessionId, when there is one) and a note of what you want said. Yours to edit and copy.
 async function prSlackPost(body) {
   const kind = body.kind === 'fyi' ? 'fyi' : 'review';
-  const pr = await prs.detail(body.repo, body.n, { fresh: false });
+  const pr = await prDetail(body.repo, body.n, { fresh: true });
   const account = namingAccount(null);
   if (!account) throw fail(409, 'Sign in to a Claude account first: it writes the post.');
   // The chat that did the work: the one asked about, or else the one on the PR's branch here.
@@ -1544,32 +1589,33 @@ async function prAction(body) {
     const target = skill.parseUrl(body.url);
     const text = skill.prompt(target.url, { instructions: body.instructions, model: body.model, effort: body.effort });
     requireCodexSignedIn();
-    const pr = await prs.detail(target.repo, target.n, { fresh: true });
+    const pr = await prDetail(target.repo, target.n, { fresh: true });
     const cwd = (body.cwd && pr.clones.find(x => normCwd(x) === normCwd(body.cwd))) || pr.clones[0];
     if (!cwd) throw fail(409, `No folder on this computer has ${pr.repo}. Open its local folder in a chat first.`);
     const chat = await startPrChat({ provider: 'codex', account: body.account, model: body.codexModel, effort: body.codexEffort, cwd, text, title: `Cross-model review #${pr.number}: ${pr.title}`.slice(0, 120) });
     return { key: chat.key, cwd, resumed: false, recordWarning: notePrRun(pr, action, chat) };
   }
   if (!['review', 'fix-comments', 'fix-checks', 'update', 'validate', 'handoff'].includes(action)) throw fail(400, 'Choose a review, fix, validation, handoff, or branch update.');
-  const pr = await prs.detail(body.repo, body.n, { fresh: true });
+  const pr = await prDetail(body.repo, body.n, { fresh: true });
   const same = (a, b) => normCwd(a) === normCwd(b);
   const cwd = (body.cwd && pr.clones.find(x => same(x, body.cwd))) || pr.clones[0];
   if (!cwd) throw fail(409, `No folder on this computer has ${pr.repo}. Clone it, open it once in a chat here, then try again.`);
   const provider = agentOf(body.provider);
   if (['review', 'validate', 'handoff'].includes(action)) {
     const refs = await prs.fetchPr(cwd, pr);
-    const text = action === 'review' ? prsLib.reviewPrompt(pr, refs) : prsLib.workflowPrompt(action === 'handoff' ? { ...pr, record: prRecords.list(pr.repo, pr.number) } : pr, action, refs);
+    const text = action === 'review' ? prsLib.reviewPrompt(pr, refs) : prsLib.workflowPrompt({ ...pr, record: pr.record.filter(e => e.kind !== 'discussion') }, action, refs);
     const label = { review: 'Review', validate: 'Validate', handoff: 'Handoff' }[action];
     const chat = await startPrChat({ provider, account: body.account, model: body.model, effort: body.effort, cwd, text, permissionMode: action === 'validate' ? null : 'plan', title: `${label} #${pr.number}: ${pr.title}`.slice(0, 120) });
     log(`PRs: ${provider} started ${action} for ${pr.repo}#${pr.number} in ${cwd}.`);
     return { key: chat.key, cwd, resumed: false, recordWarning: notePrRun(pr, action, chat) };
   }
+  if (pr.state !== 'OPEN') throw fail(409, 'GitHub shows this pull request is no longer open. Refresh it before continuing.');
+  if (!pr.headRepo || pr.headRepo.toLowerCase() !== pr.repo.toLowerCase()) throw fail(409, 'This PR’s source branch isn’t in the base repository. Open a chat to work in its source repository.');
   const text = action === 'fix-comments' ? prsLib.fixCommentsPrompt(pr) : action === 'update' ? prsLib.updatePrompt(pr) : prsLib.fixChecksPrompt(pr);
-  // The Claude chat that made it knows the work: it carries on there unless a new chat is asked for.
-  // (Not while it's open in a terminal: that one carries on there, and this starts a new chat instead.)
-  const reuse = provider === 'claude' && pr.chat && body.fresh !== true && !running[String(pr.chat.sessionId).toLowerCase()];
-  const chat = await startPrChat({ provider, account: body.account, model: body.model, effort: body.effort, cwd: reuse ? pr.chat.cwd : cwd, sessionId: reuse ? pr.chat.sessionId : null, text, title: reuse ? pr.chat.title : `${{ 'fix-comments': 'Comments', update: 'Up to date', 'fix-checks': 'Checks' }[action]} on #${pr.number}: ${pr.title}`.slice(0, 120) });
-  log(`PRs: ${provider} ${{ 'fix-comments': 'fixing the review comments', update: 'bringing up to date', 'fix-checks': 'fixing the checks' }[action]} on ${pr.repo}#${pr.number}${reuse ? ' in the chat that made it' : ''}.`);
+  const linked = pr.resumeChat;
+  const reuse = provider === 'claude' && linked && body.fresh !== true && same(linked.cwd, cwd) && !running[linked.sessionId.toLowerCase()];
+  const chat = await startPrChat({ provider, account: body.account, model: body.model, effort: body.effort, cwd, sessionId: reuse ? linked.sessionId : null, text, title: reuse ? linked.title : `${{ 'fix-comments': 'Comments', update: 'Up to date', 'fix-checks': 'Checks' }[action]} on #${pr.number}: ${pr.title}`.slice(0, 120) });
+  log(`PRs: ${provider} ${{ 'fix-comments': 'fixing the review comments', update: 'bringing up to date', 'fix-checks': 'fixing the checks' }[action]} on ${pr.repo}#${pr.number}${reuse ? ' in its earlier PR chat' : ''}.`);
   return { key: chat.key, cwd: chat.cwd, resumed: !!reuse, recordWarning: notePrRun(pr, action, chat) };
 }
 
@@ -2035,6 +2081,7 @@ function stateFor() {
   return {
     accounts: c.accounts.map(a => acc.publicAccount(c, a)),
     prefs: c.prefs, claudeCommand: c.claudeCommand,
+    chatFocus: liteStore.focusView(),
     dryRun: sys.DRY_RUN, appVersion: APP_VERSION, shell: SHELL, firstRun: FIRST_RUN, platform: process.platform,
     index: sessions.progress,
     codex: codexPublic(),
@@ -2130,7 +2177,7 @@ function routineFromTask(t) {
 })();
 
 // ---------- Switcher Lite (ui-lite/, at /lite): buckets, stages, plans; see lib/lite.js ----------
-const liteStore = liteLib.createLite({ dataDir: DATA_DIR, log });
+const liteStore = liteLib.createLite({ dataDir: DATA_DIR, log, onFocusChange: view => broadcast('chat-focus', view) });
 const liteRoutes = createLiteRoutes({
   store: liteStore, config, acc, usage, log, broadcast, dataDir: DATA_DIR,
   // Signing in from Lite: afterwards, the same refresh the full app's sign-in does.
@@ -2398,10 +2445,10 @@ async function handleApi(req, res, url, remote = false) {
   if (route === 'GET /api/linear/status') return send(res, 200, await linear.status({ fresh: url.searchParams.get('fresh') === '1' }));
   if (route === 'GET /api/linear/users') return send(res, 200, { users: await linear.users(url.searchParams.get('q') || '') });
   if (route === 'GET /api/prs/team') return send(res, 200, { team: await prs.team(String(url.searchParams.get('repo') || '')) });
-  if (route === 'GET /api/prs/detail') { const p = await prs.detail(url.searchParams.get('repo'), url.searchParams.get('n'), { fresh: url.searchParams.get('fresh') === '1' }); return send(res, 200, { ...p, record: prRecords.list(p.repo, p.number) }); }
+  if (route === 'GET /api/prs/detail') return send(res, 200, await prDetail(url.searchParams.get('repo'), url.searchParams.get('n'), { fresh: url.searchParams.get('fresh') === '1' }));
   if (route === 'GET /api/prs/record') return send(res, 200, { entries: prRecords.list(url.searchParams.get('repo'), url.searchParams.get('n')) });
   if (route === 'GET /api/related') return send(res, 200, await relatedOf({ key: url.searchParams.get('key'), sessionId: url.searchParams.get('sessionId') }));
-  if (route === 'GET /api/prs/files') return send(res, 200, await prs.files(url.searchParams.get('repo'), url.searchParams.get('n'), { page: url.searchParams.get('page') || 1, head: url.searchParams.get('head') }));
+  if (route === 'GET /api/prs/files') return send(res, 200, await prs.files(url.searchParams.get('repo'), url.searchParams.get('n'), { page: url.searchParams.get('page') || 1, head: url.searchParams.get('head'), base: url.searchParams.get('base') }));
   if (route === 'GET /api/prs/folder') { const p = projectAt(url.searchParams.get('cwd')); if (!p || !p.exists) throw fail(404, 'Pick one of your projects.'); return send(res, 200, await prs.inFolder(p.cwd, { fresh: url.searchParams.get('fresh') === '1' })); }
   // Setup: the Codex this app runs and the newest one out (a newer Codex lists newer models), and
   // the Antigravity CLI's version.
@@ -2604,9 +2651,19 @@ async function handleApi(req, res, url, remote = false) {
     case '/api/connections/finish': return send(res, 200, { flow: await mcpAuth.finish(body.id, body.url) });
     // GitHub: gh's own sign-in (its one-time code is shown on the page), switching between gh's accounts,
     // and what a chat is asked to do with a pull request.
-    case '/api/prs/signin': return send(res, 200, { signIn: await prs.signIn({ onChange: () => broadcast('prs', { signIn: prs.signInState() }) }) });
+    case '/api/prs/signin': return send(res, 200, { signIn: await prs.signIn({ onChange: () => {
+      const signIn = prs.signInState();
+      if (signIn?.state === 'done') invalidateRelatedBoard();
+      broadcast('prs', { signIn });
+    } }) });
     case '/api/prs/signin-cancel': return send(res, 200, { signIn: prs.cancelSignIn() });
-    case '/api/prs/switch': { const st = await prs.switchTo(String(body.user || '')); broadcast('prs', {}); return send(res, 200, st); }
+    case '/api/prs/switch': {
+      const st = await prs.switchTo(String(body.user || ''));
+      invalidateRelatedBoard();
+      resetPrWatch();
+      broadcast('prs', { accountChanged: true });
+      return send(res, 200, st);
+    }
     case '/api/prs/act': return send(res, 200, await prAction(body));
     case '/api/prs/open-chat': return send(res, 200, await prOpenChat(body));
     case '/api/prs/slack-post': return send(res, 200, await prSlackPost(body));
@@ -2631,11 +2688,11 @@ async function handleApi(req, res, url, remote = false) {
       broadcast('pr-record', { repo: body.repo, n: body.n }); return send(res, 200, result);
     }
     // The work board's buttons that change a pull request on GitHub (you press each one yourself).
-    case '/api/prs/ready': return send(res, 200, await prs.ready(body.repo, body.n));
-    case '/api/prs/merge': return send(res, 200, await prs.merge(body.repo, body.n, { auto: !!body.auto, head: body.head }));
-    case '/api/prs/merge-cancel': return send(res, 200, await prs.cancelAutoMerge(body.repo, body.n));
-    case '/api/prs/reviewers': return send(res, 200, await prs.requestReviewers(body.repo, body.n, body.users));
-    case '/api/prs/preview': return send(res, 200, await prs.askPreview(body.repo, body.n));
+    case '/api/prs/ready': { const r = await prs.ready(body.repo, body.n); prUpdated(body.repo, body.n); return send(res, 200, r); }
+    case '/api/prs/merge': { const r = await prs.merge(body.repo, body.n, { auto: !!body.auto, head: body.head }); prUpdated(body.repo, body.n); return send(res, 200, r); }
+    case '/api/prs/merge-cancel': { const r = await prs.cancelAutoMerge(body.repo, body.n); prUpdated(body.repo, body.n); return send(res, 200, r); }
+    case '/api/prs/reviewers': { const r = await prs.requestReviewers(body.repo, body.n, body.users); prUpdated(body.repo, body.n); return send(res, 200, r); }
+    case '/api/prs/preview': { const r = await prs.askPreview(body.repo, body.n); prUpdated(body.repo, body.n); return send(res, 200, r); }
     case '/api/work/start': return send(res, 200, await startWork(body));
     // Playtest: start one, see its brief first, and a project's saved links and presets.
     case '/api/playtest/start': return send(res, 200, await startPlaytest(body));
@@ -4452,6 +4509,7 @@ async function handleRequest(req, res, { remote = false } = {}) {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       res.write('retry: 3000\n\n');
       clients.add(res);
+      boundedWrite(res, `event: chat-focus\ndata: ${JSON.stringify(liteStore.focusView())}\n\n`);
       const ping = setInterval(() => boundedWrite(res, ': ping\n\n'), 25000);
       // A window that names itself takes its chats over this one connection too (lib/streams.js).
       const stream = cleanId(url.searchParams.get('stream'));
@@ -4586,28 +4644,37 @@ pushes.keepDevices(phone.status().devices.map(d => d.id));
 const prWatchLib = require('./lib/prwatch');
 const PRWATCH_FILE = path.join(DATA_DIR, 'pr-watch.json');
 let prWatch = store.loadOwnJson(PRWATCH_FILE, null, () => {});
-let prWatching = false;
+let prWatching = false, prWatchGeneration = 0;
+function resetPrWatch() {
+  prWatchGeneration++;
+  prWatch = null;
+  try { fs.unlinkSync(PRWATCH_FILE); } catch { /* none */ }
+}
 async function watchPrs({ board = null, login = null } = {}) {
   // Off: what was kept goes too, so turning it on again later starts afresh rather than telling days of changes.
-  if (config().prefs.prNotices === false) { if (prWatch) { prWatch = null; try { fs.unlinkSync(PRWATCH_FILE); } catch { /* none */ } } return []; }
+  if (config().prefs.prNotices === false) { if (prWatch) resetPrWatch(); return []; }
   if (prWatching) return [];
   prWatching = true;
+  const generation = prWatchGeneration;
   try {
     let list, me = login;
     try {
       if (board) list = board;
       else { const b = await prs.board({ fresh: true }); if (b.partial) return []; list = b.prs; me = b.login; }   // half an answer isn't the whole list
     } catch { return []; }   // GitHub not signed in, or offline: next time
-    const snap = prWatchLib.snapshot(list, me), now = Date.now();
+    if (generation !== prWatchGeneration || config().prefs.prNotices === false) return [];
+    const who = me?.toLowerCase() || null, before = (prWatch?.login || null) === who ? prWatch : null;
+    const snap = prWatchLib.snapshot(list, me, before?.snap), now = Date.now();
     // Review requests already told (two weeks), so one that drops out of GitHub's list and comes back isn't told again.
-    const asked = Object.fromEntries(Object.entries((prWatch && prWatch.asked) || {}).filter(([, at]) => now - at < 14 * 864e5));
-    const events = prWatch && prWatch.snap ? prWatchLib.changes(prWatch.snap, snap, now, new Set(Object.keys(asked))) : [];
+    const asked = Object.fromEntries(Object.entries(before?.asked || {}).filter(([, at]) => now - at < 14 * 864e5));
+    const events = before?.snap ? prWatchLib.changes(before.snap, snap, now, new Set(Object.keys(asked))) : [];
     for (const e of events) if (e.kind === 'review-asked') asked[`${e.repo.toLowerCase()}#${e.number}`] = now;
-    for (const [k, st] of Object.entries(snap)) if (st.review && !asked[k] && !(prWatch && prWatch.snap)) asked[k] = now;   // (the first look: the ones already asked)
-    const kept = [...events, ...((prWatch && prWatch.events) || [])].filter(e => now - e.at < 2 * 864e5).slice(0, 40);
-    prWatch = { at: now, snap, events: kept, asked };
+    for (const [k, st] of Object.entries(snap)) if (st.review && !asked[k] && !before?.snap) asked[k] = now;
+    const kept = [...events, ...(before?.events || [])].filter(e => now - e.at < 2 * 864e5).slice(0, 40);
+    prWatch = { at: now, login: who, snap, events: kept, asked };
     try { store.writeJsonAtomic(PRWATCH_FILE, prWatch); } catch (err) { log(`Couldn’t save pr-watch.json: ${err.message}`); }
     if (events.length) {
+      invalidateRelatedBoard();
       log(`PRs: ${events.map(e => e.title).join('; ')}.`);
       broadcast('pr-events', { events: events.map(e => ({ ...e, action: prWatchLib.ACTION[e.kind] })) });
       for (const e of events) {

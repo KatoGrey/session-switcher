@@ -272,7 +272,10 @@ const kindTag = c => (c.kind && c.kind !== 'feature' ? `<span class="tag kind-ta
 const focusStar = c => (c.focus ? '<span class="focus-star" title="Focus">★</span>' : '');
 const waitTag = c => (c.waiting ? `<span class="tag wait-tag">${esc(c.waitingOn || 'Waiting')}</span>` : '');
 // Where a waiting chat's PRs stand (from the ten-minute check), in a few words.
-const waitPrLine = c => (c.waitPrs || []).map(p => `#${p.n} ${p.standing.toLowerCase()}`).join(' · ');
+const waitPrLine = c => (c.waitPrs || []).map(p => {
+  const last = p.stale && p.standing !== 'Status unavailable' ? (p.checkedAt ? ` (last checked ${ago(p.checkedAt)})` : ' (last known)') : '';
+  return `#${p.n} ${p.standing.toLowerCase()}${last}`;
+}).join(' · ');
 // Needs you: asking for an OK or a question, or replied since you last looked.
 const replied = x => x && !x.working && !(x.pending || []).length && x.finishedAt && S.now - x.finishedAt < 12 * 3600e3 && x.finishedAt > (S.seen[x.sessionId || x.key] || 0) && x.phase !== 'ended';
 const asking = x => !!(x && (x.pending || []).length);
@@ -284,7 +287,8 @@ const needs = c => needsLive(liveOf(c)) || !!(c && c.waitNews);
 const running = c => { const x = liveOf(c); return !!(x && x.working); };
 // Quiet isn't a status: nothing has moved for a few days. Chats asking for you, running, in Focus or Waiting never go quiet.
 const isQuiet = c => S.now - c.updated > quietDays() * DAY && !needs(c) && !running(c) && !c.waiting && !c.focus;
-const visible = c => !c.archived && !c.desktopArchived && !c.auto && !c.routineRun && !(projOf(c).archived);
+const unarchived = c => !c.archived && !c.desktopArchived && !projOf(c).archived;
+const visible = c => unarchived(c) && !c.auto && !c.routineRun;
 const allChats = () => S.chats.filter(visible);
 // One list of projects: buckets (kept in lite.json) no longer divide it.
 const inBucket = () => true;
@@ -315,7 +319,11 @@ function toggleFam(id, on) { const k = low(id); if (on === undefined ? !S.openFa
 // Every archived or visible descendant, from the whole list (for archive and Bring back).
 function descAll(id, seen = new Set()) { const out = []; for (const c of S.chats) if (c.parent && low(c.parent) === low(id) && !seen.has(c.id)) { seen.add(c.id); out.push(c.id, ...descAll(c.id, seen)); } return out; }
 
-const focusList = () => allChats().filter(c => c.focus && !parked(statusOf(c))).sort((a, b) => b.updated - a.updated);
+// Use a stable order while replies arrive, including chats moved to Later or Done.
+function focusList(chats = S.chats) {
+  const order = new Map(Object.keys(S.lite?.chats || {}).map((id, i) => [id, i]));
+  return chats.filter(c => c.focus && unarchived(c)).sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity) || a.id.localeCompare(b.id));
+}
 // Bug chats live under Bugs (the sidebar's Bugs group and page), not in their projects' lists.
 // A bug: one you marked, or one the guesser marked that came from a sweep or names a tracker issue
 // (VOY-2573). A title alone ("Fix carousel swipe stiffness") isn't enough; those stay in their project.

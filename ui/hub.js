@@ -73,14 +73,16 @@ function renderNav() {
   const keep = focused && (d.cwd ? `[data-cwd="${CSS.escape(d.cwd)}"][data-view="${d.view || ''}"]` : d.view ? `[data-view="${d.view}"]` : d.navchat ? `[data-navchat="${CSS.escape(d.navchat)}"]` : d.navopen ? `[data-navopen="${CSS.escape(d.navopen)}"]` : d.navprov ? `[data-navprov="${d.navprov}"]` : d.fold ? `[data-fold="${d.fold}"]` : d.group ? `[data-group="${CSS.escape(d.group)}"]` : d.cmdr ? '[data-cmdr]' : focused.id ? `#${focused.id}` : null);
   const caret = focused && focused.id === 'navQ' ? focused.selectionStart : null;
   const scroll = $('nav').querySelector('.nav-scroll')?.scrollTop || 0;
+  const focusScroll = $('nav').querySelector('.focus-rows')?.scrollTop || 0;
   $('nav').innerHTML = html;
   const scroller = $('nav').querySelector('.nav-scroll'); if (scroller) scroller.scrollTop = scroll;
+  const focusRows = $('nav').querySelector('.focus-rows'); if (focusRows) focusRows.scrollTop = focusScroll;
   const el = keep && $('nav').querySelector(keep);
   if (el) { el.focus({ preventScroll: true }); if (caret !== null) el.setSelectionRange(caret, caret); }
 }
 // What's open and what's pinned, in the order the chat window's side list has them. (At the very start
 // the chat window's script may not have loaded yet: then what's open, in the order it came.)
-const navLists = () => (typeof railRows === 'function' ? railRows() : { pinned: [], active: S.activity.filter(x => !x.parentKey && onLists(x)) });
+const navLists = () => (typeof railRows === 'function' ? railRows() : { focused: [], pinned: [], active: S.activity.filter(x => !x.parentKey && onLists(x)) });
 // One open chat's state: a dot, and the same in words (so it isn't said by color alone).
 function chatState(x) {
   const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;
@@ -90,18 +92,30 @@ function chatState(x) {
 }
 // A chat's Draft label (ui/chat-drafts.js shows or hides it as its unsent message comes and goes).
 const draftTag = id => (window.ChatDrafts && id ? ChatDrafts.badge(id) : '');
+function navActivityRow(x, viewing, focused = false) {
+  const state = x.pinnedOnly ? { dot: 'ash-dot', word: x.statusLabel || 'Closed' } : chatState(x);
+  const preview = focused && !x.pinnedOnly ? focusPreview(x.partner && state.st !== ownStatus(x) ? x.partner : x, state.st) : '';
+  const title = x.title || 'New chat';
+  const attr = x.pinnedOnly ? `data-navchat="${esc(x.sessionId)}"` : `data-navopen="${esc(keyOf(x))}"`;
+  return `<button class="nav-i nav-chat ${esc(x.provider || '')}" ${attr} title="${esc(title)}${x.folder ? ` · ${esc(x.folder)}` : ''}" aria-current="${!!(viewing && lowId(x.sessionId) === viewing)}">${crestHtml(projectOf(x), 20, 'ni-crest')}<span class="ni-t">${draftTag(x.sessionId)}<span class="nc-t">${esc(title)}</span><small>${esc(state.word)}${x.folder ? ` · ${esc(x.folder)}` : ''}</small>${preview}</span><span class="${state.dot} nav-dot" aria-hidden="true"></span></button>`;
+}
+function navFocusHtml(focused, viewing) {
+  if (!focused.length) return '';
+  const expanded = !S.navFold.has('focus');
+  return `<section class="chat-focus-section" aria-label="In focus"><button class="nav-h fold" data-fold="focus" aria-expanded="${expanded}">In focus<span class="count">${focused.length}</span><span class="fold-c" aria-hidden="true">▾</span></button>${expanded ? `<div class="focus-rows">${focused.map(x => navActivityRow(x, viewing, true)).join('')}</div>` : ''}</section>`;
+}
 function navHtml() {
   const A = awaiting().length, W = atWork().length;
   const total = S.projects.reduce((n, p) => n + p.sessions.length, 0);
-  const { pinned: closedPins, active: open } = navLists();
-  const active = open.filter(x => !isCommander(x.sessionId));
+  const { focused, pinned: closedPins, active: open } = navLists();
+  const active = open.filter(x => !isCommander(x.sessionId) && !isChatFocused(x.sessionId));
   const viewing = window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId ? lowId(ChatUI.sessionId()) : null;
   const provWord = c => ({ codex: ' · Codex', gemini: ' · Gemini', openclaw: ' · OpenClaw' })[provOf(c)] || '';
   const fold = (id, label, count, cls = '') => `<button class="nav-h prov ${cls} fold" data-fold="${id}" aria-expanded="${!S.navFold.has(id)}"><span class="pmark" aria-hidden="true"></span>${esc(label)}<span class="count">${count}</span><span class="fold-c" aria-hidden="true">▾</span></button>`;
   const provCls = c => (provOf(c) === 'claude' ? '' : provOf(c));
   // Open now: what each is doing, in words, one click from opening.
   const activeHtml = active.length ? `${fold('open', voice('Active now'), active.length, 'open')}
-    ${S.navFold.has('open') ? '' : active.map(x => { const s = chatState(x), p = projectOf(x); return `<button class="nav-i nav-chat ${x.provider && x.provider !== 'claude' ? x.provider : ''}" data-navopen="${esc(keyOf(x))}" title="${esc(x.title || 'New chat')}${x.folder ? ` · ${esc(x.folder)}` : ''}" aria-current="${!!(viewing && lowId(x.sessionId) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${draftTag(x.sessionId)}<span class="nc-t">${esc(x.title || 'New chat')}</span><small>${esc(s.word)}${x.folder ? ` · ${esc(x.folder)}` : ''}</small></span><span class="${s.dot} nav-dot" aria-hidden="true"></span></button>`; }).join('')}` : '';
+    ${S.navFold.has('open') ? '' : active.map(x => navActivityRow(x, viewing)).join('')}` : '';
   // Pinned: projects, and chats that aren't open just now (open ones are in the list above).
   const pinnedP = [...S.pins].map(cwd => S.projects.find(p => p.cwd === cwd)).filter(Boolean);
   const pinnedC = closedPins.map(x => sessionById(x.sessionId)).filter(([c]) => c);
@@ -109,7 +123,7 @@ function navHtml() {
     ${S.navFold.has('pinned') ? '' : pinnedP.map(p => `<button class="nav-i pin" data-view="folder" data-cwd="${esc(p.cwd)}" aria-current="${S.view === 'folder' && S.folder === p.cwd && !S.prov}" title="${esc(p.cwd)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${esc(p.name)}</span>${p.sessions.some(c => isRunning(c.id) || liveOf(c.id)) ? '<span class="live-dot" title="A chat here is open right now"></span>' : ''}<span class="count">${p.sessions.length}</span></button>`).join('')
       + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat one ${provCls(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(viewing && lowId(c.id) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${draftTag(c.id)}<span class="nc-t">${esc(c.title)}</span><span class="sr"> in ${esc(p.name)}${provWord(c)}</span></span></button>`).join('')}` : '';
   // Recent: the latest chats that aren't listed above; every one on the Recent chats page.
-  const listed = new Set([...active.flatMap(x => [x.sessionId, x.startedAs]), ...pinnedC.map(([c]) => c.id)].filter(Boolean).map(lowId));
+  const listed = new Set([...focused, ...active].flatMap(x => [x.sessionId, x.startedAs]).concat(pinnedC.map(([c]) => c.id)).filter(Boolean).map(lowId));
   const recentC = allSessions().filter(([c, p]) => p.cwd !== cmdrSet().cwd && !listed.has(lowId(c.id))).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6);
   const recentHtml = total ? `${fold('recent', voice('Recent'), recentC.length, 'recent')}
     ${S.navFold.has('recent') ? '' : recentC.map(([c, p]) => `<button class="nav-i nav-chat ${provCls(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(viewing && lowId(c.id) === viewing)}">${crestHtml(p, 20, 'ni-crest')}<span class="ni-t">${draftTag(c.id)}<span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)} · ${esc(agoL(c.updated))}${provWord(c)}</small></span></button>`).join('')}` : '';
@@ -122,6 +136,7 @@ function navHtml() {
     <button type="button" class="nav-i nav-connections" data-shell-connections><span class="glyph" aria-hidden="true">⚿</span><span class="ni-t">Connections</span></button>
     <button type="button" class="nav-i nav-subagents" data-shell-subagents><span class="glyph" aria-hidden="true">⋔</span><span class="ni-t">Subagents</span></button>
     </div>
+    ${navFocusHtml(focused, viewing)}
     <div class="nav-scroll">
     ${navSections({ tools: `<div class="nav-tools">${navCommanderHtml()}${routinesNav()}${aideNav()}</div>`, pinned: pinnedHtml, projects: navProjectsHtml(), active: activeHtml, recent: recentHtml, headless: typeof navHeadlessHtml === 'function' ? navHeadlessHtml(viewing) : '', groups: navGroupsHtml(), subs: navFamiliesHtml() })}
     <p class="nav-foot">${S.appVersion ? `Session Switcher ${esc(S.appVersion)}. ` : ''}Your chats never leave this PC.</p></div>`;
@@ -180,7 +195,7 @@ function navSagaHtml() {
   const claude = group('claude'), codexF = group('codex'), gemF = group('gemini'), ocF = group('openclaw');
   // Pinned: projects and favorite chats, at the top.
   const pinnedP = [...S.pins].map(cwd => S.projects.find(p => p.cwd === cwd)).filter(Boolean);
-  const pinnedC = [...S.favs].map(id => sessionById(id)).filter(([s2]) => s2);
+  const pinnedC = [...S.favs].filter(id => !isChatFocused(id)).map(id => sessionById(id)).filter(([s2]) => s2);
   const chatDot = id => { const x = S.activity.find(y => y.sessionId && y.sessionId.toLowerCase() === id.toLowerCase()); if (!x) return ''; const st = statusOf(x); return NEEDS.has(st) || st === 'reply' ? '<span class="gilt-dot nav-dot" title="Waiting for you"></span>' : st === 'working' ? '<span class="ember-dot nav-dot" title="At work"></span>' : ''; };
   const fold = (id, label, count, cls = '') => `<button class="nav-h prov ${cls} fold" data-fold="${id}" aria-expanded="${!S.navFold.has(id)}"><span class="pmark" aria-hidden="true"></span>${label}<span class="count">${count}</span><span class="fold-c" aria-hidden="true">▾</span></button>`;
   const pinnedHtml = pinnedP.length || pinnedC.length ? `${fold('pinned', 'Pinned', pinnedP.length + pinnedC.length, 'pinned')}
@@ -188,7 +203,7 @@ function navSagaHtml() {
       + pinnedC.map(([c, p]) => `<button class="nav-i nav-chat ${provOf(c) === 'claude' ? '' : provOf(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)}${isCodex(c) ? ' · Codex' : isOpenClaw(c) ? ' · OpenClaw' : ''}</small></span>${chatDot(c.id)}</button>`).join('')}` : '';
   // Recent: your latest chats, any assistant, a click away (every one on the Recent chats page).
   const provName = c => ({ codex: ' · Codex', gemini: ' · Gemini', openclaw: ' · OpenClaw' })[provOf(c)] || '';
-  const recentC = allSessions().filter(([, p]) => p.cwd !== cmdrSet().cwd).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6);
+  const recentC = allSessions().filter(([c, p]) => !isChatFocused(c.id) && p.cwd !== cmdrSet().cwd).sort((x, y) => y[0].updated - x[0].updated).slice(0, 6);
   const recentHtml = recentC.length ? `${fold('recent', 'Recent', recentC.length, 'recent')}
     ${S.navFold.has('recent') ? '' : recentC.map(([c, p]) => `<button class="nav-i nav-chat ${provOf(c) === 'claude' ? '' : provOf(c)}" data-navchat="${esc(c.id)}" title="${esc(c.title)} · ${esc(p.name)}" aria-current="${!!(window.ChatUI && ChatUI.isOpen() && ChatUI.sessionId && ChatUI.sessionId() === c.id)}"><span class="glyph" aria-hidden="true">❝</span><span class="ni-t"><span class="nc-t">${esc(c.title)}</span><small>${esc(p.name)} · ${esc(agoL(c.updated))}${provName(c)}</small></span>${chatDot(c.id)}</button>`).join('')
       + `<button class="nav-i nav-more" data-view="recent"><span class="glyph" aria-hidden="true">✧</span><span class="ni-t">All recent chats</span><span class="count">${total}</span></button>`}` : '';
@@ -203,6 +218,7 @@ function navSagaHtml() {
       <span class="seal-t"><span class="seal-k">${blocked ? 'Blocked' : 'Working as'}</span><span class="seal-n">${esc(a ? a.name : 'No account')}</span><span class="seal-e">${esc(a && a.signedIn ? (a.email || 'Signed in') : 'Not signed in')}</span></span>
       <span class="seal-caret">${ICON.caret}</span>
     </button>
+    ${navFocusHtml(navLists().focused, lowId(window.ChatUI?.isOpen() && ChatUI.sessionId()))}
     <div class="nav-h">${esc(voice('Begin'))}</div>
     <button class="nav-i" data-view="hub" aria-current="${S.view === 'hub'}"><span class="glyph" aria-hidden="true">✦</span><span class="ni-t">${esc(voice('The hub'))}</span>${A ? `<span class="tag gilt">${A}</span>` : W ? `<span class="tag">${W}</span>` : ''}</button>
     ${navCommanderHtml()}

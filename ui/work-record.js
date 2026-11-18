@@ -10,17 +10,17 @@ const WorkRecord = (() => {
   function summary(p) {
     if (!p.record) return { text: 'Reading saved results', count: 0, earlier: 0 };
     const { current, earlier } = parts(p), results = current.filter(e => e.outcome !== 'started');
-    return { text: results.length ? `${results.length} recorded result${results.length === 1 ? '' : 's'}` : current.length ? 'Awaiting a result' : 'No results yet', count: results.length, earlier: earlier.length };
+    return { text: results.length ? `${results.length} recorded result${results.length === 1 ? '' : 's'}` : current.some(e => e.kind !== 'discussion') ? 'Awaiting a result' : 'No results yet', count: results.length, earlier: earlier.length };
   }
   function render(p) {
     if (!p.record) return '<p class="wk-muted" role="status">Reading the review journal…</p>';
     const { current, earlier } = parts(p);
     const entry = (e, old = false) => `<article class="wk-record-entry${old ? ' earlier' : ''}" data-record-id="${esc(e.id)}">
       <span class="wk-record-node ${!old && e.outcome === 'passed' ? 'ok' : !old && e.outcome === 'failed' ? 'bad' : ''}" aria-hidden="true">${e.outcome === 'passed' ? '✓' : e.outcome === 'failed' ? '!' : '·'}</span>
-      <div class="wk-record-line"><h4>${esc(kinds[e.kind] || e.kind)}</h4><span class="wk-record-outcome ${!old && e.outcome === 'passed' ? 'ok' : !old && e.outcome === 'failed' ? 'bad' : ''}">${esc(outcomes[e.outcome])}</span></div>
+      <div class="wk-record-line"><h4>${esc(e.kind === 'discussion' ? 'PR discussion' : kinds[e.kind] || e.kind)}</h4><span class="wk-record-outcome ${!old && e.outcome === 'passed' ? 'ok' : !old && e.outcome === 'failed' ? 'bad' : ''}">${esc(outcomes[e.outcome])}</span></div>
       <div class="wk-record-meta"><span title="${esc(new Date(e.updatedAt || e.at).toLocaleString())}">${esc(agoL(e.updatedAt || e.at))}</span><span>${e.outcome === 'started' && e.chat ? esc(PROV_NAME[e.chat.provider] || e.chat.provider) + ' chat' : 'Recorded by you'}</span>${old ? `<a href="${esc('https://github.com/' + p.repo + '/commit/' + e.head)}" target="_blank" rel="noopener noreferrer">${esc(e.head.slice(0, 7))} · earlier revision ↗</a>` : ''}</div>
-      ${e.notes ? `<p class="wk-record-notes">${esc(e.notes)}</p>` : '<p class="wk-muted">Open the chat to inspect its work, then record the result.</p>'}
-      <div class="wk-record-actions">${e.chat ? `<button class="linkish" data-wk="record-chat" data-id="${esc(e.id)}">Open chat ↗</button>` : ''}<button class="linkish" data-wk="record-edit" data-id="${esc(e.id)}">${e.outcome === 'started' ? 'Record result…' : 'Edit result'}</button><button class="linkish wk-record-remove" data-wk="record-remove" data-id="${esc(e.id)}" aria-label="Remove ${esc(kinds[e.kind] || e.kind)} entry">Remove</button></div>
+      ${e.notes ? `<p class="wk-record-notes">${esc(e.notes)}</p>` : e.kind === 'discussion' ? '' : '<p class="wk-muted">Open the chat to inspect its work, then record the result.</p>'}
+      <div class="wk-record-actions">${e.chat ? `<button class="linkish" data-wk="record-chat" data-id="${esc(e.id)}">Open chat ↗</button>` : ''}${e.kind === 'discussion' ? '' : `<button class="linkish" data-wk="record-edit" data-id="${esc(e.id)}">${e.outcome === 'started' ? 'Record result…' : 'Edit result'}</button>`}<button class="linkish wk-record-remove" data-wk="record-remove" data-id="${esc(e.id)}" aria-label="Remove ${esc(kinds[e.kind] || e.kind)} entry">Remove</button></div>
     </article>`;
     return `<section class="wk-journal"><div class="wk-journal-head"><div><p class="wk-eyebrow">REVIEW JOURNAL</p><h3 id="wkRecordTitle" tabindex="-1">Evidence for this revision.</h3></div><button class="btn" data-wk="record-add" ${p.headSha ? '' : 'disabled'}>+ Record result</button></div>
       <div class="wk-record-revision"><div><span>CURRENT REVISION</span><strong>${esc(p.headSha?.slice(0, 7) || 'Unknown')}</strong></div><p>${esc(summary(p).text)}<small>Local evidence · separate from GitHub requirements</small></p></div>

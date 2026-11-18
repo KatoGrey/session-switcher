@@ -49,13 +49,13 @@ jobs:
           SRV=$(grep -oP "APP_VERSION = '\K[^']+" server.js)
           echo "tag $TAG, desktop $APP, server $SRV"
           if [ "${GITHUB_REF_TYPE}" = "tag" ] && { [ "$TAG" != "$APP" ] || [ "$TAG" != "$SRV" ]; }; then echo "Versions differ"; exit 1; fi
-      - name: Create the release
+      - name: Prepare the draft release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PRE=""; case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" $PRE --title "Session Switcher ${GITHUB_REF_NAME#v}" --notes-file docs/whats-new.md
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --draft $PRE --title "Session Switcher ${GITHUB_REF_NAME#v}" --notes-file docs/whats-new.md
 
   build:
     needs: release
@@ -76,6 +76,7 @@ jobs:
         working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_DRAFT: 'true'
           # Not signed with a certificate: shared with people who know where it's from. (The Mac
           # app gets a free ad-hoc signature, which Apple-silicon Macs need to open it at all.)
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -90,3 +91,30 @@ jobs:
             desktop/dist/*.dmg
             desktop/dist/*.zip
             desktop/dist/*.yml
+
+  publish:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish once both platforms can update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          channel=latest
+          if [[ "$version" == *-* ]]; then pre="${version#*-}"; channel="${pre%%.*}"; fi
+          release=$(gh release view "$tag" -R "$GITHUB_REPOSITORY" --json assets,isDraft)
+          assets=$(jq -r '.assets[] | select(.state == "uploaded" and .size > 0) | .name' <<<"$release")
+          files=("$channel.yml" "$channel-mac.yml" "SessionSwitcher-$version-win-x64.exe")
+          for arch in arm64 x64; do
+            files+=("SessionSwitcher-$version-mac-$arch.zip" "SessionSwitcher-$version-mac-$arch.dmg")
+          done
+          for file in "${files[@]}"; do
+            grep -Fxq -- "$file" <<<"$assets" || { echo "Missing release asset: $file"; exit 1; }
+            if [[ "$file" != *.yml ]]; then
+              grep -Fxq -- "$file.blockmap" <<<"$assets" || { echo "Missing blockmap: $file"; exit 1; }
+            fi
+          done
+          if [[ $(jq -r '.isDraft' <<<"$release") == true ]]; then gh release edit "$tag" -R "$GITHUB_REPOSITORY" --draft=false; fi

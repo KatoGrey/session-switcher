@@ -16,6 +16,7 @@ test('PR journal: starts are not results; evidence and chat links survive a rest
   const entry = book.started({ repo, number: 42, headSha: head }, 'validate', { key: 'chat-key', provider: 'codex' });
   assert.equal(entry.outcome, 'started'); assert.equal(entry.notes, '');
   book.bindSession(repo, 42, entry.id, 'persistent-session');
+  book.bindSession(repo, 42, entry.id, 'later-session-in-same-window');
   const reopened = createPrRecords({ dataDir });
   assert.equal(reopened.list(repo, 42)[0].chat.sessionId, 'persistent-session');
   const result = await reopened.save({ repo, n: 42, id: entry.id, head, kind: 'validate', outcome: 'passed', notes: 'yarn test voices: 18 passed on this revision.' }, () => { throw new Error('An old entry must not be relabeled as the current revision'); });

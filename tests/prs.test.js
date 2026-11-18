@@ -7,23 +7,29 @@ const os = require('node:os');
 const path = require('node:path');
 const { createPrs, readable, statusOf, listItem, detailOf, checksOf, remoteFor, reviewPrompt, fixCommentsPrompt, fixChecksPrompt, workflowPrompt, makePrPrompt } = require('../lib/prs');
 
+const response = data => ({ code: 0, out: JSON.stringify(data) });
+const signedIn = response({ hosts: { 'github.com': [{ login: 'KatoGrey', active: true, state: 'success' }] } });
+const conn = (nodes, endCursor = null) => ({ nodes, pageInfo: { hasNextPage: !!endCursor, endCursor } });
+const ghPr = p => response({ data: { repository: { pullRequest: p } } });
 const PR = {
   number: 18982, title: 'Keep the tavern lights on after midnight [VOY-2989]', url: 'https://github.com/acme/game/pull/18982', state: 'OPEN', isDraft: false, mergeable: 'MERGEABLE', reviewDecision: 'REVIEW_REQUIRED',
-  headRefName: 'kato/voy-2989-voices', baseRefName: 'internal', headRefOid: 'abc123', additions: 29, deletions: 2, changedFiles: 2, updatedAt: '2026-11-12T02:11:09Z', body: 'Fixes VOY-2989',
+  headRefName: 'kato/voy-2989-voices', baseRefName: 'internal', headRefOid: 'abc123', baseRefOid: 'def456',
+  headRepository: { nameWithOwner: 'acme/game' }, additions: 29, deletions: 2, changedFiles: 2, updatedAt: '2026-11-12T02:11:09Z', body: 'Fixes VOY-2989',
   author: { login: 'KatoGrey' }, labels: { nodes: [{ name: 'voyage-bug' }] }, assignees: { nodes: [] },
   reviewRequests: { nodes: [{ requestedReviewer: { login: 'ryan' } }, { requestedReviewer: { name: 'core-team' } }] },
   latestReviews: { nodes: [{ author: { login: 'review-bot' }, state: 'COMMENTED', submittedAt: '2026-11-12T03:00:00Z' }] },
+  latestOpinionatedReviews: conn([]),
   reviewThreads: { nodes: [
     { isResolved: false, isOutdated: false, path: 'src/voice.ts', line: 37, comments: { nodes: [{ author: { login: 'review-bot' }, body: '**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow)</sub></sub> Keep boy and girl intent**\n\nNormalization drops it.\n\nUseful? React with 👍 / 👎.\n\n<!-- finding:v1 -->', url: 'https://github.com/acme/game/pull/18982#discussion_r1' }] } },
     { isResolved: true, isOutdated: false, path: 'src/old.ts', line: 3, comments: { nodes: [{ author: { login: 'ryan' }, body: 'Done already', url: 'u2' }] } },
   ] },
-  commits: { nodes: [{ commit: { statusCheckRollup: { state: 'FAILURE', contexts: { nodes: [
+  statusCheckRollup: { state: 'FAILURE', contexts: { nodes: [
     { __typename: 'CheckRun', name: 'typecheck', conclusion: 'SUCCESS', status: 'COMPLETED', detailsUrl: 'x' },
     { __typename: 'CheckRun', name: 'unit tests', conclusion: 'FAILURE', status: 'COMPLETED', detailsUrl: 'https://github.com/acme/game/actions/runs/1/job/777' },
     { __typename: 'CheckRun', name: 'e2e', conclusion: null, status: 'IN_PROGRESS', detailsUrl: 'y' },
     { __typename: 'CheckRun', name: 'thread', conclusion: 'CANCELLED', status: 'COMPLETED', detailsUrl: 'z' },
     { __typename: 'StatusContext', context: 'vercel', state: 'SUCCESS', targetUrl: 'v' },
-  ] } } } }] },
+  ] } },
 };
 
 test('prs: who gh says is signed in', () => {
@@ -43,9 +49,10 @@ test('prs: one PR read in full: checks, open threads without bot markup, reviewe
   assert.deepEqual(d.reviewers, ['ryan', 'core-team']);
   assert.equal(d.open, 1);
   assert.equal(d.threads[0].comments[0].body, '**P2 Keep boy and girl intent**\n\nNormalization drops it.');
-  const { items, complete, requirementsKnown, ...summary } = d.checks;
+  const { items, complete, requirementsKnown, source, sha, ...summary } = d.checks;
   assert.deepEqual({ ...summary, failed: d.checks.failed.map(f => [f.name, f.job]) }, { state: 'FAILURE', passed: 2, failed: [['unit tests', '777']], pending: 1, cancelled: 1, skipped: 0, required: null });
   assert.equal(requirementsKnown, false); assert.equal(complete, true);
+  assert.equal(source, 'head'); assert.equal(sha, PR.headRefOid);
   assert.equal(items.find(c => c.name === 'thread').state, 'cancelled');
   assert.equal(d.preview, null, 'no live copy until someone asks for one');
   assert.equal(d.previewable, true, 'Latitude’s PRs can ask for one');
@@ -61,6 +68,9 @@ test('prs: one PR read in full: checks, open threads without bot markup, reviewe
   const skipped = checksOf({ contexts: { nodes: [{ name: 'ci', conclusion: 'SKIPPED', isRequired: true }, { name: 'policy', conclusion: 'NEUTRAL', isRequired: true }], pageInfo: { hasNextPage: false } } });
   assert.deepEqual(skipped.required, { passed: 2, pending: 0, failed: 0 });
   assert.equal(checksOf({ contexts: { nodes: [], pageInfo: { hasNextPage: true } } }).complete, false);
+  const stale = checksOf({ contexts: conn([{ name: 'stale CI', status: 'COMPLETED', conclusion: 'STALE', isRequired: true }]) });
+  assert.equal(stale.items[0].result, 'STALE');
+  assert.deepEqual(stale.required, { passed: 0, pending: 0, failed: 1 });
   assert.equal(detailOf('acme/game', { ...PR, mergeStateStatus: 'BLOCKED', autoMergeRequest: { enabledAt: 'x' } }).mergeState, 'BLOCKED');
   assert.equal(detailOf('acme/game', { ...PR, autoMergeRequest: { enabledAt: 'x' } }).autoMerge, true);
   assert.equal(checksOf(null).passed, 0);
@@ -71,6 +81,46 @@ test('prs: a list item, from gh search or gh pr list', () => {
   assert.deepEqual(listItem({ number: 5, title: 'T', url: 'u', isDraft: true, repository: { nameWithOwner: 'a/b' }, author: { login: 'me' }, labels: [{ name: 'bug' }], updatedAt: 'd' }),
     { repo: 'a/b', number: 5, title: 'T', url: 'u', isDraft: true, updatedAt: 'd', author: 'me', labels: ['bug'], reviewDecision: null, head: null, base: null });
   assert.equal(listItem({ number: 6, title: 'U', headRefName: 'x' }, 'c/d').repo, 'c/d');
+});
+
+test('prs: checks use the test merge commit when GitHub reports it and keep the latest run in each workflow', () => {
+  const checkSuite = (name, event = 'pull_request') => ({ app: { slug: 'github-actions' }, workflowRun: { workflow: { name }, event } });
+  const d = detailOf('acme/game', { ...PR,
+    potentialMergeCommit: { oid: 'merge-revision', statusCheckRollup: { state: 'PENDING', contexts: conn([
+      { name: 'tests', checkSuite: checkSuite('CI'), startedAt: '2026-11-10T02:00:00Z', status: 'COMPLETED', conclusion: 'FAILURE', isRequired: true },
+      { name: 'tests', checkSuite: checkSuite('CI'), startedAt: '2026-11-10T03:00:00Z', status: 'COMPLETED', conclusion: 'SUCCESS', isRequired: true },
+      { name: 'tests', checkSuite: checkSuite('Preview'), status: 'COMPLETED', conclusion: 'CANCELLED', isRequired: false },
+      { name: 'tests', checkSuite: checkSuite('CI', 'push'), status: 'IN_PROGRESS', conclusion: 'FAILURE', isRequired: false },
+      { context: 'tests', state: 'SUCCESS', isRequired: true },
+    ]) } },
+    latestReviews: conn([{ author: { login: 'ryan' }, state: 'COMMENTED' }]),
+    latestOpinionatedReviews: conn([{ author: { login: 'Ryan' }, state: 'APPROVED', body: 'Conflicts are resolved.', url: PR.url + '#pullrequestreview-2' }]),
+    comments: conn([{ author: { login: 'ryan' }, body: 'Ready to check.', url: 'https://github.com/acme/game/pull/18982#issuecomment-1' }]),
+    isInMergeQueue: true,
+    isMergeQueueEnabled: true,
+  });
+  assert.deepEqual(d.checks.required, { passed: 2, failed: 0, pending: 0 });
+  assert.deepEqual(d.checks.items.map(c => [c.state, c.workflow]), [['passed', 'CI'], ['cancelled', 'Preview'], ['pending', 'CI'], ['passed', null]]);
+  assert.equal(d.checks.failed.length, 0);
+  assert.equal(d.checks.source, 'merge'); assert.equal(d.checks.sha, 'merge-revision');
+  assert.equal(d.reviews[0].state, 'APPROVED');
+  assert.equal(d.reviews[0].body, 'Conflicts are resolved.');
+  assert.equal(d.reviews[0].url, PR.url + '#pullrequestreview-2');
+  assert.equal(d.comments[0].body, 'Ready to check.');
+  assert.equal(d.mergeQueue, true);
+});
+
+test('prs: queued reruns replace older failures and cancelled required checks remain distinct', () => {
+  const checkSuite = (id, runAttempt) => ({ workflowRun: { workflow: { id, name: 'CI' }, event: 'pull_request', runNumber: 14, runAttempt } });
+  const checks = checksOf({ contexts: conn([
+    { name: 'tests', checkSuite: checkSuite('ci-a', 1), startedAt: '2026-11-10T03:00:00Z', status: 'COMPLETED', conclusion: 'FAILURE', isRequired: true },
+    { name: 'tests', checkSuite: checkSuite('ci-a', 2), status: 'QUEUED', isRequired: true },
+    { name: 'tests', checkSuite: checkSuite('ci-b', 1), status: 'COMPLETED', conclusion: 'CANCELLED', isRequired: true },
+  ]) });
+  assert.deepEqual(checks.items.map(c => c.state), ['pending', 'cancelled']);
+  assert.equal(checks.failed.length, 0);
+  assert.equal(checks.cancelled, 1);
+  assert.deepEqual(checks.required, { passed: 0, pending: 1, failed: 1 });
 });
 
 test('prs: the remote that points at a repo', () => {
@@ -118,28 +168,31 @@ test('prs: what each chat is asked', () => {
 });
 
 test('prs: patches are bounded and reject a changed head; merges match the reviewed revision', async () => {
-  const head = 'a'.repeat(40), calls = []; let currentHead = head;
+  const head = 'a'.repeat(40), base = 'b'.repeat(40), calls = []; let currentHead = head, currentBase = base;
   const prs = createPrs({ run: async (file, args) => {
     calls.push(args);
-    if (args[0] === 'auth') return { code: 0, out: JSON.stringify({ hosts: { 'github.com': [{ login: 'KatoGrey', active: true, state: 'success' }] } }) };
+    if (args[0] === 'auth') return signedIn;
+    if (args[0] === 'api' && args[1] === 'graphql') return ghPr({ state: 'OPEN', isInMergeQueue: true });
     if (args[0] === 'api') return { code: 0, out: JSON.stringify([{ filename: 'packages/client/app/a.ts', status: 'modified', additions: 1, deletions: 1, patch: '+' + 'x'.repeat(130000) }]) };
-    if (args[1] === 'view') return { code: 0, out: JSON.stringify({ headRefOid: currentHead, changedFiles: 1 }) };
+    if (args[1] === 'view') return response({ headRefOid: currentHead, baseRefOid: currentBase, changedFiles: 1 });
     if (args[1] === 'merge') return { code: 0, out: '' };
     return { code: 1, out: '', err: 'Unexpected call' };
   } });
-  const files = await prs.files('acme/game', 1, { head });
+  const files = await prs.files('acme/game', 1, { head, base });
   assert.equal(files.files[0].patch.length, 120000); assert.equal(files.files[0].truncated, true);
   assert.equal(files.hasMore, false);
-  await prs.files('acme/game', 1, { head });
+  await prs.files('acme/game', 1, { head, base });
   assert.equal(calls.filter(a => a[0] === 'api').length, 1, 'reopening Files does not fetch patches again');
   await assert.rejects(prs.files('acme/game', 1, { head, page: 61 }), { status: 400 });
   await assert.rejects(prs.merge('acme/game', 1), { status: 400 });
-  await prs.merge('acme/game', 1, { head });
+  assert.deepEqual(await prs.merge('acme/game', 1, { head }), { ok: true, outcome: 'queued' });
   const merged = calls.find(a => a[1] === 'merge');
   assert.equal(merged[merged.indexOf('--match-head-commit') + 1], head);
   assert.equal(merged.includes('--admin'), false);
-  currentHead = 'b'.repeat(40);
-  await assert.rejects(prs.files('acme/game', 1, { head }), /new commits/);
+  currentBase = 'c'.repeat(40);
+  await assert.rejects(prs.files('acme/game', 1, { head, base }), { status: 409 });
+  currentHead = 'd'.repeat(40);
+  await assert.rejects(prs.files('acme/game', 1, { head }), { status: 409 });
 });
 
 test('prs: lists, a PR with the folders that have its repo and the chat that made it, all through gh', async t => {
@@ -170,6 +223,164 @@ test('prs: lists, a PR with the folders that have its repo and the chat that mad
   assert.equal(d.mine, true);
   assert.throws(() => prs.detail('not a repo', 1), /owner\/name/);
   assert.throws(() => prs.detail('acme/game', 'x'), /number/);
+});
+
+test('prs: detail follows GitHub cursors and declines to mix checks from revisions on either side of a push', async () => {
+  const first = {
+    ...PR,
+    reviewThreads: conn(PR.reviewThreads.nodes, 'thread-next'),
+    statusCheckRollup: { state: 'FAILURE', contexts: conn(PR.statusCheckRollup.contexts.nodes, 'checks-next') },
+  };
+  let newHead = false;
+  const prs = createPrs({ run: async (_, args) => {
+    if (args[0] === 'auth') return signedIn;
+    if (args.includes('after=thread-next')) return ghPr({ ...PR, reviewThreads: conn([{ isResolved: false, comments: conn([]) }]) });
+    if (args.includes('after=checks-next')) return ghPr({
+      ...PR, headRefOid: newHead ? 'moved' : PR.headRefOid,
+      statusCheckRollup: { state: 'FAILURE', contexts: conn([{ context: 'new page', state: 'FAILURE', isRequired: true }]) },
+    });
+    return ghPr(first);
+  } });
+  const complete = await prs.detail('acme/game', PR.number);
+  assert.equal(complete.open, 2);
+  assert.equal(complete.threadsComplete, true);
+  assert.equal(complete.checks.complete, true);
+  assert.deepEqual(complete.checks.failed.map(c => c.name), ['unit tests', 'new page']);
+  assert.equal(complete.partial, false);
+  newHead = true;
+  const partial = await prs.detail('acme/game', PR.number, { fresh: true });
+  assert.equal(partial.checks.complete, false);
+  assert.deepEqual(partial.checks.failed.map(c => c.name), ['unit tests']);
+  assert.match(partial.partialReason, /changed while GitHub/);
+});
+
+test('prs: board follows search cursors, deduplicates linked PRs, and exposes a failed list', async () => {
+  const row = { ...PR, repository: { nameWithOwner: 'acme/game' }, author: { login: 'katogrey' } };
+  let omitAssigned = false;
+  const calls = [];
+  const prs = createPrs({ run: async (_, args) => {
+    if (args[0] === 'auth') return signedIn;
+    const query = args.find(a => a.startsWith('query='));
+    calls.push(query);
+    if (query.includes('after: "next"')) return response({ data: { authored: conn([{ ...row, number: row.number + 1 }]) } });
+    return response({ data: { authored: conn([row], 'next'), review: conn([]), assigned: omitAssigned ? null : conn([]), merged: conn([]), x0: { pullRequest: row } } });
+  } });
+  const extra = [{ repo: 'Acme/Game', number: PR.number }, { repo: 'acme/game', number: String(PR.number) }];
+  const board = await prs.board({ extra });
+  assert.equal(board.partial, false);
+  assert.equal(board.prs.length, 2);
+  assert.deepEqual(board.prs[0].roles, ['authored', 'linked']);
+  assert.equal(board.prs[0].mine, true);
+  assert.equal(board.prs[0].headSha, PR.headRefOid);
+  assert.doesNotMatch(calls[0], /x1: repository/);
+  omitAssigned = true;
+  assert.match((await prs.board({ extra, fresh: true })).partialReason, /only part of the pull request list/);
+});
+
+test('prs: capped board pagination preserves partial rows and advertises the limit', async () => {
+  let pages = 0;
+  const row = { ...PR, repository: { nameWithOwner: 'acme/game' } };
+  const prs = createPrs({ run: async (_, args) => {
+    if (args[0] === 'auth') return signedIn;
+    pages++;
+    const authored = conn([{ ...row, number: pages }], `cursor-${pages}`);
+    return response({ data: { authored, review: conn([]), assigned: conn([]), merged: conn([]) } });
+  } });
+  const board = await prs.board();
+  assert.equal(pages, 5);
+  assert.deepEqual(board.prs.map(p => p.number), [1, 2, 3, 4, 5]);
+  assert.equal(board.partial, true);
+});
+
+test('prs: an invalidated in-flight read cannot seed the next cache', async () => {
+  let release, started;
+  const pending = new Promise(resolve => { release = resolve; });
+  const fetching = new Promise(resolve => { started = resolve; });
+  let loads = 0;
+  const prs = createPrs({ run: async (_, args) => {
+    if (args[0] === 'auth') return signedIn;
+    if (++loads === 1) { started(); return pending; }
+    return ghPr({ ...PR, title: 'new state' });
+  } });
+  const old = prs.detail('acme/game', PR.number);
+  await fetching;
+  prs.forget();
+  assert.equal((await prs.detail('acme/game', PR.number)).title, 'new state');
+  release(ghPr(PR));
+  await old;
+  assert.equal((await prs.detail('acme/game', PR.number)).title, 'new state');
+  assert.equal(loads, 2);
+});
+
+test('prs: a GitHub account change invalidates the cached account and PR data', async () => {
+  let account = 'KatoGrey', authReads = 0;
+  const prs = createPrs({ run: async (_, args) => {
+    if (args[0] === 'auth') {
+      authReads++;
+      return response({ hosts: { 'github.com': [{ login: account, state: 'success', active: true }] } });
+    }
+    return response({ data: { viewer: { login: account }, repository: { pullRequest: PR } } });
+  } });
+  assert.equal((await prs.detail('acme/game', PR.number)).mine, true);
+  account = 'Other';
+  await assert.rejects(prs.detail('acme/game', PR.number, { fresh: true }), { status: 409 });
+  assert.equal((await prs.detail('acme/game', PR.number)).mine, false);
+  assert.equal(authReads, 2);
+});
+
+test('prs: refreshing GitHub status drops the prior account’s cached PR details', async () => {
+  let account = 'KatoGrey', prReads = 0;
+  const prs = createPrs({ run: async (_, args) => {
+    if (args[0] === 'auth') return response({ hosts: { 'github.com': [{ login: account, state: 'success', active: true }] } });
+    prReads++;
+    return response({ data: { viewer: { login: account }, repository: { pullRequest: PR } } });
+  } });
+  assert.equal((await prs.detail('acme/game', PR.number)).mine, true);
+  account = 'Other';
+  assert.equal((await prs.status({ fresh: true })).login, 'Other');
+  assert.equal((await prs.detail('acme/game', PR.number)).mine, false);
+  assert.equal(prReads, 2);
+});
+
+test('prs: explicit refresh detects a sign-in after the signed-out status was cached', async () => {
+  let connected = false;
+  const prs = createPrs({ run: async (_, args) => {
+    if (args[0] === 'auth') return connected ? signedIn : response({ hosts: {} });
+    return ghPr(PR);
+  } });
+  await assert.rejects(prs.detail('acme/game', PR.number), { status: 409 });
+  connected = true;
+  assert.equal((await prs.detail('acme/game', PR.number, { fresh: true })).mine, true);
+});
+
+test('prs: concurrent repository matching shares one local Git lookup', async () => {
+  let calls = 0;
+  const prs = createPrs({ run: async () => {
+    calls++;
+    return { code: 0, out: 'remote.origin.url https://github.com/acme/game.git' };
+  } });
+  const result = await Promise.all([prs.slugOf('project'), prs.slugOf('project'), prs.slugOf('project')]);
+  assert.deepEqual(result.map(x => x.slug), ['acme/game', 'acme/game', 'acme/game']);
+  assert.equal(calls, 1);
+});
+
+test('prs: fetched review refs are immutable and must still match the GitHub revision', async () => {
+  const head = 'a'.repeat(40), base = 'b'.repeat(40), ancestor = 'c'.repeat(40);
+  let fetchedHead = head;
+  const prs = createPrs({ run: async (_, args) => {
+    if (args.includes('config')) return { code: 0, out: 'remote.origin.url https://github.com/acme/game.git' };
+    if (args.includes('fetch')) return { code: 0, out: '' };
+    if (args.includes('rev-parse')) return { code: 0, out: `${fetchedHead}\n${base}\n` };
+    if (args.includes('merge-base')) {
+      assert.deepEqual(args.slice(-2), [base, head]);
+      return { code: 0, out: `${ancestor}\n` };
+    }
+    throw new Error('Unexpected command');
+  } });
+  const pr = { repo: 'acme/game', number: 1, headSha: head, baseSha: base, base: 'main' };
+  assert.deepEqual(await prs.fetchPr('project', pr), { headRef: head, baseRef: base, mergeBase: ancestor });
+  fetchedHead = 'd'.repeat(40);
+  await assert.rejects(prs.fetchPr('project', pr), { status: 409 });
 });
 
 test('prs: not signed in, or no gh: it says how to fix that', async () => {

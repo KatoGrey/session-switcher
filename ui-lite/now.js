@@ -93,8 +93,9 @@ const needList = () => S.live.filter(needsLive).sort((a, b) => Number(asking(b))
 const runList = () => S.live.filter(x => x.working && !asking(x) && !isRoutineRun(x)).sort((a, b) => (a.turnStartedAt || 0) - (b.turnStartedAt || 0));
 // The part of Now that moves with every live event; redrawn on its own.
 function nowLiveHtml() {
-  const need = needList(), run = runList();
-  return `<section class="section"><div class="sec-h"><h2>${L('Needs you')}</h2><span class="n">${need.length}</span>${need.length ? '<button class="hint tr-start" data-triage="1">Triage, one at a time <kbd>t</kbd></button>' : ''}</div>
+  const need = needList(), run = runList(), foc = focusList();
+  return `${foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span></div><div class="rows">${foc.map(c => rowHtml(c, { showProject: true, showStage: true })).join('')}</div></section>` : ''}
+    <section class="section"><div class="sec-h"><h2>${L('Needs you')}</h2><span class="n">${need.length}</span>${need.length ? '<button class="hint tr-start" data-triage="1">Triage, one at a time <kbd>t</kbd></button>' : ''}</div>
       <div class="rows">${need.map(needsRow).join('') || '<p class="empty-note all-clear">All clear. Nothing needs you.</p>'}</div></section>
     <section class="section"><div class="sec-h"><h2>${L('Running')}</h2><span class="n">${run.length}</span></div>
       <div class="rows">${run.map(runRow).join('') || '<p class="empty-note">Nothing is running.</p>'}</div></section>`;
@@ -107,7 +108,6 @@ function plansBoxHtml() {
 }
 function now() {
   const waiting = allChats().filter(c => c.waiting).sort((a, b) => Number(!!b.waitNews) - Number(!!a.waitNews) || b.updated - a.updated);
-  const foc = focusList();
   const ups = comingUp();
   return `<div class="wrap">
     <div class="page-h"><div class="proj-h" style="align-items:flex-start"><button class="iconbtn back" data-go="side" aria-label="Back">‹</button><div><h1>${L('Now')}</h1><p class="lead" id="nowLead">${leadHtml()}</p></div></div></div>
@@ -115,7 +115,6 @@ function now() {
     <div id="nowLive" class="section-stack">${nowLiveHtml()}</div>
     ${recentSection()}
     ${eventsSection()}
-    ${foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span><span class="hint">Your top few; <kbd>f</kbd> on any chat</span></div><div class="rows">${foc.map(c => rowHtml(c, { showProject: true, showStage: true })).join('')}</div></section>` : ''}
     <section class="section"><div class="sec-h"><h2>Waiting on others</h2><span class="n">${waiting.length}</span><span class="hint">Checks their PRs every ten minutes; reminds you after two days</span></div>
       <div class="rows">${waiting.map(waitRow).join('') || '<p class="empty-note">Nothing is waiting on anyone. Press <kbd>w</kbd> on a chat to say who it’s waiting on.</p>'}</div></section>
     <section class="section"><div class="sec-h"><h2>Coming up</h2><label class="hint follow"><input type="checkbox" data-follow="1" ${S.lite.routinesFollow ? 'checked' : ''}> Follow the use-next order</label><button class="hint" data-go="routines" style="margin-left:12px">Routines ›</button></div>

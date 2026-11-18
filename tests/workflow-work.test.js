@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { status, group } = require('../ui/work-model');
+const { status, group, readiness, mergeStatus } = require('../ui/work-model');
 const skill = require('../lib/pr-review-skill');
 const { startPrompt } = require('../lib/linear');
 
@@ -27,6 +27,17 @@ test('work: Linear assignments include colleagues’ linked PRs without duplicat
   assert.deepEqual(g.todo.map(x => x.identifier), ['VOY-2']);
   assert.deepEqual(g.doing.map(x => x.identifier), ['VOY-3']);
   assert.equal(g.review.length, 1); assert.equal(g.waiting.length, 0); assert.equal(g.attention.length, 1);
+});
+test('work: merge and review summaries keep reported and missing information distinct', () => {
+  const pr = { repo: 'octo/app', state: 'OPEN', mine: true, mergeState: 'BLOCKED', open: 0, threadsComplete: false, checks: { passed: 2, cancelled: 1, complete: false, required: { passed: 2, failed: 1 } } };
+  const gates = Object.fromEntries(readiness(pr).map(g => [g.title, g.value]));
+  assert.deepEqual(gates, { 'Review decision': 'No decision reported', 'Required checks': '1 needs attention', 'Review threads': 'Partial list', 'GitHub merge state': 'Blocked' });
+  assert.equal(status(pr).action, 'checks', 'a cancelled check has no failure log to fix');
+  assert.equal(status({ ...pr, mergeQueue: true }).label, 'In merge queue');
+  assert.equal(status({ ...pr, state: 'MERGED', mergeQueue: true }).label, 'Merged');
+  assert.equal(mergeStatus({ ...pr, mergeState: 'HAS_HOOKS' })[0], 'Mergeable · hooks apply');
+  assert.equal(status({ ...pr, headRepo: 'fork/app', open: 1 }).action, 'feedback');
+  assert.equal(status({ ...pr, checks: {}, threadsComplete: true, mergeState: null }).label, 'Open');
 });
 test('review skill: validates PR links and preserves literal model choices and instructions', () => {
   assert.deepEqual(skill.parseUrl('https://github.com/latitudegames/latitude/pull/123/files#x'), { repo: 'latitudegames/latitude', n: 123, url: 'https://github.com/latitudegames/latitude/pull/123' });

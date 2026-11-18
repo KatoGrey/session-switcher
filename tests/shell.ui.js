@@ -3,6 +3,52 @@ const demo = require('./demo');
 const { responder } = require('./work.ui');
 
 module.exports = [{
+  name: 'chats in focus',
+  async run(t) {
+    const id = demo.ID['s-brawl'], focused = new Set();
+    const activity = (await demo.activityBody()).list;
+    let revision = 0;
+    const b = await t.open({ respond: (p, q, body) => {
+      if (p === '/api/events') return { type: 'text/event-stream', body: `retry: 600000\n\nevent: chat-focus\ndata: ${JSON.stringify({ ids: [...focused], revision })}\n\n` };
+      if (p === '/api/chat/attach' && body.key === 'k-brawl') return { body: { ...activity.find(x => x.key === body.key), attached: true, model: 'sonnet', permissionMode: 'default' } };
+      if (p === '/api/chat/events' && q.get('key') === 'k-brawl') return { type: 'text/event-stream', body: `retry: 600000\n\nevent: hello\ndata: ${JSON.stringify({ sessionId: id, key: 'k-brawl' })}\n\nevent: replayed\ndata: {}\n\n` };
+      if (p !== '/api/lite/chats') return null;
+      for (const chat of body.ids) if (body.patch.focus) focused.add(chat); else focused.delete(chat);
+      return { body: { chatFocus: { ids: [...focused], revision: ++revision } } };
+    } });
+    const row = '#nav .chat-focus-section [data-navopen="k-brawl"]';
+    const waitFor = selector => b.eval(`for (let i = 0; i < 80; i++) { if (document.querySelector(${JSON.stringify(selector)})) return true; await new Promise(r => setTimeout(r, 50)); } throw new Error('Missing ' + ${JSON.stringify(selector)})`);
+    const push = list => b.eval(`es.dispatchEvent(new MessageEvent('activity', {data: JSON.stringify({list: ${JSON.stringify(list)}})})); return 1`);
+    await b.eval(`const target = document.querySelector('[data-navopen="k-brawl"]'); target.dispatchEvent(new MouseEvent('contextmenu', {bubbles:true, clientX:100, clientY:180})); return 1`);
+    await b.eval(`[...document.querySelectorAll('#menu [role=menuitem]')].find(x => x.textContent.includes('Keep in focus')).click(); return 1`);
+    await waitFor(row);
+    t.check('the focus action saves the selection and moves the row out of Active now', focused.has(id) && await b.eval(`return !document.querySelector('.nav-scroll [data-navopen="k-brawl"]')`));
+    t.check('scrolling the other chats leaves In focus in view', await b.eval(`const row = document.querySelector('${row}'), y = row.getBoundingClientRect().top; document.querySelector('.nav-scroll').scrollTop = 1000; return row.getBoundingClientRect().top === y`));
+    await b.send('Page.reload', {});
+    await sleep(800);
+    await waitFor(row);
+    t.check('the selection survives reopening the workspace', await b.eval(`return document.querySelector('${row}').textContent.includes('Tavern brawl')`));
+    const question = 'Use the <compact> layout?';
+    await push(activity.map(x => x.key === 'k-brawl' ? { ...x, phase: 'waiting', pending: [{ question: true, questions: [{ question, options: [] }] }] } : x));
+    t.check('the focused row shows what the agent is asking', await b.eval(`const r = document.querySelector('${row}'); return r.textContent.includes('Has a question') && r.querySelector('.focus-preview')?.textContent === ${JSON.stringify(question)}`));
+    await t.shot(b, 'sidebar');
+    await b.eval(`document.querySelector('${row}').click(); return 1`);
+    await waitFor('#cFocus[aria-pressed="true"]');
+    t.check('the chat window has the same selection', await b.eval(`return !cFocusSection.hidden && cFocus.getAttribute('aria-pressed') === 'true' && cFocusList.querySelectorAll('.ri').length === 1`));
+    await push(activity.filter(x => x.key !== 'k-brawl'));
+    t.check('the closed chat stays in focus and can be reopened', await b.eval(`return cFocusList.querySelector('[data-navchat="${id}"] .ri-s')?.textContent.includes('Closed')`));
+    await b.eval(`es.dispatchEvent(new MessageEvent('chat-focus', {data: JSON.stringify({ids: [], revision: 2})})); return 1`);
+    t.check('removing focus on another device clears the rail and its toggle', await b.eval(`return cFocusSection.hidden && cFocus.getAttribute('aria-pressed') === 'false'`));
+    await b.eval(`es.dispatchEvent(new MessageEvent('chat-focus', {data: JSON.stringify({ids: [${JSON.stringify(id)}], revision: 1})})); return 1`);
+    t.check('a late update cannot put a removed chat back in focus', await b.eval(`return cFocusSection.hidden && cFocus.getAttribute('aria-pressed') === 'false'`));
+    focused.clear(); revision = 2;
+    await b.eval(`$('cFocus').click(); return 1`);
+    await waitFor('#cFocus[aria-pressed="true"]');
+    t.check('the header can restore focus to the same chat', focused.has(id), { id, saved: [...focused], visible: await b.eval('return ChatUI.sessionId()') });
+    await b.eval(`await takeBackLast(); return 1`);
+    t.check('Undo restores the previous selection', !focused.has(id) && await b.eval(`return cFocusSection.hidden`));
+  },
+}, {
   name: 'model in the chat',
   // A chat's model and effort can be changed from where you are in it, in either layout: the model in the message
   // box, the Model line in its side panel, Ctrl+K's Switch model…, and /model. (The shared picker for starting work

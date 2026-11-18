@@ -2,10 +2,10 @@
 // Details share the workspace's data and actions. No second PR window or background patch polling.
 const WorkDetail = (() => {
   const attrs = p => `data-repo="${esc(p.repo)}" data-n="${p.number}"`;
-  const mark = tone => ({ ok: '✓', bad: '!', warn: '!', muted: '—' })[tone] || '—';
+  const mark = tone => ({ ok: '✓', bad: '!', warn: '!', accent: '◷', muted: '—' })[tone] || '—';
   function route(p) {
     const evidence = WorkRecord.summary(p);
-    return `<nav class="wk-review-route" aria-label="Review this PR">${[['files', '01', 'Read the changes', p.changedFiles == null ? 'Inspect the patch' : `${p.changedFiles} changed files`], ['threads', '02', 'Review feedback', p.open ? `${p.open} open threads` : 'No open threads'], ['record', '03', 'Keep the evidence', evidence.text]].map(([tab, number, title, hint]) => `<button data-wk="detail-tab" data-value="${tab}"><span class="wk-route-number">${number}</span><span><b>${title}</b><small>${esc(hint)}</small></span><span aria-hidden="true">↗</span></button>`).join('')}</nav>`;
+    return `<nav class="wk-review-route" aria-label="Review this PR">${[['files', 'Changed files', p.changedFiles == null ? 'Inspect the patch' : `${p.changedFiles} changed ${p.changedFiles === 1 ? 'file' : 'files'}`], ['threads', 'Review feedback', WorkModel.threadStatus(p)[0]], ['record', 'Review journal', evidence.text]].map(([tab, title, hint]) => `<button data-wk="detail-tab" data-value="${tab}"><span><b>${title}</b><small>${esc(hint)}</small></span><span aria-hidden="true">↗</span></button>`).join('')}</nav>`;
   }
   function evidence(p) {
     const s = WorkRecord.summary(p);
@@ -13,35 +13,53 @@ const WorkDetail = (() => {
   }
   function summary(p, loaded) {
     const gates = loaded ? WorkModel.readiness(p) : [];
-    return `${p.state === 'OPEN' ? `<section class="wk-readiness"><div class="wk-section-label"><h3>Before merging</h3><span>GitHub requirements</span></div>${gates.length ? gates.map(g => `<button class="wk-gate" data-wk="detail-tab" data-value="${g.tab}"><span class="wk-gate-mark ${g.tone}" aria-hidden="true">${mark(g.tone)}</span><span>${g.title}</span><b class="${g.tone}">${esc(g.value)}</b></button>`).join('') : '<p class="wk-muted">Reading the current review and check requirements…</p>'}<p class="wk-muted">Review can start while checks run. GitHub makes the final merge decision.</p></section>` : ''}
+    return `${p.state === 'OPEN' ? `<section class="wk-readiness"><div class="wk-section-label"><h3>Merge readiness</h3></div>${gates.length ? gates.map(g => `<button class="wk-gate" data-wk="detail-tab" data-value="${g.tab}"><span class="wk-gate-mark ${g.tone}" aria-hidden="true">${mark(g.tone)}</span><span>${g.title}</span><b class="${g.tone}">${esc(g.value)}</b></button>`).join('') : '<p class="wk-muted" role="status">Reading current review and check requirements…</p>'}${p.autoMerge ? '<p class="wk-muted">Auto-merge is enabled on GitHub.</p>' : ''}</section>` : ''}
       ${p.issue ? `<button class="wk-issue-context" data-wk="issue-link" data-id="${esc(p.issue)}"><span>LINEAR ISSUE</span><b>${esc(p.issue)}</b><span aria-hidden="true">→</span></button>` : ''}
       <div class="wk-command-grid"><button class="wk-tool" data-wk="validate" ${attrs(p)}><span>Validate changes…</span><small>Run focused checks for the changed packages</small><span aria-hidden="true">→</span></button><button class="wk-tool" data-wk="handoff" ${attrs(p)}><span>Prepare handoff…</span><small>Draft review notes and verification evidence</small><span aria-hidden="true">→</span></button></div>`;
   }
-  function checks(p) {
-    const c = p.checks || {}, items = c.items || [];
-    const row = x => `<a class="wk-check-row" href="${esc(x.url || p.url + '/checks')}" target="_blank" rel="noopener noreferrer"><span class="${x.state === 'passed' ? 'ok' : x.state === 'failed' ? 'bad' : 'wk-muted'}" aria-hidden="true">${{ passed: '✓', failed: '!', cancelled: '×', skipped: '—', pending: '◷' }[x.state]}</span><span>${esc(x.name)}</span><small>${esc(x.state)}</small><span aria-hidden="true">↗</span></a>`;
-    const group = (title, rows, hint) => {
+  function checkLink(p, item) {
+    try {
+      const url = new URL(item.url);
+      if (url.protocol === 'https:' || url.protocol === 'http:') return url.href;
+    } catch { /* no check details URL */ }
+    return p.url + '/checks';
+  }
+  function checks(p, loaded) {
+    if (!loaded) return '<p class="wk-muted" role="status">Loading check results…</p>';
+    const c = p.checks || {}, items = c.items || [], totals = WorkModel.checkCounts(c);
+    const row = x => {
+      const result = ({ SUCCESS: 'passed', FAILURE: 'failed', COMPLETED: 'conclusion unavailable' })[x.result] || (x.result ? x.result.toLowerCase().replaceAll('_', ' ') : x.state);
+      const workflow = [x.workflow && x.workflow !== x.name ? x.workflow : '', x.event?.toLowerCase().replaceAll('_', ' ')].filter(Boolean).join(' · ');
+      const tone = x.state === 'passed' ? 'ok' : ['failed', 'cancelled'].includes(x.state) ? 'bad' : 'wk-muted';
+      const icon = ({ passed: '✓', failed: '!', cancelled: '×', skipped: '—', pending: '◷' })[x.state] || '—';
+      const identity = JSON.stringify(['check', x.name, x.workflow, x.event, x.required, x.url]);
+      return `<a class="wk-check-row" data-wk-focus="${esc(identity)}" href="${esc(checkLink(p, x))}" target="_blank" rel="noopener noreferrer"><span class="${tone}" aria-hidden="true">${icon}</span><span>${esc(x.name)}${workflow ? `<small> · ${esc(workflow)}</small>` : ''}</span><small>${esc(result)}</small><span aria-hidden="true">↗</span></a>`;
+    };
+    const group = (title, rows) => {
       if (!rows.length) return '';
       const settled = rows.filter(x => x.state === 'passed' || x.state === 'skipped');
       const fold = title !== 'Required' && settled.length > 3;
       const visible = fold ? rows.filter(x => !settled.includes(x)) : rows;
-      return `<section class="wk-check-group"><div class="wk-section-label"><h3>${title}</h3><span>${rows.length}</span></div>${hint ? `<p class="wk-muted">${hint}</p>` : ''}${visible.map(row).join('')}${fold ? `<details class="wk-check-settled" data-preserve="${title}"><summary>${settled.length} passed or skipped</summary>${settled.map(row).join('')}</details>` : ''}</section>`;
+      return `<section class="wk-check-group"><div class="wk-section-label"><h3>${title}</h3><span>${rows.length}</span></div>${visible.map(row).join('')}${fold ? `<details class="wk-check-settled" data-preserve="${title}"><summary>${settled.length} passed, skipped, or neutral</summary>${settled.map(row).join('')}</details>` : ''}</section>`;
     };
     const order = x => ({ failed: 0, cancelled: 1, pending: 2, passed: 3, skipped: 4 })[x.state] ?? 5;
     const sorted = [...items].sort((a, b) => order(a) - order(b));
-    return `<div class="wk-check-summary"><span class="ok">${c.passed || 0} passed</span><span class="bad">${(c.failed || []).length} failing</span><span>${c.pending || 0} running</span></div>
-      ${group('Required', sorted.filter(x => x.required === true), '')}
-      ${group('Optional', sorted.filter(x => x.required === false), 'These results help assess the change. They do not replace the required checks.')}
-      ${group('Requirements not reported', sorted.filter(x => x.required == null), 'GitHub has not identified which of these checks are required.')}
-      ${!items.length ? '<p class="wk-muted">No individual check results were returned. Check GitHub for requirements that have not reported yet.</p>' : ''}
-      ${c.complete === false ? '<p class="wk-action-note">This PR has more checks than the summary includes. Open GitHub for the complete list.</p>' : ''}
-      ${String(p.repo).toLowerCase() === 'latitudegames/latitude' ? '<p class="wk-action-note">Latitude’s lightweight <code>ci</code> gate checks secrets. It does not prove typecheck, build, or local validation.</p>' : ''}
+    const summary = Object.entries(totals).filter(([, n]) => n).map(([state, n]) => `<span class="${state === 'passed' ? 'ok' : ['failed', 'cancelled'].includes(state) ? 'bad' : ''}">${n} ${state === 'skipped' ? 'skipped or neutral' : state}</span>`).join('');
+    const commitRepo = c.source === 'merge' ? p.repo : p.headRepo || p.repo;
+    const source = c.sha ? `<p class="wk-muted">${c.source === 'merge' ? 'GitHub test merge commit' : 'PR head commit'} <a href="${esc(`https://github.com/${commitRepo}/commit/${c.sha}`)}" target="_blank" rel="noopener noreferrer">${esc(c.sha.slice(0, 7))} ↗</a></p>` : '';
+    return `${source}${summary ? `<div class="wk-check-summary">${summary}</div>` : ''}
+      ${group('Required', sorted.filter(x => x.required === true))}
+      ${group('Optional', sorted.filter(x => x.required === false))}
+      ${group('Requirement unknown', sorted.filter(x => x.required == null))}
+      ${!items.length ? '<p class="wk-muted">GitHub returned no individual check results for this revision.</p>' : ''}
+      ${c.complete === false ? '<p class="wk-action-note">Some check results are unavailable here. Open GitHub for the complete list.</p>' : ''}
+      ${p.state === 'OPEN' && p.mergeState === 'BLOCKED' && !WorkModel.checkGate(c).blocked ? '<p class="wk-action-note">GitHub reports a merge block. Its PR page may show additional requirements, including checks that haven’t reported yet.</p>' : ''}
       <button class="btn" data-wk="validate" ${attrs(p)}>Validate changes…</button> <a class="wk-linked" href="${esc(p.url + '/checks')}" target="_blank" rel="noopener noreferrer">All checks on GitHub ↗</a>`;
   }
   function patch(file, lines = 600) {
     if (file.patch == null) return '<p class="wk-muted wk-patch-empty">GitHub did not provide a text patch for this file. It may be binary or too large. Open the full diff on GitHub.</p>';
     const all = file.patch.split('\n');
-    return `<pre class="wk-patch" tabindex="0" aria-label="Patch for ${esc(file.path)}">${all.slice(0, lines).map(line => `<span class="${line.startsWith('@@') ? 'hunk' : line.startsWith('+') ? 'added' : line.startsWith('-') ? 'removed' : ''}">${esc(line) || ' '}</span>`).join('')}</pre>${all.length > lines ? `<button class="btn sm" id="wkMoreLines" data-wk="more-lines">Show more lines (${all.length - lines} remaining)</button>` : ''}${file.truncated ? '<p class="wk-muted">Patch excerpt. Open GitHub for the complete diff.</p>' : ''}`;
+    return `<pre class="wk-patch" tabindex="0" data-wk-focus="patch:${esc(file.path)}" aria-label="Patch for ${esc(file.path)}">${all.slice(0, lines).map(line => `<span class="${line.startsWith('@@') ? 'hunk' : line.startsWith('+') ? 'added' : line.startsWith('-') ? 'removed' : ''}">${esc(line) || ' '}</span>`).join('')}</pre>${all.length > lines ? `<button class="btn sm" id="wkMoreLines" data-wk="more-lines">Show more lines (${all.length - lines} remaining)</button>` : ''}${file.truncated ? '<p class="wk-muted">Patch excerpt. Open GitHub for the complete diff.</p>' : ''}`;
   }
   function files(p, state) {
     if (!state || (!state.files.length && state.loading)) return '<p class="wk-muted" role="status">Loading changed files for this revision…</p>';
@@ -54,5 +72,5 @@ const WorkDetail = (() => {
     const shortPath = (f, area) => f.path.slice(area === 'Repository root' ? 0 : area.length + 1) || f.path.split('/').pop();
     return `${error}<div class="wk-files-meta"><span>${state.files.length} of ${state.total} files</span><span><b class="ok">+${p.additions || 0}</b> <b class="bad">−${p.deletions || 0}</b></span></div><div class="wk-file-mobile"><label for="wkFileSelect">Changed file</label><select id="wkFileSelect">${[...groups].map(([area, rows]) => `<optgroup label="${esc(area)}">${rows.map(f => `<option value="${esc(f.path)}" ${f.path === selected.path ? 'selected' : ''}>${esc(shortPath(f, area))}</option>`).join('')}</optgroup>`).join('')}</select>${more}</div><div class="wk-file-browser"><div class="wk-file-tree" aria-label="Changed files">${[...groups].map(([area, rows]) => `<section><h3>${esc(area)}</h3>${rows.map(f => `<button class="wk-file" data-wk="file" data-path="${esc(f.path)}" title="${esc(f.path)}" aria-pressed="${f.path === selected.path}"><span>${esc(shortPath(f, area))}</span><small><b class="ok">+${f.additions}</b> <b class="bad">−${f.deletions}</b></small></button>`).join('')}</section>`).join('')}${more}</div><div class="wk-file-content"><div class="wk-file-heading"><b>${esc(selected.path)}</b><span>${esc(selected.status)}</span></div>${selected.previousPath ? `<p class="wk-muted">Previously ${esc(selected.previousPath)}</p>` : ''}${patch(selected, state.lines)}<a class="wk-linked" href="${esc(p.url + '/files')}" target="_blank" rel="noopener noreferrer">Full diff on GitHub ↗</a></div></div>${state.limited ? '<p class="wk-action-note">GitHub’s file API covers the first 3,000 files. Use GitHub or a local diff for the rest.</p>' : ''}`;
   }
-  return { summary, checks, files, route, evidence };
+  return { summary, checks, checkLink, files, route, evidence };
 })();

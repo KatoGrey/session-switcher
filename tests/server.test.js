@@ -28,8 +28,45 @@ async function startServer(dataDir, { home = null, preload = null } = {}) {
     return { status: r.status, json: await r.json().catch(() => null) };
   };
   const stop = async () => { await call('/api/quit', {}).catch(() => {}); await new Promise(r => { proc.on('exit', r); setTimeout(() => { proc.kill(); r(); }, 3000); }); };
-  return { call, stop, base };
+  return { call, stop, base, token };
 }
+
+test('Focus changes in Lite reach connected full-app windows and reconnecting clients', { timeout: 20000 }, async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-focus-stream-'));
+  const s = await startServer(dir, { home: dir });
+  const stopReading = new AbortController();
+  t.after(async () => { stopReading.abort(); await s.stop(); fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
+  async function stream() {
+    const res = await fetch(`${s.base}/api/events?token=${s.token}`, { signal: stopReading.signal });
+    assert.equal(res.status, 200);
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = '';
+    return async () => {
+      for (;;) {
+        const end = buffer.indexOf('\n\n');
+        if (end < 0) {
+          const { value, done } = await reader.read();
+          if (done) throw new Error('Event stream closed');
+          buffer += value; continue;
+        }
+        const event = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+        if (event.startsWith('event: chat-focus\n')) return JSON.parse(event.split('\ndata: ')[1]);
+      }
+    };
+  }
+  const next = await stream();
+  assert.deepEqual((await next()).ids, []);
+  const id = 'test-chat';
+  const write = await s.call('/api/lite/chats', { ids: [id], patch: { focus: true } });
+  assert.equal(write.status, 200);
+  assert.deepEqual(write.json.chatFocus.ids, [id]);
+  assert.deepEqual(await next(), write.json.chatFocus);
+  assert.deepEqual((await s.call('/api/state')).json.chatFocus, write.json.chatFocus);
+  const reconnected = await stream();
+  assert.deepEqual(await reconnected(), write.json.chatFocus);
+  await s.call('/api/lite/chats', { ids: [id], patch: { focus: false } });
+  assert.deepEqual((await reconnected()).ids, []);
+});
 
 test('a home folder written with a Windows short name doesn’t bring the server down', { skip: process.platform !== 'win32' }, async t => {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-srv-')));
@@ -127,6 +164,10 @@ test('pr watch: the first look says nothing, the next says what changed, kept fo
     assert.equal(second[0].title, 'Checks failed on #7');
     const away = (await s.call(`/api/away?since=${since}`)).json;
     assert.deepEqual(away.prs.map(e => [e.kind, e.action]), [['checks-failed', 'See what failed']], 'the welcome-back card has it, with its button');
+    assert.deepEqual((await s.call('/api/prs/watch', { login: 'another-user', prs: [pr({ reviewDecision: 'APPROVED' })] })).json.events, [], 'a different account starts with its own baseline');
+    assert.deepEqual((await s.call(`/api/away?since=${since}`)).json.prs, [], 'the account does not inherit alerts from the previous snapshot');
+    const third = (await s.call('/api/prs/watch', { login: 'Another-User', prs: [pr({ reviewDecision: 'CHANGES_REQUESTED' })] })).json.events;
+    assert.deepEqual(third.map(e => e.kind), ['changes'], 'capitalization does not change accounts');
     await s.call('/api/prefs', { prNotices: false });
     assert.deepEqual((await s.call('/api/prs/watch', { prs: [pr({ reviewDecision: 'APPROVED' })] })).json.events, [], 'turned off in Setup: nothing');
   } finally { await s.stop(); }

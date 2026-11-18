@@ -83,6 +83,10 @@
 <section id="chat" class="chat" hidden aria-labelledby="cTitle">
   <aside class="rail" id="cRail" aria-label="Open chats">
     <div class="rail-top"><button type="button" class="rail-back" data-c="back"><span class="glyph" aria-hidden="true">←</span><span data-return-label>The hub</span></button><div class="rail-destinations"><button type="button" data-shell-view="work">Your work <span aria-hidden="true">↗</span></button><button type="button" data-shell-new>New chat <span aria-hidden="true">+</span></button></div></div>
+    <section id="cFocusSection" class="chat-focus-section" aria-labelledby="cFocusH" hidden>
+      <div class="nav-h" id="cFocusH">In focus <span class="count" id="cFocusCount"></span></div>
+      <ul class="rail-list focus-rows" id="cFocusList"></ul>
+    </section>
     <div class="rail-scroll">
       <div class="nav-h" id="cActH">Active now <span class="count" id="cRailCount"></span></div>
       <ul class="rail-list" id="cRailList"></ul>
@@ -103,6 +107,7 @@
         <select id="cMode" class="c-mode" title="What it may do without asking"></select>
       </div>
       <div class="c-icons">
+      <button type="button" class="icon c-focus" id="cFocus" data-c="focus" aria-pressed="false" aria-label="Keep chat in focus" hidden><svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6V2h4m6 0h4v4m0 6v4h-4m-6 0H2v-4"/><circle cx="9" cy="9" r="2.5"/></svg></button>
       <button type="button" class="icon c-fav" id="cFav" data-c="fav" aria-pressed="false" aria-label="Pin to the sidebar" hidden>☆</button>
       <button type="button" class="icon c-clash" id="cClash" hidden aria-haspopup="menu" aria-expanded="false" aria-label="Another chat changed a file this one changed">⚠</button>
       <button type="button" class="icon c-splitbtn" data-c="split" aria-haspopup="menu" aria-expanded="false" aria-label="Open another chat beside this one" title="Open another chat beside this one"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="2.5" y="3" width="13" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 3v12" stroke="currentColor" stroke-width="1.5"/></svg></button>

@@ -25,7 +25,7 @@ function isViewing(x) {
 function railItem(x) {
   const draft = window.ChatDrafts?.badge(x.sessionId || x.startedAs) || '';
   // A pinned chat that isn't running: it stays listed, and a click opens it again.
-  if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${draft}${esc(x.title || 'New chat')}</span><span class="ri-s">Closed${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  if (x.pinnedOnly) return `<li><button type="button" class="ri closed" data-navchat="${esc(x.sessionId)}" aria-current="${isViewing(x)}">${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="ash-dot ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${draft}${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(x.statusLabel || 'Closed')}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
   const st = statusOf(x), w = x.partner && st !== ownStatus(x) ? x.partner : x;   // w: the one the status is about
   const dot = NEEDS.has(st) ? 'gilt-dot' : st === 'working' ? (w.source === 'app' ? 'ember-dot' : 'violet-dot') : st === 'reply' ? 'reply-dot' : st === 'ended' ? 'ash-dot' : x.source === 'app' ? 'ready-dot' : 'violet-dot';
   const doing = x.keep && !WORKING.has(w.phase) ? 'Keeps working' : w.phase === 'tool' && (w.detail || w.tool) ? `${VERB_NOW[w.tool] || 'Using'} ${w.detail || w.tool}` : w.phase === 'writing' ? 'Writing…' : w.phase === 'starting' ? 'Starting…' : 'Thinking…';
@@ -34,7 +34,8 @@ function railItem(x) {
   else if (x.partner && (st === 'quiet' || st === 'reply')) sub += ` · with ${PROV_NAME[x.partner.provider || 'claude']}`;
   const pin = railPinned(x) ? '<span class="ri-pin" title="Pinned" aria-label="Pinned">★</span>' : '';
   const outside = x.source !== 'app' ? ` title="${x.source === 'terminal' ? 'Running in a terminal window, not in this app: click to watch it here' : 'Used in another app (like the desktop app) in the last few minutes'}"` : '';
-  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}${x.source !== 'app' ? ' outside' : ''}${window.Split && Split.shows(x) ? ' beside' : ''}" aria-current="${isViewing(x)}"${outside}>${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${draft}${pin}${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span></span></button></li>`;
+  const preview = isChatFocused(x.sessionId) && st !== 'working' ? focusPreview(w, st) : '';
+  return `<li><button type="button" class="ri ${NEEDS.has(st) ? 'needs' : st === 'reply' ? 'replied' : ''}${x.source !== 'app' ? ' outside' : ''}${window.Split && Split.shows(x) ? ' beside' : ''}" aria-current="${isViewing(x)}"${outside}>${crestHtml(projectOf(x), 28, 'ri-crest')}<span class="${dot} ri-dot" aria-hidden="true"></span><span class="ri-t"><span class="ri-n">${draft}${pin}${esc(x.title || 'New chat')}</span><span class="ri-s">${esc(sub)}${x.folder ? ` · ${esc(x.folder)}` : ''}</span>${preview}</span></button></li>`;
 }
 // The rail: chats you pinned (they stay, running or not), then the rest of what's open, each list in
 // the order you dragged it into. Chats it hasn't placed yet keep their places after those.
@@ -60,26 +61,45 @@ function followPins(open) {
 function railRows() {
   const open = S.activity.filter(x => !x.parentKey && onLists(x));
   followPins(open);
-  const pinnedOpen = open.filter(railPinned), rest = open.filter(x => !railPinned(x));
+  const focused = [];
+  for (const [key, id] of S.focused) {
+    const live = S.activity.find(x => lowId(x.sessionId) === key);
+    if (live) { focused.push(live); continue; }
+    const [s, p] = sessionById(id);
+    const local = liveOf(id);
+    const statusLabel = local && local.state !== 'ended' && !S.closed.has(local.key) ? 'Open in the app' : isRunning(id) ? 'In a terminal' : s ? 'Closed' : 'History unavailable';
+    focused.push({ pinnedOnly: true, sessionId: s?.id || id, title: s?.title || local?.title || `Chat ${id.slice(0, 8)}`,
+      provider: s?.provider, folder: p?.name, cwd: p?.cwd,
+      statusLabel });
+  }
+  const others = open.filter(x => !isChatFocused(x.sessionId));
+  const pinnedOpen = others.filter(railPinned), rest = others.filter(x => !railPinned(x));
   const closed = [];
   for (const id of S.favs) {
+    if (isChatFocused(id)) continue;
     if (open.some(x => [x.sessionId, x.startedAs].some(v => v && String(v).toLowerCase() === id))) continue;
     const [s, p] = sessionById(id);
     if (s) closed.push({ pinnedOnly: true, sessionId: s.id, title: s.title, folder: p.name });
   }
-  return { pinned: inRailOrder(closed), active: [...inRailOrder(pinnedOpen), ...inRailOrder(rest)] };
+  const focus = inRailOrder(focused);
+  return { focused: focus, pinned: inRailOrder(closed), active: [...focus.filter(x => !x.pinnedOnly), ...inRailOrder(pinnedOpen), ...inRailOrder(rest)] };
 }
-const railOpen = () => { const { pinned, active } = railRows(); return [...pinned, ...active].filter(x => !x.pinnedOnly); };
+const railOpen = () => railRows().active;
 function renderRail() {
   if ($c('chat').hidden || (Rail.drag && Rail.drag.on)) return;
-  const { pinned, active } = railRows();
+  const { focused, pinned, active } = railRows();
+  const others = active.filter(x => !isChatFocused(x.sessionId));
+  $c('cFocusSection').hidden = !focused.length;
+  $c('cFocusCount').textContent = focused.length;
   $c('cPinH').hidden = !pinned.length;
   $c('cPinCount').textContent = pinned.length ? String(pinned.length) : '';
-  $c('cRailCount').textContent = active.length ? String(active.length) : '';
+  $c('cActH').hidden = !!focused.length && !others.length;
+  $c('cRailCount').textContent = others.length ? String(others.length) : '';
   // Changes glide: a pinned chat rises into Pinned, a closed one fades where it stood, a new one fades in.
-  flip([$c('cPinList'), $c('cRailList')], () => {
+  flip([$c('cFocusList'), $c('cPinList'), $c('cRailList')], () => {
+    patch($c('cFocusList'), focused, railKey, railItem);
     patch($c('cPinList'), pinned, railKey, railItem);
-    patch($c('cRailList'), active, railKey, railItem, '<li class="ri-empty">Nothing is open right now.</li>');
+    patch($c('cRailList'), others, railKey, railItem, focused.length ? '' : '<li class="ri-empty">Nothing is open right now.</li>');
   });
 }
 function switchRail(step) {
@@ -98,16 +118,16 @@ function railNeighbor(x) {
 }
 // Remembers the order the lists are in now, after a drag or Alt+Shift+↑/↓.
 function saveRailOrder() {
-  const ids = [...$c('cPinList').children, ...$c('cRailList').children].map(li => li.dataset.k).filter(Boolean)
+  const ids = [...$c('cRail').querySelectorAll('.rail-list > li')].map(li => li.dataset.k).filter(Boolean)
     .map(k => { if (k.startsWith('pin:')) return k.slice(4); const x = findActivity(k); return x ? railId(x) : null; }).filter(Boolean);
   railOrder = [...ids, ...railOrder.filter(id => !ids.includes(id))].slice(0, 200);
   store('railOrder', JSON.stringify(railOrder));
-  $c('cPinList')._sig = $c('cRailList')._sig = '';
+  for (const list of $c('cRail').querySelectorAll('.rail-list')) list._sig = '';
   renderRail();
 }
 // Alt+Shift+↑/↓: the chat you're in trades places with its neighbor, both gliding.
 function moveInRail(step) {
-  const li = [...$c('cPinList').children, ...$c('cRailList').children].find(el => el.querySelector('.ri[aria-current="true"]'));
+  const li = $c('cRail').querySelector('.ri[aria-current="true"]')?.closest('li');
   const sib = li && (step < 0 ? li.previousElementSibling : li.nextElementSibling);
   if (!sib || !sib.dataset.k) return;
   flip([li.parentElement], () => { if (step < 0) sib.before(li); else sib.after(li); });
@@ -119,7 +139,7 @@ function moveInRail(step) {
 // bottom edge, the list scrolls.
 const Rail = { drag: null, dropped: 0 };
 function railDown(e) {
-  const ri = e.target.closest('#cPinList .ri, #cRailList .ri');
+  const ri = e.target.closest('.rail-list .ri');
   if (!ri || e.button !== 0 || e.pointerType === 'touch' || Rail.drag) return;
   const li = ri.closest('li');
   Rail.drag = { li, list: li.parentElement, x0: e.clientX, y0: e.clientY, y: e.clientY, id: e.pointerId, on: false };
@@ -128,7 +148,7 @@ function railStart(d) {
   d.items = [...d.list.children].filter(el => el.dataset.k && !el.classList.contains('flip-ghost'));
   for (const el of d.items) for (const a of el.getAnimations()) a.finish();
   d.from = d.to = d.items.indexOf(d.li);
-  d.scroller = d.list.closest('.rail-scroll');
+  d.scroller = d.list.closest('.rail-scroll, .focus-rows');
   d.s0 = d.scroller ? d.scroller.scrollTop : 0;
   // Where each chat sits in the list (these don't change as the list scrolls).
   d.tops = d.items.map(el => el.offsetTop); d.hs = d.items.map(el => el.offsetHeight);
@@ -200,7 +220,7 @@ function railSettle(d, keep) {
     if (moved) { const others = d.items.filter(el => el !== li); if (to < others.length) others[to].before(li); else others[others.length - 1].after(li); }
     document.body.classList.remove('rail-dragging');
     Rail.drag = null;
-    if (moved) saveRailOrder(); else { $c('cPinList')._sig = $c('cRailList')._sig = ''; renderRail(); }
+    if (moved) saveRailOrder(); else { d.list._sig = ''; renderRail(); }
   };
   li.addEventListener('transitionend', e => { if (e.target === li && e.propertyName === 'transform') done(); });
   setTimeout(done, 380);
@@ -360,7 +380,16 @@ function connect() {
   if (C.es) C.es.close();
   const key = C.key;
   C.es = liveChat(key, C.lastSeq);
-  C.es.addEventListener('hello', e => { try { const info = JSON.parse(e.data); C.info = { ...C.info, ...info }; C.sessionId = info.sessionId || C.sessionId; headerAccount(info.accountId, info.accountName); if (info.permissionMode) setMode(info.permissionMode); if (info.context) setCtx('main', info.context); } catch { /* ignore */ } });
+  C.es.addEventListener('hello', e => {
+    try {
+      const info = JSON.parse(e.data);
+      C.info = { ...C.info, ...info };
+      if (info.sessionId && info.sessionId !== C.sessionId) { C.sessionId = info.sessionId; syncFav(); }
+      headerAccount(info.accountId, info.accountName);
+      if (info.permissionMode) setMode(info.permissionMode);
+      if (info.context) setCtx('main', info.context);
+    } catch { /* ignore */ }
+  });
   C.es.addEventListener('chat', e => { if (C.key !== key) return; try { feedIn(JSON.parse(e.data), 'main'); } catch (err) { console.error(err); } });
   C.es.addEventListener('replayed', () => { if (C.key === key) { replayed('main'); window.ChatReading?.replayed(); } });
   C.es.onerror = () => { if (C.state === 'ended' && C.es) { C.es.close(); C.es = null; } };
@@ -851,6 +880,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'rvfix': case 'rvfixall': case 'rvloop': case 'rvstop': return reviewAction(c.dataset.c, c.closest('.review'), Number(c.dataset.i));
       case 'relay': return relay(c.closest('.turn'));
       case 'fav': { const id = C.sessionId || (C.watch && C.watch.sessionId); if (id) window.toggleFav(id); return undefined; }
+      case 'focus': { const id = C.sessionId || C.watch?.sessionId; if (id) await setChatFocus(id, !isChatFocused(id)); return; }
       case 'branch': return branchFrom(c.closest('.turn'));
       case 'turnmore': {
         // The rest of what a reply offers, in one small menu (the row keeps Copy, review and hand-off).
@@ -1030,6 +1060,10 @@ function syncFav() {
   const b = $c('cFav'); if (!b) return;
   const id = C.sessionId || (C.watch && C.watch.sessionId);
   const on = !!(id && window.isFav && window.isFav(id));
+  const f = $c('cFocus');
+  f.hidden = !id;
+  f.setAttribute('aria-pressed', String(isChatFocused(id)));
+  f.title = isChatFocused(id) ? 'Remove chat from focus' : 'Keep chat in focus';
   b.hidden = !id; b.setAttribute('aria-pressed', String(on));
   b.title = on ? 'Unpin from the sidebar' : 'Pin to the sidebar';
   b.innerHTML = on ? '★' : '☆';
@@ -1037,7 +1071,7 @@ function syncFav() {
 function chatHeadItems() {
   const id = C.sessionId;
   return [
-    ...(id ? [{ glyph: window.isFav(id) ? '☆' : '★', label: window.isFav(id) ? 'Unpin from the sidebar' : 'Pin to the sidebar', run: () => window.toggleFav(id) }] : []),
+    ...(id || C.watch?.sessionId ? [focusItem(id || C.watch.sessionId), favItem(id || C.watch.sessionId)] : []),
     // How loudly this chat may alert, on this device.
     ...(id ? Object.entries(ALERT_LEVELS).map(([lv, label]) => ({ glyph: alertLevelOf(id) === lv ? '●' : '○', label: `Alerts: ${label}`, run: () => setAlertLevel(id, lv) })) : []),
     ...(id ? ['-'] : []),
@@ -1081,13 +1115,14 @@ function tidyChatMenu(anchor, all) {
   let main = [];
   const sub = (glyph, label, hint, list) => (list.length < 2 ? list : [{ glyph, label, hint, more: true, run: () => showMenu(anchor, [{ glyph: '‹', label: 'Back', run: () => showMenu(anchor, main) }, '-', ...list]) }]);
   const id = C.sessionId || (C.watch && C.watch.sessionId);
-  const find = take(/^Find in this chat/), name = take(/^Rename chat/), pin = take(/^(Un)?pin to the sidebar/i), alerts = take(/^Alerts: /);
+  const find = take(/^Find in this chat/), name = take(/^Rename chat/), pin = take(/^(Pin to|Unpin from) the sidebar/i), alerts = take(/^Alerts: /);
+  const inFocus = take(/^(Keep in focus|Remove from focus)$/);
   const keep = take(/^Keep (it working|working:)/), carry = take(/^Carry on as /), fresh = take(/^Continue in a fresh/), aside = take(/^Ask a side/), reviews = take(/^Have .+ review/), run = take(/^Run the project/);
   const copy = take(/^Open a copy here/), win = take(/^Open in a new window/), focus = take(/focus mode$/i);
   const org = take(/sub-session|group|the chat it came from|^Unlink|^Commander settings/i), save = take(/^(Export as Markdown|Copy the whole chat|Save as a web page)/);
   const done = take(/^(Mark done|Not done)/), stop = take(/^Stop this chat/);
   main = [
-    ...copy, ...find, ...name, ...pin, ...sub('●', 'Alerts', id ? ALERT_LEVELS[alertLevelOf(id)] : '', alerts),
+    ...copy, ...find, ...name, ...inFocus, ...pin, ...sub('●', 'Alerts', id ? ALERT_LEVELS[alertLevelOf(id)] : '', alerts),
     '-',
     ...keep, ...carry, ...fresh, ...aside, ...sub('◆', 'Review the changes', 'read-only', reviews), ...run,
     '-',

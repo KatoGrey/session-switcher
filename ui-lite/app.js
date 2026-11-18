@@ -17,12 +17,14 @@ function prMark(c) {
     st = it.stage === 'merged' ? 'merged' : pr.draft ? 'draft' : pr.ci && pr.ci.state === 'failing' ? 'failing' : pr.review === 'CHANGES_REQUESTED' ? 'changes' : pr.review === 'APPROVED' ? 'approved' : 'open';
   } else if (c.waitPrs && c.waitPrs[0]) {
     const w = c.waitPrs[0]; n = w.n;
-    st = { Merged: 'merged', Closed: null, 'Still a draft': 'draft', Approved: 'approved', 'Changes requested': 'changes' }[w.standing];
-    if (st === undefined) st = 'open';
+    st = { Merged: 'merged', Closed: 'closed', 'Still a draft': 'draft', Approved: 'approved', 'Changes requested': 'changes' }[w.standing];
+    if (w.stale || w.standing === 'Status unavailable') st = 'unknown';
+    else if (st === undefined) st = 'open';
   }
   if (!st) return '';
-  const say = { merged: 'merged', draft: 'a draft', failing: 'open, checks failing', changes: 'open, changes requested', approved: 'approved', open: 'open, waiting for review' }[st];
-  return `<span class="pr-g pr-${st}" title="PR #${n}: ${say}">${st === 'merged' ? MERGED_ICON : PR_ICON}</span>`;
+  const say = { merged: 'merged', closed: 'closed', draft: 'a draft', failing: 'open, checks failing', changes: 'open, changes requested', approved: 'approved', unknown: 'status unavailable', open: 'open' }[st];
+  const label = `PR #${n} · ${say}`;
+  return `<span class="pr-g pr-${st}" role="img" aria-label="${esc(label)}" title="${esc(label)}">${st === 'merged' ? MERGED_ICON : PR_ICON}</span>`;
 }
 function sideChat(c, depth = 0) {
   // Its sub-chats: a count at the side that opens them in place (with a mark if one needs you).
@@ -57,13 +59,13 @@ function renderSide() {
     </div>`;
   const waitSt = { id: 'waiting', name: 'Waiting on others', c: 'var(--muted)' };
   // Later isn't a folder: like quiet, it's one small "N later" row at the end that opens in place.
-  const laterAll = chats.filter(c => isTop(c) && statusOf(c) === 'later');
+  const laterAll = chats.filter(c => !c.focus && isTop(c) && statusOf(c) === 'later');
   const laterOpen = !!S.more['side-later'];
   const laterRow = laterAll.length ? `<div class="group">${laterOpen ? `<div class="quiet-chats">${laterAll.map(c => sideChat(c) + sideFam(c)).join('')}</div>` : ''}<button class="nav-i chat-i quiet-toggle" data-side-later="*" aria-expanded="${laterOpen}"><span class="lbl">${laterOpen ? 'Hide later' : `${laterAll.length} later`}</span></button></div>` : '';
-  const focused = chats.filter(c => c.focus);
+  const focused = focusList();
   const focusSection = `<div class="group" data-drop-focus="1"><div class="side-h">Focus</div>${focused.length ? focused.map(c => sideChat(c)).join('') : '<div class="empty-note">Star a chat or drop it here.</div>'}</div>`;
   const folders = [...statusesShown().filter(x => !parked(x.id)), waitSt, ...STATUSES.filter(x => x.id === 'done')].map(st => {
-    const all = chats.filter(c => (st.id === 'waiting' ? isTop(c) && c.waiting && !c.focus && !parked(statusOf(c)) : isTop(c) && statusOf(c) === st.id && !(c.focus && !parked(st.id)) && !(c.waiting && !parked(st.id))));
+    const all = chats.filter(c => !c.focus && isTop(c) && (st.id === 'waiting' ? c.waiting && !parked(statusOf(c)) : statusOf(c) === st.id && !(c.waiting && !parked(st.id))));
     const act = st.id === 'later' ? all : all.filter(c => !famQuiet(c)), quiet = st.id === 'later' ? [] : all.filter(famQuiet);
     const open = all.length && !S.folded[st.id];
     const showQuiet = S.more[st.id];
@@ -139,7 +141,7 @@ function sideProjects(all) {
     if (open) html += `<div class="later-chats">${list.map(c => sideChat(c).replace('<span class="lbl">', `<span class="lbl" title="${esc(projOf(c).name || '')}">`) + sideFam(c)).join('')}</div>`;
   }
   // Later (the backlog) is a bucket of its own, after the others: folded, one click to open.
-  const later = all.filter(c => isTop(c) && statusOf(c) === 'later').sort((x, y) => y.updated - x.updated);
+  const later = all.filter(c => !c.focus && isTop(c) && statusOf(c) === 'later').sort((x, y) => y.updated - x.updated);
   if (later.length) {
     const lo = !!S.more['side-later'];
     html += `<button class="side-bucket side-bucket-btn" data-side-later="*" aria-expanded="${lo}">Later <span class="n">${later.length}</span><span class="chev">${lo ? '▾' : '▸'}</span></button>`;

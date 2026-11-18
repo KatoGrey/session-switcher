@@ -265,19 +265,24 @@ function renderLedgerSoon() { if (!ledgerTimer) ledgerTimer = setTimeout(renderL
 /* ---------- this work: what the chat belongs to (lib/related.js) ---------- */
 // Asked for when a chat opens, when it gets its session id and when a PR's journal changes. An ordinary chat
 // (no issue, no PR) simply has no such section.
+let relatedRequest = 0;
 async function loadRelated() {
   const gen = C.gen, key = C.key, sid = C.sessionId;
   if (!key && !sid) return;
+  const request = ++relatedRequest;
   const q = new URLSearchParams();
   if (key) q.set('key', key);
   if (sid) q.set('sessionId', sid);
   let r = null;
   try { r = await api(`/api/related?${q}`); } catch { return; }   // the panel just goes without
-  if (gen !== C.gen) return;
+  if (gen !== C.gen || request !== relatedRequest) return;
   C.related = r && !r.none && (r.issue || r.pr || (r.runs && r.runs.length) || r.origin) ? r : null;
   renderLedgerSoon();
 }
-const REL_ROLE = { plan: 'Plan', start: 'Work', review: 'Review', 'cross-review': 'Cross-review', validate: 'Validate', handoff: 'Handoff', 'fix-comments': 'Fix comments', 'fix-checks': 'Fix checks', update: 'Update branch' };
+setInterval(() => {
+  if (document.visibilityState === 'visible' && window.ChatUI?.isOpen() && C.related?.pr) loadRelated();
+}, 90000);
+const REL_ROLE = { plan: 'Plan', start: 'Work', discussion: 'Discussion', review: 'Review', 'cross-review': 'Cross-review', validate: 'Validate', handoff: 'Handoff', 'fix-comments': 'Fix comments', 'fix-checks': 'Fix checks', update: 'Update branch' };
 function relatedHtml(R) {
   const rows = [];
   if (R.issue) {
@@ -286,8 +291,13 @@ function relatedHtml(R) {
   }
   if (R.pr) {
     const p = R.pr, c = p.checks;
-    const checks = !c ? '' : c.failed ? `<small class="rel-ck bad" title="${c.failed} failing, ${c.passed} passed">✕ ${c.failed} failing</small>`
-      : c.pending ? `<small class="rel-ck wait" title="${c.pending} still running">◌ ${c.pending} running</small>` : c.passed ? `<small class="rel-ck ok" title="All ${c.passed} passed">✓ checks</small>` : '';
+    const checks = !c ? '' : c.complete === false ? '<small class="rel-ck wait">Partial checks</small>'
+      : c.failed ? `<small class="rel-ck bad" title="${c.failed} failing, ${c.passed} passed">✕ ${c.failed} failing</small>`
+      : ['FAILURE', 'ERROR'].includes(c.state) ? '<small class="rel-ck bad">Checks failing</small>'
+      : c.pending ? `<small class="rel-ck wait">◌ ${c.pending} pending</small>`
+      : ['PENDING', 'EXPECTED'].includes(c.state) ? '<small class="rel-ck wait">Checks pending</small>'
+      : c.cancelled ? `<small class="rel-ck wait">${c.cancelled} cancelled</small>`
+      : c.passed && (!c.state || c.state === 'SUCCESS') ? `<small class="rel-ck ok" title="${c.passed} reported passing">✓ Checks passed</small>` : '';
     const review = { APPROVED: 'Approved', CHANGES_REQUESTED: 'Changes asked', REVIEW_REQUIRED: 'Needs review' }[p.review] || '';
     const state = /merged/i.test(p.state || '') ? 'Merged' : /closed/i.test(p.state || '') ? 'Closed' : p.draft ? 'Draft' : '';
     rows.push(`<li class="lg-i rel-row"><span class="glyph" aria-hidden="true">⇄</span><span class="lg-t"><button class="linkish" data-rel="pr" data-url="${esc(p.url || `https://github.com/${p.repo}/pull/${p.number}`)}" title="Open the pull request in Your work">#${p.number}</button>${p.title ? ` <span class="rel-sub" title="${esc(p.title)}">${esc(p.title)}</span>` : ''}</span>${checks}${state || review ? `<small class="rel-st">${esc(state || review)}</small>` : ''}</li>`);

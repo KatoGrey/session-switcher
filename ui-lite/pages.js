@@ -150,10 +150,10 @@ function project() {
   const p = projBy.get(S.project);
   if (!p) return `<div class="wrap"><p class="empty-note">That project isn’t in the list any more.</p></div>`;
   const cs = chatsOfProject(p.key).sort((x, y) => y.updated - x.updated);
-  const foc = cs.filter(c => c.focus && !parked(statusOf(c)));
+  const foc = focusList(cs);
   const focusSec = foc.length ? `<section class="section" data-drop-focus="1"><div class="sec-h"><h2><span class="focus-star">★</span>Focus</h2><span class="n">${foc.length}</span></div><div class="rows">${foc.map(c => rowHtml(c, { showStage: true })).join('')}</div></section>` : '';
   const sections = focusSec + [...statusesShown().filter(s => !parked(s.id)), { id: 'waiting', name: 'Waiting', c: 'var(--muted)' }, ...statusesShown().filter(s => parked(s.id))].map(s => {
-    const all = cs.filter(c => isTop(c) && boardStage(c) === s.id && !(c.focus && !parked(statusOf(c))));
+    const all = cs.filter(c => !c.focus && isTop(c) && boardStage(c) === s.id);
     if (!all.length) return '';
     const deferred = parked(s.id) || s.id === 'finishing' || s.id === 'waiting';
     const folded = deferred && !S.more['p-' + s.id];
@@ -183,15 +183,21 @@ function project() {
 
 /* ---------- Bugs: every bug across projects, by status ---------- */
 /* ---------- Bugs: one list, by stage (Exploring, Working, Finish line; Done folded) ---------- */
-let pipeLoading = null;
+let pipeLoading = null, pipeRefreshQueued = false;
 // Each bug chat's pull request (from the pipeline route: PR, checks, preview, testers), by chat id.
 function loadPipeline(force = false) {
   const p = S.pipeline;
-  if (pipeLoading || (!force && p && Date.now() - p.fetched < 60e3)) return;
+  if (pipeLoading) { if (force) pipeRefreshQueued = true; return pipeLoading; }
+  if (!force && p && Date.now() - p.fetched < 60e3) return;
   pipeLoading = api(`/api/lite/pipeline${force ? '?refresh=1' : ''}`)
     .then(j => { S.pipeline = { ...j, fetched: Date.now(), byChat: new Map((j.items || []).map(i => [i.chat, i])) }; },
-      () => { S.pipeline = { items: [], fetched: Date.now(), byChat: new Map() }; })
-    .finally(() => { pipeLoading = null; render(); });
+      err => { S.pipeline = { items: [], byChat: new Map(), ...p, fetched: Date.now(), errors: [{ error: err.message || 'GitHub is unavailable.' }] }; })
+    .finally(() => {
+      pipeLoading = null;
+      if (pipeRefreshQueued) { pipeRefreshQueued = false; return loadPipeline(true); }
+      render();
+    });
+  return pipeLoading;
 }
 // A preview link for repos whose pull requests get one (the server knows which: REPOS in
 // lib/lite-pipeline.js; Latitude's are pr-<n>.preview.voyage.io).
@@ -212,10 +218,12 @@ function bugRow(c) {
   if (pr) {
     if (it.stage === 'testers' || it.stage === 'preview') {
       const prev = previewUrl(pr);
-      const ic = it.stage === 'testers' ? IC.people : IC.eye, tip = it.stage === 'testers' ? 'With testers' : 'On a preview';
+      const ic = it.stage === 'testers' ? IC.people : IC.eye, tip = it.stage === 'testers' ? 'Testers requested' : 'Preview requested';
       marks.push(prev ? `<a class="bug-ic" href="${esc(prev)}" target="_blank" rel="noopener noreferrer" title="${tip} (open the preview)">${ic}</a>` : `<span class="bug-ic" title="${tip}">${ic}</span>`);
     }
-    if (pr.ci && pr.ci.state === 'failing') marks.push(`<span class="ci ci-failing" title="Failing: ${esc(pr.ci.failing.join(', '))}"></span>`);
+    const ci = pr.ci;
+    const checkLabel = { failing: 'Checks failed', pending: 'Checks pending', cancelled: 'Checks cancelled', unknown: 'Checks unavailable' }[ci?.state];
+    if (checkLabel) marks.push(`<span class="bug-tag" title="${esc(ci.failing?.join(', ') || checkLabel)}">${checkLabel}</span>`);
     marks.push(`<a class="bug-pr" href="${esc(pr.url)}" target="_blank" rel="noopener noreferrer" title="${esc(pr.title)}${pr.draft ? ' (draft)' : ''}">${IC.pr}<span>${pr.number}</span></a>`);
   }
   return `<div class="row bug-row" role="button" tabindex="-1" draggable="true" data-chat="${esc(c.id)}" data-cur="${esc(c.id)}" aria-selected="${S.sel.has(c.id)}">
@@ -231,10 +239,11 @@ function bugsView() {
     const list = all.filter(c => bugStage(c) === s.id);
     if (!list.length) return '';
     const folded = s.id === 'done' && !S.more['b-done'];
-    return `<section class="section" data-drop-stage="${s.id}"><div class="sec-h">${s.id === 'done' ? `<button class="fold" data-bfold="1"><h2>${s.name}</h2><span class="n">${list.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${list.length}</span>`}${s.id === 'finishing' ? `<button class="iconbtn" data-pipe-refresh="1" title="Check GitHub again" aria-label="Check GitHub again">${IC.refresh}</button>` : ''}</div>
+    return `<section class="section" data-drop-stage="${s.id}"><div class="sec-h">${s.id === 'done' ? `<button class="fold" data-bfold="1"><h2>${s.name}</h2><span class="n">${list.length}</span><span class="n">${folded ? 'Show' : 'Hide'}</span></button>` : `<h2><span class="dot" style="background:${s.c}"></span>${s.name}</h2><span class="n">${list.length}</span>`}</div>
       ${folded ? '' : `<div class="rows">${list.map(bugRow).join('')}</div>`}</section>`;
   }).join('');
-  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Bugs</h1></div></div>
+  const errors = (S.pipeline?.errors || []).map(e => `<p class="empty-note" role="status">PR updates unavailable${e.repo ? ` for ${esc(e.repo)}` : ''}. ${esc(e.error)}</p>`).join('');
+  return `<div class="wrap"><div class="page-h"><div class="proj-h">${BACK}<h1>Bugs</h1><button class="iconbtn" data-pipe-refresh="1" title="Check GitHub again" aria-label="Check GitHub again">${IC.refresh}</button></div></div>${errors}
     ${sections || '<p class="empty-note">No bugs. A chat becomes one from its menu (Kind → Bug), and new chats about fixing something are guessed as bugs.</p>'}${selHint()}</div>`;
 }
 

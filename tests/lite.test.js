@@ -118,6 +118,25 @@ test('kind and status guesses, and monorepo splits', () => {
   assert.ok(!lite.isQuiet(NOW - 3 * D, NOW, 4));
 });
 
+test('Focus is shared with Lite, survives reload and follows a resumed chat to its new id', t => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-focus-'));
+  t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }));
+  const events = [];
+  const s = lite.createLite({ dataDir, onFocusChange: view => events.push(view.ids) });
+  s.setChats(['old'], { focus: true, kind: 'bug' });
+  s.setChats(['old'], { status: 'done' });
+  s.setChats(['new'], { waiting: true });
+  s.moveFocus('old', 'new');
+  assert.deepEqual(events, [['old'], ['new']]);
+  assert.equal(s.get().chats.old.kind, 'bug');
+  assert.equal(s.get().chats.new.waiting, true);
+  const reloaded = lite.createLite({ dataDir });
+  assert.deepEqual(reloaded.focusView(), s.focusView(), 'another window can compare revisions after a restart');
+  assert.equal(reloaded.get().used, false);
+  reloaded.setChats(['new'], { focus: false });
+  assert.deepEqual(lite.createLite({ dataDir }).focusView().ids, []);
+});
+
 test('lite.json: kind, status, Focus, Waiting with a reminder, buckets, archive records, usage samples', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-lite-'));
   const s = lite.createLite({ dataDir: dir });
@@ -423,7 +442,10 @@ test('pipeline: a PR’s column comes from its labels; checks fold to one word',
   assert.deepEqual(ciOf([{ name: 'lint', status: 'COMPLETED', conclusion: 'FAILURE' }, { context: 'ci/x', state: 'PENDING' }]), { state: 'failing', failing: ['lint'], pending: 1 });
   // gh pr checks rows
   assert.equal(ciOf([{ name: 'a', bucket: 'pass' }, { name: 'b', bucket: 'skipping' }]).state, 'passing');
-  assert.equal(ciOf([{ name: 'a', bucket: 'pass' }, { name: 'pr-policy', bucket: 'pending' }]).state, 'passing', 'a policy check waiting on ready-for-review doesn’t count');
+  assert.equal(ciOf([{ name: 'a', bucket: 'pass' }, { name: 'pr-policy', bucket: 'pending' }]).state, 'pending', 'a policy check remains pending until GitHub reports a conclusion');
+  assert.equal(ciOf([{ name: 'cancelled', bucket: 'cancel' }]).state, 'cancelled');
+  assert.equal(ciOf([{ name: 'skipped', bucket: 'skipping' }]).state, 'skipped');
+  assert.equal(ciOf(null).state, 'unknown');
   assert.deepEqual(ciOf([{ name: 'a', bucket: 'pass' }, { name: 'build', bucket: 'pending' }]), { state: 'pending', failing: [], pending: 1 });
   assert.deepEqual(ciOf([{ name: 'e2e', bucket: 'fail' }, { name: 'b', bucket: 'pending' }]), { state: 'failing', failing: ['e2e'], pending: 1 });
 });
@@ -485,7 +507,29 @@ test('waiting chats: only PR moves that matter are news; bots aren’t', () => {
   assert.equal(prChange(pr(), pr({ state: 'MERGED' }), 7), 'PR #7 was merged');
   assert.equal(prChange(pr(), pr({ latestReviews: [{ author: { login: 'sean' }, state: 'COMMENTED' }] }), 7), 'sean reviewed PR #7');
   assert.equal(standing(pr({ isDraft: true })), 'Still a draft');
+  assert.equal(standing(pr({ reviewDecision: null })), 'Open');
+  assert.equal(standing(pr({ reviewDecision: 'REVIEW_REQUIRED' })), 'Review required');
+  assert.equal(prChange({ unavailable: true }, pr(), 7), null, 'first successful read after an outage is a baseline');
   assert.deepEqual(prLinks('see https://github.com/a/b/pull/1 then https://github.com/a/b/pull/2.'), ['https://github.com/a/b/pull/2', 'https://github.com/a/b/pull/1']);
+  assert.deepEqual(prLinks('https://github.com/A/B/pull/1 and HTTPS://GITHUB.COM/a/b/pull/1/files'), ['https://github.com/a/b/pull/1']);
+  assert.equal(prChange(pr(), { ...pr(), state: 'UNKNOWN' }, 7), null);
+});
+
+test('waiting PRs keep checking known URLs even if the transcript cannot be read', async t => {
+  const { createWaits } = require('../lib/lite-waits');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-lite-wait-pr-'));
+  t.after(() => fs.rmSync(dataDir, { force: true, recursive: true }));
+  const c = { id: 'waiting', title: 'Waiting for merge', waiting: true };
+  const url = 'https://github.com/acme/tool/pull/7';
+  fs.writeFileSync(path.join(dataDir, 'lite-waits.json'), JSON.stringify({ waiting: { prs: { 'https://github.com/ACME/Tool/pull/7': { state: 'OPEN', draft: false, decision: '', reviews: {} } } } }));
+  const reads = [], notes = [];
+  const waits = createWaits({ dataDir, chats: () => [c], recentReplies: async () => { throw new Error('offline'); },
+    view: async href => { reads.push(href); return { state: 'MERGED' }; }, notify: async (kind, notice) => notes.push(notice.title) });
+  await waits.check();
+  waits.decorate([c]);
+  assert.deepEqual(reads, [url]);
+  assert.deepEqual(notes, ['PR #7 was merged']);
+  assert.deepEqual(c.waitPrs.map(p => [p.url, p.standing]), [[url, 'Merged']]);
 });
 
 test('Lite counts as used once it has been opened here; idle weeks are left alone unless switched on', () => {
@@ -533,6 +577,58 @@ test('pipeline: a folder’s GitHub repo comes from its remotes, the one gh woul
   assert.equal(githubRepoOf('https://work-gh/latitudegames/latitude', aliases), null, 'ssh names are for ssh only');
   assert.equal(pickRemote('remote.origin.url git@work-gh:me/tool.git\n', aliases), 'me/tool');
   assert.deepEqual(sshAliases(path.join(os.tmpdir(), 'no-such-ssh-config')), []);
+});
+
+test('pipeline keeps GitHub check output on failure and scopes PR numbers to their repository', async () => {
+  const { createPipeline } = require('../lib/lite-pipeline');
+  const cwd = __dirname;
+  const reports = { a: 'See https://github.com/other/tool/pull/7', b: 'See https://github.com/acme/tool/pull/7' };
+  let checks = { out: '[{"name":"build","bucket":"fail"}]', error: 'exit code 1' };
+  const run = async args => {
+    if (args[1] === 'rev-parse') return { out: path.join(cwd, '.git') };
+    if (args[1] === 'config') return { out: 'remote.origin.url https://github.com/acme/tool.git' };
+    if (args[2] === 'checks') return checks;
+    const list = args.includes('open') ? [{ number: 7, headRefName: 'fix/crash', isCrossRepository: true, state: 'OPEN', labels: [], updatedAt: at(NOW) }] : [];
+    return { out: JSON.stringify(list) };
+  };
+  const pipe = createPipeline({ run, recentReplies: async id => reports[id] || '' });
+  const chats = ['a', 'b', 'fork'].map(id => ({ id, cwd, title: id, branch: 'fix/crash', updated: NOW, runIsWorktree: id === 'fork' }));
+  const first = await pipe.view(chats, [], NOW);
+  assert.deepEqual(first.items.map(x => x.chat), ['b']);
+  assert.deepEqual(first.items[0].pr.ci, { state: 'failing', failing: ['build'], pending: 0 });
+  checks = { out: '', error: 'HTTP 403' };
+  pipe.refresh();
+  assert.equal((await pipe.view(chats, [], NOW)).items[0].pr.ci.state, 'unknown');
+});
+
+test('pipeline: manual refresh finds a newly available checkout and does not label checks with the wrong head', async () => {
+  const { createPipeline } = require('../lib/lite-pipeline');
+  let hasRepo = false, head = 'a'.repeat(40), statusHead = 'b'.repeat(40), labels = [];
+  const root = path.join(__dirname, '..'), c = { id: 'shared', cwd: __dirname, title: 'Fix bug', branch: 'main', kind: 'bug', updated: NOW };
+  const calls = [];
+  const run = async (args, cwd) => {
+    calls.push([args, cwd]);
+    if (args[1] === 'rev-parse') return hasRepo ? { out: root } : { out: '', error: 'not a git repository' };
+    if (args[1] === 'config') return { out: 'remote.origin.url https://github.com/LatitudeGames/Latitude.git' };
+    if (args[2] === 'checks') return { out: '[{"name":"build","bucket":"pass"}]' };
+    if (args[2] === 'view') return { out: JSON.stringify({ headRefOid: statusHead }) };
+    return { out: JSON.stringify(args.includes('open') ? [{ number: 7, state: 'OPEN', headRefOid: head, labels }] : []) };
+  };
+  const pipe = createPipeline({ run, recentReplies: async () => 'Opened PR #7.' });
+  assert.deepEqual((await pipe.view([c], [], NOW)).items, []);
+  hasRepo = true;
+  pipe.refresh();
+  const moved = (await pipe.view([c], [], NOW)).items[0].pr;
+  assert.deepEqual([moved.ci.state, moved.preview], ['unknown', null]);
+  statusHead = head;
+  labels = [{ name: 'preview' }];
+  pipe.refresh();
+  const current = (await pipe.view([c], [], NOW)).items[0];
+  assert.deepEqual([current.stage, current.pr.ci.state, current.pr.preview], ['preview', 'passing', 'https://pr-7.preview.voyage.io/']);
+  for (const [args, cwd] of calls.filter(([args]) => args[0] === 'gh')) {
+    assert.equal(args[args.indexOf('-R') + 1], 'github.com/latitudegames/latitude');
+    assert.equal(cwd, root);
+  }
 });
 
 test('pipeline: Latitude keeps its preview links; every repo keeps the labels', () => {

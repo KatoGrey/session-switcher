@@ -249,6 +249,70 @@ module.exports = [{
     t.check('the start-page preference can be undone', await b.eval(`return store('start-page') === 'hub'`));
   },
 }, {
+  name: 'work: GitHub PR details',
+  async run(t) {
+    const original = fixture.prs[0], headRepo = 'fork/latitude', mergeSha = 'e'.repeat(40);
+    const mergeCandidate = fixture.prs[1];
+    const items = [check('policy', 'cancelled', true), check('Typecheck', 'failed', false), { ...check('Deploy', 'pending', null), result: 'WAITING', workflow: 'Preview', event: 'pull_request' }];
+    const checkData = { ...checks(items), complete: false, requirementsKnown: false, cancelled: 1, required: { passed: 0, failed: 1, pending: 0 }, source: 'merge', sha: mergeSha };
+    const p = { ...original, open: 0, headRepo, threadsComplete: false, mergeQueue: true, checks: checkData, comments: [{ author: 'teammate', body: 'Please confirm this covers forks.', url: original.url + '#issuecomment-1' }], commentsComplete: false,
+      reviews: [{ author: 'reviewer', state: 'CHANGES_REQUESTED', body: 'Keep the branch source visible.', url: original.url + '#pullrequestreview-2' }] };
+    const base = responder();
+    let mergeRequest = null;
+    const b = await t.open({ respond: (url, q, body) => {
+      if (url === '/api/prs/detail' && Number(q.get('n')) === original.number) return { body: { ...p, body: 'A change from a fork.', threads: [], reviewers: [], reviewersComplete: false } };
+      if (url === '/api/prs/detail' && Number(q.get('n')) === mergeCandidate.number) return { body: { ...mergeCandidate, checks: goodChecks, mergeState: 'CLEAN', mergeQueueEnabled: true, mergeQueue: !!mergeRequest } };
+      if (url === '/api/prs/merge') { mergeRequest = body; return { body: { ok: true, outcome: 'queued' } }; }
+      return base(url, q, body);
+    }, width: 1360, height: 900 });
+    await b.eval(`go('work'); return 1`); await sleep(1100);
+    await b.clickOn('[data-wk="select"][data-key="latitudegames/latitude#18982"]'); await sleep(350);
+    t.check('the list and inspector show the same new queue state and revision link', await b.eval(`const a = document.querySelector('.wk-row.selected .wk-status'), h = document.querySelector('#wkInspector .wk-status'), ref = document.querySelector('.wk-revision a'); return a.textContent === 'In merge queue' && h.textContent === a.textContent && ref.href.includes('/${headRepo}/commit/') && !document.querySelector('#wkInspector [data-wk="merge"]')`));
+    t.check('partial reviewers and feedback are not presented as absent', await b.eval(`const text = document.getElementById('wkInspector').textContent; return /Requested reviewersUnavailable/.test(text) && text.includes('Partial list') && !text.includes('None requested')`));
+    await b.clickOn('.wk-detail-tabs [data-value="checks"]');
+    t.check('checks show their tested revision, specific result, and unknown requirement', await b.eval(`const s = document.querySelector('.wk-tab-body'); return s.textContent.includes('GitHub test merge commit') && s.querySelector('a').href.endsWith('/${mergeSha}') && s.textContent.includes('1 cancelled') && s.textContent.includes('Requirement unknown') && s.textContent.includes('Preview · pull request') && s.textContent.includes('waiting') && s.textContent.includes('Some check results are unavailable')`));
+    await b.clickOn('.wk-detail-tabs [data-value="threads"]');
+    t.check('conversation, review rationale, and incomplete thread reads are visible', await b.eval(`const s = document.querySelector('.wk-tab-body'); return s.textContent.includes('Please confirm this covers forks.') && s.textContent.includes('Partial comment list') && s.textContent.includes('Partial thread list') && s.textContent.includes('Keep the branch source visible.') && !!s.querySelector('a[href$="#issuecomment-1"]') && !!s.querySelector('a[href$="#pullrequestreview-2"]')`));
+    await b.clickOn('#wkInspector [data-wk="next"]'); await sleep(350);
+    await b.clickOn('#wkInspector [data-wk="merge"]');
+    t.check('a required merge queue has a queue-specific confirmation', await b.eval(`return document.querySelector('.choice-dlg[open] button[value="now"]').textContent === 'Submit to merge queue'`));
+    await b.clickOn('.choice-dlg[open] button[value="now"]'); await sleep(550);
+    t.check('merge uses the inspected head and reports GitHub’s confirmed queue outcome', mergeRequest?.head === mergeCandidate.headSha && mergeRequest.n === mergeCandidate.number && await b.eval(`return /Added #19014 to the merge queue/.test(document.getElementById('toaster').textContent) && document.querySelector('#wkInspector .wk-status').textContent === 'In merge queue'`), mergeRequest);
+  },
+}, {
+  name: 'work: PR keyboard focus after refresh',
+  async run(t) {
+    const base = responder(), external = pr(19100, 'PR opened by URL');
+    let hidePolicy = false;
+    const b = await t.open({ respond: (p, q, body) => {
+      if (p === '/api/prs/detail' && Number(q.get('n')) === external.number) return { body: external };
+      const response = base(p, q, body);
+      if (p === '/api/prs/detail' && hidePolicy) {
+        const result = response.body;
+        return { body: { ...result, checks: checks(result.checks.items.filter(c => c.name !== 'pr-policy')) } };
+      }
+      return response;
+    }, width: 1360, height: 900 });
+    await b.eval(`go('work'); return 1`); await sleep(900);
+    await b.clickOn('[data-wk="select"][data-key="latitudegames/latitude#18982"]'); await sleep(350);
+    await b.clickOn('.wk-detail-tabs [data-value="checks"]');
+    const retained = selector => b.eval(`const s = ${JSON.stringify(selector)}; document.querySelector(s).focus(); await Work.load(false); return document.activeElement.matches(s)`);
+    const focusPolicy = () => b.eval(`const link = [...document.querySelectorAll('.wk-check-row')].find(e => e.textContent.includes('pr-policy')); link.focus(); return true`);
+    await focusPolicy();
+    t.check('refresh preserves focus on the same check, even when other checks share its link', await b.eval(`await Work.load(false); return document.activeElement.classList.contains('wk-check-row') && document.activeElement.textContent.includes('pr-policy')`));
+    t.check('refresh preserves focus on the optional checks disclosure', await retained('.wk-check-settled summary'));
+    await focusPolicy(); hidePolicy = true;
+    t.check('when a check disappears, focus returns to the current detail tab', await b.eval(`await Work.load(false); return document.activeElement.matches('.wk-detail-tabs [data-value="checks"]')`));
+    await b.clickOn('.wk-detail-tabs [data-value="files"]'); await sleep(350);
+    t.check('refresh preserves focus in the patch reader', await retained('.wk-patch'));
+    await b.eval(`await openWorkPr(${JSON.stringify(external.url)}); return true`);
+    await b.esc();
+    t.check('closing a PR opened by URL returns focus to Open a PR', await b.eval(`return document.activeElement.matches('.wk-header-actions [data-wk="open-pr"]')`));
+    const phone = await t.open({ respond: responder(), width: 320, height: 720, mobile: true });
+    await phone.eval(`await openWorkPr(${JSON.stringify(fixture.prs[0].url)}); return true`);
+    t.check('refresh preserves the scrolled detail tab strip on a narrow phone', await phone.eval(`const tabs = document.querySelector('.wk-detail-tabs'); tabs.scrollLeft = tabs.scrollWidth; const at = tabs.scrollLeft; await Work.load(false); return at > 0 && document.querySelector('.wk-detail-tabs').scrollLeft === at`));
+  },
+}, {
   name: 'work runs with',
   // The model and effort each assistant runs with, chosen on Your work, go with every chat started there.
   async run(t) {
@@ -468,6 +532,55 @@ module.exports = [{
     t.check('/slack with words opens it with them as the note', s.open && s.note === 'the settings migration needs a look' && last.body.note === 'the settings migration needs a look' && await b.eval(`return document.getElementById('cText').value === ''`), s);
     await b.eval(`document.getElementById('spDlg').close(); C.related = null; slackFromChat(); return 1`); await sleep(400);
     t.check('a chat with no pull request says so, and opens nothing', !(await st()).open && /no pull request yet/i.test(await b.eval(`return document.getElementById('toast').textContent`)));
+  },
+}, {
+  name: 'work PR refresh ordering',
+  async run(t) {
+    const b = await t.open({ respond: responder() });
+    const result = await b.eval(`
+      await go('work'); await Work.load();
+      const base = api, current = await base('/api/work');
+      let releaseBoard, startedBoard, freshReads = 0;
+      const boardStarted = new Promise(resolve => { startedBoard = resolve; });
+      const board = title => ({ ...current, prs: [{ ...current.prs[0], title }, ...current.prs.slice(1)] });
+      api = async (url, body) => {
+        if (url === '/api/work') return new Promise(resolve => { releaseBoard = resolve; startedBoard(); });
+        if (url === '/api/work?fresh=1') { freshReads++; return board('Current board'); }
+        return base(url, body);
+      };
+      const old = Work.load(); await boardStarted;
+      const fresh = Work.load(true); releaseBoard(board('Older board'));
+      await Promise.all([old, fresh]);
+      const boardIsCurrent = document.querySelector('.wk-row[data-key="latitudegames/latitude#18982"]').textContent.includes('Current board');
+      await Work.openPr(current.prs[0].url);
+      const detailUrl = '/api/prs/detail?repo=latitudegames%2Flatitude&n=18982&fresh=1';
+      const details = await base(detailUrl);
+      let releaseDetail, startedDetail, detailReads = 0;
+      const detailStarted = new Promise(resolve => { startedDetail = resolve; });
+      api = async (url, body) => {
+        if (url !== detailUrl) return base(url, body);
+        if (++detailReads === 1) return new Promise(resolve => { releaseDetail = resolve; startedDetail(); });
+        return { ...details, title: 'New details', headSha: 'd'.repeat(40) };
+      };
+      document.querySelector('[data-wk="refresh-detail"]').click(); await detailStarted;
+      document.querySelector('[data-wk="refresh-detail"]').click();
+      for (let i = 0; i < 20 && document.getElementById('wkDetailTitle').textContent !== 'New details'; i++) await new Promise(resolve => setTimeout(resolve, 10));
+      releaseDetail({ ...details, title: 'Old details' });
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const title = document.getElementById('wkDetailTitle').textContent;
+      document.querySelector('[data-wk="close-detail"]').click();
+      const empty = { ...current, prs: [] };
+      api = async (url, body) => url === '/api/work?fresh=1' ? { ...empty, prsError: 'Temporary GitHub error' } : base(url, body);
+      await Work.load(true);
+      const keepsLastGood = document.querySelector('.wk-error').textContent.includes('Showing saved PRs') && !!document.querySelector('.wk-row[data-key="latitudegames/latitude#18982"]');
+      api = async (url, body) => url === '/api/work?fresh=1' ? { ...empty, gh: { ...current.gh, login: 'OtherAccount' } } : base(url, body);
+      await Work.changed(true);
+      const accountIsolated = document.querySelector('.wk-identities').textContent.includes('OtherAccount') && !document.querySelector('.wk-row[data-key="latitudegames/latitude#18982"]');
+      return { freshReads, boardIsCurrent, detailReads, title, keepsLastGood, accountIsolated };
+    `);
+    t.check('a fresh board refresh follows an older in-flight read', result.freshReads === 1 && result.boardIsCurrent, result);
+    t.check('a late detail response cannot overwrite a newer revision', result.detailReads === 2 && result.title === 'New details', result);
+    t.check('a failed refresh labels the last successful list and switching accounts discards it', result.keepsLastGood && result.accountIsolated, result);
   },
 }];
 module.exports.fixture = fixture;

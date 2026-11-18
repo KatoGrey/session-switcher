@@ -76,7 +76,8 @@ The panel at the top left of the sidebar shows which account new chats open as. 
 The hub is the main screen. The sidebar beside it has, from the top:
 
 - **The hub**, **Commander** and **Routines**.
-- **Active now:** each open chat, with what it's doing in words. A click opens it.
+- **In focus** keeps the chats you choose above the scrolling list. A focused row can show the agent’s current tool, the question it asked, or a preview of its latest unread reply. Right-click a chat and choose **Keep in focus**, or use the focus button in its header. A closed chat stays there to reopen. The same selection appears in Switcher Lite and on devices connected to this PC. Choose **Remove from focus** when you finish.
+- **Active now** shows the other open chats, with what each is doing. Click one to open it.
 - **Pinned** and **Recent:** the chats you've pinned, and your six latest with their project and how long ago. **All recent chats** is at the foot.
 - **Groups** and **Sub-sessions**, when you have them.
 - **Your projects:** one list, newest first, with buttons for All, Claude, Codex and Gemini and a box to filter it. Folders that no longer exist are folded away at the end.
@@ -242,11 +243,20 @@ The repository is safe to publish as it is. Everything personal the app writes (
 
 Sign-ins never live in the app's folder. Each Claude account signs in through its own folder in your user profile: `.claude`, or `.claude-<name>` for extra accounts. Codex uses `.codex`. So even a plain copy of the app's folder carries no sign-ins. The zip is still the tidy way, because it also leaves out your account list, settings and history.
 
+## Working with pull requests
+
+Open **Your work** to see your PRs, PRs assigned to you or requested for your review, and PRs linked to your assigned issues. Use **Open PR** to inspect a specific GitHub URL. The app reads GitHub through the active `gh` account on this computer.
+
+- **Checks** identifies the revision behind the results. GitHub can evaluate a test merge commit combining the head and base branches. The inspector shows that commit when it has reported checks. Required, optional, and unclassified checks have their own groups. [How GitHub decides which commit must pass](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks)
+- **Reviews and feedback** show GitHub’s review decision, outstanding review requests, conversation comments, and unresolved code threads. Mergeability and queue status come from GitHub separately. [GitHub’s pull request fields](https://docs.github.com/en/graphql/reference/pulls#pullrequest)
+- **Refresh** reads the selected PR again. Partial results and failed refreshes are labeled. Open the GitHub link for longer discussions or file lists beyond the displayed limit. File pages are tied to the head and base revisions so a push during review prompts a refresh.
+- **Chat links** distinguish work started from that PR from a possible match on its branch. The journal attaches local review results to the commit that was reviewed. To follow an agent while it works, open its chat and choose **Keep in focus**.
+
 ## The chat window
 
 Click **Open** on any chat, or **New chat** in a folder. The chat runs in Session Switcher's own window, as the account you picked. The project's name above the chat's title goes to the project's page.
 
-- **Active now (left):** every open chat, for one-click switching: working, waiting for you, or ready for your next message. `Alt+↑` and `Alt+↓` move between them.
+- **In focus** stays at the top of the chat list. **Active now** shows the remaining open chats. `Alt+↑` and `Alt+↓` move between open chats in both groups.
   - **Drag** a chat up or down to put the list in your order (or `Alt+Shift+↑` / `Alt+Shift+↓` for the chat you're in). The order is remembered.
   - **Right-click → Pin to the sidebar** keeps a chat at the top of the list, under **Pinned**, even after it stops; click it to open it again.
   - **Right-click → Close** takes a chat off the list. One running here stops (open it again and it picks up where it left off; it asks first if the chat is mid-reply). One in a terminal or another app keeps running there, and comes back to the list if it does something new. Closing the chat you're in moves you to the next one.

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { runsOf, addRun, relatedFor } = require('../lib/related');
+const { runsOf, addRun, relatedFor, prChatLinks } = require('../lib/related');
 
 test('related: an issue keeps every chat started for it, newest first (it used to keep only the last)', () => {
   let e = null;
@@ -54,6 +54,31 @@ test('related: a PR found only by the branch is a guess, and says so; main is ne
   assert.ok(relatedFor({ chat: { sessionId: 'x', cwd: 'C:\\Repos\\latitude', branch: 'main' }, board }).none);
   // A branch with the same name in another folder isn't this PR's.
   assert.ok(relatedFor({ chat: { sessionId: 'x', cwd: 'D:\\Elsewhere', branch: 'tyler/voy-1-tavern' }, board }).none);
+});
+
+test('related: a branch guess needs one open PR from the same source repository and folder', () => {
+  const chat = { sessionId: 's', cwd: 'c:/repos/latitude/subfolder', branch: 'tyler/voy-1-tavern' };
+  const own = { ...board.prs[0], headRepo: 'O/R' }, fork = { ...own, number: 19, headRepo: 'someone/r' };
+  const on = prs => relatedFor({ chat, board: { prs } });
+  assert.equal(on([fork, own]).pr.number, 7);
+  assert.equal(on([fork, { ...own, number: 20, state: 'MERGED' }]).none, true);
+  assert.equal(on([own, { ...own, number: 20 }]).none, true);
+  assert.equal(on([{ ...own, headRepo: null }]).none, true);
+  assert.equal(on([{ ...own, cwds: undefined }]).none, true);
+});
+
+test('related: a saved discussion or review can open but only an eligible earlier Claude fix can resume', () => {
+  const rows = [
+    { kind: 'discussion', chat: { key: 'live', provider: 'codex' } },
+    { kind: 'fix-comments', chat: { key: 'busy', sessionId: 'busy', provider: 'claude' } },
+    { kind: 'review', chat: { sessionId: 'review', provider: 'claude' } },
+    { kind: 'fix-checks', chat: { sessionId: 'codex-fix', provider: 'codex' } },
+    { kind: 'update', chat: { sessionId: 'earlier-fix', provider: 'claude' } },
+  ];
+  const r = prChatLinks(rows, c => c);
+  assert.equal(r.chat.key, 'live');
+  assert.equal(r.resumeChat.sessionId, 'earlier-fix');
+  assert.equal(prChatLinks(rows.slice(0, 4), c => c).resumeChat, null);
 });
 
 test('related: what started a chat (a routine) shows, and an ordinary chat has nothing related', () => {

@@ -3337,6 +3337,25 @@ module.exports = [
       t.check('Switcher Lite opens on the same app', r.title === 'Switcher' && !!r.brand && r.side, r);   // the tab says just Switcher
       t.check('once opened, Lite counts as used here (its checks start)', r.used, r);
       t.check('the week-starter is off unless you turn it on', !r.weeks, r);
+      const focus = await b.eval(`const original = { chats: S.chats, projects: S.projects, project: S.project };
+        try {
+          S.projects = [{ key: 'one', name: 'One' }, { key: 'two', name: 'Two' }];
+          S.project = 'one';
+          S.chats = [
+            { id: 'a', project: 'one', status: 'done', focus: true },
+            { id: 'b', project: 'two', status: 'later', focus: true },
+            { id: 'c', project: 'one', status: 'done', auto: true, focus: true },
+            { id: 'd', project: 'one', status: 'done', archived: true, focus: true }
+          ].map(c => ({ ...c, title: 'Chat ' + c.id, updated: Date.now() }));
+          index(); famMemo = null;
+          const view = document.createElement('div');
+          view.innerHTML = nowLiveHtml();
+          const global = [...view.firstElementChild.querySelectorAll('[data-chat]')].map(e => e.dataset.chat);
+          view.innerHTML = project();
+          return { global, project: [...view.querySelectorAll('[data-chat]')].map(e => e.dataset.chat) };
+        } finally { Object.assign(S, original); index(); famMemo = null; }`);
+      t.check('Lite Now keeps explicit focus across projects, Later, Done, and automated runs', focus.global.join() === 'a,b,c', focus);
+      t.check('the project shows its focused chat once and keeps its project scope', focus.project.join() === 'a', focus);
       // Who answers, in a Claude chat with Gemini set up (and no ChatGPT plan here): Gemini, or both in turn.
       const to = await b.eval(`const realPlans = S.plans; S.plans = { plans: [{ id: 'cl', family: 'claude' }] }; S.gemini = true; S.view = 'chat'; CV.provider = 'claude'; PARTNER.prov = 'gemini';
         const out = { kinds: crewKindsLite(), one: toBody('partner:gemini'), both: toBody('both'), old: toBody('partner'), chat: toBody('chat'), name: toName('partner:gemini') };

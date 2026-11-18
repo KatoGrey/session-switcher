@@ -7,6 +7,8 @@
 
 const Work = (() => {
   const W = { data: null, loading: false, err: null, at: 0, open: null, team: null, usersQ: '', users: null, query: '', filter: 'all', repo: 'all', layout: 'list', details: new Map(), external: new Map(), files: new Map(), detailTab: 'overview', wide: true, trail: [] };
+  let queuedRefresh = null, accountGeneration = 0, navigation = 0;
+  const detailRequests = new Map();
   // Runs with: the model and effort each assistant uses for the chats started here (empty: its own default).
   W.run = { claude: { model: '', effort: '' }, codex: { model: '', effort: '' }, gemini: { model: '', effort: '' } }; W.models = null; W.modelsLoading = false;
   W.setup = null; W.setupLoading = false; W.setupOpen = false; W.lit = null;
@@ -20,18 +22,60 @@ const Work = (() => {
   const page = () => $('page');
   const showing = () => S.view === 'work' && !(window.ChatUI && ChatUI.isOpen());
 
-  async function load(fresh = false) {
-    if (W.loading) return;
-    W.loading = true; if (showing()) render();
-    try { W.data = await api(`/api/work${fresh ? '?fresh=1' : ''}`); W.err = null;
-      if (fresh) { const selected = W.open && item(W.open); W.details.clear(); W.files.clear(); if (selected) W.details.set(W.open, selected); }
-      W.at = Date.now(); } catch (err) { W.err = err.message; }
-    W.loading = false;
-    if (showing()) { render(); if (W.open) detailLoad(W.open); }
-    if (typeof renderNav === 'function') renderNav();
+  function load(fresh = false) {
+    if (W.loading) {
+      if (!fresh) return W.loading;
+      if (!queuedRefresh) queuedRefresh = W.loading.then(() => { queuedRefresh = null; return load(true); });
+      return queuedRefresh;
+    }
+    const generation = accountGeneration;
+    W.loading = Promise.resolve().then(async () => {
+      try {
+        const d = await api(`/api/work${fresh ? '?fresh=1' : ''}`);
+        if (generation !== accountGeneration) return;
+        const previous = W.data, selected = W.open && item(W.open);
+        const accountChanged = previous?.gh?.login && previous.gh.login.toLowerCase() !== d.gh?.login?.toLowerCase();
+        if (accountChanged) { navigation++; W.open = null; W.details.clear(); W.external.clear(); W.files.clear(); }
+        if (d.prsError && !d.prsPartial && d.gh?.signedIn && d.gh.login === previous?.gh?.login) {
+          d.prs = previous.prs;
+          d.prsAt = previous.prsAt || previous.at;
+          d.prsStale = true;
+        }
+        W.data = d; W.err = null; W.at = Date.now();
+        if (W.open && selected && !selected.identifier && !(d.prs || []).some(p => kOf(p) === W.open) && !W.external.has(W.open)) {
+          W.external.set(W.open, { repo: selected.repo, number: selected.number, title: selected.title, url: selected.url });
+        }
+        detailRequests.clear();
+        for (const key of W.details.keys()) if (key !== W.open) W.details.delete(key);
+        for (const p of d.prs || []) {
+          const key = kOf(p), detail = W.details.get(key), f = W.files.get(key);
+          if (detail && (detail.error || (p.headSha && p.headSha !== detail.headSha) || (p.baseSha && p.baseSha !== detail.baseSha))) W.details.delete(key);
+          if (f && ((p.headSha && p.headSha !== f.head) || (p.baseSha && p.baseSha !== f.base))) W.files.delete(key);
+        }
+      } catch (err) { if (generation === accountGeneration) { W.err = err.message; W.at = Date.now(); } }
+      finally {
+        W.loading = false;
+        if (generation === accountGeneration && showing()) { render(); if (W.open && !queuedRefresh) await detailLoad(W.open); }
+        if (typeof renderNav === 'function') renderNav();
+      }
+    });
+    if (showing()) render();
+    return W.loading;
+  }
+  function changed(accountChanged = false) {
+    W.at = 0;
+    if (accountChanged) {
+      accountGeneration++; navigation++;
+      W.data = null; W.open = null; W.err = null; W.team = null;
+      W.details.clear(); W.external.clear(); W.files.clear(); detailRequests.clear();
+    }
+    if (showing()) return load(true);
   }
   // Kept current while you're looking at it.
   setInterval(() => { if (showing() && document.visibilityState === 'visible' && !document.activeElement?.closest('#page input, #page textarea, #page select') && Date.now() - W.at > 120000) load(false); }, 30000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && showing() && Date.now() - W.at > 30000) load(true);
+  });
 
   /* ---------- the page ---------- */
 
@@ -75,33 +119,49 @@ const Work = (() => {
     if (live.state === 'ready' && (live.background || []).length) return ['Working in the background', 'accent'];
     return CHAT_WORD[live.state] || null;
   }
-  // Checks and review at a glance: ✓ passing, ✕ failing, ◌ running; approved or changes requested.
+  // Show check results alongside GitHub's separate review decision.
   function signals(x) {
     if (x.identifier || x.state !== 'OPEN') return '';
-    const gate = WorkModel.checkGate(x.checks || {}), out = [];
-    if (gate.failed) out.push(`<span class="wk-sig bad" title="${gate.failed} check${gate.failed === 1 ? '' : 's'} failing">✕ ${gate.failed} failing</span>`);
-    else if (gate.pending) out.push(`<span class="wk-sig" title="${gate.pending} check${gate.pending === 1 ? '' : 's'} running">◌ ${gate.pending} running</span>`);
-    else if ((x.checks || {}).passed) out.push('<span class="wk-sig ok" title="Checks passing">✓ checks</span>');
+    const c = x.checks || {}, gate = WorkModel.checkGate(c), totals = WorkModel.checkCounts(c), out = [];
+    const checkSignal = (label, tone = '') => out.push(`<span class="wk-sig ${tone}">${label}</span>`);
+    if (gate.failed) checkSignal(`${gate.failed} required ${gate.failed === 1 ? 'check' : 'checks'} flagged`, 'bad');
+    else if (gate.pending) checkSignal(`${gate.pending} required pending`);
+    const other = totals.failed + totals.cancelled - gate.failed;
+    if (other > 0) checkSignal(`${other} ${gate.known ? 'optional ' : ''}${other === 1 ? 'check' : 'checks'} flagged`, gate.known ? 'warn' : 'bad');
+    else if (!gate.failed && gate.unclassifiedFailure) checkSignal('Checks need attention', 'bad');
+    else if (!gate.pending && gate.unclassifiedPending) checkSignal(totals.pending ? `${totals.pending} pending` : 'Checks pending');
+    else if (!out.length && gate.known && totals.pending > gate.pending) checkSignal(`${totals.pending - gate.pending} optional pending`);
+    else if (!out.length && c.complete !== false && totals.passed) checkSignal(`✓ ${totals.passed} passed`, 'ok');
+    if (x.isDraft) checkSignal('Draft');
     if (x.reviewDecision === 'APPROVED') out.push('<span class="wk-sig ok" title="Approved">✓ approved</span>');
     else if (x.reviewDecision === 'CHANGES_REQUESTED') out.push('<span class="wk-sig warn" title="Changes requested">± changes</span>');
     return out.join('');
   }
   const match = x => !W.query.trim() || W.query.toLowerCase().trim().split(/\s+/).every(q => `${x.title} ${x.identifier || ''} ${x.number ? '#' + x.number : ''} ${x.repo || ''} ${x.issue || ''} ${x.author || ''} ${x.priorityLabel || ''} ${x.state?.name || ''}`.toLowerCase().includes(q));
-  const scoped = () => W.repo === 'all' ? W.data || {} : { ...W.data, prs: (W.data?.prs || []).filter(p => p.repo.toLowerCase() === W.repo), issues: W.repo === 'latitudegames/latitude' ? W.data?.issues || [] : [] };
-  const item = key => (W.data?.issues || []).find(i => i.identifier === key) || (W.data?.prs || []).find(p => kOf(p) === key) || W.external.get(key) || W.details.get(key);
+  function withDetail(p) {
+    const detail = W.details.get(rowKey(p));
+    return detail && !detail.error ? { ...p, ...detail } : p;
+  }
+  function scoped(repo = W.repo) {
+    const prs = (W.data?.prs || []).filter(p => repo === 'all' || p.repo.toLowerCase() === repo).map(withDetail);
+    const issues = repo === 'all' || repo === 'latitudegames/latitude' ? W.data?.issues || [] : [];
+    return { prs, issues };
+  }
+  const item = key => (W.data?.issues || []).find(i => i.identifier === key) || (W.data?.prs || []).find(p => kOf(p) === key) || W.external.get(key);
   function row(x) {
     const issue = !!x.identifier, key = rowKey(x), selected = key === W.open;
     const s = issue ? { label: x.state?.name || 'To do', tone: x.priority === 1 ? 'warn' : 'muted' } : WorkModel.status(x);
+    const at = Date.parse(x.state === 'MERGED' ? x.mergedAt : x.updatedAt);
     return `<button type="button" class="wk-row${selected ? ' selected' : ''}" data-wk="select" data-key="${esc(key)}" aria-expanded="${selected}" aria-controls="wkInspector">
       <span class="wk-row-icon ${s.tone}">${icon(issue ? 'issue' : x.state === 'MERGED' ? 'done' : 'pr')}</span>
       <span class="wk-row-main"><span class="wk-row-title">${esc(x.title)}</span><span class="wk-row-meta">${(() => { const live = liveChatOf(x), w = chatWord(live); return w ? `<span class="wk-row-chat ${w[1]}${live.state === 'waiting' ? ' asks' : ''}" data-wk="issuechat" data-key="${esc(live.key || '')}" data-id="${esc(live.sessionId || '')}" title="Open the chat">${live.state === 'busy' || live.state === 'starting' ? '<i class="wk-pulse" aria-hidden="true"></i>' : ''}${esc(w[0])}</span>` : ''; })()}${signals(x)}<b>${esc(issue ? x.identifier : '#' + x.number)}</b>${x.issue ? ` <span>${esc(x.issue)}</span>` : ''}<span title="${esc(issue ? x.team?.name || 'Linear' : x.repo)}">${esc(issue ? x.team?.name || 'Linear' : x.repo.split('/').pop())}</span>${!issue && x.author ? `<span>${esc(x.author)}</span>` : ''}</span></span>
-      <span class="wk-status ${s.tone}"><i aria-hidden="true"></i>${esc(s.label)}</span><span class="wk-row-time">${esc(agoL(Date.parse(x.updatedAt || x.mergedAt) || W.at))}</span><span class="wk-row-arrow" aria-hidden="true">›</span></button>`;
+      <span class="wk-status ${s.tone}"><i aria-hidden="true"></i>${esc(s.label)}</span><span class="wk-row-time" title="${x.state === 'MERGED' ? 'Merged' : 'Updated'}">${Number.isFinite(at) ? esc(agoL(at)) : ''}</span><span class="wk-row-arrow" aria-hidden="true">›</span></button>`;
   }
   function filteredGroups() {
     const g = WorkModel.group(scoped());
     const withChat = () => { const all = [...g.review, ...g.waiting, ...g.doing, ...g.todo].filter(x => liveChatOf(x)); const asks = all.filter(x => liveChatOf(x).state === 'waiting'); return [['chat-asks', 'Chat needs your OK', asks], ['chat-working', 'A chat is working on it', all.filter(x => !asks.includes(x))]]; };
-    const groups = W.filter === 'chats' ? withChat() : W.filter === 'attention' ? [['attention', 'Needs your attention', g.attention]] : W.filter === 'merged' ? [['merged', 'Merged this week', g.merged]] : [
-      ['review', 'In review', g.review], ['waiting', 'Waiting on you', g.waiting], ['doing', 'In progress', g.doing], ['todo', 'To do', g.todo],
+    const groups = W.filter === 'chats' ? withChat() : W.filter === 'attention' ? [['attention', 'Needs your attention', g.attention]] : W.filter === 'merged' ? [['merged', 'Merged pull requests', g.merged]] : [
+      ['review', 'Your PRs and linked PRs', g.review], ['waiting', 'Review requests and assignments', g.waiting], ['doing', 'In progress', g.doing], ['todo', 'To do', g.todo],
     ].filter(([id]) => W.filter === 'prs' ? ['review', 'waiting'].includes(id) : W.filter === 'issues' ? ['doing', 'todo'].includes(id) : true);
     return groups.map(([id, title, xs]) => [id, title, xs.filter(match)]);
   }
@@ -110,15 +170,32 @@ const Work = (() => {
     // Nothing at all: the way to connect what fills it (or to check who it's connected as).
     const unlinked = !W.data?.gh?.signedIn || !W.data?.linear?.connected;
     const next = W.query || W.filter !== 'all' || W.repo !== 'all' ? '<button class="btn" data-wk="reset">Show all work</button>' : `<button class="btn${unlinked ? ' prime' : ''}" data-wk="connections">${unlinked ? 'Connect GitHub and Linear' : 'Check your connections'}</button>`;
-    if (!total) return `<div class="wk-no-results">${icon('done', 30)}<h3>${W.query ? 'No matches' : W.filter === 'attention' ? 'You’re all caught up' : W.filter === 'chats' ? 'No chats on your work right now' : 'Nothing here yet'}</h3><p>${W.query ? 'Try a title, PR number, person, or Linear ID.' : W.filter === 'attention' ? 'No pull requests currently need your action.' : W.filter === 'chats' ? 'Start one from an issue or PR, and it shows up here while it works.' : unlinked ? 'Your assigned issues and pull requests appear here once GitHub and Linear are connected.' : 'Your assigned issues and pull requests appear here.'}</p>${next}</div>`;
+    if (!total) {
+      if (W.filter !== 'issues' && (W.err || W.data?.prsError)) return `<div class="wk-no-results"><h3>No items in the available results</h3><p>Refresh to check for additional pull requests.</p><button class="btn" data-wk="refresh">Refresh work</button></div>`;
+      return `<div class="wk-no-results">${icon('done', 30)}<h3>${W.query ? 'No matches' : W.filter === 'attention' ? 'You’re all caught up' : W.filter === 'chats' ? 'No chats on your work right now' : 'Nothing here yet'}</h3><p>${W.query ? 'Try a title, PR number, person, or Linear ID.' : W.filter === 'attention' ? 'No pull requests currently need your action.' : W.filter === 'chats' ? 'Start one from an issue or PR, and it shows up here while it works.' : unlinked ? 'Your assigned issues and pull requests appear here once GitHub and Linear are connected.' : 'Your assigned issues and pull requests appear here.'}</p>${next}</div>`;
+    }
     return `<div class="wk-results-heading"><span role="status">${W.query ? 'Search results' : 'Work queue'}<b>${total}</b></span><span class="wk-list-hint">↑ ↓ to move · Enter to open</span></div><div class="wk-results ${W.layout === 'board' ? 'as-board' : ''}">${groups.filter(g => g[2].length || W.layout === 'board').map(([id, title, xs]) => `<section class="wk-group" data-group="${id}"><h2><span class="wk-group-dot" data-kind="${id}"></span>${title}<span>${xs.length}</span></h2>${xs.length ? xs.map(row).join('') : '<p class="wk-empty">All clear.</p>'}</section>`).join('')}</div>`;
   }
   const queue = () => filteredGroups().flatMap(g => g[2]);
   function focusSelector(el) {
     if (el?.id) return '#' + CSS.escape(el.id);
     if (el?.dataset.wkm) return `[data-wkm="${CSS.escape(el.dataset.wkm)}"]`;
+    if (el?.dataset.wkFocus) return `[data-wk-focus="${CSS.escape(el.dataset.wkFocus)}"]`;
+    if (el?.matches('details[data-preserve] > summary')) return `details[data-preserve="${CSS.escape(el.parentElement.dataset.preserve)}"] > summary`;
+    if (el?.matches('#wkInspector a[href]')) return `a[href="${CSS.escape(el.getAttribute('href'))}"]`;
     if (!el?.dataset.wk) return null;
     return `[data-wk="${CSS.escape(el.dataset.wk)}"]` + ['value', 'key', 'path'].filter(k => el.dataset[k]).map(k => `[data-${k}="${CSS.escape(el.dataset[k])}"]`).join('');
+  }
+  function inspectorFocusTarget(panel, selector) {
+    const target = selector && panel.querySelector(selector);
+    if (target && !target.matches(':disabled')) {
+      if (!target.matches('summary')) {
+        const collapsed = target.closest('details:not([open])');
+        if (collapsed) collapsed.open = true;
+      }
+      return target;
+    }
+    return panel.querySelector('.wk-detail-tabs [aria-pressed="true"]') || panel.querySelector('#wkDetailTitle');
   }
   function renderResults() {
     const box = $('wkResults'), target = box?.contains(document.activeElement) && focusSelector(document.activeElement);
@@ -129,13 +206,15 @@ const Work = (() => {
     const panel = $('wkInspector');
     if (!panel || panel.dataset.key !== W.open) return null;
     const patch = panel.querySelector('.wk-patch');
-    return { key: W.open, scroll: panel.scrollTop, tree: panel.querySelector('.wk-file-tree')?.scrollTop || 0,
+    return { key: W.open, scroll: panel.scrollTop, tabScroll: panel.querySelector('.wk-detail-tabs')?.scrollLeft || 0, tree: panel.querySelector('.wk-file-tree')?.scrollTop || 0,
       expanded: [...panel.querySelectorAll('details[data-preserve][open]')].map(el => el.dataset.preserve),
       patch: patch && { label: patch.getAttribute('aria-label'), top: patch.scrollTop, left: patch.scrollLeft } };
   }
   function restoreInspector(saved) {
     const panel = $('wkInspector'); if (!saved || !panel || saved.key !== W.open) return;
     for (const el of panel.querySelectorAll('details[data-preserve]')) el.open = saved.expanded.includes(el.dataset.preserve);
+    const tabs = panel.querySelector('.wk-detail-tabs');
+    if (tabs) tabs.scrollLeft = saved.tabScroll;
     const tree = panel.querySelector('.wk-file-tree'), patch = panel.querySelector('.wk-patch');
     if (tree) tree.scrollTop = saved.tree;
     if (patch && patch.getAttribute('aria-label') === saved.patch?.label) { patch.scrollTop = saved.patch.top; patch.scrollLeft = saved.patch.left; }
@@ -148,11 +227,12 @@ const Work = (() => {
     const target = focusSelector(focused), saved = rememberInspector();
     panel.innerHTML = inspectorHtml();
     restoreInspector(saved);
-    if (target) panel.querySelector(target)?.focus({ preventScroll: true });
+    if (focused) inspectorFocusTarget(panel, target)?.focus({ preventScroll: true });
   }
   function render() {
     const focused = document.activeElement, focusTarget = page().contains(focused) ? focusSelector(focused) : null;
     const inspector = rememberInspector();
+    const inspectorFocused = inspector && $('wkInspector').contains(focused);
     const caret = focused?.selectionStart;
     const pg = page(); pg.dataset.page = 'work'; delete pg.dataset.worldPage;
     const d = W.data, g = WorkModel.group(scoped()), lin = d?.linear, gh = d?.gh;
@@ -160,16 +240,16 @@ const Work = (() => {
     const total = (scoped().prs || []).filter(p => p.state === 'OPEN').length;
     pg.innerHTML = `<div class="wk-workspace">
       <header class="wk-header"><div><p class="wk-eyebrow"><span class="wk-emblem" aria-hidden="true">↗</span> WORKSPACE</p><h1>Your work</h1><p class="wk-subtitle">Issues, pull requests, and the next step.</p></div><div class="wk-header-actions"><button class="btn quiet" data-wk="refresh" ${W.loading ? 'disabled' : ''}>${W.loading ? 'Refreshing…' : '↻ Refresh'}</button><button class="btn" data-wk="open-pr">Open a PR</button><button class="btn prime" data-wk="cross-review">Cross-model review <span aria-hidden="true">↗</span></button></div></header>
-      <div class="wk-identities"><span class="wk-identity"><i class="${lin?.me ? 'connected' : ''}"></i>Linear <b>${esc(name || 'Not connected')}</b></span><span class="wk-identity"><i class="${gh?.signedIn ? 'connected' : ''}"></i>GitHub <b>${esc(gh?.login || 'Not connected')}</b></span><button class="wk-manage" data-wk="connections">Manage connections ↗</button><span class="wk-updated">${W.at ? 'Updated ' + esc(agoL(W.at)) : 'Connecting…'}</span></div>
+      <div class="wk-identities"><span class="wk-identity"><i class="${lin?.me ? 'connected' : ''}"></i>Linear <b>${esc(name || 'Not connected')}</b></span><span class="wk-identity"><i class="${gh?.signedIn ? 'connected' : ''}"></i>GitHub <b>${esc(gh?.login || 'Not connected')}</b></span><button class="wk-manage" data-wk="connections">Manage connections ↗</button>${d?.prsAt ? `<span class="wk-updated">GitHub checked ${esc(agoL(d.prsAt))}</span>` : ''}</div>
       ${runRow()}
       ${setupRow()}
       ${d ? setupHtml(d) : ''}
-      ${[W.err, d?.issuesError && 'Linear: ' + d.issuesError, d?.prsError && 'GitHub: ' + d.prsError].filter(Boolean).map(e => `<p class="wk-error" role="alert">${esc(e)} <button class="linkish" data-wk="refresh">Try again</button></p>`).join('')}
+      ${[W.err, d?.issuesError && 'Linear: ' + d.issuesError, d?.prsError && ('GitHub: ' + d.prsError + (d.prsStale ? ` Showing saved PRs${d.prsAt ? ' checked ' + agoL(d.prsAt) : ''}.` : ''))].filter(Boolean).map(e => `<p class="wk-error" role="alert">${esc(e)} <button class="linkish" data-wk="refresh">Try again</button></p>`).join('')}
       ${d ? `<div class="wk-overview" aria-label="Work overview">
-        <button class="wk-metric focus" data-wk="filter" data-value="attention" aria-pressed="${W.filter === 'attention'}"><span>Needs you</span><strong>${g.attention.length.toString().padStart(2, '0')}</strong><small>${g.attention.length ? 'Review, fix, or merge' : 'All caught up'}</small></button>
+        <button class="wk-metric focus" data-wk="filter" data-value="attention" aria-pressed="${W.filter === 'attention'}"><span>Needs you</span><strong>${g.attention.length.toString().padStart(2, '0')}</strong><small>${W.err || d.prsError ? 'From available results' : g.attention.length ? 'Review, fix, or merge' : 'All caught up'}</small></button>
         <button class="wk-metric" data-wk="filter" data-value="prs" aria-pressed="${W.filter === 'prs'}"><span>Open PRs</span><strong>${total.toString().padStart(2, '0')}</strong><small>Yours · linked · to review</small></button>
         <button class="wk-metric" data-wk="filter" data-value="issues" aria-pressed="${W.filter === 'issues'}"><span>Your issues</span><strong>${(g.todo.length + g.doing.length).toString().padStart(2, '0')}</strong><small>${g.doing.length} in progress · ${g.todo.length} to do</small></button>
-        <button class="wk-metric" data-wk="filter" data-value="merged" aria-pressed="${W.filter === 'merged'}"><span>Merged</span><strong>${g.merged.length.toString().padStart(2, '0')}</strong><small>This week</small></button>
+        <button class="wk-metric" data-wk="filter" data-value="merged" aria-pressed="${W.filter === 'merged'}"><span>Merged</span><strong>${g.merged.length.toString().padStart(2, '0')}</strong></button>
       </div>
       <div class="wk-toolbar"><div class="wk-filters" aria-label="Filter work">${[['all', 'All work'], ['attention', 'Needs you'], ['chats', 'With a chat'], ['prs', 'Pull requests'], ['issues', 'Issues'], ['merged', 'Merged']].map(([v, t]) => { const n = v === 'chats' ? [...g.review, ...g.waiting, ...g.doing, ...g.todo].filter(x => liveChatOf(x)).length : 0; return `<button data-wk="filter" data-value="${v}" aria-pressed="${W.filter === v}">${t}${n ? ` <span class="wk-filter-n">${n}</span>` : ''}</button>`; }).join('')}</div><div class="wk-tools"><select id="wkRepo" aria-label="Repository"><option value="all">All repositories</option>${[...new Set([...(d.issues?.length ? ['latitudegames/latitude'] : []), ...(d.prs || []).map(p => p.repo.toLowerCase())])].sort().map(r => `<option value="${esc(r)}"${W.repo === r ? ' selected' : ''}>${esc(r.split('/')[1])}</option>`).join('')}</select><label class="wk-search">${icon('search', 15)}<input type="search" id="wkSearch" placeholder="Search work…" aria-label="Search work" value="${esc(W.query)}"><kbd>/</kbd></label><div class="wk-layout" aria-label="View layout">${['list', 'board'].map(v => `<button data-wk="layout" data-value="${v}" aria-pressed="${W.layout === v}" title="${v === 'list' ? 'List' : 'Board'} view" aria-label="${v === 'list' ? 'List' : 'Board'} view">${icon(v, 16)}</button>`).join('')}</div></div></div>
       <div class="wk-content${W.open ? ' has-selection' : ''}${W.open && W.wide ? ' detail-focus' : ''}"><div id="wkResults">${resultsHtml()}</div><aside id="wkInspector" class="wk-inspector" data-key="${esc(W.open || '')}" aria-label="Work details">${inspectorHtml()}</aside></div>
@@ -178,10 +258,11 @@ const Work = (() => {
     const repoSelect = $('wkRepo');
     if (repoSelect && W.repo !== 'all' && ![...repoSelect.options].some(o => o.value === W.repo)) repoSelect.add(new Option(W.repo.split('/').pop(), W.repo, true, true));
     restoreInspector(inspector);
-    if (focusTarget) { const el = pg.querySelector(focusTarget); if (el) { el.focus({ preventScroll: true }); if (caret != null) try { el.setSelectionRange(caret, caret); } catch {} } }
+    const el = inspectorFocused ? inspectorFocusTarget($('wkInspector'), focusTarget) : focusTarget && pg.querySelector(focusTarget);
+    if (el) { el.focus({ preventScroll: true }); if (caret != null) try { el.setSelectionRange(caret, caret); } catch {} }
     if (!d && !W.loading && !W.err) load(false);
   }
-  const count = () => WorkModel.group(W.data || {}).attention.length;
+  const count = () => WorkModel.group(scoped('all')).attention.length;
   function inspectorHtml() {
     const x = W.open && item(W.open);
     if (!x) {
@@ -190,27 +271,29 @@ const Work = (() => {
       return `<div class="wk-inspector-top"><span>QUICK START</span>${icon('pr', 16)}</div><div class="wk-inspector-empty">${next ? `<p class="wk-eyebrow">NEEDS YOU</p><h2>${esc(next.title)}</h2><p>#${next.number} · ${esc(WorkModel.status(next).label)}</p><button class="btn prime" data-wk="select" data-key="${esc(rowKey(next))}">Open details <span aria-hidden="true">→</span></button>` : '<h2>Choose your next step</h2><p>Select an issue or PR to read its details and take action here.</p>'}<div class="wk-quick-tools"><h3>TOOLS</h3><button class="wk-tool" data-wk="open-pr"><span>Open a pull request</span><small>Paste any GitHub PR URL</small><span aria-hidden="true">→</span></button><button class="wk-tool" data-wk="cross-review"><span>Cross-model review</span><small>Claude reviews · Codex checks and fixes</small><span aria-hidden="true">→</span></button><button class="wk-tool" data-wk="connections"><span>Connections</span><small>GitHub, Linear, and model sign-ins</small><span aria-hidden="true">→</span></button></div></div>`;
     }
     const items = queue(), index = items.findIndex(i => rowKey(i) === W.open);
-    const issue = !!x.identifier, full = W.details.get(W.open), p = full && !full.error ? { ...x, ...full } : x;
+    const issue = !!x.identifier, full = W.details.get(W.open), p = withDetail(x);
     const state = issue ? { label: p.state?.name || 'To do', tone: 'muted' } : WorkModel.status(p);
     const attrs = issue ? `data-id="${esc(p.identifier)}"` : `data-repo="${esc(p.repo)}" data-n="${p.number}"`;
     const button = (a, text, cls = '') => `<button class="btn sm ${cls}" data-wk="${a}" ${attrs}>${text}</button>`;
     const actions = [];
     if (issue) { actions.push(button('plan', 'Plan this issue', 'prime'), button('start', 'Start & draft PR…')); }
     else if (p.state === 'OPEN') {
-      const primary = { 'fix-comments': 'Fix the comments…', 'fix-checks': 'Fix the checks…', update: 'Update branch…', ready: 'Ready for review', merge: 'Merge…', review: 'Review…', validate: 'Validate changes…' };
-      if (state.action) actions.push(button(state.action, primary[state.action], 'prime'));
+      const primary = { 'fix-comments': 'Fix the comments…', 'fix-checks': 'Fix the checks…', update: 'Update branch…', ready: 'Ready for review', merge: p.mergeQueueEnabled ? 'Submit to merge queue…' : 'Merge…', review: 'Review…', checks: 'Inspect checks', feedback: 'See feedback' };
+      if (state.action && (state.action !== 'merge' || full?.headSha)) actions.push(button(state.action, primary[state.action], 'prime'));
       actions.push(button('cross-review', 'Cross-model review ↗'), button('prchat', 'New chat…'), button('more', 'More…'));
     }
     if (!issue) actions.push(button('slack', 'Slack post…', 'quiet'));
-    if (p.chat) actions.push(issue ? `<button class="btn quiet sm" data-wk="issuechat" data-key="${esc(p.chat.key || '')}" data-id="${esc(p.chat.sessionId || '')}">Continue its chat ↗</button>` : `<button class="btn quiet sm" data-wk="chat" data-id="${esc(p.chat.sessionId)}">Continue its chat ↗</button>`);
-    const body = !issue && W.detailTab === 'threads' ? threadsHtml(p) : !issue && W.detailTab === 'checks' ? WorkDetail.checks(p) : !issue && W.detailTab === 'files' ? WorkDetail.files(p, W.files.get(W.open)) : !issue && W.detailTab === 'record' ? WorkRecord.render(p) : overviewHtml(p, issue, full);
-    const tabs = [['overview', 'Overview'], ['threads', 'Feedback' + (p.open ? ' · ' + p.open : '')], ['checks', 'Checks'], ['files', 'Files' + (p.changedFiles != null ? ' · ' + p.changedFiles : '')], ['record', 'Journal']];
+    if (p.chat?.key || p.chat?.sessionId) actions.push(`<button class="btn quiet sm" data-wk="issuechat" data-key="${esc(p.chat.key || '')}" data-id="${esc(p.chat.sessionId || '')}">Continue its chat ↗</button>`);
+    const body = !issue && W.detailTab === 'threads' ? threadsHtml(p) : !issue && W.detailTab === 'checks' ? WorkDetail.checks(p, !!full) : !issue && W.detailTab === 'files' ? WorkDetail.files(p, W.files.get(W.open)) : !issue && W.detailTab === 'record' ? WorkRecord.render(p) : overviewHtml(p, issue, full);
+    const tabs = [['overview', 'Overview'], ['threads', 'Feedback' + (p.open ? ` · ${p.open}${p.threadsComplete === false ? '+' : ''} open` : '')], ['checks', 'Checks'], ['files', 'Files' + (p.changedFiles != null ? ' · ' + p.changedFiles : '')], ['record', 'Journal']];
+    const head = p.headRepo && p.headRepo.toLowerCase() !== p.repo?.toLowerCase() ? `${p.headRepo}:${p.head}` : p.head;
     return `<div class="wk-inspector-top"><span class="wk-inspector-context">${W.trail.length ? '<button class="icon" data-wk="back-detail" aria-label="Back to previous item" title="Back to previous item">←</button>' : ''}<span>${esc(issue ? p.identifier : '#' + p.number)}</span><b>${esc(p.title)}</b></span>
       <div class="wk-detail-nav">${index >= 0 ? `<span>${index + 1} / ${items.length}</span><button class="icon" data-wk="previous" aria-label="Previous item" title="Previous item" ${index === 0 ? 'disabled' : ''}>↑</button><button class="icon" data-wk="next" aria-label="Next item" title="Next item" ${index === items.length - 1 ? 'disabled' : ''}>↓</button>` : ''}<button class="icon wk-expand" data-wk="expand-detail" aria-label="${W.wide ? 'Narrow' : 'Expand'} details" title="${W.wide ? 'Narrow' : 'Expand'} details" aria-pressed="${W.wide}">${W.wide ? '⊟' : '⤢'}</button><button class="icon" data-wk="close-detail" aria-label="Close details" title="Close details (Esc)">✕</button></div></div>
       <div class="wk-inspector-body"><span class="wk-status ${state.tone}"><i></i>${esc(state.label)}</span><h2 tabindex="-1" id="wkDetailTitle">${esc(p.title)}</h2><p class="wk-detail-repo">${esc(issue ? p.team?.name || 'Linear' : p.repo)}${!issue && p.author ? ` · ${esc(p.author)}` : ''}</p>
-      ${!issue ? `<div class="wk-revision"><button data-wk="copy" data-text="${esc(p.head || '')}" title="Copy branch name">${esc(p.head || 'Branch not reported')}</button><span>→ ${esc(p.base || 'base')}</span>${p.headSha ? `<a href="${esc('https://github.com/' + p.repo + '/commit/' + p.headSha)}" target="_blank" rel="noopener noreferrer" title="Revision being reviewed">${esc(p.headSha.slice(0, 7))}</a>` : ''}<button data-wk="refresh-detail" title="Refresh this PR" aria-label="Refresh this PR">↻</button></div>` : ''}
+      ${!issue ? `<div class="wk-revision">${p.head ? `<button data-wk="copy" data-text="${esc(p.head)}" title="Copy branch name">${esc(head)}</button>` : '<span>Branch unavailable</span>'}${p.base ? `<span>→ ${esc(p.base)}</span>` : ''}${p.headSha ? `<a href="${esc(`https://github.com/${p.headRepo || p.repo}/commit/${p.headSha}`)}" target="_blank" rel="noopener noreferrer" title="PR head commit">${esc(p.headSha.slice(0, 7))}</a>` : ''}<button data-wk="refresh-detail" title="Refresh this PR" aria-label="Refresh this PR">↻</button></div>` : ''}
       ${(() => { const live = liveChatOf(p), w = chatWord(live); return w ? `<button class="wk-live-chat ${w[1]}" data-wk="issuechat" data-key="${esc(live.key || '')}" data-id="${esc(live.sessionId || '')}">${live.state === 'waiting' ? '<span class="wk-live-mark" aria-hidden="true">!</span>' : '<i class="wk-pulse" aria-hidden="true"></i>'}<span><b>${esc(w[0])}</b><small>${esc(live.title || 'Its chat')}${live.status ? ' · ' + esc(String(live.status).slice(0, 90)) : ''}</small></span><span aria-hidden="true">Open →</span></button>` : ''; })()}
-      <div class="wk-detail-actions">${actions.join('')}</div><div class="wk-detail-links"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Open in ${issue ? 'Linear' : 'GitHub'} ↗</a><button class="linkish" data-wk="copy" data-text="${esc(p.url)}">Copy link</button>${p.preview ? `<a href="${esc(p.preview)}" target="_blank" rel="noopener noreferrer">Preview ↗</a>` : ''}</div>
+      <div class="wk-detail-actions">${actions.join('')}</div><div class="wk-detail-links"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Open in ${issue ? 'Linear' : 'GitHub'} ↗</a><button class="linkish" data-wk="copy" data-text="${esc(p.url)}">Copy link</button>${p.preview ? `<a href="${esc(p.preview)}" target="_blank" rel="noopener noreferrer">Preview link ↗</a>` : ''}</div>
+      ${!issue && p.partial ? `<p class="wk-action-note">${esc(p.partialReason || 'Some PR details are unavailable here.')} <a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Open the PR on GitHub ↗</a></p>` : ''}
       ${issue ? runsHtml(p) : ''}
       ${issue ? '<p class="wk-action-note">Plan investigates first. Start makes a branch, implements the issue, and opens a draft PR.</p>' : `<div class="wk-detail-tabs" aria-label="PR details">${tabs.map(([v, t]) => `<button data-wk="detail-tab" data-value="${v}" aria-pressed="${W.detailTab === v}">${t}</button>`).join('')}</div>`}
       <div class="wk-tab-body" data-tab="${issue ? 'overview' : W.detailTab}">${full?.error ? `<p class="wk-error" role="alert">${esc(full.error)} <button class="linkish" data-wk="retry-detail">Try again</button></p>` : body}</div></div>`;
@@ -223,12 +306,18 @@ const Work = (() => {
     return `<div class="wk-runs"><p class="wk-runs-h">Chats on this issue <span class="count">${runs.length}</span></p><ul>${runs.slice(0, 8).map(r => `<li><button class="linkish" data-wk="issuechat" data-key="${esc(r.key || '')}" data-id="${esc(r.sessionId || '')}">${esc(role[r.role] || 'Chat')} · ${esc(PROV_NAME[r.provider] || 'Claude')}</button><small>${r.key ? 'open now · ' : ''}${esc(ago(r.at))}</small></li>`).join('')}</ul></div>`;
   }
   function overviewHtml(p, issue, full) {
-    const props = issue ? [['Priority', p.priorityLabel || 'Not set'], ['Team', p.team?.name || '—'], ...(p.project ? [['Project', p.project]] : [])] : [['Reviewers', (p.reviewers || []).join(', ') || 'None requested'], ['Changes', p.changedFiles == null ? '—' : `${p.changedFiles} files · +${p.additions} −${p.deletions}`]];
+    const reviewers = p.reviewers?.join(', ');
+    const props = issue ? [['Priority', p.priorityLabel || 'Not set'], ['Team', p.team?.name || '—'], ...(p.project ? [['Project', p.project]] : [])] : [
+      ['Requested reviewers', p.reviewersComplete === false ? (reviewers ? `${reviewers} · partial list` : 'Unavailable') : reviewers || (p.reviewers ? 'None requested' : 'Loading…')],
+      ...(p.assignees?.length ? [['Assignees', p.assignees.join(', ')]] : []),
+      ...(p.labels?.length ? [['Labels', p.labels.join(', ')]] : []),
+      ...(p.changedFiles != null ? [['Changes', `${p.changedFiles} ${p.changedFiles === 1 ? 'file' : 'files'} · +${p.additions} −${p.deletions}`]] : []),
+    ];
     if (!issue) {
       const body = p.body || '';
-      return `${WorkDetail.route(p)}<div class="wk-brief-grid"><div class="wk-brief-main"><section class="wk-brief-description"><p class="wk-eyebrow">THE CHANGE</p><h3>Review brief</h3>${body ? (() => { const ex = excerpt(body); return `<div class="wk-prose wk-md wk-brief-excerpt">${prose(ex.text)}</div>${ex.cut ? `<details data-preserve="pr-description"><summary>Read the full description</summary><div class="wk-prose wk-md">${prose(body)}</div></details>` : ''}`; })() : `<p class="wk-muted">${full ? 'No description added.' : 'Loading the description…'}</p>`}</section>
-        <dl class="wk-properties">${props.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>${WorkDetail.evidence(p)}
-        ${(p.reviews || []).map(r => `<p class="wk-review-line"><b>${esc(r.author)}</b> ${esc({ APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', COMMENTED: 'commented', DISMISSED: 'review dismissed' }[r.state] || r.state)}</p>`).join('')}</div><div class="wk-brief-aside">${WorkDetail.summary(p, !!full)}</div></div>`;
+      const bodyPreview = excerpt(body);
+      return `${WorkDetail.route(p)}<div class="wk-brief-grid"><div class="wk-brief-main"><section class="wk-brief-description"><h3>Description</h3>${bodyPreview.text ? `<div class="wk-prose wk-md wk-brief-excerpt">${prose(bodyPreview.text)}</div>${bodyPreview.cut ? `<details data-preserve="pr-description"><summary>Read ${p.bodyComplete === false ? 'more' : 'the full description'}</summary><div class="wk-prose wk-md">${prose(body)}</div></details>` : ''}${p.bodyComplete === false ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Full description on GitHub ↗</a>` : ''}` : `<p class="wk-muted">${full ? 'No description added.' : 'Loading the description…'}</p>`}</section>
+        <dl class="wk-properties">${props.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>${WorkDetail.evidence(p)}</div><div class="wk-brief-aside">${WorkDetail.summary(p, !!full)}</div></div>`;
     }
     return `<div class="wk-detail-section"><h3>Issue</h3>${p.description ? `<div class="wk-prose wk-md">${prose(p.description)}</div>` : !full ? '<p class="wk-muted">Loading details…</p>' : '<p class="wk-muted">No description added.</p>'}</div>
       <dl class="wk-properties">${props.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
@@ -237,19 +326,39 @@ const Work = (() => {
   function threadsHtml(p) {
     if (!p.threads) return '<p class="wk-muted">Loading review threads…</p>';
     const open = p.threads.filter(t => !t.resolved), resolved = p.threads.filter(t => t.resolved);
-    const thread = t => `<article class="wk-thread"><p class="wk-thread-path">${esc(t.path || 'General feedback')}${t.line ? ':' + t.line : ''}${t.outdated ? ' · outdated' : ''}</p>${(t.comments || []).map(c => `<div><b>${esc(c.author)}</b><div class="wk-md">${prose(c.body)}</div>${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">View thread ↗</a>` : ''}</div>`).join('')}</article>`;
-    return `<div class="wk-detail-section"><h3>Open threads · ${open.length}</h3>${p.threadsComplete === false ? `<p class="wk-action-note">This is a partial thread list. <a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Read all feedback on GitHub ↗</a></p>` : ''}${open.length ? open.map(thread).join('') : '<p class="wk-muted">No unresolved review threads in this list.</p>'}${resolved.length ? `<details data-preserve="resolved-threads"><summary>${resolved.length} resolved thread${resolved.length === 1 ? '' : 's'}</summary>${resolved.map(thread).join('')}</details>` : ''}</div>`;
+    const comment = (c, link = 'View on GitHub') => `<div><b>${esc(c.author)}</b>${c.at ? ` <small class="wk-muted">${esc(agoL(c.at))}</small>` : ''}<div class="wk-md">${prose(c.body)}</div>${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${link} ↗</a>` : ''}</div>`;
+    const thread = t => `<article class="wk-thread"><p class="wk-thread-path">${esc(t.path || 'Review feedback')}${t.line ? ':' + t.line : ''}${t.outdated ? ' · outdated' : ''}</p>${(t.comments || []).map(c => comment(c, 'View comment')).join('')}${t.commentsComplete === false ? '<p class="wk-muted">More replies on GitHub</p>' : ''}</article>`;
+    const review = r => {
+      const decision = { APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', COMMENTED: 'commented', DISMISSED: 'review dismissed', PENDING: 'has a pending review' }[r.state] || r.state;
+      const label = `<p class="wk-review-line"><b>${esc(r.author)}</b> ${esc(decision)}${r.at ? ` · ${esc(agoL(r.at))}` : ''}</p>`;
+      return r.body || r.url ? `<article class="wk-thread">${label}${r.body ? `<div class="wk-md">${prose(r.body)}</div>` : ''}${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">View review ↗</a>` : ''}</article>` : label;
+    };
+    const more = `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">All feedback on GitHub ↗</a>`;
+    const reviews = p.reviews || [], comments = p.comments || [];
+    const openCount = open.length || p.threadsComplete !== false ? ` · ${open.length}${p.threadsComplete === false ? '+' : ''}` : '';
+    return `<section class="wk-detail-section"><h3>Open review threads${openCount}</h3>${p.threadsComplete === false ? `<p class="wk-action-note">Partial thread list. ${more}</p>` : ''}${open.length ? open.map(thread).join('') : p.threadsComplete === false ? '<p class="wk-muted">The loaded list has no open threads.</p>' : '<p class="wk-muted">No open review threads.</p>'}${resolved.length ? `<details data-preserve="resolved-threads"><summary>${resolved.length} resolved thread${resolved.length === 1 ? '' : 's'}</summary>${resolved.map(thread).join('')}</details>` : ''}</section>
+      ${reviews.length || p.reviewsComplete === false ? `<section class="wk-detail-section"><h3>Reviewer decisions</h3>${reviews.map(review).join('')}${p.reviewsComplete === false ? `<p class="wk-muted">Partial review list. ${more}</p>` : ''}</section>` : ''}
+      ${p.comments || p.commentsComplete === false ? `<section class="wk-detail-section"><h3>Conversation comments</h3>${comments.map(c => `<article class="wk-thread">${comment(c)}</article>`).join('') || (p.commentsComplete === false ? '' : '<p class="wk-muted">No conversation comments.</p>')}${p.commentsComplete === false ? `<p class="wk-muted">Partial comment list. ${more}</p>` : ''}</section>` : ''}`;
   }
   async function detailLoad(key) {
     const x = item(key); if (!x) return;
+    const request = {};
+    detailRequests.set(key, request);
     try {
       const d = await api(x.identifier ? `/api/linear/issue?id=${encodeURIComponent(x.identifier)}` : `/api/prs/detail?repo=${encodeURIComponent(x.repo)}&n=${x.number}&fresh=1`);
+      if (detailRequests.get(key) !== request) return;
       if (!x.identifier) d.issue = d.issue || x.issue;
-      W.details.set(key, d); Object.assign(x, d);
-      if (W.files.has(key) && W.files.get(key).head !== d.headSha) W.files.delete(key);
+      W.details.set(key, d);
+      const files = W.files.get(key);
+      if (files && (files.head !== d.headSha || files.base !== d.baseSha)) W.files.delete(key);
     }
-    catch (e) { W.details.set(key, { error: e.message }); }
-    if (showing() && W.open === key) { renderResults(); if (W.detailTab === 'files' && !W.details.get(key)?.error && !W.files.has(key)) filesLoad(key); }
+    catch (e) {
+      if (detailRequests.get(key) !== request) return;
+      W.details.set(key, { error: e.message }); W.files.delete(key);
+    }
+    finally { if (detailRequests.get(key) === request) detailRequests.delete(key); }
+    if (showing() && W.open === key) { render(); if (W.detailTab === 'files' && !W.details.get(key)?.error && !W.files.has(key)) filesLoad(key); }
+    if (typeof renderNav === 'function') renderNav();
   }
   async function filesLoad(key = W.open) {
     const p = item(key), full = W.details.get(key); if (!p || p.identifier) return;
@@ -257,29 +366,35 @@ const Work = (() => {
     if (full.error || !full.headSha) { W.files.set(key, { files: [], error: full.error || 'GitHub did not return a revision. Refresh this PR to try again.', stale: true }); renderInspector(); return; }
     let state = W.files.get(key);
     if (state?.loading || (state && !state.error && !state.hasMore)) return;
-    if (!state || state.head !== full.headSha) { state = { files: [], head: full.headSha, page: 0, lines: 600, total: p.changedFiles, hasMore: true }; W.files.set(key, state); }
+    if (!state || state.head !== full.headSha || state.base !== full.baseSha) { state = { files: [], head: full.headSha, base: full.baseSha, page: 0, lines: 600, total: full.changedFiles, hasMore: true }; W.files.set(key, state); }
     state.loading = true; state.error = null;
     if (W.open === key) renderInspector();
     try {
-      const data = await api(`/api/prs/files?${new URLSearchParams({ repo: p.repo, n: p.number, head: state.head, page: state.page + 1 })}`);
+      const data = await api(`/api/prs/files?${new URLSearchParams({ repo: p.repo, n: p.number, head: state.head, ...(state.base ? { base: state.base } : {}), page: state.page + 1 })}`);
       if (W.files.get(key) !== state) return;
       state.files.push(...data.files); Object.assign(state, { page: data.page, total: data.total, hasMore: data.hasMore, limited: data.limited });
-    } catch (e) { state.error = e.message; state.stale = /new commits/.test(e.message); }
-    finally { state.loading = false; if (showing() && W.open === key) renderInspector(); }
+    } catch (e) { if (W.files.get(key) === state) { state.error = e.message; state.stale = /new commits|revision|changed/i.test(e.message); } }
+    finally { state.loading = false; if (W.files.get(key) === state && showing() && W.open === key) renderInspector(); }
   }
-  async function select(key) {
+  async function select(key, loaded = false) {
+    navigation++;
     W.open = key; W.detailTab = 'overview'; render();
     if (window.innerWidth <= 1100) $('wkInspector')?.scrollIntoView({ block: 'start', behavior: 'instant' });
     else if (W.wide) page().querySelector('.wk-content')?.scrollIntoView({ block: 'start', behavior: 'instant' });
     $('wkDetailTitle')?.focus({ preventScroll: true });
-    if (!W.details.has(key)) await detailLoad(key);
+    if (!loaded) await detailLoad(key);
   }
   async function openUrl(url) {
     const m = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/([1-9]\d{0,8})(?:[/?#].*)?$/i.exec(String(url || '').trim());
     if (!m) { toast('Paste a GitHub pull request URL.'); return; }
-    const d = await api(`/api/prs/detail?repo=${encodeURIComponent(m[1])}&n=${m[2]}`);
+    const request = ++navigation;
+    const d = await api(`/api/prs/detail?repo=${encodeURIComponent(m[1])}&n=${m[2]}&fresh=1`);
     if (!W.data) await load();
-    const key = kOf(d); W.external.set(key, d); W.details.set(key, d); await select(key);
+    if (request !== navigation) return;
+    const key = kOf(d);
+    W.external.set(key, { repo: d.repo, number: d.number, title: d.title, url: d.url });
+    W.details.set(key, d); detailRequests.delete(key);
+    await select(key, true);
   }
 
   /* ---------- this PC's setup (lib/winrepo.js) ---------- */
@@ -404,10 +519,10 @@ const Work = (() => {
   }
   async function prChat(p, action, provider, account, fresh) {
     toast(action === 'review' ? `Fetching #${p.number} and starting the review…` : 'Starting…', 4000);
-    const r = await api('/api/prs/act', { action, repo: p.repo, n: p.number, provider, account, fresh, ...runFor(provider) });
+    const r = await api('/api/prs/act', { action, repo: p.repo, n: p.number, provider, account, fresh, cwd: fresh ? undefined : p.resumeChat?.cwd, ...runFor(provider) });
     await ChatUI.openKey(r.key);
     if (r.recordWarning) toast(r.recordWarning, 7000);
-    if (r.resumed) toast('It carries on in the chat that made the pull request, which knows the work.', 6000);
+    if (r.resumed) toast('Continuing in the earlier PR chat.', 6000);
   }
   // A new chat about a pull request, with nothing asked yet: it opens with the defaults, and the PR's details in
   // the box for you to add what you want.
@@ -415,6 +530,7 @@ const Work = (() => {
     toast('Opening a new chat…', 3000);
     const r = await api('/api/prs/open-chat', { repo: p.repo, n: p.number, provider, account, ...runFor(provider) });
     await ChatUI.openKey(r.key, { initialText: r.text });
+    if (r.recordWarning) toast(r.recordWarning, 7000);
   }
   function commands() {
     const selected = showing() && W.open && item(W.open);
@@ -465,13 +581,22 @@ const Work = (() => {
     load(true);
   }
   async function merge(p) {
-    if (!p.headSha || W.details.get(kOf(p))?.error) { toast('Refresh this PR before merging so its revision can be checked.'); return; }
-    const how = await appChoice(`Merge #${p.number}?\n\n“${p.title}” is squashed into ${p.base || 'its base'}. GitHub still checks that it’s approved, its required checks pass and every review thread is resolved. “When it’s ready” lets GitHub merge it as soon as all of that is true.`, [{ v: 'now', label: 'Merge now', kind: 'prime' }, { v: 'auto', label: 'When it’s ready' }, { v: '', label: 'Cancel', kind: 'quiet' }]);
+    const key = kOf(p);
+    const current = () => { const detail = W.details.get(key); return !detailRequests.has(key) && detail?.state === 'OPEN' && detail.headSha && detail.headSha === p.headSha && detail.baseSha === p.baseSha; };
+    if (!current()) { toast('Refresh this PR before merging so its revision can be checked.'); return; }
+    const queue = p.mergeQueueEnabled;
+    const options = [{ v: 'now', label: queue ? 'Submit to merge queue' : 'Merge now', kind: 'prime' }];
+    if (!queue && p.canEnableAutoMerge !== false) options.push({ v: 'auto', label: 'Enable auto-merge' });
+    options.push({ v: '', label: 'Cancel', kind: 'quiet' });
+    const how = await appChoice(queue
+      ? `Submit #${p.number} to the merge queue?\n\nGitHub queues “${p.title}” once the branch requirements are met. If checks are pending, GitHub may enable auto-merge first.`
+      : `Merge #${p.number}?\n\nGitHub applies the rules for ${p.base || 'the base branch'} before squash-merging “${p.title}”.`, options);
     if (!how) return;
+    if (!current()) { toast('The PR changed while confirming. Open the merge dialog again.'); return; }
     const auto = how === 'auto';
     await toast.promise(api('/api/prs/merge', { repo: p.repo, n: p.number, auto, head: p.headSha }), {
-      loading: auto ? `Asking GitHub to merge #${p.number} once it’s ready…` : `Merging #${p.number}…`,
-      success: auto ? `#${p.number} merges by itself once it’s ready.` : `Merged #${p.number}.`,
+      loading: `Submitting the merge request for #${p.number}…`,
+      success: r => ({ merged: `Merged #${p.number}.`, queued: `Added #${p.number} to the merge queue.`, 'auto-merge': `Enabled auto-merge for #${p.number}.` })[r.outcome] || `GitHub accepted the merge request for #${p.number}.`,
     });
     load(true);
   }
@@ -482,15 +607,16 @@ const Work = (() => {
       { glyph: '↗', label: 'Prepare handoff…', hint: 'draft review notes without posting', run: () => showMenu(b, whoItems((pv, acct) => prChat(p, 'handoff', pv, acct, true), { review: true })) },
       '-',
     ];
-    if (p.mine && !p.isDraft && !p.reviewDecision) items.push({ glyph: '☺', label: 'Ask for a review…', hint: 'from your team', run: () => pickReviewers(p) });
-    if (p.mine && !p.isDraft) items.push({ glyph: '☺', label: 'Ask someone else to review…', run: () => pickReviewers(p) });
-    items.push({ glyph: '⇣', label: 'Bring it up to date…', hint: `merge in ${p.base || 'its base'}, in a chat`, run: () => showMenu(b, whoItems((pv, acct, fresh) => prChat(p, 'update', pv, acct, fresh), { chat: p.chat })) });
-    if (p.mine && p.open) items.push({ glyph: '✎', label: `Fix ${p.open} comment${p.open === 1 ? '' : 's'}…`, run: () => showMenu(b, whoItems((pv, acct, fresh) => prChat(p, 'fix-comments', pv, acct, fresh), { chat: p.chat })) });
+    if (p.mine && !p.isDraft) items.push({ glyph: '☺', label: 'Request reviewers…', run: () => pickReviewers(p) });
+    if (WorkModel.canChangeHead(p)) {
+      items.push({ glyph: '⇣', label: 'Bring it up to date…', hint: `merge in ${p.base || 'its base'}, in a chat`, run: () => showMenu(b, whoItems((pv, acct, fresh) => prChat(p, 'update', pv, acct, fresh), { chat: p.resumeChat })) });
+      if (p.mine && p.open) items.push({ glyph: '✎', label: 'Fix open review threads…', run: () => showMenu(b, whoItems((pv, acct, fresh) => prChat(p, 'fix-comments', pv, acct, fresh), { chat: p.resumeChat })) });
+    }
     if (p.mine) items.push({ glyph: '◇', label: 'Review it…', hint: 'a second opinion', run: () => showMenu(b, whoItems((pv, acct, fresh) => prChat(p, 'review', pv, acct, fresh), { review: true })) });
     if (p.mine && p.isDraft) items.push({ glyph: '✓', label: 'Ready for review', run: () => readyNow(p) });
-    if (p.mine && !p.isDraft && !p.autoMerge) items.push({ glyph: '⇒', label: 'Merge…', hint: 'now, or when it’s ready', run: () => merge(p) });
-    if (p.autoMerge) items.push({ glyph: '⇒', label: 'Stop merging it by itself', run: async () => { await api('/api/prs/merge-cancel', { repo: p.repo, n: p.number }); load(true); } });
-    if (p.repo.toLowerCase() === 'latitudegames/latitude' && !p.preview && !(p.labels || []).includes('preview')) items.push({ glyph: '◎', label: 'Ask for a preview', hint: 'a live copy, shared resources', run: () => askPreview(p) });
+    if (p.mine && !p.isDraft && !p.autoMerge && !p.mergeQueue) items.push({ glyph: '⇒', label: p.mergeQueueEnabled ? 'Submit to merge queue…' : 'Merge…', run: () => merge(p) });
+    if (p.autoMerge && p.canDisableAutoMerge !== false) items.push({ glyph: '⇒', label: 'Disable auto-merge', run: async () => { await api('/api/prs/merge-cancel', { repo: p.repo, n: p.number }); load(true); } });
+    if (p.repo.toLowerCase() === 'latitudegames/latitude' && !p.preview && p.labelsComplete !== false && !(p.labels || []).includes('preview')) items.push({ glyph: '◎', label: 'Ask for a preview', hint: 'a live copy, shared resources', run: () => askPreview(p) });
     items.push('-');
     items.push({ glyph: '↗', label: 'Open on GitHub', run: () => window.open(p.url, '_blank', 'noopener') });
     return showMenu(b, items);
@@ -502,7 +628,7 @@ const Work = (() => {
     return openSlackPost(p, { sessionId, mine: typeof p.mine === 'boolean' ? p.mine : null });
   }
   async function readyNow(p) {
-    if (!(await appConfirm(`Mark #${p.number} ready for review?\n\nIt leaves draft, and its reviewers are asked to look.`, { ok: 'Ready for review' }))) return;
+    if (!(await appConfirm(`Mark #${p.number} ready for review?\n\nGitHub will take this PR out of draft.`, { ok: 'Ready for review' }))) return;
     await api('/api/prs/ready', { repo: p.repo, n: p.number });
     toast(`#${p.number} is ready for review.`, 4000);
     load(true);
@@ -534,9 +660,15 @@ const Work = (() => {
     if (a === 'filter') { if (filters.has(b.dataset.value)) { W.filter = b.dataset.value; store('work-filter', W.filter); render(); } return; }
     if (a === 'layout') { W.layout = b.dataset.value; try { localStorage.setItem('work-layout', W.layout); } catch {} render(); return; }
     if (a === 'reset') { W.filter = 'all'; W.query = ''; W.repo = 'all'; store('work-filter', 'all'); store('work-repo', 'all'); render(); return; }
-    if (a === 'close-detail') { const key = W.open; W.open = null; render(); [...page().querySelectorAll('.wk-row')].find(e => e.dataset.key === key)?.focus({ preventScroll: true }); return; }
-    if (a === 'detail-tab') {
-      W.detailTab = b.dataset.value;
+    if (a === 'close-detail') {
+      const key = W.open;
+      navigation++; W.open = null; render();
+      const row = page().querySelector(`.wk-row[data-key="${CSS.escape(key)}"]`);
+      (row || page().querySelector('.wk-header-actions [data-wk="open-pr"]'))?.focus();
+      return;
+    }
+    if (a === 'detail-tab' || a === 'checks' || a === 'feedback') {
+      W.detailTab = a === 'checks' ? 'checks' : a === 'feedback' ? 'threads' : b.dataset.value;
       if (W.detailTab === 'files' || W.detailTab === 'record') { W.wide = true; render(); page().querySelector('.wk-content')?.scrollIntoView({ block: 'start', behavior: 'instant' }); } else renderInspector();
       $('wkInspector').querySelector(`.wk-detail-tabs [data-value="${W.detailTab}"]`)?.focus({ preventScroll: true });
       const panel = $('wkInspector'), tabs = panel.querySelector('.wk-detail-tabs');
@@ -564,7 +696,7 @@ const Work = (() => {
     if (a === 'me') { await api('/api/linear/me', { id: b.dataset.id }); W.users = null; return load(true); }
     if (a === 'start') return showMenu(b, whoItems((pv, acct) => startIssue(b.dataset.id, pv, acct), { review: true }));
     if (a === 'issuechat') return b.dataset.key ? ChatUI.openKey(b.dataset.key).catch(() => (b.dataset.id ? ChatUI.open({ sessionId: b.dataset.id }) : null)) : ChatUI.open({ sessionId: b.dataset.id });
-    if (a === 'chat') return ChatUI.open({ sessionId: b.dataset.id });
+    if (a === 'chat') return b.dataset.key ? ChatUI.openKey(b.dataset.key).catch(() => (b.dataset.id ? ChatUI.open({ sessionId: b.dataset.id }) : null)) : ChatUI.open({ sessionId: b.dataset.id });
     if (a.startsWith('record-')) {
       const x = W.open && item(W.open); if (!x || x.identifier) return;
       const p = find(x.repo, x.number), entry = (p.record || []).find(e => e.id === b.dataset.id);
@@ -581,9 +713,9 @@ const Work = (() => {
     }
     const p = find(b.dataset.repo, b.dataset.n); if (!p) return undefined;
     if (a === 'validate' || a === 'handoff') return showMenu(b, whoItems((pv, acct) => prChat(p, a, pv, acct, true), { review: true }));
-    if (a === 'fix-comments' || a === 'fix-checks') return showMenu(b, whoItems((pv, acct, fresh) => prChat(p, a, pv, acct, fresh), { chat: p.chat }));
+    if (a === 'fix-comments' || a === 'fix-checks') return showMenu(b, whoItems((pv, acct, fresh) => prChat(p, a, pv, acct, fresh), { chat: p.resumeChat }));
     if (a === 'review') return showMenu(b, whoItems((pv, acct, fresh) => prChat(p, 'review', pv, acct, fresh), { review: true }));
-    if (a === 'update') return showMenu(b, whoItems((pv, acct, fresh) => prChat(p, 'update', pv, acct, fresh), { chat: p.chat }));
+    if (a === 'update') return showMenu(b, whoItems((pv, acct, fresh) => prChat(p, 'update', pv, acct, fresh), { chat: p.resumeChat }));
     if (a === 'ready') return readyNow(p);
     if (a === 'merge') return merge(p);
     if (a === 'more') return more(b, p);
@@ -641,7 +773,7 @@ const Work = (() => {
   document.addEventListener('input', e => { if (showing() && e.target.id === 'wkSearch') { W.query = e.target.value; renderResults(); } });
   document.addEventListener('scroll', e => { if (e.target.id === 'wkInspector') e.target.classList.toggle('scrolled', e.target.scrollTop > 90); }, true);
 
-  return { render: () => { render(); if (!W.loading && (!W.data || Date.now() - W.at > 60000)) load(false); }, changed: () => { if (showing()) load(true); else W.at = 0; }, count, load, openPr: url => { W.trail = []; return openUrl(url); },
+  return { render: () => { render(); if (!W.loading && (!W.data || Date.now() - W.at > 60000)) load(false); }, changed, count, load, openPr: url => { W.trail = []; return openUrl(url); },
     showPrs: () => { W.filter = 'prs'; W.query = ''; render(); }, commands, recordChanged,
     runPrefs: () => JSON.parse(JSON.stringify(W.run)),
     setupState: () => W.setup, loadSetup, showSetup,

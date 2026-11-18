@@ -1,4 +1,12 @@
-# A browser in the app, playtests with a goal, and a chat's account switched in place
+# Keep chats in focus and review pull requests
+
+**Keep a chat in sight.** Right-click a chat and choose **Keep in focus**, or use the focus button in its header. It stays above the scrolling list, even after it finishes or closes. The row shows what the agent is asking, which tool it is using, or what its latest unread reply says. The same selection appears in Switcher Lite and on your paired devices.
+
+**See what GitHub checked.** Open a PR in **Your work** to see the commit behind its checks, which checks GitHub marks as required, and which results are still pending. Review decisions, requested reviewers, unresolved threads, and the merge queue each have their own status. Review summaries and comments link back to GitHub.
+
+**Keep your place during a review.** If a new commit arrives while you page through changed files, the inspector asks you to refresh. A failed refresh leaves the last successful read visible with a label. Chat links identify work started from the PR and label a branch match as a suggestion.
+
+## Earlier in 6.17 — A browser in the app, playtests with a goal, and a chat's account switched in place
 
 **A browser built into Session Switcher.** Claude and Codex chats can now open web pages in the app itself, beside the chat, and use them: look, click, type, read the page as text, run a script, check the console and network. You watch as it happens (a ring shows where it clicked, and a line says what it's doing), and you can use the same tabs yourself at any time: sign in, click around, type. No Chrome, no extension, and no matching claude.ai sign-in: any chat on any account can use it, and its usage goes on that chat's account.
 - **The browser button** in a chat's header opens it beside the chat (or over it, in a narrow window). It opens by itself the first time the chat's assistant uses it. Each chat has its own tabs; the one you pick is the one the chat uses next.

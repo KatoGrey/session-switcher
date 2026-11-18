@@ -34,6 +34,17 @@
 .hub2:not([data-family]) .bar>.icon{height:34px;width:34px}
 
 /* Destinations do not move when a long project or chat list scrolls. */
+.chat-focus-section{flex:none;min-height:0;padding:0 8px 6px;border-bottom:1px solid var(--seam);background:var(--vellum)}
+.chat-focus-section[hidden]{display:none}
+.chat-focus-section .focus-rows{overflow-y:auto;max-height:clamp(74px,26vh,320px);overscroll-behavior:contain}
+#nav .chat-focus-section .nav-h,#cFocusH{color:var(--gilt);border-top:0;margin:0;padding:9px 10px 6px}
+#nav .chat-focus-section .nc-t,#cFocusList .ri-n{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow:hidden;font-weight:600}
+.chat-focus-section .focus-preview{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+#cFocusSection{padding-inline:0}
+.c-focus[aria-pressed="true"]{color:var(--gilt);background:var(--vellum-2)}
+body.aide-pane .c-focus{display:none!important}
+@media(max-width:720px){.c-icons .c-focus{display:none}}
+[data-family="saga"] #nav .chat-focus-section{position:sticky;top:0;z-index:2}
 .hub2:not([data-family]) .nav{display:flex;flex-direction:column;padding:0 0 38px;overflow:hidden;scrollbar-gutter:auto}
 .hub2:not([data-family]) .nav-destinations{flex:none;padding:15px 12px 12px;border-bottom:1px solid var(--seam)}
 .hub2:not([data-family]) .nav-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:8px 12px 20px;scrollbar-gutter:stable}

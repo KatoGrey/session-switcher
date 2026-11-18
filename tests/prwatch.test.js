@@ -25,6 +25,17 @@ test('pr watch: checks failing, then passing again, on yours', () => {
   assert.deepEqual(changes(c, c), []);
 });
 
+test('pr watch: incomplete, cancelled, and still pending checks never trigger a passing notice', () => {
+  const before = snapshot([pr(1)]);
+  const sample = checks => pr(1, { checks: { failed: [], pending: 0, passed: 5, ...checks } });
+  const partial = snapshot([sample({ complete: false, state: 'SUCCESS' })], null, before);
+  assert.deepEqual(changes(before, partial), []);
+  assert.deepEqual(changes(before, snapshot([sample({ cancelled: 1, state: 'SUCCESS' })])), []);
+  assert.deepEqual(changes(before, snapshot([sample({ state: 'PENDING' })])), []);
+  assert.deepEqual(changes(before, snapshot([sample({ state: 'FAILURE' })])), []);
+  assert.deepEqual(kinds(changes(partial, snapshot([sample({ complete: true, state: 'SUCCESS' })]))), ['checks-passed #1']);
+});
+
 test('pr watch: an approval, changes asked for and new comments, with who', () => {
   const a = snapshot([pr(2), pr(3)]);
   const b = snapshot([
@@ -35,7 +46,9 @@ test('pr watch: an approval, changes asked for and new comments, with who', () =
   assert.deepEqual(kinds(got), ['approved #2', 'changes #3', 'comments #3']);
   assert.equal(got.find(e => e.kind === 'approved').body, 'sam approved PR 2');
   assert.equal(got.find(e => e.kind === 'changes').body, 'ana asked for changes on PR 3');
-  assert.equal(got.find(e => e.kind === 'comments').title, '2 new review threads on #3');
+  assert.equal(got.find(e => e.kind === 'comments').title, 'More unresolved review threads on #3');
+  assert.match(got.find(e => e.kind === 'comments').body, /now has 2 unresolved review threads/);
+  assert.deepEqual(changes(a, snapshot([pr(3, { open: 2, threadsComplete: false })], null, a)), [], 'a partial thread count cannot determine whether more are unresolved');
   // Comments resolved (fewer open) is nothing to be told about.
   assert.deepEqual(kinds(changes(b, snapshot([pr(2, { reviewDecision: 'APPROVED' }), pr(3, { reviewDecision: 'CHANGES_REQUESTED', open: 0 })]))), []);
 });
@@ -49,8 +62,11 @@ test('pr watch: someone asking for your review, and nothing else about their PRs
   assert.deepEqual(changes(snapshot([theirs()]), snapshot([theirs({ checks: { failed: [{ name: 'x' }], pending: 0, passed: 0 } })])), []);
 });
 
-test('pr watch: merged by itself is said; merged by you, or a PR seen for the first time, isn’t', () => {
-  assert.deepEqual(kinds(changes(snapshot([pr(4, { autoMerge: true })]), snapshot([pr(4, { state: 'MERGED', mergedAt: '2026-11-16T10:00:00Z' })]))), ['merged #4']);
+test('pr watch: a previously queued or auto-merge PR is reported as merged without assuming who merged it', () => {
+  const merged = snapshot([pr(4, { state: 'MERGED', mergedAt: '2026-11-16T10:00:00Z' })]);
+  assert.deepEqual(kinds(changes(snapshot([pr(4, { mergeQueue: true })]), merged)), ['merged #4']);
+  const events = changes(snapshot([pr(4, { autoMerge: true })]), merged);
+  assert.deepEqual(events.map(e => [e.kind, e.title, e.body]), [['merged', '#4 merged', 'PR 4']]);
   assert.deepEqual(changes(snapshot([pr(5)]), snapshot([pr(5, { state: 'MERGED', mergedAt: '2026-11-16T10:00:00Z' })])), []);
   assert.deepEqual(changes(snapshot([]), snapshot([pr(6, { checks: { failed: [{ name: 'x' }], pending: 0, passed: 0 } })])), []);
 });
