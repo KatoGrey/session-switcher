@@ -3,6 +3,9 @@ name: Tests
 # Every push and pull request runs the whole test suite on Windows and on a Mac.
 on:
   push:
+    # The desktop release workflow already runs this entire matrix on every version tag.
+    branches: ['**']
+    tags-ignore: ['v*']
     paths-ignore:
       - 'mobile/**'
       - '**.md'
