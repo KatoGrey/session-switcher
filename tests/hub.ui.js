@@ -752,6 +752,7 @@ module.exports = [
       await sleep(700);
       const hub = await b.eval(`return { nav: !!document.querySelector('.nav-i[data-view="aide"]'), cards: [...document.querySelectorAll('#aideHub .ai-card b')].map(x => x.textContent), jump: [...document.querySelectorAll('#hubJump [data-jump]')].some(x => x.dataset.jump === 'secCompanion') }`);
       t.check('in the sidebar, with a section on the hub, by game', hub.nav && hub.jump && hub.cards[0] === 'Where Winds Meet' && hub.cards.includes('General'), hub);
+      t.check('the sidebar count says what it counts', await b.eval(`return document.querySelector('.nav-i[data-view="aide"] .count').textContent === '6 saved chats'`));
       await b.clickOn('.nav-i[data-view="aide"]'); await sleep(500);
       const page = await b.eval(`return { groups: [...document.querySelectorAll('.ai-gn')].map(x => x.textContent), rows: document.querySelectorAll('.ai-row').length, keys: document.getElementById('aideEmpty').innerText, foot: document.getElementById('aideFoot').innerText, current: document.querySelector('.nav-i[data-view="aide"]').getAttribute('aria-current') }`);
       t.check('its page lists your games and General', page.groups.join() === 'Where Winds Meet,Elden Ring,General' && page.rows === 6, page);

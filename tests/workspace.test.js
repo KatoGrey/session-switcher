@@ -14,8 +14,8 @@ const freePort = () => new Promise(res => { const s = net.createServer(); s.list
 const tmp = name => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), name)));
 const noGit = (() => { try { execFileSync('git', ['--version'], { windowsHide: true, stdio: 'pipe' }); return false; } catch { return true; } })();
 
-async function startServer() {
-  const port = await freePort(), dataDir = tmp('ss-ws-data-');
+async function startServer(dataDir = tmp('ss-ws-data-')) {
+  const port = await freePort();
   const proc = spawn(process.execPath, ['server.js'], {
     cwd: APP, stdio: 'ignore',
     env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^SWITCHER_/.test(k))), SWITCHER_PORT: String(port), SWITCHER_DATA_DIR: dataDir, SWITCHER_NO_BROWSER: '1', SWITCHER_DRY_RUN: '1' },
@@ -173,6 +173,27 @@ test('workspace: Companion on the real server: filed by game, out of your lists,
     assert.ok((await call('/api/aide/rename', { group: 'where-winds-meet', name: 'WWM' })).json.groups.some(g => g.name === 'WWM'));
     assert.ok(!(await call('/api/aide/forget', { id })).json.groups.some(g => g.chats.some(c => c.id === id)));
   } finally { await w.done(); }
+});
+
+test('workspace: startup keeps a recently touched Companion transcript out of activity', async t => {
+  const dataDir = tmp('ss-companion-startup-');
+  const mainConfigDir = path.join(dataDir, 'claude');
+  put(dataDir, 'accounts.json', JSON.stringify({ mainConfigDir, codex: { enabled: false } }));
+  const aideId = 'bbbbbbbb-1111-4222-8333-444444444444', projectId = 'cccccccc-1111-4222-8333-444444444444';
+  const yesterday = new Date(Date.now() - 864e5).toISOString();
+  for (const [id, cwd] of [[aideId, path.join(dataDir, 'companion')], [projectId, path.join(dataDir, 'projects', 'companion')]]) {
+    fs.mkdirSync(cwd, { recursive: true });
+    const question = { type: 'user', cwd, sessionId: id, timestamp: yesterday, message: { role: 'user', content: 'A saved question' } };
+    put(mainConfigDir, path.join('projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), id + '.jsonl'), JSON.stringify(question) + '\n');
+  }
+
+  const w = await startServer(dataDir);
+  t.after(() => w.stop());
+  const aide = await w.call('/api/aide');
+  assert.ok(aide.json.groups.some(g => g.chats.some(c => c.id === aideId)), 'the saved question can still be found in Companion');
+  const activity = (await w.call('/api/activity')).json.list;
+  assert.ok(activity.some(c => c.sessionId === projectId && c.source === 'elsewhere'), 'an ordinary project named companion still reports activity');
+  assert.ok(!activity.some(c => c.sessionId === aideId), 'the transcript has no active chat on startup');
 });
 
 test('workspace: what the page draws as it starts is loaded before it starts', () => {

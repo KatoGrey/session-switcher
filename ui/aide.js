@@ -40,7 +40,7 @@ const aideProvName = p => ({ codex: 'Codex', gemini: 'Gemini' }[p] || 'Claude');
 function aideNav() {
   if (!aideOn()) return '';
   const n = aideChats().length;
-  return `<button class="nav-i" data-view="aide" aria-current="${S.view === 'aide'}"><span class="glyph" aria-hidden="true">◈</span><span class="ni-t">Companion</span>${n ? `<span class="count">${n}</span>` : ''}</button>`;
+  return `<button class="nav-i" data-view="aide" aria-current="${S.view === 'aide'}"><span class="glyph" aria-hidden="true">◈</span><span class="ni-t">Companion</span>${n ? `<span class="count">${plural(n, 'saved chat')}</span>` : ''}</button>`;
 }
 function aideHubSection() {
   if (!aideOn()) return '';

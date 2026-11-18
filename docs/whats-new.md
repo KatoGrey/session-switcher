@@ -1,4 +1,10 @@
-# Keep chats in focus and review pull requests
+# Accurate chat activity at startup
+
+Saved Companion questions stay in Companion history when you relaunch Session Switcher. A change to a transcript file no longer puts an old conversation in **Active now**. The Companion sidebar count now says how many saved chats you have.
+
+The hub shows **Checking chat activity…** while it loads the current list. If the check fails, it shows **Chat activity unavailable**. The next live update brings the counts up to date.
+
+## Earlier in 6.18 — Keep chats in focus and review pull requests
 
 **Keep a chat in sight.** Right-click a chat and choose **Keep in focus**, or use the focus button in its header. It stays above the scrolling list, even after it finishes or closes. The row shows what the agent is asking, which tool it is using, or what its latest unread reply says. The same selection appears in Switcher Lite and on your paired devices.
 

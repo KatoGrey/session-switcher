@@ -842,6 +842,7 @@ function chime(kind) {
 }
 const Alerts = { seen: new Map(), primed: false };
 function watchActivity() {
+  if (S.activityNotice) return;
   const next = new Map();
   for (const x of S.activity) {
     const k = keyOf(x), st = statusOf(x), was = Alerts.seen.get(k);

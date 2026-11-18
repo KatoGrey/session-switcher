@@ -2371,10 +2371,20 @@ module.exports = [
       await sleep(800);
       const cached = await b.eval(`const c = JSON.parse(localStorage.getItem('boot-cache') || 'null'); return !!c && !!c.sessions && !!c.state`);
       t.check('after a load, the hub is kept for next time', cached);
-      const fromCache = await b.eval(`S.projects = []; renderAll(); const ok = await bootFromCache(); return { ok, projects: S.projects.length, marked: document.body.classList.contains('from-cache') }`);
+      const fromCache = await b.eval(`const cache = JSON.parse(localStorage.getItem('boot-cache'));
+        const old = { sessionId: 'old-companion', source: 'elsewhere', phase: 'idle', pending: [] };
+        cache.activity = { list: [old], at: cache.at };
+        cache.sessions.live = { [old.sessionId]: old }; cache.sessions.running = { [old.sessionId]: [123] };
+        localStorage.setItem('boot-cache', JSON.stringify(cache));
+        S.projects = []; S.activity = []; renderAll();
+        const ok = await bootFromCache();
+        return { ok, projects: S.projects.length, marked: document.body.classList.contains('from-cache'),
+          stale: S.activity.some(x => x.sessionId === old.sessionId) || !!liveOf(old.sessionId) || !!isRunning(old.sessionId) }`);
       t.check('next time it draws from that at once (and says it’s catching up)', fromCache.ok && fromCache.projects > 0 && fromCache.marked, fromCache);
+      t.check('old startup caches cannot show a finished chat as active', !fromCache.stale);
       await b.eval(`await reload(); return 1`);
       t.check('then it’s up to date, and the mark goes', !(await b.eval(`return document.body.classList.contains('from-cache')`)));
+      t.check('current activity appears after the refresh', await b.eval(`return S.activity.length > 0`));
       // Point at a chat on the hub: its history is fetched ahead, and opening it doesn't fetch it again.
       const id = demo.ID['s-brawl'];
       const row = await b.eval(`const el = document.querySelector('[data-chat="${id}"]'); if (!el) return null; el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' })); return 1`);
@@ -2390,6 +2400,15 @@ module.exports = [
       await b.key('\\', 'Backslash', 220, 2); await sleep(300);
       const f2 = await b.eval(`return getComputedStyle(document.getElementById('cRail')).display`);
       t.check('Ctrl+\\ is focus mode: just the conversation, then everything back', f1.rail === 'none' && f1.ledger === 'none' && f2 !== 'none', { f1, f2 });
+
+      const offline = await t.open({ respond: p => p === '/api/activity' ? { status: 503, body: { error: 'Activity unavailable' } } : null });
+      const recovered = await offline.eval(`for (let i = 0; i < 100 && !window.aideBooted; i++) await new Promise(r => setTimeout(r, 100));
+        const heading = () => document.querySelector('#heroSlot h1').textContent;
+        const before = heading(), label = document.getElementById('pulse').getAttribute('aria-label'), primed = Alerts.primed;
+        es.dispatchEvent(new MessageEvent('activity', { data: JSON.stringify({ list: [] }) }));
+        return { before, label, primed, after: heading() }`);
+      t.check('an unavailable activity feed does not report an empty hub or prime alerts', recovered.before === 'Chat activity unavailable' && recovered.label === recovered.before && !recovered.primed, recovered);
+      t.check('the first live update can confirm that the hub is quiet', /All quiet/.test(recovered.after), recovered);
     },
   },
   {

@@ -293,7 +293,11 @@ function connectLive() {
     let view; try { view = JSON.parse(e.data); } catch { return; }
     refreshChatFocus(view);
   });
-  es.onopen = () => { S.connected = true; renderLivePill(); Promise.all([loadActivity(), loadUsage()]).then(() => { watchActivity(); renderLive(); }).catch(() => {}); };
+  es.onopen = () => {
+    S.connected = true; renderLivePill();
+    loadActivity().then(watchActivity).catch(() => {}).finally(renderLiveSoon);
+    loadUsage().then(renderLiveSoon).catch(() => {});
+  };
   es.onerror = () => { S.connected = false; renderLivePill(); setTimeout(() => api('/api/state').catch(() => {}), 4000); };
   es.addEventListener('sessions', () => {
     clearTimeout(sessTimer);
@@ -314,7 +318,7 @@ function connectLive() {
   es.addEventListener('themes', () => { if (window.ThemeStudio) ThemeStudio.refresh().catch(() => {}); });
   es.addEventListener('project-art', e => { try { const { cwd } = JSON.parse(e.data); if (window.ProjectArt) ProjectArt.refresh(cwd).catch(() => {}); } catch { /* invalid event */ } });
   es.addEventListener('tasks', e => { try { S.tasks = JSON.parse(e.data).tasks || []; } catch { return; } renderQueue(); });
-  es.addEventListener('activity', e => { try { S.activity = withPartners(keepOrder('running', openOnly(JSON.parse(e.data).list || []), activityIds)); } catch { return; } watchActivity(); renderLiveSoon(); if (typeof restCheck === 'function' && document.documentElement.classList.contains('at-rest')) restCheck(); });
+  es.addEventListener('activity', e => { try { applyActivity(JSON.parse(e.data).list); } catch { return; } watchActivity(); renderLiveSoon(); if (typeof restCheck === 'function' && document.documentElement.classList.contains('at-rest')) restCheck(); });
   es.addEventListener('routines', () => { if (window.Routines) Routines.changed(); });
   es.addEventListener('organize', e => { try { S.org = orgShape(JSON.parse(e.data)); } catch { return; } renderNav(); renderLive(); if (window.ChatUI && ChatUI.refreshCrumb) ChatUI.refreshCrumb(); });
   es.addEventListener('restart', e => { try { S.restart = JSON.parse(e.data) || {}; } catch { return; } if (S.restart.restarting) restarting(S.pid); else { renderRestartBar(); if (S.restart.error) toast(S.restart.error, 9000); } });

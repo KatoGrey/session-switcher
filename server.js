@@ -1899,7 +1899,9 @@ function tailOf(file) {
 }
 function activityList() {
   const now = Date.now();
-  const { projects } = sessions.scan();
+  // A transcript can be touched after its chat ends. Companion history stays on its own page,
+  // even on a fresh start when no live chat is around to identify it.
+  const projects = sessions.scan().projects.filter(p => !aide.isHere(p.cwd));
   const byId = new Map();
   for (const p of projects) for (const s of p.sessions) byId.set(s.id.toLowerCase(), { s, p });
   const out = chats.summaries().filter(s => !s.aside).map(s => {

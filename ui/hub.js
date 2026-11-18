@@ -13,9 +13,9 @@ function renderBar() {
   const parts = [];
   if (W.length) parts.push(`<span class="ember-dot" aria-hidden="true"></span><span><b>${W.length}</b> <span class="p-label">at work</span></span>`);
   if (A.length) parts.push(`${parts.length ? '<span class="sep" aria-hidden="true"></span>' : ''}<span class="gilt-dot" aria-hidden="true"></span><span class="p-need"><b>${A.length}</b> <span class="p-label">${A.length === 1 ? 'awaits you' : 'await you'}</span></span>`);
-  if (!parts.length) parts.push('<span class="ash-dot" aria-hidden="true"></span><span class="p-label">All quiet</span>');
+  if (!parts.length) parts.push(`<span class="ash-dot" aria-hidden="true"></span><span class="p-label">${esc(S.activityNotice || 'All quiet')}</span>`);
   p.innerHTML = parts.join('');
-  p.setAttribute('aria-label', `${W.length} at work, ${A.length} awaiting you`);
+  p.setAttribute('aria-label', S.activityNotice || `${W.length} at work, ${A.length} awaiting you`);
 
   // Which account this is about: the open chat's, otherwise the one new chats open as.
   const chatAcct = window.ChatUI && ChatUI.isOpen() && ChatUI.accountId ? ChatUI.accountId() : null;
@@ -257,7 +257,8 @@ function heroHtml() {
   const N = A.filter(x => NEEDS.has(ownStatus(x))).length, R = A.length - N;
   const Q = quietOpen().filter(x => x.source === 'app' && x.phase !== 'ended').length;
   let h, em;
-  if (A.length) {
+  if (S.activityNotice) { h = S.activityNotice; em = ''; }
+  else if (A.length) {
     h = voice(A.length === 1 ? '{n} chat awaits you.' : '{n} chats await you.', { n: nword(A.length) });
     const parts = [];
     if (N) parts.push(N === 1 ? 'one needs your OK' : `${nword(N, false)} need your OK`);
@@ -300,7 +301,7 @@ function heroHtml() {
     <div class="hero-in">
       <div>
         <p class="eyebrow">${voice('@where') !== '@where' ? `${esc(voice('@where'))} · ` : ''}${esc(today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · <span data-clock>${esc(clock(today))}</span></p>
-        <h1>${esc(h)}<em>${esc(em)}</em></h1>
+        <h1>${esc(h)}${em ? `<em>${esc(em)}</em>` : ''}</h1>
         ${say ? `<p class="hero-say${warn ? ' warn' : ''}">${say}</p>` : ''}
         ${acts.length ? `<div class="hero-act">${acts.join('')}</div>` : ''}
       </div>

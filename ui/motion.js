@@ -39,8 +39,8 @@ function renderLive(force) {
   const saga = sagaLook();
   // A chat moving between the boards (it finished, or wants you) glides across; new ones fade in.
   flip([$('awaitList'), $('board'), $('quietList')], () => {
-    patch($('awaitList'), A, keyOf, awaitCard, saga ? emptyArt('await', 'Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.') : '');
-    patch($('board'), W, keyOf, workCard, saga ? emptyArt('work', A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.') : '');
+    patch($('awaitList'), A, keyOf, awaitCard, saga && !S.activityNotice ? emptyArt('await', 'Nothing is waiting on you. When Claude asks for your OK or finishes a reply, it shows up here first.') : '');
+    patch($('board'), W, keyOf, workCard, saga && !S.activityNotice ? emptyArt('work', A.length ? 'Nothing else is working right now.' : 'Nothing is working right now. Open a chat and it appears here while it works.') : '');
     patch($('quietList'), Q, keyOf, quietChip, '');
   if ($('secGroups')) { $('secGroups').hidden = !S.org.groups.length; patch($('gcards'), S.org.groups, g => g.id, groupCard, ''); }
   });

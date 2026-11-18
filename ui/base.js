@@ -21,7 +21,7 @@ const $ = id => document.getElementById(id);
 const S = {
   accounts: [], projects: [], running: {}, live: {}, acct: null, view: 'hub', folder: null, dryRun: false,
   pins: new Set(), focused: new Map(), prefs: {}, hits: null, q: '', index: null, drawerId: null,
-  activity: [], usage: {}, connected: false, seen: {}, codex: null, worlds: {}, prompts: [], worldTab: 'chats',
+  activity: [], activityNotice: 'Checking chat activity…', usage: {}, connected: false, seen: {}, codex: null, worlds: {}, prompts: [], worldTab: 'chats',
 };
 const inApp = () => S.prefs.openIn !== 'terminal';
 const liveOf = id => S.live[String(id).toLowerCase()] || null;
@@ -612,9 +612,11 @@ async function loadState(pre) {
   if (!S.accounts.some(a => a.id === S.acct)) S.acct = S.accounts.some(a => a.id === saved) ? saved : S.accounts[0].id;
 }
 async function loadSessions(pre) {
-  const j = pre || await api('/api/sessions');
+  const { running, live, ...j } = pre || await api('/api/sessions');
   Boot.raw.sessions = j;
-  S.projects = j.projects; S.root = j.root; S.running = j.running || {}; S.live = j.live || {};
+  S.projects = j.projects; S.root = j.root;
+  // Older startup caches also held the processes and open chats from that launch.
+  S.running = pre ? {} : running || {}; S.live = pre ? {} : live || {};
   S.doneMarks = j.doneMarks || {};
   sortDone();
   // A pin, or the page you were on, from when its folder was written another way (C:/x for C:\\x) still finds its project.
@@ -624,7 +626,17 @@ async function loadSessions(pre) {
   if (S.view === 'folder' && S.folder && found(S.folder)) S.folder = found(S.folder).cwd;
   if (S.view === 'folder' && !S.projects.some(p => p.cwd === S.folder)) S.view = 'hub';
 }
-async function loadActivity(pre) { const j = pre || await api('/api/activity'); Boot.raw.activity = j; S.activity = withPartners(keepOrder('running', openOnly(j.list || []), activityIds)); }
+function applyActivity(list) {
+  S.activity = withPartners(keepOrder('running', openOnly(list), activityIds));
+  S.activityNotice = '';
+}
+async function loadActivity() {
+  try { applyActivity((await api('/api/activity')).list); }
+  catch (err) {
+    if (S.activityNotice) S.activityNotice = 'Chat activity unavailable';
+    throw err;
+  }
+}
 async function loadUsage(pre) {
   const [j, sp] = pre || await Promise.all([api('/api/usage'), api('/api/usage/chats').catch(() => null)]);
   Boot.raw.usage = [j, sp];
@@ -660,7 +672,6 @@ async function bootFromCache() {
   if (!c || !c.state || !c.sessions || Date.now() - c.at > 7 * 864e5) return false;
   try {
     await loadState(c.state); await loadSessions(c.sessions);
-    if (c.activity) await loadActivity(c.activity);
     if (c.usage) await loadUsage(c.usage);
     document.body.classList.add('from-cache');
     renderAll();
