@@ -1,6 +1,31 @@
 'use strict';
 const { sleep } = require('./browser');
 const { textAudit } = require('./hub.ui');
+async function waitUntil(check, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  do {
+    if (await check()) return true;
+    await sleep(50);
+  } while (Date.now() < deadline);
+  return false;
+}
+
+const offeredWorkModel = (b, prov, value) => b.eval(`return !!document.querySelector('[data-wkm="${prov}-model"] option[value="${value}"]')`);
+async function openWorkWithModels(b, extra = []) {
+  await b.eval(`await go('work')`);
+  const options = [['claude', 'haiku'], ['codex', 'gpt-6'], ...extra];
+  for (const [prov, value] of options) {
+    if (!await waitUntil(() => offeredWorkModel(b, prov, value))) throw new Error(`Work did not load ${prov} model ${value}.`);
+  }
+}
+async function reloadWork(b) {
+  const before = await b.eval(`return performance.timeOrigin`);
+  await b.send('Page.reload');
+  if (!await waitUntil(() => b.eval(`return performance.timeOrigin !== ${before} && typeof go === 'function'`).catch(() => false))) {
+    throw new Error('The page did not finish reloading.');
+  }
+}
+
 // Synthetic Latitude work for repeatable interaction and layout checks.
 const repo = 'latitudegames/latitude', now = new Date().toISOString();
 const check = (name, state, required) => ({ name, state, required, url: `https://github.com/${repo}/actions/runs/1` });
@@ -313,6 +338,32 @@ module.exports = [{
     t.check('refresh preserves the scrolled detail tab strip on a narrow phone', await phone.eval(`const tabs = document.querySelector('.wk-detail-tabs'); tabs.scrollLeft = tabs.scrollWidth; const at = tabs.scrollLeft; await Work.load(false); return at > 0 && document.querySelector('.wk-detail-tabs').scrollLeft === at`));
   },
 }, {
+  name: 'work model refresh recovers a missing list',
+  async run(t) {
+    const base = responder();
+    const model = (value, label) => ({ defaultModel: label, efforts: [], models: [{ value, label, efforts: [] }] });
+    const claude = model('opus', 'Opus'), codex = model('gpt-6', 'GPT-6');
+    let freshReads = 0, release;
+    const ready = new Promise(resolve => { release = resolve; });
+    const b = await t.open({ respond: async (p, q, body) => {
+      if (p !== '/api/work/models') return base(p, q, body);
+      if (q.get('fresh') !== '1') return { body: { claude, codex: null } };
+      freshReads++;
+      await ready;
+      return { body: { claude, codex } };
+    } });
+    const offered = (prov, value) => offeredWorkModel(b, prov, value);
+    await b.eval(`go('work'); return 1`);
+    const initial = await waitUntil(() => offered('claude', 'opus'));
+    t.check('the partial list shows its available model', initial && !await offered('codex', 'gpt-6'));
+    if (!await waitUntil(() => b.eval(`return !!document.querySelector('button[data-wk="refresh"]:not(:disabled)')`))) throw new Error('Work did not finish loading.');
+    await b.clickOn('button[data-wk="refresh"]');
+    const requested = await waitUntil(() => freshReads > 0, 4000);
+    t.check('Refresh rechecks the model list while keeping known models', requested && await offered('claude', 'opus') && !await offered('codex', 'gpt-6'), { freshReads });
+    release();
+    t.check('the recovered model becomes available without reloading', requested && await waitUntil(() => offered('codex', 'gpt-6')));
+  },
+}, {
   name: 'work runs with',
   // The model and effort each assistant runs with, chosen on Your work, go with every chat started there.
   async run(t) {
@@ -323,7 +374,8 @@ module.exports = [{
       codex: { defaultModel: 'GPT-6', defaultEffort: 'medium', efforts: ['low', 'medium', 'high'], models: [{ value: 'gpt-6', label: 'GPT-6', note: '', efforts: ['low', 'medium', 'high', 'xhigh'] }, { value: 'gpt-6-mini', label: 'GPT-6 mini', note: '', efforts: ['low', 'medium'] }] },
     };
     const b = await t.open({ respond: (p, q, body) => (p === '/api/work/models' ? { body: models } : base(p, q, body)), width: 1512, height: 1000 });
-    await b.eval(`localStorage.removeItem('work-run'); go('work'); return 1`); await sleep(1500);
+    await b.eval(`localStorage.removeItem('work-run')`);
+    await openWorkWithModels(b);
     const row = () => b.eval(`const r = document.querySelector('.wk-runwith'); return r && { text: r.textContent.replace(/\\s+/g, ' '), cm: r.querySelector('[data-wkm="claude-model"]').value, ce: r.querySelector('[data-wkm="claude-effort"]').value, xm: r.querySelector('[data-wkm="codex-model"]')?.value, efforts: [...r.querySelectorAll('[data-wkm="claude-effort"] option')].map(o => o.value) }`);
     let r = await row();
     t.check('Runs with shows each assistant with its own defaults', r && /Default \(Opus 5\.5\)/.test(r.text) && /Default \(GPT-6\)/.test(r.text) && r.cm === '' && r.ce === '', r);
@@ -333,8 +385,8 @@ module.exports = [{
     r = await row();
     t.check('a model that doesn’t offer the chosen effort goes back to its default effort', r.cm === 'sonnet' && r.ce === '' && !r.efforts.includes('max'), r);
     await pick('[data-wkm="claude-effort"]', 'high'); await pick('[data-wkm="codex-model"]', 'gpt-6-mini'); await sleep(200);
-    await b.eval(`location.reload(); return 1`); await sleep(1500);
-    await b.eval(`go('work'); return 1`); await sleep(1500);
+    await reloadWork(b);
+    await openWorkWithModels(b);
     r = await row();
     t.check('the choice is kept on this device', r && r.cm === 'sonnet' && r.ce === 'high' && r.xm === 'gpt-6-mini', r);
     await t.shot(b, 'row');
@@ -355,7 +407,7 @@ module.exports = [{
     await t.shot(b, 'runs-with');
     await b.esc();
     const phone = await t.open({ respond: (p, q, body) => (p === '/api/work/models' ? { body: models } : base(p, q, body)), width: 390, height: 844, mobile: true });
-    await phone.eval(`go('work'); return 1`); await sleep(1500);
+    await openWorkWithModels(phone);
     t.check('on a phone the row fits the screen', await phone.eval(`return !!document.querySelector('.wk-runwith') && document.documentElement.scrollWidth <= innerWidth + 1`));
     await t.shot(phone, 'runs-with-phone');
   },
@@ -391,7 +443,8 @@ module.exports = [{
       return base(p, q, body);
     };
     const b = await t.open({ respond, gemini: true, width: 1512, height: 1000 });
-    await b.eval(`localStorage.removeItem('work-run'); go('work'); return 1`); await sleep(1500);
+    await b.eval(`localStorage.removeItem('work-run')`);
+    await openWorkWithModels(b, [['gemini', 'gemini-4-argon-high']]);
     const g = await b.eval(`const r = document.querySelector('.wk-runwith'); return r && { label: r.querySelector('.wk-run-label').textContent, gem: !!r.querySelector('[data-wkm="gemini-model"]'), gemEffort: !!r.querySelector('[data-wkm="gemini-effort"]'), opts: [...r.querySelectorAll('[data-wkm="gemini-model"] option')].map(o => o.textContent) }`);
     t.check('Defaults has Gemini too, picked from its models (its effort is in their names)', g && g.label === 'Defaults' && g.gem && !g.gemEffort && g.opts[0] === 'Default (Gemini 4 Argon (Medium))' && g.opts.includes('Gemini 4 Argon (High)'), g);
     const pick = (sel, v) => b.eval(`const e = document.querySelector(${JSON.stringify(sel)}); e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event('change', { bubbles: true })); return 1`);
@@ -431,8 +484,9 @@ module.exports = [{
     t.check('the new pieces are readable', !bad.length, bad.slice(0, 8));
 
     // Cross-model review: dropdowns of what each assistant offers.
-    await b.eval(`localStorage.setItem('work-run', JSON.stringify({ claude: { model: 'opus', effort: 'max' }, codex: { model: 'gpt-6-mini', effort: '' }, gemini: { model: '', effort: '' } })); location.reload(); return 1`); await sleep(1500);
-    await b.eval(`go('work'); return 1`); await sleep(1500);
+    await b.eval(`localStorage.setItem('work-run', JSON.stringify({ claude: { model: 'opus', effort: 'max' }, codex: { model: 'gpt-6-mini', effort: '' }, gemini: { model: '', effort: '' } }))`);
+    await reloadWork(b);
+    await openWorkWithModels(b, [['gemini', 'gemini-4-argon-high']]);
     await b.clickOn('[data-wk="select"][data-key="latitudegames/latitude#18982"]'); await sleep(500);
     await b.clickOn('#wkInspector [data-wk="cross-review"]'); await sleep(400);
     let xr = await b.eval(`const f = document.querySelector('#xrForm'); return { kinds: [f.model, f.effort, f.codexModel, f.codexEffort].map(x => x.tagName), model: f.model.value, effort: f.effort.value, cx: f.codexModel.value, models: [...f.model.options].map(o => o.value), open: f.querySelector('.xr-options').open }`);
@@ -444,7 +498,7 @@ module.exports = [{
     await b.esc();
 
     const phone = await t.open({ respond, gemini: true, width: 390, height: 844, mobile: true });
-    await phone.eval(`go('work'); return 1`); await sleep(1500);
+    await openWorkWithModels(phone, [['gemini', 'gemini-4-argon-high']]);
     await phone.eval(`document.querySelector('.wk-setup-box').open = true; return 1`); await sleep(150);
     t.check('on a phone Defaults and This PC fit the screen', await phone.eval(`return !!document.querySelector('[data-wkm="gemini-model"]') && !!document.querySelector('.wk-setup-box') && document.documentElement.scrollWidth <= innerWidth + 1`));
     await t.shot(phone, 'defaults-phone');

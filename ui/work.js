@@ -10,7 +10,8 @@ const Work = (() => {
   let queuedRefresh = null, accountGeneration = 0, navigation = 0;
   const detailRequests = new Map();
   // Runs with: the model and effort each assistant uses for the chats started here (empty: its own default).
-  W.run = { claude: { model: '', effort: '' }, codex: { model: '', effort: '' }, gemini: { model: '', effort: '' } }; W.models = null; W.modelsLoading = false;
+  W.run = { claude: { model: '', effort: '' }, codex: { model: '', effort: '' }, gemini: { model: '', effort: '' } };
+  let modelsChecked = false, modelsLoading = null, queuedModelRefresh = null;
   W.setup = null; W.setupLoading = false; W.setupOpen = false; W.lit = null;
   try { const r = JSON.parse(localStorage.getItem('work-run') || 'null'); if (r) for (const p of ['claude', 'codex', 'gemini']) if (r[p]) W.run[p] = { model: String(r[p].model || ''), effort: String(r[p].effort || '') }; } catch { /* the defaults */ }
   try { W.layout = localStorage.getItem('work-layout') === 'board' ? 'board' : 'list'; W.repo = localStorage.getItem('work-repo') || 'all'; W.wide = localStorage.getItem('work-detail-width') !== 'narrow'; } catch {}
@@ -28,6 +29,7 @@ const Work = (() => {
       if (!queuedRefresh) queuedRefresh = W.loading.then(() => { queuedRefresh = null; return load(true); });
       return queuedRefresh;
     }
+    if (showing() && (!fresh || !modelsChecked)) loadModels();
     const generation = accountGeneration;
     W.loading = Promise.resolve().then(async () => {
       try {
@@ -460,12 +462,18 @@ const Work = (() => {
 
   const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
   function loadModels(fresh = false) {
-    if (W.modelsLoading) return;
-    W.modelsLoading = true;
-    Who.loadModels(fresh).then(m => { W.models = m || {}; }).catch(() => { W.models = W.models || {}; })
-      .finally(() => { W.modelsLoading = false; if (showing()) render(); });
+    if (modelsLoading) {
+      if (!fresh) return modelsLoading;
+      if (!queuedModelRefresh) queuedModelRefresh = modelsLoading.then(() => { queuedModelRefresh = null; return loadModels(true); });
+      return queuedModelRefresh;
+    }
+    modelsLoading = Who.loadModels(fresh).finally(() => {
+      modelsChecked = true; modelsLoading = null;
+      if (showing()) render();
+    });
+    return modelsLoading;
   }
-  const listOf = prov => (W.models && W.models[prov]) || null;
+  const listOf = prov => Who.listOf(prov);
   // The efforts a model offers (or the assistant's usual ones).
   function effortsFor(prov) {
     const list = listOf(prov); if (!list) return [];
@@ -473,7 +481,6 @@ const Work = (() => {
     return m && m.efforts.length ? m.efforts : list.efforts || [];
   }
   function runRow() {
-    if (!W.models && !W.modelsLoading) loadModels();
     const group = (prov, name, glyph) => {
       const list = listOf(prov), cur = W.run[prov];
       if (!list && ((prov === 'codex' && !codexOK()) || (prov === 'gemini' && !geminiReady()))) return '';
@@ -490,7 +497,7 @@ const Work = (() => {
     if (W.subs === undefined && !W.subsLoading) { W.subsLoading = true; api('/api/subagents').then(v => { W.subs = v && v.defaults && v.work && Array.isArray(v.models) && Array.isArray(v.roster) ? v : false; }).catch(() => { W.subs = false; }).finally(() => { W.subsLoading = false; if (showing()) render(); }); }
     const sv = W.subs;
     const subs = sv ? `<span class="wk-run wk-run-subs" role="group" aria-label="Claude’s subagents: model and effort"><span class="wk-run-who">⋔ Subagents</span><select data-wks="model" aria-label="Subagent model"><option value="">${esc(sv.defaults.model && sv.defaults.model !== 'inherit' ? `App default (${(sv.models.find(m => m.value === sv.defaults.model) || {}).label})` : 'Same as the chat')}</option>${sv.models.filter(m => m.value !== 'inherit').map(m => `<option value="${esc(m.value)}"${m.value === sv.work.model ? ' selected' : ''}>${esc(m.label)}</option>`).join('')}</select><select data-wks="effort" aria-label="Subagent effort"><option value="">${esc(sv.defaults.effort ? `App default (${sv.defaults.effort})` : 'Model’s default')}</option>${sv.efforts.map(e => `<option value="${esc(e)}"${e === sv.work.effort ? ' selected' : ''}>${esc(e === 'xhigh' ? 'Extra high' : cap(e))}</option>`).join('')}</select><button type="button" class="linkish" data-wk="subagents" title="Your named subagents and the app’s defaults">${sv.roster.length} named…</button></span>` : '';
-    return `<div class="wk-runwith" aria-label="Default model for each assistant"><span class="wk-run-label" title="Used by every chat started from Your work">Defaults</span>${group('claude', 'Claude', '✦')}${group('codex', 'Codex', '◆')}${group('gemini', 'Gemini', '✧')}${subs}<span class="wk-run-note">${W.models ? 'every chat started from here' : 'Asking for the models…'}</span></div>`;
+    return `<div class="wk-runwith" aria-label="Default model for each assistant"><span class="wk-run-label" title="Used by every chat started from Your work">Defaults</span>${group('claude', 'Claude', '✦')}${group('codex', 'Codex', '◆')}${group('gemini', 'Gemini', '✧')}${subs}<span class="wk-run-note">${modelsChecked ? 'every chat started from here' : 'Asking for the models…'}</span></div>`;
   }
   // What a chat started now is given, for the assistant chosen.
   const runFor = prov => { const r = W.run[prov] || {}; return { ...(r.model ? { model: r.model } : {}), ...(r.effort ? { effort: r.effort } : {}) }; };
@@ -687,7 +694,7 @@ const Work = (() => {
     if (a === 'linked') { if (W.open) W.trail.push(W.open); return openUrl(b.dataset.url); }
     if (a === 'issue-link') { const id = b.dataset.id; if (!item(id)) W.external.set(id, await api(`/api/linear/issue?id=${encodeURIComponent(id)}`)); if (W.open) W.trail.push(W.open); return select(id); }
     if (a === 'plan') return showMenu(b, whoItems((pv, acct) => startIssue(b.dataset.id, pv, acct, 'plan'), { review: true }));
-    if (a === 'refresh') { loadSetup(true); return load(true); }
+    if (a === 'refresh') { loadSetup(true); return Promise.all([loadModels(true), load(true)]); }
     if (a === 'prchat') { const p = find(b.dataset.repo, b.dataset.n); if (!p) return undefined; return showMenu(b, whoItems((pv, acct) => freeChat(p, pv, acct), { review: true })); }
     if (a === 'connections') return openConnections(null);
     if (a === 'subagents') return openSubagents();
@@ -777,7 +784,7 @@ const Work = (() => {
     showPrs: () => { W.filter = 'prs'; W.query = ''; render(); }, commands, recordChanged,
     runPrefs: () => JSON.parse(JSON.stringify(W.run)),
     setupState: () => W.setup, loadSetup, showSetup,
-    modelsFor: prov => (W.models && W.models[prov]) || null,
+    modelsFor: listOf,
     runFor: prov => runFor(prov), runLabel: prov => runLabel(prov),
     openIssue: async id => { if (!item(id)) W.external.set(id, await api(`/api/linear/issue?id=${encodeURIComponent(id)}`)); await select(id); } };
 })();
