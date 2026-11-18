@@ -2830,6 +2830,18 @@ module.exports = [
       t.check('a path to a picture that isn’t there leaves no empty box', strip && !strip.caps.some(c => /not-there/.test(c)));
       t.check('they’re big enough to see', strip && strip.big >= 150, strip);
       t.check('the same file by its full path and by a short one is one picture', await b.eval(`const tn = document.createElement('div'); addPic(tn, { path: 'C:/Projects/Game/art/hero.png' }, 'made'); addPic(tn, { path: 'art/hero.png' }, 'mentioned'); addPic(tn, { path: 'art\\\\hero.png' }, 'looked'); return picsOf(tn).list.length === 1 && picsOf(tn).list[0].how === 'made'`));
+      const detached = await b.eval(`const feed = document.getElementById('cFeed'), sc = document.getElementById('cScroll');
+        await new Promise(r => requestAnimationFrame(r));
+        const spacer = document.createElement('div'); spacer.style.height = '1500px'; feed.appendChild(spacer);
+        sc.scrollTop = sc.scrollHeight - sc.clientHeight - 50;
+        const at = sc.scrollTop, fragment = document.createDocumentFragment(), turn = document.createElement('div');
+        fragment.appendChild(turn);
+        addPic(turn, { src: feed.querySelector('.pics img').src }, 'looked', 'In the folded chapter');
+        await new Promise(r => requestAnimationFrame(r));
+        const out = { at, after: sc.scrollTop, caption: turn.querySelector('figcaption')?.textContent };
+        spacer.remove();
+        return out`);
+      t.check('a detached reply’s pictures still render without scrolling the current chat', detached.at > 0 && detached.after === detached.at && /In the folded chapter/.test(detached.caption), detached);
       // Written as Markdown: the picture itself; one on the web is a link.
       const m = await b.eval(`const h = md('Here: ![The key art](art/harvest-festival.png) and ![web](https://example.com/x.png)'); const d = document.createElement('div'); d.innerHTML = h; return { img: !!d.querySelector('.mdimg img'), cap: d.querySelector('.mdimg-cap')?.textContent, web: !!d.querySelector('a[href="https://example.com/x.png"]'), bang: /!/.test(d.textContent) }`);
       t.check('![alt](path) shows the picture, with its caption', m.img && m.cap === 'The key art', m);

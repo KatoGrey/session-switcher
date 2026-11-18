@@ -36,9 +36,21 @@ function addPic(turn, im, how, label) {
 // A picture shown in the reply already (one Codex drew, one written as ![…](…)) isn't repeated.
 function picShown(turn, p) { if (turn && p) picsOf(turn).seen.add(picKey(p)); }
 
+const pendingPicStrips = new Set();
+let picStripFrame = 0;
 function picStripSoon(turn) {
-  if (turn._picT) return;
-  turn._picT = requestAnimationFrame(() => { turn._picT = 0; renderPicStrip(turn); });
+  pendingPicStrips.add(turn);
+  if (picStripFrame) return;
+  picStripFrame = requestAnimationFrame(() => {
+    picStripFrame = 0;
+    const turns = [...pendingPicStrips];
+    pendingPicStrips.clear();
+    // History and replay can add pictures to many replies at once. Keep the scroll position once for the batch.
+    const draw = () => { for (const pending of turns) renderPicStrip(pending); };
+    const feed = $c('cFeed');
+    if (turns.some(pending => feed.contains(pending))) withStick(draw);
+    else draw(); // Folded chapters still need their pictures, even though they’re out of the feed.
+  });
 }
 function renderPicStrip(turn) {
   const st = picsOf(turn);
@@ -52,7 +64,7 @@ function renderPicStrip(turn) {
   const more = n > shown.length ? `<button type="button" class="pic-more" data-pic-more="${shown.length}">+${n - shown.length}<small>more</small></button>` : '';
   const made = st.list.filter(x => x.path && (x.how === 'made' || x.how === 'changed'));
   const review = made.length >= 2 && picProject() ? `<button type="button" class="linkish pics-board" data-pic-board="${esc(made[made.length - 1].path)}">Review these on the board</button>` : '';
-  withStick(() => { el.innerHTML = shown.map(tile).join('') + more + review; });
+  el.innerHTML = shown.map(tile).join('') + more + review;
 }
 // A picture that can't load (moved, or never there: a path in a sentence) leaves quietly.
 function picGone(img) {

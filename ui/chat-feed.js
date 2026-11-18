@@ -4,7 +4,7 @@
 const $c = id => (id[0] === '[' ? document.querySelector(id) : document.getElementById(id));
 const C = {
   comps: {}, crewKinds: [], focus: null, compHist: {},
-  key: null, info: null, sessionId: null, es: null, lastSeq: 0, state: null, watch: null, watchSig: '',
+  key: null, info: null, sessionId: null, es: null, lastSeq: 0, gen: 0, state: null, watch: null, watchSig: '',
   attachments: [], historyStart: 0, historyCursor: null, liveText: {}, liveTimer: null, interruptedAt: 0, title: '', folder: '', model: '', provider: 'claude',
   // The Codex helper working inside a Claude chat, which one your next message goes to, and each one's model.
   comp: null, compThread: null, target: 'main', mi: { main: null, comp: null },
@@ -725,8 +725,20 @@ function renderItem(root, it, live) {
 /* ---------- scrolling ---------- */
 const scroller = () => $c('cScroll');
 const nearBottom = () => { const s = scroller(); return s.scrollHeight - s.scrollTop - s.clientHeight < 140; };
-const toBottom = () => { if (window.ChatReading?.holding()) return; const s = scroller(); s.scrollTop = s.scrollHeight; };
-function withStick(fn) { const stick = nearBottom(); fn(); if (stick) toBottom(); else noteUnseen(); }
+let bottomRequest = null;
+const toBottom = () => { bottomRequest = null; if (window.ChatReading?.holding()) return; const s = scroller(); s.scrollTop = s.scrollHeight; };
+function toBottomSoon() {
+  if (bottomRequest?.gen === C.gen || window.ChatReading?.holding()) return;
+  const request = { gen: C.gen };
+  bottomRequest = request;
+  // A batch of feed writes only needs one layout to follow the latest message before paint.
+  queueMicrotask(() => {
+    if (bottomRequest !== request) return;
+    if (request.gen === C.gen) toBottom();
+    else bottomRequest = null;
+  });
+}
+function withStick(fn) { const stick = bottomRequest?.gen === C.gen || nearBottom(); fn(); if (stick) toBottomSoon(); else noteUnseen(); }
 // "Jump to latest": shown while you're reading further up; counts what arrived meanwhile.
 let unseen = 0, jumpRaf = 0;
 function noteUnseen() { if (!liveRender) return; unseen++; syncJump(); }

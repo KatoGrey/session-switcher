@@ -264,7 +264,11 @@ function handleEvent(ev, src) {
     case 'changes': renderChanges(ev, src); break;
     case 'undone': renderUndone(ev, src); break;
     case 'unsent': if (!comp) restoreUnsent(ev); break;
-    case 'user': feed.querySelector('.c-welcome')?.remove(); withStick(() => renderItem(feed, ev, true)); toBottom(); break;
+    case 'user':
+      feed.querySelector('.c-welcome')?.remove();
+      if (window.ChatReading?.holding()) withStick(() => renderItem(feed, ev, true));
+      else { renderItem(feed, ev, true); toBottomSoon(); }
+      break;
     // A message that's already showing has been given its turn: a page of history won't show it again.
     case 'user_turn': {
       const d = feed.querySelector(`.umsg[data-sq="${CSS.escape(`${provFor(src)}:${ev.userSeq}`)}"]`);

@@ -6,6 +6,8 @@
 
 **Keep your place during a review.** If a new commit arrives while you page through changed files, the inspector asks you to refresh. A failed refresh leaves the last successful read visible with a label. Chat links identify work started from the PR and label a branch match as a suggestion.
 
+**Long chats scroll more smoothly.** When several replies contain pictures, the app updates them together. It keeps your reading position as new messages arrive or you switch chats.
+
 ## Earlier in 6.17 — A browser in the app, playtests with a goal, and a chat's account switched in place
 
 **A browser built into Session Switcher.** Claude and Codex chats can now open web pages in the app itself, beside the chat, and use them: look, click, type, read the page as text, run a script, check the console and network. You watch as it happens (a ring shows where it clicked, and a line says what it's doing), and you can use the same tabs yourself at any time: sign in, click around, type. No Chrome, no extension, and no matching claude.ai sign-in: any chat on any account can use it, and its usage goes on that chat's account.
