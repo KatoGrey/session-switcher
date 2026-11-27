@@ -293,13 +293,7 @@ function connectLive() {
     let view; try { view = JSON.parse(e.data); } catch { return; }
     refreshChatFocus(view);
   });
-  es.onopen = () => {
-    S.connected = true; renderLivePill();
-    loadActivity().then(watchActivity).catch(() => {}).finally(renderLiveSoon);
-    loadUsage().then(renderLiveSoon).catch(() => {});
-  };
-  es.onerror = () => { S.connected = false; renderLivePill(); setTimeout(() => api('/api/state').catch(() => {}), 4000); };
-  es.addEventListener('sessions', () => {
+  const sessionsSoon = () => {
     clearTimeout(sessTimer);
     sessTimer = setTimeout(wrap(async () => {
       await loadSessions(); renderNav();
@@ -309,7 +303,17 @@ function connectLive() {
       if (S.view === 'hub') { if ($('recentList') || !S.projects.length) renderHubLists(); else renderHub(); renderLive(); } else renderPage();
       if (S.drawerId) openDrawer(S.drawerId, true);
     }), 300);
-  });
+  };
+  let opened = 0;
+  es.onopen = () => {
+    S.connected = true; renderLivePill();
+    loadActivity().then(watchActivity).catch(() => {}).finally(renderLiveSoon);
+    loadUsage().then(renderLiveSoon).catch(() => {});
+    // Back after a drop (a network change, the PC waking): a change to the list meanwhile wasn't told, so it's read again.
+    if (opened++) sessionsSoon();
+  };
+  es.onerror = () => { S.connected = false; renderLivePill(); setTimeout(() => api('/api/state').catch(() => {}), 4000); };
+  es.addEventListener('sessions', sessionsSoon);
   es.addEventListener('accounts', wrap(async () => { await loadState(); renderNav(); renderBar(); if (S.view === 'hub') renderLive(); else renderPage(); codexLoginProgress(); if (window.ChatUI && ChatUI.refreshCrew) ChatUI.refreshCrew(); }));
   es.addEventListener('running', e => { try { S.running = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); renderNav(); });
   es.addEventListener('live', e => { try { S.live = JSON.parse(e.data); } catch { /* keep */ } if (S.view !== 'hub' && S.view !== 'search' && idle()) renderPage(); });
@@ -700,9 +704,27 @@ petals();
 sayStatic();
 renderLivePill();
 if (SOLO) document.body.classList.add('solo');
+// The first full load. One that fails is tried again, a little later each time and at once when the window is
+// opened, rather than leaving last time's list up with no live updates to bring it up to date: a window started
+// hidden at sign-in kept a list days old until the app was restarted, after a request failed as the PC started
+// (its Wi-Fi or VPN coming up makes the browser drop requests in flight, even to this PC). Still failing after a
+// few tries, it says so.
+async function firstLoad() {
+  for (let i = 0; ; i++) {
+    try { await reload(); return; } catch (err) {
+      if (err.message === 'Reloading…') throw err;
+      if (i === 2) toast(err.message, 9000, null, { tone: 'error' });
+      await new Promise(resolve => {
+        const t = setTimeout(next, Math.min(1000 * 2 ** i, 15000));
+        function next() { clearTimeout(t); window.removeEventListener('focus', next); resolve(); }
+        window.addEventListener('focus', next);
+      });
+    }
+  }
+}
 wrap(async () => {
   if (!SOLO && !PAGE_ARGS.get('chat')) await bootFromCache();   // drawn at once from last time
-  await Promise.all([reload(), loadPrompts()]); speedNote('hub', performance.now()); connectLive(); watchActivity(); checkAway(); loadWhatsNew(); if (!window.REMOTE) loadSelfCheckCard();
+  await Promise.all([firstLoad(), loadPrompts()]); speedNote('hub', performance.now()); connectLive(); watchActivity(); checkAway(); loadWhatsNew(); if (!window.REMOTE) loadSelfCheckCard();
   if (S.firstRun && !window.REMOTE && !store('getting-started') && !SOLO) setTimeout(() => openSetup(), 600); loadHealth(false).catch(() => {}); loadTasks().catch(() => {}); loadRaces().catch(() => {});
   await aideBoot();
   // A popped-out window opens straight into its chat.

@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { createChatManager } = require('../lib/chat');
-const { createGemini, toolBlock, ownWords, resetFrom, parseUsage, FROM_CLAUDE, MODES } = require('../lib/gemini');
+const { createGemini, quietUpdate, toolBlock, ownWords, resetFrom, parseUsage, FROM_CLAUDE, MODES } = require('../lib/gemini');
 
 const FAKE = path.join(__dirname, 'fake-agy.js');
 function setup() {
@@ -142,28 +142,83 @@ test('gemini: out of quota shows on its account with the reset time, until a rep
   await chat.stop();
 });
 
-test('gemini: how much of the plan is left, from Antigravity’s own /usage, with no turn', async () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ss-gemini-usage-')));
-  // The stand-in as a command of its own, the way the app starts a real agy.
+// The stand-in as a command of its own, the way the app starts a real agy; and a home of its own, so
+// the real ~/.gemini is never touched.
+function launcherIn(prefix) {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
   const asNode = process.versions.electron ? 'ELECTRON_RUN_AS_NODE=1' : '';
   const launcher = process.platform === 'win32' ? path.join(dir, 'agy.cmd') : path.join(dir, 'agy');
   if (process.platform === 'win32') fs.writeFileSync(launcher, `@echo off\r\n${asNode ? `set ${asNode}\r\n` : ''}"${process.execPath}" "${FAKE}" %*\r\n`);
   else { fs.writeFileSync(launcher, `#!/bin/sh\n${asNode ? `export ${asNode}\n` : ''}exec "${process.execPath}" "${FAKE}" "$@"\n`); fs.chmodSync(launcher, 0o755); }
-  const gemini = createGemini({ chats: createChatManager(), getConfig: () => ({ gemini: { enabled: true, command: launcher } }), dataDir: dir });
+  const home = path.join(dir, 'home');
+  fs.mkdirSync(home);
   test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  assert.equal(gemini.publicState().usage, false, 'not asked before it’s known to be signed in');
-  await gemini.refreshAccount();
-  assert.equal(gemini.publicState().usage, true);
-  const u = await gemini.usage();
-  assert.equal(u.available, true);
-  assert.equal(Math.round(u.fiveHour.used), 38, 'the Gemini group’s 5-hour window, as used');
-  assert.equal(Math.round(u.week.used), 10);
-  assert.ok(Date.parse(u.fiveHour.resetsAt) > Date.now());
-  assert.deepEqual(u.groups.map(g => g.name), ['Gemini Models', 'Claude and GPT models']);
-  assert.equal(u.groups[1].models, 'Claude Opus, Claude Sonnet, GPT-OSS');
+  return { dir, home, launcher };
+}
+async function withHome(home, fn) {
+  const real = os.homedir;
+  os.homedir = () => home;
+  try { return await fn(); } finally { os.homedir = real; }
+}
+
+test('gemini: how much of the plan is left, from Antigravity’s own /usage, with no turn', async () => {
+  const { dir, home, launcher } = launcherIn('ss-gemini-usage-');
+  await withHome(home, async () => {
+    const gemini = createGemini({ chats: createChatManager(), getConfig: () => ({ gemini: { enabled: true, command: launcher } }), dataDir: dir });
+    assert.equal(gemini.publicState().usage, false, 'not asked before it’s known to be signed in');
+    await gemini.refreshAccount();
+    assert.equal(gemini.publicState().usage, true);
+    const u = await gemini.usage();
+    assert.equal(u.available, true);
+    assert.equal(Math.round(u.fiveHour.used), 38, 'the Gemini group’s 5-hour window, as used');
+    assert.equal(Math.round(u.week.used), 10);
+    assert.ok(Date.parse(u.fiveHour.resetsAt) > Date.now());
+    assert.deepEqual(u.groups.map(g => g.name), ['Gemini Models', 'Claude and GPT models']);
+    assert.equal(u.groups[1].models, 'Claude Opus, Claude Sonnet, GPT-OSS');
+  });
   // An agy that answers "/usage" as a question (a turn, a conversation) isn't read as usage.
   assert.equal(parseUsage(JSON.stringify({ conversation_id: 'abc', status: 'SUCCESS', response: 'It looks like…', num_turns: 1 })), null);
   assert.equal(parseUsage('not json'), null);
+});
+
+// agy's own look for a newer version runs in a copy of itself with no console, which on Windows opens a
+// visible terminal window; the app takes that look first, hidden, and marks it, so agy skips its own.
+test('gemini: agy’s update check is taken first, hidden, so agy never opens a window for its own', async () => {
+  const { dir, home, launcher } = launcherIn('ss-gemini-update-');
+  const record = path.join(dir, 'updates.txt');
+  const looks = () => { try { return fs.readFileSync(record, 'utf8').trim().split('\n').filter(Boolean).length; } catch { return 0; } };
+  const ago = (stamp, min) => { const t = new Date(Date.now() - min * 60e3); fs.utimesSync(stamp, t, t); };
+  process.env.FAKE_AGY_UPDATES = record;
+  try {
+    await withHome(home, async () => {
+      const folder = path.join(home, '.gemini', 'antigravity-cli'), stamp = path.join(folder, 'last_check.timestamp');
+      assert.equal(quietUpdate(launcher), null, 'before agy’s first run (no folder of its own) it doesn’t look either');
+      fs.mkdirSync(folder, { recursive: true });
+      if (process.platform !== 'win32') { assert.equal(quietUpdate(launcher), null, 'only Windows opens a window for it'); return; }
+      // Never looked: looked now, and marked before the agy that's starting reads the mark.
+      const first = quietUpdate(launcher);
+      assert.ok(first, 'started');
+      assert.ok(Date.now() - fs.statSync(stamp).mtimeMs < 5000, 'marked at once');
+      assert.equal(quietUpdate(launcher), null, 'marked: the next agy doesn’t start another');
+      assert.equal((await first).code, 0);
+      assert.equal(looks(), 1);
+      // agy looked by itself 5 minutes ago: left alone. Its 15 minutes passed: looked again.
+      ago(stamp, 5);
+      assert.equal(quietUpdate(launcher), null);
+      ago(stamp, 16);
+      await quietUpdate(launcher);
+      assert.equal(looks(), 2);
+      // Through the app: checking the account (then usage, every 5 minutes) takes a look that's due first.
+      ago(stamp, 16);
+      const gemini = createGemini({ chats: createChatManager(), getConfig: () => ({ gemini: { enabled: true, command: launcher } }), dataDir: dir });
+      await gemini.refreshAccount();
+      assert.ok(Date.now() - fs.statSync(stamp).mtimeMs < 60e3, 'marked before agy started');
+      for (const t0 = Date.now(); looks() < 3 && Date.now() - t0 < 8000;) await new Promise(r => setTimeout(r, 50));
+      assert.equal(looks(), 3);
+      await gemini.usage();
+      assert.equal(looks(), 3, 'not again while the mark is fresh');
+    });
+  } finally { delete process.env.FAKE_AGY_UPDATES; }
 });
 
 test('gemini: reset times are read from the ways quota messages say them', () => {

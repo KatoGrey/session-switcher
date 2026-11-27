@@ -19,6 +19,12 @@ if (args[0] === '-p' && args[1] === '/usage') {
     ] } } }));
   process.exit(0);
 }
+// Its look for a newer version of itself (the app takes it, hidden: quietUpdate in lib/gemini.js), noted for tests.
+if (args[0] === 'update') {
+  if (process.env.FAKE_AGY_UPDATES) fs.appendFileSync(process.env.FAKE_AGY_UPDATES, `${process.pid}\n`);
+  console.log('⟳ Checking for updates... (current version 1.3.5)\n✓ You are already on the latest version.');
+  process.exit(0);
+}
 if (args[0] === 'models') { console.log('gemini-4-argon-medium\tGemini 4 Argon (Medium)\ngemini-4-argon-high\tGemini 4 Argon (High)'); process.exit(0); }
 if (args[0] === 'mcp' && args[1] === 'add') {
   const file = path.join(require('os').homedir(), '.gemini', 'config', 'mcp_config.json');

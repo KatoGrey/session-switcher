@@ -101,3 +101,28 @@ test('Codex and Gemini subagents: a relay in Claude chats, and Codex’s own rol
   s.save({ ...s.get(), codex: { model: '', effort: '' }, roster: s.get().roster.filter(a => a.engine !== 'codex') });
   assert.deepEqual(s.codexThread(), { config: {}, note: '' }, 'nothing to tell Codex: nothing added');
 });
+
+test('a Gemini subagent takes agy’s update check first, hidden, so agy doesn’t open a window for its own', { skip: process.platform !== 'win32' && 'only Windows opens a window for it' }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'subagents-agy-')); gone.push(dir);
+  const home = path.join(dir, 'home'), stamp = path.join(home, '.gemini', 'antigravity-cli', 'last_check.timestamp');
+  fs.mkdirSync(path.dirname(stamp), { recursive: true });
+  fs.writeFileSync(stamp, '');
+  const old = new Date(Date.now() - 20 * 60e3); fs.utimesSync(stamp, old, old);
+  // A stand-in agy: its update check is noted; anything else gets an answer.
+  const record = path.join(dir, 'calls.txt'), stub = path.join(dir, 'stub-agy.js'), launcher = path.join(dir, 'agy.cmd');
+  fs.writeFileSync(stub, "require('fs').appendFileSync(process.env.STUB_RECORD, process.argv[2] + '\\n'); console.log(process.argv[2] === 'update' ? 'You are already on the latest version.' : 'The answer.');\n");
+  fs.writeFileSync(launcher, `@echo off\r\n${process.versions.electron ? 'set ELECTRON_RUN_AS_NODE=1\r\n' : ''}"${process.execPath}" "${stub}" %*\r\n`);
+  const files = sub.pluginFiles({ defaults: {}, roster: [{ name: 'gm', engine: 'gemini', description: 'x', model: '', effort: '', tools: 'read', prompt: '' }] }, { gemini: { command: launcher } }, dir.replace(/\\/g, '/'));
+  const plugin = path.join(dir, 'plugin');
+  for (const [name, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(plugin, name)), { recursive: true }); fs.writeFileSync(path.join(plugin, name), text); }
+  fs.writeFileSync(path.join(dir, 'task.txt'), 'Look it up.');
+  const relay = () => require('node:child_process').spawnSync(process.execPath, [path.join(plugin, 'relay.js'), 'gm', path.join(dir, 'task.txt')], { encoding: 'utf8', cwd: dir, env: { ...process.env, USERPROFILE: home, HOME: home, STUB_RECORD: record } });
+  let r = relay();
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), 'The answer.');
+  assert.deepEqual(fs.readFileSync(record, 'utf8').trim().split('\n').sort(), ['-p', 'update'], 'its update check, then the job');
+  assert.ok(Date.now() - fs.statSync(stamp).mtimeMs < 60e3, 'marked, so the agy doing the job skips its own');
+  r = relay();
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(fs.readFileSync(record, 'utf8').trim().split('\n').sort(), ['-p', '-p', 'update'], 'not again while the mark is fresh');
+});

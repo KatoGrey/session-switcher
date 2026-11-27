@@ -2412,6 +2412,58 @@ module.exports = [
     },
   },
   {
+    name: 'a failed first load',
+    // A window started hidden at sign-in drew last time's list, its first load failed (the PC's network was coming
+    // up), and it kept that list, days old, with no live updates, until the app was restarted. Now it tries again.
+    async run(t) {
+      let fail = 0, sessions = 0;
+      const respond = p => {
+        if (p !== '/api/sessions') return null;
+        sessions++;
+        if (fail > 0) { fail--; return { status: 503, body: { error: 'The network changed.' } }; }
+        return null;
+      };
+      const b = await t.open({ respond });
+      await sleep(800);
+      // Last time's list, a few days old: one chat with an old name. Then the page opens again, and its first
+      // fetch of the list fails once.
+      const id = demo.ID['s-brawl'];
+      await b.eval(`const c = JSON.parse(localStorage.getItem('boot-cache'));
+        c.at = Date.now() - 3.5 * 864e5;
+        for (const p of c.sessions.projects) for (const s of p.sessions) if (s.id === ${JSON.stringify(id)}) s.title = 'Name from days ago';
+        localStorage.setItem('boot-cache', JSON.stringify(c)); return 1`);
+      fail = 1; sessions = 0;
+      await b.send('Page.reload', {});
+      // (Live updates start: the page opens its live connection, es. The stand-in's stream doesn't say it's open.)
+      const once = await b.eval(`for (let i = 0; i < 100 && !(typeof es !== 'undefined' && es && !document.body.classList.contains('from-cache')); i++) await new Promise(r => setTimeout(r, 100));
+        return { live: !!(typeof es !== 'undefined' && es), cached: document.body.classList.contains('from-cache'),
+          stale: document.body.innerText.includes('Name from days ago'), toasts: [...document.querySelectorAll('.toast-msg')].map(x => x.textContent).filter(Boolean) }`);
+      t.check('a first load that fails once is tried again: last time’s list goes, and live updates start', once.live && !once.cached && !once.stale && sessions >= 2, { ...once, sessions });
+      t.check('and a blip that passes says nothing', !once.toasts.some(x => /network changed/.test(x)), once.toasts);
+
+      // Still failing after a few tries: it says so, once, and keeps trying; opening the window tries at once.
+      fail = 99; sessions = 0;
+      await b.send('Page.reload', {});
+      // (Its third try says so: about 3 s in, then it waits 4 s before the next.)
+      const said = await b.eval(`const n = () => [...document.querySelectorAll('.toast-msg')].filter(x => /network changed/.test(x.textContent)).length;
+        for (let i = 0; i < 150 && !n(); i++) await new Promise(r => setTimeout(r, 100));
+        return { toasts: n(), cached: document.body.classList.contains('from-cache'), live: typeof es !== 'undefined' && !!es }`);
+      t.check('a first load that keeps failing says so once, and keeps last time’s list marked as catching up', said.toasts === 1 && said.cached && !said.live, { ...said, sessions });
+      fail = 0; sessions = 0;
+      await b.eval(`window.dispatchEvent(new Event('focus')); return 1`);
+      for (let i = 0; i < 15 && !sessions; i++) await sleep(100);
+      const asked = sessions;
+      const opened = await b.eval(`for (let i = 0; i < 150 && (document.body.classList.contains('from-cache') || !es); i++) await new Promise(r => setTimeout(r, 100));
+        return { cached: document.body.classList.contains('from-cache'), live: !!es }`);
+      t.check('opening the window tries again at once, without waiting for the next try', asked >= 1 && !opened.cached && opened.live, { ...opened, asked });
+
+      // The live connection back after a drop: the list is read again (a change meanwhile wasn't told).
+      sessions = 0;
+      await b.eval(`es.onopen(); es.onopen(); await new Promise(r => setTimeout(r, 700)); return 1`);
+      t.check('a live connection that comes back reads the list again', sessions >= 1, { sessions });
+    },
+  },
+  {
     name: 'pick up',
     // What's new after an update (once), a tip the first time, Good morning with yesterday's chats,
     // and a project's week at a glance.

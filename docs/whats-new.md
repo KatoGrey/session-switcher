@@ -1,4 +1,10 @@
-# Accurate chat activity at startup
+# No terminal windows from Gemini, and a chat list that catches up after Windows starts
+
+**Gemini no longer opens a terminal window.** With Gemini turned on, a Windows Terminal window could pop up every 15 to 20 minutes. It came from Antigravity checking for its own updates. Session Switcher now runs that check itself, out of sight, so Antigravity still keeps itself up to date without opening a window. Gemini subagents do the same.
+
+**The chat list catches up after Windows starts.** When Session Switcher started with Windows, it could keep showing the chat list from its last start, days old, until you restarted it. That happened when a request failed while the PC's network was still coming up. Now the window tries again, at once when you open it, and reads the list again whenever its live connection comes back after a drop.
+
+## Earlier in 6.18 — Accurate chat activity at startup
 
 Saved Companion questions stay in Companion history when you relaunch Session Switcher. A change to a transcript file no longer puts an old conversation in **Active now**. The Companion sidebar count now says how many saved chats you have.
 
